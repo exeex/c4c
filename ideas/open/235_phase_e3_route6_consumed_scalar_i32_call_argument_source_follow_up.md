@@ -54,6 +54,15 @@ regression guard.
 - Any shared `ConsumedPlans`, prepared call/debug, or direct-call surface
   touched by the repair receives supervisor-selected broader validation.
 
+## Parked State
+
+Commit `ea2b3a133` landed the Route 6 named scalar i32 call-argument source
+publication repair. The delegated proof advanced past the Route 6 assertion,
+with `backend_prepared_lookup_helper` and `backend_x86_route_debug` green, and
+then failed at the split-out idea 236 selected-value-chain assertion. Idea 235
+remains open, not active, until supervisor-selected close validation can be run
+without being blocked by idea 236.
+
 ## Reviewer Reject Signals
 
 - The change matches a direct extern call testcase name, label text, block
@@ -67,4 +76,3 @@ regression guard.
   pointer-backed selected-value-chain metadata as part of this Route 6 repair.
 - The exact old consumed-plan lookup failure remains present behind a renamed
   helper or alternate diagnostic path.
-

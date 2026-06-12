@@ -1,64 +1,41 @@
 Status: Active
-Source Idea Path: ideas/open/235_phase_e3_route6_consumed_scalar_i32_call_argument_source_follow_up.md
+Source Idea Path: ideas/open/236_phase_e3_prepared_compare_join_selected_value_chain_metadata_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Named Scalar I32 Source Lookup
+Current Step ID: 1
+Current Step Title: Locate The Selected-Value-Chain Metadata Gap
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 repaired the named scalar i32 Route 6 source lookup publication in
-`src/backend/prealloc/call_plans.cpp`. `populate_call_plans(...)` now publishes
-or completes one BIR `CallArgumentSourceRelationship` from prepared call-plan
-authority only when the BIR argument is a named i32 value, the prepared
-source id is present, the prepared source name resolves to the same BIR value
-name, and the prepared source encoding is a Route 6 argument-value source
-(`Register` or `FrameSlot`).
-
-The x86 consumed helper remains fail-closed. The repair does not touch
-`find_consumed_scalar_i32_call_argument_source(...)`; it still requires a
-Route 6 record and a matching prepared source id. The publisher refuses
-duplicates, contradictory existing source ids/names/encodings, unsupported
-encodings, selected/ABI-bound source paths, direct-global dependency paths,
-non-i32 arguments, unnamed arguments, and missing prepared source id/name
-facts.
-
-The delegated proof advanced past:
-`x86 Route 6 call-use boundary: scalar call argument source did not thread through ConsumedPlans`.
-`backend_prepared_lookup_helper` and `backend_x86_route_debug` remained green.
-The remaining `backend_x86_handoff_boundary` failure is now the already
-split-out idea 236 selected-value-chain blocker:
-`scalar-control-flow compare-against-zero prepared compare-join pointer-backed same-module global selected-value chain return context ownership: shared helper stopped publishing the true global-root selected-value chain`.
+Lifecycle switched from idea 235 to idea 236 after commit `ea2b3a133`
+repaired Route 6 named scalar i32 call-argument source publication. The
+delegated proof advanced past the idea 235 Route 6 assertion and now fails at
+the split-out idea 236 selected-value-chain assertion.
 
 ## Suggested Next
 
-Supervisor review should decide whether this Step 2 slice is acceptable with
-the known idea 236 blocker still failing in the shared handoff-boundary
-binary. The smallest next implementation packet is outside idea 235: activate
-or execute idea 236 for the prepared compare-join selected-value-chain
-metadata failure.
+Execute Step 1 of `plan.md`: reproduce or inspect the pointer-backed
+same-module global selected-value-chain failure, identify the minimal prepared
+compare-join metadata owner, and record the proposed Step 2 owner and proof
+command here.
 
 ## Watchouts
 
-- This slice intentionally mutates prepared BIR call source metadata during
-  call-plan population; it does not add an x86 fallback.
-- The handoff-boundary binary remains red because it includes the separate
-  idea 236 selected-value-chain assertion after the Route 6 assertion.
-- No route-debug expected strings, baselines, wrappers, helper-oracle output,
-  prepared call/debug output, x86 compare-join stack-home code, or
-  selected-value-chain metadata were changed.
+- Preserve the idea 234 x86 compare-join stack-home repair as a regression
+  guard.
+- Preserve the idea 235 Route 6 consumed scalar i32 call-argument source repair
+  as a regression guard.
+- Do not change implementation files, expected strings, baselines, wrappers,
+  helper-oracle output, Route 6 behavior, or x86 stack-home behavior during
+  Step 1 unless the supervisor explicitly delegates implementation work.
 
 ## Proof
 
-Ran the supervisor-selected proof command:
+No code validation was run for this lifecycle-only switch. The prior delegated
+proof for idea 235 failed only after advancing to the idea 236 assertion:
 
-```bash
-cmake --build build-x86 --target backend_x86_handoff_boundary_test backend_x86_route_debug_test backend_prepared_lookup_helper_test && ctest --test-dir build-x86 -R '^(backend_x86_handoff_boundary|backend_x86_route_debug|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log 2>&1
+```text
+scalar-control-flow compare-against-zero prepared compare-join pointer-backed same-module global selected-value chain return context ownership:
+shared helper stopped publishing the true global-root selected-value chain
 ```
-
-Result: failed with exit `8` because `backend_x86_handoff_boundary` now reaches
-the idea 236 selected-value-chain failure. Passing:
-`backend_prepared_lookup_helper`, `backend_x86_route_debug`. The delegated
-Route 6 consumed scalar i32 call-use boundary advanced. `test_after.log` is
-the proof log path.

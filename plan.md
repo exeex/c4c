@@ -1,215 +1,213 @@
-# Phase E3 Route 6 Consumed Scalar I32 Call-Argument Source Follow-Up
+# Phase E3 Prepared Compare-Join Selected-Value-Chain Metadata Follow-Up
 
 Status: Active
-Source Idea: ideas/open/235_phase_e3_route6_consumed_scalar_i32_call_argument_source_follow_up.md
+Source Idea: ideas/open/236_phase_e3_prepared_compare_join_selected_value_chain_metadata_follow_up.md
 
 ## Purpose
 
-Repair Route 6 consumed-plan lookup behavior so named scalar i32 call-argument
-sources are available through `ConsumedPlans` when prepared call-plan authority
-already records the source relationship.
+Repair prepared compare-join selected-value-chain metadata so pointer-backed
+same-module global return-context ownership keeps publishing the true
+global-root selected-value chain.
 
 ## Goal
 
-Make the Route 6 scalar i32 call-use boundary pass through semantic prepared
-call-plan facts while preserving fail-closed behavior and existing route-debug
-output contracts.
+Make the pointer-backed selected-value-chain handoff-boundary assertion
+advance through semantic prepared compare-join metadata while preserving the
+idea 234 stack-home and idea 235 Route 6 repairs as regression guards.
 
 ## Core Rule
 
-Derive Route 6 named scalar i32 call-argument source facts from prepared
-call-plan authority. Do not claim progress through testcase-shaped matching,
-expected-string rewrites, baseline refreshes, helper renames, or broad
-ABI/call-wrapper migration.
+Repair selected-value-chain metadata publication. Do not claim progress through
+testcase-shaped matching, assertion weakening, baseline refreshes, helper
+renames, or unrelated Route 6/x86 stack-home changes.
 
 ## Read First
 
-- `ideas/open/235_phase_e3_route6_consumed_scalar_i32_call_argument_source_follow_up.md`
-- The committed idea 234 isolation context:
-  `ab5b854db isolate x86 compare-join stack-home handoff repair`
-- Route 6 and prepared lookup surfaces around:
-  `find_consumed_scalar_i32_call_argument_source(...)`,
-  consumed call-argument plan lookup, prepared call-plan authority,
-  `backend_prepared_lookup_helper`, `backend_x86_route_debug`, and
-  `backend_x86_handoff_boundary`
+- `ideas/open/236_phase_e3_prepared_compare_join_selected_value_chain_metadata_follow_up.md`
+- Parked predecessor context:
+  - `ab5b854db isolate x86 compare-join stack-home handoff repair`
+  - `ea2b3a133 publish Route 6 scalar i32 call argument sources`
+- Prepared compare-join metadata surfaces around
+  `src/backend/prealloc/control_flow.hpp`, selected-value-chain ownership,
+  return-context publication, helper-oracle expectations, and
+  `backend_x86_handoff_boundary`.
 
 ## Current Targets
 
-- Route 6 scalar i32 call-argument source facts exposed through
-  `ConsumedPlans`.
-- Prepared call-plan authority for named scalar i32 arguments when it supplies
-  source encoding, source value id, and source name without guessing.
-- Fail-closed behavior for absent Route 6 facts, mismatched prepared ids,
-  missing source names, and non-Route 6 or non-i32 cases.
-- Preservation of x86 compare-join stack-home behavior from idea 234 and the
-  existing route-debug/helper output contracts.
+- Pointer-backed same-module global return-context ownership selected-value
+  chain publication.
+- The shared helper path that should preserve or publish the true global-root
+  selected-value chain through compare-join return context ownership.
+- Focused helper and handoff-boundary proof for the failing assertion and
+  nearby same-feature metadata cases.
+- Regression protection for idea 234 x86 stack-home behavior and idea 235
+  Route 6 consumed scalar i32 call-argument source behavior.
 
 ## Non-Goals
 
 - Do not change x86 compare-join stack-home handoff behavior from idea 234.
-- Do not change prepared compare-join selected-value-chain metadata from idea
-  236.
-- Do not rewrite Route 6 route-debug expected strings, baselines, helper
-  fallback output, wrappers, or prepared diagnostic/oracle contracts.
-- Do not start broad ABI/call wrapper migration, prepared diagnostic/oracle
-  retirement, E4, E5, or draft 155 work.
-- Do not add direct extern call testcase-name, label-text, block-shape, or
-  assertion-string shortcuts.
+- Do not change Route 6 consumed scalar i32 call-argument source behavior from
+  idea 235.
+- Do not start broad pointer lowering rewrites, ABI/call wrapper migration,
+  prepared diagnostic/oracle retirement, E4, E5, or draft 155 work.
+- Do not rewrite route-debug/helper expected strings, baselines, wrappers, or
+  prepared diagnostic output unless the supervisor explicitly approves that
+  scope after a review.
+- Do not add testcase-name, label-text, block-shape, or assertion-string
+  shortcuts for the pointer-backed global fixture.
 
 ## Working Model
 
-- Idea 234 advanced `backend_x86_handoff_boundary` past the compare-join
-  stack-home assertion and exposed the Route 6 consumed scalar i32
-  call-argument source failure.
-- The dirty prior attempt suggested the missing relationship may be available
-  from prepared call-plan authority, but that implementation must be rederived
-  in this idea and kept fail-closed.
-- `backend_prepared_lookup_helper` and `backend_x86_route_debug` are
-  regression guards for Route 6 lookup/debug behavior, not permission to
-  rewrite expected output.
+- Idea 234 repaired the x86 compare-join stack-home handoff and exposed a
+  Route 6 consumed scalar i32 call-argument source failure.
+- Idea 235 repaired Route 6 publication in
+  `src/backend/prealloc/call_plans.cpp`; the delegated proof now advances to
+  the selected-value-chain failure.
+- The active failure is:
+
+```text
+scalar-control-flow compare-against-zero prepared compare-join pointer-backed same-module global selected-value chain return context ownership:
+shared helper stopped publishing the true global-root selected-value chain
+```
+
+- The likely owner is prepared compare-join selected-value-chain metadata,
+  especially the shared helper path around `src/backend/prealloc/control_flow.hpp`.
 
 ## Execution Rules
 
-- Start by reproducing or inspecting the Route 6 consumed scalar i32 failure
-  before implementation edits.
-- Identify the narrow consumed-plan lookup owner and the exact prepared
-  call-plan facts that are safe to reuse.
-- Preserve fail-closed behavior whenever Route 6 facts are absent, prepared
-  ids disagree, source names are missing, or the argument is outside the named
-  scalar i32 path.
-- Treat any need to change x86 compare-join stack-home behavior or
-  pointer-backed selected-value-chain metadata as a stop signal for this idea.
+- Start by reproducing or inspecting the selected-value-chain failure before
+  implementation edits.
+- Identify the semantic metadata owner and the exact selected-value-chain facts
+  that should survive through compare-join return-context ownership.
+- Preserve fail-closed behavior when the root chain cannot be proven.
+- Treat any need to alter Route 6 consumed-plan behavior or x86 stack-home
+  compare-join behavior as a stop signal for this idea.
 - Every code-changing step needs fresh build or compile proof plus the
   supervisor-delegated test subset.
 - Ask the supervisor to choose broader validation before acceptance if the diff
-  touches shared `ConsumedPlans`, prepared call/debug, direct-call, MIR query,
-  helper-oracle, or wrapper surfaces.
+  touches shared prepared control-flow, helper-oracle, MIR query, direct-call,
+  wrapper, or selected-value-chain surfaces beyond the focused owner.
 
 ## Steps
 
-### Step 1: Locate The Route 6 Consumed-Plan Gap
+### Step 1: Locate The Selected-Value-Chain Metadata Gap
 
-Goal: reproduce the Route 6 scalar i32 call-use boundary failure and identify
-the minimal consumed-plan lookup owner before implementation edits.
+Goal: reproduce the pointer-backed selected-value-chain failure and identify
+the minimal prepared compare-join metadata owner before implementation edits.
 
 Primary targets:
 
 - `backend_x86_handoff_boundary`
-- `find_consumed_scalar_i32_call_argument_source(...)`
-- consumed call-argument plan lookup paths
-- prepared call-plan authority for named scalar i32 arguments
-- `backend_prepared_lookup_helper` and `backend_x86_route_debug`
+- `src/backend/prealloc/control_flow.hpp`
+- selected-value-chain root publication paths
+- compare-join return-context ownership helpers
+- helper-oracle or route-debug guard surfaces selected by the supervisor
 
 Actions:
 
 - Reproduce or inspect the failing `backend_x86_handoff_boundary` assertion:
-  `x86 Route 6 call-use boundary: scalar call argument source did not thread through ConsumedPlans`.
-- Trace how Route 6 named scalar i32 call-argument source facts should reach
-  `ConsumedPlans`.
-- Identify which prepared call-plan facts are authoritative enough to backfill
-  source encoding, source value id, and source name without guessing.
-- Inventory fail-closed cases that must remain rejected.
+  `shared helper stopped publishing the true global-root selected-value chain`.
+- Trace how the true global-root selected-value chain should be represented in
+  prepared compare-join metadata.
+- Identify the smallest owner that drops, replaces, or fails to publish that
+  chain through return-context ownership.
+- Inventory fail-closed cases and nearby same-feature metadata cases that must
+  remain unchanged.
 - Record the selected owner, proposed Step 2 implementation surface, proof
   command, and regression guard surfaces in `todo.md`.
 
 Completion check:
 
-- `todo.md` names the failing case, consumed-plan lookup owner, safe prepared
-  call-plan facts, required fail-closed cases, and recommended proof command.
+- `todo.md` names the failing case, metadata owner, expected selected-value
+  chain facts, fail-closed cases, nearby guards, and recommended proof command.
 - No implementation, expected-string, baseline, wrapper, helper-oracle,
-  prepared call/debug, x86 stack-home, or selected-value-chain behavior change
-  is made in this step unless the executor is explicitly delegated to begin
-  implementation.
+  Route 6, or x86 stack-home behavior change is made in this step unless the
+  executor is explicitly delegated to begin implementation.
 
-### Step 2: Repair Named Scalar I32 Source Lookup
+### Step 2: Repair Global-Root Chain Publication
 
-Goal: expose Route 6 named scalar i32 call-argument source facts through
-`ConsumedPlans` from semantic prepared call-plan authority.
+Goal: preserve or publish the true global-root selected-value chain through
+prepared compare-join return-context ownership.
 
 Primary targets:
 
 - The implementation owner identified in Step 1
-- `find_consumed_scalar_i32_call_argument_source(...)`
-- related consumed call-argument plan lookup paths
-- prepared call-plan authority for named scalar i32 arguments
+- `src/backend/prealloc/control_flow.hpp`
+- selected-value-chain metadata construction or merge helpers
+- return-context ownership publication paths
 
 Actions:
 
-- Repair the lookup path so named scalar i32 call arguments can recover source
-  encoding, source value id, and source name from prepared call-plan authority
-  when Route 6 facts are present and consistent.
-- Keep the repair independent of direct extern call testcase names, labels,
-  assertion text, and expected output strings.
-- Preserve fail-closed behavior for absent Route 6 facts, prepared-id
-  mismatches, missing source names, unsupported encodings, non-i32 arguments,
-  and non-Route 6 paths.
-- Preserve x86 compare-join stack-home behavior from idea 234 and do not touch
-  selected-value-chain metadata from idea 236.
+- Repair the selected-value-chain metadata path so pointer-backed same-module
+  global return contexts keep the true global-root chain.
+- Derive the repaired facts from semantic prepared compare-join metadata, not
+  from fixture names, labels, block shapes, or assertion strings.
+- Preserve fail-closed behavior when selected-value-chain roots are missing,
+  contradictory, or outside the supported pointer-backed same-module global
+  path.
+- Preserve idea 234 stack-home behavior and idea 235 Route 6 behavior.
 - Build the touched target and run the supervisor-delegated narrow proof.
 
 Completion check:
 
-- The Route 6 consumed scalar i32 call-use boundary advances without weakening
-  assertions or rewriting expected output.
-- The implementation derives facts from semantic prepared call-plan authority
-  rather than fixture-specific matching.
-- `backend_prepared_lookup_helper` and `backend_x86_route_debug` remain green.
+- The selected-value-chain assertion advances without weakening or removing it.
+- The implementation repairs metadata publication rather than matching the
+  failing fixture.
+- Route 6 and x86 stack-home guard subsets remain unchanged under the
+  supervisor-selected proof.
 
-### Step 3: Prove Fail-Closed And Nearby Stability
+### Step 3: Prove Nearby Metadata Stability
 
-Goal: prove the repair does not turn missing or mismatched Route 6 facts into
-best-effort guesses.
+Goal: prove the repair does not broaden selected-value-chain publication into
+best-effort guesses or unrelated ownership paths.
 
 Primary targets:
 
-- `backend_prepared_lookup_helper`
-- Route 6 consumed-plan lookup coverage
-- `backend_x86_route_debug`
+- Focused helper coverage for selected-value-chain root ownership
 - `backend_x86_handoff_boundary`
+- Route 6 and stack-home guard tests selected by the supervisor
 
 Actions:
 
-- Add or tighten focused fail-closed coverage for absent facts, prepared-id
-  mismatches, missing source names, unsupported encodings, non-i32 arguments,
-  and non-Route 6 paths where existing coverage is insufficient.
-- Prove the positive named scalar i32 path and the fail-closed paths selected
-  by Step 1 or Step 2.
-- Confirm route-debug row spelling, helper fallback behavior, expected
-  strings, wrappers, and prepared call/debug output remain unchanged.
-- Do not absorb x86 compare-join stack-home or selected-value-chain metadata
-  work into this validation step.
+- Add or tighten focused coverage for missing roots, contradictory roots,
+  non-global pointer-backed paths, and nearby same-feature metadata cases where
+  existing coverage is insufficient.
+- Confirm helper-oracle, route-debug, wrapper, baseline, and prepared
+  diagnostic output contracts remain unchanged unless explicitly approved.
+- Do not absorb Route 6, x86 stack-home, ABI, wrapper, or broad pointer
+  lowering work into this validation step.
 
 Completion check:
 
-- Focused positive and fail-closed coverage exists for the repaired lookup
-  behavior.
-- Route-debug and prepared lookup guard subsets remain green without expected
-  rewrites.
-- No unrelated x86 stack-home, selected-value-chain, wrapper, baseline, or
-  helper-oracle change is part of the diff.
+- Focused positive and fail-closed coverage exists for the repaired
+  selected-value-chain behavior.
+- The selected-value-chain handoff-boundary path and selected nearby guards
+  pass without expected-string or baseline rewrites.
+- No unrelated Route 6, stack-home, wrapper, baseline, or helper-oracle change
+  is part of the diff.
 
 ### Step 4: Validate And Prepare Acceptance Notes
 
-Goal: prove the completed Route 6 consumed scalar i32 call-argument source
-repair and leave clear handoff state for supervisor review.
+Goal: prove the completed selected-value-chain metadata repair and leave clear
+handoff state for supervisor review.
 
 Primary targets:
 
 - Build or compile target chosen by the supervisor
-- Delegated Route 6, prepared lookup, and handoff-boundary test subset
-- Any broader validation the supervisor requests because of touched surfaces
+- Delegated selected-value-chain, Route 6, and stack-home guard subset
+- Any broader validation requested by the supervisor
 - `todo.md`
 
 Actions:
 
 - Run the exact supervisor-delegated proof command and record the command and
   result in `todo.md`.
-- Summarize the semantic owner changed, prepared call-plan authority used,
-  fail-closed cases preserved, route-debug/helper output contracts unchanged,
-  and any residual risks.
-- If shared `ConsumedPlans`, prepared call/debug, direct-call, MIR query,
-  helper-oracle, or wrapper surfaces were touched, ask the supervisor to choose
-  broader validation before acceptance.
+- Summarize the semantic owner changed, selected-value-chain facts preserved,
+  fail-closed cases retained, and unchanged Route 6/stack-home/debug/helper
+  surfaces.
+- If shared prepared control-flow, helper-oracle, MIR query, direct-call,
+  wrapper, or selected-value-chain surfaces were touched, ask the supervisor to
+  choose broader validation before acceptance.
 
 Completion check:
 
@@ -217,4 +215,4 @@ Completion check:
 - Delegated narrow tests pass, and any supervisor-requested broader validation
   passes.
 - `todo.md` records the implementation summary, proof commands, preserved
-  fail-closed behavior, unchanged debug/output surfaces, and residual risks.
+  fail-closed behavior, unchanged guard surfaces, and residual risks.
