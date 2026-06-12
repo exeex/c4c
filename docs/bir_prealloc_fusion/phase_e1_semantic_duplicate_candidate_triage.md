@@ -1,6 +1,6 @@
 # Phase E1 Semantic Duplicate Candidate Triage
 
-Status: Step 2 readiness classification complete; Step 3 follow-up drafting pending.
+Status: Step 3 accepted follow-up idea drafting complete.
 
 Source idea: `ideas/open/218_phase_e1_semantic_duplicate_candidate_triage.md`
 
@@ -132,6 +132,27 @@ fallback, privatize public prepared APIs, or change expected strings.
 - Row-scoped diagnostic/oracle work is evidence-backed and important, but the
   readiness owner is E3 unless the row is only the proof harness for a named E1
   semantic reader.
+
+## Step 3 Accepted Follow-Up Ideas
+
+Step 3 drafts follow-up ideas only for the Step 2 families classified as
+`ready to draft one implementation idea`. These accepted ideas are deliberately
+bounded to one semantic duplicate helper family each; each later runbook must
+still select one helper or one reader before implementation.
+
+| Accepted follow-up | Ready family | Why ready |
+| --- | --- | --- |
+| `ideas/open/219_phase_e1_control_flow_identity_helper_contraction.md` | control-flow identity helpers | Ready because Step 2 names direct BIR/route identity ownership for function/block graph, block labels, terminator successors, predecessor/successor identity, and selected edge/join annotations while separately retaining branch policy, scheduling, diagnostics, fallback/oracle behavior, wrappers, printer/debug rows, and expected strings. The idea requires one identity-only helper or reader plus positive, absent, invalid, duplicate/conflict, mismatch, policy-fallback, and output-stability proof before any prepared helper contraction. |
+| `ideas/open/220_phase_e1_route_identity_helper_contraction.md` | route source/publication/join/call/comparison identity helpers | Ready because Step 2 names route/prepared agreement as the semantic owner for selected Route 1 through Route 7 source, producer, publication, join, call-use, fused-compare, and materialized-condition identity facts while retaining address formation, value homes, storage, move scheduling, call ABI, publication construction, branch spelling, fused legality, wrappers, printer/debug rows, helper oracles, fallback, target policy, and expected strings. The idea requires one route family and one selected consumer or identity helper plus positive, absent, invalid, ambiguous/conflict, mismatch, policy-fallback, output-stability, and nearby same-feature proof. |
+
+No accepted follow-up is drafted for aggregate BIR semantic forwarding,
+liveness identity helpers, intrinsic metadata adapters, row-scoped
+diagnostic/oracle helpers, E2, E3, E4, Route 8, broad prepared retirement, or
+draft 155 / E5. Aggregate forwarding remains blocked as compatibility and pass
+context; liveness and intrinsic metadata still need narrower consumer analysis;
+row-scoped diagnostic/oracle replacement remains E3-owned unless a row is only
+the proof harness for a named E1 semantic reader. Draft 155 / E5 remains
+unopened.
 
 ## Baseline And Proof Guardrails
 

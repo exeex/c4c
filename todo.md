@@ -1,39 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/218_phase_e1_semantic_duplicate_candidate_triage.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify the Six Candidate Families
+Current Step ID: 3
+Current Step Title: Draft Accepted Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 of `plan.md`: classified all six E0 E1 candidate families in
-`docs/bir_prealloc_fusion/phase_e1_semantic_duplicate_candidate_triage.md`.
+Completed Step 3 of `plan.md`: drafted accepted follow-up ideas only for the
+Step 2 families classified as `ready to draft one implementation idea`.
 
-The durable table now records, for each family, the exact helper/API surface,
-semantic owner, retained prepared surface, public consumers, proof shape, and
-readiness bucket.
+New accepted follow-up idea files:
 
-Assigned readiness buckets:
+- `ideas/open/219_phase_e1_control_flow_identity_helper_contraction.md`
+- `ideas/open/220_phase_e1_route_identity_helper_contraction.md`
 
-- aggregate BIR semantic forwarding: blocked because the surface is
-  target/prepared policy, fallback/oracle, or aggregate compatibility.
-- control-flow identity helpers: ready to draft one implementation idea.
-- route source/publication/join/call/comparison identity helpers: ready to
-  draft one implementation idea.
-- liveness identity helpers: needs more analysis before implementation.
-- intrinsic metadata adapters: needs more analysis before implementation.
-- row-scoped diagnostic/oracle helpers: defer to E3 for diagnostic/oracle
-  replacement.
+The durable E1 triage document now links both accepted follow-up ideas,
+explains why each ready family is ready, and records that no aggregate,
+liveness, intrinsic metadata, row-scoped diagnostic/oracle, E2, E3, E4,
+Route 8, broad prepared retirement, or draft 155 / E5 idea was drafted.
 
 ## Suggested Next
 
-Execute Step 3: draft accepted follow-up ideas only for the families classified
-as `ready to draft one implementation idea`, keeping each idea scoped to one
-semantic duplicate helper family or one selected reader. Do not draft
-aggregate, liveness, intrinsic, or row-scoped diagnostic/oracle follow-ups from
-this Step 2 packet alone.
+Supervisor should decide whether Step 4 is lifecycle closure, plan-owner
+review, or another docs-only packet. This executor packet did not inspect or
+modify `plan.md`.
 
 ## Watchouts
 
@@ -46,12 +38,12 @@ this Step 2 packet alone.
   row-scoped semantic/oracle surface.
 - Preserve target/prepared policy, fallback/oracle, diagnostics, helper-oracle
   names, supported-path status, baselines, and expected strings.
-- Step 2 classified row-scoped diagnostic/oracle helpers as E3-owned, not as
-  immediate E1 implementation ideas, unless a row is only the proof harness for
-  a named E1 semantic reader.
-- Step 3 should not draft aggregate `PreparedBirModule` work, liveness work, or
-  intrinsic metadata work without another analysis packet narrowing one exact
-  implementation-ready consumer.
+- Step 3 deliberately drafted only two ideas: control-flow identity helper
+  contraction and route identity helper contraction.
+- Each accepted idea still requires a later runbook to choose one helper or one
+  reader before code changes.
+- Row-scoped diagnostic/oracle helpers remain E3-owned unless a row is only the
+  proof harness for a named E1 semantic reader.
 
 ## Proof
 
@@ -62,9 +54,11 @@ document content checks and the packet forbids touching canonical log files.
 Commands:
 
 ```sh
-rg -n "ready to draft one implementation idea|needs more analysis before implementation|defer to E2|defer to E3|defer to E4|blocked because" docs/bir_prealloc_fusion/phase_e1_semantic_duplicate_candidate_triage.md
-rg -n "aggregate BIR semantic forwarding|control-flow identity helpers|route source/publication/join/call/comparison identity helpers|liveness identity helpers|intrinsic metadata adapters|row-scoped diagnostic/oracle helpers" docs/bir_prealloc_fusion/phase_e1_semantic_duplicate_candidate_triage.md
+rg -n "Accepted follow-up|ideas/open/|draft 155|E5 remains unopened" docs/bir_prealloc_fusion/phase_e1_semantic_duplicate_candidate_triage.md
+ls ideas/open | sort
 ```
 
-Result: passed. The commands found all required readiness-bucket strings and
-all six required candidate-family names in the durable E1 document.
+Result: passed. The commands found the accepted follow-up section, both new
+`ideas/open/` links, and draft 155 / E5 guardrails in the durable E1 document.
+The open-idea listing shows the active E1 idea plus the two accepted follow-up
+idea files.
