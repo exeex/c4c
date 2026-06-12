@@ -4,6 +4,7 @@
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
+#include "src/backend/prealloc/comparison.hpp"
 #include "src/backend/prealloc/prepared_lookups.hpp"
 #include "src/target_profile.hpp"
 
@@ -1461,6 +1462,19 @@ int materialized_compare_branch_route7_provenance_matches_bir_identity() {
   const auto& block = prepared.module.functions.front().blocks.front();
   const auto condition = bir::Value::named(bir::TypeKind::I1, "%cond");
   const auto route7_index = bir::route7_build_comparison_condition_index(block);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          prepared, function_cf);
+  const auto prepared_producer =
+      prepare::find_prepared_materialized_condition_producer(
+          prepared.names,
+          &source_producers,
+          block_cf.block_label,
+          &block,
+          condition,
+          block.insts.size());
   const auto route7_record =
       bir::route7_find_materialized_condition(route7_index,
                                               block,
@@ -1485,13 +1499,20 @@ int materialized_compare_branch_route7_provenance_matches_bir_identity() {
       !bir_identity.available ||
       route7_record.instruction_index != bir_identity.instruction_index ||
       route7_reference.comparison_record->binary != bir_identity.binary ||
+      !prepared_producer.has_value() ||
+      route7_reference.comparison_record->binary != prepared_producer->binary ||
+      route7_reference.comparison_record->instruction_index !=
+          prepared_producer->instruction_index ||
+      prepared.names.value_names.find(
+          route7_reference.comparison_record->condition_value.name) !=
+          prepared_producer->condition_value_name ||
+      prepared.names.value_names.find(bir_identity.condition_value_name) !=
+          prepared_producer->condition_value_name ||
       bir_identity.binary == nullptr ||
       bir_identity.binary->opcode != bir::BinaryOpcode::Sle) {
-    return fail("expected Route 7 materialized condition provenance to match BIR identity");
+    return fail("expected Route 7 materialized condition provenance to match prepared and BIR identity");
   }
 
-  const auto& function_cf = prepared.control_flow.functions.front();
-  const auto& block_cf = function_cf.blocks.front();
   auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto prepared_lookups =
@@ -1660,6 +1681,82 @@ int materialized_compare_branch_invalid_route7_reference_rejected() {
       route7_reference.status != bir::RouteIndexValidationStatus::StaleOwner) {
     return fail("expected invalid Route 7 materialized condition reference to reject stale producer index: status=" +
                 std::to_string(static_cast<unsigned>(route7_reference.status)));
+  }
+  return 0;
+}
+
+int materialized_compare_branch_stale_prepared_lookup_uses_bir_fallback() {
+  auto prepared = prepared_with_materialized_compare_condition_clobber();
+  const auto prepared_lookup_snapshot = prepared;
+  const auto& stale_function_cf =
+      prepared_lookup_snapshot.control_flow.functions.front();
+  const auto stale_lookups =
+      prepare::make_prepared_function_lookups(
+          prepared_lookup_snapshot, stale_function_cf);
+
+  auto& block = prepared.module.functions.front().blocks.front();
+  auto& compare = std::get<bir::BinaryInst>(block.insts[1]);
+  compare.opcode = bir::BinaryOpcode::Slt;
+  const auto condition = bir::Value::named(bir::TypeKind::I1, "%cond");
+  const auto route7_index = bir::route7_build_comparison_condition_index(block);
+  const auto route7_record =
+      bir::route7_find_materialized_condition(route7_index,
+                                              block,
+                                              condition,
+                                              block.insts.size());
+  const auto bir_identity =
+      bir::find_materialized_condition_producer_identity(
+          block, condition, block.insts.size());
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto stale_prepared_producer =
+      prepare::find_prepared_materialized_condition_producer(
+          prepared.names,
+          &stale_lookups.edge_publication_source_producers,
+          block_cf.block_label,
+          &block,
+          condition,
+          block.insts.size());
+  if (!route7_record ||
+      !bir_identity.available ||
+      bir_identity.binary != &compare ||
+      stale_prepared_producer.has_value()) {
+    return fail(
+        "expected valid Route 7/BIR materialized condition with stale prepared producer mismatch");
+  }
+
+  auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  attach_prepared_function_lookups(function_context, stale_lookups);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 12);
+
+  aarch64_module::MachineBlock machine_block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, machine_block, diagnostics);
+  if (!result.visited_terminator ||
+      machine_block.instructions.empty() ||
+      !diagnostics.empty()) {
+    return fail("expected stale prepared producer mismatch to preserve BIR fallback");
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          machine_block.instructions.back().target);
+  bool saw_cmp = false;
+  bool saw_conditional_branch = false;
+  bool saw_cbnz = false;
+  for (const auto& line : printed.instruction_lines) {
+    saw_cmp = saw_cmp || line.find("cmp ") == 0;
+    saw_conditional_branch = saw_conditional_branch || line.find("b.lt ") == 0;
+    saw_cbnz = saw_cbnz || line.find("cbnz ") == 0;
+  }
+  if (!printed.ok ||
+      !saw_cmp ||
+      !saw_conditional_branch ||
+      saw_cbnz) {
+    return fail(
+        "expected route/prepared mismatch to preserve selected BIR compare fallback");
   }
   return 0;
 }
@@ -2174,6 +2271,11 @@ int main() {
   }
   if (const int status =
           materialized_compare_branch_invalid_route7_reference_rejected();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_compare_branch_stale_prepared_lookup_uses_bir_fallback();
       status != 0) {
     return status;
   }

@@ -282,6 +282,39 @@ find_bir_materialized_condition_producer_identity(
       block, condition_value, before_instruction_index);
 }
 
+[[nodiscard]] std::optional<prepare::PreparedMaterializedConditionProducer>
+find_prepared_materialized_condition_producer_identity(
+    const module::BlockLoweringContext& context,
+    const bir::Value& condition_value,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  if (context.function.prepared_lookups != nullptr) {
+    return prepare::find_prepared_materialized_condition_producer(
+        context.function.prepared->names,
+        &context.function.prepared_lookups->edge_publication_source_producers,
+        context.control_flow_block->block_label,
+        context.bir_block,
+        condition_value,
+        before_instruction_index);
+  }
+  const auto source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          *context.function.prepared,
+          *context.function.control_flow);
+  return prepare::find_prepared_materialized_condition_producer(
+      context.function.prepared->names,
+      &source_producers,
+      context.control_flow_block->block_label,
+      context.bir_block,
+      condition_value,
+      before_instruction_index);
+}
+
 [[nodiscard]] bool route7_source_identity_matches_value(
     const bir::Route1SourceValueIdentity& identity,
     const bir::Value& value) {
@@ -345,8 +378,8 @@ find_bir_materialized_condition_producer_identity(
   return true;
 }
 
-[[nodiscard]] bir::MaterializedConditionProducerIdentity
-find_route7_materialized_condition_producer_identity(
+[[nodiscard]] std::optional<bir::MaterializedConditionProducerIdentity>
+find_valid_route7_materialized_condition_producer_identity(
     const bir::Block& block,
     const bir::Value& condition_value,
     std::size_t before_instruction_index) {
@@ -354,8 +387,7 @@ find_route7_materialized_condition_producer_identity(
   const auto record = bir::route7_find_materialized_condition(
       index, block, condition_value, before_instruction_index);
   if (!record) {
-    return find_bir_materialized_condition_producer_identity(
-        block, condition_value, before_instruction_index);
+    return std::nullopt;
   }
   const auto reference =
       bir::route_index_validate_materialized_condition_reference(
@@ -387,8 +419,7 @@ find_route7_materialized_condition_producer_identity(
                                             validated_record->binary->lhs) ||
       !route7_source_identity_matches_value(validated_record->rhs_value,
                                             validated_record->binary->rhs)) {
-    return find_bir_materialized_condition_producer_identity(
-        block, condition_value, before_instruction_index);
+    return std::nullopt;
   }
   const auto lhs_reference =
       bir::route_index_validate_comparison_operand_reference(
@@ -418,8 +449,7 @@ find_route7_materialized_condition_producer_identity(
           validated_record->binary->rhs,
           validated_record->instruction_index,
           bir::Route7ComparisonOperandRole::Rhs)) {
-    return find_bir_materialized_condition_producer_identity(
-        block, condition_value, before_instruction_index);
+    return std::nullopt;
   }
   return bir::MaterializedConditionProducerIdentity{
       .available = true,
@@ -431,6 +461,57 @@ find_route7_materialized_condition_producer_identity(
       .rhs = bir::find_comparison_operand_producer(
           block, validated_record->binary->rhs, validated_record->instruction_index),
   };
+}
+
+[[nodiscard]] bool comparison_operand_producer_matches(
+    const std::optional<bir::ComparisonOperandProducer>& actual,
+    const std::optional<bir::ComparisonOperandProducer>& expected) {
+  if (actual.has_value() != expected.has_value()) {
+    return false;
+  }
+  if (!actual.has_value()) {
+    return true;
+  }
+  return actual->available == expected->available &&
+         actual->producer_kind == expected->producer_kind &&
+         actual->producer_instruction == expected->producer_instruction &&
+         actual->producer_instruction_index ==
+             expected->producer_instruction_index &&
+         actual->produced_value == expected->produced_value &&
+         actual->integer_constant == expected->integer_constant;
+}
+
+[[nodiscard]] bool materialized_condition_identity_matches_bir(
+    const bir::MaterializedConditionProducerIdentity& actual,
+    const bir::MaterializedConditionProducerIdentity& expected) {
+  return actual.available == expected.available &&
+         actual.binary == expected.binary &&
+         actual.instruction_index == expected.instruction_index &&
+         actual.condition_value_name == expected.condition_value_name &&
+         comparison_operand_producer_matches(actual.lhs, expected.lhs) &&
+         comparison_operand_producer_matches(actual.rhs, expected.rhs);
+}
+
+[[nodiscard]] bool materialized_condition_identity_agrees_with_prepared(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMaterializedConditionProducer& prepared,
+    const bir::MaterializedConditionProducerIdentity& route7) {
+  if (context.function.prepared == nullptr ||
+      !route7.available ||
+      route7.binary == nullptr ||
+      route7.binary != prepared.binary ||
+      route7.instruction_index != prepared.instruction_index ||
+      route7.binary->opcode != prepared.binary->opcode ||
+      route7.binary->operand_type != prepared.binary->operand_type ||
+      route7.binary->lhs != prepared.binary->lhs ||
+      route7.binary->rhs != prepared.binary->rhs) {
+    return false;
+  }
+  const auto route7_condition_name =
+      prepare::resolve_prepared_value_name_id(
+          context.function.prepared->names, route7.condition_value_name);
+  return route7_condition_name.has_value() &&
+         *route7_condition_name == prepared.condition_value_name;
 }
 
 void append_prepared_compare_branch_lines(
@@ -2132,13 +2213,30 @@ lower_materialized_compare_condition_branch(
   if (condition_home == nullptr) {
     return std::nullopt;
   }
-  const auto route7_producer =
-      find_route7_materialized_condition_producer_identity(
+  const auto before_instruction_index = context.bir_block->insts.size();
+  const auto bir_producer =
+      find_bir_materialized_condition_producer_identity(
           *context.bir_block,
           branch_condition.condition_value,
-          context.bir_block->insts.size());
+          before_instruction_index);
+  auto selected_producer = bir_producer;
+  const auto route7_producer =
+      find_valid_route7_materialized_condition_producer_identity(
+          *context.bir_block,
+          branch_condition.condition_value,
+          before_instruction_index);
+  const auto prepared_producer =
+      find_prepared_materialized_condition_producer_identity(
+          context, branch_condition.condition_value, before_instruction_index);
+  if (route7_producer.has_value() &&
+      prepared_producer.has_value() &&
+      materialized_condition_identity_matches_bir(*route7_producer, bir_producer) &&
+      materialized_condition_identity_agrees_with_prepared(
+          context, *prepared_producer, *route7_producer)) {
+    selected_producer = *route7_producer;
+  }
   const auto* binary =
-      route7_producer.available ? route7_producer.binary : nullptr;
+      selected_producer.available ? selected_producer.binary : nullptr;
   if (binary == nullptr) {
     return std::nullopt;
   }
@@ -2192,7 +2290,7 @@ lower_materialized_compare_condition_branch(
   } else {
     if (!hooks.emit_value_publication_to_register(context,
                                                   lhs,
-                                                  route7_producer.instruction_index,
+                                                  selected_producer.instruction_index,
                                                   scratches[0].index,
                                                   scratches[1].index,
                                                   lines,
@@ -2227,7 +2325,7 @@ lower_materialized_compare_condition_branch(
       }
       if (!hooks.emit_value_publication_to_register(context,
                                                     rhs_value,
-                                                    route7_producer.instruction_index,
+                                                    selected_producer.instruction_index,
                                                     rhs_target_index,
                                                     rhs_scratch_index,
                                                     lines,
