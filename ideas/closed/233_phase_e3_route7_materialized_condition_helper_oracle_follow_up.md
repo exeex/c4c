@@ -62,3 +62,28 @@ behavior, helper-oracle strings, and expected strings.
   route-index migration.
 - It renames the old prepared failure/success mode without proving the Route 7
   materialized-condition fact.
+
+## Closure Notes
+
+Closed after the four-step runbook completed:
+
+- Step 1 discovery: `fe4e4698e`
+- Step 2 helper-oracle agreement assertions: `ac8211459`
+- Step 3 stability proof: `5c8314dc5`
+- Step 4 acceptance notes: `0efc021fb`
+
+The selected materialized-condition helper-oracle row now uses Route 7
+comparison evidence only under prepared agreement. Prepared oracle authority
+remains retained for absent-route, invalid-reference, duplicate/conflict,
+mismatch, unfused, prepared fallback, and non-agreement paths. Helper-oracle
+strings, branch-control output, wrappers, final assembler behavior, expected
+strings, baselines, route-index public contracts, and supported/unsupported
+contracts remain out of scope and unchanged.
+
+Close proof used matching before/after logs for:
+`backend_prepared_lookup_helper`,
+`backend_aarch64_branch_control_lowering`, and
+`backend_aarch64_instruction_dispatch`.
+The regenerated `test_after.log` passed all three tests and the regression
+guard passed against `test_before.log` with non-decreasing pass count allowed
+for the rolled-forward accepted baseline.
