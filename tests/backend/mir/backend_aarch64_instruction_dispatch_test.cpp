@@ -30868,25 +30868,25 @@ int block_dispatch_falls_back_to_prepared_stored_indirect_callee_policy() {
 }
 
 int block_dispatch_indirect_callee_route4_agreement_preserves_prepared_policy() {
-  auto prepared = prepared_with_selected_stored_indirect_callee(false, false);
-  const auto& function_cf = prepared.control_flow.functions.front();
-  const auto& block_cf = function_cf.blocks.front();
-  auto prepared_lookups =
-      prepare::make_prepared_function_lookups(prepared, function_cf);
-  auto decoy_select = std::get<bir::SelectInst>(
-      prepared.module.functions.front().blocks.front().insts[2]);
-  decoy_select.rhs = bir::Value::immediate_i64(0);
-  const auto selected_name = prepared.names.value_names.find("%callee.selected");
-  prepared_lookups.edge_publication_source_producers
-      .producers_by_value_name[selected_name]
-      .select = &decoy_select;
+  auto lower_variant =
+      [](auto mutate) -> std::optional<std::string> {
+    auto prepared = prepared_with_selected_stored_indirect_callee(false, false);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    auto prepared_lookups =
+        prepare::make_prepared_function_lookups(prepared, function_cf);
+    auto decoy_select = std::get<bir::SelectInst>(
+        prepared.module.functions.front().blocks.front().insts[2]);
+    decoy_select.rhs = bir::Value::immediate_i64(0);
+    const auto selected_name = prepared.names.value_names.find("%callee.selected");
+    prepared_lookups.edge_publication_source_producers
+        .producers_by_value_name[selected_name]
+        .select = &decoy_select;
+    mutate(prepared, prepared_lookups);
 
-  auto lower_and_print =
-      [&](const prepare::PreparedFunctionLookups& lookups)
-          -> std::optional<std::string> {
     auto function_context = aarch64_codegen::make_function_lowering_context(
         prepared, prepared.target_profile, function_cf);
-    attach_prepared_function_lookups(function_context, lookups);
+    attach_prepared_function_lookups(function_context, prepared_lookups);
     auto block_context =
         aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
@@ -30901,6 +30901,9 @@ int block_dispatch_indirect_callee_route4_agreement_preserves_prepared_policy() 
     const auto printed = print_route_block(function_cf.function_name, block);
     return printed.ok ? std::optional<std::string>{printed.assembly}
                       : std::nullopt;
+  };
+  auto lower_and_print = [&]() -> std::optional<std::string> {
+    return lower_variant([](auto&, auto&) {});
   };
   auto preserves_selected_callee_output =
       [](const std::optional<std::string>& printed) {
@@ -30924,20 +30927,41 @@ int block_dispatch_indirect_callee_route4_agreement_preserves_prepared_policy() 
         return compare_line.find(", #1") != std::string::npos &&
                compare_line.find(", #0") == std::string::npos;
       };
-  const auto agreeing_route4 = lower_and_print(prepared_lookups);
+  const auto agreeing_route4 = lower_and_print();
   if (!uses_original_route4_select_identity(agreeing_route4)) {
     return fail("expected agreeing Route 4 indirect-callee source producer to use the indexed BIR select identity instead of stale prepared payload");
   }
 
-  auto wrong_reference_lookups = prepared_lookups;
-  const auto loaded_name = prepared.names.value_names.find("%callee.loaded");
-  wrong_reference_lookups.edge_publication_source_producers
-      .producers_by_value_name[loaded_name]
-      .instruction_index = std::size_t{3};
-  wrong_reference_lookups.edge_publication_source_producers
-      .producers_by_value_name[selected_name]
-      .instruction_index = std::size_t{3};
-  const auto wrong_reference = lower_and_print(wrong_reference_lookups);
+  const auto missing_route4 = lower_variant([](auto& prepared, auto&) {
+    prepared.module.functions.front().blocks.front().label =
+        "dispatch.indirect.stored.route3.stale";
+  });
+  if (!preserves_selected_callee_output(missing_route4)) {
+    return fail("expected missing Route 4 indirect-callee source producer data to preserve prepared fallback output");
+  }
+
+  const auto route_prepared_mismatch = lower_variant([](auto& prepared, auto&) {
+    auto* select = std::get_if<bir::SelectInst>(
+        &prepared.module.functions.front().blocks.front().insts[2]);
+    if (select != nullptr) {
+      select->result.type = bir::TypeKind::I64;
+      select->rhs = bir::Value::immediate_i64(0);
+    }
+  });
+  if (!preserves_selected_callee_output(route_prepared_mismatch)) {
+    return fail("expected route/prepared mismatch for indirect-callee source producer to preserve prepared fallback output");
+  }
+
+  const auto wrong_reference = lower_variant([](auto& prepared, auto& lookups) {
+    const auto loaded_name = prepared.names.value_names.find("%callee.loaded");
+    const auto selected_name = prepared.names.value_names.find("%callee.selected");
+    lookups.edge_publication_source_producers
+        .producers_by_value_name[loaded_name]
+        .instruction_index = std::size_t{3};
+    lookups.edge_publication_source_producers
+        .producers_by_value_name[selected_name]
+        .instruction_index = std::size_t{3};
+  });
   if (!preserves_selected_callee_output(wrong_reference)) {
     return fail("expected wrong-reference Route 4 indirect-callee source producer data to preserve prepared fallback output");
   }
