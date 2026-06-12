@@ -122,3 +122,26 @@ Retain prepared authority for:
 - Reject retaining the old public prepared failure mode behind a new
   private-pass-context name without actually removing the duplicate public
   semantic identity read for this helper family.
+
+## Closure Note
+
+Closed after the active runbook moved the selected agreement-proven BIR
+structured successor label read behind
+`prepare::detail::BranchTargetIdentityPassContext` /
+`prepare::detail::read_agreeing_bir_branch_target_labels(...)` and migrated the
+safe AArch64 selected-identity consumer. The public prepared helper retained
+prepared-first lookup and prepared fallback for absent context, invalid IDs,
+mismatch/conflict, non-conditional BIR, and non-agreement paths.
+
+Focused helper tests now cover positive private agreement, absent context,
+invalid IDs, conflict/mismatch, raw-label drift with agreeing IDs,
+non-conditional rejection, and same-feature public fallback behavior. Guardrails
+held: no aggregate prepared API retirement, no printer/debug or wrapper
+behavior change, no helper-oracle weakening, no unsupported downgrade, no
+expected-string rewrite, and no E3/E4/Route 8/draft 155/E5 work entered the
+slice.
+
+Close proof used the backend regression scope:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+Canonical regression guard passed with `test_before.log` and `test_after.log`:
+180/180 backend tests passed before and after, with no new failures.
