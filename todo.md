@@ -8,13 +8,14 @@ Current Step Title: Validate And Prepare Acceptance Notes
 
 ## Just Finished
 
-Step 3 - Prove Fallback And Nearby Same-Feature Stability completed as a
-proof-only packet. Existing tests already cover the selected Route 5 agreement
-row, the required fallback matrix, and nearby same-feature stability; no
-implementation, expected-string, prepared-printer, wrapper, baseline, or test
-edits were made.
+Step 4 - Validate And Prepare Acceptance Notes completed as a proof and
+handoff packet. The selected Route 5 current-block join-source helper-oracle
+row, fallback authority, same-feature stability, unchanged surfaces, proof
+command, and residual risk are recorded for supervisor review; no
+implementation, test, expected-string, prepared-printer, wrapper, baseline,
+plan, or source-idea edits were made in this packet.
 
-Focused selected-row proof:
+Selected accepted row:
 
 - File/function: `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`,
   `verify_current_block_join_parallel_copy_source_query()`.
@@ -25,6 +26,14 @@ Focused selected-row proof:
 - Nearby rows in the same helper stay prepared-owned:
   `route5_supported_query.facts[1]`, `[2]`, and unsupported `[3]` assert
   "current-block join helper row should keep adjacent facts prepared-owned".
+
+Route 5 agreement metadata:
+
+- The accepted row consumes Route 5 current-block join-source metadata only
+  after prepared edge/join agreement.
+- The agreement boundary remains the prepared fact plus Route 5 join-source
+  record/status path, with prepared behavior authoritative for every
+  non-agreement case.
 
 Fallback matrix proof:
 
@@ -46,24 +55,39 @@ Fallback matrix proof:
   fail closed while retaining prepared facts.
 - Unsupported move: `query.facts[3]` remains
   `PreparedEdgeCopySourceFactsStatus::UnsupportedMove`.
-- Branch/parallel-copy and prepared-printer stability:
-  `tests/backend/bir/backend_prepared_printer_test.cpp` keeps join-transfer and
-  parallel-copy printer rows stable, and
-  `tests/backend/bir/backend_prealloc_block_entry_publications_test.cpp` keeps
+
+Same-feature and unchanged-surface proof:
+
+- `tests/backend/bir/backend_prepared_printer_test.cpp` keeps join-transfer and
+  parallel-copy prepared-printer rows stable.
+- `tests/backend/bir/backend_prealloc_block_entry_publications_test.cpp` keeps
   neighboring block-entry/parallel-copy publication fallback stable.
-- Wrapper/dispatch and nearby same-feature stability:
-  `tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`,
+- `tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`,
   `verify_current_join_routing(...)`, covers normal, missing-predecessor,
-  mismatched-source, no-source, duplicate-source, memory-source, and absent-route
-  shapes with prepared fallback; `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
-  retains the same current-block join routing path through
+  mismatched-source, no-source, duplicate-source, memory-source, and
+  absent-route shapes with prepared fallback.
+- `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` retains the
+  same current-block join routing path through
   `current_block_join_query_routing_uses_bir_identity_with_prepared_fallback`.
+- Prepared-printer output, wrapper output, helper-oracle strings, expected
+  strings, baselines, supported/unsupported contracts, and prepared-printer
+  ownership were not changed by this acceptance packet.
+
+Residual risk:
+
+- No current blocker inside the delegated acceptance scope.
+- Invalid Route 5 source-producer pointer/index fallback remains semantic guard
+  coverage rather than a dedicated selected-row mutation assertion; widen tests
+  only if the supervisor wants that direct corrupted-index regression row.
+- The delegated proof is the accepted narrow scope for this packet; any broader
+  milestone validation remains a supervisor decision.
 
 ## Suggested Next
 
-Delegate Step 4 - Validate And Prepare Acceptance Notes. Summarize the selected
-row, the retained fallback matrix, same-feature proof, no-change surfaces, and
-the fresh `test_after.log` result for supervisor review.
+Plan appears complete at the runbook level. Ask the supervisor/plan-owner to
+decide whether to close, deactivate, split, or request broader validation
+before acceptance; do not edit `plan.md` or the source idea from executor
+scope.
 
 ## Watchouts
 
@@ -86,16 +110,17 @@ the fresh `test_after.log` result for supervisor review.
   `Available` for the same successor/destination/source, but the prepared
   agreement boundary rejects it by predecessor-label mismatch and leaves the
   row prepared-owned.
-- Step 3 made no code, expectation, prepared-printer, wrapper, helper-string, or
-  baseline changes.
+- Step 4 made no code, expectation, prepared-printer, wrapper, helper-string,
+  baseline, plan, or source-idea changes.
 
 ## Proof
 
-Delegated proof passed:
+Delegated proof reran and passed:
 
 `cmake --build build --target backend_prepared_lookup_helper_test backend_prepared_printer_test backend_prealloc_block_entry_publications_test backend_aarch64_current_block_join_routing_test backend_aarch64_instruction_dispatch_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_prepared_printer|backend_prealloc_block_entry_publications|backend_aarch64_current_block_join_routing|backend_aarch64_instruction_dispatch)$' --output-on-failure > test_after.log 2>&1`
 
-Result: build target was up to date and 5/5 tests passed:
+Result: build target was up to date (`ninja: no work to do`) and 5/5 tests
+passed:
 `backend_aarch64_instruction_dispatch`,
 `backend_aarch64_current_block_join_routing`, `backend_prepared_printer`,
 `backend_prepared_lookup_helper`, and
