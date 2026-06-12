@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/236_phase_e3_prepared_compare_join_selected_value_chain_metadata_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Global-Root Chain Publication
+Current Step ID: 3
+Current Step Title: Prove Nearby Metadata Stability
 
 # Current Packet
 
@@ -28,9 +28,24 @@ behavior, or x86 stack-home code were changed.
 
 ## Suggested Next
 
-Execute Step 3: prove nearby selected-value-chain metadata stability and add
-or tighten focused fail-closed coverage only if the supervisor decides the
-current helper/handoff-boundary coverage is insufficient.
+Execute Step 3: decide and run the supervisor-selected validation packet for
+nearby selected-value-chain metadata stability.
+
+Recommended packet:
+
+- Inspect existing helper/handoff-boundary coverage around missing roots,
+  contradictory roots, unsupported pointer bases, non-global pointer-backed
+  paths, and unsupported selected-value-chain operations.
+- Add or tighten focused fail-closed coverage only if existing coverage is
+  insufficient for the shared `control_flow.hpp` repair.
+- Re-run the delegated guard subset:
+
+```bash
+cmake --build build-x86 --target backend_x86_handoff_boundary_test backend_x86_route_debug_test backend_prepared_lookup_helper_test && ctest --test-dir build-x86 -R '^(backend_x86_handoff_boundary|backend_x86_route_debug|backend_prepared_lookup_helper)$' --output-on-failure > test_after.log 2>&1
+```
+
+If Step 3 confirms coverage is already sufficient, advance directly to Step 4
+acceptance notes and supervisor-selected broader validation.
 
 ## Watchouts
 
@@ -44,6 +59,9 @@ current helper/handoff-boundary coverage is insufficient.
 - Because `control_flow.hpp` is shared prepared metadata, supervisor should
   choose whether Step 3 needs focused coverage beyond the already-green
   handoff-boundary/helper/route-debug subset before acceptance.
+- Ideas 234 and 235 remain open, not active. Their implementation slices now
+  pass the delegated guard subset, but their source acceptance criteria still
+  require supervisor-selected broader validation before lifecycle closure.
 
 ## Proof
 
