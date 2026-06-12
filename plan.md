@@ -5,15 +5,16 @@ Source Idea: ideas/open/227_phase_e3_branch_target_helper_oracle_follow_up.md
 
 ## Purpose
 
-Augment one selected `find_prepared_control_flow_branch_target_labels(...)`
-helper-oracle branch-target label row family with BIR structured successor
-identity evidence while preserving prepared fallback and output authority.
+Finish the selected `find_prepared_control_flow_branch_target_labels(...)`
+helper-oracle branch-target row after Step 1 found that the agreement-reader
+implementation path is already present, by validating that path and adding the
+missing selected-row fallback proof.
 
 ## Goal
 
-Use BIR structured successor label identity only when it agrees with prepared
-branch-target data, and prove that all non-agreement paths retain the current
-prepared helper-oracle behavior.
+Prove the selected non-compare/materialized-bool AArch64 conditional branch
+row uses BIR structured successor label identity only under prepared agreement,
+and prove that all non-agreement paths retain prepared helper-oracle behavior.
 
 ## Core Rule
 
@@ -64,15 +65,20 @@ diagnostic/oracle ownership.
 - Phase E3 accepted this helper-oracle row family as ready for a scoped
   implementation idea, with prepared data retaining fallback and output
   authority.
-- The implementation should consume the private agreement reader for the
-  positive row and fail closed to the existing prepared result everywhere else.
+- Step 1 found that the selected non-compare/materialized-bool row in
+  `src/backend/mir/aarch64/codegen/comparison.cpp` already calls the private
+  agreement reader around the prepared control-flow target lookup.
+- The remaining work is proof-oriented: validate that the existing path is the
+  intended selected row, then add missing selected-row fallback and
+  nearby same-feature coverage.
 
 ## Execution Rules
 
-- Start by identifying the exact helper-oracle row family and its existing
-  tests before editing code.
-- Keep each code change behavior-preserving except for the selected diagnostic
-  evidence source under proven agreement.
+- Treat Step 1's inventory in `todo.md` as the current discovery baseline.
+- Do not add a no-op implementation slice for the already-present agreement
+  reader path.
+- Keep any code change behavior-preserving except for focused test scaffolding
+  or narrowly required proof support for the selected row.
 - Treat prepared output as authoritative whenever BIR evidence is absent,
   invalid, duplicate/conflicting, mismatched, non-conditional, or not in
   agreement.
@@ -116,38 +122,44 @@ Completion check:
   change is made in this step unless the executor is explicitly delegated to
   start implementation.
 
-### Step 2: Add Agreement-Gated BIR Evidence
+### Step 2: Validate Existing Agreement-Gated Evidence Path
 
-Goal: route the selected positive helper-oracle row through BIR structured
-successor identity only after prepared agreement.
+Goal: confirm the already-present selected-row implementation is the intended
+agreement-gated BIR evidence path and identify the smallest proof additions
+still needed.
 
 Primary targets:
 
-- The helper-oracle row family found in Step 1
+- `src/backend/mir/aarch64/codegen/comparison.cpp`
+- `find_prepared_conditional_branch_facts(...)`
 - `BranchTargetIdentityPassContext`
 - `read_agreeing_bir_branch_target_labels(...)`
+- Step 1 inventory in `todo.md`
 
 Actions:
 
-- Thread or consume the private branch-target identity context at the selected
-  helper-oracle boundary using existing local patterns.
-- Use `read_agreeing_bir_branch_target_labels(...)` for the positive
-  agreement path.
-- Preserve the existing prepared helper result for absent context, invalid ids,
-  duplicates/conflicts, mismatches, non-conditional BIR, non-agreement, and
-  prepared-only fallback.
-- Keep public prepared helper fallback available and byte-stable.
+- Inspect the selected non-compare/materialized-bool conditional branch row and
+  confirm it consumes prepared branch targets, then replaces them only when
+  `read_agreeing_bir_branch_target_labels(...)` returns agreeing labels.
+- Confirm absent context, invalid ids, mismatched ids, conflicting structured
+  ids, non-conditional BIR, and non-agreement still fail closed to prepared
+  targets at the helper-reader boundary.
+- Confirm the public two-argument prepared helper remains available and is not
+  bypassed for prepared-only callers.
+- Record the exact selected-row proof gaps that Step 3 must close; do not
+  modify implementation unless validation exposes a real semantic defect.
 
 Completion check:
 
-- The selected positive row can be explained by BIR structured successor
-  identity under prepared agreement.
-- All non-agreement paths retain the same prepared helper-oracle authority and
-  externally visible behavior.
-- The slice builds and the delegated narrow proof passes without expectation or
-  baseline rewrites.
+- `todo.md` states whether the existing selected-row implementation satisfies
+  the agreement-gated evidence contract.
+- `todo.md` names the focused selected-row fallback or nearby same-feature
+  tests to add in Step 3.
+- No implementation, expected-string, baseline, wrapper, printer/debug, branch
+  spelling, edge-copy, target-policy, or emitted-output change is made unless a
+  real semantic defect is found and recorded.
 
-### Step 3: Cover Fallback And Nearby Same-Feature Cases
+### Step 3: Add Selected-Row Fallback And Nearby Same-Feature Proof
 
 Goal: prove that the implementation is semantic and not shaped around one
 named branch-target testcase.
@@ -161,10 +173,16 @@ Primary targets:
 
 Actions:
 
-- Add or adjust focused tests only where coverage is missing for the selected
-  row family and fallback matrix.
-- Prefer tests that assert unchanged helper-oracle behavior while exercising
-  the new BIR agreement path.
+- Add or adjust focused tests only where Step 2 confirms coverage is missing
+  for the selected row family and fallback matrix.
+- Prefer tests that assert unchanged prepared branch payloads while exercising
+  the existing BIR agreement and fail-closed paths.
+- Include at least one selected-row fallback case at the AArch64 consumer
+  boundary, such as absent `context.bir_block`, invalid successor ids,
+  mismatched ids, conflicting structured ids, non-conditional BIR, or raw BIR
+  label text drift with agreeing structured ids.
+- Include nearby same-feature proof or explicit existing-test mapping so the
+  route is not accepted only through one named materialized-bool fixture.
 - Do not weaken supported-path expectations, expected strings, wrappers,
   printer/debug output, branch-control output, or emitted output.
 

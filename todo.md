@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/227_phase_e3_branch_target_helper_oracle_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Locate The Row Family And Proof Surface
+Current Step ID: 2
+Current Step Title: Validate Existing Agreement-Gated Evidence Path
 
 # Current Packet
 
@@ -107,14 +107,24 @@ Proof gaps before implementation:
   focused selected-row fallback matrix test so progress is not only inferred
   from helper-unit coverage plus normal dispatch.
 
+Lifecycle repair:
+
+- The active plan was repaired after Step 1 found that the selected row already
+  calls `prepare::detail::read_agreeing_bir_branch_target_labels(...)`.
+- The former Step 2 implementation packet was stale/no-op and is now replaced
+  by validation of the existing agreement-gated path.
+- Remaining work is selected-row fallback and nearby same-feature proof, not
+  adding an already-present evidence path.
+
 ## Suggested Next
 
-Step 2 should make only the selected non-compare/materialized-bool conditional
-branch target row consume the existing public
-`find_prepared_control_flow_branch_target_labels(..., source_block)` or the
-private `BranchTargetIdentityPassContext` /
-`read_agreeing_bir_branch_target_labels(...)` path, with prepared targets
-retained for every non-agreement case. Suggested narrow proof command:
+Step 2 should validate that the existing selected non-compare/materialized-bool
+conditional branch row already consumes the private
+`BranchTargetIdentityPassContext` /
+`read_agreeing_bir_branch_target_labels(...)` path exactly under prepared
+agreement, then name the focused selected-row fallback proof to add in Step 3.
+Do not perform a no-op implementation change for the already-present reader
+call. Suggested narrow proof command if the supervisor delegates execution:
 
 `cmake --build build --target backend_prepared_lookup_helper_test backend_aarch64_branch_control_lowering_test backend_aarch64_prepared_branch_records_test && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering|backend_aarch64_prepared_branch_records)$' --output-on-failure`
 
