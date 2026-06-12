@@ -146,3 +146,22 @@ The closure note must contain:
 - Weakening diagnostics, helper-oracle names, supported-path status, baselines,
   or expected strings.
 - Opening draft 155 or claiming broad prepared retirement from E2 readiness.
+
+## Closure Note
+
+Closed after the analysis-only E2 runbook completed. The durable output is
+`docs/bir_prealloc_fusion/phase_e2_prepared_lookup_api_private_pass_context_readiness.md`.
+
+The E2 readiness review accepted exactly two scoped follow-up ideas:
+
+- `ideas/open/224_phase_e2_control_flow_branch_target_helper_private_pass_context.md`
+- `ideas/open/225_phase_e2_fused_compare_operand_producer_helper_private_pass_context.md`
+
+All other candidate surfaces remain governed by the E2 document's retained,
+deferred, or no-action decisions. Draft 155 / E5 and aggregate
+`PreparedFunctionLookups` retirement remain unopened.
+
+Closure proof used the existing matching `test_before.log` and
+`test_after.log` two-test backend subset with the regression guard's
+non-decreasing maintenance mode: 2/2 passing before and after, with no new
+failures.
