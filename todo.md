@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/217_phase_e0_prepared_bir_merge_readiness_and_ownership_boundary_audit.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Classify `PreparedFunctionLookups` Ownership
+Current Step ID: 4
+Current Step Title: Synthesize E1-E5 Readiness
 
 # Current Packet
 
