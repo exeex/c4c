@@ -1,38 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/209_route4_publication_source_semantic_reader.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Preserve Output and Wrapper Stability
+Current Step ID: Step 5
+Current Step Title: Acceptance Review
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed validation-only output and wrapper stability proof for the
-Route 4 indirect-callee selected publication-source reader slice.
+Step 5 completed acceptance review finalization for the Route 4 indirect-callee
+selected publication-source reader slice.
 
-The focused AArch64 dispatch and prepared lookup helper subset still passes
-with the selected-callee output preserved. No implementation files, tests,
-wrappers, printer/debug output, expected strings, baselines, prepared API
-surfaces, or publication mechanics were changed.
+Final implementation and proof summary: implementation commit `e922daca0`
+published the indirect-callee reader through the Route 4 agreement gate;
+negative/fallback proof commit `d67c1e6a0` covered the fallback cases; output
+stability proof commit `97b5cb945` preserved selected-callee output stability.
+No broad publication, wrapper, printer/debug, baseline, expected-string, or
+prepared-API changes were made.
 
 ## Suggested Next
 
-Supervisor should review the completed Step 4 proof and decide whether this
-runbook slice is ready for commit, broader validation, reviewer scrutiny, or
-plan-owner lifecycle handling.
+Supervisor should treat this runbook slice as ready for lifecycle close/review
+handling and call the plan owner to decide whether to close, deactivate, or
+replace the active plan state.
 
 ## Watchouts
 
-Step 4 was intentionally validation-only. There was no wrapper implementation,
-printer/debug migration, expected-string edit, prepared API migration, public
-fallback removal, or publication-mechanics broadening in this packet.
+Step 5 was finalization-only. There was no wrapper implementation, printer/debug
+migration, expected-string edit, prepared API migration, public fallback
+removal, publication-mechanics broadening, or new validation in this packet.
 
 ## Proof
 
-Ran the delegated proof exactly:
-`cmake --build --preset default --target backend_aarch64_instruction_dispatch_test backend_prepared_lookup_helper_test && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_prepared_lookup_helper)$' > test_after.log`
+No build was required for this finalization-only Step 5 packet.
 
-Result: passed, 2/2 focused tests green. The proof is sufficient for this
-validation-only Step 4 packet against the delegated scope. Canonical proof log:
-`test_after.log`.
+Accepted prior proof: `backend_aarch64_instruction_dispatch` and
+`backend_prepared_lookup_helper` passed 2/2 after Step 4. Canonical proof log
+remains `test_after.log`.
