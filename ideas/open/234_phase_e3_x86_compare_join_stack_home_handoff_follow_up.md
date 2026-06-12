@@ -59,6 +59,19 @@ lowering work.
   `ConsumedPlans`, MIR query, direct-call, helper-oracle, or prepared
   call/debug surfaces receive supervisor-selected broader validation.
 
+## Lifecycle Notes
+
+- 2026-06-12: committed `ab5b854db` isolated the x86 compare-join stack-home
+  handoff repair in `src/backend/mir/x86/module/module.cpp`. The original
+  stack-home assertion advanced while `backend_x86_route_debug` and
+  `backend_prepared_lookup_helper` stayed green.
+- The remaining `backend_x86_handoff_boundary` failure at that checkpoint is
+  the separate Route 6 consumed scalar i32 call-argument source failure tracked
+  by
+  `ideas/open/235_phase_e3_route6_consumed_scalar_i32_call_argument_source_follow_up.md`.
+  Idea 234 is parked, not closed, until downstream validation can confirm the
+  stack-home handoff acceptance criteria without being blocked by idea 235.
+
 ## Reviewer Reject Signals
 
 - The change matches the failing compare-join testcase name, label text, block
