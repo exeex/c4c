@@ -407,6 +407,10 @@ struct PreparedCurrentBlockJoinParallelCopySourceFact {
   PreparedValueHomeKind destination_home_kind = PreparedValueHomeKind::None;
   PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
   std::optional<std::string> destination_register_name;
+  const bir::Route5CurrentBlockJoinSourceRecord* route5_join_source = nullptr;
+  bir::Route5PublicationStatus route5_join_source_status =
+      bir::Route5PublicationStatus::Unavailable;
+  bool route5_join_source_agrees = false;
   bool source_is_incoming_expression = false;
   bool destination_is_source_value = false;
   bool source_is_source_value = false;
@@ -431,6 +435,7 @@ struct PreparedCurrentBlockJoinParallelCopySourceQueryInputs {
   const PreparedValueLocationFunction* value_locations = nullptr;
   const PreparedValueHomeLookups* value_home_lookups = nullptr;
   const PreparedEdgePublicationLookups* edge_publications = nullptr;
+  const bir::Route5EdgeJoinSourceIndex* route5_edge_join_sources = nullptr;
   const bir::Block* block = nullptr;
   BlockLabelId successor_label = kInvalidBlockLabel;
 };

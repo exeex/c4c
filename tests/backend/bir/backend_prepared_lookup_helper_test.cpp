@@ -3102,6 +3102,47 @@ int verify_current_block_join_parallel_copy_source_query() {
   const auto& route5_join_block = route5_join_function.blocks.front();
   const auto route5_join_index =
       bir::route5_build_edge_join_source_index(route5_join_function);
+  const auto route5_supported_query =
+      prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .regalloc = &regalloc,
+              .value_locations = &locations,
+              .edge_publications = &edge_publications,
+              .route5_edge_join_sources = &route5_join_index,
+              .block = &route5_join_block,
+              .successor_label = successor_label,
+          });
+  if (route5_supported_query.status !=
+          prepare::PreparedCurrentBlockJoinParallelCopySourceStatus::Available ||
+      route5_supported_query.facts.size() != query.facts.size() ||
+      route5_supported_query.facts[0].status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      !route5_supported_query.facts[0].route5_join_source_agrees ||
+      route5_supported_query.facts[0].route5_join_source_status !=
+          bir::Route5PublicationStatus::Available ||
+      route5_supported_query.facts[0].route5_join_source == nullptr ||
+      route5_supported_query.facts[0].route5_join_source->source_value_name !=
+          "%current.incoming" ||
+      route5_supported_query.facts[0].route5_join_source->destination_value_name !=
+          "%current.destination" ||
+      route5_supported_query.facts[0].source_value_id != incoming_id ||
+      route5_supported_query.facts[0].source_home != &locations.value_homes[0] ||
+      route5_supported_query.facts[0].destination_home !=
+          &locations.value_homes[1]) {
+    return fail("current-block join helper row should carry agreeing Route 5 evidence");
+  }
+  if (route5_supported_query.facts[1].route5_join_source_agrees ||
+      route5_supported_query.facts[2].route5_join_source_agrees ||
+      route5_supported_query.facts[3].route5_join_source_agrees) {
+    return fail("current-block join helper row should keep adjacent facts prepared-owned");
+  }
+  if (query.facts[0].route5_join_source_agrees ||
+      query.facts[0].route5_join_source != nullptr ||
+      query.facts[0].route5_join_source_status !=
+          bir::Route5PublicationStatus::Unavailable) {
+    return fail("prepared-only current-block join helper row should not claim Route 5 evidence");
+  }
   const auto indexed_bir_query =
       mir::find_bir_current_block_join_source_identity(
           mir::BirCurrentBlockJoinSourceRequest{
@@ -3138,6 +3179,26 @@ int verify_current_block_join_parallel_copy_source_query() {
   auto duplicate_route5_join_index = route5_join_index;
   duplicate_route5_join_index.join_records.push_back(
       duplicate_route5_join_index.join_records.front());
+  const auto duplicate_route5_supported_query =
+      prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .regalloc = &regalloc,
+              .value_locations = &locations,
+              .edge_publications = &edge_publications,
+              .route5_edge_join_sources = &duplicate_route5_join_index,
+              .block = &route5_join_block,
+              .successor_label = successor_label,
+          });
+  if (duplicate_route5_supported_query.facts.empty() ||
+      duplicate_route5_supported_query.facts[0].status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      duplicate_route5_supported_query.facts[0].route5_join_source_agrees ||
+      duplicate_route5_supported_query.facts[0].route5_join_source != nullptr ||
+      duplicate_route5_supported_query.facts[0].route5_join_source_status !=
+          bir::Route5PublicationStatus::NoMatch) {
+    return fail("current-block join helper row should reject duplicate Route 5 evidence");
+  }
   const auto duplicate_index_bir_query =
       mir::find_bir_current_block_join_source_identity(
           mir::BirCurrentBlockJoinSourceRequest{
@@ -3156,6 +3217,25 @@ int verify_current_block_join_parallel_copy_source_query() {
       "current_join.other_pred";
   wrong_predecessor_route5_join_index.join_records.front().predecessor_label_id =
       c4c::BlockLabelId{777};
+  const auto wrong_predecessor_route5_supported_query =
+      prepare::prepare_current_block_join_parallel_copy_source_facts(
+          prepare::PreparedCurrentBlockJoinParallelCopySourceQueryInputs{
+              .names = &names,
+              .regalloc = &regalloc,
+              .value_locations = &locations,
+              .edge_publications = &edge_publications,
+              .route5_edge_join_sources = &wrong_predecessor_route5_join_index,
+              .block = &route5_join_block,
+              .successor_label = successor_label,
+          });
+  if (wrong_predecessor_route5_supported_query.facts.empty() ||
+      wrong_predecessor_route5_supported_query.facts[0].status !=
+          prepare::PreparedEdgeCopySourceFactsStatus::Available ||
+      wrong_predecessor_route5_supported_query.facts[0].route5_join_source_agrees ||
+      wrong_predecessor_route5_supported_query.facts[0].route5_join_source !=
+          nullptr) {
+    return fail("current-block join helper row should keep prepared facts on Route 5 predecessor mismatch");
+  }
   const auto wrong_predecessor_index_bir_query =
       mir::find_bir_current_block_join_source_identity(
           mir::BirCurrentBlockJoinSourceRequest{

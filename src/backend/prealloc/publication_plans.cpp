@@ -1076,6 +1076,107 @@ prepare_block_entry_parallel_copy_edge_source_facts(
   return facts;
 }
 
+[[nodiscard]] bool route5_join_source_record_agrees_with_prepared_fact(
+    const PreparedNameTables& names,
+    const PreparedCurrentBlockJoinParallelCopySourceFact& fact,
+    const bir::Route5CurrentBlockJoinSourceRecord& route5_join_source) {
+  if (fact.status != PreparedEdgeCopySourceFactsStatus::Available ||
+      fact.publication == nullptr ||
+      route5_join_source.status != bir::Route5PublicationStatus::Available ||
+      !route5_join_source) {
+    return false;
+  }
+  if (route5_join_source.predecessor_label_id != fact.predecessor_label ||
+      route5_join_source.successor_label_id != fact.successor_label) {
+    return false;
+  }
+  if (route5_join_source.destination_value_name !=
+          prepared_value_name(names, fact.destination_value_name) ||
+      route5_join_source.destination_value_type !=
+          fact.publication->destination_value.type) {
+    return false;
+  }
+  if (fact.destination_home == nullptr ||
+      fact.destination_home->value_id != fact.destination_value_id ||
+      fact.destination_home->value_name != fact.destination_value_name) {
+    return false;
+  }
+  if (fact.immediate_source) {
+    return route5_join_source.source_value_kind == bir::Value::Kind::Immediate &&
+           route5_join_source.source_value.value_kind ==
+               bir::Value::Kind::Immediate &&
+           route5_join_source.source_value.integer_constant ==
+               fact.publication->source_value.immediate &&
+           route5_join_source.source_value_type ==
+               fact.publication->source_value.type;
+  }
+  if (!fact.source_value_id.has_value() ||
+      fact.source_home == nullptr ||
+      fact.source_home->value_id != *fact.source_value_id ||
+      fact.source_home->value_name != fact.source_value_name) {
+    return false;
+  }
+  return route5_join_source.source_value_kind == bir::Value::Kind::Named &&
+         route5_join_source.source_value_name ==
+             prepared_value_name(names, fact.source_value_name) &&
+         route5_join_source.source_value_type == fact.publication->source_value.type &&
+         route5_join_source.source_producer_instruction != nullptr &&
+         route5_join_source.source_producer_instruction_index.has_value();
+}
+
+void attach_route5_current_block_join_source_if_agrees(
+    const PreparedNameTables& names,
+    const bir::Route5EdgeJoinSourceIndex* route5_edge_join_sources,
+    const bir::Block* successor_block,
+    PreparedCurrentBlockJoinParallelCopySourceFact& fact) {
+  if (route5_edge_join_sources == nullptr ||
+      successor_block == nullptr ||
+      fact.publication == nullptr ||
+      fact.status != PreparedEdgeCopySourceFactsStatus::Available ||
+      fact.immediate_source ||
+      !fact.source_is_incoming_expression ||
+      !fact.destination_is_source_value ||
+      fact.source_is_source_value ||
+      fact.source_home_is_stack) {
+    return;
+  }
+  const auto route5_join_source = bir::route5_find_current_block_join_source(
+      *route5_edge_join_sources,
+      *successor_block,
+      fact.publication->destination_value,
+      fact.publication->source_value);
+  fact.route5_join_source_status = route5_join_source.status;
+  if (!route5_join_source_record_agrees_with_prepared_fact(names,
+                                                           fact,
+                                                           route5_join_source)) {
+    return;
+  }
+  const bir::Route5CurrentBlockJoinSourceRecord* unique_agreeing_record = nullptr;
+  for (const auto& candidate : route5_edge_join_sources->join_records) {
+    if (candidate.successor_block != successor_block &&
+        (candidate.successor_label_id == kInvalidBlockLabel ||
+         successor_block->label_id == kInvalidBlockLabel ||
+         candidate.successor_label_id != successor_block->label_id)) {
+      continue;
+    }
+    if (!route5_join_source_record_agrees_with_prepared_fact(names,
+                                                             fact,
+                                                             candidate)) {
+      continue;
+    }
+    if (unique_agreeing_record != nullptr) {
+      fact.route5_join_source_status = bir::Route5PublicationStatus::NoMatch;
+      return;
+    }
+    unique_agreeing_record = &candidate;
+  }
+  if (unique_agreeing_record == nullptr) {
+    return;
+  }
+  fact.route5_join_source = unique_agreeing_record;
+  fact.route5_join_source_agrees = true;
+}
+
 [[nodiscard]] PreparedCurrentBlockJoinParallelCopySourceFacts
 prepare_current_block_join_parallel_copy_source_facts(
     const PreparedCurrentBlockJoinParallelCopySourceQueryInputs& inputs) {
@@ -1233,6 +1334,8 @@ prepare_current_block_join_parallel_copy_source_facts(
         if (fact.source_is_source_value) {
           append_source_value(fact.source_home);
         }
+        attach_route5_current_block_join_source_if_agrees(
+            *inputs.names, inputs.route5_edge_join_sources, inputs.block, fact);
       }
 
       result.facts.push_back(fact);
