@@ -1,17 +1,21 @@
 Status: Active
 Source Idea Path: ideas/open/226_phase_e3_prepared_diagnostic_oracle_replacement_readiness.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Candidate Rows
+Current Step ID: 3
+Current Step Title: Draft The E3 Readiness Document
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 - Classify Candidate Rows for Phase E3. The table below
-classifies each candidate row or tightly scoped row family from the Step 1
-inventory against the E3 readiness categories. No durable E3 output document,
-source idea, implementation, test, baseline, or log file was changed.
+Completed Step 3 - Draft The E3 Readiness Document correction for Phase E3.
+The durable readiness analysis at
+`docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`
+now narrows the Route 5 accepted candidate to one current-block join-source
+helper-oracle row. The adjacent prepared printer row is recorded as
+retained/deferred authority unless a future separate idea names it exactly. No
+follow-up ideas, source ideas, implementation files, tests, baselines,
+expected strings, or logs were changed.
 
 ## Evidence Inventory
 
@@ -27,7 +31,7 @@ source idea, implementation, test, baseline, or log file was changed.
 | `ideas/closed/225_phase_e2_fused_compare_operand_producer_helper_private_pass_context.md` | Extracted a private Route 7/prepared agreement reader for the selected fused-compare operand producer identity read in AArch64 comparison lowering. | Supports E3 readiness analysis for fused-compare helper-oracle, branch-control, and machine-printer row families where private Route 7 comparison provenance is positive evidence. | Public prepared fallback, absent-route/invalid/duplicate/conflict/mismatch/unfused/non-agreement behavior, branch targets, suffix mapping, fused legality, hazards, final assembler rows, printer/debug, wrappers, helper-oracle strings/statuses, expected strings, aggregate route views, and prepared aggregate ownership remain retained. |
 | `ideas/closed/208_route3_memory_source_oracle_printer_row.md` | Route 3 memory/source agreement can explain one stored-value helper-oracle success row. | Supports one Route 3 memory/source helper-oracle status row or one prepared addressing printer row, including memory access/source identity, non-memory negatives, alias/address ambiguity, and mismatch cases. | Prepared diagnostics remain authoritative for fallback and non-agreement; address formation, relocation, materialization, addressing legality, final operands, target-addressing fallback, target wrappers, row text, and expected strings remain retained. |
 | `ideas/closed/210_route4_block_entry_publication_printer_debug_row.md` | Route 4 attribution can reproduce one available-register `block_entry_publication` prepared value-location printer row under prepared agreement and fail-closed fallback. | Supports one block-entry publication printer/debug row with positive agreement, absent route evidence, wrong-reference, mismatch, duplicate-reference fallback, and wrapper no-change proof. | Prepared publication mechanics, block-order/output policy, wrapper behavior, CLI dump or broad printer/debug sections, fallback, row text, x86/riscv wrapper output, and expected strings remain retained. |
-| `ideas/closed/212_route5_edge_join_oracle_printer_row.md` | Route 5 evidence is diagnostic metadata for one `PreparedCurrentBlockJoinParallelCopySourceFact` current-block join-source success row after agreement with prepared edge/join semantics. | Supports one Route 5 edge/join helper-oracle or prepared printer row covering join transfer, parallel copy, move bundle, edge publication, or source producer. | Prepared behavior remains authoritative for absent, invalid, duplicate/conflicting, memory-source, mismatch, unsupported, branch/parallel-copy, printer, wrapper, and expected-string paths. |
+| `ideas/closed/212_route5_edge_join_oracle_printer_row.md` | Route 5 evidence is diagnostic metadata for one `PreparedCurrentBlockJoinParallelCopySourceFact` current-block join-source success row after agreement with prepared edge/join semantics. | Supports one Route 5 current-block join-source helper-oracle row; adjacent prepared printer rows remain retained/deferred unless a future separate idea names one exactly. | Prepared behavior remains authoritative for absent, invalid, duplicate/conflicting, memory-source, mismatch, unsupported, branch/parallel-copy, prepared printer, wrapper, and expected-string paths. |
 | `ideas/closed/214_route6_x86_scalar_source_route_debug_row.md` | Route 6 x86 scalar `i32` argument-source route-debug row can use route-native scalar source agreement while keeping `ConsumedPlans` compatibility. | Supports one x86 Route 6 scalar source agreement route-debug row, including absent, invalid, duplicate/conflict, mismatch, and compatibility cases. | `ConsumedPlans`, x86 wrapper behavior, ABI/call wrapper policy, prepared call printer/debug, direct-call/helper-oracle families, public fallback, expected strings, and broad x86 call wrapper migration remain retained. |
 | `ideas/closed/216_route7_comparison_oracle_row.md` | Route 7-native evidence augmented one materialized-condition helper-oracle row in `verify_prepared_bir_comparison_condition_producer_equivalence`. | Supports one Route 7 fused-compare or materialized-condition helper-oracle row with positive, absent-route, invalid-reference, duplicate/conflict, mismatch, unfused fallback, prepared fallback, helper-oracle, branch-control, and machine-printer proof. | Prepared oracle assertion, branch policy, branch-control output, wrappers, final assembler behavior, expected strings, and broad printer/debug or route-index migration remain retained. |
 | `docs/bir_prealloc_fusion/prepared_diagnostics_oracle_replacement_plan.md` | Establishes the diagnostic/oracle readiness rule: route-native replacement must name owned route facts, keep prepared expected output and oracle strength intact, cover positive/negative/ambiguous/mismatch/fallback cases, name retained compatibility adapters, and keep target/formatting/ABI/storage/emission policy outside route diagnostic ownership. | Supports candidate blockers and proof shapes for prepared printer, prepared CLI dump, x86 route-debug summary/trace, prepared lookup helper oracle, AArch64 lookup threading, target-wrapper compatibility, and Route 1 through Route 7 row families. | Production lowering success, full-suite greenness, section-name matching, printer label rewrites, baseline refreshes, helper renames, unsupported downgrades, output relabeling, target-policy migration, and broad prepared API deletion are not readiness evidence. |
@@ -46,7 +50,7 @@ source idea, implementation, test, baseline, or log file was changed.
 | Route 3 memory/source stored-value helper-oracle success row | Ready to draft one implementation idea | Route 3 memory/source agreement can explain one stored-value helper-oracle success row. | Prepared diagnostics remain authoritative for non-memory negatives, alias/address ambiguity, mismatch, and fallback; address formation, relocation, materialization, addressing legality, final operands, target wrappers, row text, and expected strings remain retained. | None for analysis; later idea must include positive, negative, ambiguous, mismatch, and fallback cases. | The scope is one memory/source helper-oracle success row, not broad memory addressing, target-addressing printers, or address-emission policy. |
 | Route 3 prepared addressing printer row | Retained target/prepared policy or emitted-output authority | Route 3 can provide memory access/source identity agreement, but the inventory does not prove route ownership of final addressing text. | Address formation, relocation, materialization, addressing legality, final operands, target-addressing fallback, target wrappers, printer text, and expected strings remain prepared/target-owned. | Deferred unless a future one-row idea proves a diagnostic-only augmentation that leaves address/output policy unchanged. | E3 can note the row as adjacent evidence, but replacing addressing printer authority would exceed one diagnostic/oracle row readiness. |
 | Route 4 `block_entry_publication` available-register printer/debug row | Ready to draft one implementation idea | Route 4 attribution can reproduce one available-register block-entry publication prepared value-location printer row under prepared agreement and fail-closed fallback. | Prepared publication mechanics, block order/output policy, wrapper behavior, CLI dump and broad printer/debug sections, fallback, row text, x86/riscv wrapper output, and expected strings remain retained. | None for analysis; later idea must prove absent route, wrong-reference, mismatch, duplicate-reference fallback, and wrapper no-change paths. | It is one block-entry publication row with agreement gating, not a CLI dump, broad printer/debug, publication-mechanics, or wrapper migration. |
-| Route 5 current-block join-source helper-oracle or prepared printer row | Ready to draft one implementation idea | Route 5 evidence is diagnostic metadata for one `PreparedCurrentBlockJoinParallelCopySourceFact` current-block join-source success row after agreement with prepared edge/join semantics. | Prepared behavior remains authoritative for absent, invalid, duplicate/conflicting, memory-source, mismatch, unsupported, branch/parallel-copy, printer, wrapper, and expected-string paths. | None for analysis; later idea must choose either the helper-oracle row or one prepared printer row and prove the fallback matrix. | The candidate is a single join/source row family after prepared agreement, not broad edge publication, move bundle, parallel-copy, or printer replacement. |
+| Route 5 current-block join-source helper-oracle row | Ready to draft one implementation idea | Route 5 evidence is diagnostic metadata for one `PreparedCurrentBlockJoinParallelCopySourceFact` current-block join-source helper-oracle success row after agreement with prepared edge/join semantics. | Prepared behavior remains authoritative for absent, invalid, duplicate/conflicting, memory-source, mismatch, unsupported, branch/parallel-copy, prepared printer, wrapper, and expected-string paths. | None for analysis; later idea must name the helper-oracle row and prove the fallback matrix. The adjacent prepared printer row is retained/deferred unless a future separate idea names it exactly. | The candidate is one current-block join-source helper-oracle row after prepared agreement, not broad edge publication, move bundle, parallel-copy, or printer replacement. |
 | Route 6 x86 scalar `i32` argument-source route-debug row | Ready to draft one implementation idea | Route 6 x86 scalar argument-source agreement can support one route-debug row while keeping `ConsumedPlans` compatibility. | `ConsumedPlans`, x86 wrapper behavior, ABI/call wrapper policy, prepared call printer/debug, direct-call/helper-oracle families, public fallback, expected strings, and broad x86 call wrapper migration remain retained. | None for analysis; later idea must include absent, invalid, duplicate/conflict, mismatch, and compatibility cases. | The row is limited to one x86 scalar source route-debug diagnostic; it does not migrate ABI/call wrappers, call lowering, or broad call printer/debug authority. |
 | Route 7 materialized-condition helper-oracle row in `verify_prepared_bir_comparison_condition_producer_equivalence` | Ready to draft one implementation idea | Route 7-native comparison evidence already augmented one materialized-condition helper-oracle row. | Prepared oracle assertion, branch policy, branch-control output, wrappers, final assembler behavior, expected strings, helper-oracle statuses, and broad printer/debug or route-index migration remain retained. | None for analysis; later idea must cover positive, absent-route, invalid-reference, duplicate/conflict, mismatch, unfused, and prepared fallback cases. | It is one materialized-condition helper-oracle row family, not a Route 7-wide comparison, branch-control, machine-printer, or route-index migration. |
 | Route 7 fused-compare branch-control or machine-printer rows beyond the selected helper-oracle/materialized-condition row | Proof harness only | Route 7 provenance can help verify comparison identity and materialized-condition agreement. | Branch-control output, suffix mapping, fused legality, hazards, final assembler rows, wrappers, printer/debug strings, expected strings, and target policy remain retained. | Deferred until a later idea names one diagnostic row and proves it is not output-policy movement. | E3 keeps these rows as evidence surfaces only; using them to replace branch-control or machine-printer behavior would be broader than a row-scoped readiness classification. |
@@ -58,28 +62,36 @@ source idea, implementation, test, baseline, or log file was changed.
 
 ## Suggested Next
 
-Proceed to Step 3 - Draft The E3 Readiness Document. Write
-`docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`
-from the Step 1 inventory and Step 2 classification table, without creating
-follow-up ideas or changing implementation/test/baseline files in the same
-packet.
+Proceed to Step 4 - Create Accepted Follow-Up Ideas. Draft only the accepted
+one-row or tightly scoped row-family follow-up ideas listed in
+`docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`,
+without activating or implementing any follow-up and without mutating
+baselines, expected strings, logs, tests, or implementation files.
 
 ## Watchouts
 
-- E3 is still analysis-only; Step 2 did not write
-  `docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`.
-- Ready classifications are draft-readiness only, not implementation approval.
+- E3 remains analysis-only until separate lifecycle work activates a specific
+  implementation idea.
+- The durable document accepts seven follow-up candidates for later drafting:
+  branch-target helper-oracle, fused-compare operand-producer helper-oracle,
+  Route 3 memory/source helper-oracle, Route 4 block-entry publication
+  printer/debug, Route 5 current-block join-source helper-oracle,
+  Route 6 x86 scalar source route-debug, and Route 7 materialized-condition
+  helper-oracle.
+- Accepted candidates are draft-readiness only; they do not authorize
+  implementation, baseline refresh, expected-string rewrite, unsupported
+  downgrade, helper rename, broad diagnostic/oracle replacement, or target
+  policy movement.
 - Proof-harness rows must not be promoted into branch-control, machine-printer,
   wrapper, or emitted-output ownership without a separate one-row idea.
-- Route 3 through Route 7 closures remain row-scoped evidence, not permission
-  for broad printer/debug/helper-oracle replacement.
-- Green backend logs are guardrail context only; they are not replacement
-  proof for any diagnostic/oracle row.
-- Do not mutate hook state, baselines, expected strings, source ideas, or
-  follow-up ideas during Step 3 document drafting unless separately delegated.
+- Draft 155/E5, Route 8, aggregate `PreparedBirModule`,
+  `PreparedFunctionLookups`, broad prepared retirement, and broad
+  diagnostic/oracle replacement remain unopened.
 
 ## Proof
 
-Analysis-only lifecycle packet; no build or test required by supervisor.
-Delegated proof run and passed: `git diff --check -- todo.md`.
-Final status check run: `git status --short` reported only `M todo.md`.
+Analysis-only docs/lifecycle packet; no build or test required by supervisor.
+Delegated proof run and passed:
+`git diff --check -- docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md todo.md`.
+Final status check run: `git status --short` reported `M todo.md` and
+`?? docs/bir_prealloc_fusion/phase_e3_prepared_diagnostic_oracle_replacement_readiness.md`.
