@@ -4177,7 +4177,13 @@ int check_materialized_compare_join_branches_publish_prepared_return_contexts(
   }
 
   const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
-      prepared.names, *control_flow, function, *entry_block, function.params.front(), true);
+      prepared.names,
+      prepared.module.names,
+      *control_flow,
+      function,
+      *entry_block,
+      function.params.front(),
+      true);
   if (!compare_join_context.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the materialized compare-join context")
@@ -5725,7 +5731,13 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
   }
 
   const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
-      prepared.names, *control_flow, function, *entry_block, function.params.front(), true);
+      prepared.names,
+      prepared.module.names,
+      *control_flow,
+      function,
+      *entry_block,
+      function.params.front(),
+      true);
   if (!compare_join_context.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the materialized compare-join context")
@@ -6233,7 +6245,13 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
   }
 
   const auto compare_join_context = prepare::find_prepared_param_zero_materialized_compare_join_context(
-      prepared.names, *control_flow, function, *entry_block, function.params.front(), true);
+      prepared.names,
+      prepared.module.names,
+      *control_flow,
+      function,
+      *entry_block,
+      function.params.front(),
+      true);
   if (!compare_join_context.has_value()) {
     return fail((std::string(failure_context) +
                  ": shared helper no longer recognizes the materialized compare-join context")
