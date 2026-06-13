@@ -211,6 +211,8 @@ prepare_current_block_join_parallel_copy_source_facts(
                                context.function.prepared->names,
                                prepared_fact.predecessor_label);
                        return prepared_fact.source_is_source_value &&
+                              prepared_fact.route5_join_source_agrees &&
+                              prepared_fact.route5_join_source != nullptr &&
                               prepared_fact.successor_label ==
                                   context.control_flow_block->block_label &&
                               !prepared_predecessor_label.empty() &&
@@ -494,13 +496,13 @@ build_current_block_join_prepared_query_routing(
     const module::BlockLoweringContext& context) {
   CurrentBlockJoinPreparedQueryRouting routing{.context = &context};
   std::optional<mir::BirCurrentBlockJoinSourceIdentity> route5_identity;
+  const auto route5_join_sources =
+      context.function.bir_function != nullptr
+          ? std::optional<bir::Route5EdgeJoinSourceIndex>{
+                bir::route5_build_edge_join_source_index(
+                    *context.function.bir_function)}
+          : std::nullopt;
   if (context.bir_block != nullptr) {
-    const auto route5_join_sources =
-        context.function.bir_function != nullptr
-            ? std::optional<bir::Route5EdgeJoinSourceIndex>{
-                  bir::route5_build_edge_join_source_index(
-                      *context.function.bir_function)}
-            : std::nullopt;
     const auto bir_identity = mir::find_bir_current_block_join_source_identity(
         mir::BirCurrentBlockJoinSourceRequest{
             .successor_block = context.bir_block,
@@ -550,6 +552,8 @@ build_current_block_join_prepared_query_routing(
           .value_locations = context.function.value_locations,
           .value_home_lookups = value_home_lookups,
           .edge_publications = edge_publications,
+          .route5_edge_join_sources =
+              route5_join_sources.has_value() ? &*route5_join_sources : nullptr,
           .block = context.bir_block,
           .successor_label =
               context.control_flow_block != nullptr
