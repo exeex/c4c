@@ -1,67 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/242_phase_e5_route6_scalar_call_use_source_identity_row_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Select The Route 6 Scalar Call-Use Source Reader
+Current Step ID: Step 2
+Current Step Title: Implement The Agreement-Gated Adapter
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 selected exactly one Route 6 scalar call-use source reader for the
-agreement-gated adapter: the AArch64 call-result source register evidence read
-through `call_result_source_register_route6_evidence(...)`, reached from
-`record_call_result_source_register(...)` in
-`src/backend/mir/aarch64/codegen/calls.cpp`.
+Step 2 implemented the smallest local agreement-gated adapter around the
+selected AArch64 call-result source register Route 6 evidence reader.
+`call_result_source_register_route6_evidence(...)` now accepts
+`bir::route6_find_call_result_source(...)` only when the returned Route 6
+result identity agrees with the prepared destination value name from the
+prepared value home.
 
-Selected Route 6 fact:
-`bir::route6_find_call_result_source(...)` over the
-`Route6CallUseSourceIndex::result_records` row for the current BIR call
-boundary. The selected row is the call result role
-`Route6CallUseValueRole::Result`, keyed by block, call instruction index,
-callee, and the BIR result value.
+The new local helper
+`route6_call_result_source_agrees_with_prepared(...)` first honors a Route 6
+`result_identity.name_id` when present, then falls back to resolving the Route
+6 result value through the existing prepared name table. Missing, invalid,
+duplicate, unavailable, prepared-mismatch, Route 6 identity-mismatch, or
+non-agreement paths continue to report
+`CallResultSourceRegisterRoute6Evidence::Fallback`.
 
-Current prepared call-plan answer:
-`prepare::find_prepared_call_result_late_publication(*call_plan.result)` plus
-the indexed prepared value home for `result.destination_value_id`. The prepared
-answer remains authoritative for source register name/bank/placement,
-contiguous width, occupied registers, destination value id, and the emitted
-`CallAbi` register publication recorded in `BlockScalarLoweringState`.
+The scalar-state publication path remains prepared-owned:
+`record_call_result_source_register(...)` still derives register spelling,
+bank, placement conversion, contiguous width, occupied registers,
+destination value id, and `CallAbi` publication from
+`PreparedCallResultPlan` plus prepared value-home lookups. Route 6 does not
+own ABI placement, frame/register policy, wrapper policy, helper/carrier
+protocol, result lanes, outgoing stack layout, formatting, instruction
+selection, emission policy, or wrapper output.
 
-Fallback path:
-`call_result_source_register_route6_evidence(...)` reports
-`CallResultSourceRegisterRoute6Evidence::Fallback` and
-`record_call_result_source_register(...)` preserves the existing prepared
-publication path when the Route 6 index is absent, empty, invalid for the
-current block/instruction/callee, missing the result fact, non-unique,
-mismatched against the prepared result value/home, unavailable, or not
-`Route6CallUseStatus::Available`. The selected reader does not own ABI
-placement, frame/register policy, wrapper policy, helper/carrier protocol,
-result lanes, outgoing stack layout, formatting, instruction selection,
-emission policy, or wrapper output.
-
-Why this is semantic source identity only:
-the Route 6 read only checks that the BIR call result value identity agrees
-with the prepared destination value identity. Register spelling, bank,
-placement conversion, occupied register set, and scalar-state publication are
-still derived from `PreparedCallResultPlan` and prepared value-home lookups.
-
-Source inspection used:
-- `c4c-clang-tool-ccdb function-signatures src/backend/mir/aarch64/codegen/calls.cpp build/compile_commands.json`
-- `c4c-clang-tool-ccdb function-callees src/backend/mir/aarch64/codegen/calls.cpp call_result_source_register_route6_evidence build/compile_commands.json`
-- `c4c-clang-tool-ccdb function-callers src/backend/mir/aarch64/codegen/calls.cpp call_result_source_register_route6_evidence build/compile_commands.json`
-- `rg`/`sed` inspection of `calls.cpp`, `calls.hpp`, `dispatch.cpp`,
-  `src/backend/bir/bir.cpp`, `src/backend/prealloc/calls.hpp`, and focused
-  backend tests.
+Focused coverage added one nearby same-feature fallback case in
+`backend_aarch64_call_boundary_owner`: a Route 6 result record with a
+conflicting prepared value-name identity falls back while preserving the
+prepared register publication.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: implement the smallest local agreement-gated
-adapter around the selected AArch64 call-result source register evidence read,
-accepting the Route 6 result-source fact only when it agrees with the prepared
-call-result publication answer and preserving prepared fallback otherwise.
-
-Recommended Step 2/3 proof subset:
+Execute Step 3 from `plan.md`: prove fallback and public compatibility for the
+selected Route 6 call-result source adapter, reusing the same focused proof
+subset unless the supervisor chooses otherwise.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_prepared_lookup_helper|backend_prepare_frame_stack_call_contract|backend_x86_handoff_boundary)$' --output-on-failure > test_after.log
@@ -82,9 +62,10 @@ cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_c
 - Do not rewrite expectations, helper names, supported-path status, wrapper
   output, or baselines as proof.
 - Nearby same-feature cases to preserve in proof: matching/null/missing/
-  invalid-boundary/duplicate/prepared-mismatch result-source evidence in
-  `backend_aarch64_call_boundary_owner`; BIR call-result source and result-lane
-  source identity/index status rows in `backend_prepared_lookup_helper`;
+  invalid-boundary/duplicate/prepared-mismatch/Route 6 identity-mismatch
+  result-source evidence in `backend_aarch64_call_boundary_owner`; BIR
+  call-result source and result-lane source identity/index status rows in
+  `backend_prepared_lookup_helper`;
   prepared late-publication/result-plan contracts in
   `backend_prepare_frame_stack_call_contract`; and the narrow x86
   `ConsumedPlans` scalar call-argument compatibility row in
@@ -94,6 +75,17 @@ cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_c
 
 ## Proof
 
-No build or CTest was run. This was a docs/lifecycle selection packet with no
-implementation changes. Source inspection and AST-backed function queries were
-used to select the reader and recommend the future narrow proof subset.
+Ran the exact supervisor-selected proof command:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_prepared_lookup_helper|backend_prepare_frame_stack_call_contract|backend_x86_handoff_boundary)$' --output-on-failure > test_after.log
+```
+
+Result: 3/3 passed.
+
+Tests matched:
+- `backend_aarch64_call_boundary_owner`
+- `backend_prepare_frame_stack_call_contract`
+- `backend_prepared_lookup_helper`
+
+Proof log path: `test_after.log`.

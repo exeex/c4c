@@ -8741,6 +8741,26 @@ materialize_indirect_call_callee_to_prepared_register(
   return matches == 1;
 }
 
+[[nodiscard]] bool route6_call_result_source_agrees_with_prepared(
+    const module::BlockLoweringContext& context,
+    const bir::Route6CallResultSourceRecord& route6_result,
+    c4c::ValueNameId prepared_value_name) {
+  if (!route6_result.result_identity ||
+      prepared_value_name == c4c::kInvalidValueName) {
+    return false;
+  }
+  if (route6_result.result_identity.name_id != c4c::kInvalidValueName) {
+    return route6_result.result_identity.name_id == prepared_value_name;
+  }
+  if (route6_result.result_value == nullptr) {
+    return false;
+  }
+  const auto route6_value_name =
+      prepared_named_value_id(context, *route6_result.result_value);
+  return route6_value_name.has_value() &&
+         *route6_value_name == prepared_value_name;
+}
+
 [[nodiscard]] CallResultSourceRegisterRoute6Evidence
 call_result_source_register_route6_evidence(
     const module::BlockLoweringContext& context,
@@ -8781,7 +8801,9 @@ call_result_source_register_route6_evidence(
       *call->result);
   if (!route6_result ||
       route6_result.status != bir::Route6CallUseStatus::Available ||
-      route6_result.result_value == nullptr) {
+      route6_result.result_value == nullptr ||
+      !route6_call_result_source_agrees_with_prepared(
+          context, route6_result, home->value_name)) {
     return CallResultSourceRegisterRoute6Evidence::Fallback;
   }
   return CallResultSourceRegisterRoute6Evidence::Agreed;

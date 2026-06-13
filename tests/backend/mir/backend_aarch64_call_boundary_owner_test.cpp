@@ -548,6 +548,7 @@ enum class Route6ResultSourceRegisterCase : unsigned char {
   InvalidBoundary,
   DuplicateFact,
   PreparedMismatch,
+  Route6IdentityMismatch,
 };
 
 std::string_view route6_result_source_register_case_name(
@@ -565,6 +566,8 @@ std::string_view route6_result_source_register_case_name(
       return "duplicate-fact";
     case Route6ResultSourceRegisterCase::PreparedMismatch:
       return "prepared-mismatch";
+    case Route6ResultSourceRegisterCase::Route6IdentityMismatch:
+      return "route6-identity-mismatch";
   }
   return "unknown";
 }
@@ -671,6 +674,12 @@ int route6_result_source_register_case_preserves_prepared_publication(
     case Route6ResultSourceRegisterCase::NullIndex:
     case Route6ResultSourceRegisterCase::PreparedMismatch:
       break;
+    case Route6ResultSourceRegisterCase::Route6IdentityMismatch:
+      if (!route6_index.result_records.empty()) {
+        route6_index.result_records.front().result_identity.name_id =
+            mismatched_prepared_value_name;
+      }
+      break;
     case Route6ResultSourceRegisterCase::MissingFact:
       route6_index.result_records.clear();
       break;
@@ -738,6 +747,8 @@ int route6_result_source_register_evidence_preserves_prepared_publication() {
       Route6ResultSourceRegisterCase::DuplicateFact);
   status |= route6_result_source_register_case_preserves_prepared_publication(
       Route6ResultSourceRegisterCase::PreparedMismatch);
+  status |= route6_result_source_register_case_preserves_prepared_publication(
+      Route6ResultSourceRegisterCase::Route6IdentityMismatch);
   return status;
 }
 
