@@ -1,56 +1,75 @@
 Status: Active
 Source Idea Path: ideas/open/238_phase_e4_x86_route6_scalar_i32_route_debug_consumedplans_compatibility_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Review For Overfit And Scope Drift
+Current Step ID: Step 5
+Current Step Title: Prepare Acceptance Validation
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 recorded the route-quality review result from
-`review/238_step4_route_quality_review.md`. The review found no blocking
-findings, no testcase-overfit, and no scope or route-ownership drift in the
-accepted Step 2 implementation.
+Step 5 recorded acceptance-validation readiness for the active idea 238
+implementation slice. No implementation files, `plan.md`, source idea, docs,
+or proof logs were changed in this packet; this update is limited to
+`todo.md` acceptance-state recording.
 
-The review judgment is that the implementation still matches the source idea:
-x86 still requires `ConsumedPlans` and prepared source-id compatibility, while
-the shared BIR helper only checks Route 6 `ArgumentValue` source-record
-compatibility. The earlier helper naming/contract concern is resolved enough
-for this narrow route because
-`route6_call_argument_source_matches_argument_value_record(...)` is framed as
-Route 6 record compatibility, not as a general semantic identity oracle, and
-the x86 consumer keeps the prepared `source_value_id` agreement check separate.
+The implementation is complete against the source idea acceptance criteria:
+the selected positive x86 Route 6 scalar `i32` argument-source route-debug row
+now consumes the Route 6 `ArgumentValue` source-record agreement fact through
+the shared BIR route helper, while x86 still owns the target-local
+`ConsumedPlans`/prepared `source_value_id` compatibility check. Existing x86
+policy remains authoritative for ABI placement, call-wrapper behavior, direct
+calls, helper/carrier protocols, route-debug formatting, wrapper output,
+fallback behavior, and expected-string stability.
 
-The review accepted the current narrow proof for Step 4 review purposes but
-recorded that final acceptance still needs Step 5 to decide broader validation,
-because the code slice touched shared BIR route-helper API plus x86
-route-debug/helper-oracle surfaces.
+The accepted proof matrix covers the required nearby same-feature behavior:
+positive agreement, absent/invalid/duplicate-conflict source facts,
+mismatch/non-agreement behavior, public prepared fallback and `ConsumedPlans`
+compatibility, wrapper output stability, route-debug output stability,
+direct-call/helper-oracle behavior and status labels, expected-string
+stability, and baseline-stability behavior without relying on a baseline
+refresh. Reviews recorded no testcase-overfit, no route drift, and no broad
+x86/riscv wrapper readiness claim.
 
 ## Suggested Next
 
-Execute Step 5 acceptance-validation preparation. The next packet should choose
-or request the supervisor-selected broader proof needed before final
-acceptance/closure, carrying forward the Step 4 review path and its validation
-caveat.
+Supervisor lifecycle closure assessment for idea 238. The slice is ready for
+the supervisor to decide commit readiness and whether to call the plan owner to
+close the active lifecycle state.
 
 ## Watchouts
 
-- Step 4 is review-record only; no implementation, plan, idea, docs, review, or
-  proof-log files were touched.
-- The route-quality review is `on track`, with no testcase-overfit or scope
-  drift found.
-- Step 5 should not treat the retained narrow `2/2` proof as final acceptance
-  by itself; broader validation must be decided because shared BIR route-helper
-  API and x86 route-debug/helper-oracle surfaces were touched.
+- Step 5 is validation-summary only; implementation files were not changed.
+- The broader x86 backend validation has already been run by the supervisor
+  and is recorded here as acceptance evidence.
+- The accepted scope remains deliberately narrow: one x86 Route 6 scalar `i32`
+  route-debug/source-agreement boundary, not broad wrapper-family migration or
+  riscv readiness.
+- The shared BIR helper is accepted for Route 6 source-record compatibility;
+  x86 still performs the prepared `source_value_id` / `ConsumedPlans`
+  compatibility check before using the source.
 
 ## Proof
 
-Delegated packet was review-record only. No build or CTest was run because this
-packet only read `review/238_step4_route_quality_review.md` and updated
-`todo.md`.
+Supervisor-run narrow regression guard:
 
-Step 4 local validation:
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: passed for `test_before.log` vs `test_after.log`, with the retained
+narrow Step 2 proof showing `2/2` passing:
+`backend_prepared_lookup_helper` and `backend_x86_route_debug`.
+
+Supervisor-run broader validation:
+
+```bash
+cmake --build build-x86 && ctest --test-dir build-x86 -j --output-on-failure -R '^backend_'
+```
+
+Result: passed `182/182`.
+
+Step 5 local validation:
 
 ```bash
 git diff -- todo.md
