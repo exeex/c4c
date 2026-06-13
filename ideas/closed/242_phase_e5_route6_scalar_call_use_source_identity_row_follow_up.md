@@ -107,3 +107,45 @@ The implementation is not acceptance-ready until proof covers:
 - The implementation adds named-case shortcuts, fixture-shaped matching, or
   special handling for one known scalar call testcase instead of consuming a
   real semantic source agreement fact.
+
+## Closure Note
+
+Closed on 2026-06-13 after implementing and proving one narrow Route 6
+call-result source register identity adapter.
+
+Accepted scope:
+
+- Selected reader: AArch64 call-result source register evidence read through
+  `call_result_source_register_route6_evidence(...)`, reached from
+  `record_call_result_source_register(...)` in
+  `src/backend/mir/aarch64/codegen/calls.cpp`.
+- Selected semantic fact: `bir::route6_find_call_result_source(...)` over
+  `Route6CallUseSourceIndex::result_records` for call result role `Result`.
+- Prepared answer: `prepare::find_prepared_call_result_late_publication(...)`
+  plus the prepared value-home name used by the existing call-result
+  publication path.
+- Adapter boundary: consume the Route 6 call-result source identity only after
+  it agrees with the prepared destination value name; all non-agreement cases
+  remain on the existing prepared path.
+- Fallback and compatibility proof covered missing/null/invalid boundary,
+  duplicate/conflict, prepared mismatch, Route 6 identity mismatch,
+  preserved prepared register publication, prepared lookup helper
+  compatibility, and adjacent call-boundary/frame-stack behavior.
+- Close-time regression guard passed with `--allow-non-decreasing-passed`
+  using canonical `test_before.log` and `test_after.log`; before 3/3 passed,
+  after 3/3 passed, and no new failing tests were introduced.
+
+Explicit non-claims:
+
+- No broad x86 call-wrapper migration, route-wide x86 readiness, riscv
+  readiness, or cross-target wrapper convergence is claimed.
+- Idea 238 remains narrow prerequisite evidence only for x86 Route 6 scalar
+  `i32` route-debug / `ConsumedPlans` compatibility.
+- No whole `call_plans`, `PreparedFunctionLookups`, or `PreparedBirModule`
+  deletion, privatization, hiding, aggregate replacement, or retirement
+  readiness is claimed.
+- No draft 155 retirement readiness is claimed.
+- ABI placement, frame layout, register allocation, call-wrapper policy,
+  helper/carrier protocol, result lanes, outgoing stack layout, formatting,
+  instruction selection, emission policy, and wrapper output remain
+  prepared/target-owned.
