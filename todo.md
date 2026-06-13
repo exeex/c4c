@@ -1,41 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/240_phase_e5_route3_memory_source_identity_adapter_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Implement The Agreement-Gated Adapter
+Current Step ID: Step 3
+Current Step Title: Prove Fallback And Public Compatibility
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 implemented one local agreement-gated adapter around the selected
-AArch64 dispatch value materialization same-block global-load identity read in
-`src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`.
+Step 3 proved fallback and public compatibility for the Route 3 same-block
+global-load adapter without adding tests.
 
-Adapter boundary:
+Existing focused coverage was sufficient:
 
-- The `LoadGlobalInst` producer branch now obtains the existing prepared
-  same-block global-load answer first through
-  `prepare::find_prepared_same_block_global_load_access(...)`.
-- `route3_agreed_same_block_global_load_access(...)` asks Route 3 for
-  `BirSameBlockGlobalLoadAccessIdentity` only after a prepared answer exists.
-- Route 3 is accepted only when it agrees with the prepared answer on semantic
-  identity: same block, same producer instruction/index and before-index,
-  `LoadGlobal` node kind, `GlobalSymbol` base kind, result/root value name and
-  type, and global symbol identity.
-- Absent, invalid, mismatched, prepared-only, policy-sensitive, or
-  non-agreement Route 3 facts keep the existing prepared fallback and final
-  `emit_prepared_global_load_to_register(...)` behavior.
-- Address formation, address-space/volatile flags, byte offsets, size/align,
-  base-plus-offset capability, relocation spelling, register allocation, value
-  homes, wrappers, diagnostics, materialization, final operands, and target
-  emission policy remain owned by the prepared/target path.
+- `backend_aarch64_instruction_dispatch` covers selected positive agreement via
+  `load_global_call_argument_uses_got_for_got_required_global()`, where the
+  matching Route 3 identity still emits the prepared GOT-required load/move/call
+  route.
+- `backend_aarch64_instruction_dispatch` covers relevant non-agreement fallback
+  via `load_global_call_argument_preserves_prepared_got_for_route3_fallbacks()`
+  for absent Route 3 address, non-global Route 3 base, mismatched Route 3 global
+  symbol, and mismatched Route 3 memory flags.
+- `backend_aarch64_prepared_memory_operand_records` covers same-block
+  global-load identity agreement with the prepared oracle, before-producer
+  fail-closed behavior, root type mismatch rejection, non-global root rejection,
+  string-load fail-closed behavior, and nearby FP/I32 same-feature rows.
+- `backend_prepared_lookup_helper` preserves the public helper/oracle contract
+  for the same-block global-load query, including match, before-producer
+  fail-closed, and non-global or mismatched root fail-closed behavior.
+- No expectation files, baselines, helper names, supported-path status,
+  wrapper output, or public prepared lookup APIs were changed.
 
 ## Suggested Next
 
-Execute Step 3 by reviewing whether the existing nearby same-feature proof is
-enough for fallback and public compatibility, then add only focused tests if
-the supervisor wants explicit new coverage beyond the green delegated subset.
+Execute Step 4 by validating that target-policy surfaces remain unchanged:
+inspect the code/test diff for expectation rewrites or target-policy ownership
+movement, then run the supervisor-selected proof for the Step 4 packet.
 
 ## Watchouts
 
@@ -47,10 +47,9 @@ the supervisor wants explicit new coverage beyond the green delegated subset.
 - The adapter deliberately does not extend the existing `globals.cpp`
   `prepared_current_global_load_access(...)` helper because that helper
   compares policy-bearing fields outside this selected semantic reader.
-- The delegated proof exercises the existing instruction-dispatch fallbacks for
-  absent/non-global/mismatched/policy-sensitive Route 3 global-load facts and
-  the helper/oracle same-block global-load rows, but this packet did not add
-  new test cases.
+- Step 3 intentionally did not add tests because the delegated subset already
+  contains explicit positive, fallback, helper/oracle, and nearby same-feature
+  coverage for the selected reader.
 
 ## Proof
 
