@@ -106,3 +106,47 @@ The closure note must contain:
 - Treating 238 as closed if it is still open.
 - Opening draft 155 without complete ownership, fallback/oracle, diagnostic,
   wrapper, baseline, and public-consumer proof.
+
+## Closure Note
+
+Closed by the Phase E5 gate.
+
+The active runbook completed all five steps:
+
+- the E0 through E4 prerequisite inventory was checked;
+- `PreparedBirModule` and `PreparedFunctionLookups` field groups were mapped;
+- the durable E5 gate artifact was written at
+  `docs/bir_prealloc_fusion/phase_e5_prepared_bir_module_demotion_or_retirement_gate.md`;
+- narrow successor ideas 240, 241, and 242 were opened for the only safe
+  follow-up implementation shapes;
+- closure validation confirmed this gate touched only docs and lifecycle
+  artifacts, not implementation, expectation, baseline, or draft 155 files.
+
+Closure disposition:
+
+- draft 155 remains blocked and must not be opened as broad aggregate
+  retirement work;
+- idea 238 is closed and prerequisite-complete only for x86 Route 6 scalar
+  `i32` route-debug / `ConsumedPlans` compatibility;
+- no `PreparedBirModule` field group is ready for whole-field deletion,
+  whole-field privatization, or aggregate retirement;
+- no `PreparedFunctionLookups` group is ready for whole-group deletion,
+  whole-group privatization, or aggregate replacement;
+- target policy, private pass context, public fallback/oracle,
+  diagnostic/string authority, wrappers, route-debug output, expected strings,
+  and baseline behavior remain retained until future narrow proof says
+  otherwise.
+
+Close-time regression guard passed using canonical `test_before.log` and
+`test_after.log` with `--allow-non-decreasing-passed`. This non-decreasing mode
+was used because the close is docs/lifecycle-only maintenance with no
+implementation changes, so equal pass counts are acceptable evidence when no
+new failing tests appear:
+
+- before: 2/2 passed;
+- after: 2/2 passed;
+- result: PASS, with no new failing tests.
+
+The gate also records the accepted full-suite baseline
+`log/baseline_8cebab4beba219e6a8cdef998bc970c8658ce28b.log`, which reports
+3428/3428 passing at commit `8cebab4beba219e6a8cdef998bc970c8658ce28b`.
