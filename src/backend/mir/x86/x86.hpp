@@ -111,8 +111,8 @@ find_consumed_scalar_i32_call_argument_source(
   }
   const auto record = c4c::backend::bir::route6_find_call_argument_source(
       *route6_sources, block, instruction_index, call.callee, arg_index);
-  if (!record || record.argument_value != &argument ||
-      record.source_kind != c4c::backend::bir::Route6CallUseSourceKind::ArgumentValue ||
+  if (!c4c::backend::bir::route6_call_argument_source_matches_argument_value_record(
+          record, argument) ||
       !record.source_value_id.has_value() || !prepared_argument->source_value_id.has_value() ||
       *record.source_value_id != *prepared_argument->source_value_id) {
     return std::nullopt;

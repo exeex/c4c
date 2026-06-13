@@ -3400,6 +3400,23 @@ Route6CallArgumentSourceRecord route6_find_call_argument_source(
   };
 }
 
+bool route6_call_argument_source_matches_argument_value_record(
+    const Route6CallArgumentSourceRecord& source,
+    const Value& value) {
+  if (!source ||
+      source.source_kind != Route6CallUseSourceKind::ArgumentValue ||
+      source.argument_value != &value ||
+      source.source_value.value != &value ||
+      source.source_value.name != value.name) {
+    return false;
+  }
+  if (source.source_value_name.has_value() &&
+      *source.source_value_name != value.name) {
+    return false;
+  }
+  return true;
+}
+
 Route6CallArgumentSourceProducerRecord
 route6_find_call_argument_source_producer(
     const Route6CallUseSourceIndex& index,

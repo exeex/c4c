@@ -2636,6 +2636,12 @@ route6_find_call_argument_source(
     std::size_t call_instruction_index,
     std::string_view callee,
     std::size_t arg_index);
+// Checks that a Route 6 ArgumentValue source record still names the same call
+// argument object and spelling. Prepared source-id agreement remains a
+// consumer-side compatibility check.
+[[nodiscard]] bool route6_call_argument_source_matches_argument_value_record(
+    const Route6CallArgumentSourceRecord& source,
+    const Value& value);
 [[nodiscard]] Route6CallArgumentSourceProducerRecord
 route6_find_call_argument_source_producer(
     const Route6CallUseSourceIndex& index,

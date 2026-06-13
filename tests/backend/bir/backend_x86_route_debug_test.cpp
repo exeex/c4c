@@ -1191,6 +1191,15 @@ prepare::PreparedBirModule selected_route6_scalar_arg_with_prepared_mismatch() {
   return prepared;
 }
 
+prepare::PreparedBirModule selected_route6_scalar_arg_with_source_name_mismatch() {
+  auto prepared = legalize_single_block_same_module_scalar_call_wrapper_miss_module();
+  auto* call = find_selected_route6_scalar_arg_call(prepared);
+  if (call != nullptr && !call->arg_sources.empty()) {
+    call->arg_sources.front().source_value_name = std::string{"%t4"};
+  }
+  return prepared;
+}
+
 prepare::PreparedBirModule legalize_multi_param_compare_driven_miss_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1661,6 +1670,11 @@ int main() {
   const std::string single_block_same_module_scalar_call_mismatched_route6_trace =
       c4c::backend::x86::trace_prepared_module_routes(
           single_block_same_module_scalar_call_mismatched_route6);
+  const auto single_block_same_module_scalar_call_source_name_mismatch =
+      selected_route6_scalar_arg_with_source_name_mismatch();
+  const std::string single_block_same_module_scalar_call_source_name_mismatch_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          single_block_same_module_scalar_call_source_name_mismatch);
   const std::string multi_param_compare_driven_miss_summary =
       c4c::backend::x86::summarize_prepared_module_routes(multi_param_compare_driven_miss);
   const std::string multi_param_compare_driven_miss_trace =
@@ -1804,6 +1818,15 @@ int main() {
       !expect_not_contains(single_block_same_module_scalar_call_mismatched_route6_trace,
                            selected_route6_scalar_arg_row,
                            "selected scalar call Route-6/prepared mismatch source row") ||
+      !expect_contains(single_block_same_module_scalar_call_source_name_mismatch_trace,
+                       "x86 route trace",
+                       "selected scalar call Route-6 source-record mismatch fallback trace header") ||
+      !expect_contains(single_block_same_module_scalar_call_source_name_mismatch_trace,
+                       selected_route6_scalar_arg_function_row,
+                       "selected scalar call Route-6 source-record mismatch fallback function row") ||
+      !expect_not_contains(single_block_same_module_scalar_call_source_name_mismatch_trace,
+                           selected_route6_scalar_arg_row,
+                           "selected scalar call Route-6 source-record mismatch source row") ||
       !expect_contains(multi_defined_global_function_pointer_rejection_summary,
                        "x86 route summary",
                        "module-level rejection summary header") ||

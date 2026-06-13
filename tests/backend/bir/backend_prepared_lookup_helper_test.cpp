@@ -8732,6 +8732,8 @@ int verify_bir_call_argument_publication_source_routing_lookup() {
   if (!x86_route6_source || x86_prepared_argument == nullptr ||
       x86_route6_source->source_kind !=
           bir::Route6CallUseSourceKind::ArgumentValue ||
+      !bir::route6_call_argument_source_matches_argument_value_record(
+          *x86_route6_source, x86_indexed_call->args.front()) ||
       !x86_route6_source->source_value_name.has_value() ||
       *x86_route6_source->source_value_name != "%x86.scalar" ||
       x86_route6_source->source_value_id !=
@@ -8740,6 +8742,36 @@ int verify_bir_call_argument_publication_source_routing_lookup() {
           std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{301}}) {
     return fail(
         "x86 Route 6 consumed-plans helper should expose agreed scalar i32 ArgumentValue sources");
+  }
+
+  auto x86_source_name_mismatch_function = x86_function;
+  auto& x86_source_name_mismatch_block =
+      x86_source_name_mismatch_function.blocks.front();
+  auto* x86_source_name_mismatch_call =
+      std::get_if<bir::CallInst>(&x86_source_name_mismatch_block.insts.front());
+  if (x86_source_name_mismatch_call == nullptr ||
+      x86_source_name_mismatch_call->arg_sources.empty()) {
+    return fail(
+        "x86 Route 6 source-name mismatch consumed-plans fixture is malformed");
+  }
+  x86_source_name_mismatch_call->arg_sources.front().source_value_name =
+      std::string{"%other.scalar"};
+  const auto x86_source_name_mismatch_index =
+      bir::route6_build_call_use_source_index(x86_source_name_mismatch_function);
+  const c4c::backend::x86::ConsumedPlans x86_source_name_mismatch{
+      .calls = &x86_call_plans,
+      .route6_call_use_sources = x86_source_name_mismatch_index,
+  };
+  if (c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+          x86_source_name_mismatch,
+          x86_source_name_mismatch_block,
+          *x86_source_name_mismatch_call,
+          0,
+          0,
+          0,
+          x86_source_name_mismatch_call->args.front())) {
+    return fail(
+        "x86 Route 6 consumed-plans helper should consume Route 6 ArgumentValue record compatibility, not same-id local inference");
   }
 
   c4c::backend::x86::ConsumedPlans x86_no_route6 = x86_consumed;
