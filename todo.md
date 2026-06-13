@@ -1,47 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/242_phase_e5_route6_scalar_call_use_source_identity_row_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Implement The Agreement-Gated Adapter
+Current Step ID: Step 3
+Current Step Title: Prove Fallback And Public Compatibility
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 implemented the smallest local agreement-gated adapter around the
-selected AArch64 call-result source register Route 6 evidence reader.
-`call_result_source_register_route6_evidence(...)` now accepts
-`bir::route6_find_call_result_source(...)` only when the returned Route 6
-result identity agrees with the prepared destination value name from the
-prepared value home.
+Step 3 proved fallback and public compatibility for the selected Route 6
+call-result source adapter using existing Step 2 coverage; no additional tests
+were needed.
 
-The new local helper
-`route6_call_result_source_agrees_with_prepared(...)` first honors a Route 6
-`result_identity.name_id` when present, then falls back to resolving the Route
-6 result value through the existing prepared name table. Missing, invalid,
-duplicate, unavailable, prepared-mismatch, Route 6 identity-mismatch, or
-non-agreement paths continue to report
-`CallResultSourceRegisterRoute6Evidence::Fallback`.
+`backend_aarch64_call_boundary_owner` now covers the selected positive
+agreement row and explicit fallback/non-agreement rows for null Route 6 index,
+missing Route 6 fact, invalid call boundary, duplicate/conflicting Route 6
+fact, prepared destination mismatch, and Route 6 identity mismatch. Every row
+also asserts that prepared register publication is preserved: register spelling,
+bank, `CallAbi` role, prepared value id/name, and occupied-register set still
+come from `PreparedCallResultPlan` plus prepared value-home lookups.
 
-The scalar-state publication path remains prepared-owned:
-`record_call_result_source_register(...)` still derives register spelling,
-bank, placement conversion, contiguous width, occupied registers,
-destination value id, and `CallAbi` publication from
-`PreparedCallResultPlan` plus prepared value-home lookups. Route 6 does not
-own ABI placement, frame/register policy, wrapper policy, helper/carrier
-protocol, result lanes, outgoing stack layout, formatting, instruction
-selection, emission policy, or wrapper output.
+Public compatibility remains covered by `backend_prepared_lookup_helper` and
+`backend_prepare_frame_stack_call_contract`: the prepared/BIR call-result
+source identity helper continues to expose only destination value identity,
+Route 6 call-result records expose provenance without ABI placement, result
+lane identity remains nearby same-feature coverage only, and prepared
+late-publication/result-plan helpers remain authoritative for call-plan and
+storage facts.
 
-Focused coverage added one nearby same-feature fallback case in
-`backend_aarch64_call_boundary_owner`: a Route 6 result record with a
-conflicting prepared value-name identity falls back while preserving the
-prepared register publication.
+Idea 238 remains narrow x86 Route 6 scalar `i32` route-debug /
+`ConsumedPlans` evidence only. This Step 3 proof does not claim broad x86,
+riscv, aggregate, wrapper, whole `call_plans`, `PreparedFunctionLookups`,
+`PreparedBirModule`, or draft 155 retirement readiness.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: prove fallback and public compatibility for the
-selected Route 6 call-result source adapter, reusing the same focused proof
-subset unless the supervisor chooses otherwise.
+Execute Step 4 from `plan.md`: perform the route-quality and no-drift audit for
+the selected Route 6 call-result source adapter.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_prepared_lookup_helper|backend_prepare_frame_stack_call_contract|backend_x86_handoff_boundary)$' --output-on-failure > test_after.log
@@ -72,6 +67,10 @@ cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_c
   `backend_x86_handoff_boundary`.
 - Result-lane identity is nearby same-feature coverage, not part of the
   selected implementation row unless the supervisor opens a separate packet.
+- The exact delegated CTest regex currently matched the same three tests as
+  the supervisor baseline: `backend_aarch64_call_boundary_owner`,
+  `backend_prepare_frame_stack_call_contract`, and
+  `backend_prepared_lookup_helper`.
 
 ## Proof
 
