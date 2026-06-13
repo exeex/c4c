@@ -1,42 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/242_phase_e5_route6_scalar_call_use_source_identity_row_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Prove Fallback And Public Compatibility
+Current Step ID: Step 4
+Current Step Title: Validate Target-Policy No-Change Surfaces
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 proved fallback and public compatibility for the selected Route 6
-call-result source adapter using existing Step 2 coverage; no additional tests
-were needed.
+Step 4 validated that the selected Route 6 call-result source adapter did not
+move call policy or output ownership into Route 6.
 
-`backend_aarch64_call_boundary_owner` now covers the selected positive
-agreement row and explicit fallback/non-agreement rows for null Route 6 index,
-missing Route 6 fact, invalid call boundary, duplicate/conflicting Route 6
-fact, prepared destination mismatch, and Route 6 identity mismatch. Every row
-also asserts that prepared register publication is preserved: register spelling,
-bank, `CallAbi` role, prepared value id/name, and occupied-register set still
-come from `PreparedCallResultPlan` plus prepared value-home lookups.
+Files inspected:
+- `src/backend/mir/aarch64/codegen/calls.cpp`
+- `tests/backend/mir/backend_aarch64_call_boundary_owner_test.cpp`
+- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
+- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
+- `tests/backend/bir/backend_x86_handoff_boundary_test.cpp`
+- `tests/backend/bir/CMakeLists.txt`
+- `tests/backend/mir/CMakeLists.txt`
+- `plan.md`
+- `todo.md`
 
-Public compatibility remains covered by `backend_prepared_lookup_helper` and
-`backend_prepare_frame_stack_call_contract`: the prepared/BIR call-result
-source identity helper continues to expose only destination value identity,
-Route 6 call-result records expose provenance without ABI placement, result
-lane identity remains nearby same-feature coverage only, and prepared
-late-publication/result-plan helpers remain authoritative for call-plan and
-storage facts.
+The selected adapter remains limited to
+`call_result_source_register_route6_evidence(...)` and
+`record_call_result_source_register(...)`. Route 6 only decides
+`Agreed`/`Fallback` for semantic result source identity after matching the
+prepared destination value name; register spelling, register bank,
+`CallAbi` role, prepared value id/name, occupied-register set, result lanes,
+stack-home stores, retargeting, and final publication still come from
+`PreparedCallResultPlan`, prepared value-home lookups, prepared after-call lane
+bindings, and AArch64 lowering.
 
-Idea 238 remains narrow x86 Route 6 scalar `i32` route-debug /
-`ConsumedPlans` evidence only. This Step 3 proof does not claim broad x86,
-riscv, aggregate, wrapper, whole `call_plans`, `PreparedFunctionLookups`,
-`PreparedBirModule`, or draft 155 retirement readiness.
+No expectation, baseline, helper rename, unsupported downgrade, facade-only
+move, broad-wrapper claim, named-case shortcut, or wrapper/output relabeling was
+found. No ownership movement was found for ABI placement, frame/register policy,
+call-wrapper policy, helper/carrier protocol, result lanes, outgoing stack
+layout, formatting, instruction selection, emission policy, or wrapper output.
+`backend_aarch64_call_boundary_owner` continues to assert that every selected
+Route 6 evidence case preserves prepared register publication, while
+`backend_prepared_lookup_helper`, `backend_prepare_frame_stack_call_contract`,
+and the x86 handoff boundary registration remain nearby public compatibility
+proof only.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: perform the route-quality and no-drift audit for
-the selected Route 6 call-result source adapter.
+Execute Step 5 from `plan.md`: prepare closure evidence for the selected Route
+6 call-result source adapter without broadening the source idea.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_call_boundary_owner|backend_prepared_lookup_helper|backend_prepare_frame_stack_call_contract|backend_x86_handoff_boundary)$' --output-on-failure > test_after.log
@@ -48,6 +58,10 @@ cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_c
   evidence read only.
 - Do not treat idea 238 as proof beyond x86 Route 6 scalar `i32` route-debug /
   `ConsumedPlans` compatibility.
+- Step 4 did not claim broad x86 call-wrapper migration, route-wide x86
+  readiness, riscv readiness, cross-target wrapper convergence, whole
+  `call_plans`, `PreparedFunctionLookups`, `PreparedBirModule`, or draft 155
+  retirement readiness.
 - Do not delete, privatize, rename, or hide whole `call_plans`,
   `PreparedFunctionLookups`, or `PreparedBirModule`.
 - Do not move ABI placement, frame/register policy, call-wrapper policy,
@@ -71,6 +85,9 @@ cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_c
   the supervisor baseline: `backend_aarch64_call_boundary_owner`,
   `backend_prepare_frame_stack_call_contract`, and
   `backend_prepared_lookup_helper`.
+  `backend_x86_handoff_boundary` remains in the delegated regex but was not
+  matched by the current CTest subset, consistent with the 3/3 supervisor
+  baseline stated for this packet.
 
 ## Proof
 
