@@ -158,3 +158,50 @@ riscv formatting/emission/output no-change proof exist.
 Broad route-wide wrapper migration, aggregate `PreparedFunctionLookups` or
 `PreparedBirModule` contraction, draft 155, and E5 prepared aggregate
 retirement remain deferred and out of scope for this E4 activation.
+
+## Closure-Ready Summary
+
+The closure payload for E4 is this document:
+`docs/bir_prealloc_fusion/phase_e4_cross_target_wrapper_convergence_readiness.md`.
+It links back to the active source idea
+`ideas/open/237_phase_e4_cross_target_wrapper_convergence_readiness.md` and
+uses the candidate readiness table above as the authoritative Step 3 status
+record.
+
+The candidate table is closed for this analysis pass. It records exactly one
+ready row: the x86 Route 6 scalar `i32` argument-source route-debug row and
+`ConsumedPlans` compatibility boundary. Step 4 opened exactly one matching
+follow-up idea:
+`ideas/open/238_phase_e4_x86_route6_scalar_i32_route_debug_consumedplans_compatibility_follow_up.md`.
+No follow-up idea was opened for retained target-local policy rows, retained
+prepared fallback or compatibility-adapter rows, blocked riscv rows, adjacent
+proof rows, or no-action prerequisite context.
+
+Retained-authority decisions remain unchanged at closure. Target ABI, frame,
+register, value-home, formatting, emission, instruction-selection,
+wrapper-output, branch/call policy, move scheduling, and helper/carrier
+protocols stay target-local. Prepared `ConsumedPlans`, prepared call plans,
+prepared edge-publication lookups, selected-value metadata,
+`PreparedFunctionLookups`, `PreparedBirModule`, public prepared debug/call
+fallbacks, diagnostics/oracles, helper names/status labels, supported-path
+contracts, expected strings, and baseline behavior remain compatibility or
+guardrail surfaces unless a later source idea proves a narrower boundary.
+
+All non-ready rows are deferred or retained, not silently converted into
+implementation work. riscv remains blocked until a matching AArch64-proven
+semantic boundary and riscv formatting/emission/output no-change proof are
+named. x86 joined-branch and handoff rows adjacent to Route 5 or Route 7 need
+another exact named semantic proof first. E1, E2, E3, Route 8, aggregate lookup
+contraction, and prepared aggregate retirement remain outside this E4
+implementation authority.
+
+Any implementation follow-up must carry its own proof matrix. The accepted x86
+Route 6 follow-up must prove positive agreement plus absent, invalid,
+duplicate/conflict, mismatch, compatibility fallback, wrapper output,
+route-debug, helper-oracle, expected-string, and baseline-stability behavior
+without weakening expected strings, supported-path status, helper names,
+wrapper output, prepared fallback, or baseline authority.
+
+Draft 155, E5 prepared aggregate retirement, and broad x86, riscv,
+cross-target, call-wrapper, edge-wrapper, branch-wrapper, or wrapper-family
+migration remain unopened by this E4 analysis payload.

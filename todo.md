@@ -8,58 +8,44 @@ Current Step Title: Finalize Closure Notes and Validation
 
 ## Just Finished
 
-Completed `plan.md` Step 4, "Create Accepted One-Boundary Follow-Up Ideas",
-by creating the single accepted follow-up source idea:
+Completed `plan.md` Step 5, "Finalize Closure Notes and Validation", by adding
+the closure-ready summary to:
 
-- `ideas/open/238_phase_e4_x86_route6_scalar_i32_route_debug_consumedplans_compatibility_follow_up.md`
+- `docs/bir_prealloc_fusion/phase_e4_cross_target_wrapper_convergence_readiness.md`
 
-The new idea is scoped only to the x86 Route 6 scalar `i32` argument-source
-route-debug row and `ConsumedPlans` compatibility boundary. It names closed
-idea `232` as the consumed Route 6 scalar source agreement fact, keeps x86
-ABI/call-wrapper/formatting/emission/wrapper-output policy target-local,
-retains prepared call plans and `ConsumedPlans` as compatibility/fallback, and
-requires proof for positive, absent, invalid, duplicate/conflict, mismatch,
-fallback, wrapper output, route-debug, helper-oracle, expected-string, and
-baseline-stability behavior.
+The closure summary names the E4 document path, confirms the candidate table as
+the authoritative Step 3 status record, records the single accepted follow-up
+idea path, restates retained target-local/prepared-fallback/diagnostic/expected
+string/baseline authority, records riscv and adjacent-proof deferrals, and
+explicitly keeps draft 155, E5 prepared aggregate retirement, and broad
+cross-target wrapper migration unopened.
 
-No follow-up idea was created for retained-policy, retained-adapter, blocked,
-or no-action rows.
+Implementation files were untouched.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: finalize closure notes and validation for the
-E4 analysis payload, including the accepted follow-up idea path and the
-retained-authority/deferral decisions.
+Supervisor should assess lifecycle closure for the active E4 analysis plan.
 
 ## Watchouts
 
-- Keep x86 repair evidence separate from AArch64/route-native facts; the new
-  follow-up idea must not be treated as riscv readiness or route-wide x86
-  migration.
-- Step 5 should record exactly one accepted follow-up idea:
+- Exactly one accepted follow-up idea exists for this E4 pass:
   `ideas/open/238_phase_e4_x86_route6_scalar_i32_route_debug_consumedplans_compatibility_follow_up.md`.
-- The x86 compare-join handoff, Route 6 source facts, and selected-value-chain
-  metadata remain retained authority or adapter evidence, not standalone
-  wrapper convergence ideas.
-- riscv remains blocked unless a matching AArch64-proven semantic boundary
-  plus riscv formatting/emission/output proof is named.
-- Do not weaken expected strings, supported-path status, helper names, wrapper
-  output, helper-oracle behavior, or baselines as proof.
-- Broad route-wide wrapper migration, aggregate `PreparedFunctionLookups` or
-  `PreparedBirModule` contraction, draft 155, and E5 prepared aggregate
-  retirement remain deferred and out of scope.
+- Do not treat the accepted x86 Route 6 route-debug compatibility boundary as
+  riscv readiness, broad x86 call-wrapper migration, or route-wide wrapper
+  migration.
+- riscv remains blocked until a matching AArch64-proven semantic boundary plus
+  riscv formatting/emission/output no-change proof is named.
+- Draft 155, E5, aggregate prepared retirement, and broad wrapper migration
+  remain unopened by this plan.
 
 ## Proof
 
 Analysis/lifecycle-only packet. Delegated proof:
 
-- inspected `ideas/closed/232_phase_e3_route6_x86_scalar_i32_argument_source_route_debug_follow_up.md`
-- inspected current `plan.md`, `todo.md`, the active source idea, and the E4
-  readiness document
-- `git diff -- ideas/open/238_phase_e4_x86_route6_scalar_i32_route_debug_consumedplans_compatibility_follow_up.md todo.md`
-- `git diff --check -- ideas/open/238_phase_e4_x86_route6_scalar_i32_route_debug_consumedplans_compatibility_follow_up.md todo.md`
+- `rg -n "phase_e4_cross_target_wrapper_convergence_readiness.md|238_phase_e4_x86_route6_scalar_i32_route_debug_consumedplans_compatibility_follow_up.md|Draft 155|E5|broad|unopened|proof|riscv" docs/bir_prealloc_fusion/phase_e4_cross_target_wrapper_convergence_readiness.md todo.md`
+- `git diff -- docs/bir_prealloc_fusion/phase_e4_cross_target_wrapper_convergence_readiness.md todo.md`
+- `git diff --check -- docs/bir_prealloc_fusion/phase_e4_cross_target_wrapper_convergence_readiness.md todo.md`
 - `git status --short`
 
-No build or CTest required because only a follow-up source idea and `todo.md`
-were edited. No new `test_after.log` was written for this lifecycle/docs
-packet.
+No build or CTest required because only docs/lifecycle files were edited. No
+new `test_after.log` was written for this docs-only packet.
