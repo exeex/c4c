@@ -213,6 +213,108 @@ same_block_scalar_producer_for_scratch_hazard(
   return prepared_shape_same_block_scalar_producer(context, *producer);
 }
 
+[[nodiscard]] std::optional<prepare::PreparedSameBlockGlobalLoadAccess>
+prepared_same_block_global_load_access(
+    const module::BlockLoweringContext& context,
+    const mir::SameBlockScalarProducer& producer) {
+  if (context.function.prepared == nullptr) {
+    return std::nullopt;
+  }
+  const auto* addressing =
+      context.function.control_flow != nullptr
+          ? prepare::find_prepared_addressing(
+                *context.function.prepared,
+                context.function.control_flow->function_name)
+          : nullptr;
+  const auto prepared_shape_producer =
+      prepared_shape_same_block_scalar_producer(context, producer);
+  if (!prepared_shape_producer.has_value()) {
+    return std::nullopt;
+  }
+  return prepare::find_prepared_same_block_global_load_access(
+      context.function.prepared->names, addressing, *prepared_shape_producer);
+}
+
+[[nodiscard]] bool same_block_global_load_identity_agrees_with_prepared(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    const prepare::PreparedSameBlockGlobalLoadAccess& prepared_access,
+    const mir::BirSameBlockGlobalLoadAccessIdentity& route3) {
+  if (context.bir_block == nullptr ||
+      context.control_flow_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty() ||
+      prepared_access.load_global == nullptr ||
+      prepared_access.access == nullptr ||
+      prepared_access.access->block_label !=
+          context.control_flow_block->block_label ||
+      prepared_access.access->inst_index >= context.bir_block->insts.size()) {
+    return false;
+  }
+  const auto& prepared_inst =
+      context.bir_block->insts[prepared_access.access->inst_index];
+  if (std::get_if<bir::LoadGlobalInst>(&prepared_inst) !=
+      prepared_access.load_global) {
+    return false;
+  }
+  return route3.load_global == prepared_access.load_global &&
+         route3.producer.inst == &prepared_inst &&
+         route3.producer.kind == mir::SameBlockProducerKind::LoadGlobal &&
+         route3.producer.instruction_index == prepared_access.access->inst_index &&
+         route3.producer.before_instruction_index == before_instruction_index &&
+         route3.memory_access.inst == &prepared_inst &&
+         route3.memory_access.block_label == context.bir_block->label &&
+         route3.memory_access.instruction_index ==
+             prepared_access.access->inst_index &&
+         route3.memory_access.node_kind ==
+             mir::BirMemoryAccessNodeKind::LoadGlobal &&
+         route3.memory_access.base_kind ==
+             mir::BirMemoryAccessBaseKind::GlobalSymbol &&
+         route3.memory_access.result_value_name ==
+             std::string_view{value.name} &&
+         route3.result_value.name == std::string_view{value.name} &&
+         route3.result_value.type == value.type &&
+         route3.root_value_name == std::string_view{value.name} &&
+         route3.root_value_type == value.type &&
+         route3.before_instruction_index == before_instruction_index &&
+         prepared_access.access->address.base_kind ==
+             prepare::PreparedAddressBaseKind::GlobalSymbol &&
+         prepared_access.access->address.symbol_name.has_value() &&
+         route3.memory_access.global_name_id ==
+             *prepared_access.access->address.symbol_name;
+}
+
+[[nodiscard]] std::optional<prepare::PreparedSameBlockGlobalLoadAccess>
+route3_agreed_same_block_global_load_access(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    const prepare::PreparedSameBlockGlobalLoadAccess& prepared_access) {
+  const auto route3 = mir::find_bir_same_block_global_load_access_identity(
+      mir::BirSameBlockGlobalLoadAccessRequest{
+          .block = context.bir_block,
+          .block_label = context.bir_block != nullptr
+                             ? std::string_view{context.bir_block->label}
+                             : std::string_view{},
+          .root_value = &value,
+          .root_value_name = value.kind == bir::Value::Kind::Named
+                                 ? std::string_view{value.name}
+                                 : std::string_view{},
+          .root_value_type = value.type,
+          .before_instruction_index = before_instruction_index,
+      });
+  if (!route3 ||
+      !same_block_global_load_identity_agrees_with_prepared(
+          context, value, before_instruction_index, prepared_access, route3)) {
+    return std::nullopt;
+  }
+  return prepare::PreparedSameBlockGlobalLoadAccess{
+      .load_global = route3.load_global,
+      .access = prepared_access.access,
+  };
+}
+
 }  // namespace
 
 [[nodiscard]] bool emit_value_publication_to_register(
@@ -388,51 +490,15 @@ same_block_scalar_producer_for_scratch_hazard(
                                                  lines,
                                                  fixed_slots_use_frame_pointer(context.function));
     }
-    const auto global_load_identity =
-        mir::find_bir_same_block_global_load_access_identity(
-            mir::BirSameBlockGlobalLoadAccessRequest{
-                .block = context.bir_block,
-                .block_label = context.bir_block != nullptr
-                                   ? std::string_view{context.bir_block->label}
-                                   : std::string_view{},
-                .root_value = &value,
-                .before_instruction_index = before_instruction_index,
-            });
-    if (global_load_identity) {
-      const auto* prepared_access =
-          prepared_memory_access(context, global_load_identity.producer.instruction_index);
-      if (!prepared_memory_access_matches_instruction(
-              context, prepared_access, *global_load_identity.producer.inst)) {
-        return false;
+    auto prepared_access =
+        prepared_same_block_global_load_access(context, *producer_context);
+    if (prepared_access.has_value()) {
+      if (auto route3_access = route3_agreed_same_block_global_load_access(
+              context, value, before_instruction_index, *prepared_access);
+          route3_access.has_value()) {
+        prepared_access = *route3_access;
       }
-      return emit_prepared_global_load_to_register(context,
-                                                  *global_load_identity.load_global,
-                                                  *prepared_access,
-                                                  target_index,
-                                                  scratch_index,
-                                                  lines);
     }
-    const auto* addressing =
-        context.function.prepared != nullptr && context.function.control_flow != nullptr
-            ? prepare::find_prepared_addressing(
-                  *context.function.prepared,
-                  context.function.control_flow->function_name)
-            : nullptr;
-    const auto prepared_access =
-        context.function.prepared != nullptr
-            ? [&]() -> std::optional<prepare::PreparedSameBlockGlobalLoadAccess> {
-                const auto prepared_shape_producer =
-                    prepared_shape_same_block_scalar_producer(
-                        context, *producer_context);
-                if (!prepared_shape_producer.has_value()) {
-                  return std::nullopt;
-                }
-                return prepare::find_prepared_same_block_global_load_access(
-                    context.function.prepared->names,
-                    addressing,
-                    *prepared_shape_producer);
-              }()
-            : std::nullopt;
     return prepared_access.has_value() &&
            prepared_access->load_global != nullptr &&
            prepared_access->access != nullptr &&
