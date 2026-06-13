@@ -104,3 +104,22 @@ The implementation is not acceptance-ready until proof covers:
 - `ConsumedPlans`, prepared call plans, prepared fallback, or helper-oracle
   compatibility is deleted, bypassed, or hidden behind a new abstraction name
   while preserving the old failure mode.
+
+## Closure Notes
+
+Closed after the active runbook completed all five steps. The accepted slice
+keeps the scope to the selected x86 Route 6 scalar `i32` argument-source
+route-debug boundary: the positive path consumes the Route 6 source-record
+agreement helper while x86 still owns the prepared `source_value_id` /
+`ConsumedPlans` compatibility check and target-local call-wrapper policy.
+
+Acceptance proof recorded in `todo.md` before closure:
+
+- narrow regression guard passed for `test_before.log` vs `test_after.log`,
+  with `backend_prepared_lookup_helper` and `backend_x86_route_debug` passing
+  `2/2`;
+- broader x86 backend validation passed `182/182`;
+- route-quality review found no testcase-overfit, no scope drift, and no broad
+  x86 or riscv wrapper-readiness claim.
+
+No follow-up is required for this idea.
