@@ -147,3 +147,21 @@ The closure note must contain:
 - Moving target ABI/layout/register/formatting/emission policy into BIR or
   route authority.
 - Opening draft 155 or claiming broad prepared retirement from E4 readiness.
+
+## Closure Note
+
+Closed after the E4 analysis runbook completed all five steps. The durable
+analysis payload is:
+
+- `docs/bir_prealloc_fusion/phase_e4_cross_target_wrapper_convergence_readiness.md`
+
+That document contains the candidate-by-candidate readiness table, retained
+target-local and prepared-fallback authority decisions, expected-string and
+baseline guardrails, phase deferrals, and closure-ready summary required by
+this idea. E4 accepted exactly one implementation follow-up, which remains
+open:
+
+- `ideas/open/238_phase_e4_x86_route6_scalar_i32_route_debug_consumedplans_compatibility_follow_up.md`
+
+riscv readiness, broad x86 or cross-target wrapper migration, aggregate
+prepared retirement, draft 155, and E5 remain unopened by this closure.

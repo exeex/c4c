@@ -7,7 +7,7 @@ consume the proven Route 6 scalar source agreement fact while retaining
 `ConsumedPlans` compatibility and all x86 target-local call-wrapper policy.
 
 This idea is the single accepted Phase E4 follow-up from
-`ideas/open/237_phase_e4_cross_target_wrapper_convergence_readiness.md`.
+`ideas/closed/237_phase_e4_cross_target_wrapper_convergence_readiness.md`.
 
 ## Why This Exists
 

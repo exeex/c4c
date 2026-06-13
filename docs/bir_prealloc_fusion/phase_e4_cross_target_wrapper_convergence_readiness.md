@@ -1,7 +1,7 @@
 # Phase E4 Cross-Target Wrapper Convergence Readiness
 
 Linked source idea:
-`ideas/open/237_phase_e4_cross_target_wrapper_convergence_readiness.md`.
+`ideas/closed/237_phase_e4_cross_target_wrapper_convergence_readiness.md`.
 
 This document is the durable Phase E4 analysis surface for deciding which
 exact x86 or riscv wrapper, route-debug, handoff, or wrapper-adjacent
@@ -164,7 +164,7 @@ retirement remain deferred and out of scope for this E4 activation.
 The closure payload for E4 is this document:
 `docs/bir_prealloc_fusion/phase_e4_cross_target_wrapper_convergence_readiness.md`.
 It links back to the active source idea
-`ideas/open/237_phase_e4_cross_target_wrapper_convergence_readiness.md` and
+`ideas/closed/237_phase_e4_cross_target_wrapper_convergence_readiness.md` and
 uses the candidate readiness table above as the authoritative Step 3 status
 record.
 
