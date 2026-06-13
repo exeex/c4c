@@ -97,3 +97,52 @@ The implementation is not acceptance-ready until proof covers:
 - The implementation adds named-case shortcuts, fixture-shaped matching, or
   special handling for one known memory testcase instead of consuming a real
   semantic source identity fact.
+
+## Closure Note
+
+Closed after implementing and proving one narrow Route 3 memory/source identity
+adapter for the AArch64 dispatch value-materialization same-block global-load
+identity read.
+
+Completed scope:
+
+- selected reader:
+  `mir::find_bir_same_block_global_load_access_identity(...)` in the
+  `LoadGlobalInst` producer branch of
+  `src/backend/mir/aarch64/codegen/dispatch_value_materialization.cpp`;
+- adapter boundary:
+  `route3_agreed_same_block_global_load_access(...)`, which accepts the Route
+  3 semantic identity only when it agrees with the prepared same-block
+  global-load access returned by
+  `prepare::find_prepared_same_block_global_load_access(...)`;
+- fallback behavior: missing or non-agreeing Route 3 identity, unsupported
+  producer shape, and policy-sensitive cases remain on the existing prepared
+  path;
+- target-policy ownership: address formation, materialization, relocation,
+  final operands, value homes, wrappers, diagnostics, fallback, and target
+  emission policy continue through the prepared path, including
+  `emit_prepared_global_load_to_register(...)`;
+- public compatibility evidence remains covered by
+  `backend_prepared_lookup_helper`,
+  `backend_aarch64_instruction_dispatch`, and
+  `backend_aarch64_prepared_memory_operand_records`.
+
+Close-time regression guard passed with:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+The canonical logs use the same delegated subset:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_prepared_memory_operand_records|backend_prepared_lookup_helper|backend_aarch64_instruction_dispatch)$' --output-on-failure > test_after.log
+```
+
+Result: before 3/3 passed, after 3/3 passed, no new failing tests.
+
+This closure does not claim whole `memory_accesses`,
+`PreparedFunctionLookups`, `PreparedBirModule`, or draft 155 retirement,
+deletion, hiding, privatization, replacement, or aggregate readiness. It also
+does not claim broad Route 3 reader coverage beyond the selected same-block
+global-load adapter.
