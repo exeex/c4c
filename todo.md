@@ -1,48 +1,62 @@
 Status: Active
 Source Idea Path: ideas/open/241_phase_e5_route45_edge_publication_identity_adapter_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Prove Fallback And Public Compatibility
+Current Step ID: Step 4
+Current Step Title: Validate Target-Policy No-Change Surfaces
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 proved fallback and public compatibility for the selected
-`current_block_join_prepared_query_source(...)` Route 5 reader. Existing focused
-tests were explicit enough, so no new tests were added.
+Step 4 validated the target-policy no-change surfaces for the selected
+`current_block_join_prepared_query_source(...)` Route 5 reader.
 
-Coverage accepted:
+Files inspected:
 
-- `backend_aarch64_current_block_join_routing` covers the selected positive
-  agreement path where the indexed Route 5 source identity agrees with the
-  prepared current-block join source fact and sets `routing.sources`.
-- The same routing test covers relevant fallback/non-agreement behavior:
-  missing prepared policy, missing predecessor, mismatched source, no-source
-  Route 5 evidence, duplicate/conflicting Route 5 evidence, memory-source policy
-  evidence, absent Route 5 identity, and adjacent non-source producer rows.
-- `backend_prepared_lookup_helper` covers public helper/oracle compatibility
-  for `prepare_current_block_join_parallel_copy_source_facts(...)`, including
-  agreeing Route 5 evidence, prepared-only rows, empty Route 5 index,
-  no-source, source mismatch, destination mismatch, memory-source evidence,
-  duplicate evidence, wrong predecessor/successor, and nearby immediate,
-  stack-source, unsupported move, and adjacent prepared-owned facts.
-- `backend_aarch64_instruction_dispatch` keeps the dispatch-level same-feature
-  current-block join routing path in the focused subset, alongside nearby Route
-  4/5 edge-publication and join-source consumers.
+- `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `tests/backend/mir/backend_aarch64_current_block_join_routing_test.cpp`
+- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
+- `tests/backend/mir/CMakeLists.txt`
+- `tests/backend/bir/CMakeLists.txt`
+
+No-change evidence:
+
+- `build_current_block_join_prepared_query_routing(...)` still builds only the
+  selected semantic source bit, accepting Route 5 source identity only after it
+  agrees with the prepared current-block join source facts.
+- `current_block_join_prepared_query_source(...)` remains a read of
+  `routing.sources[instruction_index]`; it does not construct publications,
+  move bundles, homes, storage, block order, wrappers, output text,
+  instruction selection, or emission policy.
+- `dispatch.cpp` still uses the selected source answer only to skip the already
+  published current-block join source instruction; adjacent lowering branches
+  still own move scheduling, storage/home policy, memory/address handling,
+  scalar lowering, instruction construction, and final emission behavior.
+- `backend_aarch64_current_block_join_routing` and
+  `backend_prepared_lookup_helper` keep the prepared public helper/oracle and
+  fallback rows authoritative for no-source, memory-source, duplicate/conflict,
+  mismatch, missing route data, unsupported move, and adjacent prepared-owned
+  facts.
+- There were no expectation rewrites, baseline refreshes, helper renames,
+  unsupported downgrades, facade-only changes, aggregate reshuffles, or
+  named-case shortcuts in this packet.
+- No ownership moved for publication construction, move/home/storage policy,
+  block order, wrapper output, formatting, instruction selection, or emission
+  policy.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: validate target-policy no-change surfaces for
-the selected Route 5 current-block join-source adapter using the same focused
-subset unless the supervisor delegates broader proof.
+Execute Step 5 from `plan.md`: prepare closure evidence for the narrow Route 5
+current-block join-source adapter without broadening claims beyond the selected
+semantic reader.
 
 ## Watchouts
 
-- The adapter proof is semantic-only for one source classification reader:
-  `routing.sources[instruction_index]`.
-- `routing.incoming_expressions` still follows the previous Route 5/prepared
-  behavior and was not part of this adapter proof.
+- Closure evidence should stay semantic-only for one source classification
+  reader: `routing.sources[instruction_index]`.
+- `routing.incoming_expressions` follows the previous Route 5/prepared behavior
+  and was not part of this adapter proof.
 - Do not delete, privatize, rename, or hide `edge_publications`,
   `edge_publication_source_producers`, `PreparedFunctionLookups`, or
   `PreparedBirModule`.
