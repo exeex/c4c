@@ -101,3 +101,36 @@ The implementation is not acceptance-ready until proof covers:
 - The implementation adds named-case shortcuts, fixture-shaped matching, or
   special handling for one known edge/join testcase instead of consuming a real
   semantic publication identity fact.
+
+## Closure Note
+
+Closed on 2026-06-13 after implementing and proving one narrow Route 5
+current-block join-source identity adapter.
+
+Accepted scope:
+
+- Selected reader: `current_block_join_prepared_query_source(...)`, backed by
+  `build_current_block_join_prepared_query_routing(...)` in
+  `src/backend/mir/aarch64/codegen/dispatch_producers.cpp`.
+- Selected semantic fact: `routing.sources[instruction_index]`.
+- Adapter boundary: consume the Route 5 current-block join-source identity only
+  after it agrees with the prepared current-block join source answer.
+- Fallback and compatibility proof covered selected positive agreement,
+  no-source, memory-source, duplicate/conflict, mismatch, missing route data,
+  unsupported-move, adjacent prepared-owned facts, public prepared helper/oracle
+  compatibility, and instruction-dispatch compatibility.
+- Close-time regression guard passed with `--allow-non-decreasing-passed` using
+  canonical `test_before.log` and `test_after.log`; before 3/3 passed, after
+  3/3 passed, and no new failing tests were introduced.
+
+Explicit non-claims:
+
+- No whole `edge_publications` retirement readiness is claimed.
+- No whole `edge_publication_source_producers` retirement readiness is claimed.
+- No `PreparedFunctionLookups` or `PreparedBirModule` deletion,
+  privatization, hiding, aggregate replacement, or retirement readiness is
+  claimed.
+- No draft 155 retirement readiness is claimed.
+- Publication construction, parallel-copy scheduling, homes/storage policy,
+  block order, wrappers, output spelling, formatting, instruction selection,
+  and final emission remain prepared/target-owned.
