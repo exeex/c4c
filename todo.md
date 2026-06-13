@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/237_phase_e4_cross_target_wrapper_convergence_readiness.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Draft the E4 Readiness Document Skeleton
+Current Step ID: Step 3
+Current Step Title: Classify Each Candidate Boundary
 
 # Current Packet
 
