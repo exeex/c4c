@@ -38,7 +38,6 @@ namespace c4c::backend::prepare {
 struct PreparedBirModule {
   c4c::backend::bir::Module module;
   c4c::TargetProfile target_profile{};
-  PrepareRoute route = PrepareRoute::SemanticBirShared;
   std::vector<PreparedBirInvariant> invariants;
   PreparedNameTables names;
   PreparedControlFlow control_flow;
@@ -63,10 +62,15 @@ struct PreparedBirModule {
   PreparedI128RuntimeHelpers i128_runtime_helpers;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
+
+ private:
+  friend PrepareRoute prepared_route(const PreparedBirModule& module);
+
+  PrepareRoute route_ = PrepareRoute::SemanticBirShared;
 };
 
 [[nodiscard]] inline PrepareRoute prepared_route(const PreparedBirModule& module) {
-  return module.route;
+  return module.route_;
 }
 
 [[nodiscard]] inline const PreparedRegisterGroupOverride* find_prepared_register_group_override(
@@ -376,13 +380,10 @@ class BirPreAlloc {
               const c4c::TargetProfile& target_profile,
               const PrepareOptions& options = {})
       : options_(options),
-        prepared_{
-            .module = module,
-            .target_profile = target_profile,
-            .route = PrepareRoute::SemanticBirShared,
-            .completed_phases = {},
-            .notes = {},
-        } {}
+        prepared_{} {
+    prepared_.module = module;
+    prepared_.target_profile = target_profile;
+  }
   explicit BirPreAlloc(PreparedBirModule prepared,
                        const PrepareOptions& options = {})
       : options_(options), prepared_(std::move(prepared)) {

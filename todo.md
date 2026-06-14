@@ -1,54 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/255_phase_f3_prepared_private_pass_context_metadata_gate.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Accessor Or Adapter Shape
+Current Step ID: 4
+Current Step Title: Field-Scoped Demotion Slice
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Accessor Or Adapter Shape completed for `PreparedBirModule::route`.
-The selected shape is the inline read-only accessor
-`prepared_route(const PreparedBirModule&)`, with `prepare::print` reading the
-route through that accessor before calling `prepare_route_name(...)`.
+Step 4 - Field-Scoped Demotion Slice completed for `PreparedBirModule::route`.
+Route storage was demoted from the public `route` field to private `route_`;
+the accepted read surface remains `prepared_route(const PreparedBirModule&)`.
 
 Compatibility surface preserved:
 
-- Header output remains `prepared.module target=<triple>
-  route=semantic_bir_shared`; no printer text, route names, or fallback route
-  behavior changed.
-- The accessor returns the stored `PrepareRoute` value unchanged, so invalid
-  enum values still flow through `prepare_route_name(...) == "unknown"` rather
-  than gaining a new interpretation.
-- Debug compatibility remains indirect through the prepared dump surface used
-  by existing route-debug coverage; no x86 debug text was changed.
+- Header output continues to route through `prepare_route_name(prepared_route(module))`,
+  so the prepared printer contract remains unchanged.
+- The stored value still defaults to `PrepareRoute::SemanticBirShared`.
+- The only route-specific designated initializer in `BirPreAlloc` was replaced
+  with default construction plus assignment to public fields, preserving the
+  same prepared module state without reworking unrelated construction.
 - `PreparedBirModule::liveness`, `invariants`, `completed_phases`, and `notes`
-  remained analysis-only and were not edited.
+  remained public analysis fields and were not edited.
 
-Route decision: ready for a later field-scoped demotion slice. The remaining
-direct public-field reliance for compatibility output is now narrowed to
-`prepared_route(...)`; the storage field itself remains public until Step 4
-decides whether to demote or retain it.
+Route decision: demoted. No external named consumer required retaining
+`PreparedBirModule::route` as public; the remaining access is field-scoped to
+the `prepared_route(...)` helper.
 
 ## Suggested Next
 
-Proceed to Step 4 with a route-only field-scoped demotion or retained-public
-decision. Suggested packet: decide whether `PreparedBirModule::route` can move
-behind the accepted `prepared_route(...)` access point, while preserving
-aggregate construction and the prepared printer header contract exactly.
+Proceed to the next plan step selected by the supervisor. Suggested packet:
+continue the metadata-gate pass with the next single field or consumer family,
+keeping `PreparedBirModule::liveness`, `invariants`, `completed_phases`, and
+`notes` out of any route-only follow-up.
 
 ## Watchouts
 
-- `PreparedBirModule::route` still appears in aggregate initialization and as
-  the accessor implementation detail; Step 4 should avoid breaking designated
-  initialization unless it intentionally changes construction shape.
-- Keep `PreparedBirModule::liveness` out of scope.
-- Do not weaken CLI required snippets or route-debug assertions to make a route
-  demotion compile; preserve compatibility through `prepared_route(...)`.
+- `PreparedBirModule` is no longer an aggregate because `route_` is private;
+  the only observed route-specific designated initializer was the owned
+  `BirPreAlloc` construction path and it was updated narrowly.
+- Keep future access to the route value through `prepared_route(...)`; do not
+  reintroduce direct field access.
 - The delegated proof did not include `backend_x86_route_debug`; route-debug
   compatibility was preserved by leaving debug code untouched and keeping the
-  prepared dump header byte-for-byte.
+  prepared dump header path unchanged.
 
 ## Proof
 
