@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../assembler/mod.hpp"
+#include "../../../bir/bir.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/prealloc.hpp"
 
@@ -65,6 +66,8 @@ struct EdgePublicationMoveIntent {
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_stack_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
   std::optional<std::size_t> destination_stack_size_bytes;
+  std::optional<c4c::backend::bir::Route5PublicationStatus> route5_edge_status;
+  bool route5_edge_source_agrees = false;
   std::string instruction_text;
 };
 
@@ -73,6 +76,13 @@ struct EdgePublicationMoveIntent {
     c4c::BlockLabelId predecessor_label,
     c4c::BlockLabelId successor_label,
     c4c::backend::prepare::PreparedValueId destination_value_id);
+
+[[nodiscard]] EdgePublicationMoveIntent consume_edge_publication_move_intent(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    c4c::backend::prepare::PreparedValueId destination_value_id,
+    const c4c::backend::bir::Route5CfgEdgePublicationRecord* route5_edge);
 
 [[nodiscard]] EdgePublicationMoveIntent append_edge_publication_move_instruction(
     std::string& output,

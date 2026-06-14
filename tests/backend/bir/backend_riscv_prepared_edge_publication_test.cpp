@@ -1626,9 +1626,12 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
     return fail("RISC-V Route 5 oracle should expose agreeing scalar edge identity before authority changes");
   }
   auto intent = riscv::consume_edge_publication_move_intent(
-      &lookups, ids.predecessor, ids.successor, 2);
+      &lookups, ids.predecessor, ids.successor, 2, &route5_edge);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
-                  intent.instruction_text == "mv a1, a0",
+                  intent.instruction_text == "mv a1, a0" &&
+                  intent.route5_edge_status ==
+                      bir::Route5PublicationStatus::Available &&
+                  intent.route5_edge_source_agrees,
               "RISC-V scalar edge output should stay prepared-backed with agreeing Route 5 facts")) {
     return 1;
   }
@@ -1666,10 +1669,13 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
     return fail("RISC-V Route 5 oracle should expose duplicate, mismatch, and absence diagnostic rows");
   }
   intent = riscv::consume_edge_publication_move_intent(
-      &lookups, ids.predecessor, ids.successor, 2);
+      &lookups, ids.predecessor, ids.successor, 2, &mismatched_route5_edge);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
-                  intent.instruction_text == "mv a1, a0",
-              "RISC-V scalar edge output should ignore unusable Route 5 diagnostics until authority changes")) {
+                  intent.instruction_text == "mv a1, a0" &&
+                  intent.route5_edge_status ==
+                      bir::Route5PublicationStatus::NoMatch &&
+                  !intent.route5_edge_source_agrees,
+              "RISC-V scalar edge output should preserve prepared fallback on non-agreeing Route 5 facts")) {
     return 1;
   }
 
@@ -1719,9 +1725,12 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
     return fail("RISC-V Route 5/Route 3 oracle should expose agreeing dynamic memory-source identity");
   }
   intent = riscv::consume_edge_publication_move_intent(
-      &lookups, dynamic_ids.predecessor, dynamic_ids.successor, 2);
+      &lookups, dynamic_ids.predecessor, dynamic_ids.successor, 2, &route5_memory_edge);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
-                  intent.instruction_text == "lw a1, 12(s2)",
+                  intent.instruction_text == "lw a1, 12(s2)" &&
+                  intent.route5_edge_status ==
+                      bir::Route5PublicationStatus::MemorySource &&
+                  intent.route5_edge_source_agrees,
               "RISC-V dynamic memory-source output should stay prepared-backed with agreeing Route 3 facts")) {
     return 1;
   }
