@@ -131,6 +131,17 @@ const c4c::backend::prepare::PreparedFrameSlot* find_prepared_frame_slot_by_id(
   return nullptr;
 }
 
+const c4c::backend::prepare::PreparedStackObject* find_prepared_stack_object_by_id(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    c4c::backend::prepare::PreparedObjectId object_id) {
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == object_id) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
 std::string render_global_i32_memory_operand(const Data& data,
                                              std::string_view global_name,
                                              std::size_t byte_offset) {
@@ -3337,6 +3348,16 @@ std::optional<std::string> render_prepared_local_slot_statement_memory_operand(
     std::optional<c4c::ValueNameId> expected_result,
     std::optional<c4c::ValueNameId> expected_stored_value);
 
+std::optional<std::string> render_agreed_route3_load_local_statement_memory_operand(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::x86::ConsumedPlans& consumed,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const c4c::backend::bir::Block& block,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadLocalInst& load,
+    c4c::ValueNameId expected_result);
+
 const c4c::backend::bir::Function* find_defined_same_module_function(
     const c4c::backend::bir::Module& module,
     std::string_view function_name) {
@@ -3695,18 +3716,23 @@ bool append_prepared_symbol_call_local_i32_function(
         throw_prepared_value_location_handoff_error("defined function '" + function.name +
                                                     "' has an unsupported prepared local-slot load home");
       }
-      const auto memory = render_local_slot_memory(load->result.type,
-                                                   instruction_index,
-                                                   *loaded_value,
-                                                   std::nullopt);
-      if (!memory.has_value()) {
+      const auto agreed_memory =
+          render_agreed_route3_load_local_statement_memory_operand(module,
+                                                                   consumed,
+                                                                   *addressing,
+                                                                   block,
+                                                                   *block_label,
+                                                                   instruction_index,
+                                                                   *load,
+                                                                   *loaded_value);
+      if (!agreed_memory.has_value()) {
         throw_prepared_value_location_handoff_error(
             "defined function '" + function.name +
-            "' local-slot load has no prepared frame-slot access");
+            "' local-slot load has no agreed Route 3 source-memory publication");
       }
       const auto load_register =
           c4c::backend::x86::abi::narrow_i32_register_name(*load_home.register_name);
-      function_out.append_line("    mov " + load_register + ", " + *memory);
+      function_out.append_line("    mov " + load_register + ", " + *agreed_memory);
       loaded_i32_values[load->result.name] = load_register;
       continue;
     }
@@ -3775,6 +3801,7 @@ bool append_prepared_short_circuit_return_leaf(
 bool append_prepared_local_slot_scalar_guard_successor(
     c4c::backend::x86::core::Text& function_out,
     const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::x86::ConsumedPlans& consumed,
     const c4c::backend::prepare::PreparedAddressingFunction& addressing,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
@@ -3812,6 +3839,208 @@ std::optional<std::string_view> prepared_branch_condition_named_operand(
     return branch_condition.rhs->name;
   }
   return std::nullopt;
+}
+
+bool route3_local_slot_matches_prepared_frame_slot(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Route3MemoryAccessRecord& route3_access,
+    c4c::backend::prepare::PreparedFrameSlotId frame_slot_id) {
+  if (!route3_access ||
+      route3_access.base_kind != c4c::backend::bir::Route3MemoryAccessBaseKind::LocalSlot) {
+    return false;
+  }
+  const auto* frame_slot = find_prepared_frame_slot_by_id(module.stack_layout, frame_slot_id);
+  if (frame_slot == nullptr) {
+    throw_prepared_value_location_handoff_error(
+        "Route 3 source-memory publication has no prepared frame slot");
+  }
+  const auto* object = find_prepared_stack_object_by_id(module.stack_layout,
+                                                        frame_slot->object_id);
+  if (object == nullptr || !object->slot_name.has_value()) {
+    throw_prepared_value_location_handoff_error(
+        "Route 3 source-memory publication prepared frame slot has no stack object");
+  }
+  const auto prepared_slot_name =
+      c4c::backend::prepare::prepared_slot_name(module.names, *object->slot_name);
+  if (prepared_slot_name.empty()) {
+    return false;
+  }
+  if (route3_access.local_slot_id != c4c::kInvalidSlotName) {
+    return module.module.names.slot_names.spelling(route3_access.local_slot_id) ==
+           prepared_slot_name;
+  }
+  return !route3_access.local_slot_name.empty() &&
+         route3_access.local_slot_name == prepared_slot_name;
+}
+
+bool route3_load_local_source_memory_matches_publication(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Route3MemoryAccessRecord& route3_access,
+    const c4c::backend::prepare::PreparedEdgePublication& publication) {
+  if (!route3_access ||
+      publication.status !=
+          c4c::backend::prepare::PreparedEdgePublicationLookupStatus::Available ||
+      publication.source_producer_kind !=
+          c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      publication.source_memory_access_status !=
+          c4c::backend::prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available ||
+      publication.source_memory_access == nullptr ||
+      publication.source_memory_base_kind !=
+          c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
+      !publication.source_memory_frame_slot_id.has_value() ||
+      !route3_local_slot_matches_prepared_frame_slot(
+          module, route3_access, *publication.source_memory_frame_slot_id)) {
+    return false;
+  }
+  return publication.source_memory_address_space == route3_access.address_space &&
+         publication.source_memory_is_volatile == route3_access.is_volatile &&
+         publication.source_memory_byte_offset == route3_access.byte_offset &&
+         publication.source_memory_size_bytes == route3_access.size_bytes &&
+         publication.source_memory_align_bytes == route3_access.align_bytes &&
+         publication.source_memory_can_use_base_plus_offset;
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess*
+find_agreed_route3_load_local_source_memory_access(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::x86::ConsumedPlans& consumed,
+    const c4c::backend::bir::Block& block,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadLocalInst& load,
+    c4c::ValueNameId prepared_result) {
+  const auto* lookups = consumed.shared_function_lookups();
+  if (lookups == nullptr ||
+      load.result.kind != c4c::backend::bir::Value::Kind::Named ||
+      load.result.type == c4c::backend::bir::TypeKind::Void) {
+    return nullptr;
+  }
+
+  const auto route3_index = c4c::backend::bir::route3_build_memory_access_index(block);
+  const auto* route3_access =
+      c4c::backend::bir::route3_find_memory_access_record(
+          route3_index,
+          instruction_index,
+          c4c::backend::bir::Route3MemoryAccessNodeKind::LoadLocal);
+  if (route3_access == nullptr ||
+      route3_access->block_label_id != block.label_id ||
+      route3_access->result_value.value_kind != c4c::backend::bir::Value::Kind::Named ||
+      route3_access->result_value.name != load.result.name ||
+      route3_access->result_value.type != load.result.type) {
+    return nullptr;
+  }
+
+  const c4c::backend::prepare::PreparedMemoryAccess* agreed_access = nullptr;
+  for (const auto& publication : lookups->edge_publications.publications) {
+    if (!publication.source_producer_block_label.has_value() ||
+        !publication.source_producer_instruction_index.has_value() ||
+        *publication.source_producer_block_label != block_label ||
+        *publication.source_producer_instruction_index != instruction_index ||
+        publication.source_value_name != prepared_result) {
+      continue;
+    }
+    if (!route3_load_local_source_memory_matches_publication(
+            module, *route3_access, publication)) {
+      return nullptr;
+    }
+    if (agreed_access != nullptr &&
+        agreed_access != publication.source_memory_access) {
+      return nullptr;
+    }
+    agreed_access = publication.source_memory_access;
+  }
+  return agreed_access;
+}
+
+bool has_prepared_load_local_source_publication_candidate(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  if (lookups == nullptr) {
+    return false;
+  }
+  return std::any_of(lookups->edge_publications.publications.begin(),
+                     lookups->edge_publications.publications.end(),
+                     [&](const c4c::backend::prepare::PreparedEdgePublication& publication) {
+    return publication.source_producer_kind ==
+               c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal &&
+           publication.source_producer_block_label.has_value() &&
+           publication.source_producer_instruction_index.has_value() &&
+           *publication.source_producer_block_label == block_label &&
+           *publication.source_producer_instruction_index == instruction_index;
+  });
+}
+
+std::optional<std::string> render_agreed_route3_load_local_statement_memory_operand(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::x86::ConsumedPlans& consumed,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const c4c::backend::bir::Block& block,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadLocalInst& load,
+    c4c::ValueNameId expected_result) {
+  const auto* agreed_access =
+      find_agreed_route3_load_local_source_memory_access(module,
+                                                         consumed,
+                                                         block,
+                                                         block_label,
+                                                         instruction_index,
+                                                         load,
+                                                         expected_result);
+  if (agreed_access == nullptr) {
+    const auto* compatibility_access =
+        c4c::backend::prepare::find_prepared_memory_access(addressing,
+                                                           block_label,
+                                                           instruction_index);
+    if (compatibility_access != nullptr &&
+        compatibility_access->address.base_kind ==
+            c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot &&
+        compatibility_access->address.frame_slot_id.has_value() &&
+        find_prepared_frame_slot_by_id(module.stack_layout,
+                                       *compatibility_access->address.frame_slot_id) == nullptr) {
+      throw_prepared_value_location_handoff_error(
+          "local-slot load compatibility access has no prepared frame slot");
+    }
+    const auto route3_index = c4c::backend::bir::route3_build_memory_access_index(block);
+    const auto* route3_access =
+        c4c::backend::bir::route3_find_memory_access_record(
+            route3_index,
+            instruction_index,
+            c4c::backend::bir::Route3MemoryAccessNodeKind::LoadLocal);
+    if (route3_access == nullptr ||
+        !has_prepared_load_local_source_publication_candidate(
+            consumed.shared_function_lookups(), block_label, instruction_index)) {
+      return render_prepared_local_slot_statement_memory_operand(module,
+                                                                 addressing,
+                                                                 block_label,
+                                                                 instruction_index,
+                                                                 load.result.type,
+                                                                 expected_result,
+                                                                 std::nullopt);
+    }
+    return std::nullopt;
+  }
+  const auto memory =
+      render_prepared_local_slot_statement_memory_operand(module,
+                                                          addressing,
+                                                          block_label,
+                                                          instruction_index,
+                                                          load.result.type,
+                                                          expected_result,
+                                                          std::nullopt);
+  if (!memory.has_value()) {
+    return std::nullopt;
+  }
+  const auto* rendered_access =
+      c4c::backend::prepare::find_prepared_memory_access(addressing,
+                                                         block_label,
+                                                         instruction_index);
+  if (rendered_access != agreed_access) {
+    throw_prepared_value_location_handoff_error(
+        "local-slot load drifted from agreed Route 3 source-memory publication");
+  }
+  return memory;
 }
 
 std::optional<std::string> render_prepared_frame_slot_memory_operand(
@@ -3866,6 +4095,7 @@ std::optional<std::string> render_prepared_frame_slot_memory_operand(
 
 std::optional<PreparedLocalSlotCompareLoad> find_prepared_local_slot_compare_load(
     const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::x86::ConsumedPlans& consumed,
     const c4c::backend::prepare::PreparedAddressingFunction& addressing,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
     const c4c::backend::bir::Function& function,
@@ -3905,21 +4135,22 @@ std::optional<PreparedLocalSlotCompareLoad> find_prepared_local_slot_compare_loa
       throw_prepared_value_location_handoff_error("defined function '" + function.name +
                                                   "' short-circuit compare load has no prepared value id");
     }
-    const auto* access =
-        c4c::backend::prepare::find_prepared_memory_access(addressing, block_label, index);
     const auto memory =
-        render_prepared_local_slot_statement_memory_operand(module,
-                                                            addressing,
-                                                            block_label,
-                                                            index,
-                                                            load->result.type,
-                                                            *prepared_value_name,
-                                                            std::nullopt);
+        render_agreed_route3_load_local_statement_memory_operand(module,
+                                                                 consumed,
+                                                                 addressing,
+                                                                 block,
+                                                                 block_label,
+                                                                 index,
+                                                                 *load,
+                                                                 *prepared_value_name);
     if (!memory.has_value()) {
       throw_prepared_value_location_handoff_error(
           "defined function '" + function.name +
-          "' short-circuit compare load has no prepared frame-slot access");
+          "' short-circuit compare load has no agreed Route 3 source-memory publication");
     }
+    const auto* access =
+        c4c::backend::prepare::find_prepared_memory_access(addressing, block_label, index);
     return PreparedLocalSlotCompareLoad{
         .load = load,
         .instruction_index = index,
@@ -3954,21 +4185,22 @@ std::optional<PreparedLocalSlotCompareLoad> find_prepared_local_slot_compare_loa
             "defined function '" + function.name +
             "' short-circuit compare load has no prepared value id");
       }
-      const auto* access =
-          c4c::backend::prepare::find_prepared_memory_access(addressing, block_label, load_index);
       const auto memory =
-          render_prepared_local_slot_statement_memory_operand(module,
-                                                              addressing,
-                                                              block_label,
-                                                              load_index,
-                                                              load->result.type,
-                                                              *prepared_value_name,
-                                                              std::nullopt);
+          render_agreed_route3_load_local_statement_memory_operand(module,
+                                                                   consumed,
+                                                                   addressing,
+                                                                   block,
+                                                                   block_label,
+                                                                   load_index,
+                                                                   *load,
+                                                                   *prepared_value_name);
       if (!memory.has_value()) {
         throw_prepared_value_location_handoff_error(
             "defined function '" + function.name +
-            "' short-circuit compare load has no prepared frame-slot access");
+            "' short-circuit compare load has no agreed Route 3 source-memory publication");
       }
+      const auto* access =
+          c4c::backend::prepare::find_prepared_memory_access(addressing, block_label, load_index);
       return PreparedLocalSlotCompareLoad{
           .load = load,
           .instruction_index = load_index,
@@ -4057,6 +4289,7 @@ std::optional<std::string> prepared_local_slot_named_i32_operand_register(
 std::optional<PreparedLocalSlotRenderedGuardPrefix> render_prepared_local_slot_i32_guard_prefix(
     c4c::backend::x86::core::Text& function_out,
     const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::x86::ConsumedPlans& consumed,
     const c4c::backend::prepare::PreparedAddressingFunction& addressing,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
     const c4c::backend::bir::Function& function,
@@ -4155,17 +4388,19 @@ std::optional<PreparedLocalSlotRenderedGuardPrefix> render_prepared_local_slot_i
         throw_prepared_value_location_handoff_error(
             "defined function '" + function.name + "' local-slot guard load has no prepared value id");
       }
-      const auto memory = render_prepared_local_slot_statement_memory_operand(module,
-                                                                              addressing,
-                                                                              block_label,
-                                                                              index,
-                                                                              load->result.type,
-                                                                              *prepared_value_name,
-                                                                              std::nullopt);
+      const auto memory =
+          render_agreed_route3_load_local_statement_memory_operand(module,
+                                                                   consumed,
+                                                                   addressing,
+                                                                   block,
+                                                                   block_label,
+                                                                   index,
+                                                                   *load,
+                                                                   *prepared_value_name);
       if (!memory.has_value()) {
         throw_prepared_value_location_handoff_error(
             "defined function '" + function.name +
-            "' local-slot guard load has no prepared frame-slot access");
+            "' local-slot guard load has no agreed Route 3 source-memory publication");
       }
       values[load->result.name] = PreparedLocalSlotRenderedValue{
           .type = load->result.type,
@@ -4272,6 +4507,7 @@ bool append_prepared_local_slot_return_function(
   if (!function_name.has_value()) {
     return false;
   }
+  const auto consumed = c4c::backend::x86::consume_plans(module, *function_name);
   const auto* function_locations =
       c4c::backend::prepare::find_prepared_value_location_function(module, *function_name);
   const auto* addressing =
@@ -4376,18 +4612,19 @@ bool append_prepared_local_slot_return_function(
       }
       const auto& load_home = require_prepared_i32_value_home(
           module, *function_locations, function, load->result.name, "local-slot load result value");
-      const auto memory = render_prepared_local_slot_statement_memory_operand(
+      const auto memory = render_agreed_route3_load_local_statement_memory_operand(
           module,
+          consumed,
           *addressing,
+          block,
           *block_label,
           inst_index,
-          load->result.type,
-          *prepared_value_name,
-          std::nullopt);
+          *load,
+          *prepared_value_name);
       if (!memory.has_value()) {
         throw_prepared_value_location_handoff_error(
             "defined function '" + function.name +
-            "' local-slot load has no prepared frame-slot access");
+            "' local-slot load has no agreed Route 3 source-memory publication");
       }
       if (load_home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
           !load_home.register_name.has_value()) {
@@ -4426,6 +4663,7 @@ bool append_prepared_local_slot_return_function(
 bool append_prepared_local_slot_scalar_guard_block(
     c4c::backend::x86::core::Text& function_out,
     const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::x86::ConsumedPlans& consumed,
     const c4c::backend::prepare::PreparedAddressingFunction& addressing,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
@@ -4482,6 +4720,7 @@ bool append_prepared_local_slot_scalar_guard_block(
 
   const auto compare_load =
       find_prepared_local_slot_compare_load(module,
+                                            consumed,
                                             addressing,
                                             function_locations,
                                             function,
@@ -4572,17 +4811,18 @@ bool append_prepared_local_slot_scalar_guard_block(
             "defined function '" + function.name + "' local-slot guard load has no prepared value id");
       }
       const auto load_memory =
-          render_prepared_local_slot_statement_memory_operand(module,
-                                                              addressing,
-                                                              guard_label,
-                                                              index,
-                                                              load->result.type,
-                                                              *prepared_value_name,
-                                                              std::nullopt);
+          render_agreed_route3_load_local_statement_memory_operand(module,
+                                                                   consumed,
+                                                                   addressing,
+                                                                   guard_block,
+                                                                   guard_label,
+                                                                   index,
+                                                                   *load,
+                                                                   *prepared_value_name);
       if (!load_memory.has_value()) {
         throw_prepared_value_location_handoff_error(
             "defined function '" + function.name +
-            "' local-slot guard load drifted from prepared frame-slot access");
+            "' local-slot guard load has no agreed Route 3 source-memory publication");
       }
       if (entry_type == c4c::backend::bir::TypeKind::I32) {
         function_out.append_line("    mov eax, " + *load_memory);
@@ -4691,6 +4931,7 @@ bool append_prepared_local_slot_scalar_guard_block(
 
   if (!append_prepared_local_slot_scalar_guard_successor(function_out,
                                                          module,
+                                                         consumed,
                                                          addressing,
                                                          function_locations,
                                                          control_flow,
@@ -4704,6 +4945,7 @@ bool append_prepared_local_slot_scalar_guard_block(
 
   if (!append_prepared_local_slot_scalar_guard_successor(function_out,
                                                          module,
+                                                         consumed,
                                                          addressing,
                                                          function_locations,
                                                          control_flow,
@@ -4721,6 +4963,7 @@ bool append_prepared_local_slot_scalar_guard_block(
 bool append_prepared_local_slot_scalar_guard_successor(
     c4c::backend::x86::core::Text& function_out,
     const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::x86::ConsumedPlans& consumed,
     const c4c::backend::prepare::PreparedAddressingFunction& addressing,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
@@ -4756,6 +4999,7 @@ bool append_prepared_local_slot_scalar_guard_successor(
 
   return append_prepared_local_slot_scalar_guard_block(function_out,
                                                        module,
+                                                       consumed,
                                                        addressing,
                                                        function_locations,
                                                        control_flow,
@@ -4795,6 +5039,7 @@ bool append_prepared_local_slot_immediate_guard_function(
   if (!control_flow->join_transfers.empty()) {
     return false;
   }
+  const auto consumed = c4c::backend::x86::consume_plans(module, *function_name);
 
   const c4c::backend::bir::Block* guard_block = nullptr;
   c4c::BlockLabelId guard_label = c4c::kInvalidBlockLabel;
@@ -4935,6 +5180,7 @@ bool append_prepared_local_slot_immediate_guard_function(
   const auto rendered_i32_prefix =
       render_prepared_local_slot_i32_guard_prefix(rendered_i32_prefix_text,
                                                   module,
+                                                  consumed,
                                                   *addressing,
                                                   *function_locations,
                                                   function,
@@ -4988,6 +5234,7 @@ bool append_prepared_local_slot_immediate_guard_function(
 
   if (!append_prepared_local_slot_scalar_guard_block(function_out,
                                                      module,
+                                                     consumed,
                                                      *addressing,
                                                      *function_locations,
                                                      *control_flow,
@@ -5101,6 +5348,7 @@ bool append_prepared_local_slot_short_circuit_or_guard_function(
       control_flow->join_transfers.size() != 1) {
     return false;
   }
+  const auto consumed = c4c::backend::x86::consume_plans(module, *function_name);
 
   const c4c::backend::bir::Block* entry_block = nullptr;
   c4c::BlockLabelId entry_label = c4c::kInvalidBlockLabel;
@@ -5177,17 +5425,6 @@ bool append_prepared_local_slot_short_circuit_or_guard_function(
     return false;
   }
 
-  const auto entry_compare =
-      find_prepared_local_slot_compare_load(module,
-                                            *addressing,
-                                            *function_locations,
-                                            function,
-                                            *entry_block,
-                                            entry_label,
-                                            *entry_condition);
-  if (!entry_compare.has_value()) {
-    return false;
-  }
   const auto* rhs_target = branch_plan->on_compare_true.continuation.has_value()
                                ? &branch_plan->on_compare_true
                                : branch_plan->on_compare_false.continuation.has_value()
@@ -5222,8 +5459,22 @@ bool append_prepared_local_slot_short_circuit_or_guard_function(
     throw_prepared_control_flow_handoff_error(
         "prepared branch condition targets drifted from prepared block targets");
   }
+
+  const auto entry_compare =
+      find_prepared_local_slot_compare_load(module,
+                                            consumed,
+                                            *addressing,
+                                            *function_locations,
+                                            function,
+                                            *entry_block,
+                                            entry_label,
+                                            *entry_condition);
+  if (!entry_compare.has_value()) {
+    return false;
+  }
   const auto rhs_compare =
       find_prepared_local_slot_compare_load(module,
+                                            consumed,
                                             *addressing,
                                             *function_locations,
                                             function,
