@@ -3189,7 +3189,8 @@ std::optional<c4c::BlockLabelId> populated_call_frame_address_label(
     c4c::BlockLabelId prepared_label,
     c4c::BlockLabelId bir_label,
     bool include_control_flow,
-    bool include_prepared_block) {
+    bool include_prepared_block,
+    bool include_bir_block = true) {
   prepare::PreparedBirModule prepared;
   const auto function_id =
       prepared.names.function_names.intern("block_index_bridge");
@@ -3217,7 +3218,8 @@ std::optional<c4c::BlockLabelId> populated_call_frame_address_label(
   };
   prepared.module.functions.push_back(bir::Function{
       .name = "block_index_bridge",
-      .blocks = {block},
+      .blocks = include_bir_block ? std::vector<bir::Block>{block}
+                                  : std::vector<bir::Block>{},
   });
 
   if (include_control_flow) {
@@ -3345,6 +3347,12 @@ int verify_control_flow_block_index_labels_use_agreeing_structured_ids() {
       prepared_label, bir_label, true, false);
   if (short_control_flow_label != std::optional<c4c::BlockLabelId>{bir_label}) {
     return fail("block-index label bridge should preserve BIR fallback when prepared rows are absent");
+  }
+
+  const auto short_bir_label = populated_call_frame_address_label(
+      prepared_label, bir_label, true, true, false);
+  if (short_bir_label.has_value()) {
+    return fail("block-index label bridge should fail closed when BIR rows are absent");
   }
 
   const auto invalid_prepared_label = populated_call_frame_address_label(

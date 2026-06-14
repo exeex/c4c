@@ -1,43 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement or Confirm the Agreement Boundary
+Current Step ID: 3
+Current Step Title: Add Fail-Closed Proof Rows
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Implement or Confirm the Agreement Boundary completed.
-
-`prepared_block_label_for_index(...)` now makes the block-index bridge boundary
-explicit:
-
-- invalid prepared labels remain `kInvalidBlockLabel`
-- complete prepared/BIR agreement accepts the structured BIR `label_id`
-- absent, short, invalid, or mismatched BIR rows keep the prepared fallback
-- absent or short prepared control-flow keeps the existing BIR fallback
+Step 3: Add Fail-Closed Proof Rows completed.
 
 Focused helper rows in
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp` exercise the private
-helper through `populate_call_plans(...)` by observing the frame-address
-materialization label selected for a call argument.
+`tests/backend/bir/backend_prepared_lookup_helper_test.cpp` now cover the
+block-index label bridge through `populate_call_plans(...)` observations:
+
+- positive prepared/BIR structured-label agreement
+- absent prepared control-flow fallback to the BIR label
+- prepared control-flow shorter than the queried BIR block index
+- BIR rows absent at the public call-plan surface
+- invalid BIR labels retaining prepared fallback
+- prepared/BIR structured-label mismatch retaining prepared fallback
+- invalid prepared-label behavior without manufacturing a non-invalid label
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: add any remaining fail-closed proof rows around
-the block-index label bridge, especially nearby rows the supervisor wants beyond
-the Step 2 focused call-plan observations.
+Execute Step 4 from `plan.md`: run the supervisor-selected broader backend
+validation for the completed block-index label bridge candidate.
 
 ## Watchouts
 
 - Do not reactivate completed idea 260 candidates.
 - Keep scope limited to the block-index label bridge candidate.
-- The Step 2 test observes the private helper through public call-plan
-  population; no `call_plans.hpp` seam was added.
-- Keep Step 3 test additions focused on the same private helper behavior. Do not
-  rewrite expectations, output strings, helper statuses, or unsupported markers
-  to claim progress.
+- The private helper remains private in `call_plans.cpp`; the BIR-shorter row is
+  proven at the public `populate_call_plans(...)` surface by omitting the BIR
+  block, which means no call-plan selection can consume a prepared-only label.
+- No expectations, output strings, helper statuses, or unsupported markers were
+  rewritten to claim progress.
 
 ## Proof
 
@@ -45,7 +43,7 @@ Ran:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`
 
-Result: passed. Build was up to date and `backend_prepared_lookup_helper`
-passed 1/1.
+Result: passed. The focused helper test rebuilt and
+`backend_prepared_lookup_helper` passed 1/1.
 
 Proof log: `test_after.log`
