@@ -1,107 +1,103 @@
 Status: Active
 Source Idea Path: ideas/open/256_phase_f3_prepared_liveness_authority_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: One-Reader Candidate Decision
+Current Step ID: 5
+Current Step Title: Final Blocker Map Summary
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - One-Reader Candidate Decision evaluated the Step 2 identity-only rows
-against the Step 3 fail-closed matrix.
+Step 5 - Final Blocker Map Summary completed the analysis-only runbook for
+`PreparedBirModule::liveness`.
 
-Decision: no one-reader implementation candidate remains. `PreparedBirModule::liveness`
-remains blocked public prepared planning authority because every identity-shaped
-row either depends on retained public prepared compatibility or is attached to
-liveness records that still feed allocation, storage, helper planning, target
-register/storage policy, output/status policy, or unproven stale,
-duplicate/conflict, and mismatch behavior.
+Consumer buckets mapped:
 
-Rejected identity-only rows:
+- Producers and construction: `PreparedBirModule::liveness`,
+  `BirPreAlloc::run_liveness()`, pipeline ordering, and
+  `PrepareOptions::run_liveness` create or gate public prepared liveness
+  records. They are not demotion candidates because they produce identity plus
+  intervals, program points, call points, loop depth, predecessor-edge facts,
+  and `crosses_call` data used by later planning.
+- Direct authority consumers: `BirPreAlloc::run_regalloc()`, regalloc interval
+  and classification helpers, spill/reload and value-location production,
+  call-plan preservation, and i128/f128 helper planners consume liveness as
+  allocation, storage/home, move-scheduling, carrier/helper, selected-call,
+  target-register, or target-storage authority.
+- Compatibility and output consumers: liveness identity tests,
+  `filter_prepared_module_to_function(...)`, prepared printer/status behavior,
+  and CLI/debug filtering keep the public prepared liveness surface observable.
+- Derived target consumers: AArch64 helper/call/regalloc behavior, x86
+  aggregate/query wrappers, and RISC-V aggregate input risk remain compatibility
+  blockers because their observable behavior depends on liveness-derived
+  helper, regalloc, value-location, call-plan, or aggregate-shape contracts.
 
-- `tests/backend/bir/backend_prepare_liveness_test.cpp` direct identity checks
-  are not a reader candidate. The tests assert the public prepared liveness
-  surface itself: function membership, value IDs, block labels, CFG edge IDs,
-  phi predecessor edges, call points, intervals, loop depth, and cross-call
-  facts. The identity-only subset cannot be split from policy-sensitive fields
-  because the same public records are consumed by regalloc, call plans, i128/f128
-  helper planning, printer/status, and target-derived behavior. Step 3 also
-  found no complete stale, mismatch, duplicate/conflict, or unsupported-row proof
-  that would let an implementation hide the field while preserving only identity
-  assertions.
-- `src/backend/backend.cpp::filter_prepared_module_to_function(...)` is not a
-  reader candidate. It uses function identity only to retain or erase
-  `filtered.liveness.functions`, but that retained aggregate is the prepared
-  dump/filtering compatibility surface. A future one-reader packet cannot use
-  filtering as the sole reader unless it also preserves the public liveness
-  compatibility record and proves absent/skipped, stale, mismatch, duplicate,
-  conflict, and unsupported behavior. Those proof rows are missing, and the
-  retained record still needs to remain aligned with regalloc, call-plan,
-  helper, printer, AArch64, x86, and RISC-V aggregate compatibility.
-- `src/backend/prealloc/liveness.cpp::BirPreAlloc::run_liveness()` is not a
-  reader candidate. It is a producer/construction step, not a consumer to demote.
-  The produced records include identity plus intervals, program points, call
-  points, loop depth, predecessor-edge facts, and `crosses_call` data. Those
-  facts feed `BirPreAlloc::run_regalloc()`, `populate_call_plans(...)`, i128/f128
-  runtime-helper planning, and derived target/printer behavior.
-  `PrepareOptions::run_liveness` is also unresolved: skipped or manually-run
-  liveness is not proven fail-closed for normal regalloc, call-plan,
-  helper-planning, printer, or target paths.
+Demotion blockers:
 
-Rejected ambiguous/direct policy rows:
+- Allocation, storage/home, move scheduling, helper planning, target register,
+  target storage, output/status policy, and broad prepared compatibility are all
+  still attached to the public liveness records.
+- `PrepareOptions::run_liveness` remains ambiguous for normal-pipeline
+  absent/skipped liveness: skipped or manually-run liveness is not proven
+  fail-closed for regalloc, call plans, helper planning, printer/status, or
+  target paths.
+- Duplicated lookup/helper boundaries and derived printer/target behavior make
+  a wrapper, rename, deletion, or private-pass-context move unsafe without a
+  future source idea and proof set.
 
-- `BirPreAlloc::run_regalloc()` and regalloc interval/classification/spill-reload
-  helpers are allocation, target-register, storage/home, and move-scheduling
-  authority. Their use of liveness cannot be narrowed to identity.
-- `populate_call_plans(...)` and `build_call_preserved_values(...)` are
-  carrier/helper plus target-storage authority. Missing liveness may suppress
-  preserved values, but route conflicts, stale call points, and duplicate
-  preserved values remain unproven.
-- i128/f128 runtime-helper planners are helper-planning, live-preservation,
-  selected-call ownership, and status authority. Their missing-fact rows are
-  compatibility behavior, not permission to hide or demote liveness.
-- Prepared printer/status, AArch64, x86, and RISC-V rows are derived
-  compatibility blockers. They are not direct one-reader candidates because they
-  depend on liveness-derived helper, regalloc, value-location, call-plan, or
-  aggregate-shape contracts.
+Fail-closed gaps:
 
-Required future state before any separate implementation idea:
+- No complete proof covers absent/skipped liveness flowing through normal
+  regalloc, call-plan, helper-planning, printer/status, or target paths.
+- No complete stale-record, duplicate/conflict, function/value mismatch,
+  unsupported-row, fallback, route-conflict, stale-call-point, or duplicate
+  preserved-value proof exists for a candidate reader.
+- Existing missing-fact rows and unsupported coverage prove compatibility
+  behavior in narrow areas; they do not prove `liveness` can be hidden,
+  demoted, deleted, wrapped, renamed, or moved behind private pass context.
 
-- a single exact reader that consumes one semantic fact without allocation,
-  storage, helper planning, target register/storage, move scheduling, or output
-  authority;
-- a retained prepared compatibility surface for public dump/filter/status tests;
-- explicit fail-closed proof for absent/skipped liveness, stale records,
-  function/value mismatch, duplicate/conflict rows, unsupported facts, fallback
-  paths, and derived printer/target compatibility.
+Rejected one-reader candidates:
 
-No current row satisfies that contract, so no separate implementation source
-idea should be opened from Step 4.
+- Direct liveness identity tests are public prepared-surface assertions, not an
+  exact reader that excludes policy-sensitive records.
+- Prepared filtering uses function identity but preserves
+  `filtered.liveness.functions` as dump/filter compatibility, so it cannot be
+  isolated without the missing fail-closed rows and retained public surface.
+- `BirPreAlloc::run_liveness()` is the producer, not a reader, and the facts it
+  produces feed regalloc, call plans, helper planning, printer/status, and
+  derived target behavior.
+- Regalloc, call-plan, helper-planning, prepared printer/status, AArch64, x86,
+  and RISC-V rows are policy or derived-compatibility authority, not
+  identity-only candidates.
+
+Final readiness decision: no current one-reader implementation candidate
+remains. `PreparedBirModule::liveness` remains blocked public prepared planning
+authority unless and until a future idea supplies a single exact reader, one
+semantic fact, the retained prepared compatibility surface, and full
+fail-closed proof for absent/skipped, stale, mismatch, duplicate/conflict,
+unsupported, fallback, and derived printer/target behavior.
+
+No code, test expectations, output strings, `plan.md`, or source idea content
+were changed in this runbook step.
 
 ## Suggested Next
 
-Execute Step 5 by summarizing the liveness consumer buckets, the rejected
-one-reader candidates, the remaining fail-closed proof gaps, and the final
-readiness decision. Keep the runbook analysis-only and do not request an
-implementation split from this evidence.
+Supervisor should decide whether the active runbook is ready for lifecycle
+closure. No implementation split is requested from this evidence.
 
 ## Watchouts
 
-- This is analysis-only; do not edit implementation code or expectations under
-  this active plan.
-- The no-candidate decision depends on missing fail-closed evidence as well as
-  direct policy consumers; a future idea must add proof before changing field
-  ownership.
-- Do not treat liveness identity tests, filtering, or construction as an
-  implementation target unless a later source idea names one exact reader and
-  supplies the full fail-closed proof set.
+- This runbook made analysis-only `todo.md` updates. It did not demote, delete,
+  wrap, rename, hide, or move `liveness`.
+- The no-candidate decision depends on both direct policy consumers and missing
+  fail-closed proof; future ownership work needs a new source idea with one
+  exact reader and the complete proof set.
 - `PrepareOptions::run_liveness` remains a normal-path absent/skipped liveness
-  ambiguity and should stay in the final blocker summary.
+  ambiguity.
 
 ## Proof
 
 `git diff --check -- todo.md`
 
 Passed for this packet. The delegated proof command does not produce
-`test_after.log`; no replacement log was created.
+`test_after.log`; no replacement log should be created.
