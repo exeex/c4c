@@ -162,6 +162,25 @@ narrows it further:
   broad `PreparedBirModule` deletion, privatization, wrapping, aggregate
   retirement, direct global/string text emission, or migration of unrelated
   `module`, `names`, `control_flow`, or `store_source_publications` rows.
+- `names` same-block value-name lookup packet completed in the retired active
+  runbook: same-block producer, integer-constant, and selected select-chain
+  source-producer lookup now use a shared prepared/BIR value-name agreement
+  helper only when the named BIR value, prepared `ValueNameId`, producer
+  identity, result type, same-block location, and before-instruction cutoff
+  agree.
+- Focused proof covered the positive structured-agreement path plus
+  fail-closed rows for unnamed values, empty names, missing prepared ids,
+  stale producers, wrong result types, duplicate spelling, prepared/BIR
+  name-drift, drifted producer results, and retained public raw-spelling
+  compatibility.
+- Broader close-readiness proof passed with 180/180 default backend tests in
+  the canonical before/after logs, and the regression guard reported no new
+  failures.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed same-block lookup packet is not
+  approval for broad `PreparedBirModule` deletion, privatization, wrapping,
+  aggregate retirement, or migration of unrelated `names`, `module`,
+  `control_flow`, or `store_source_publications` rows.
 
 ## Acceptance Criteria
 
