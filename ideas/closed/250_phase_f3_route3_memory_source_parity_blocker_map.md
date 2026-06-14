@@ -46,6 +46,29 @@ memory/source fact or one target is explicitly excluded with fail-closed proof.
 - Target addressing and storage policy remain target-owned.
 - The result states whether a later one-adapter implementation idea is safe.
 
+## Closure Notes
+
+Closed as a completed blocker map. The selected fact was Route 3 `LoadLocal`
+result/source-memory identity agreement for a prepared dynamic source-memory
+row.
+
+The map did not prove adapter readiness for a shared x86+riscv adapter. RISC-V
+has diagnostic semantic evidence for the selected fact, including agreement,
+mismatch, and cleared-identity rows, but that evidence does not transfer target
+output, fallback/status strings, helper/oracle names, instruction text,
+registers, source-home policy, addressing legality, or storage placement into
+Route 3 authority.
+
+x86 remains blocked rather than non-applicable. x86 has prepared memory
+consumers in `src/backend/mir/x86/module/module.cpp`, including prepared
+frame-slot, local-slot statement, and same-module global memory operand
+rendering, but no Route 3/BIR agreement consumer or MIR query facade that joins
+a same-function, same-block `Route3MemoryAccessRecord` for `LoadLocal` to
+`PreparedEdgePublication::source_memory_access` and rejects disagreement.
+
+Follow-up implementation work, if pursued, belongs in
+`ideas/open/258_phase_f3_x86_route3_loadlocal_source_memory_agreement_bridge.md`.
+
 ## Reviewer Reject Signals
 
 - Reject named-case shortcuts that only match a single memory testcase or one
