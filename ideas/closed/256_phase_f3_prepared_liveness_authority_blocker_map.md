@@ -57,3 +57,13 @@ consumers and replacement ownership are mapped.
   or target-policy rewrites outside the blocker map.
 - Reject any route that retains the exact old liveness-planning failure mode
   behind a new route/BIR or private accessor name.
+
+## Completion Note
+
+Closed after the analysis-only runbook mapped liveness producer, direct
+consumer, compatibility, and derived target buckets. No safe one-reader
+implementation candidate remains: `PreparedBirModule::liveness` stays blocked
+public prepared planning authority until a future idea supplies one exact
+reader, one semantic fact, the retained prepared compatibility surface, and
+full fail-closed proof for absent/skipped, stale, mismatch,
+duplicate/conflict, unsupported, fallback, and derived printer/target behavior.
