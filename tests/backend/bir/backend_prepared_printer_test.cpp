@@ -2660,11 +2660,9 @@ prepare::PreparedBirModule prepared_module_printer_body_fixture() {
   return prepared;
 }
 
-prepare::PreparedBirModule prepared_module_printer_function_body_fixture() {
-  auto prepared = prepared_module_printer_body_fixture();
-
+bir::Function prepared_module_printer_void_function(std::string_view name) {
   bir::Function function;
-  function.name = "module_text_contract";
+  function.name = name;
   function.return_type = bir::TypeKind::Void;
 
   bir::Block entry;
@@ -2672,7 +2670,22 @@ prepare::PreparedBirModule prepared_module_printer_function_body_fixture() {
   entry.terminator = bir::ReturnTerminator{};
   function.blocks.push_back(std::move(entry));
 
-  prepared.module.functions.push_back(std::move(function));
+  return function;
+}
+
+prepare::PreparedBirModule prepared_module_printer_function_body_fixture() {
+  auto prepared = prepared_module_printer_body_fixture();
+  prepared.module.functions.push_back(
+      prepared_module_printer_void_function("module_text_contract"));
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_module_printer_multi_function_body_fixture() {
+  auto prepared = prepared_module_printer_body_fixture();
+  prepared.module.functions.push_back(
+      prepared_module_printer_void_function("module_text_contract"));
+  prepared.module.functions.push_back(
+      prepared_module_printer_void_function("module_text_contract_second"));
   return prepared;
 }
 
@@ -2697,6 +2710,22 @@ prepare::PreparedBirModule prepared_module_printer_string_body_fixture() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_module_printer_function_global_string_body_fixture() {
+  auto prepared = prepared_module_printer_function_body_fixture();
+  prepared.module.globals.push_back(bir::Global{
+      .name = "global0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.module.string_constants.push_back(bir::StringConstant{
+      .name = ".str.0",
+      .bytes = "hello",
+      .align_bytes = 1,
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_module_printer_phase_note_fixture() {
   auto prepared = prepared_module_printer_body_fixture();
   prepared.completed_phases = {"legalize", "out_of_ssa"};
@@ -2704,6 +2733,13 @@ prepare::PreparedBirModule prepared_module_printer_phase_note_fixture() {
       .phase = "printer",
       .message = "complete module body text retained",
   });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_module_printer_invariant_fixture() {
+  auto prepared = prepared_module_printer_body_fixture();
+  prepared.invariants.push_back(prepare::PreparedBirInvariant::NoTargetFacingI1);
+  prepared.invariants.push_back(prepare::PreparedBirInvariant::NoPhiNodes);
   return prepared;
 }
 
@@ -2758,6 +2794,26 @@ int complete_module_body_text_printer_rows_are_byte_stable() {
     return EXIT_FAILURE;
   }
 
+  const auto multi_function = prepared_module_printer_multi_function_body_fixture();
+  if (!expect_equal_text(
+          prepare::print(multi_function),
+          header +
+              "--- prepared-bir ---\n"
+              "bir.func @module_text_contract() -> void {\n"
+              "entry:\n"
+              "  bir.ret\n"
+              "}\n"
+              "\n"
+              "bir.func @module_text_contract_second() -> void {\n"
+              "entry:\n"
+              "  bir.ret\n"
+              "}\n"
+              "\n" +
+              empty_prepared_metadata_tail,
+          "multiple-function BIR body blank-line output")) {
+    return EXIT_FAILURE;
+  }
+
   const auto global_only = prepared_module_printer_global_body_fixture();
   if (!expect_equal_text(prepare::print(global_only),
                          header + "--- prepared-bir ---\n\n" +
@@ -2774,6 +2830,22 @@ int complete_module_body_text_printer_rows_are_byte_stable() {
     return EXIT_FAILURE;
   }
 
+  const auto function_global_string =
+      prepared_module_printer_function_global_string_body_fixture();
+  if (!expect_equal_text(
+          prepare::print(function_global_string),
+          header +
+              "--- prepared-bir ---\n"
+              "bir.func @module_text_contract() -> void {\n"
+              "entry:\n"
+              "  bir.ret\n"
+              "}\n"
+              "\n" +
+              empty_prepared_metadata_tail,
+          "function with global and string compatibility blank-line output")) {
+    return EXIT_FAILURE;
+  }
+
   const auto phase_note = prepared_module_printer_phase_note_fixture();
   if (!expect_equal_text(prepare::print(phase_note),
                          header +
@@ -2783,6 +2855,18 @@ int complete_module_body_text_printer_rows_are_byte_stable() {
                              "--- prepared-bir ---\n" +
                              empty_prepared_metadata_tail,
                          "phase and note header output")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto invariants = prepared_module_printer_invariant_fixture();
+  if (!expect_equal_text(prepare::print(invariants),
+                         header +
+                             "invariants:\n"
+                             "  - no_target_facing_i1\n"
+                             "  - no_phi_nodes\n"
+                             "--- prepared-bir ---\n" +
+                             empty_prepared_metadata_tail,
+                         "invariant header placement output")) {
     return EXIT_FAILURE;
   }
 
