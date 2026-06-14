@@ -64,6 +64,57 @@ namespace {
   return nullptr;
 }
 
+[[nodiscard]] bool prepared_source_producer_has_matching_payload(
+    const PreparedEdgePublicationSourceProducer& producer) {
+  switch (producer.kind) {
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return producer.load_local != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return producer.load_global != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return producer.cast != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return producer.binary != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return producer.select != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] bool prepared_store_source_producer_metadata_agrees(
+    const PreparedStoreSourcePublicationInputs& inputs) {
+  if (inputs.source_value == nullptr ||
+      inputs.destination_access == nullptr ||
+      inputs.source_home == nullptr ||
+      inputs.source_producer == nullptr ||
+      inputs.source_producer->kind ==
+          PreparedEdgePublicationSourceProducerKind::Unknown ||
+      inputs.source_producer->block_label == kInvalidBlockLabel ||
+      inputs.source_producer->block_label !=
+          inputs.destination_access->block_label ||
+      inputs.source_producer->instruction_index >=
+          inputs.destination_access->inst_index ||
+      !inputs.destination_access->stored_value_name.has_value() ||
+      inputs.source_home->value_name == kInvalidValueName ||
+      inputs.source_home->value_name !=
+          *inputs.destination_access->stored_value_name ||
+      inputs.source_home->kind == PreparedValueHomeKind::None ||
+      !prepared_source_producer_has_matching_payload(*inputs.source_producer)) {
+    return false;
+  }
+
+  const auto* produced_value =
+      prepared_source_producer_result_value(*inputs.source_producer);
+  return produced_value != nullptr &&
+         produced_value->kind == bir::Value::Kind::Named &&
+         inputs.source_value->kind == bir::Value::Kind::Named &&
+         produced_value->name == inputs.source_value->name &&
+         produced_value->type == inputs.source_value->type;
+}
+
 [[nodiscard]] bool prepared_source_producer_matches_store_value(
     const PreparedEdgePublicationSourceProducer& producer,
     const bir::Value& value,
@@ -1645,8 +1696,7 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
   plan.direct_global_select_chain_root_instruction_index =
       inputs.direct_global_select_chain_root_instruction_index;
 
-  if (inputs.source_producer != nullptr &&
-      inputs.source_producer->kind != PreparedEdgePublicationSourceProducerKind::Unknown) {
+  if (prepared_store_source_producer_metadata_agrees(inputs)) {
     plan.source_producer_kind = inputs.source_producer->kind;
     if (inputs.source_producer->block_label != kInvalidBlockLabel) {
       plan.source_producer_block_label = inputs.source_producer->block_label;

@@ -9834,6 +9834,266 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
   return 0;
 }
 
+int verify_store_source_producer_metadata_requires_prepared_agreement() {
+  prepare::PreparedNameTables names;
+  const auto function_name =
+      names.function_names.intern("store_source_metadata");
+  const auto block_label = names.block_labels.intern("entry");
+  const auto other_block_label = names.block_labels.intern("other");
+  const auto source_name = names.value_names.intern("%sum");
+  const auto other_source_name = names.value_names.intern("%other");
+  const auto slot_id = prepare::PreparedFrameSlotId{41};
+
+  bir::Block block;
+  block.label = "entry";
+  block.label_id = block_label;
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I64, "%sum"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(20),
+      .rhs = bir::Value::immediate_i64(1),
+  });
+  block.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "local0",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+      .value = bir::Value::named(bir::TypeKind::I64, "%sum"),
+  });
+
+  const auto* binary = std::get_if<bir::BinaryInst>(&block.insts[0]);
+  const auto* store = std::get_if<bir::StoreLocalInst>(&block.insts[1]);
+  if (binary == nullptr || store == nullptr) {
+    return fail("store-source metadata fixture should contain binary/store instructions");
+  }
+
+  const prepare::PreparedMemoryAccess destination_access{
+      .function_name = function_name,
+      .block_label = block_label,
+      .inst_index = 1,
+      .stored_value_name = source_name,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+              .frame_slot_id = slot_id,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .can_use_base_plus_offset = true,
+          },
+  };
+  const prepare::PreparedValueHome source_home{
+      .value_id = prepare::PreparedValueId{77},
+      .function_name = function_name,
+      .value_name = source_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"x9"},
+  };
+  const prepare::PreparedEdgePublicationSourceProducer source_producer{
+      .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .block_label = block_label,
+      .instruction_index = 0,
+      .binary = binary,
+  };
+
+  const prepare::PreparedStoreSourcePublicationInputs base_inputs{
+      .source_value = &store->value,
+      .destination_access = &destination_access,
+      .source_home = &source_home,
+      .intent =
+          prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      .source_producer = &source_producer,
+  };
+
+  const auto agreed =
+      prepare::plan_prepared_store_source_publication(base_inputs);
+  if (!prepare::prepared_store_source_publication_available(agreed) ||
+      agreed.source_value_id != prepare::PreparedValueId{77} ||
+      agreed.source_value_name != source_name ||
+      agreed.source_home != &source_home ||
+      agreed.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+      agreed.source_producer_block_label != block_label ||
+      agreed.source_producer_instruction_index != std::size_t{0} ||
+      agreed.source_binary != binary) {
+    return fail("store-source producer metadata should publish for complete prepared agreement");
+  }
+
+  const auto producer_metadata_available =
+      [](const prepare::PreparedStoreSourcePublicationPlan& plan) {
+        return plan.source_producer_kind !=
+                   prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
+               plan.source_producer_block_label.has_value() ||
+               plan.source_producer_instruction_index.has_value() ||
+               plan.source_load_local != nullptr ||
+               plan.source_load_global != nullptr ||
+               plan.source_cast != nullptr ||
+               plan.source_binary != nullptr ||
+               plan.source_select != nullptr;
+      };
+  const auto expect_fail_closed =
+      [&](prepare::PreparedStoreSourcePublicationInputs inputs,
+          std::string_view label) {
+        const auto plan =
+            prepare::plan_prepared_store_source_publication(inputs);
+        if (!prepare::prepared_store_source_publication_available(plan)) {
+          std::cerr << label << "\n";
+          return fail(
+              "store-source metadata agreement failures should not change publication availability");
+        }
+        if (producer_metadata_available(plan)) {
+          std::cerr << label << "\n";
+          return fail(
+              "store-source producer metadata should fail closed without complete prepared agreement");
+        }
+        return 0;
+      };
+
+  auto missing_home_inputs = base_inputs;
+  missing_home_inputs.source_home = nullptr;
+  if (const int result =
+          expect_fail_closed(missing_home_inputs, "missing source home");
+      result != 0) {
+    return result;
+  }
+
+  prepare::PreparedMemoryAccess missing_stored_name_access = destination_access;
+  missing_stored_name_access.stored_value_name = std::nullopt;
+  auto missing_stored_name_inputs = base_inputs;
+  missing_stored_name_inputs.destination_access = &missing_stored_name_access;
+  if (const int result = expect_fail_closed(missing_stored_name_inputs,
+                                           "missing stored value name");
+      result != 0) {
+    return result;
+  }
+
+  prepare::PreparedValueHome mismatched_home = source_home;
+  mismatched_home.value_name = other_source_name;
+  auto mismatched_home_inputs = base_inputs;
+  mismatched_home_inputs.source_home = &mismatched_home;
+  if (const int result =
+          expect_fail_closed(mismatched_home_inputs, "mismatched source home");
+      result != 0) {
+    return result;
+  }
+
+  prepare::PreparedValueHome no_home_kind = source_home;
+  no_home_kind.kind = prepare::PreparedValueHomeKind::None;
+  auto no_home_kind_inputs = base_inputs;
+  no_home_kind_inputs.source_home = &no_home_kind;
+  if (const int result =
+          expect_fail_closed(no_home_kind_inputs, "unsupported source home kind");
+      result != 0) {
+    return result;
+  }
+
+  const auto other_source_value =
+      bir::Value::named(bir::TypeKind::I64, "%other");
+  auto other_source_value_inputs = base_inputs;
+  other_source_value_inputs.source_value = &other_source_value;
+  if (const int result = expect_fail_closed(other_source_value_inputs,
+                                           "mismatched source value name");
+      result != 0) {
+    return result;
+  }
+
+  const auto wrong_type_source_value =
+      bir::Value::named(bir::TypeKind::I32, "%sum");
+  auto wrong_type_source_value_inputs = base_inputs;
+  wrong_type_source_value_inputs.source_value = &wrong_type_source_value;
+  if (const int result = expect_fail_closed(wrong_type_source_value_inputs,
+                                           "mismatched source value type");
+      result != 0) {
+    return result;
+  }
+
+  auto unknown_producer = source_producer;
+  unknown_producer.kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Unknown;
+  auto unknown_producer_inputs = base_inputs;
+  unknown_producer_inputs.source_producer = &unknown_producer;
+  if (const int result =
+          expect_fail_closed(unknown_producer_inputs, "unknown producer kind");
+      result != 0) {
+    return result;
+  }
+
+  auto wrong_block_producer = source_producer;
+  wrong_block_producer.block_label = other_block_label;
+  auto wrong_block_inputs = base_inputs;
+  wrong_block_inputs.source_producer = &wrong_block_producer;
+  if (const int result =
+          expect_fail_closed(wrong_block_inputs, "wrong producer block label");
+      result != 0) {
+    return result;
+  }
+
+  auto stale_index_producer = source_producer;
+  stale_index_producer.instruction_index = 1;
+  auto stale_index_inputs = base_inputs;
+  stale_index_inputs.source_producer = &stale_index_producer;
+  if (const int result =
+          expect_fail_closed(stale_index_inputs, "stale producer instruction index");
+      result != 0) {
+    return result;
+  }
+
+  auto missing_payload_producer = source_producer;
+  missing_payload_producer.binary = nullptr;
+  auto missing_payload_inputs = base_inputs;
+  missing_payload_inputs.source_producer = &missing_payload_producer;
+  if (const int result =
+          expect_fail_closed(missing_payload_inputs, "missing producer payload");
+      result != 0) {
+    return result;
+  }
+
+  auto wrong_payload_kind_producer = source_producer;
+  wrong_payload_kind_producer.kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal;
+  auto wrong_payload_kind_inputs = base_inputs;
+  wrong_payload_kind_inputs.source_producer = &wrong_payload_kind_producer;
+  if (const int result = expect_fail_closed(wrong_payload_kind_inputs,
+                                           "wrong producer payload kind");
+      result != 0) {
+    return result;
+  }
+
+  const bir::BinaryInst other_binary{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I64, "%other"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(20),
+      .rhs = bir::Value::immediate_i64(1),
+  };
+  auto wrong_produced_name = source_producer;
+  wrong_produced_name.binary = &other_binary;
+  auto wrong_produced_name_inputs = base_inputs;
+  wrong_produced_name_inputs.source_producer = &wrong_produced_name;
+  if (const int result = expect_fail_closed(wrong_produced_name_inputs,
+                                           "wrong produced value name");
+      result != 0) {
+    return result;
+  }
+
+  const bir::BinaryInst wrong_type_binary{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(20),
+      .rhs = bir::Value::immediate_i32(1),
+  };
+  auto wrong_produced_type = source_producer;
+  wrong_produced_type.binary = &wrong_type_binary;
+  auto wrong_produced_type_inputs = base_inputs;
+  wrong_produced_type_inputs.source_producer = &wrong_produced_type;
+  if (const int result = expect_fail_closed(wrong_produced_type_inputs,
+                                           "wrong produced value type");
+      result != 0) {
+    return result;
+  }
+
+  return 0;
+}
+
 int verify_bir_block_entry_publication_identity_lookup() {
   prepare::PreparedNameTables names;
   const auto function_name = names.function_names.intern("entry_publication");
@@ -13733,6 +13993,11 @@ int main() {
   }
   if (const int result =
           verify_byval_pointer_source_classification_requires_prepared_agreement();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_store_source_producer_metadata_requires_prepared_agreement();
       result != 0) {
     return result;
   }

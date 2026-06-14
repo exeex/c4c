@@ -1,83 +1,65 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Locate the Source Metadata Planner Surface
+Current Step ID: 2
+Current Step Title: Implement the Prepared Metadata Agreement Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 (`Locate the Source Metadata Planner Surface`) inventoried the
-store-source publication planner surface for the source-value/source-producer
-metadata packet without implementation changes.
+Step 2 (`Implement the Prepared Metadata Agreement Boundary`) added the local
+store-source producer metadata agreement boundary in
+`src/backend/prealloc/publication_plans.cpp`.
 
-Selected helper surface:
-- `populate_store_source_publication_plans(...)` in
-  `src/backend/prealloc/publication_plans.cpp` is the publication planner
-  collection point. It derives the store source value, prepared destination
-  memory access, prepared source home, same-block source producer,
-  recovered-source fact, byval pointer-source fact, direct-global
-  select-chain fact, duplicate-publication flag, destination frame slot/object,
-  then calls `plan_prepared_store_source_publication(...)`.
-- `plan_prepared_store_source_publication(...)` is the smallest write surface
-  for `PreparedStoreSourcePublicationPlan` fields. It currently copies
-  `source_value`, `source_value_id`, `source_value_name`, `source_home*`,
-  storage encoding, source-producer kind/block/instruction/payload pointers,
-  recovered/direct-global flags, pointer-base home fields, pending state, and
-  duplicate state into the public plan.
-- The Step 2 agreement boundary should be a local helper near
-  `plan_prepared_store_source_publication(...)` that gates only the
-  source-value/source-producer metadata publication: source value id/name,
-  source home, producer kind, producer block label, producer instruction index,
-  producer payload pointer, and produced value identity must agree before
-  producer metadata is copied into the plan.
-- Existing source-producer lookup agreement lives below
-  `find_prepared_select_chain_source_producer(...)`, but the store-source plan
-  still needs its own fail-closed tuple check because the plan helper accepts a
-  raw `PreparedEdgePublicationSourceProducer*` input and publishes public
-  metadata fields.
+Changed files:
+- `src/backend/prealloc/publication_plans.cpp`
+- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
+- `todo.md`
+- `test_after.log`
+
+Completed work:
+- Added `prepared_store_source_producer_metadata_agrees(...)` beside the
+  existing source-producer result helper.
+- `plan_prepared_store_source_publication(...)` now copies
+  `source_producer_kind`, producer block/instruction metadata, and producer
+  payload pointers only when the raw producer pointer agrees with the prepared
+  destination access block/index, prepared stored value name, source home
+  value name/kind, producer kind, payload pointer, and produced value name/type.
+- Left unrelated prepared planner policy in the existing collection path:
+  status, intent, destination access, source-home discovery, source storage
+  encoding, recovered/direct-global/byval/pointer-base, pending, duplicate,
+  and output/baseline behavior were not rewritten.
+- Added `verify_store_source_producer_metadata_requires_prepared_agreement()`
+  to cover the positive agreement path and immediate fail-closed rows for
+  missing source home/name, mismatched source home, unsupported home kind,
+  mismatched source value name/type, unknown producer kind, wrong producer
+  block, stale producer instruction index, missing payload, wrong payload
+  kind, and produced value name/type drift.
 
 ## Suggested Next
 
-Execute Step 2 in:
-- `src/backend/prealloc/publication_plans.cpp`
-- `src/backend/prealloc/publication_plans.hpp` only if a small test-visible
-  status/seam is unavoidable
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
-
-Concrete helper-test fixture area: add a focused verifier in
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp` near the completed
-store-source fixtures
-`verify_direct_global_select_chain_dependency_query()`,
-`verify_prepared_same_block_scalar_source_facts()`, and
-`verify_byval_pointer_source_classification_requires_prepared_agreement()`,
-then invoke it from the same main-test sequence before
-`verify_bir_block_entry_publication_identity_lookup()`.
+Step 3 should add population-level coverage around
+`populate_store_source_publication_plans(...)` proving that real prepared
+module store-source records preserve the new fail-closed producer metadata
+boundary when the producer lookup row drifts. Suggested focused gaps:
+positive populated store-local/store-global records with agreed producer
+metadata, plus fail-closed rows for stale producer rows and payload/result
+identity drift without changing output expectations or diagnostics.
 
 ## Watchouts
 
-- Keep this runbook limited to the source-value/source-producer metadata
-  candidate.
-- Do not revisit completed recovered-source, byval pointer-source, or
-  direct-global select-chain packets.
-- Leave these policy surfaces out of Step 2 scope: status, intent,
-  destination access, source-home discovery, source storage encoding,
-  recovered-source policy, byval pointer-source policy, direct-global
-  select-chain policy, pointer-base home policy, pending-publication policy,
-  duplicate-publication policy, target lowering, storage encoding policy,
-  output text, diagnostics, helper status names, baselines, expectations, and
-  public prepared aggregate compatibility.
-- Preserve existing false, empty, unavailable, or prepared-only behavior for
-  missing source value/home/name, incomplete producer payloads, stale ids,
-  wrong producer kind, block/instruction/value-name drift, route/BIR-only
-  identity, pending publications, duplicate publications, recovered/direct
-  global disagreement, pointer-base disagreement, and storage-policy
-  rejection.
-- Do not rewrite output expectations, diagnostics, helper statuses, baselines,
-  or target output to claim progress.
+- The Step 2 guard intentionally gates producer metadata publication; it does
+  not change `PreparedStoreSourcePublicationStatus::Available` or ordinary
+  source-home/storage metadata publication for otherwise available plans.
+- Producer instruction agreement is enforced as same prepared block as the
+  store destination access and strictly before the store access index.
+- No changes were made to `publication_plans.hpp`, `plan.md`, source ideas,
+  review artifacts, baselines, diagnostics, or expectation files.
 
 ## Proof
 
-Inventory-only Step 1 packet; no build required by delegation. Ran
-`git diff --check`.
+Ran delegated proof:
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'; } > test_after.log 2>&1`
+
+Result: passed. Proof log: `test_after.log`.
