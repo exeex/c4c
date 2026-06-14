@@ -1615,6 +1615,7 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
       bir::Value::named(bir::TypeKind::I32, "%dst"));
   if (publication == nullptr || !route5_index || !route5_edge ||
       route5_edge.status != bir::Route5PublicationStatus::Available ||
+      bir::route5_publication_status_name(route5_edge.status) != "available" ||
       route5_edge.predecessor_label_id != publication->predecessor_label ||
       route5_edge.successor_label_id != publication->successor_label ||
       route5_edge.source_value_name != "%src" ||
@@ -1664,8 +1665,10 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
   if (duplicate_index.edge_records.size() != route5_index.edge_records.size() + 1 ||
       mismatched_route5_edge ||
       mismatched_route5_edge.status != bir::Route5PublicationStatus::NoMatch ||
+      bir::route5_publication_status_name(mismatched_route5_edge.status) != "no_match" ||
       absent_route5_edge ||
-      absent_route5_edge.status != bir::Route5PublicationStatus::NoSource) {
+      absent_route5_edge.status != bir::Route5PublicationStatus::NoSource ||
+      bir::route5_publication_status_name(absent_route5_edge.status) != "no_source") {
     return fail("RISC-V Route 5 oracle should expose duplicate, mismatch, and absence diagnostic rows");
   }
   intent = riscv::consume_edge_publication_move_intent(
@@ -1708,12 +1711,18 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
   if (publication == nullptr || !route3_index || route3_load == nullptr ||
       !*route3_load ||
       route3_load->node_kind != bir::Route3MemoryAccessNodeKind::LoadLocal ||
+      bir::route3_memory_access_node_kind_name(route3_load->node_kind) !=
+          "load_local" ||
       route3_load->base_kind != bir::Route3MemoryAccessBaseKind::PointerValue ||
+      bir::route3_memory_access_base_kind_name(route3_load->base_kind) !=
+          "pointer_value" ||
       route3_load->pointer_value.name != "%base" ||
       route3_load->byte_offset != 12 ||
       route3_load->size_bytes != 4 ||
       !route5_memory_edge ||
       route5_memory_edge.status != bir::Route5PublicationStatus::MemorySource ||
+      bir::route5_publication_status_name(route5_memory_edge.status) !=
+          "memory_source" ||
       !route5_memory_edge.source_memory_identity_available ||
       route5_memory_edge.source_memory_access.instruction == nullptr ||
       route5_memory_edge.source_memory_access.instruction !=

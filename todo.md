@@ -1,52 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/246_phase_f1_prepared_publication_status_compatibility_retention.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add x86 Route 6 diagnostic naming beside compatibility rows
+Current Step ID: 4
+Current Step Title: Add riscv Route 5/Route 3 diagnostic naming beside compatibility rows
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Inspected the existing x86 Route 6 scalar call-use diagnostic surface
-and confirmed it already satisfies this packet without code changes.
+Step 4 - Added explicit riscv Route 5/Route 3 diagnostic name assertions beside
+the existing prepared edge-publication fallback checks.
 
-Existing additive rows in `src/backend/mir/x86/debug/debug.cpp` and
-`tests/backend/bir/backend_x86_route_debug_test.cpp` keep route-native source
-identity diagnostics separately named as `route6 scalar arg status ... status=...
-gate=...` beside retained compatibility evidence. The current x86 test surface
-already covers:
-- positive agreed source identity: `status=available gate=agreed`
-- missing relationship fallback: `status=missing_source_relationship gate=blocked`
-- missing source id/name: `gate=missing_source_value` and `gate=missing_source_name`
-- duplicate relationship fallback: `status=duplicate_relationship gate=blocked`
-- prepared/source mismatch: `gate=prepared_source_mismatch` and
-  `gate=source_value_mismatch`
+`tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp` now pins
+Route 5 status names for `available`, `no_match`, `no_source`, and
+`memory_source`, plus Route 3 memory identity names for `load_local` and
+`pointer_value`. The existing assertions still prove the prepared-backed
+wrapper output stays exact (`mv a1, a0` and `lw a1, 12(s2)`) for agreeing and
+non-agreeing route facts.
 
-The packet is proof-only because adding another assertion would duplicate the
-existing route-debug contract instead of expanding coverage. No prepared
-compatibility rows, `ConsumedPlans` rows, prepared dump rows, wrapper-output
-assertions, or x86 implementation behavior were renamed, hidden, weakened, or
-removed.
+No riscv implementation behavior, prepared fallback strings, helper-oracle
+rows, wrapper-output assertions, register/stack/scratch/offset policy, or
+source-memory policy was renamed, hidden, weakened, or removed.
 
 ## Suggested Next
 
-Execute Step 4: add or verify riscv Route 5/Route 3 diagnostic naming beside
-retained prepared edge-publication compatibility rows.
+Execute Step 5: run the supervisor-delegated narrow compatibility proof across
+prepared lookup helper, x86 route-debug, and riscv edge-publication tests.
 
 ## Watchouts
 
-Step 4 should stay riscv-only and preserve prepared fallback strings plus exact
-wrapper-visible output. Do not treat the proof-only Step 3 result as permission
-to demote prepared compatibility rows.
+Step 5 should remain proof-focused. Do not expand into adapter work, prepared
+status demotion, aggregate retirement, or broad baseline refreshes.
 
 ## Proof
 
 Ran the delegated proof exactly:
 
-`cmake --build build-x86 --target backend_x86_route_debug_test backend_prepared_lookup_helper_test && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_x86_route_debug|backend_prepared_lookup_helper)$' | tee test_after.log`
+`cmake --build build --target backend_riscv_prepared_edge_publication_test backend_prepared_lookup_helper_test && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_prepared_edge_publication|backend_prepared_lookup_helper)$' | tee test_after.log`
 
 Result: passed 2/2:
-`backend_x86_route_debug` and `backend_prepared_lookup_helper`.
+`backend_riscv_prepared_edge_publication` and
+`backend_prepared_lookup_helper`.
 
 Proof log: `test_after.log`.
