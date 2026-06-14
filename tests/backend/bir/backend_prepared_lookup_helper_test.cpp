@@ -2593,6 +2593,121 @@ int verify_prepared_module_lookup_reader_agreement_boundary() {
   return 0;
 }
 
+int verify_prepared_semantic_name_agreement_boundary() {
+  prepare::PreparedNameTables names;
+  bir::NameTables bir_names;
+
+  const auto function_name = names.function_names.intern("semantic_resolver");
+  const auto block_label = names.block_labels.intern("semantic.entry");
+  const auto value_name = names.value_names.intern("%semantic.value");
+  const auto raw_block_label =
+      bir_names.block_labels.intern("semantic.entry");
+  const auto raw_other_label = bir_names.block_labels.intern("semantic.other");
+
+  const auto function_agreement =
+      prepare::prepared_function_name_agreement(names, "semantic_resolver");
+  if (function_agreement.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Available ||
+      function_agreement.function_name != function_name) {
+    return fail("semantic resolver should accept agreed prepared function names");
+  }
+
+  const auto block_agreement = prepare::prepared_block_label_agreement(
+      names, bir_names, raw_block_label, "semantic.entry");
+  if (block_agreement.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Available ||
+      block_agreement.block_label != block_label) {
+    return fail("semantic resolver should accept agreed prepared block labels");
+  }
+
+  const bir::Value value = bir::Value::named(bir::TypeKind::I32,
+                                            "%semantic.value");
+  const auto value_agreement =
+      prepare::prepared_value_name_agreement(names, value);
+  if (value_agreement.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Available ||
+      value_agreement.value_name != value_name) {
+    return fail("semantic resolver should accept agreed prepared value names");
+  }
+
+  const auto text_count = names.texts.size();
+  const auto function_count = names.function_names.size();
+  const auto block_count = names.block_labels.size();
+  const auto value_count = names.value_names.size();
+  const auto absent_function =
+      prepare::prepared_function_name_agreement(names, "missing_function");
+  const auto absent_block =
+      prepare::prepared_block_label_agreement(names, "missing.block");
+  const auto absent_value = prepare::prepared_value_name_agreement(
+      names, bir::Value::named(bir::TypeKind::I64, "%missing.value"));
+  const auto immediate_value = prepare::prepared_value_name_agreement(
+      names, bir::Value::immediate_i32(7));
+  if (absent_function.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
+      absent_block.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
+      absent_value.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
+      immediate_value.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
+      names.texts.size() != text_count ||
+      names.function_names.size() != function_count ||
+      names.block_labels.size() != block_count ||
+      names.value_names.size() != value_count) {
+    return fail("semantic resolver agreement should preserve non-interning absent behavior");
+  }
+
+  const auto invalid_raw_block = prepare::prepared_block_label_agreement(
+      names, bir_names, c4c::kInvalidBlockLabel, "semantic.entry");
+  if (invalid_raw_block.status !=
+      prepare::PreparedSemanticNameAgreementStatus::Conflicted) {
+    return fail("semantic resolver should reject invalid raw block-label ids");
+  }
+
+  const auto raw_id_drift = prepare::prepared_block_label_agreement(
+      names, bir_names, raw_other_label, "semantic.entry");
+  if (raw_id_drift.status !=
+      prepare::PreparedSemanticNameAgreementStatus::Conflicted) {
+    return fail("semantic resolver should reject raw block-label id spelling drift");
+  }
+
+  auto corrupt_function_names = names;
+  corrupt_function_names.function_names.ids_.key_by_id_[function_name - 1] =
+      corrupt_function_names.texts.intern("semantic_resolver.drift");
+  const auto corrupt_function = prepare::prepared_function_name_agreement(
+      corrupt_function_names, "semantic_resolver");
+  if (corrupt_function_names.function_names.find("semantic_resolver") !=
+          function_name ||
+      corrupt_function.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Conflicted) {
+    return fail("semantic resolver should reject corrupted function-name table round trips");
+  }
+
+  auto corrupt_block_names = names;
+  corrupt_block_names.block_labels.ids_.key_by_id_[block_label - 1] =
+      corrupt_block_names.texts.intern("semantic.entry.drift");
+  const auto corrupt_block = prepare::prepared_block_label_agreement(
+      corrupt_block_names, bir_names, raw_block_label, "semantic.entry");
+  if (corrupt_block_names.block_labels.find("semantic.entry") != block_label ||
+      corrupt_block.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Conflicted) {
+    return fail("semantic resolver should reject corrupted block-label table round trips");
+  }
+
+  auto corrupt_value_names = names;
+  corrupt_value_names.value_names.ids_.key_by_id_[value_name - 1] =
+      corrupt_value_names.texts.intern("%semantic.value.drift");
+  const auto corrupt_value =
+      prepare::prepared_value_name_agreement(corrupt_value_names, value);
+  if (corrupt_value_names.value_names.find("%semantic.value") != value_name ||
+      corrupt_value.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Conflicted) {
+    return fail("semantic resolver should reject corrupted value-name table round trips");
+  }
+
+  return 0;
+}
+
 int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
   prepare::PreparedNameTables names;
   const auto function_id = names.function_names.intern("branch_identity");
@@ -12275,6 +12390,11 @@ int main() {
   }
   if (const int result =
           verify_prepared_module_lookup_reader_agreement_boundary();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_prepared_semantic_name_agreement_boundary();
       result != 0) {
     return result;
   }

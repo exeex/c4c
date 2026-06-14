@@ -126,6 +126,103 @@ PreparedBirFunctionAgreement prepared_bir_function_agreement(
   return agreement;
 }
 
+PreparedFunctionNameAgreement prepared_function_name_agreement(
+    const PreparedNameTables& names,
+    std::string_view function_name) {
+  if (function_name.empty()) {
+    return {};
+  }
+
+  const FunctionNameId prepared_id = names.function_names.find(function_name);
+  if (prepared_id == kInvalidFunctionName) {
+    return {};
+  }
+  if (prepared_function_name(names, prepared_id) != function_name) {
+    return PreparedFunctionNameAgreement{
+        .status = PreparedSemanticNameAgreementStatus::Conflicted,
+    };
+  }
+  return PreparedFunctionNameAgreement{
+      .function_name = prepared_id,
+      .status = PreparedSemanticNameAgreementStatus::Available,
+  };
+}
+
+PreparedSemanticBlockLabelAgreement prepared_block_label_agreement(
+    const PreparedNameTables& names,
+    std::string_view block_label) {
+  if (block_label.empty()) {
+    return {};
+  }
+
+  const BlockLabelId prepared_id = names.block_labels.find(block_label);
+  if (prepared_id == kInvalidBlockLabel) {
+    return {};
+  }
+  if (prepared_block_label(names, prepared_id) != block_label) {
+    return PreparedSemanticBlockLabelAgreement{
+        .status = PreparedSemanticNameAgreementStatus::Conflicted,
+    };
+  }
+  return PreparedSemanticBlockLabelAgreement{
+      .block_label = prepared_id,
+      .status = PreparedSemanticNameAgreementStatus::Available,
+  };
+}
+
+PreparedSemanticBlockLabelAgreement prepared_block_label_agreement(
+    const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    std::optional<BlockLabelId> raw_block_label,
+    std::string_view block_label) {
+  if (raw_block_label.has_value()) {
+    if (*raw_block_label == kInvalidBlockLabel) {
+      return PreparedSemanticBlockLabelAgreement{
+          .status = PreparedSemanticNameAgreementStatus::Conflicted,
+      };
+    }
+    const std::string_view raw_id_spelling =
+        bir_names.block_labels.spelling(*raw_block_label);
+    if (raw_id_spelling.empty() || raw_id_spelling != block_label) {
+      return PreparedSemanticBlockLabelAgreement{
+          .status = PreparedSemanticNameAgreementStatus::Conflicted,
+      };
+    }
+  }
+  return prepared_block_label_agreement(names, block_label);
+}
+
+PreparedSemanticValueNameAgreement prepared_value_name_agreement(
+    const PreparedNameTables& names,
+    std::string_view value_name) {
+  if (value_name.empty()) {
+    return {};
+  }
+
+  const ValueNameId prepared_id = names.value_names.find(value_name);
+  if (prepared_id == kInvalidValueName) {
+    return {};
+  }
+  if (prepared_value_name(names, prepared_id) != value_name) {
+    return PreparedSemanticValueNameAgreement{
+        .status = PreparedSemanticNameAgreementStatus::Conflicted,
+    };
+  }
+  return PreparedSemanticValueNameAgreement{
+      .value_name = prepared_id,
+      .status = PreparedSemanticNameAgreementStatus::Available,
+  };
+}
+
+PreparedSemanticValueNameAgreement prepared_value_name_agreement(
+    const PreparedNameTables& names,
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named) {
+    return {};
+  }
+  return prepared_value_name_agreement(names, value.name);
+}
+
 PreparedBirBlockLabelAgreement prepared_bir_block_label_agreement(
     const PreparedBirModule& prepared,
     const bir::Block& block) {
