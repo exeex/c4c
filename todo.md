@@ -1,163 +1,196 @@
 Status: Active
 Source Idea Path: ideas/open/253_phase_f3_prepared_module_structural_exit_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Map `control_flow` Structural Exit Preconditions
+Current Step ID: 5
+Current Step Title: Map `store_source_publications` Structural Exit Preconditions
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Map `control_flow` Structural Exit Preconditions completed as an
-analysis-only map for `PreparedBirModule::control_flow`.
+Step 5 - Map `store_source_publications` Structural Exit Preconditions
+completed as an analysis-only map for
+`PreparedBirModule::store_source_publications`.
 
-`control_flow` structural exit map:
+`store_source_publications` structural exit map:
 
-- CFG identity and block-index readers:
-  `control_flow.hpp::find_prepared_control_flow_function`,
-  `find_prepared_control_flow_block`,
-  `find_prepared_linear_join_predecessor`, and
-  `find_prepared_control_flow_branch_target_labels` are the direct prepared
-  CFG lookup helpers. `prepared_lookups.cpp::prepared_block_index_by_label`,
-  `prepared_block_successors`, `make_prepared_dominance_matrix`, and
-  `prepared_block_dominates` derive block-index successor and dominance facts
-  from prepared blocks. `call_plans.cpp::prepared_block_label_for_index` is a
-  block-index compatibility bridge that already falls back to BIR block ids.
-  These are semantic-reader candidates only when the replacement fact is the
-  same function/block identity, terminator successor identity, or dominance
-  relation and the missing/invalid/mismatch behavior remains fail-closed.
-- Dominance consumers:
-  `prepared_lookups.cpp::make_prepared_call_plan_lookups`,
-  `collect_block_entry_republication_effects`,
-  `find_dominating_indexed_prior_preserved_value`, and
-  `find_unique_indexed_prior_preserved_value_source` use prepared dominance to
-  decide whether prior call-preservation or republication facts reach a later
-  call. This is the clearest bounded semantic exit family: the reader needs a
-  route/BIR dominance fact over the same block indices and instruction
-  positions, while duplicate rows, missing control-flow context, invalid block
-  indices, unreachable blocks, and non-dominating prior entries keep returning
-  no source instead of inventing a preserved value.
-- Branch-target identity readers:
-  `control_flow.hpp::find_prepared_control_flow_branch_target_labels` and the
-  overload with `detail::read_agreeing_bir_branch_target_labels` are already
-  agreement-gated for BIR structured successor ids. The semantic fact is BIR
-  terminator true/false `BlockLabelId` identity; the compatibility surface is
-  the public helper fallback to prepared labels when there is no agreeing BIR
-  context. This family is bounded, but later packets must stay helper-row
-  scoped and preserve non-conditional, absent, invalid, mismatch, and
-  non-agreement fallback behavior.
-- Branch lowering and instruction-target policy:
-  AArch64 `comparison.cpp`, `dispatch.cpp`, `dispatch.hpp`,
-  `dispatch_edge_copies.cpp`, and `instruction.cpp` read
-  `PreparedControlFlowBlock` labels, `PreparedBranchCondition`, and resolved
-  branch targets to form branch target operands, conditional/unconditional MIR
-  successors, fused-compare branch records, late conditional dispatch, and
-  target diagnostics. These are target-policy consumers, not structural exit
-  candidates. They own emitted branch spelling, successor metadata, target
-  diagnostics, fallback paths, and expected-string stability.
-- Layout/order and target handoff consumers:
-  AArch64 `traversal.cpp::lower_prepared_functions` iterates
-  `control_flow.functions` and each function's `blocks` to create target MIR
-  function/block order, block indices, block lowering contexts, and lookup
-  packages. x86 `consume_plans`/`consume_prepared_function_lookups` and
-  `module.cpp::validate_prepared_control_flow_handoff` use the field as a
-  handoff completeness gate and throw on missing function/block/target
-  agreement. RISC-V prepared emission keeps prepared lookup setup tied to
-  function control-flow. These layout and handoff paths are compatibility or
-  target-owned; broad traversal, block-order, or lowering rewrites are out of
-  Step 4 scope.
-- Join, edge-publication, and parallel-copy policy:
-  `out_of_ssa.cpp` consumes prepared predecessor/successor counts to classify
-  parallel-copy execution sites, uses `find_prepared_linear_join_predecessor`
-  to annotate branch-owned join transfers, and publishes
-  `parallel_copy_bundles`. `prepared_lookups.cpp::make_prepared_edge_publication_lookups`,
-  `find_published_parallel_copy_bundle_for_edge_transfer`, publication-source
-  lookups, and AArch64 dispatch producer/edge-copy readers consume
-  join-transfer, edge-transfer, move-bundle, cycle-temp, execution-site, and
-  block-entry publication details. These are not plain CFG facts; they are
-  out-of-SSA/prealloc and target-copy policy surfaces and must remain blocked
-  unless a future packet names one reader row and preserves status, move,
-  cycle, execution-site, and publication fallback behavior.
-- Prepared-printer, debug, and public aggregate compatibility:
-  `prepared_printer/control_flow.cpp` prints block terminators, branch
-  conditions, join transfers, edge transfers, parallel copies, execution sites,
-  move/step indexes, and cycle-temp facts from `module.control_flow`. Backend
-  filters in `backend.cpp` copy, erase, and trim `filtered.control_flow`
-  alongside the public aggregate. `legalize.cpp`, `out_of_ssa.cpp`,
-  `label_identity.cpp`, call/publication/regalloc construction, and tests
-  construct or mutate the public field. These are retained compatibility
-  surfaces; Step 4 does not open deletion, privatization, aggregate retirement,
-  printer rewrites, or broad control-flow construction changes.
+- Direct aggregate field production and direct readers:
+  `publication_plans.cpp::populate_store_source_publication_plans` clears and
+  appends `PreparedStoreSourcePublicationRecord` rows to
+  `prepared.store_source_publications.records`. The only direct field reader
+  found outside construction is
+  `prepared_printer/select_chains.cpp::append_store_source_publications`,
+  which prints `store_source` rows. AST type-reference checks found
+  `PreparedStoreSourcePublicationPlans` in `publication_plans.cpp` only at
+  the append helper and `PreparedStoreSourcePublicationRecord` in the prepared
+  printer row helper. No non-printer production reader of the stored aggregate
+  records was found; this must be treated as blocked/needs confirmation before
+  any deletion, privatization, or field-retirement packet is named.
+- Source/publication semantic record candidates:
+  `plan_prepared_store_source_publication` records source value identity,
+  source value name/id from source homes or memory access stored-value names,
+  source producer kind, producer block/instruction identity, producer
+  instruction pointers, recovered narrow-store source value/instruction,
+  byval load-local source, and direct-global select-chain dependency. These
+  overlap route/source facts and can be future semantic candidates only one
+  row at a time: source value identity, producer identity, recovered narrow
+  store source, byval pointer-source classification, or direct-global
+  select-chain dependency. The record itself also carries destination,
+  storage, and publication policy, so the whole `PreparedStoreSourcePublicationPlan`
+  is not a semantic exit.
+- Source-memory status compatibility:
+  `PreparedStoreSourcePublicationStatus` is `Available`,
+  `MissingSourceValue`, or `MissingDestinationAccess`, and
+  `prepared_store_source_publication_available` gates later readers. Missing
+  source values and missing destination accesses intentionally fail closed and
+  still produce status rows for compatibility/printer evidence. These statuses
+  are not deletion candidates; any route-backed source row must preserve
+  missing-source, missing-access, invalid value name/id, absent home, absent
+  addressing, and mismatched access behavior by returning unavailable,
+  `std::nullopt`, or no emitted target record.
+- Publication status and intent compatibility:
+  `PreparedStoreSourcePublicationIntent` distinguishes none, store-local
+  publication, store-global publication, and pointer-store writeback.
+  Plan flags `pending_publication`, `stack_homes_only`,
+  `pointer_store_writeback`, and `duplicate_publication` are consumed by
+  AArch64 store-local, store-global, pending publication, and pointer-writeback
+  paths. These are publication mechanics and compatibility status, not plain
+  source semantics. Fail-closed proof for any helper migration must include
+  wrong intent, duplicate publication, non-pending vs pending, stack-homes-only
+  policy, pointer-writeback policy, and unsupported intent rows.
+- Addressing and storage output consumers:
+  AArch64 `memory.cpp` recomputes store-source plans through
+  `plan_store_local_source_publication`,
+  `plan_stack_homed_pointer_store_writeback`,
+  `plan_pointer_base_plus_offset_store_local_publication`,
+  `plan_fixed_formal_store_local_publication`, and
+  `plan_prepared_store_global_publication`. The lowering then consumes
+  destination base kind, destination pointer/frame-slot ids, destination byte
+  offset, stack offsets, source home kind, source storage encoding, pointer
+  base homes, stack object/slot details, volatile/access facts, and target
+  scratch/register availability to decide emitted instructions. These are
+  target/addressing/storage output surfaces and remain blocked unless a later
+  packet names one helper row and preserves all target fallback behavior.
+- Producer and recovered-source target-policy consumers:
+  AArch64 `memory.cpp` uses source producer completeness helpers for cast,
+  select materialization, scalar FP binary, global-symbol load-local, direct
+  global select chains, recovered narrow-store values, byval load-local
+  sources, fixed formal stores, future stack-value publication coverage, and
+  pending store-global stack publications. `dispatch_value_materialization.cpp`
+  also calls `find_prepared_recovered_narrow_store_source_for_wide_local_load`
+  before rematerializing load-local values. These readers are production
+  consumers of planner/helper facts, not direct readers of
+  `store_source_publications.records`. They can be implementation candidates
+  only if scoped to a single helper fact and proven to fail closed for absent
+  prepared context, absent control-flow block, invalid block label, missing
+  producer, wrong producer kind, producer/block mismatch, missing access,
+  source/destination mismatch, unsupported type/width, and target scratch or
+  register policy failure.
+- Printer rows and public aggregate compatibility:
+  `append_store_source_publication_row` prints function, block, instruction,
+  source, status, intent, producer kind, producer block/instruction, producer
+  pointer booleans, and direct-global select-chain fields from the stored
+  aggregate record. These rows are byte-stable debug/oracle output, not
+  semantic exits. The public aggregate field remains a compatibility surface
+  until a non-printer production reader is confirmed or an explicit printer
+  compatibility replacement is scoped.
+- Target-policy fallback:
+  Store-source publication planning is reused as an oracle in AArch64 lowering
+  to choose whether to emit a specialized publication or fall back to the
+  ordinary lowered memory instruction. This includes casts, selects,
+  direct-global chains, global-symbol loads, pointer base-plus-offset stores,
+  fixed-formal stores, pending store-global publication, future store-local
+  stack publication coverage, ABI scratch availability, register class checks,
+  mnemonic availability, and memory operand support checks. These target
+  fallback decisions are retained target policy and are blocked from structural
+  exit.
 
 Concrete future packets:
 
-- One-reader packet candidate:
-  `prepared_lookups.cpp::find_dominating_indexed_prior_preserved_value` and
-  `find_unique_indexed_prior_preserved_value_source` can be grouped as a
-  call-preservation dominance lookup packet. Reader: prior preserved-value
-  lookup for one current call plan. Semantic fact: route/BIR dominance over the
-  same call-plan block indices plus same-block instruction ordering.
-  Compatibility surface: null control-flow context, invalid value id, empty
-  prior list, same-block later prior entry, unreachable or non-dominating
-  blocks, duplicate prior entries, and missing preserved rows keep returning
-  `nullptr` or an unavailable result. Fail-closed proof: present dominating
-  prior, same-block earlier/later prior, no control-flow context, invalid
-  block index, non-dominating predecessor, unreachable block, and duplicate
-  prior source cases must not select a different source.
-- One-reader packet candidate:
-  `control_flow.hpp::find_prepared_control_flow_branch_target_labels` remains
-  a helper-row candidate only for structured conditional successor identity.
-  Reader: branch-target label helper for one conditional block. Semantic fact:
-  BIR terminator true/false `BlockLabelId` values under prepared agreement.
-  Compatibility surface: public helper still returns prepared labels without
-  an agreeing BIR context, and non-conditional, absent block, invalid labels,
-  missing structured ids, mismatch, and non-agreement paths preserve current
-  `std::nullopt` or prepared fallback behavior. Fail-closed proof: valid
-  agreement, no function block, return/unconditional terminator, invalid
-  prepared labels, invalid BIR ids, mismatched BIR ids, and conflicting
-  structured/raw label cases.
-- One-reader packet candidate:
-  `call_plans.cpp::prepared_block_label_for_index` can be isolated as a
-  block-index label bridge packet. Reader: call-plan block index to
-  `BlockLabelId` mapping. Semantic fact: the call-plan block index names the
-  same BIR block id as the prepared control-flow block at that index.
-  Compatibility surface: existing fallback to `function.blocks[index].label_id`
-  when control-flow is absent or too short, and `kInvalidBlockLabel` for
-  out-of-range indexes. Fail-closed proof: prepared/BIR agreement,
-  control-flow absent, control-flow shorter than BIR, BIR shorter than the
-  index, invalid BIR label id, and prepared/BIR mismatch cases.
+- Helper-row packet candidate:
+  `find_prepared_recovered_narrow_store_source_for_wide_local_load` can be
+  scoped as a recovered-source identity packet. Reader: prealloc population,
+  AArch64 store-local publication planning, and AArch64 dispatch value
+  materialization. Semantic fact: a same-block wide load-local can recover the
+  immediately prior narrower store-local value that targets the loaded byte.
+  Compatibility surface: addressing, stack-layout slot/object checks,
+  load-result type, lane offset parsing, store width, and instruction ordering
+  still own availability. Fail-closed proof: null block, null addressing,
+  invalid block label, load/access mismatch, missing frame slot, non-integer
+  load, no prior store, prior store/access mismatch, wrong byte lane,
+  non-8-bit store, store width not narrower than load, and multiple earlier
+  stores must not invent a recovered value.
+- Helper-row packet candidate:
+  `prepared_store_source_load_local_is_byval_formal_pointer_source` can be
+  scoped as a byval pointer-source classification packet. Reader: prealloc
+  population and AArch64 store-local source publication planning. Semantic
+  fact: the load-local source producer reads through a pointer-value memory
+  access whose pointer value name is a byval formal. Compatibility surface:
+  prepared addressing and formal-name lookup remain authoritative. Fail-closed
+  proof: null addressing, null producer, wrong producer kind, missing
+  load-local pointer, invalid producer block label, missing memory access,
+  non-pointer base kind, missing pointer value name, base-plus-offset false,
+  non-byval formal, and prepared/BIR name mismatch all return false.
+- Helper-row packet candidate:
+  `find_prepared_store_source_direct_global_select_chain_dependency` can be
+  scoped as a direct-global select-chain dependency packet. Reader: prealloc
+  population and AArch64 store-local publication planning. Semantic fact: the
+  store source depends on a same-block select/direct-global load producer
+  before the store. Compatibility surface: source producer lookups, block
+  identity, before-instruction cutoff, root-is-select flag, and root
+  instruction index remain row policy. Fail-closed proof: null names/query,
+  null source producers, invalid block label, null block, non-named value,
+  unknown value name, producer after the store, producer in another block,
+  missing direct-global load, mismatched select root, and missing root
+  instruction index all keep dependency fields false/empty.
+- Helper-row packet candidate:
+  `plan_prepared_store_source_publication` may be split only for the narrow
+  source-value/source-producer metadata copy into a plan row. Reader: plan
+  construction for prealloc records and AArch64 recomputed plans. Semantic
+  fact: the row carries the same BIR source value and route/prepared producer
+  identity for the named store source. Compatibility surface: status, intent,
+  destination access, source home, storage encoding, recovered/direct-global
+  flags, pointer-base homes, and duplicate/pending policy remain in the
+  prepared planner. Fail-closed proof: missing source, missing destination,
+  invalid source value name, absent source home, unknown producer, wrong
+  producer kind, producer block mismatch, source value mismatch, and
+  prepared/BIR name mismatch preserve current status and empty producer fields.
 
 Blocked exits:
 
-- AArch64 branch lowering, fused compare, dispatch, MIR successor metadata,
-  and branch-target operand spelling are target-policy owned.
-- AArch64 traversal and x86/RISC-V prepared handoff/setup are layout and
-  compatibility surfaces; block order and broad lowering rewrites are out of
-  scope.
-- Join-transfer, edge-transfer, publication, parallel-copy, cycle-temp,
-  execution-site, and move-bundle readers are blocked as prealloc/out-of-SSA
-  or target-copy policy unless a later packet names one row and exact status
-  proof.
-- Prepared-printer/debug text and x86 handoff error strings are output
-  compatibility surfaces, not semantic exits.
-- `legalize.cpp`, `out_of_ssa.cpp`, `label_identity.cpp`, backend filters,
-  public aggregate exposure, and broad `PreparedControlFlow` construction or
-  deletion remain blocked by compatibility.
+- Whole-field `PreparedBirModule::store_source_publications` deletion,
+  privatization, or aggregate retirement is blocked because no non-printer
+  production reader of the stored records was found; this needs confirmation
+  before deletion-ready claims.
+- Prepared-printer `store_source` rows and expected text are output
+  compatibility surfaces, including status/intent strings and producer boolean
+  columns.
+- `PreparedStoreSourcePublicationStatus`, intent, pending/duplicate,
+  stack-homes-only, pointer-writeback, and availability gates are retained
+  publication compatibility.
+- Destination access, frame-slot/object, stack offset/size/align,
+  pointer-base, storage encoding, volatile/access facts, and memory operand
+  support are addressing/storage output surfaces.
+- AArch64 store-local/store-global lowering, fixed-formal stores,
+  pointer-store writeback, pending stack publication, future-publication
+  coverage, scratch/register selection, mnemonic selection, and emitted
+  assembler text are target-policy fallback surfaces.
+- Broad publication planner rewrites, prepared aggregate construction changes,
+  and expectation rewrites are out of Step 5 scope.
 
 ## Suggested Next
 
-Proceed to Step 5 by mapping
-`PreparedBirModule::store_source_publications`. Keep the next packet
-analysis-only and separate source/publication semantic records from
-source-memory status, addressing/storage output, and target-policy fallback.
+Proceed to Step 6 by normalizing the blocker map and proof needs across
+`module`, `names`, `control_flow`, and `store_source_publications` into a
+compact supervisor/reviewer handoff.
 
 ## Watchouts
 
-Do not treat CFG identity helpers as permission to rewrite branch lowering,
-layout, join-transfer construction, or parallel-copy publication. Dominance
-and block-index candidates need explicit mismatch and missing-context proof
-before they are implementation-ready. Branch-target identity work must stay
-helper-row scoped and keep public prepared fallback behavior.
+Do not treat `store_source_publications.records` as deletion-ready: no
+non-printer production reader was found, so the direct field is
+blocked/needs-confirmation rather than proven removable. Future packets must
+name one helper row and keep status, intent, addressing, storage, printer, and
+target fallback behavior intact.
 
 ## Proof
 
