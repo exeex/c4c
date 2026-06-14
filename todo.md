@@ -1,46 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Fail-Closed Proof Rows
+Current Step ID: 5
+Current Step Title: Broader Validation and Closure Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4: audited and extended fail-closed proof rows for the `names`
-semantic resolver candidate.
+Completed Step 5: broader validation and closure-readiness review for the
+`names` semantic resolver candidate.
 
-Step 3 already covered:
+Completed proof surface:
 
 - Positive prepared function-name, block-label, and value-name rows.
 - Absent prepared names, immediate values, invalid `kInvalidBlockLabel`,
   raw-id spelling drift, corrupted prepared-table round-trip mismatches, direct
   `names.*.find(...)` compatibility, and non-interning table-size preservation.
-
-Added focused Step 4 rows for:
-
 - Empty function, block-label, and value-name spellings.
 - Out-of-range raw BIR block-label ids.
 - Raw-only block-label ids that have no prepared id.
 - Explicit prepared/BIR block-label spelling drift.
 - Repeated missing-name fail-closed queries that must not intern names.
+- Broader backend validation passed after the proof rows; the selected semantic
+  resolver candidate is ready for plan-owner closure review.
 
 ## Suggested Next
 
-Execute Step 5: broader validation and closure readiness for the semantic
-resolver helper candidate.
-
-Suggested Step 5 packet:
-
-- Owned files: `todo.md`.
-- Run the focused proof again and any supervisor-selected broader prepared or
-  backend subset needed for a helper shared by three resolver families.
-- Record proof commands, pass/fail status, and residual out-of-scope rows.
-- If complete, request plan-owner closure review rather than expanding into
-  another idea 260 candidate.
-- Preserve route-debug, target-output, same-block lookup, value-home lookup,
-  control-flow, store-source, printer/debug, and backend lowering behavior.
+Request plan-owner closure review for this selected semantic resolver
+candidate. Remaining idea 260 candidates should stay open for separate
+one-candidate runbooks.
 
 ## Watchouts
 
@@ -71,9 +60,23 @@ Suggested Step 5 packet:
   supervisor explicitly delegates behavior-preserving wiring.
 - Step 4 found no helper behavior bug; remaining work is validation and
   lifecycle readiness, not another code packet.
+- Residual out-of-scope rows remain same-block lookup, value-home lookup,
+  control-flow dominance and branch-target packets, store-source-publication
+  packets, route-debug, printer/debug, target-output, and broad
+  `PreparedBirModule` retirement.
 
 ## Proof
 
 Ran
 `(cmake --build --preset default --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1`;
 passed. `test_after.log` shows `100% tests passed, 0 tests failed out of 1`.
+
+Broader Step 5 proof:
+
+```bash
+(cmake --build --preset default && ctest --test-dir build -R '^backend_' -j --output-on-failure) > test_before.log 2>&1
+```
+
+Result: passed before and after this closure-readiness update.
+`test_before.log` and `test_after.log` both show 180/180 backend tests passed.
+The regression guard comparison reported no new failures.
