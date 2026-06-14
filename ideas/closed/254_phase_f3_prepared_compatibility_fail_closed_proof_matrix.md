@@ -58,3 +58,16 @@ of rewriting expectations ad hoc.
   printer rewrites outside the proof matrix.
 - Reject any route that keeps the exact old failure mode but changes only the
   compatibility surface name.
+
+## Completion Note
+
+Closed after Step 4 validated the compatibility-retention proof matrix as a
+future reviewer checklist. The matrix is documentation/analysis-only and does
+not approve implementation, adapters, demotions, baseline rewrites, field
+deletion, privatization, broad prepared retirement, public-surface weakening,
+or target-policy migration into route/BIR facts.
+
+Future packets must treat the open proof gaps recorded in the completed
+matrix as citation/test obligations. Those gaps are not permission to relax
+public prepared compatibility contracts, helper/status spelling, fallback
+behavior, target-policy-sensitive output, or fail-closed requirements.
