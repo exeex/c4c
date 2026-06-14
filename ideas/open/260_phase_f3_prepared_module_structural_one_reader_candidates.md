@@ -257,6 +257,24 @@ narrows it further:
   not approval for broad `PreparedBirModule` deletion, privatization,
   wrapping, aggregate retirement, or migration of unrelated `module`, `names`,
   `control_flow`, or `store_source_publications` rows.
+- `control_flow` block-index label bridge packet completed in the retired
+  active runbook: `prepared_block_label_for_index` now uses BIR block-id /
+  prepared block-label agreement only when the prepared control-flow row,
+  prepared label id, BIR block index, and structured BIR block-label id are
+  complete and agree, while preserving prepared fallback and invalid-label
+  behavior.
+- Focused proof covered the positive agreement path plus fail-closed rows for
+  absent prepared control-flow rows, invalid prepared target labels, missing
+  structured BIR label ids, BIR-shorter public call-plan selection, and
+  prepared/BIR mismatch.
+- Broader close-readiness proof passed with 180/180 default backend tests in
+  the canonical before/after logs, and the regression guard reported no new
+  failures.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed block-index label bridge packet is
+  not approval for broad `PreparedBirModule` deletion, privatization,
+  wrapping, aggregate retirement, or migration of unrelated `module`, `names`,
+  `control_flow`, or `store_source_publications` rows.
 
 ## Acceptance Criteria
 
