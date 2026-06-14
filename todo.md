@@ -3,7 +3,7 @@ Source Idea Path: ideas/open/257_phase_f3_x86_route6_call_argument_source_identi
 Source Plan Path: plan.md
 Current Step ID: 5
 Current Step Title: Compatibility Sweep
-Lifecycle Decision: Active plan remains blocked on x86-enabled proof; do not close from default-build proof alone.
+Lifecycle Decision: x86-enabled proof is satisfied; supervisor should request plan-owner closure decision.
 
 # Current Packet
 
@@ -41,32 +41,37 @@ Compatibility surfaces swept:
   `ConsumedPlans` adapter was found, and this packet makes no riscv parity
   claim.
 
-Closure readiness in this default build context:
+Closure readiness:
 
-- Blocked for lifecycle close. The source idea acceptance criteria require
-  proof for the focused x86 adapter path plus unchanged prepared lookup,
-  route-debug, wrapper/fallback, helper/oracle, and `ConsumedPlans` behavior.
-- The default build has `C4C_ENABLE_X86_BACKEND_TESTS:BOOL=OFF`, and
+- Ready for plan-owner closure decision. The supervisor provided an
+  x86-enabled proof configuration with `C4C_ENABLE_X86_BACKEND_TESTS:BOOL=ON`;
+  `ctest --test-dir build-x86 -N` registers both direct x86 rows:
+  `backend_x86_route_debug` and `backend_x86_handoff_boundary`.
+- The x86-enabled proof command completed successfully:
+  `(cmake --build build-x86 --target backend_x86_route_debug_test backend_x86_handoff_boundary_test -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_x86_route_debug|backend_x86_handoff_boundary)$') > test_before.log 2>&1 && cp test_before.log test_after.log`.
+- Result: `backend_x86_route_debug` passed,
+  `backend_x86_handoff_boundary` passed, 2/2 tests passed.
+- Regression guard accepted the matching before/after x86 proof with
+  `--allow-non-decreasing-passed`: before 2/2, after 2/2.
+- The default build still has `C4C_ENABLE_X86_BACKEND_TESTS:BOOL=OFF`, and
   `ctest --test-dir build -N` does not register `backend_x86_route_debug` or
-  `backend_x86_handoff_boundary`.
+  `backend_x86_handoff_boundary`; that is now historical context only, not a
+  current lifecycle blocker.
 - Existing direct x86 rows in the gated tests cover the needed adapter and
   compatibility behavior, including agreed authority, nameless fallback,
   missing Route 6 facts, prepared selection preservation, and prepared/Route 6
-  mismatch. Because those CTests are disabled here, the current proof cannot
-  satisfy the direct x86 proof portion of the source acceptance criteria.
+  mismatch.
 
 ## Suggested Next
 
-Supervisor should run or delegate an x86-enabled proof configuration for
-`backend_x86_route_debug` and `backend_x86_handoff_boundary`, then decide
-whether the plan can close or needs a plan-owner blocker record.
+Supervisor should request plan-owner lifecycle closure review for idea 257.
 
 ## Watchouts
 
 - Step 3 was already wired in code; this packet does not add a new adapter or
   tests.
-- Do not close this source idea from the current default-build proof alone; it
-  lacks direct x86 route-debug / handoff-boundary CTest execution.
+- Do not treat the default-build x86 CTest registration gap as a current
+  blocker; the required direct x86 rows were proved in `build-x86`.
 - Keep the `source_value_name` requirement as part of named authority; missing
   names are fallback rows, not partial successes.
 - Do not treat prepared-only evidence or Route 6-only evidence as agreement.
@@ -78,6 +83,15 @@ whether the plan can close or needs a plan-owner blocker record.
 Command: `(cmake --build --preset default && ctest --test-dir build -R '^(backend_prepared_printer|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff)$' --output-on-failure) > test_after.log 2>&1`
 
 Result: passed; the delegated enabled subset passed 3/3, but it does not remove
-the closure blocker for disabled direct x86 proof rows.
+the need for direct x86 proof rows.
+
+X86-enabled command: `(cmake --build build-x86 --target backend_x86_route_debug_test backend_x86_handoff_boundary_test -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_x86_route_debug|backend_x86_handoff_boundary)$') > test_before.log 2>&1 && cp test_before.log test_after.log`
+
+X86-enabled result: passed; `backend_x86_route_debug` and
+`backend_x86_handoff_boundary` both passed, 2/2.
+
+Regression guard: `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Regression guard result: passed; before 2/2 and after 2/2.
 
 Proof log: `test_after.log`.
