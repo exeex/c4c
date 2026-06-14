@@ -1,50 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/262_phase_f3_x86_compare_join_loadlocal_selected_arm_support.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Selected LoadLocal Classification
+Current Step ID: 3
+Current Step Title: x86 Render Bridge
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 2, `Selected LoadLocal Classification`.
+Completed plan Step 3, `x86 Render Bridge`.
 
-Added opt-in prepared compare-join contract support for one selected
-`EdgeStoreSlot` arm rooted in a same-predecessor-block `LoadLocal` with
-authoritative local-slot addressing. The contract now has a `LocalI32Load`
-computed base and return shape carrying predecessor label, load instruction
-index, selected result name, slot identity, byte offset, size, alignment,
-address space, and volatility. Source discovery remains fail-closed unless
-the selected-loadlocal path is explicitly enabled, so existing x86 rendering
-does not consume the new shape before Step 3.
+The x86 compare-join renderer now explicitly opts into the selected
+`LoadLocal` prepared contract, treats `LocalI32Load` return shapes as
+supported only with the new render branch, and renders the selected arm through
+`render_agreed_route3_load_local_statement_memory_operand(...)`. The branch
+revalidates the prepared predecessor block, instruction index, result id,
+slot identity, byte offset, size, alignment, address space, and volatility
+before loading from the agreed Route 3/prepared source-memory operand.
 
-Focused coverage was added in
-`backend_x86_handoff_boundary_joined_branch_test.cpp` using a real BIR
-predecessor-block `LoadLocal` incoming value. The tests prove the prepared
-contract publishes the selected `LoadLocal`, rejects missing source-memory
-authority, and does not classify a join-block carrier `LoadLocal` rewrite as
-the selected predecessor source.
+Focused x86 handoff coverage now proves the real `EdgeStoreSlot`
+joined-branch selected-`LoadLocal` fixture emits through the bridge and rejects
+an incomplete prepared source-memory publication instead of falling back past
+the compare-join handoff.
 
 ## Suggested Next
 
-Execute Step 3 by wiring the new `LocalI32Load` compare-join return arm into
-the x86 renderer through the existing Route 3 statement-memory agreement
-facade. The renderer should explicitly opt into the selected-loadlocal
-prepared contract, then fail closed on missing, incomplete, mismatched, or
-unsupported Route 3/prepared source-memory authority.
+Execute Step 4 by broadening the focused proof around the production bridge,
+including route-debug coverage where applicable, and record whether idea 261
+can resume its supported publication fixture work.
 
 ## Watchouts
 
-- `find_prepared_param_zero_materialized_compare_join_branches(...)` still
-  defaults to the old empty-predecessor behavior. Step 3 must opt in to the
-  selected-loadlocal contract at the x86 render site.
-- `prepared_i32_compare_join_return_arm_is_supported(...)` currently returns
-  false for `LocalI32Load` shapes; Step 3 owns changing that alongside the
-  actual renderer branch.
-- Keep using publication/source-memory facts from the real edge-transfer
-  incoming value. Do not hand-build publications or infer from the join
-  carrier load.
+- The Route 3 memory record stores the BIR local-slot-relative byte offset;
+  prepared source-memory publications expose the rendered frame operand
+  offset. The bridge therefore keeps byte-offset authority on the selected
+  `LoadLocal` itself and uses publication availability, producer identity,
+  slot ownership, size, alignment, address space, and volatility for the
+  Route 3/prepared agreement check.
+- Step 4 should add any remaining reachable negative rows without synthetic
+  publications or fixture-only `join_transfers`.
 
 ## Proof
 

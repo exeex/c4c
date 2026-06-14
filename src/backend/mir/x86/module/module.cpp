@@ -2589,10 +2589,22 @@ const c4c::backend::prepare::PreparedValueHome& require_prepared_i32_compare_joi
                                         "compare-join returned value");
 }
 
+std::optional<std::string> render_agreed_route3_load_local_statement_memory_operand(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::x86::ConsumedPlans& consumed,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const c4c::backend::bir::Block& block,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadLocalInst& load,
+    c4c::ValueNameId expected_result);
+
 void append_prepared_i32_compare_join_return_arm(
     c4c::backend::x86::core::Text& function_out,
     const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::x86::ConsumedPlans& consumed,
     const Data& data,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& join_block,
@@ -2660,11 +2672,66 @@ void append_prepared_i32_compare_join_return_arm(
       }
       break;
     }
-    case c4c::backend::prepare::PreparedComputedBaseKind::LocalI32Load:
-      throw_prepared_value_location_handoff_error(
-          "defined function '" + function.name +
-          "' compare-join selected local load is not wired to the x86 renderer");
+    case c4c::backend::prepare::PreparedComputedBaseKind::LocalI32Load: {
+      const auto& base = selected_value.base;
+      const auto* load_block =
+          find_bir_block_by_prepared_label(function,
+                                           module.module.names,
+                                           module.names,
+                                           base.load_local_block_label);
+      if (load_block == nullptr) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' compare-join selected local load block is not owned by the function body");
+      }
+      if (base.load_local_instruction_index >= load_block->insts.size()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' compare-join selected local load instruction is outside the source block");
+      }
+      const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(
+          &load_block->insts[base.load_local_instruction_index]);
+      if (load == nullptr ||
+          load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          load->result.type != c4c::backend::bir::TypeKind::I32 ||
+          load->slot_id != base.load_local_slot_id ||
+          !load->address.has_value() ||
+          load->address->base_kind != c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot ||
+          load->address->base_slot_id != base.load_local_slot_id ||
+          load->address->byte_offset != base.load_local_byte_offset ||
+          load->address->size_bytes != base.load_local_size_bytes ||
+          load->address->align_bytes != base.load_local_align_bytes ||
+          load->address->address_space != base.load_local_address_space ||
+          load->address->is_volatile != base.load_local_is_volatile) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' compare-join selected local load drifted from prepared source-memory authority");
+      }
+      const auto prepared_result =
+          c4c::backend::prepare::resolve_prepared_value_name_id(module.names, load->result.name);
+      if (!prepared_result.has_value() || *prepared_result != base.load_local_result_name_id) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' compare-join selected local load result drifted from prepared source-memory authority");
+      }
+      const auto memory =
+          render_agreed_route3_load_local_statement_memory_operand(module,
+                                                                   consumed,
+                                                                   addressing,
+                                                                   *load_block,
+                                                                   base.load_local_block_label,
+                                                                   base.load_local_instruction_index,
+                                                                   *load,
+                                                                   *prepared_result);
+      if (!memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' compare-join selected local load has no agreed Route 3 source-memory publication");
+      }
+      ensure_stack_frame();
+      function_out.append_line("    mov " + return_register + ", " + *memory);
       break;
+    }
     case c4c::backend::prepare::PreparedComputedBaseKind::GlobalI32Load: {
       if (return_arm.global == nullptr ||
           find_supported_same_module_i32_global(module.module,
@@ -2750,11 +2817,10 @@ bool prepared_i32_compare_join_return_arm_is_supported(
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::ParamValue:
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
         ParamValueWithTrailingImmediateBinary:
-      return true;
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::LocalI32Load:
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
         LocalI32LoadWithTrailingImmediateBinary:
-      return false;
+      return true;
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::GlobalI32Load:
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
         GlobalI32LoadWithTrailingImmediateBinary:
@@ -2801,6 +2867,11 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
   const auto consumed = c4c::backend::x86::consume_plans(module, *function_name);
 
   const auto* function_locations = require_prepared_value_location_function(module, function);
+  const auto* addressing = c4c::backend::prepare::find_prepared_addressing(module, *function_name);
+  if (addressing == nullptr) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared addressing function");
+  }
   const auto param_name =
       c4c::backend::prepare::resolve_prepared_value_name_id(module.names, function.params.front().name);
   if (!param_name.has_value()) {
@@ -2864,7 +2935,7 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
     auto mutable_names = module.names;
     const auto prepared_compare_join =
         c4c::backend::prepare::find_prepared_param_zero_materialized_compare_join_branches(
-            mutable_names, *control_flow, function, source_block, function.params.front(), false);
+            mutable_names, *control_flow, function, source_block, function.params.front(), false, true);
     if (!prepared_compare_join.has_value()) {
       throw_prepared_control_flow_handoff_error(
           "compare-join source block has no authoritative prepared join metadata");
@@ -2928,7 +2999,9 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
     append_prepared_i32_compare_join_return_arm(
         function_out,
         module,
+        consumed,
         data,
+        *addressing,
         *function_locations,
         function,
         *join_context.join_block,
@@ -2952,7 +3025,9 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
     append_prepared_i32_compare_join_return_arm(
         function_out,
         module,
+        consumed,
         data,
+        *addressing,
         *function_locations,
         function,
         *join_context.join_block,
@@ -3887,6 +3962,11 @@ bool route3_load_local_source_memory_matches_publication(
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::bir::Route3MemoryAccessRecord& route3_access,
     const c4c::backend::prepare::PreparedEdgePublication& publication) {
+  const auto* frame_slot =
+      publication.source_memory_frame_slot_id.has_value()
+          ? find_prepared_frame_slot_by_id(module.stack_layout,
+                                           *publication.source_memory_frame_slot_id)
+          : nullptr;
   if (!route3_access ||
       publication.status !=
           c4c::backend::prepare::PreparedEdgePublicationLookupStatus::Available ||
@@ -3898,13 +3978,13 @@ bool route3_load_local_source_memory_matches_publication(
       publication.source_memory_base_kind !=
           c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
       !publication.source_memory_frame_slot_id.has_value() ||
+      frame_slot == nullptr ||
       !route3_local_slot_matches_prepared_frame_slot(
           module, route3_access, *publication.source_memory_frame_slot_id)) {
     return false;
   }
   return publication.source_memory_address_space == route3_access.address_space &&
          publication.source_memory_is_volatile == route3_access.is_volatile &&
-         publication.source_memory_byte_offset == route3_access.byte_offset &&
          publication.source_memory_size_bytes == route3_access.size_bytes &&
          publication.source_memory_align_bytes == route3_access.align_bytes &&
          publication.source_memory_can_use_base_plus_offset;

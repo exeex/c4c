@@ -196,6 +196,21 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_add_asm
          minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
+std::string expected_minimal_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_asm(
+    const char* function_name,
+    const char* false_label,
+    int false_immediate,
+    int joined_immediate) {
+  return expected_branch_prefix(function_name, false_label) + "    sub rsp, 4\n    mov " +
+         minimal_i32_return_register() + ", DWORD PTR [rsp + 16]\n    add " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    add rsp, 4\n    ret\n.L" + function_name + "_" + false_label +
+         ":\n    mov " + minimal_i32_return_register() + ", " + minimal_i32_param_register() +
+         "\n    sub " + minimal_i32_return_register() + ", " + std::to_string(false_immediate) +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n";
+}
+
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm(
     const char* function_name,
     const char* false_label,
@@ -6059,7 +6074,9 @@ int check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_
     const char* function_name,
     const char* failure_context,
     bool remove_source_address,
-    bool carrier_only_loadlocal) {
+    bool carrier_only_loadlocal,
+    bool make_prepared_source_memory_incomplete = false,
+    const std::string* expected_asm = nullptr) {
   c4c::TargetProfile target_profile;
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(
@@ -6285,6 +6302,61 @@ int check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_
                  ": shared helper classified the unrelated false arm as selected LoadLocal")
                     .c_str());
   }
+  if (make_prepared_source_memory_incomplete) {
+    auto* addressing = [&]() -> prepare::PreparedAddressingFunction* {
+      for (auto& candidate : prepared.addressing.functions) {
+        if (candidate.function_name == control_flow->function_name) {
+          return &candidate;
+        }
+      }
+      return nullptr;
+    }();
+    if (addressing == nullptr) {
+      return fail((std::string(failure_context) +
+                   ": prepared fixture lost its mutable addressing contract")
+                      .c_str());
+    }
+    auto* selected_access = [&]() -> prepare::PreparedMemoryAccess* {
+      for (auto& access : addressing->accesses) {
+        if (access.block_label == true_return.selected_value.base.load_local_block_label &&
+            access.inst_index == true_return.selected_value.base.load_local_instruction_index) {
+          return &access;
+        }
+      }
+      return nullptr;
+    }();
+    if (selected_access == nullptr) {
+      return fail((std::string(failure_context) +
+                   ": prepared fixture lost the selected LoadLocal source-memory access")
+                      .c_str());
+    }
+    selected_access->result_value_name.reset();
+    try {
+      (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer unexpectedly accepted an incomplete selected LoadLocal source-memory publication")
+                      .c_str());
+    } catch (const std::invalid_argument& error) {
+      const auto message = std::string_view(error.what());
+      if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+          message.find("compare-join selected local load has no agreed Route 3 source-memory publication") ==
+              std::string_view::npos) {
+        return fail((std::string(failure_context) +
+                     ": x86 prepared-module consumer rejected incomplete selected LoadLocal source-memory authority with the wrong contract message: " +
+                     error.what())
+                        .c_str());
+      }
+    }
+    return 0;
+  }
+  if (expected_asm != nullptr) {
+    const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
+    if (prepared_asm != *expected_asm) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer did not render the selected LoadLocal compare-join arm through Route 3 agreement")
+                      .c_str());
+    }
+  }
   return 0;
 }
 
@@ -6310,6 +6382,23 @@ int check_materialized_compare_join_edge_store_slot_selected_loadlocal_rejects_c
     const char* failure_context) {
   return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
       module, function_name, failure_context, false, true);
+}
+
+int check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_route(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
+      module, function_name, failure_context, false, false, false, &expected_asm);
+}
+
+int check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_incomplete_source_memory(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
+      module, function_name, failure_context, false, false, true);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
@@ -8433,6 +8522,24 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
               "branch_join_adjust_then_add",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot selected LoadLocal rejects join-carrier-only drift");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_route(
+              make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module(),
+              expected_minimal_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_asm(
+                  "branch_join_loadlocal_then_add", "is_nonzero", 1, 2),
+              "branch_join_loadlocal_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot selected LoadLocal x86 render bridge");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_incomplete_source_memory(
+              make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module(),
+              "branch_join_loadlocal_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot selected LoadLocal x86 rejects incomplete source-memory authority");
       status != 0) {
     return status;
   }
