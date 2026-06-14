@@ -219,6 +219,25 @@ narrows it further:
   aggregate retirement, construction-time interning changes, or migration of
   unrelated `names`, `module`, `control_flow`, or
   `store_source_publications` rows.
+- `control_flow` call-preservation dominance packet completed in the retired
+  active runbook: prior preserved-value lookup now uses a local
+  prepared/control-flow agreement boundary only when the prepared preservation
+  row, value id, source pointer, source call location, and query call location
+  are complete and agree with same-block instruction ordering or
+  route/control-flow dominance.
+- Focused proof covered valid same-block and cross-block prior-preservation
+  selection plus fail-closed rows for null context, invalid ids, empty prior
+  lists, later same-block entries, non-dominating or unreachable rows,
+  duplicate candidate positions, missing preserved pointers, incomplete
+  preservation metadata, and non-`Found` consumer fallthrough.
+- Broader close-readiness proof passed with 180/180 default backend tests in
+  the canonical before/after logs, and the regression guard reported no new
+  failures.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed control-flow call-preservation packet
+  is not approval for broad `PreparedBirModule` deletion, privatization,
+  wrapping, aggregate retirement, or migration of unrelated `module`, `names`,
+  `control_flow`, or `store_source_publications` rows.
 
 ## Acceptance Criteria
 
