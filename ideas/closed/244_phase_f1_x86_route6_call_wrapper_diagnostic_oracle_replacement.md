@@ -83,3 +83,17 @@ argument source identity, behind the current agreement and fallback matrix.
   selection, emission, or wrapper policy is moved into BIR.
 - Prepared facts are silently read as route-native truth without an explicit
   agreement or compatibility-fallback label.
+
+## Completion Notes
+
+Closed after Step 5 close-scope validation. The selected x86 scalar `i32`
+direct-call argument path now has Route 6 status diagnostics plus narrow
+agreement-gated Route 6 source authority, while preserving prepared fallback,
+public `ConsumedPlans` compatibility, and direct-call wrapper output. The close
+scope stayed 3/3 before and 3/3 after for `backend_x86_route_debug`,
+`backend_prepared_lookup_helper`, and `backend_x86_handoff_boundary`, with no
+new failures under the documented non-decreasing regression guard mode.
+
+Remaining broader work stays out of scope: public prepared aggregate demotion,
+draft retirement, riscv parity, and cross-target wrapper convergence remain
+covered by separate open follow-up ideas.
