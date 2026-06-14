@@ -1,102 +1,103 @@
 Status: Active
 Source Idea Path: ideas/open/255_phase_f3_prepared_private_pass_context_metadata_gate.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Consumer Inventory
+Current Step ID: 2
+Current Step Title: Compatibility Contract Map
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Consumer Inventory completed for `PreparedBirModule::route`,
+Step 2 - Compatibility Contract Map completed for `PreparedBirModule::route`,
 `invariants`, `completed_phases`, and `notes`. `PreparedBirModule::liveness`
 remained out of scope.
 
-Field inventory:
+Compatibility rows to preserve:
 
-- `route`
-  - Direct consumers: declared/defaulted in `src/backend/prealloc/module.hpp`;
-    `BirPreAlloc` aggregate construction sets `PrepareRoute::SemanticBirShared`;
-    `src/backend/prealloc/prepared_printer.cpp` reads `module.route` for the
-    `prepared.module ... route=...` header.
-  - Indirect consumers: `src/backend/backend.cpp` prepared dump/focus dump
-    routes call `prepare::print`; CMake dump snippets and route-debug tests
-    assert `route=semantic_bir_shared` output.
-  - Classification: construction-only plus printer/status/debug
-    compatibility. x86/riscv target code accepts the prepared aggregate but no
-    direct `PreparedBirModule::route` target-facing read was found; other
-    `.route` hits are call-preservation or BIR route records, not this field.
-  - Preliminary state: candidate. No x86/riscv public consumer currently blocks
-    demotion, but printer/debug header compatibility must stay byte-stable.
+- Route output: `prepare::print` emits the header row
+  `prepared.module target=<triple> route=semantic_bir_shared`. Evidence:
+  `tests/backend/bir/backend_x86_route_debug_test.cpp` checks generic prepared
+  dump equality plus that exact header, and multiple
+  `tests/backend/bir/CMakeLists.txt` prepared dump cases require the same
+  header in normal and focused output.
+- Invariant output: `prepare::print` emits `invariants:` followed by
+  `  - no_target_facing_i1` and/or `  - no_phi_nodes` when present. Evidence:
+  `tests/backend/bir/backend_prepare_phi_materialize_test.cpp` directly checks
+  publication and stable names for both invariants. Missing evidence: no
+  printer/CLI test currently asserts the rendered `invariants:` rows.
+- Completed-phase text/status row: `prepare::print` emits
+  `completed_phases: legalize stack_layout liveness out_of_ssa regalloc` in
+  pass order when populated. Evidence:
+  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff` requires that
+  exact row.
+- Notes text/status rows: `prepare::print` emits `notes:` followed by rows such
+  as `  - [stack_layout] stack layout prepared function 'stdarg'` and
+  `  - [regalloc] regalloc seeded function 'stdarg'`. Evidence:
+  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff` and
+  `backend_cli_dump_prepared_bir_focus_function_filters_00204` require those
+  note snippets; `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+  directly checks the unresolved-PIC diagnostic text in `prepared.notes`.
+- Absent-note fallback: the current compatibility contract is omission, not a
+  placeholder row: `prepare::print` prints no `notes:` section when
+  `module.notes` is empty. Missing evidence: no focused fail-closed test
+  currently asserts that an empty note vector omits the section or that a
+  fallback state does not synthesize a note.
+- Debug/status strings: `backend_x86_route_debug` preserves the split between
+  generic prepared dumps and x86 route debug surfaces, including
+  `route=semantic_bir_shared`, `x86 route summary`, `route owner: x86/debug`,
+  `module emitter: x86/module`, and
+  `status: contract-first debug surface; structured lane diagnostics still deferred`.
 
-- `invariants`
-  - Direct consumers: declared in `src/backend/prealloc/module.hpp`;
-    `run_legalize` appends `NoTargetFacingI1`; `run_out_of_ssa` appends
-    `NoPhiNodes`; `src/backend/prealloc/prepared_printer.cpp` reads
-    `module.invariants` for the `invariants:` section.
-  - Indirect consumers: prepared dumps through `src/backend/backend.cpp` and
-    printer tests observe stable invariant names via
-    `prepared_bir_invariant_name`.
-  - Tests: `tests/backend/bir/backend_prepare_phi_materialize_test.cpp`
-    directly scans `module.invariants` for `NoPhiNodes` and
-    `NoTargetFacingI1`.
-  - Classification: pass-context metadata writes, printer/status/debug
-    compatibility, and tests. No x86/riscv target-facing direct read was found.
-  - Preliminary state: candidate. No target public consumer blocks demotion;
-    invariant-name/output compatibility is retained.
+Missing fail-closed coverage relevant to these fields:
 
-- `completed_phases`
-  - Direct consumers: declared/default-initialized in
-    `src/backend/prealloc/module.hpp`; appended by `run_legalize`,
-    `run_stack_layout`, `run_liveness`, `run_out_of_ssa`, and `run_regalloc`;
-    `src/backend/prealloc/prepared_printer.cpp` reads it for the
-    `completed_phases:` row.
-  - Indirect consumers: prepared dump/focus dump routes in
-    `src/backend/backend.cpp`; CMake dump snippets assert phase ordering such
-    as `legalize stack_layout liveness out_of_ssa regalloc`.
-  - Classification: pass-context metadata writes plus printer/status/debug
-    compatibility. No tests or x86/riscv target code directly read the field.
-  - Preliminary state: candidate. No x86/riscv public consumer blocks
-    demotion; phase-row text/order compatibility must be preserved.
-
-- `notes`
-  - Direct consumers: declared/default-initialized in
-    `src/backend/prealloc/module.hpp`; appended by `BirPreAlloc::note`,
-    `run_legalize`, `run_stack_layout`, `run_liveness`, `run_out_of_ssa`, and
-    `run_regalloc`; stack-layout publication helpers receive/append through
-    `prepared_.notes`; `src/backend/prealloc/prepared_printer.cpp` reads
-    `module.notes` for the `notes:` section.
-  - Indirect consumers: prepared dump/focus dump routes in
-    `src/backend/backend.cpp`; CMake dump snippets assert note rows such as
-    `[stack_layout] ...` and `[regalloc] ...`.
-  - Tests: `tests/backend/bir/backend_prepare_stack_layout_test.cpp` directly
-    scans `prepared.notes` for the unresolved-PIC diagnostic. `lir_to_bir`
-    `result.notes` and x86 API lowering-note reads are separate types and do
-    not consume `PreparedBirModule::notes`.
-  - Classification: pass-context metadata writes, printer/status/debug
-    compatibility, and tests. No x86/riscv prepared-module target-facing
-    direct read was found.
-  - Preliminary state: candidate. No target public consumer blocks demotion;
-    absent-note behavior and note text/status rows must remain exact.
+- Invalid route enum values fall through to `prepare_route_name(...) ==
+  "unknown"`, but no test exercises an invalid `PrepareRoute` value or asserts
+  that the printer/debug surface fails closed instead of emitting a misleading
+  supported route.
+- Invalid invariant enum values fall through to
+  `prepared_bir_invariant_name(...) == "unknown"`, but no test exercises an
+  invalid `PreparedBirInvariant` value or asserts the rendered invariant row.
+- Mismatched metadata states are not directly fenced: no test checks a
+  completed phase without the corresponding invariant or note, an invariant
+  without its completed phase, or a note whose phase text is absent from
+  `completed_phases`.
+- Absent states are only partially covered: empty `completed_phases`,
+  `invariants`, and `notes` omit their sections by implementation behavior, but
+  focused tests do not assert those omissions.
+- Fallback/status coverage is strongest for x86 debug strings and the
+  unresolved-PIC note payload, but weak for printer-level fallback rows for
+  route, invariant, completed-phase, and empty-note states.
 
 ## Suggested Next
 
-Proceed to Step 2 by mapping compatibility contracts and focused proof coverage
-for the prepared header route text, completed-phase row, invariant names/rows,
-notes rows, and absent-note behavior before any accessor or adapter change.
+Proceed to Step 3 by defining the smallest private pass-context accessor or
+adapter shape for the first implementation slice. Suggested first slice:
+`route` plus printer/debug compatibility only, because it has one enum value,
+one header row, and no direct target-facing public consumer from Step 1.
+
+Smallest focused proof command for that first slice:
+
+`cmake --build build --target c4cll backend_prepared_printer_test backend_x86_route_debug_test && ctest --test-dir build -R '^(backend_prepared_printer|backend_x86_route_debug|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_focus_function_filters_00204)$' --output-on-failure`
+
+If `C4C_ENABLE_X86_BACKEND_TESTS` is off in the active build, drop only
+`backend_x86_route_debug_test` and `backend_x86_route_debug`; keep the printer
+and CLI prepared-dump cases.
 
 ## Watchouts
 
 - Keep `PreparedBirModule::liveness` out of scope.
-- Do not treat call-preservation `.route`, BIR route records, or
-  `BirLoweringResult::notes` as consumers of the four `PreparedBirModule`
-  metadata fields.
-- The x86 and riscv prepared emit/debug paths take the aggregate, but Step 1 did
-  not find direct public reads of these four fields there. Recheck target files
-  before code changes if the accessor shape changes aggregate visibility.
-- Tests currently read `invariants` and `notes` directly; these are not
-  target-facing blockers, but any demotion slice must update tests through the
-  chosen compatibility surface rather than weakening assertions.
+- Do not weaken CLI required snippets or direct invariant/note assertions to
+  make demotion compile; add or redirect through the accepted compatibility
+  surface instead.
+- Before demoting `invariants`, add or preserve printer-level proof for the
+  rendered `invariants:` rows; current direct tests prove publication and names,
+  not the printed rows.
+- Before demoting `notes`, preserve both note payload access and the empty-notes
+  omission contract; current direct tests prove one diagnostic payload, while
+  CLI tests prove populated note snippets.
+- Before demoting `completed_phases`, preserve phase ordering exactly and avoid
+  treating a successful pass run as proof that mismatched metadata states are
+  fail-closed.
 
 ## Proof
 
