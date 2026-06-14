@@ -55,6 +55,31 @@ same-function, same-block `Route3MemoryAccessRecord` for `LoadLocal` to
 - Focused backend tests prove the agreement path and fail-closed rows without
   weakening existing prepared lookup/status or output contracts.
 
+## Parked Lifecycle Note
+
+The active runbook reached the implementation bridge in commit `76767c2ac`,
+then parked at Step 4 because the current x86 fixture set does not expose a
+supported path that naturally publishes a selected `LoadLocal`
+`source_memory_access` row into
+`render_agreed_route3_load_local_statement_memory_operand(...)`.
+
+Checked surfaces:
+
+- addressed local-slot guard rows provide Route 3 memory records and legacy
+  no-publication fallback, but synthetic `join_transfers` are rejected before
+  the agreement facade;
+- short-circuit rows have real `join_transfers` and prepared frame-slot
+  authority, but no available selected `LoadLocal` source-memory publication;
+- joined-branch rows publish real non-`LoadLocal` chains, while local-slot rows
+  are test carrier rewrites;
+- loop-countdown rows use loop-carry rendering outside the addressed
+  statement-memory facade.
+
+Follow-up testability work is split to
+`ideas/open/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md`.
+Resume this idea after that fixture support can prove the positive agreement
+branch and fail-closed rows without unsupported publication injection.
+
 ## Reviewer Reject Signals
 
 - Reject named-case shortcuts that only match one test function, one local
