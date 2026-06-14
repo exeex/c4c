@@ -4742,6 +4742,13 @@ int verify_edge_publication_source_producer_facts() {
       indexed_route5_load_edge.destination_value_name != load_destination.name) {
     return fail("Route 5 edge index should find load-local memory-source edge");
   }
+  auto duplicate_route5_edge_index = route5_edge_index;
+  duplicate_route5_edge_index.edge_records.push_back(
+      duplicate_route5_edge_index.edge_records.front());
+  if (duplicate_route5_edge_index.edge_records.size() !=
+      route5_edge_index.edge_records.size() + 1) {
+    return fail("Route 5 edge index diagnostics should expose duplicate edge records before riscv authority changes");
+  }
   const auto indexed_bir_load_edge =
       mir::find_bir_cfg_edge_publication_source_identity(
           make_bir_edge_publication_source_request(route5_predecessor,

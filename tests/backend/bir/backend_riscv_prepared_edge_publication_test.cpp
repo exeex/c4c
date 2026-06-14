@@ -195,6 +195,58 @@ prepare::PreparedMemoryAccess load_local_source_access(const FixtureIds& ids) {
   };
 }
 
+bir::Function make_route5_edge_identity_function(const FixtureIds& ids,
+                                                 bool load_local_source) {
+  bir::Block predecessor;
+  predecessor.label = "left";
+  predecessor.label_id = ids.predecessor;
+  if (load_local_source) {
+    predecessor.insts.push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "%src"),
+        .slot_name = "dynamic_slot",
+        .byte_offset = 12,
+        .align_bytes = 4,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                .base_name = "%base",
+                .base_value = bir::Value::named(bir::TypeKind::I64, "%base"),
+                .byte_offset = 12,
+                .size_bytes = 4,
+                .align_bytes = 4,
+            },
+    });
+  } else {
+    predecessor.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "%src"),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::immediate_i32(1),
+        .rhs = bir::Value::immediate_i32(2),
+    });
+  }
+
+  bir::Block successor;
+  successor.label = "join";
+  successor.label_id = ids.successor;
+  successor.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%dst"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "left",
+              .value = bir::Value::named(bir::TypeKind::I32, "%src"),
+              .label_id = ids.predecessor,
+          },
+      },
+  });
+
+  bir::Function function;
+  function.name = "join_regs";
+  function.blocks.push_back(std::move(predecessor));
+  function.blocks.push_back(std::move(successor));
+  return function;
+}
+
 void set_edge_publication_value_types(prepare::PreparedBirModule& prepared,
                                       bir::TypeKind source_type,
                                       bir::TypeKind destination_type) {
@@ -1538,6 +1590,153 @@ int check_load_local_dynamic_stack_source_exposes_shared_memory_access() {
   return 0;
 }
 
+int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
+  auto prepared = make_register_edge_publication_module();
+  const auto ids = FixtureIds{
+      .function = prepared.names.function_names.find("join_regs"),
+      .predecessor = prepared.names.block_labels.find("left"),
+      .successor = prepared.names.block_labels.find("join"),
+      .source_name = prepared.names.value_names.find("%src"),
+      .base_name = prepared.names.value_names.find("%base"),
+      .destination_name = prepared.names.value_names.find("%dst"),
+  };
+
+  auto lookups = make_lookups(prepared);
+  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, ids.predecessor, ids.successor, 2);
+  const auto route5_function = make_route5_edge_identity_function(ids, false);
+  const auto& route5_predecessor = route5_function.blocks[0];
+  const auto& route5_successor = route5_function.blocks[1];
+  const auto route5_index = bir::route5_build_edge_join_source_index(route5_function);
+  const auto route5_edge = bir::route5_find_cfg_edge_publication(
+      route5_index,
+      route5_predecessor,
+      route5_successor,
+      bir::Value::named(bir::TypeKind::I32, "%dst"));
+  if (publication == nullptr || !route5_index || !route5_edge ||
+      route5_edge.status != bir::Route5PublicationStatus::Available ||
+      route5_edge.predecessor_label_id != publication->predecessor_label ||
+      route5_edge.successor_label_id != publication->successor_label ||
+      route5_edge.source_value_name != "%src" ||
+      route5_edge.destination_value_name != "%dst" ||
+      route5_edge.source_producer_kind !=
+          bir::Route5PublicationSourceKind::Binary ||
+      route5_edge.source_producer_instruction != &route5_predecessor.insts[0] ||
+      route5_edge.source_memory_identity_available) {
+    return fail("RISC-V Route 5 oracle should expose agreeing scalar edge identity before authority changes");
+  }
+  auto intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.instruction_text == "mv a1, a0",
+              "RISC-V scalar edge output should stay prepared-backed with agreeing Route 5 facts")) {
+    return 1;
+  }
+
+  auto missing_route5_lookup = lookups;
+  missing_route5_lookup.edge_publications.publications_by_edge_destination.clear();
+  intent = riscv::consume_edge_publication_move_intent(
+      &missing_route5_lookup, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status ==
+                  riscv::EdgePublicationMoveIntentStatus::MissingPublication,
+              "RISC-V should still fail closed to prepared missing-publication status even when Route 5 facts exist")) {
+    return 1;
+  }
+
+  auto duplicate_index = route5_index;
+  duplicate_index.edge_records.push_back(duplicate_index.edge_records.front());
+  const auto mismatched_route5_edge = bir::route5_find_cfg_edge_publication(
+      route5_index,
+      route5_predecessor,
+      route5_successor,
+      bir::Value::named(bir::TypeKind::I64, "%dst"));
+  auto wrong_predecessor = route5_predecessor;
+  wrong_predecessor.label = "other_left";
+  wrong_predecessor.label_id = c4c::BlockLabelId{777};
+  const auto absent_route5_edge = bir::route5_find_cfg_edge_publication(
+      route5_index,
+      wrong_predecessor,
+      route5_successor,
+      bir::Value::named(bir::TypeKind::I32, "%dst"));
+  if (duplicate_index.edge_records.size() != route5_index.edge_records.size() + 1 ||
+      mismatched_route5_edge ||
+      mismatched_route5_edge.status != bir::Route5PublicationStatus::NoMatch ||
+      absent_route5_edge ||
+      absent_route5_edge.status != bir::Route5PublicationStatus::NoSource) {
+    return fail("RISC-V Route 5 oracle should expose duplicate, mismatch, and absence diagnostic rows");
+  }
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.instruction_text == "mv a1, a0",
+              "RISC-V scalar edge output should ignore unusable Route 5 diagnostics until authority changes")) {
+    return 1;
+  }
+
+  auto dynamic_prepared = make_register_edge_publication_module();
+  const auto dynamic_ids = FixtureIds{
+      .function = dynamic_prepared.names.function_names.find("join_regs"),
+      .predecessor = dynamic_prepared.names.block_labels.find("left"),
+      .successor = dynamic_prepared.names.block_labels.find("join"),
+      .source_name = dynamic_prepared.names.value_names.find("%src"),
+      .base_name = dynamic_prepared.names.value_names.find("%base"),
+      .destination_name = dynamic_prepared.names.value_names.find("%dst"),
+  };
+  make_load_local_dynamic_stack_source(
+      dynamic_prepared, dynamic_ids, load_local_source_access(dynamic_ids));
+  lookups = make_lookups(dynamic_prepared);
+  publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, dynamic_ids.predecessor, dynamic_ids.successor, 2);
+  const auto route3_function = make_route5_edge_identity_function(dynamic_ids, true);
+  const auto& route3_predecessor = route3_function.blocks[0];
+  const auto& route3_successor = route3_function.blocks[1];
+  const auto route3_index = bir::route3_build_memory_access_index(route3_predecessor);
+  const auto* route3_load = bir::route3_find_memory_access_record(
+      route3_index, 0, bir::Route3MemoryAccessNodeKind::LoadLocal);
+  const auto route5_memory_edge = bir::route5_cfg_edge_publication_record(
+      &route3_predecessor,
+      &route3_successor,
+      bir::Value::named(bir::TypeKind::I32, "%dst"),
+      dynamic_ids.destination_name,
+      dynamic_ids.source_name);
+  if (publication == nullptr || !route3_index || route3_load == nullptr ||
+      !*route3_load ||
+      route3_load->node_kind != bir::Route3MemoryAccessNodeKind::LoadLocal ||
+      route3_load->base_kind != bir::Route3MemoryAccessBaseKind::PointerValue ||
+      route3_load->pointer_value.name != "%base" ||
+      route3_load->byte_offset != 12 ||
+      route3_load->size_bytes != 4 ||
+      !route5_memory_edge ||
+      route5_memory_edge.status != bir::Route5PublicationStatus::MemorySource ||
+      !route5_memory_edge.source_memory_identity_available ||
+      route5_memory_edge.source_memory_access.instruction == nullptr ||
+      route5_memory_edge.source_memory_access.instruction !=
+          route3_load->instruction ||
+      route5_memory_edge.source_memory_access.byte_offset !=
+          publication->source_memory_byte_offset ||
+      route5_memory_edge.source_memory_access.size_bytes !=
+          publication->source_memory_size_bytes) {
+    return fail("RISC-V Route 5/Route 3 oracle should expose agreeing dynamic memory-source identity");
+  }
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, dynamic_ids.predecessor, dynamic_ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.instruction_text == "lw a1, 12(s2)",
+              "RISC-V dynamic memory-source output should stay prepared-backed with agreeing Route 3 facts")) {
+    return 1;
+  }
+
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, dynamic_ids.predecessor, dynamic_ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.instruction_text == "lw a1, 12(s2)",
+              "RISC-V dynamic memory-source output should stay stable while Route 3 diagnostics remain non-authoritative")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int check_missing_and_unsupported_homes_fail_closed() {
   auto prepared = make_register_edge_publication_module();
   const auto predecessor = prepared.names.block_labels.find("left");
@@ -1705,6 +1904,11 @@ int main() {
   }
   if (const int result =
           check_load_local_dynamic_stack_source_exposes_shared_memory_access();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback();
       result != 0) {
     return result;
   }
