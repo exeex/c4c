@@ -1,44 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Fixture or Helper Implementation
+Current Step ID: 3
+Current Step Title: Focused Agreement Proof
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 2, `Fixture or Helper Implementation`.
+Completed plan Step 3, `Focused Agreement Proof`.
 
-The minimal supported fixture surface already exists through the resumed
-joined-branch compare-join `EdgeStoreSlot` helpers added with idea 262:
-`make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module()` and
-`check_materialized_compare_join_edge_store_slot_selected_loadlocal_*()` now
-exercise a selected same-predecessor-block `LoadLocal` with prepared local-slot
-addressing through the production x86 Route 3 agreement facade. No extra helper
-or production edit was needed for idea 261 Step 2.
+The existing joined-branch compare-join `EdgeStoreSlot` selected-`LoadLocal`
+rows cover the supported production proof surface without additional test
+edits:
+
+- positive x86 rendering through
+  `render_agreed_route3_load_local_statement_memory_operand(...)` via
+  `check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_route()`
+- missing predecessor source address rejection before a selected
+  `LoadLocal` compare-join packet is accepted via
+  `check_materialized_compare_join_edge_store_slot_selected_loadlocal_rejects_missing_source_memory()`
+- join-carrier-only `LoadLocal` drift rejection on the prepared contract side via
+  `check_materialized_compare_join_edge_store_slot_selected_loadlocal_rejects_carrier_only_loadlocal()`
+- incomplete prepared source-memory publication rejection by the x86
+  prepared-module consumer via
+  `check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_incomplete_source_memory()`
+
+No new rows were kept. Prepared-only, stale-publication, byte-offset drift, and
+cross-publication mismatch rows are not naturally expressible through this
+production fixture without hand-built or stale prepared publication state, so
+they remain recorded as intentionally out of scope for idea 261.
 
 ## Suggested Next
 
-Execute plan Step 3, `Focused Agreement Proof`.
+Execute plan Step 4, `Hand Back to Idea 258`.
 
-Use the existing selected-`LoadLocal` joined-branch fixture rows to prove the
-positive Route 3/prepared agreement path and any reachable fail-closed rows
-needed by idea 258.
+Record that idea 261 now provides the supported joined-branch proof surface
+needed for idea 258 Step 4, then route lifecycle handling back through the plan
+owner.
 
 ## Watchouts
 
-- Do not revive the rejected synthetic `join_transfers` route from the
-  addressed local-slot guard fixture.
-- Do not count legacy no-publication fallback as positive Route 3/prepared
-  agreement.
-- Do not reopen idea 262's generic selected-arm scope; use the bridge it
-  already landed.
-- Reachable rows already present in the joined-branch fixture include positive
-  x86 rendering, missing source address, join-carrier-only drift, and
-  incomplete prepared source-memory publication. Prepared-only or stale
-  publication mismatches must not be hand-built if the supported route cannot
-  express them naturally.
+- Keep idea 261 scoped to the supported joined-branch fixture surface; do not
+  reopen idea 262's compare-join lowering.
+- Do not hand-build `PreparedEdgePublication` rows or stale prepared render
+  contract state just to express prepared-only, byte-offset drift, or
+  cross-publication mismatch cases.
+- Legacy no-publication fallback remains compatibility behavior and was not
+  counted as positive Route 3/prepared agreement proof.
 
 ## Proof
 
