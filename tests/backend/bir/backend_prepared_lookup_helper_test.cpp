@@ -2246,6 +2246,44 @@ int verify_prepared_module_lookup_reader_agreement_boundary() {
     return fail("module lookup-reader should reject duplicate BIR function names");
   }
 
+  const prepare::PreparedControlFlowFunction invalid_function_control_flow{
+      .function_name = c4c::kInvalidFunctionName,
+      .blocks = {return_block(entry_label)},
+  };
+  const auto invalid_function_agreement =
+      prepare::prepared_bir_function_agreement(prepared,
+                                               invalid_function_control_flow);
+  if (invalid_function_agreement.available ||
+      invalid_function_agreement.conflicted ||
+      !prepare::make_prepared_edge_publication_source_producer_lookups(
+            prepared, invalid_function_control_flow)
+            .producers_by_value_name.empty()) {
+    return fail("module lookup-reader should fail closed for invalid prepared function ids");
+  }
+
+  auto absent_function_prepared = prepared;
+  absent_function_prepared.module.functions.clear();
+  const auto absent_function_agreement =
+      prepare::prepared_bir_function_agreement(absent_function_prepared,
+                                               control_flow);
+  if (absent_function_agreement.available ||
+      absent_function_agreement.conflicted ||
+      !prepare::make_prepared_edge_publication_source_producer_lookups(
+            absent_function_prepared, control_flow)
+            .producers_by_value_name.empty()) {
+    return fail("module lookup-reader should fail closed when BIR functions are absent");
+  }
+
+  const prepare::PreparedControlFlowBlock invalid_prepared_block =
+      return_block(c4c::kInvalidBlockLabel);
+  const auto invalid_block_agreement = prepare::prepared_bir_block_agreement(
+      prepared,
+      prepared.module.functions.front(),
+      invalid_prepared_block);
+  if (invalid_block_agreement.available || invalid_block_agreement.conflicted) {
+    return fail("module lookup-reader should fail closed for invalid prepared block ids");
+  }
+
   auto stale_label_prepared = prepared;
   stale_label_prepared.module.functions.front().blocks.front().label = "entry";
   stale_label_prepared.module.functions.front().blocks.front().label_id =
@@ -2298,6 +2336,27 @@ int verify_prepared_module_lookup_reader_agreement_boundary() {
           entry_label) {
     return fail("raw label fallback should remain compatibility-only");
   }
+  const auto raw_fallback_source_producers =
+      prepare::make_prepared_edge_publication_source_producer_lookups(
+          raw_fallback_prepared, control_flow);
+  const auto raw_fallback_producer =
+      raw_fallback_source_producers.producers_by_value_name.find(value_name);
+  if (raw_fallback_producer ==
+          raw_fallback_source_producers.producers_by_value_name.end() ||
+      raw_fallback_producer->second.block_label != entry_label ||
+      raw_fallback_producer->second.kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) {
+    return fail("public lookup-reader producer surface should preserve raw-label fallback compatibility");
+  }
+  const auto raw_fallback_function_lookups =
+      prepare::make_prepared_function_lookups(raw_fallback_prepared,
+                                              control_flow);
+  if (raw_fallback_function_lookups.edge_publication_source_producers
+          .producers_by_value_name.find(value_name) ==
+      raw_fallback_function_lookups.edge_publication_source_producers
+          .producers_by_value_name.end()) {
+    return fail("public prepared aggregate should preserve raw-label fallback compatibility");
+  }
 
   auto mismatch_prepared = prepared;
   auto& mismatch_block = mismatch_prepared.module.functions.front().blocks.front();
@@ -2312,6 +2371,27 @@ int verify_prepared_module_lookup_reader_agreement_boundary() {
                                                       mismatch_block) !=
           other_label) {
     return fail("prepared/BIR label drift should not count as entry agreement");
+  }
+
+  auto missing_prepared_name_prepared = prepared;
+  auto& missing_prepared_name_block =
+      missing_prepared_name_prepared.module.functions.front().blocks.front();
+  missing_prepared_name_block.label = "entry";
+  missing_prepared_name_block.label_id =
+      missing_prepared_name_prepared.module.names.block_labels.intern(
+          "module_only");
+  const auto missing_prepared_name_label =
+      prepare::prepared_bir_block_label_agreement(missing_prepared_name_prepared,
+                                                  missing_prepared_name_block);
+  if (missing_prepared_name_label.available ||
+      !missing_prepared_name_label.conflicted ||
+      prepare::compatible_prepared_bir_block_label_id(
+          missing_prepared_name_prepared,
+          missing_prepared_name_block) != c4c::kInvalidBlockLabel ||
+      !prepare::make_prepared_edge_publication_source_producer_lookups(
+            missing_prepared_name_prepared, control_flow)
+            .producers_by_value_name.empty()) {
+    return fail("module lookup-reader should fail closed when structured labels miss the prepared name table");
   }
 
   return 0;
