@@ -1,77 +1,85 @@
 Status: Active
 Source Idea Path: ideas/open/259_phase_f3_x86_route5_prepared_edge_publication_agreement_bridge.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Consumer and Authority Inventory
+Current Step ID: 2
+Current Step Title: Agreement Facade Design
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: `Consumer and Authority Inventory` is complete.
+Step 2: `Agreement Facade Design` is complete.
 
-Consumer hook point: the narrow x86 hook is
-`src/backend/mir/x86/prepared/dispatch.cpp::consume_edge_publication_move_intent(...)`
-after it has found the unique prepared row with
-`find_unique_indexed_prepared_edge_publication(...)` and before it marks the
-intent `Available`. The module-level consumer is
-`append_prepared_compare_join_parallel_copy(...)` in
-`src/backend/mir/x86/module/module.cpp`, which already treats the intent status
-as the decision point and keeps move emission, register spelling, and fallback
-policy target-local.
+Selected contract: keep the agreement bridge x86-local and split at the
+existing ownership boundary. `append_prepared_compare_join_parallel_copy(...)`
+should own the BIR context because it already has the prepared module
+function, control-flow edge, prepared value-location function, predecessor
+label, successor label, and parallel-copy destination. It should build/query
+Route 5 for the current function and pass an agreement decision into the
+existing prepared-dispatch consumer. Do not widen public prepared lookup APIs.
 
-Route 5 authority fields: `Route5CfgEdgePublicationRecord` carries the
-predecessor/successor blocks and labels, destination phi/value identity, source
-value identity, `source_producer_kind`, producer block label and instruction
-index, plus `source_memory_identity_available` and the Route 3
-`source_memory_access` record for dynamic `LoadLocal` sources. Lookup helpers
-are `route5_build_edge_join_source_index(...)`,
-`route5_find_cfg_edge_publication(...)`, and the MIR-facing
-`find_bir_cfg_edge_publication_source_identity(...)` /
-`BirCfgEdgePublicationSourceIdentity` adapter.
+Smallest context shape: add a narrow module-local facade, e.g.
+`find_agreed_route5_edge_publication_source(...)`, that accepts the prepared
+module, consumed plans, BIR function, predecessor label id, successor label id,
+destination prepared value id, and the selected
+`PreparedEdgePublication` row. The facade may resolve predecessor/successor BIR
+blocks and destination value identity locally, then query
+`route5_build_edge_join_source_index(...)` /
+`route5_find_cfg_edge_publication(...)` or the MIR
+`find_bir_cfg_edge_publication_source_identity(...)` adapter. The prepared
+dispatch helper should continue to find the unique prepared row and render the
+move intent/status; the new agreement result is only a gate before intent
+`Available`.
 
-Prepared compatibility surface: preserve public
+Required equality checks: agreement requires the same predecessor label/id,
+same successor label/id, same destination value id/name/type, same source value
+id/name/type, same source producer kind, same producer block label/id, and same
+producer instruction index. Immediate, param, same-module global, pointer-backed
+global, trailing-immediate, and selected `LoadLocal` rows should only agree
+when Route 5/BIR and the prepared publication describe the same semantic source
+for the same edge and destination. The facade must not compare unrelated raw id
+domains as authority when a resolved prepared/BIR identity is available.
+
+Dynamic `LoadLocal` branch: when Route 5 reports
+`Route5PublicationSourceKind::LoadLocal`, the facade must require Route 5
+source-memory identity to be available and delegate memory agreement to the
+existing Route 3 source-memory authority used by the x86 Route 3 bridge. The
+accepted row must tie the Route 5 producer block/instruction/source value to
+the selected prepared publication and then require Route 3/prepared memory
+agreement for base slot, address space, volatility, size, alignment, and
+supported base-plus-offset addressing. Prepared source-memory facts alone are
+not sufficient, and Route 5 producer identity without Route 3 source-memory
+agreement is not sufficient.
+
+Fail-closed matrix: missing shared lookups, absent prepared publication,
+duplicate/ambiguous prepared publication, absent Route 5 record, duplicate or
+ambiguous Route 5 record, wrong predecessor, wrong successor, wrong destination
+value/id/type, missing source value, source value mismatch, missing source
+producer, unsupported producer kind, producer kind mismatch, producer
+block/instruction mismatch, prepared-only row, Route 5-only row, unsupported
+publication, unsupported source/destination home, existing fallback rows,
+non-agreeing fallback rows, dynamic `LoadLocal` missing source-memory
+identity, incomplete prepared source-memory publication, and Route 3 memory
+disagreement all return non-agreement and must not produce an x86 agreement
+claim.
+
+Compatibility retained: public
 `PreparedEdgePublicationLookups::publications_by_edge_destination`,
 `find_indexed_prepared_edge_publications(...)`,
 `find_unique_indexed_prepared_edge_publication(...)`,
-`prepare_edge_copy_source_facts(...)`, status names, source-home/source-memory
-helpers, move facts, helper/oracle names, and existing x86 intent statuses.
-
-Route 3 dependency: any agreeing dynamic `LoadLocal` publication must require
-the existing Route 3 source-memory authority, not raw prepared facts alone.
-Prepared rows expose `source_memory_access_status`,
-`source_memory_access`, address/base/offset/size/alignment fields, and
-producer instruction identity; Route 5 exposes the corresponding
-`Route3MemoryAccessRecord`. Step 2 should route `LoadLocal` agreement through
-the established x86 Route 3 source-memory agreement helpers instead of
-duplicating id comparisons.
-
-Fail-closed matrix for the bridge: missing shared lookups, missing prepared
-publication, ambiguous prepared publication, unsupported prepared publication,
-missing/unsupported source or destination homes, missing/mismatched
-predecessor, successor, destination value/id/type, missing source value,
-missing source producer, producer kind mismatch, producer block/instruction
-mismatch, prepared-only row, Route 5-only row, duplicate Route 5/prepared rows,
-non-agreeing fallback rows, and `LoadLocal` missing/incomplete/mismatched Route
-3 source-memory authority must not report agreement.
-
-Focused proof surfaces: `backend_prepared_lookup_helper` already covers the
-prepared/BIR/Route 5 source identity oracle, including `LoadLocal` memory-source
-records and wrong-edge/status rows; `backend_riscv_prepared_edge_publication`
-covers prepared fallback and dynamic `LoadLocal` source-memory behavior outside
-x86; `backend_x86_handoff_boundary_joined_branch` contains the x86 shared
-edge-publication compare-join consumer plus selected-`LoadLocal` Route 3 proof
-rows from ideas 258/261/262; `backend_x86_route_debug` should be checked for
-nearby route-debug output preservation. Step 2 can design against these
-surfaces without adding implementation code.
+`prepare_edge_copy_source_facts(...)`, prepared lookup/status names,
+helper/oracle names, x86 intent status spelling, fallback behavior, register
+choice, carrier choice, output instruction text, module output formatting,
+route-debug text, and RISC-V diagnostics remain compatibility authority. The
+Route 5 bridge may only gate agreement in the x86 compare-join edge-publication
+consumer; it must not move formatting or target policy into Route 5/BIR.
 
 ## Suggested Next
 
-Step 2: design an x86-local Route 5/prepared agreement facade that accepts the
-prepared publication row plus BIR context, builds/queries Route 5 for the same
-edge and destination, compares source value and producer identity, and delegates
-dynamic `LoadLocal` memory agreement to the existing Route 3 source-memory
-agreement authority.
+Step 3: implement the narrow x86 agreement bridge by adding the module-local
+facade described above, passing its decision into the prepared
+edge-publication move intent path, and keeping non-agreeing rows on the
+existing compatibility fallback path.
 
 ## Watchouts
 
@@ -85,9 +93,15 @@ agreement authority.
 - Reject testcase-shaped shortcuts and expectation downgrades.
 - Do not use the RISC-V Route 5 oracle as an x86 implementation template for
   target policy; use it only as compatibility/proof context.
-- `consume_edge_publication_move_intent(...)` currently has no BIR function or
-  block context parameter, so Step 2 must choose the smallest context shape
-  needed to query Route 5 without widening public prepared lookup APIs.
+- Keep BIR function/block and Route 5 query context in
+  `append_prepared_compare_join_parallel_copy(...)` or a nearby x86 module
+  helper; avoid widening public prepared lookup APIs.
+- Do not make `consume_edge_publication_move_intent(...)` responsible for BIR
+  block discovery or target policy beyond its current prepared row/status and
+  operand rendering role.
+- The `LoadLocal` branch must reuse or closely wrap the existing x86 Route 3
+  source-memory agreement authority; do not recreate the rejected raw-id
+  comparison path from idea 258.
 
 ## Proof
 
