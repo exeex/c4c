@@ -287,6 +287,7 @@ struct PreparedSupportedImmediateBinary {
 enum class PreparedComputedBaseKind {
   ImmediateI32,
   ParamValue,
+  LocalI32Load,
   GlobalI32Load,
   PointerBackedGlobalI32Load,
 };
@@ -295,6 +296,15 @@ struct PreparedComputedBase {
   PreparedComputedBaseKind kind = PreparedComputedBaseKind::ImmediateI32;
   std::int64_t immediate = 0;
   ValueNameId param_name_id = kInvalidValueName;
+  BlockLabelId load_local_block_label = kInvalidBlockLabel;
+  std::size_t load_local_instruction_index = 0;
+  ValueNameId load_local_result_name_id = kInvalidValueName;
+  SlotNameId load_local_slot_id = kInvalidSlotName;
+  std::int64_t load_local_byte_offset = 0;
+  std::size_t load_local_size_bytes = 0;
+  std::size_t load_local_align_bytes = 0;
+  bir::AddressSpace load_local_address_space = bir::AddressSpace::Default;
+  bool load_local_is_volatile = false;
   std::string_view global_name;
   LinkNameId global_name_id = kInvalidLinkName;
   std::size_t global_byte_offset = 0;
@@ -335,6 +345,8 @@ enum class PreparedMaterializedCompareJoinReturnShape {
   ImmediateI32WithTrailingImmediateBinary,
   ParamValue,
   ParamValueWithTrailingImmediateBinary,
+  LocalI32Load,
+  LocalI32LoadWithTrailingImmediateBinary,
   GlobalI32Load,
   GlobalI32LoadWithTrailingImmediateBinary,
   PointerBackedGlobalI32Load,
@@ -850,6 +862,7 @@ collect_prepared_computed_value_same_module_global_refs(
   switch (computed_value.base.kind) {
     case PreparedComputedBaseKind::ImmediateI32:
     case PreparedComputedBaseKind::ParamValue:
+    case PreparedComputedBaseKind::LocalI32Load:
       break;
     case PreparedComputedBaseKind::GlobalI32Load:
       global_refs.push_back(
@@ -880,7 +893,9 @@ collect_prepared_computed_value_same_module_global_refs(
 find_prepared_materialized_compare_join_return_context(
     PreparedNameTables& names,
     const PreparedMaterializedCompareJoinContext& compare_join_context,
-    const bir::Value& selected_value);
+    const PreparedEdgeValueTransfer& selected_transfer,
+    const bir::Value& selected_value,
+    bool allow_selected_load_local = false);
 
 [[nodiscard]] inline PreparedMaterializedCompareJoinReturnShape
 classify_prepared_materialized_compare_join_return_shape(
@@ -896,6 +911,11 @@ classify_prepared_materialized_compare_join_return_shape(
                  ? PreparedMaterializedCompareJoinReturnShape::
                        ParamValueWithTrailingImmediateBinary
                  : PreparedMaterializedCompareJoinReturnShape::ParamValue;
+    case PreparedComputedBaseKind::LocalI32Load:
+      return return_context.trailing_binary.has_value()
+                 ? PreparedMaterializedCompareJoinReturnShape::
+                       LocalI32LoadWithTrailingImmediateBinary
+                 : PreparedMaterializedCompareJoinReturnShape::LocalI32Load;
     case PreparedComputedBaseKind::GlobalI32Load:
       return return_context.trailing_binary.has_value()
                  ? PreparedMaterializedCompareJoinReturnShape::
@@ -926,6 +946,7 @@ find_prepared_materialized_compare_join_return_binary_plan(
   switch (return_arm.shape) {
     case PreparedMaterializedCompareJoinReturnShape::ImmediateI32:
     case PreparedMaterializedCompareJoinReturnShape::ParamValue:
+    case PreparedMaterializedCompareJoinReturnShape::LocalI32Load:
     case PreparedMaterializedCompareJoinReturnShape::GlobalI32Load:
     case PreparedMaterializedCompareJoinReturnShape::PointerBackedGlobalI32Load:
       if (return_arm.context.trailing_binary.has_value()) {
@@ -936,6 +957,7 @@ find_prepared_materialized_compare_join_return_binary_plan(
       };
     case PreparedMaterializedCompareJoinReturnShape::ImmediateI32WithTrailingImmediateBinary:
     case PreparedMaterializedCompareJoinReturnShape::ParamValueWithTrailingImmediateBinary:
+    case PreparedMaterializedCompareJoinReturnShape::LocalI32LoadWithTrailingImmediateBinary:
     case PreparedMaterializedCompareJoinReturnShape::GlobalI32LoadWithTrailingImmediateBinary:
     case PreparedMaterializedCompareJoinReturnShape::
         PointerBackedGlobalI32LoadWithTrailingImmediateBinary:
@@ -1472,7 +1494,8 @@ find_authoritative_join_branch_sources(
     const bir::Function& function,
     const bir::Block& entry_block,
     BlockLabelId true_block_label_id,
-    BlockLabelId false_block_label_id) {
+    BlockLabelId false_block_label_id,
+    bool allow_selected_load_local = false) {
   const auto* join_transfer = authoritative_join_transfer.join_transfer;
   const auto* true_transfer = authoritative_join_transfer.true_transfer;
   const auto* false_transfer = authoritative_join_transfer.false_transfer;
@@ -1495,8 +1518,42 @@ find_authoritative_join_branch_sources(
       find_block_in_function(function, prepared_block_label(names, false_block_label_id));
   if (true_predecessor == nullptr || false_predecessor == nullptr ||
       true_predecessor == &entry_block || false_predecessor == &entry_block ||
-      true_predecessor == false_predecessor || !true_predecessor->insts.empty() ||
-      !false_predecessor->insts.empty()) {
+      true_predecessor == false_predecessor) {
+    return std::nullopt;
+  }
+  const auto predecessor_insts_are_supported =
+      [&](const bir::Block& predecessor,
+          const PreparedEdgeValueTransfer& transfer) -> bool {
+    if (predecessor.insts.empty()) {
+      return true;
+    }
+    if (!allow_selected_load_local || predecessor.insts.size() != 1 ||
+        transfer.incoming_value.kind != bir::Value::Kind::Named ||
+        transfer.incoming_value.type != bir::TypeKind::I32) {
+      return false;
+    }
+    const auto* load_local = std::get_if<bir::LoadLocalInst>(&predecessor.insts.front());
+    const auto load_local_result_name =
+        load_local == nullptr
+            ? std::nullopt
+            : resolve_prepared_value_name_id(names, load_local->result.name);
+    const auto incoming_value_name =
+        resolve_prepared_value_name_id(names, transfer.incoming_value.name);
+    if (load_local == nullptr ||
+        load_local->result.kind != bir::Value::Kind::Named ||
+        load_local->result.type != bir::TypeKind::I32 ||
+        !load_local_result_name.has_value() || !incoming_value_name.has_value() ||
+        *load_local_result_name != *incoming_value_name ||
+        !load_local->address.has_value() ||
+        load_local->address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot ||
+        load_local->address->base_slot_id == kInvalidSlotName ||
+        load_local->address->base_slot_id != load_local->slot_id) {
+      return false;
+    }
+    return true;
+  };
+  if (!predecessor_insts_are_supported(*true_predecessor, *true_transfer) ||
+      !predecessor_insts_are_supported(*false_predecessor, *false_transfer)) {
     return std::nullopt;
   }
 
@@ -1954,6 +2011,78 @@ classify_supported_immediate_binary(PreparedNameTables& names,
       global_loads_by_value_name);
 }
 
+[[nodiscard]] inline const bir::Block* find_prepared_materialized_compare_join_transfer_predecessor(
+    const PreparedMaterializedCompareJoinContext& compare_join_context,
+    BlockLabelId predecessor_label) {
+  const auto transfer_matches = [&](const PreparedEdgeValueTransfer* transfer) {
+    return transfer != nullptr && transfer->predecessor_label == predecessor_label;
+  };
+  if (transfer_matches(compare_join_context.true_transfer)) {
+    return compare_join_context.true_predecessor;
+  }
+  if (transfer_matches(compare_join_context.false_transfer)) {
+    return compare_join_context.false_predecessor;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline std::optional<PreparedComputedValue>
+classify_prepared_materialized_compare_join_selected_load_local(
+    PreparedNameTables& names,
+    const PreparedMaterializedCompareJoinContext& compare_join_context,
+    const PreparedEdgeValueTransfer& selected_transfer,
+    const bir::Value& selected_value) {
+  if (compare_join_context.join_transfer == nullptr ||
+      effective_prepared_join_transfer_carrier_kind(*compare_join_context.join_transfer) !=
+          PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
+      selected_value.kind != bir::Value::Kind::Named ||
+      selected_value.type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  const auto selected_name = prepared_named_value_id(names, selected_value);
+  if (!selected_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto* predecessor = find_prepared_materialized_compare_join_transfer_predecessor(
+      compare_join_context, selected_transfer.predecessor_label);
+  if (predecessor == nullptr || predecessor == compare_join_context.join_block) {
+    return std::nullopt;
+  }
+
+  for (std::size_t inst_index = 0; inst_index < predecessor->insts.size(); ++inst_index) {
+    const auto* load_local = std::get_if<bir::LoadLocalInst>(&predecessor->insts[inst_index]);
+    if (load_local == nullptr ||
+        load_local->result.kind != bir::Value::Kind::Named ||
+        load_local->result.type != bir::TypeKind::I32 ||
+        prepared_named_value_id(names, load_local->result) != selected_name) {
+      continue;
+    }
+    if (!load_local->address.has_value() ||
+        load_local->address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot ||
+        load_local->address->base_slot_id == kInvalidSlotName ||
+        load_local->address->base_slot_id != load_local->slot_id) {
+      return std::nullopt;
+    }
+    return PreparedComputedValue{
+        .base = PreparedComputedBase{
+            .kind = PreparedComputedBaseKind::LocalI32Load,
+            .load_local_block_label = selected_transfer.predecessor_label,
+            .load_local_instruction_index = inst_index,
+            .load_local_result_name_id = *selected_name,
+            .load_local_slot_id = load_local->slot_id,
+            .load_local_byte_offset = load_local->address->byte_offset,
+            .load_local_size_bytes = load_local->address->size_bytes,
+            .load_local_align_bytes = load_local->address->align_bytes,
+            .load_local_address_space = load_local->address->address_space,
+            .load_local_is_volatile = load_local->address->is_volatile,
+        },
+    };
+  }
+
+  return std::nullopt;
+}
+
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinContext>
 find_materialized_compare_join_context(
     const PreparedNameTables& names,
@@ -1962,13 +2091,15 @@ find_materialized_compare_join_context(
     const bir::Function& function,
     const bir::Block& entry_block,
     BlockLabelId true_block_label_id,
-    BlockLabelId false_block_label_id) {
+    BlockLabelId false_block_label_id,
+    bool allow_selected_load_local = false) {
   const auto join_sources = find_authoritative_join_branch_sources(names,
                                                                    authoritative_join_transfer,
                                                                    function,
                                                                    entry_block,
                                                                    true_block_label_id,
-                                                                   false_block_label_id);
+                                                                   false_block_label_id,
+                                                                   allow_selected_load_local);
   if (!join_sources.has_value() || join_sources->join_transfer == nullptr ||
       join_sources->true_transfer == nullptr || join_sources->false_transfer == nullptr ||
       join_sources->true_predecessor == nullptr || join_sources->false_predecessor == nullptr ||
@@ -2037,7 +2168,8 @@ find_materialized_compare_join_context(
     const bir::Function& function,
     const bir::Block& entry_block,
     std::string_view true_block_label,
-    std::string_view false_block_label) {
+    std::string_view false_block_label,
+    bool allow_selected_load_local = false) {
   const auto true_block_label_id = resolve_prepared_block_label_id(names, true_block_label);
   const auto false_block_label_id = resolve_prepared_block_label_id(names, false_block_label);
   if (!true_block_label_id.has_value() || !false_block_label_id.has_value()) {
@@ -2050,7 +2182,8 @@ find_materialized_compare_join_context(
       function,
       entry_block,
       *true_block_label_id,
-      *false_block_label_id);
+      *false_block_label_id,
+      allow_selected_load_local);
 }
 
 [[nodiscard]] inline std::optional<PreparedCompareJoinContinuationTargets>
@@ -2471,7 +2604,8 @@ find_prepared_short_circuit_branch_plan(
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinBranches>
 find_prepared_materialized_compare_join_branches(
     PreparedNameTables& names,
-    const PreparedMaterializedCompareJoinContext& compare_join_context) {
+    const PreparedMaterializedCompareJoinContext& compare_join_context,
+    bool allow_selected_load_local = false) {
   if (compare_join_context.join_transfer == nullptr || compare_join_context.true_transfer == nullptr ||
       compare_join_context.false_transfer == nullptr ||
       compare_join_context.true_predecessor == nullptr ||
@@ -2481,9 +2615,17 @@ find_prepared_materialized_compare_join_branches(
   }
 
   const auto true_return_context = find_prepared_materialized_compare_join_return_context(
-      names, compare_join_context, compare_join_context.true_transfer->incoming_value);
+      names,
+      compare_join_context,
+      *compare_join_context.true_transfer,
+      compare_join_context.true_transfer->incoming_value,
+      allow_selected_load_local);
   const auto false_return_context = find_prepared_materialized_compare_join_return_context(
-      names, compare_join_context, compare_join_context.false_transfer->incoming_value);
+      names,
+      compare_join_context,
+      *compare_join_context.false_transfer,
+      compare_join_context.false_transfer->incoming_value,
+      allow_selected_load_local);
   if (!true_return_context.has_value() || !false_return_context.has_value()) {
     return std::nullopt;
   }
@@ -2504,7 +2646,9 @@ find_prepared_materialized_compare_join_branches(
 find_prepared_materialized_compare_join_return_context(
     PreparedNameTables& names,
     const PreparedMaterializedCompareJoinContext& compare_join_context,
-    const bir::Value& selected_value) {
+    const PreparedEdgeValueTransfer& selected_transfer,
+    const bir::Value& selected_value,
+    bool allow_selected_load_local) {
   const auto* join_block = compare_join_context.join_block;
   if (join_block == nullptr || compare_join_context.function == nullptr ||
       compare_join_context.carrier_index > join_block->insts.size()) {
@@ -2548,13 +2692,21 @@ find_prepared_materialized_compare_join_return_context(
     return std::nullopt;
   }
 
-  const auto computed_selected_value = classify_computed_value(
-      names,
-      compare_join_context.bir_names,
-      selected_value,
-      *compare_join_context.function,
-      binaries_by_value_name,
-      global_loads_by_value_name);
+  std::optional<PreparedComputedValue> computed_selected_value;
+  if (allow_selected_load_local) {
+    computed_selected_value =
+        classify_prepared_materialized_compare_join_selected_load_local(
+            names, compare_join_context, selected_transfer, selected_value);
+  }
+  if (!computed_selected_value.has_value()) {
+    computed_selected_value = classify_computed_value(
+        names,
+        compare_join_context.bir_names,
+        selected_value,
+        *compare_join_context.function,
+        binaries_by_value_name,
+        global_loads_by_value_name);
+  }
   if (!computed_selected_value.has_value()) {
     return std::nullopt;
   }
@@ -2591,7 +2743,8 @@ find_prepared_param_zero_materialized_compare_join_context(
     BlockLabelId source_block_label_id,
     const bir::Block& source_block,
     ValueNameId param_name_id,
-    bool require_label_match) {
+    bool require_label_match,
+    bool allow_selected_load_local = false) {
   const auto prepared_branch = find_prepared_param_zero_branch_condition(
       names, function_cf, source_block_label_id, source_block, param_name_id, require_label_match);
   if (!prepared_branch.has_value() || prepared_branch->branch_condition == nullptr) {
@@ -2611,7 +2764,8 @@ find_prepared_param_zero_materialized_compare_join_context(
       function,
       source_block,
       prepared_branch->branch_condition->true_label,
-      prepared_branch->branch_condition->false_label);
+      prepared_branch->branch_condition->false_label,
+      allow_selected_load_local);
   if (!compare_join_context.has_value()) {
     return std::nullopt;
   }
@@ -2630,7 +2784,8 @@ find_prepared_param_zero_materialized_compare_join_context(
     const bir::Function& function,
     const bir::Block& source_block,
     const bir::Param& param,
-    bool require_label_match) {
+    bool require_label_match,
+    bool allow_selected_load_local = false) {
   const auto source_block_label_id =
       resolve_prepared_block_label_id(names, source_block.label);
   const auto param_name_id = resolve_prepared_value_name_id(names, param.name);
@@ -2645,7 +2800,8 @@ find_prepared_param_zero_materialized_compare_join_context(
       *source_block_label_id,
       source_block,
       *param_name_id,
-      require_label_match);
+      require_label_match,
+      allow_selected_load_local);
 }
 
 [[nodiscard]] inline std::optional<PreparedParamZeroMaterializedCompareJoinContext>
@@ -2656,7 +2812,8 @@ find_prepared_param_zero_materialized_compare_join_context(
     BlockLabelId source_block_label_id,
     const bir::Block& source_block,
     ValueNameId param_name_id,
-    bool require_label_match) {
+    bool require_label_match,
+    bool allow_selected_load_local = false) {
   bir::NameTables bir_names;
   bir_names.import_link_names(names.texts, names.link_names);
   return find_prepared_param_zero_materialized_compare_join_context(
@@ -2667,7 +2824,8 @@ find_prepared_param_zero_materialized_compare_join_context(
       source_block_label_id,
       source_block,
       param_name_id,
-      require_label_match);
+      require_label_match,
+      allow_selected_load_local);
 }
 
 [[nodiscard]] inline std::optional<PreparedParamZeroMaterializedCompareJoinBranches>
@@ -2678,16 +2836,26 @@ find_prepared_param_zero_materialized_compare_join_branches(
     const bir::Function& function,
     const bir::Block& source_block,
     const bir::Param& param,
-    bool require_label_match) {
+    bool require_label_match,
+    bool allow_selected_load_local = false) {
   const auto prepared_compare_join_context =
       find_prepared_param_zero_materialized_compare_join_context(
-          names, bir_names, function_cf, function, source_block, param, require_label_match);
+          names,
+          bir_names,
+          function_cf,
+          function,
+          source_block,
+          param,
+          require_label_match,
+          allow_selected_load_local);
   if (!prepared_compare_join_context.has_value()) {
     return std::nullopt;
   }
 
   const auto prepared_join_branches = find_prepared_materialized_compare_join_branches(
-      names, prepared_compare_join_context->compare_join_context);
+      names,
+      prepared_compare_join_context->compare_join_context,
+      allow_selected_load_local);
   if (!prepared_join_branches.has_value()) {
     return std::nullopt;
   }
@@ -2705,11 +2873,19 @@ find_prepared_param_zero_materialized_compare_join_branches(
     const bir::Function& function,
     const bir::Block& source_block,
     const bir::Param& param,
-    bool require_label_match) {
+    bool require_label_match,
+    bool allow_selected_load_local = false) {
   bir::NameTables bir_names;
   bir_names.import_link_names(names.texts, names.link_names);
   return find_prepared_param_zero_materialized_compare_join_branches(
-      names, bir_names, function_cf, function, source_block, param, require_label_match);
+      names,
+      bir_names,
+      function_cf,
+      function,
+      source_block,
+      param,
+      require_label_match,
+      allow_selected_load_local);
 }
 
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinBranchPlan>
@@ -2920,6 +3096,7 @@ resolve_prepared_materialized_compare_join_return_arm(
   switch (selected_value.base.kind) {
     case PreparedComputedBaseKind::ImmediateI32:
     case PreparedComputedBaseKind::ParamValue:
+    case PreparedComputedBaseKind::LocalI32Load:
       break;
     case PreparedComputedBaseKind::GlobalI32Load:
       resolved_return.global =

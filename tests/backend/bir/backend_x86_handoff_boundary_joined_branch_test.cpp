@@ -874,6 +874,108 @@ bir::Module make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module() {
   return module;
 }
 
+bir::Module make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto source_slot_id = module.names.slot_names.intern("%contract.selected.source.slot");
+
+  bir::Function function;
+  function.name = "branch_join_loadlocal_then_add";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%contract.selected.source.slot",
+      .slot_id = source_slot_id,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = false,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .true_label = "is_zero",
+      .false_label = "is_nonzero",
+  };
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "zero.loaded"),
+      .slot_name = "%contract.selected.source.slot",
+      .slot_id = source_slot_id,
+      .byte_offset = 8,
+      .align_bytes = 4,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%contract.selected.source.slot",
+          .byte_offset = 8,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .base_slot_id = source_slot_id,
+      },
+  });
+  is_zero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  is_nonzero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "is_zero",
+              .value = bir::Value::named(bir::TypeKind::I32, "zero.loaded"),
+          },
+          bir::PhiIncoming{
+              .label = "is_nonzero",
+              .value = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+          },
+      },
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "joined"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "joined"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(is_zero));
+  function.blocks.push_back(std::move(is_nonzero));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -5952,6 +6054,264 @@ int check_materialized_compare_join_edge_store_slot_immediate_chain_route_ignore
       module, function_name, failure_context, true, true, false, false, true, &expected_asm);
 }
 
+int check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context,
+    bool remove_source_address,
+    bool carrier_only_loadlocal) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* join_block = find_block(function, "join");
+  if (entry_block == nullptr || join_block == nullptr || function.params.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer has the expected entry/join blocks and param")
+                    .c_str());
+  }
+
+  auto& join_transfer = control_flow->join_transfers.front();
+  if (join_transfer.edge_transfers.size() < 2 ||
+      !join_transfer.source_true_transfer_index.has_value() ||
+      !join_transfer.source_false_transfer_index.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes authoritative true/false join ownership")
+                    .c_str());
+  }
+  const auto true_transfer_index = *join_transfer.source_true_transfer_index;
+  const auto false_transfer_index = *join_transfer.source_false_transfer_index;
+  if (true_transfer_index >= join_transfer.edge_transfers.size() ||
+      false_transfer_index >= join_transfer.edge_transfers.size() ||
+      true_transfer_index == false_transfer_index) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture published invalid true/false join ownership indices")
+                    .c_str());
+  }
+
+  std::size_t join_select_index = join_block->insts.size() - 1;
+  auto* join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+  if (join_select == nullptr && join_block->insts.size() >= 2) {
+    join_select_index = join_block->insts.size() - 2;
+    join_select = std::get_if<bir::SelectInst>(&join_block->insts[join_select_index]);
+  }
+  if (join_select == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes the expected select carrier")
+                    .c_str());
+  }
+
+  const auto carrier_slot_id =
+      prepared.module.names.slot_names.intern("%contract.selected.carrier.slot");
+  if (carrier_slot_id == c4c::kInvalidSlotName) {
+    return fail((std::string(failure_context) +
+                 ": test fixture could not intern local slot authority")
+                    .c_str());
+  }
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%contract.selected.carrier.slot",
+      .slot_id = carrier_slot_id,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = false,
+  });
+
+  join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
+  join_transfer.storage_name = intern_slot_name(prepared, "%contract.selected.carrier.slot");
+  join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
+  join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
+
+  const std::string original_carrier_result_name = join_select->result.name;
+  const auto renamed_carrier_result =
+      bir::Value::named(bir::TypeKind::I32, "contract.selected.carrier.load");
+  join_block->insts[join_select_index] = bir::LoadLocalInst{
+      .result = renamed_carrier_result,
+      .slot_name = "%contract.selected.carrier.slot",
+      .slot_id = carrier_slot_id,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%contract.selected.carrier.slot",
+          .byte_offset = 0,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .base_slot_id = carrier_slot_id,
+      },
+  };
+  for (auto& inst : join_block->insts) {
+    if (auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+      if (binary->lhs.kind == bir::Value::Kind::Named &&
+          binary->lhs.name == original_carrier_result_name) {
+        binary->lhs = renamed_carrier_result;
+      }
+      if (binary->rhs.kind == bir::Value::Kind::Named &&
+          binary->rhs.name == original_carrier_result_name) {
+        binary->rhs = renamed_carrier_result;
+      }
+    }
+  }
+
+  auto* true_predecessor =
+      find_block(function,
+                 std::string(block_label(
+                                 prepared,
+                                 join_transfer.edge_transfers[true_transfer_index].predecessor_label))
+                     .c_str());
+  if (!carrier_only_loadlocal &&
+      (true_predecessor == nullptr || true_predecessor == join_block ||
+       true_predecessor->insts.empty())) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes the true predecessor LoadLocal")
+                    .c_str());
+  }
+  bir::LoadLocalInst* selected_load = nullptr;
+  if (!carrier_only_loadlocal) {
+    selected_load = std::get_if<bir::LoadLocalInst>(&true_predecessor->insts.front());
+    if (selected_load == nullptr ||
+        selected_load->result.kind != bir::Value::Kind::Named ||
+        selected_load->result.name != "zero.loaded") {
+      return fail((std::string(failure_context) +
+                   ": prepared compare-join fixture no longer has a real predecessor LoadLocal incoming")
+                      .c_str());
+    }
+    if (remove_source_address) {
+      selected_load->address.reset();
+    }
+  }
+
+  const auto compare_join_context =
+      prepare::find_prepared_param_zero_materialized_compare_join_context(
+          prepared.names,
+          prepared.module.names,
+          *control_flow,
+          function,
+          *entry_block,
+          function.params.front(),
+          false,
+          true);
+  if (!compare_join_context.has_value()) {
+    if (carrier_only_loadlocal || remove_source_address) {
+      return 0;
+    }
+    return fail((std::string(failure_context) +
+                 ": shared helper did not publish the selected LoadLocal compare-join context")
+                    .c_str());
+  }
+  const auto compare_join_packet =
+      prepare::find_prepared_materialized_compare_join_branches(
+          prepared.names, compare_join_context->compare_join_context, true);
+  if (remove_source_address) {
+    if (compare_join_packet.has_value()) {
+      return fail((std::string(failure_context) +
+                   ": shared helper unexpectedly accepted a selected LoadLocal without authoritative predecessor source memory")
+                      .c_str());
+    }
+    return 0;
+  }
+  if (!compare_join_packet.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper did not publish selected LoadLocal compare-join return contexts")
+                    .c_str());
+  }
+  if (carrier_only_loadlocal) {
+    if (compare_join_packet->true_return_context.selected_value.base.kind ==
+            prepare::PreparedComputedBaseKind::LocalI32Load ||
+        compare_join_packet->false_return_context.selected_value.base.kind ==
+            prepare::PreparedComputedBaseKind::LocalI32Load) {
+      return fail((std::string(failure_context) +
+                   ": shared helper classified the join carrier LoadLocal as a selected predecessor source")
+                      .c_str());
+    }
+    return 0;
+  }
+  const prepare::PreparedParamZeroMaterializedCompareJoinBranches prepared_packet{
+      .prepared_branch = compare_join_context->prepared_branch,
+      .prepared_join_branches = *compare_join_packet,
+  };
+
+  const auto render_contract =
+      prepare::find_prepared_materialized_compare_join_render_contract(
+          prepared.names, prepared_packet);
+  const auto resolved_render_contract =
+      prepare::find_prepared_resolved_materialized_compare_join_render_contract(
+          prepared.names, prepared.module, prepared_packet);
+  if (!render_contract.has_value() || !resolved_render_contract.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper did not package selected LoadLocal compare-join render contract")
+                    .c_str());
+  }
+
+  const auto& true_return = compare_join_packet->true_return_context;
+  const auto expected_result_name =
+      prepared.names.value_names.find("zero.loaded");
+  if (true_return.selected_value.base.kind != prepare::PreparedComputedBaseKind::LocalI32Load ||
+      true_return.selected_value.base.load_local_block_label !=
+          join_transfer.edge_transfers[true_transfer_index].predecessor_label ||
+      true_return.selected_value.base.load_local_instruction_index != 0 ||
+      true_return.selected_value.base.load_local_result_name_id != expected_result_name ||
+      selected_load == nullptr ||
+      true_return.selected_value.base.load_local_slot_id != selected_load->slot_id ||
+      true_return.selected_value.base.load_local_byte_offset != 8 ||
+      true_return.selected_value.base.load_local_size_bytes != 4 ||
+      true_return.selected_value.base.load_local_align_bytes != 4) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped publishing selected LoadLocal predecessor authority")
+                    .c_str());
+  }
+  if (render_contract->true_return.shape !=
+          prepare::PreparedMaterializedCompareJoinReturnShape::
+              LocalI32LoadWithTrailingImmediateBinary ||
+      resolved_render_contract->true_return.arm.context.selected_value.base.kind !=
+          prepare::PreparedComputedBaseKind::LocalI32Load ||
+      resolved_render_contract->true_return.global != nullptr ||
+      resolved_render_contract->true_return.pointer_root_global != nullptr) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped packaging selected LoadLocal render-contract ownership")
+                    .c_str());
+  }
+  if (compare_join_packet->false_return_context.selected_value.base.kind ==
+      prepare::PreparedComputedBaseKind::LocalI32Load) {
+    return fail((std::string(failure_context) +
+                 ": shared helper classified the unrelated false arm as selected LoadLocal")
+                    .c_str());
+  }
+  return 0;
+}
+
+int check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
+      module, function_name, failure_context, false, false);
+}
+
+int check_materialized_compare_join_edge_store_slot_selected_loadlocal_rejects_missing_source_memory(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
+      module, function_name, failure_context, true, false);
+}
+
+int check_materialized_compare_join_edge_store_slot_selected_loadlocal_rejects_carrier_only_loadlocal(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
+      module, function_name, failure_context, false, true);
+}
+
 int check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
     const bir::Module& module,
     const char* function_name,
@@ -8049,6 +8409,30 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
               "branch_join_adjust_then_add",
               "scalar-control-flow compare-against-zero trailing-arithmetic compare-join EdgeStoreSlot route rejects reopening raw recovery when the authoritative prepared branch record is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract(
+              make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module(),
+              "branch_join_loadlocal_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot selected LoadLocal return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_selected_loadlocal_rejects_missing_source_memory(
+              make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module(),
+              "branch_join_loadlocal_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot selected LoadLocal rejects missing source-memory authority");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_selected_loadlocal_rejects_carrier_only_loadlocal(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot selected LoadLocal rejects join-carrier-only drift");
       status != 0) {
     return status;
   }

@@ -2660,6 +2660,11 @@ void append_prepared_i32_compare_join_return_arm(
       }
       break;
     }
+    case c4c::backend::prepare::PreparedComputedBaseKind::LocalI32Load:
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' compare-join selected local load is not wired to the x86 renderer");
+      break;
     case c4c::backend::prepare::PreparedComputedBaseKind::GlobalI32Load: {
       if (return_arm.global == nullptr ||
           find_supported_same_module_i32_global(module.module,
@@ -2745,6 +2750,11 @@ bool prepared_i32_compare_join_return_arm_is_supported(
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::ParamValue:
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
         ParamValueWithTrailingImmediateBinary:
+      return true;
+    case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::LocalI32Load:
+    case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+        LocalI32LoadWithTrailingImmediateBinary:
+      return false;
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::GlobalI32Load:
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
         GlobalI32LoadWithTrailingImmediateBinary:
