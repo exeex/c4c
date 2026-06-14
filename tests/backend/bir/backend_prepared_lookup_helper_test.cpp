@@ -2642,6 +2642,11 @@ int verify_prepared_semantic_name_agreement_boundary() {
       names, bir::Value::named(bir::TypeKind::I64, "%missing.value"));
   const auto immediate_value = prepare::prepared_value_name_agreement(
       names, bir::Value::immediate_i32(7));
+  const auto empty_function =
+      prepare::prepared_function_name_agreement(names, "");
+  const auto empty_block = prepare::prepared_block_label_agreement(names, "");
+  const auto empty_value = prepare::prepared_value_name_agreement(
+      names, bir::Value::named(bir::TypeKind::I32, ""));
   if (absent_function.status !=
           prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
       absent_block.status !=
@@ -2650,11 +2655,17 @@ int verify_prepared_semantic_name_agreement_boundary() {
           prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
       immediate_value.status !=
           prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
+      empty_function.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
+      empty_block.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
+      empty_value.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
       names.texts.size() != text_count ||
       names.function_names.size() != function_count ||
       names.block_labels.size() != block_count ||
       names.value_names.size() != value_count) {
-    return fail("semantic resolver agreement should preserve non-interning absent behavior");
+    return fail("semantic resolver agreement should preserve non-interning absent and empty behavior");
   }
 
   const auto invalid_raw_block = prepare::prepared_block_label_agreement(
@@ -2664,11 +2675,58 @@ int verify_prepared_semantic_name_agreement_boundary() {
     return fail("semantic resolver should reject invalid raw block-label ids");
   }
 
+  const auto out_of_range_raw_block = prepare::prepared_block_label_agreement(
+      names, bir_names, c4c::BlockLabelId{777}, "semantic.entry");
+  if (out_of_range_raw_block.status !=
+      prepare::PreparedSemanticNameAgreementStatus::Conflicted) {
+    return fail("semantic resolver should reject out-of-range raw block-label ids");
+  }
+
   const auto raw_id_drift = prepare::prepared_block_label_agreement(
       names, bir_names, raw_other_label, "semantic.entry");
   if (raw_id_drift.status !=
       prepare::PreparedSemanticNameAgreementStatus::Conflicted) {
     return fail("semantic resolver should reject raw block-label id spelling drift");
+  }
+
+  const auto raw_only_label = bir_names.block_labels.intern("bir.only");
+  const auto missing_prepared_block = prepare::prepared_block_label_agreement(
+      names, bir_names, raw_only_label, "bir.only");
+  if (missing_prepared_block.status !=
+      prepare::PreparedSemanticNameAgreementStatus::Unavailable) {
+    return fail("semantic resolver should not let raw block ids rescue missing prepared ids");
+  }
+
+  const auto prepared_drift_label =
+      names.block_labels.intern("semantic.prepared_drift");
+  const auto prepared_bir_drift = prepare::prepared_block_label_agreement(
+      names, bir_names, raw_block_label, "semantic.prepared_drift");
+  if (prepared_drift_label == c4c::kInvalidBlockLabel ||
+      prepared_bir_drift.status !=
+          prepare::PreparedSemanticNameAgreementStatus::Conflicted) {
+    return fail("semantic resolver should reject prepared/BIR block-label spelling drift");
+  }
+
+  const auto post_fail_closed_text_count = names.texts.size();
+  const auto post_fail_closed_function_count = names.function_names.size();
+  const auto post_fail_closed_block_count = names.block_labels.size();
+  const auto post_fail_closed_value_count = names.value_names.size();
+  if (prepare::prepared_function_name_agreement(names, "never_interned")
+              .status !=
+          prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
+      prepare::prepared_block_label_agreement(names, bir_names, raw_only_label,
+                                              "bir.only")
+              .status !=
+          prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
+      prepare::prepared_value_name_agreement(
+          names, bir::Value::named(bir::TypeKind::I64, "%never_interned"))
+              .status !=
+          prepare::PreparedSemanticNameAgreementStatus::Unavailable ||
+      names.texts.size() != post_fail_closed_text_count ||
+      names.function_names.size() != post_fail_closed_function_count ||
+      names.block_labels.size() != post_fail_closed_block_count ||
+      names.value_names.size() != post_fail_closed_value_count) {
+    return fail("semantic resolver fail-closed queries should not intern names");
   }
 
   auto corrupt_function_names = names;

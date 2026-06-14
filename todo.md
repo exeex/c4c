@@ -1,53 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Narrow Semantic Resolver API
+Current Step ID: 4
+Current Step Title: Add Fail-Closed Proof Rows
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3: implemented the narrow semantic resolver agreement API for
-the `names` semantic resolver candidate.
+Completed Step 4: audited and extended fail-closed proof rows for the `names`
+semantic resolver candidate.
 
-Implemented:
+Step 3 already covered:
 
-- Added `PreparedSemanticNameAgreementStatus` with explicit `Unavailable`,
-  `Available`, and `Conflicted` states.
-- Added typed result structs and helpers for prepared function names, block
-  labels, and value names in `src/backend/prealloc/lookup_agreement.hpp` and
-  `src/backend/prealloc/lookup_agreement.cpp`.
-- Kept helpers const and non-interning: they use only existing prepared
-  `find(...)` and `spelling(...)` facts, plus `bir::NameTables::block_labels`
-  when a raw BIR block-label id participates in agreement.
-- Left `src/backend/prealloc/control_flow.hpp` unchanged so
-  `resolve_prepared_*` wrappers and direct `names.*.find(...)` remain
-  compatibility surfaces.
-- Added focused helper-test coverage for positive function/block/value rows,
-  absent rows, invalid raw block-label ids, raw-id spelling drift, copied or
-  corrupted prepared-name table round-trip mismatch, direct-find compatibility,
-  and non-interning table-size preservation.
+- Positive prepared function-name, block-label, and value-name rows.
+- Absent prepared names, immediate values, invalid `kInvalidBlockLabel`,
+  raw-id spelling drift, corrupted prepared-table round-trip mismatches, direct
+  `names.*.find(...)` compatibility, and non-interning table-size preservation.
+
+Added focused Step 4 rows for:
+
+- Empty function, block-label, and value-name spellings.
+- Out-of-range raw BIR block-label ids.
+- Raw-only block-label ids that have no prepared id.
+- Explicit prepared/BIR block-label spelling drift.
+- Repeated missing-name fail-closed queries that must not intern names.
 
 ## Suggested Next
 
-Execute Step 4: add or audit remaining fail-closed proof rows for the semantic
-resolver helpers.
+Execute Step 5: broader validation and closure readiness for the semantic
+resolver helper candidate.
 
-Suggested Step 4 packet:
+Suggested Step 5 packet:
 
-- Owned files: `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` and
-  `todo.md`.
-- Audit whether the new helper-test rows are enough for empty spellings,
-  missing prepared ids, invalid raw BIR ids, raw-id spelling drift,
-  prepared/BIR spelling drift, copied or corrupted prepared-name table
-  mismatch, and accidental interning attempts.
-- Add missing proof rows only; do not change helper behavior unless a proof gap
-  exposes a real semantic agreement bug.
+- Owned files: `todo.md`.
+- Run the focused proof again and any supervisor-selected broader prepared or
+  backend subset needed for a helper shared by three resolver families.
+- Record proof commands, pass/fail status, and residual out-of-scope rows.
+- If complete, request plan-owner closure review rather than expanding into
+  another idea 260 candidate.
 - Preserve route-debug, target-output, same-block lookup, value-home lookup,
   control-flow, store-source, printer/debug, and backend lowering behavior.
-- Proof command:
-  `(cmake --build --preset default --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1`
 
 ## Watchouts
 
@@ -76,6 +69,8 @@ Suggested Step 4 packet:
 - The Step 3 implementation left `resolve_prepared_*` wrappers unchanged.
   Step 4 should treat those wrappers as compatibility adapters unless the
   supervisor explicitly delegates behavior-preserving wiring.
+- Step 4 found no helper behavior bug; remaining work is validation and
+  lifecycle readiness, not another code packet.
 
 ## Proof
 
