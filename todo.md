@@ -2,44 +2,41 @@ Status: Active
 Source Idea Path: ideas/open/246_phase_f1_prepared_publication_status_compatibility_retention.md
 Source Plan Path: plan.md
 Current Step ID: Step 5
-Current Step Title: Prepare Closure Evidence
+Current Step Title: Prove compatibility retention across x86 and riscv
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Added explicit riscv Route 5/Route 3 diagnostic name assertions beside
-the existing prepared edge-publication fallback checks.
+Step 5 - Prepared the compatibility-retention proof across prepared lookup
+helper, x86 route-debug, and riscv edge-publication tests.
 
-`tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp` now pins
-Route 5 status names for `available`, `no_match`, `no_source`, and
-`memory_source`, plus Route 3 memory identity names for `load_local` and
-`pointer_value`. The existing assertions still prove the prepared-backed
-wrapper output stays exact (`mv a1, a0` and `lw a1, 12(s2)`) for agreeing and
-non-agreeing route facts.
-
-No riscv implementation behavior, prepared fallback strings, helper-oracle
-rows, wrapper-output assertions, register/stack/scratch/offset policy, or
-source-memory policy was renamed, hidden, weakened, or removed.
+The proof surface preserves the public prepared helper status names, x86
+route-debug/`ConsumedPlans` compatibility rows, and riscv prepared-backed
+wrapper-output assertions. Read-only inspection confirmed the retained riscv
+wrapper output checks still cover `mv a1, a0` and `lw a1, 12(s2)`, while the
+prepared helper surface still exposes the compatibility status names protected
+by the earlier packets.
 
 ## Suggested Next
 
-Execute Step 5: run the supervisor-delegated narrow compatibility proof across
-prepared lookup helper, x86 route-debug, and riscv edge-publication tests.
+Supervisor close review for Step 6: decide whether idea 246 can close using the
+matched before/after proof for prepared lookup helper, x86 route-debug, and
+riscv edge-publication tests.
 
 ## Watchouts
 
-Step 5 should remain proof-focused. Do not expand into adapter work, prepared
-status demotion, aggregate retirement, or broad baseline refreshes.
+No Step 5 blockers found. Close review should not claim adapter work, prepared
+status demotion, aggregate retirement, or draft 155 readiness.
 
 ## Proof
 
-Ran the delegated proof exactly:
+Delegated proof to run exactly:
 
-`cmake --build build --target backend_riscv_prepared_edge_publication_test backend_prepared_lookup_helper_test && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_prepared_edge_publication|backend_prepared_lookup_helper)$' | tee test_after.log`
+`cmake --build build-x86 --target backend_prepared_lookup_helper_test backend_x86_route_debug_test backend_riscv_prepared_edge_publication_test && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_x86_route_debug|backend_riscv_prepared_edge_publication)$' | tee test_after.log`
 
-Result: passed 2/2:
-`backend_riscv_prepared_edge_publication` and
-`backend_prepared_lookup_helper`.
+Result: passed 3/3:
+`backend_prepared_lookup_helper`, `backend_x86_route_debug`, and
+`backend_riscv_prepared_edge_publication`.
 
 Proof log: `test_after.log`.
