@@ -1,157 +1,182 @@
 Status: Active
 Source Idea Path: ideas/open/256_phase_f3_prepared_liveness_authority_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Liveness Consumer Inventory
+Current Step ID: 2
+Current Step Title: Authority Bucket Classification
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Liveness Consumer Inventory recorded the current
-`PreparedBirModule::liveness` producer/consumer surface.
+Step 2 - Authority Bucket Classification classified the Step 1
+`PreparedBirModule::liveness` inventory by the authority each consumer
+exercises.
 
-Producer inventory:
+Candidate identity-only rows:
 
-- `src/backend/prealloc/module.hpp`: `PreparedBirModule` owns the public
-  `PreparedLiveness liveness` aggregate field. `liveness.hpp` defines
-  `PreparedLivenessFunction`, `PreparedLivenessBlock`,
-  `PreparedLivenessValue`, `PreparedLiveInterval`, `call_points`, `live_in`,
-  `live_out`, `block_loop_depth`, `definition_point`, `use_points`,
-  `crosses_call`, and per-value intervals.
-- `src/backend/prealloc/prealloc.cpp`: `BirPreAlloc::run()` calls
-  `run_liveness()` after stack layout and before out-of-SSA/regalloc, so
-  liveness is upstream of allocation, value-location, call, storage, and
-  helper facts.
-- `src/backend/prealloc/liveness.cpp`: `BirPreAlloc::run_liveness()` clears
-  `prepared_.liveness.functions`, reserves one record per defined BIR
-  function, computes dense values, block IDs, successors/predecessors,
-  phi-predecessor uses, program points, live-in/live-out dataflow,
-  live-through interval extension, call points, loop depth, per-value
-  intervals, and pushes each `PreparedLivenessFunction`. It also records the
-  `liveness` completed phase/note.
-- `src/backend/prealloc/names.hpp`: `PrepareOptions::run_liveness` exists and
-  tests toggle it, but `BirPreAlloc::run()` currently calls `run_liveness()`
-  unconditionally in the normal pipeline.
+- `tests/backend/bir/backend_prepare_liveness_test.cpp` direct checks of
+  value IDs, block labels, CFG edge IDs, and function membership are
+  identity-only metadata when they assert that liveness records name-table
+  identities without using those facts for allocation or target policy.
+- `src/backend/backend.cpp::filter_prepared_module_to_function(...)` is
+  status/debug compatibility plus identity-only filtering. It uses function
+  identity to erase or retain `filtered.liveness.functions`, and it keeps
+  liveness aligned with other filtered prepared aggregates. It does not by
+  itself allocate registers or choose storage, but it blocks deletion or
+  private pass-context movement unless the prepared dump/filtering surface
+  keeps an equivalent retained liveness compatibility record.
+- `src/backend/prealloc/liveness.cpp::BirPreAlloc::run_liveness()` has a
+  construction-only role for clearing and repopulating
+  `prepared_.liveness.functions`. The records it constructs are not
+  identity-only overall because their intervals, call points, loop depth, and
+  cross-call facts feed policy consumers below.
 
-Direct consumer inventory:
+Blocked allocation, target-register, move-scheduling, and storage rows:
 
-- Regalloc and value-location producer:
-  `src/backend/prealloc/regalloc.cpp::BirPreAlloc::run_regalloc()` reserves
-  `prepared_.regalloc.functions` and `prepared_.value_locations.functions`
-  from `prepared_.liveness.functions`, walks each `PreparedLivenessFunction`,
-  copies value identity/type/kind/interval/cross-call facts into
-  `PreparedRegallocValue`, resolves register class/group width, builds
-  allocation constraints, target saved-vs-caller-saved preferences,
-  interference edges from overlapping intervals, allocation order, register
-  assignments, stack slot fallback, spill points, move resolution, helper
-  mappings, and final `value_locations`.
-- Regalloc derived helpers:
-  `src/backend/prealloc/regalloc/intervals.cpp` consumes
-  `PreparedLivenessValue` and `PreparedLivenessFunction` for priority,
-  loop-depth-weighted use scoring, interval overlap, and program-point
-  location. `src/backend/prealloc/regalloc/spill_reload.cpp` consumes
-  `PreparedLivenessFunction` blocks/use points to place spill/reload ops.
-  `src/backend/prealloc/regalloc/classification.cpp` consumes
-  `PreparedLivenessValue` plus module register overrides to choose target
-  register class/group width.
-- Call-plan producer:
-  `src/backend/prealloc/call_plans.cpp` has a local
-  `find_liveness_function(const PreparedLiveness&, FunctionNameId)` and
-  reads `prepared.liveness` in `populate_call_plans(...)`. It maps liveness
-  blocks to call program points and combines live intervals, regalloc homes,
-  frame plans, and call-preservation candidates to populate
-  `PreparedCallPlan::preserved_values` and call preservation endpoints/routes.
-- Runtime helper planners:
-  `src/backend/prealloc/i128_runtime_helpers.cpp` and
-  `src/backend/prealloc/f128_runtime_helpers.cpp` each define local liveness
-  lookup/program-point helpers, read `prepared.liveness`, and use liveness
-  plus regalloc/value locations to compute helper live-preservation policies,
-  preserved values, selected call ownership, and fail-closed missing facts such
+- `src/backend/prealloc/regalloc.cpp::BirPreAlloc::run_regalloc()` is the
+  strongest demotion blocker. It combines liveness identity with allocation
+  and target-register policy by copying value names/types/kinds,
+  `live_interval`, and `crosses_call` into `PreparedRegallocValue`, selecting
+  register classes/group widths, choosing caller-saved versus callee-saved
+  preferences, building interference from overlapping intervals, assigning
+  registers, falling back to stack slots, and publishing `value_locations`.
+- `src/backend/prealloc/regalloc/intervals.cpp` is allocation policy. It uses
+  liveness intervals, loop depth, use points, and `crosses_call` for value
+  priority, weighted use scoring, interval overlap, and start-point ordering.
+- `src/backend/prealloc/regalloc/classification.cpp` is target-register
+  policy. It combines `PreparedLivenessValue` identity/type with module
+  register overrides to resolve register class and group width.
+- `src/backend/prealloc/regalloc/spill_reload.cpp` is storage/home and move
+  scheduling. It consumes `PreparedLivenessFunction` block/use-point facts to
+  place spill/reload operations.
+- `src/backend/prealloc/regalloc/{phi_moves.cpp,consumer_moves.cpp,call_moves.cpp,move_records.cpp}`
+  are move-scheduling and target-storage consumers through the regalloc/value
+  location records that were seeded from liveness. They do not directly read
+  `PreparedBirModule::liveness`, but demoting liveness cannot disturb their
+  liveness-derived move bundle timing, storage kind, register placement, or
+  stack offset facts.
+
+Blocked call and helper-planning rows:
+
+- `src/backend/prealloc/call_plans.cpp::populate_call_plans(...)` is
+  carrier/helper plus storage/home plus target-storage policy. Its local
+  `find_liveness_function(...)` and liveness-to-program-point mapping feed
+  `build_call_preserved_values(...)`, preservation routes, source/destination
+  endpoints, callee-saved register versus stack-slot decisions, and call
+  boundary effects. This combines identity with policy and blocks demotion,
+  deletion, wrapping, and private-pass-context movement.
+- `src/backend/prealloc/i128_runtime_helpers.cpp` is carrier/helper,
+  target-register, target-storage, and status compatibility authority. Its
+  local liveness lookup and call-point helpers combine helper identity with
+  regalloc/value-location facts to build live-preservation policies,
+  preserved-value routes, selected call ownership, and missing-fact rows such
   as `live_preservation_requires_structured_live_across_helper_facts` and
   `live_preservation_requires_complete_preserved_value_routes`.
-- CLI/debug filtering:
-  `src/backend/backend.cpp::filter_prepared_module_to_function(...)` clears or
-  erases `filtered.liveness.functions` alongside control-flow, value-location,
-  addressing, regalloc, stack-layout, and liveness notes when a prepared dump is
-  filtered to one function.
-- Tests/direct assertions:
-  `tests/backend/bir/backend_prepare_liveness_test.cpp` defines
-  `find_liveness_function(...)` over `prepared.liveness.functions` and asserts
-  liveness values, intervals, call points, block labels/edges, loop depth,
-  cross-call flags, regalloc projection from liveness, and helper-family
-  liveness contracts. `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
-  similarly reads `prepared.liveness.functions` to assert call points for
-  call-frame/dynamic-stack contracts.
+- `src/backend/prealloc/f128_runtime_helpers.cpp` has the same carrier/helper,
+  target-register, target-storage, and status compatibility role for f128
+  helpers. It also gates selected call ownership on live-preservation policy,
+  so it blocks any movement that hides liveness from helper planning.
 
-Derived and output consumer inventory:
+Blocked output, target, and compatibility rows:
 
-- Prepared printer/status output:
-  No direct `prepared.liveness` printer read was found. The prepared printer
-  does print liveness-derived helper policy/status fields in
-  `src/backend/prealloc/prepared_printer/runtime_helpers.cpp`, including
-  `live_preservation=[...]`, preserved-value counts, and selected call
-  ownership `live_preservation=yes/no` for i128/f128 helpers. Printer tests in
-  `tests/backend/bir/backend_prepared_printer_test.cpp` assert those derived
-  rows and missing-fact behavior.
-- AArch64 backend:
-  No direct `PreparedBirModule::liveness` read was found under
-  `src/backend/mir/aarch64`. AArch64 lowering consumes liveness-derived
-  prepared facts: regalloc/value homes, call plans, preserved-value routes,
-  and i128/f128 live-preservation policies. Tests under
-  `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`,
-  `backend_aarch64_target_instruction_records_test.cpp`, and
-  `backend_aarch64_machine_printer_test.cpp` mutate/assert helper
-  `live_preservation_policy` and selected call ownership as fail-closed target
-  behavior.
-- x86 backend:
-  No direct `PreparedBirModule::liveness` read was found under
-  `src/backend/mir/x86`. x86 consumes liveness-derived `PreparedRegalloc`,
-  `value_locations`, and `call_plans` through prepared aggregate/query wrappers
-  such as `src/backend/mir/x86/x86.hpp`, `prepared/prepared.hpp`,
-  `module/module.cpp`, and `debug/debug.cpp`.
-- RISC-V backend:
-  No direct `PreparedBirModule::liveness`, `live_interval`, or
-  `live_preservation` read was found under `src/backend/mir/riscv`. RISC-V
-  still accepts the prepared aggregate in `src/backend/mir/riscv/codegen/emit.cpp`,
-  so Step 2 should treat it as an aggregate/wrapper risk only unless a concrete
-  liveness-derived field consumer is identified.
+- `src/backend/prealloc/prepared_printer/runtime_helpers.cpp` is output policy
+  and status/debug compatibility. It was not found to read `prepared.liveness`
+  directly, but it prints liveness-derived `live_preservation=[...]`,
+  preserved-value counts, and selected-call ownership fields. Printer output is
+  therefore blocked on retained helper live-preservation semantics, not a
+  one-reader liveness demotion candidate.
+- AArch64 MIR code has no direct `PreparedBirModule::liveness` read in the
+  Step 1 scan, but it consumes liveness-derived regalloc, value homes, call
+  plans, preserved-value routes, and i128/f128 live-preservation policy. This
+  is target-register, target-storage, carrier/helper, and output/status
+  compatibility authority.
+- x86 MIR code has no direct `PreparedBirModule::liveness` read in the Step 1
+  scan, but it consumes liveness-derived `PreparedRegalloc`,
+  `value_locations`, and `call_plans` through prepared aggregate/query
+  wrappers. This is derived target-register, target-storage, storage/home, and
+  debug compatibility authority.
+- RISC-V MIR code has no concrete direct `liveness`, `live_interval`, or
+  `live_preservation` read in the Step 1 scan. It remains an aggregate input
+  and derived-value-location risk only: a compatibility blocker for the
+  prepared aggregate, but not current proof of a direct liveness reader.
+- `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`,
+  `tests/backend/bir/backend_prepared_printer_test.cpp`, and liveness tests
+  that assert regalloc projection, call points, cross-call flags,
+  helper-family preservation, or printed live-preservation rows are
+  status/debug compatibility plus behavioral proof rows. They block weakening
+  or hiding liveness unless equivalent public prepared behavior is proven.
 
-Unresolved Step 2 classification inputs:
+Consumers that combine identity with policy/allocation decisions:
 
-- Whether duplicated local `find_liveness_function(...)` helpers in call
-  plans and i128/f128 helper planners are separate ownership authorities or
-  repeat implementations of one liveness-to-call-point query.
-- Whether `PrepareOptions::run_liveness` is intentionally ignored by the
-  normal `BirPreAlloc::run()` path or is legacy scaffolding used only by tests
-  that call pass methods manually.
-- Which derived target rows should be classified as allocation/storage/helper
-  blockers versus status/debug compatibility rows: regalloc/value locations,
-  call preservation, runtime helper live preservation, prepared-printer helper
-  rows, AArch64 target instruction records, x86 wrappers/debug, and RISC-V
-  aggregate input should stay distinct in Step 2.
+- `BirPreAlloc::run_regalloc()` combines value identity with live intervals,
+  cross-call flags, register-class/group-width policy, interference, physical
+  register assignment, stack-slot fallback, and value-location publication.
+- `regalloc_detail::value_priority(...)`,
+  `weighted_use_score(...)`, `intervals_overlap(...)`, and
+  `append_spill_reload_ops(...)` combine identity with allocation priority,
+  interval conflict, and spill/reload placement.
+- `populate_call_plans(...)` combines function/value identity with call
+  program points, value homes, register/stack endpoints, and preservation
+  routes.
+- i128/f128 runtime-helper planners combine helper/callee identity with call
+  program points, preserved-value routes, target register/storage facts, and
+  selected call ownership.
+
+Named demotion blockers:
+
+- Demotion or deletion is blocked by `BirPreAlloc::run_regalloc()`,
+  regalloc interval/classification/spill-reload helpers,
+  `populate_call_plans(...)`, i128/f128 runtime-helper planners, and tests that
+  assert the public liveness/regalloc/helper contract.
+- Wrapping is blocked unless the wrapper preserves all current direct
+  liveness readers plus derived regalloc, call-plan, helper, printer, and
+  target compatibility surfaces with fail-closed behavior.
+- Private-pass-context movement is blocked because prepared module consumers
+  outside the construction pass still read `prepared.liveness` directly
+  (`call_plans`, i128/f128 helpers, filtering, tests) or consume public
+  liveness-derived prepared facts (printer, AArch64, x86, RISC-V aggregate
+  boundary).
+
+Step 1 unresolved input decisions:
+
+- Duplicated local `find_liveness_function(...)` helpers are repeat
+  implementations of the same liveness-to-function lookup shape, but they are
+  not one authority. Each call site uses the lookup for different policy:
+  call preservation, i128 helper live preservation, f128 helper live
+  preservation, and tests. Preserve them as separate blockers until a later
+  idea proves a shared lookup/accessor without changing authority.
+- `PrepareOptions::run_liveness` remains ambiguous. Tests call
+  `run_liveness()` manually and toggle the option, while the normal
+  `BirPreAlloc::run()` pipeline currently calls `run_liveness()`
+  unconditionally before regalloc. Step 3 must treat absent/skipped liveness as
+  a fail-closed row, not as evidence that the field is optional.
+- Derived target/printer boundaries stay distinct: printer is output/status
+  compatibility; AArch64 and x86 are derived target-register/target-storage
+  and helper policy consumers; RISC-V is currently an aggregate compatibility
+  risk with no direct liveness-derived reader identified.
 
 ## Suggested Next
 
-Execute Step 2 by classifying the inventory above into identity-only metadata,
-allocation, move scheduling, storage/home, carrier/helper, target register,
-target storage, output policy, status/debug compatibility, and
-construction-only buckets.
+Execute Step 3 by building the fail-closed behavior matrix for candidate and
+ambiguous rows: absent, invalid, stale, mismatch, fallback,
+duplicate/conflict, unsupported, and policy-sensitive liveness states.
 
 ## Watchouts
 
 - This is analysis-only; do not edit implementation code or expectations under
   this active plan.
-- Do not treat the completed route/invariants/completed_phases/notes metadata
-  gate as evidence that `liveness` is demotion-ready.
-- Mark allocation, storage, helper-planning, target-register,
-  target-storage, move-scheduling, and output-policy consumers as blockers
-  unless a later source idea proves a narrower semantic handoff.
-- Direct-field consumers are fewer than derived consumers. Step 2 must not
-  collapse derived AArch64/x86/RISC-V/printer behavior into "no direct
-  liveness read" because regalloc, call plans, and runtime-helper policies are
-  liveness-derived authority.
+- Candidate identity-only rows are narrow and compatibility-bound. Filtering
+  and construction-only rows are not enough for a demotion candidate while
+  regalloc, call-plan, and helper-planning readers remain public consumers.
+- Step 3 should treat `PrepareOptions::run_liveness` as unresolved normal-path
+  ambiguity and require fail-closed behavior for absent or skipped liveness.
+- Direct-field consumers are fewer than derived consumers. Do not collapse
+  printer, AArch64, x86, or RISC-V into "no liveness risk" because prepared
+  output and target behavior depend on liveness-derived facts.
 
 ## Proof
 
 `git diff --check -- todo.md`
+
+Passed for this packet. The delegated proof command does not produce
+`test_after.log`; no replacement log was created.
