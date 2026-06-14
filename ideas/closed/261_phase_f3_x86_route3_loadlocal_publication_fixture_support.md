@@ -34,6 +34,25 @@ Resume this idea at the supported joined-branch route. The next work should
 finish the minimal fixture/proof surface for idea 258 using the production
 compare-join selected-`LoadLocal` bridge from idea 262.
 
+## Completion Note
+
+Closed after Step 4 recorded that the supported joined-branch compare-join
+`EdgeStoreSlot` selected-`LoadLocal` route now provides the proof surface needed
+by idea 258. The route naturally carries both the Route 3 `LoadLocal` memory
+record and the prepared edge-publication `source_memory_access` facts into the
+x86 Route 3 statement-memory agreement facade.
+
+The focused surface covers positive x86 rendering plus the reachable
+fail-closed rows recorded during execution: missing source address rejection,
+join-carrier-only drift rejection, and incomplete prepared source-memory
+publication rejection. Prepared-only, stale-publication, byte-offset drift, and
+cross-publication mismatch rows remain out of scope for this fixture because
+they require synthetic or stale prepared publication state rather than the
+supported route.
+
+Resume `ideas/open/258_phase_f3_x86_route3_loadlocal_source_memory_agreement_bridge.md`
+at Step 4 using this joined-branch selected-`LoadLocal` proof surface.
+
 ## In Scope
 
 - Identify or add one supported x86 handoff fixture shape that reaches

@@ -1,163 +1,191 @@
-# Phase F3 x86 Route 3 LoadLocal Publication Fixture Support
+# Phase F3 x86 Route 3 LoadLocal Source-Memory Agreement Bridge
 
 Status: Active
-Source Idea: ideas/open/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md
+Source Idea: ideas/open/258_phase_f3_x86_route3_loadlocal_source_memory_agreement_bridge.md
 
 ## Purpose
 
-Repair the x86 proof surface needed to validate the Route 3 selected
-`LoadLocal` source-memory agreement facade without synthetic publication
-injection.
+Create the narrow x86 Route 3 agreement bridge needed before prepared
+`memory_accesses` lookup answers can be treated as compatibility mirrors for a
+selected `LoadLocal` result/source-memory identity.
 
 ## Goal
 
-Create one supported x86 fixture path that naturally carries both a Route 3
-`LoadLocal` memory record and a prepared
-`PreparedEdgePublication::source_memory_access` row into
-`render_agreed_route3_load_local_statement_memory_operand(...)`.
+Add or prove one x86 consumer or MIR query facade that compares the selected
+Route 3 `LoadLocal` memory record with the prepared `source_memory_access` row
+and fails closed on non-agreement.
 
 ## Core Rule
 
-Do not prove idea 258 by hand-building publications on a route that would
-reject them before the statement-memory agreement facade. The fixture must be a
-supported backend shape.
+Do not make prepared `memory_accesses` the semantic authority behind a renamed
+Route 3/BIR accessor. Agreement must require both the Route 3 record and the
+prepared source-memory row to describe the same selected identity.
 
 ## Read First
 
-- `ideas/open/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md`
-- `ideas/closed/262_phase_f3_x86_compare_join_loadlocal_selected_arm_support.md`
 - `ideas/open/258_phase_f3_x86_route3_loadlocal_source_memory_agreement_bridge.md`
-- `todo.md` history from idea 261 Steps 1 and 2.
-- `tests/backend/bir/backend_x86_handoff_boundary_joined_branch_test.cpp`
-- `tests/backend/bir/backend_x86_route_debug_test.cpp`
-- `src/backend/prealloc/control_flow.hpp`
-- `src/backend/mir/x86/module/module.cpp`
-- x86 handoff publication builders and Route 3 memory/source lookup helpers.
+- `ideas/closed/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md`
+- `ideas/closed/262_phase_f3_x86_compare_join_loadlocal_selected_arm_support.md`
+- Route 3 memory/source records and lookup helpers.
+- x86 prepared memory consumers and MIR query surfaces.
+- Focused backend tests covering prepared memory lookup/status, x86 route
+  debug or handoff boundaries, and `LoadLocal` source-memory behavior.
 
 ## Current Targets
 
-- The joined-branch compare-join `EdgeStoreSlot` route selected in Step 1.
-- Natural selected `LoadLocal` `source_memory_access` publication ownership.
-- Focused tests for positive agreement and fail-closed rows needed by idea 258.
-- Existing prepared lookup/status and x86 route-debug/handoff-boundary
-  contracts.
+- Route 3 `LoadLocal` source-memory identity.
+- `PreparedEdgePublication::source_memory_access` compatibility row.
+- x86 agreement consumer or MIR query facade for the selected memory/source
+  identity.
+- Focused proof through the supported joined-branch compare-join
+  `EdgeStoreSlot` selected-`LoadLocal` route delivered by idea 261.
 
 ## Non-Goals
 
-- Do not rewrite x86 addressing, frame layout, register materialization, or
-  emitted output policy.
-- Do not make prepared `memory_accesses` the semantic authority for Route 3
-  selected-memory facts.
-- Do not implement generic memory parity beyond the selected `LoadLocal` proof
-  surface.
+- Do not implement generic memory parity beyond the selected `LoadLocal`
+  source-memory fact.
 - Do not change RISC-V behavior.
-- Do not weaken, delete, or rename existing prepared lookup/status, fallback,
-  helper/oracle, route-debug, or x86 output contracts.
-- Do not reopen idea 262's generic selected-arm work; it is closed and should
-  remain a dependency, not the active scope.
+- Do not delete or privatize `PreparedFunctionLookups::memory_accesses`.
+- Do not rewrite helper/oracle names, status strings, fallback names,
+  prepared lookup/status contracts, x86 addressing, frame/global placement,
+  operand spelling, register materialization, or target output formatting.
+- Do not claim progress through expectation rewrites or named-case shortcuts.
+- Do not hand-build `PreparedEdgePublication` rows or stale prepared render
+  contract state to force unsupported rejection cases.
 
 ## Working Model
 
-- Idea 258 already owns the agreement facade implementation.
-- Idea 262 now supplies the production compare-join selected-`LoadLocal`
-  bridge needed for the joined-branch route to reach that facade.
-- This runbook owns the remaining supported fixture/publication proof surface
-  needed to prove idea 258.
-- Legacy no-publication fallback can remain compatible behavior, but it is not
-  positive Route 3/prepared agreement proof.
+- Route 3 owns the semantic memory/source fact for the selected `LoadLocal`.
+- Prepared lookup/status remains the compatibility surface that existing
+  callers and tests can observe.
+- The bridge may answer agreement only when the x86-facing Route 3 record and
+  prepared `source_memory_access` row are both present, complete, and matching.
+- Target-owned x86 policy remains target-owned; the bridge must not absorb
+  addressing, storage, register, or emitted-output decisions.
+- Idea 261 now supplies the supported joined-branch selected-`LoadLocal` proof
+  surface needed for Step 4.
 
 ## Execution Rules
 
-- Resume from the accepted joined-branch route contract; do not repeat
-  unsupported short-circuit, loop-countdown, local-slot guard, or synthetic
-  publication attempts.
-- Keep code changes limited to fixture/testability support and focused tests
-  required to reach the selected facade.
-- Preserve existing supported fixture semantics and add coverage rather than
-  weakening current assertions.
-- Use x86-enabled validation for x86-only CTest targets.
-- Return to plan-owner if the idea 262 bridge is still insufficient without
-  broad target-policy rewrites.
+- Resume at Step 4; Steps 1 through 3 are complete.
+- Use the joined-branch compare-join `EdgeStoreSlot` selected-`LoadLocal` route
+  from idea 261 for focused proof.
+- Count only naturally reachable rows from the supported route.
+- Do not count legacy no-publication fallback as positive Route 3/prepared
+  agreement.
+- Preserve public prepared lookup/status observability while proving the
+  agreement gate.
+- Add or update tests only to prove agreement and fail-closed behavior; do not
+  weaken existing contracts.
+- Use x86-enabled validation for x86-only tests when the default build does
+  not register them.
+- Escalate to plan-owner instead of broadening into generic memory lowering or
+  target policy rewrites.
 
 ## Steps
 
-### Step 1: Supported Publication Route Contract
+### Step 1: Route 3 and x86 Memory Consumer Inventory
 
-Goal: select the smallest supported x86 route that can own a selected
-`LoadLocal` source-memory publication and reach the statement-memory agreement
-facade.
+Goal: identify the exact Route 3 record fields, prepared source-memory fields,
+and x86 reader or facade candidates that can participate in agreement.
 
 Actions:
-- Re-read the idea 258 Step 4 blocker notes in `todo.md` and avoid the rejected
-  synthetic `join_transfers` path.
-- Inspect x86 handoff publication builders and existing short-circuit,
-  joined-branch, loop-countdown, and local-slot guard fixtures.
-- Identify the route where a selected `LoadLocal` publication can be validly
-  produced before the facade is called, or record why a tiny fixture helper is
-  required.
-- Record the accepted route contract in `todo.md`.
+- Inspect Route 3 `LoadLocal` memory/source records and lookup helpers.
+- Inspect x86 prepared memory consumers and MIR query wrappers.
+- Record the candidate helper or facade boundary in `todo.md`.
+- Identify existing tests that already cover prepared memory status and x86
+  memory/source behavior.
 
 Completion check:
-- `todo.md` names the supported route, the publication ownership source, and
-  the route guards that make it non-synthetic.
+- `todo.md` names the chosen reader/facade candidate, the Route 3 fields, the
+  prepared row fields, and the compatibility surfaces that must remain stable.
 
 Status:
-- Complete. Step 1 selected the joined-branch compare-join `EdgeStoreSlot`
-  route, with idea 262 supplying the missing selected-`LoadLocal` production
-  bridge.
+- Complete. The x86-local agreement facade is implemented and routes selected
+  local-slot `LoadLocal` render paths through Route 3/prepared agreement.
 
-### Step 2: Fixture or Helper Implementation
+### Step 2: Agreement Boundary and Fail-Closed Matrix
 
-Goal: add the minimal supported fixture/helper wiring needed for tests to reach
-the existing agreement facade.
+Goal: define the smallest agreement gate and rejection matrix before editing
+  code.
 
 Actions:
-- Use the joined-branch compare-join `EdgeStoreSlot` route with the selected
-  same-predecessor-block `LoadLocal` support added by idea 262.
-- Implement only the fixture/testability support required by Step 1.
-- Keep Route 3 agreement semantics in
-  `render_agreed_route3_load_local_statement_memory_operand(...)`; do not move
-  target policy into test helpers.
-- Preserve existing prepared lookup/status, fallback names, route-debug output,
-  and x86 operand spelling.
-- Record any untestable rejection row explicitly in `todo.md`.
+- Decide whether an existing x86 helper already forms the boundary or whether a
+  narrow helper/facade is needed.
+- Specify exact agreement predicates for same function, same block, selected
+  `LoadLocal`, source-memory identity, and prepared row match.
+- List rejection behavior for missing, incomplete, duplicate/conflict,
+  prepared-only, route-only, unsupported, fallback, and mismatch rows.
+- Record which rows require x86-enabled tests.
 
 Completion check:
-- The supported fixture path reaches the existing agreement facade without
-  unsupported publication injection or broad x86 policy rewrites.
+- `todo.md` records the accepted boundary and fail-closed matrix without
+  implementation drift.
 
-### Step 3: Focused Agreement Proof
+Status:
+- Complete. The boundary is the x86-local Route 3/prepared agreement facade
+  around selected local-slot statement/compare-load memory rendering.
 
-Goal: prove the positive agreement path and reachable fail-closed rows through
-the supported fixture surface.
+### Step 3: Implement or Prove the Narrow x86 Agreement Path
+
+Goal: wire the selected x86 reader/facade through the agreement predicate or
+prove that it is already correctly wired.
 
 Actions:
-- Add or update focused backend tests for the supported positive agreement
-  path.
-- Add missing, incomplete, prepared-only, route-only, unsupported, and mismatch
-  rows where the selected route can naturally express them.
-- Do not count legacy no-publication fallback as positive agreement.
+- Add the minimal helper/facade code if no existing path satisfies the matrix.
+- Keep prepared lookup/status and fallback names observable.
+- Do not move x86 addressing, frame/global placement, operand spelling,
+  register materialization, or target output policy into Route 3/BIR.
+- Search for bypassing x86 selected `LoadLocal` memory/source consumers and
+  either route them through the boundary or record why they are out of scope.
+
+Completion check:
+- Code, or explicit no-code proof, shows the selected x86 agreement path checks
+  Route 3 and prepared source-memory agreement before treating prepared data as
+  a semantic mirror.
+
+Status:
+- Complete. The selected x86 reader path requires a matching Route 3
+  `LoadLocal` memory record and `PreparedEdgePublication::source_memory_access`
+  before rendering through the agreement facade.
+
+### Step 4: Focused Agreement and Rejection Proof
+
+Goal: prove the agreement path and reachable fail-closed rows without weakening
+  prepared compatibility contracts.
+
+Actions:
+- Use the supported joined-branch selected-`LoadLocal` route from idea 261.
+- Prove the positive agreement path and naturally reachable rejection rows:
+  missing source address, join-carrier-only drift, and incomplete prepared
+  source-memory publication.
+- Record any source acceptance rows that cannot be naturally expressed without
+  synthetic or stale prepared state.
+- Include nearby same-feature cases, not only one named testcase.
 - Run the supervisor-delegated proof command and write `test_after.log` when
-  code or tests change.
+  code or test behavior changes.
+- Use an x86-enabled build/test configuration for x86-only CTest targets when
+  required.
 
 Completion check:
-- Focused x86 proof passes and covers positive agreement plus the reachable
-  fail-closed rows without weakening existing contracts.
+- Focused proof passes and covers agreement plus reachable fail-closed rows
+  expected by the source idea, without hand-built publication state or
+  expectation downgrades.
 
-### Step 4: Hand Back to Idea 258
+### Step 5: Compatibility Sweep and Closure Readiness
 
-Goal: decide whether idea 258 can resume or whether the fixture route remains
-blocked.
+Goal: confirm the bridge is narrow, compatibility-preserving, and ready for
+  lifecycle closure.
 
 Actions:
-- Re-check prepared lookup/status behavior, fallback names, route-debug output,
-  and x86 output stability.
-- Record in `todo.md` whether idea 258 Step 4 now has a valid proof surface.
-- If the proof surface exists and validation is green, request plan-owner
-  closure or switch back to idea 258.
-- If no supported route exists without broad target-policy rewrites, record the
-  exact blocker for supervisor review.
+- Re-check prepared lookup/status behavior, helper/oracle names, fallback
+  names, x86 output stability, and RISC-V non-change.
+- Confirm no unsupported expectation downgrades or output-baseline rewrites
+  were used as proof.
+- Record any remaining blocker in `todo.md`; otherwise request plan-owner
+  closure after supervisor validation.
 
 Completion check:
-- `todo.md` records either validated resume readiness for idea 258 or the
-  remaining testability blocker.
+- `todo.md` records closure readiness or the exact blocker, and the proof logs
+  cover the selected bridge at the confidence level requested by the
+  supervisor.

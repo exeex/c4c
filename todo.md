@@ -1,54 +1,43 @@
 Status: Active
-Source Idea Path: ideas/open/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md
+Source Idea Path: ideas/open/258_phase_f3_x86_route3_loadlocal_source_memory_agreement_bridge.md
 Source Plan Path: plan.md
 Current Step ID: 4
-Current Step Title: Hand Back to Idea 258
+Current Step Title: Focused Agreement and Rejection Proof
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 4, `Hand Back to Idea 258`.
+Lifecycle resumed idea 258 after closing idea 261.
 
-Idea 261 now provides the supported proof surface needed for idea 258 Step 4.
-The joined-branch compare-join `EdgeStoreSlot` selected-`LoadLocal` route is a
-production path that naturally carries both the Route 3 `LoadLocal` memory
-record and the prepared edge-publication `source_memory_access` facts into the
-x86 Route 3 statement-memory agreement facade.
-
-The available proof surface covers positive x86 rendering plus the reachable
-fail-closed rows recorded in Step 3: missing source address rejection,
-join-carrier-only drift rejection, and incomplete prepared source-memory
-publication rejection. Prepared-only, stale-publication, byte-offset drift, and
-cross-publication mismatch rows remain out of scope for this fixture because
-they require synthetic or stale prepared publication state rather than the
-supported route.
+Idea 261 provides the supported joined-branch compare-join `EdgeStoreSlot`
+selected-`LoadLocal` proof surface needed for this plan's Step 4. Use that
+production route to prove the x86 Route 3/prepared source-memory agreement
+facade; do not return to synthetic `join_transfers` on routes that reject them
+before the facade.
 
 ## Suggested Next
 
-Route lifecycle handling back through the plan owner.
+Execute plan Step 4, `Focused Agreement and Rejection Proof`.
 
-Recommended lifecycle action: close idea 261 as complete and resume idea 258
-from Step 4 using the validated joined-branch selected-`LoadLocal` proof
-surface.
+Start from the existing selected-`LoadLocal` joined-branch rows and prove the
+positive agreement path plus naturally reachable fail-closed rows: missing
+source address, join-carrier-only drift, and incomplete prepared source-memory
+publication. Record prepared-only, stale-publication, byte-offset drift, or
+cross-publication mismatch rows as unsupported by this surface unless a
+supported route can express them without synthetic or stale prepared state.
 
 ## Watchouts
 
-- Keep the hand-back scoped to the supported joined-branch fixture surface; do
-  not reopen idea 262's compare-join lowering.
-- Idea 258 Step 4 should use the existing selected-`LoadLocal` joined-branch
-  rows as its reachable proof surface and should continue to avoid hand-built
-  `PreparedEdgePublication` rows or stale prepared render contract state.
-- Legacy no-publication fallback remains compatibility behavior and should not
-  be counted as positive Route 3/prepared agreement proof.
+- Do not count legacy no-publication fallback as positive Route 3/prepared
+  agreement proof.
+- Do not hand-build `PreparedEdgePublication` rows, stale prepared render
+  contract state, or named-case shortcuts.
+- Preserve prepared lookup/status behavior, helper/oracle names, fallback
+  names, route-debug output, and x86 output spelling.
 
 ## Proof
 
-Delegated proof command passed and refreshed `test_after.log`:
-
-```bash
-(cmake --build --preset default && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_prepared_printer)$' --output-on-failure && cmake --build build-x86 --target backend_x86_route_debug_test backend_x86_handoff_boundary_test -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_x86_route_debug|backend_x86_handoff_boundary)$') > test_after.log 2>&1
-```
-
-Result: `test_after.log` shows 2/2 default prepared tests and 2/2 x86 tests
-passed.
+Close/resume validation used the existing executor logs. Regression guard
+passed with `test_before.log` and `test_after.log`; `test_after.log` shows 2/2
+default prepared tests and 2/2 x86 tests passed.

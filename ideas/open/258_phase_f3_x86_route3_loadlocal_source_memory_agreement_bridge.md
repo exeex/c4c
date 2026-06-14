@@ -55,7 +55,7 @@ same-function, same-block `Route3MemoryAccessRecord` for `LoadLocal` to
 - Focused backend tests prove the agreement path and fail-closed rows without
   weakening existing prepared lookup/status or output contracts.
 
-## Parked Lifecycle Note
+## Resumed Lifecycle Note
 
 The active runbook reached the implementation bridge in commit `76767c2ac`,
 then parked at Step 4 because the current x86 fixture set does not expose a
@@ -76,9 +76,17 @@ Checked surfaces:
   statement-memory facade.
 
 Follow-up testability work is split to
-`ideas/open/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md`.
-Resume this idea after that fixture support can prove the positive agreement
-branch and fail-closed rows without unsupported publication injection.
+`ideas/closed/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md`.
+That work is now complete. Resume this idea from Step 4 using the supported
+joined-branch compare-join `EdgeStoreSlot` selected-`LoadLocal` route, which
+naturally carries both the Route 3 `LoadLocal` memory record and prepared
+`source_memory_access` publication facts into the x86 agreement facade.
+
+The available proof surface covers positive agreement plus reachable
+fail-closed rows for missing source address, join-carrier-only drift, and
+incomplete prepared source-memory publication. Do not attempt prepared-only,
+stale-publication, byte-offset drift, or cross-publication mismatch rows unless
+a supported route can express them without synthetic or stale prepared state.
 
 ## Reviewer Reject Signals
 
