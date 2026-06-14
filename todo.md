@@ -1,51 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Nearby Fail-Closed Rows
+Current Step ID: 4
+Current Step Title: Broader Backend Validation follow-up repair
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 (`Add Nearby Fail-Closed Rows`) added populated
-`PreparedBirModule` coverage for the store-source source-value/source-producer
-metadata boundary.
+Step 4 (`Broader Backend Validation follow-up repair`) fixed the
+store-source producer metadata agreement regression exposed by the broader
+backend subset.
 
 Changed files:
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `tests/backend/mir/backend_store_source_publication_plan_test.cpp`
 - `todo.md`
 - `test_after.log`
 
 Completed work:
-- Added `verify_populated_store_source_producer_metadata_fails_closed()` near
-  the direct Step 2 helper.
-- Covered positive populated store-local and store-global records with agreed
-  binary producer metadata.
-- Added populated fail-closed rows for stale producer-after-store lookup rows,
-  duplicate producer rows, and produced-value type drift.
-- Verified the fail-closed rows preserve store-source publication availability,
-  ordinary source identity, global publication intent, stack-homes-only
-  compatibility, and register source storage encoding.
+- Kept home-backed producer metadata publication fail-closed on complete
+  source-home/stored-value agreement.
+- Added the semantic byval load-local authority path so prepared byval source
+  producers can publish when their payload result exactly matches the stored
+  source value.
+- Aligned focused direct-helper compatibility assertions with their prepared
+  block labels while preserving different stored-value surfaces where relevant.
 
 ## Suggested Next
 
-Step 4 should run the supervisor-selected broader backend validation for this
-metadata packet and decide whether the current slice is ready to commit.
+After supervisor review and commit, call the plan owner to decide whether this
+one-candidate runbook is ready for close review against the source idea.
 
 ## Watchouts
 
-- This packet intentionally added fixture coverage only; no planner policy,
-  output baselines, diagnostics, `publication_plans.cpp`, `publication_plans.hpp`,
-  `plan.md`, or source idea files were changed.
-- The populated stale-row case proves a producer that appears only after the
-  store remains metadata-free while the store-source record is still available.
-- The duplicate producer-row case exercises the existing producer lookup
-  fail-closed collapse to `Unknown`.
+- The byval path still requires the prepared byval classifier, a concrete
+  `LoadLocal` payload, a producer before the destination store, matching
+  producer/source value name and type, and the existing same-block check.
+- Route-only or payload-incomplete producer metadata remains unpublished.
 
 ## Proof
 
 Ran delegated proof:
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'; } > test_after.log 2>&1`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_store_source_publication_plan)$'; } > test_after.log 2>&1`
 
 Result: passed. Proof log: `test_after.log`.
+
+Supervisor broader validation:
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
+
+Result: passed.

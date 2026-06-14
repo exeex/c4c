@@ -514,6 +514,7 @@ int classifies_byval_load_local_source_from_prepared_authority() {
           names, &function, &addressing, &producer);
   const auto source = bir::Value::named(bir::TypeKind::I32, "%loaded");
   auto destination_access = frame_slot_store_access(102, 9, 0);
+  destination_access.block_label = block_label;
   const auto plan = prepare::plan_prepared_store_source_publication({
       .source_value = &source,
       .destination_access = &destination_access,
@@ -1144,6 +1145,7 @@ int records_cast_source_producer_from_prepared_lookup() {
   const auto block_label = prepared.names.block_labels.find("entry");
   const auto source = bir::Value::named(bir::TypeKind::I64, "%casted");
   auto access = frame_slot_store_access(casted_name, 15, 0);
+  access.block_label = block_label;
   auto home = source_home(prepare::PreparedValueHomeKind::Register, 8, casted_name);
   home.register_name = "prepared-cast-result-register";
 

@@ -88,7 +88,6 @@ namespace {
     const PreparedStoreSourcePublicationInputs& inputs) {
   if (inputs.source_value == nullptr ||
       inputs.destination_access == nullptr ||
-      inputs.source_home == nullptr ||
       inputs.source_producer == nullptr ||
       inputs.source_producer->kind ==
           PreparedEdgePublicationSourceProducerKind::Unknown ||
@@ -97,12 +96,22 @@ namespace {
           inputs.destination_access->block_label ||
       inputs.source_producer->instruction_index >=
           inputs.destination_access->inst_index ||
-      !inputs.destination_access->stored_value_name.has_value() ||
-      inputs.source_home->value_name == kInvalidValueName ||
-      inputs.source_home->value_name !=
-          *inputs.destination_access->stored_value_name ||
-      inputs.source_home->kind == PreparedValueHomeKind::None ||
       !prepared_source_producer_has_matching_payload(*inputs.source_producer)) {
+    return false;
+  }
+
+  const bool home_backed_source_agrees =
+      inputs.source_home != nullptr &&
+      inputs.destination_access->stored_value_name.has_value() &&
+      inputs.source_home->value_name != kInvalidValueName &&
+      inputs.source_home->value_name ==
+          *inputs.destination_access->stored_value_name &&
+      inputs.source_home->kind != PreparedValueHomeKind::None;
+  const bool byval_load_local_source_agrees =
+      inputs.byval_load_local_source &&
+      inputs.source_producer->kind ==
+          PreparedEdgePublicationSourceProducerKind::LoadLocal;
+  if (!home_backed_source_agrees && !byval_load_local_source_agrees) {
     return false;
   }
 
