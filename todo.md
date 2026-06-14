@@ -8,49 +8,28 @@ Current Step Title: Prove wrapper output and prepared compatibility stability
 
 ## Just Finished
 
-Step 3 - Introduce agreement-gated Route 6 source authority completed.
+Step 4 - Prove wrapper output and prepared compatibility stability completed.
 
-Changed implementation surface:
+The delegated x86 wrapper/prepared compatibility proof stayed green after the
+Route 6 scalar source authority change:
 
-- `src/backend/mir/x86/x86.hpp`: added
-  `find_consumed_scalar_i32_call_argument_source_authority(...)`, which only
-  returns Route 6 authority for the selected scalar `i32` call-argument path
-  when the Route 6 argument-value record matches the BIR argument, has a
-  source id, has a source name, and agrees with the existing prepared source
-  id. The existing record helper remains as compatibility surface and now
-  delegates through the authority helper.
-- `src/backend/mir/x86/module/module.cpp`: the two x86 direct extern scalar
-  call-argument emission paths now pass an agreed Route 6 source name as the
-  explicit source authority. Missing or non-agreeing Route 6 authority passes
-  `std::nullopt`, preserving the existing prepared argument-name fallback.
-- `src/backend/mir/x86/debug/debug.cpp`: route-debug now reports
-  `gate=missing_source_name` for records with an agreed source id shape but no
-  named source value, keeping that incomplete case fail-closed and visible.
-
-Changed test surface:
-
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`: asserts the
-  new authority helper fails closed when a Route 6 record has the agreed source
-  id but no source name, while the prepared call-argument selector remains
-  available.
-- `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp`:
-  asserts the positive scalar source becomes named Route 6 authority and that
-  the missing-source-name case falls back to prepared emission with unchanged
-  `expected_minimal_direct_extern_call_lane_asm()`.
-- `tests/backend/bir/backend_x86_route_debug_test.cpp`: adds the
-  `status=available gate=missing_source_name` row and confirms it does not emit
-  the accepted `route6 scalar arg ... kind=ArgumentValue` source row.
-
-Wrapper assembly expectations, prepared fallback behavior, public
-`ConsumedPlans` compatibility, and non-agreeing Route 6 fail-closed behavior
-were preserved.
+- wrapper output stability around
+  `expected_minimal_direct_extern_call_lane_asm()` remains covered by
+  `backend_x86_handoff_boundary`
+- retained public `ConsumedPlans` compatibility remains covered by
+  `backend_prepared_lookup_helper`
+- prepared fallback stability and route-debug fail-closed visibility remain
+  covered by `backend_x86_route_debug`, `backend_prepared_lookup_helper`, and
+  `backend_x86_handoff_boundary`
+- no code, test, `plan.md`, or idea-file edits were made in this proof-only
+  packet
 
 ## Suggested Next
 
-Next coherent packet: Step 4 should prove wrapper output and prepared
-compatibility stability around the selected scalar `i32` direct-call argument
-path, with particular attention to `expected_minimal_direct_extern_call_lane_asm()`
-and retained public `ConsumedPlans` compatibility rows.
+Next coherent packet: Step 5 should run the close-scope regression guard for
+the completed selected scalar `i32` x86 path, confirming no supported-path
+downgrade, helper-oracle weakening, wrapper output rewrite, or prepared
+aggregate demotion claim entered the diff.
 
 ## Watchouts
 
@@ -74,6 +53,8 @@ and retained public `ConsumedPlans` compatibility rows.
 - Keep `ConsumedPlans` public compatibility visible; do not hide or demote
   `PreparedFunctionLookups`, prepared call plans, or fallback labels in this
   idea.
+- Step 4 was proof-only; it did not inspect or modify implementation/test
+  content beyond the delegated build and test subset.
 - `clang-format` was not available in this environment
   (`/bin/bash: clang-format: command not found`); formatting was kept manual.
 
@@ -85,7 +66,9 @@ Passed:
 
 `test_after.log` is the proof log path. The selected subset passed 3/3:
 `backend_x86_route_debug`, `backend_prepared_lookup_helper`, and
-`backend_x86_handoff_boundary`.
+`backend_x86_handoff_boundary`. This proof is sufficient for Step 4 because it
+re-ran the delegated wrapper output, prepared lookup compatibility, and x86
+route-debug/fallback stability subset without changing code or tests.
 
 Baseline review accepted this candidate because the full-suite candidate stayed
 3428/3428 with no failures.
