@@ -126,6 +126,27 @@ narrows it further:
   semantic fact, one consumer or helper row, one retained compatibility adapter,
   and a complete fail-closed proof set.
 
+## Completed Candidate Notes
+
+- `module` lookup-reader packet completed in the retired active runbook:
+  `prepared_bir_function`, `prepared_bir_block`,
+  `prepared_bir_block_label_id`, and lookup construction now use a shared BIR
+  function/block structure agreement helper only when the prepared lookup path
+  would otherwise be null. Public prepared aggregate fields and existing
+  prepared lookup maps remain observable.
+- Focused proof covered the positive structured-agreement path plus
+  fail-closed rows for invalid prepared function ids, absent BIR
+  function/module structure, invalid prepared block ids, missing prepared-name
+  lookup rows, stale or unknown structured ids, prepared/BIR drift, duplicate
+  or conflicting labels, and retained public raw-label compatibility.
+- Broader close-readiness proof passed with 180/180 default backend tests and
+  2/2 x86 route-debug/handoff tests in the canonical before/after logs.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed packet is not approval for broad
+  `PreparedBirModule` deletion, privatization, wrapping, aggregate retirement,
+  or migration of unrelated `module`, `names`, `control_flow`, or
+  `store_source_publications` rows.
+
 ## Acceptance Criteria
 
 - The active packet chooses one named candidate and keeps the implementation
