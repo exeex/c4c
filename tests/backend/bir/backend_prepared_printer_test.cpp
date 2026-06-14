@@ -2642,6 +2642,153 @@ bool expect_not_contains(const std::string& text,
   return false;
 }
 
+bool expect_equal_text(const std::string& actual,
+                       const std::string& expected,
+                       const char* description) {
+  if (actual == expected) {
+    return true;
+  }
+  std::cerr << "[FAIL] unexpected " << description << "\n";
+  std::cerr << "--- expected ---\n" << expected << "\n";
+  std::cerr << "--- actual ---\n" << actual << "\n";
+  return false;
+}
+
+prepare::PreparedBirModule prepared_module_printer_body_fixture() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = riscv_target_profile();
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_module_printer_function_body_fixture() {
+  auto prepared = prepared_module_printer_body_fixture();
+
+  bir::Function function;
+  function.name = "module_text_contract";
+  function.return_type = bir::TypeKind::Void;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+
+  prepared.module.functions.push_back(std::move(function));
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_module_printer_global_body_fixture() {
+  auto prepared = prepared_module_printer_body_fixture();
+  prepared.module.globals.push_back(bir::Global{
+      .name = "global0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_module_printer_string_body_fixture() {
+  auto prepared = prepared_module_printer_body_fixture();
+  prepared.module.string_constants.push_back(bir::StringConstant{
+      .name = ".str.0",
+      .bytes = "hello",
+      .align_bytes = 1,
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_module_printer_phase_note_fixture() {
+  auto prepared = prepared_module_printer_body_fixture();
+  prepared.completed_phases = {"legalize", "out_of_ssa"};
+  prepared.notes.push_back(prepare::PrepareNote{
+      .phase = "printer",
+      .message = "complete module body text retained",
+  });
+  return prepared;
+}
+
+int complete_module_body_text_printer_rows_are_byte_stable() {
+  const std::string header =
+      "prepared.module target=riscv64-unknown-linux-gnu "
+      "route=semantic_bir_shared\n";
+  const std::string empty_prepared_metadata_tail =
+      "--- prepared-function-summaries ---\n"
+      "--- prepared-control-flow ---\n"
+      "--- prepared-value-locations ---\n"
+      "--- prepared-block-entry-publications ---\n"
+      "--- prepared-stack-layout ---\n"
+      "frame_size=0 frame_alignment=0\n"
+      "--- prepared-frame-plan ---\n"
+      "--- prepared-dynamic-stack-plan ---\n"
+      "--- prepared-call-plans ---\n"
+      "--- prepared-store-source-publications ---\n"
+      "--- prepared-select-chain-materializations ---\n"
+      "--- prepared-variadic-entry-plans ---\n"
+      "--- prepared-regalloc ---\n"
+      "--- prepared-storage-plans ---\n"
+      "--- prepared-i128-carriers ---\n"
+      "--- prepared-f128-carriers ---\n"
+      "--- prepared-atomic-operations ---\n"
+      "--- prepared-intrinsic-carriers ---\n"
+      "--- prepared-inline-asm-carriers ---\n"
+      "--- prepared-f128-runtime-helpers ---\n"
+      "--- prepared-i128-runtime-helpers ---\n"
+      "--- prepared-addressing ---\n";
+
+  const auto empty = prepared_module_printer_body_fixture();
+  if (!expect_equal_text(prepare::print(empty),
+                         header + "--- prepared-bir ---\n" +
+                             empty_prepared_metadata_tail,
+                         "empty prepared module output")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto function_only = prepared_module_printer_function_body_fixture();
+  if (!expect_equal_text(
+          prepare::print(function_only),
+          header +
+              "--- prepared-bir ---\n"
+              "bir.func @module_text_contract() -> void {\n"
+              "entry:\n"
+              "  bir.ret\n"
+              "}\n"
+              "\n" +
+              empty_prepared_metadata_tail,
+          "function-only prepared module output")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto global_only = prepared_module_printer_global_body_fixture();
+  if (!expect_equal_text(prepare::print(global_only),
+                         header + "--- prepared-bir ---\n\n" +
+                             empty_prepared_metadata_tail,
+                         "global-only compatibility blank-line output")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto string_only = prepared_module_printer_string_body_fixture();
+  if (!expect_equal_text(prepare::print(string_only),
+                         header + "--- prepared-bir ---\n\n" +
+                             empty_prepared_metadata_tail,
+                         "string-only compatibility blank-line output")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto phase_note = prepared_module_printer_phase_note_fixture();
+  if (!expect_equal_text(prepare::print(phase_note),
+                         header +
+                             "completed_phases: legalize out_of_ssa\n"
+                             "notes:\n"
+                             "  - [printer] complete module body text retained\n"
+                             "--- prepared-bir ---\n" +
+                             empty_prepared_metadata_tail,
+                         "phase and note header output")) {
+    return EXIT_FAILURE;
+  }
+
+  return EXIT_SUCCESS;
+}
+
 prepare::PreparedBirModule prepare_atomic_carrier_dump_module(bool complete) {
   bir::Module module;
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -4762,6 +4909,10 @@ prepare::PreparedBirModule prepare_f128_cast_helper_dump_module(
 }  // namespace
 
 int main() {
+  if (const int status = complete_module_body_text_printer_rows_are_byte_stable();
+      status != 0) {
+    return status;
+  }
   if (const int status = atomic_carrier_facts_preserve_fields_and_printer_visibility();
       status != 0) {
     return status;

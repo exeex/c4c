@@ -8,6 +8,34 @@
 
 namespace c4c::backend::prepare {
 
+namespace {
+
+struct PreparedBirBodyTextAgreement {
+  std::string text;
+  bool complete_module_text = false;
+  bool requires_post_body_blank_line = false;
+};
+
+[[nodiscard]] bool complete_module_text_agrees_with_bir_printer(
+    const bir::Module& module,
+    const std::string& text) {
+  return text == c4c::backend::bir::print(module);
+}
+
+[[nodiscard]] PreparedBirBodyTextAgreement prepared_bir_body_text_agreement(
+    const bir::Module& module) {
+  PreparedBirBodyTextAgreement agreement;
+  agreement.text = c4c::backend::bir::print(module);
+  agreement.complete_module_text =
+      complete_module_text_agrees_with_bir_printer(module, agreement.text);
+  agreement.requires_post_body_blank_line =
+      !module.functions.empty() || !module.globals.empty() ||
+      !module.string_constants.empty();
+  return agreement;
+}
+
+}  // namespace
+
 std::string print(const PreparedBirModule& module) {
   std::ostringstream out;
   out << "prepared.module target=" << module.target_profile.triple
@@ -36,9 +64,13 @@ std::string print(const PreparedBirModule& module) {
   }
 
   out << "--- prepared-bir ---\n";
-  out << c4c::backend::bir::print(module.module);
-  if (!module.module.functions.empty() || !module.module.globals.empty() ||
-      !module.module.string_constants.empty()) {
+  const auto body_agreement = prepared_bir_body_text_agreement(module.module);
+  if (body_agreement.complete_module_text) {
+    out << body_agreement.text;
+  } else {
+    out << c4c::backend::bir::print(module.module);
+  }
+  if (body_agreement.requires_post_body_blank_line) {
     out << "\n";
   }
 
