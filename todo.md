@@ -8,23 +8,23 @@ Current Step Title: Fixture or Helper Implementation
 
 ## Just Finished
 
-Lifecycle closed idea 262 and resumed idea 261.
+Completed plan Step 2, `Fixture or Helper Implementation`.
 
-Idea 262 supplied the bounded production compare-join selected-`LoadLocal`
-bridge that idea 261 was parked on: the joined-branch compare-join
-`EdgeStoreSlot` route can now carry a selected same-predecessor-block
-`LoadLocal` into the Route 3 statement-memory agreement facade without
-synthetic publication injection.
+The minimal supported fixture surface already exists through the resumed
+joined-branch compare-join `EdgeStoreSlot` helpers added with idea 262:
+`make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module()` and
+`check_materialized_compare_join_edge_store_slot_selected_loadlocal_*()` now
+exercise a selected same-predecessor-block `LoadLocal` with prepared local-slot
+addressing through the production x86 Route 3 agreement facade. No extra helper
+or production edit was needed for idea 261 Step 2.
 
 ## Suggested Next
 
-Execute plan Step 2, `Fixture or Helper Implementation`.
+Execute plan Step 3, `Focused Agreement Proof`.
 
-Use the joined-branch compare-join `EdgeStoreSlot` route selected by Step 1 and
-the production selected-`LoadLocal` bridge from idea 262. Add only the minimal
-fixture/helper wiring needed for idea 261's focused proof surface, then proceed
-to Step 3 proof rows if the supported route reaches
-`render_agreed_route3_load_local_statement_memory_operand(...)`.
+Use the existing selected-`LoadLocal` joined-branch fixture rows to prove the
+positive Route 3/prepared agreement path and any reachable fail-closed rows
+needed by idea 258.
 
 ## Watchouts
 
@@ -34,11 +34,19 @@ to Step 3 proof rows if the supported route reaches
   agreement.
 - Do not reopen idea 262's generic selected-arm scope; use the bridge it
   already landed.
-- Keep implementation work limited to supported fixture/testability support
-  and focused rows needed by idea 258.
+- Reachable rows already present in the joined-branch fixture include positive
+  x86 rendering, missing source address, join-carrier-only drift, and
+  incomplete prepared source-memory publication. Prepared-only or stale
+  publication mismatches must not be hand-built if the supported route cannot
+  express them naturally.
 
 ## Proof
 
-Lifecycle-only close and switch. Close gate for idea 262 used existing
-canonical `test_before.log` and `test_after.log`; `c4c-regression-guard`
-passed with no new failures.
+Delegated proof command passed and wrote `test_after.log`:
+
+```bash
+(cmake --build --preset default && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_prepared_printer)$' --output-on-failure && cmake --build build-x86 --target backend_x86_route_debug_test backend_x86_handoff_boundary_test -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_x86_route_debug|backend_x86_handoff_boundary)$') > test_after.log 2>&1
+```
+
+Result: `test_after.log` shows 2/2 default prepared tests and 2/2 x86 tests
+passed.
