@@ -3,6 +3,7 @@ Source Idea Path: ideas/open/257_phase_f3_x86_route6_call_argument_source_identi
 Source Plan Path: plan.md
 Current Step ID: 5
 Current Step Title: Compatibility Sweep
+Lifecycle Decision: Active plan remains blocked on x86-enabled proof; do not close from default-build proof alone.
 
 # Current Packet
 
