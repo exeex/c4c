@@ -45,6 +45,23 @@ public consumer depends on direct field access.
   keeps fail-closed handling for invalid or mismatched state.
 - `liveness` remains explicitly outside this packet.
 
+## Completion Note
+
+Closed after Step 5 completed the final field decision matrix.
+
+- `route` was accepted and demoted behind private storage plus
+  `prepared_route(const PreparedBirModule&)`.
+- `invariants`, `completed_phases`, and `notes` were retained as public
+  compatibility fields because Step 2 left named proof gaps around their
+  printer/status rows, invalid or mismatched metadata fences, direct payload
+  reads, or absent-note omission behavior.
+- The retained fields are not demotion-approved; they require a separate
+  follow-up proof initiative before any future private-pass-context demotion.
+- `PreparedBirModule::liveness` stayed out of scope.
+- Close proof used the existing canonical before/after logs for the focused
+  prepared-printer/CLI scope. Regression guard passed non-decreasing with 3/3
+  before and 3/3 after.
+
 ## Reviewer Reject Signals
 
 - Reject named-case shortcuts that check only one printer row or one field
