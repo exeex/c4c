@@ -1,15 +1,118 @@
 Status: Active
 Source Idea Path: ideas/open/250_phase_f3_route3_memory_source_parity_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Memory-Source Surfaces and Consumers
+Current Step ID: 2
+Current Step Title: Select One Candidate Memory-Source Identity Fact
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1, "Inventory Memory-Source Surfaces and Consumers",
-as an analysis-only inventory.
+Completed `plan.md` Step 2, "Select One Candidate Memory-Source Identity
+Fact", as an analysis-only selection.
+
+Selected fact:
+
+- Route 3 `LoadLocal` result/source-memory identity agreement for a prepared
+  edge-publication dynamic source-memory row.
+- The semantic fact is that a route/BIR `Route3MemoryAccessRecord` for a
+  same-function, same-block `LoadLocal` source identifies the same memory
+  access as the prepared publication's `PreparedMemoryAccess` source when both
+  sides describe the same loaded result value and memory-source identity.
+
+Agreement rule:
+
+- Prepared side: `PreparedEdgePublicationSourceMemoryAccessStatus::Available`
+  and a non-null `PreparedEdgePublication::source_memory_access` produced by
+  `apply_source_memory_access_fact(...)` from a prepared `LoadLocal` memory
+  access. Missing or incomplete prepared facts remain observable as
+  `MissingPreparedMemoryAccess` or `IncompletePreparedMemoryAccess`.
+- Route/BIR side: an available `Route3MemoryAccessRecord` whose node kind is
+  `LoadLocal`, whose result identity is available and has the same kind, type,
+  and value name as the prepared source-memory result, and whose memory-source
+  fields agree with the prepared source memory on address space, volatility,
+  byte offset, size, align, and base kind/identity.
+- Agreement is true only when both sides are complete and all selected
+  identity fields match. Missing prepared lookup, missing Route 3 identity,
+  incomplete Route 3 identity, duplicate/ambiguous prepared lookup, mismatched
+  result identity, mismatched base identity, mismatched layout fields, or
+  unsupported source kind must fail closed and preserve existing status rows.
+
+Target policy and compatibility rows excluded from semantic identity:
+
+- x86 stack/global operand spelling, `BYTE`/`WORD`/`DWORD` size spelling,
+  frame-slot offsets, same-module global span policy, base-plus-offset
+  legality, local/global storage placement, register homes, value-home
+  requirements, handoff diagnostics, and final instruction text remain
+  target/prepared compatibility.
+- RISC-V `lw` text, signed-12-bit offset legality, base register selection,
+  destination register placement, source-home policy, move authority, fallback
+  instruction text, and route/status strings such as `"memory_source"`,
+  `"missing_source_memory_access"`, `"incomplete_source_memory_access"`,
+  `"no_match"`, and `"no_source"` remain compatibility or target policy.
+- Prepared helper/oracle names and status strings remain compatibility:
+  `"missing_prepared_memory_access"`,
+  `"incomplete_prepared_memory_access"`, duplicate prepared lookup ambiguity,
+  invalid value names, prepared-only rows, and unsupported/fallback rows are
+  not semantic wins.
+
+Alternatives considered and not selected:
+
+- x86 local/global prepared memory operand identity was not selected because
+  Step 1 found prepared-memory consumers but no direct Route 3 production
+  consumer under `src/backend/mir/x86`; that makes it a Step 3 blocker
+  candidate, not the strongest shared fact.
+- Same-block load-local stored-value source agreement was not selected because
+  it is a useful helper/query oracle but has weaker emitted-output evidence
+  than the RISC-V dynamic source-memory publication path.
+- Generic prepared `memory_accesses` parity was not selected because it mixes
+  semantic identity with addressing mode, frame/global layout, storage policy,
+  register materialization, duplicate lookup behavior, status strings, and
+  target output formatting.
+- Route 6 call-argument memory-source identity was not selected because the
+  current plan is Route 3 memory/source parity and Step 1 found Route 5/RISC-V
+  publication as the active consumer family.
+
+Why broader memory parity is outside this plan:
+
+- Broad memory parity would require proving all prepared memory lookup helpers,
+  x86 stack/global memory rendering, RISC-V fallback behavior, Route 5/Route 6
+  source uses, duplicate/invalid lookup behavior, storage layout, addressing
+  legality, and emitted instruction text as one authority migration. Step 2
+  selects only one semantic `LoadLocal` source-memory identity fact so later
+  steps can either prove a bounded adapter or block it precisely without
+  weakening prepared compatibility rows.
+
+Targeted Step 2 confirmation commands used:
+
+- `rg -n "route3_source_memory_agrees|memory_source|source_memory_access_status|PreparedEdgePublicationSourceMemoryAccessStatus|route3_source_memory_agrees_with_prepared_publication" src/backend/mir/riscv tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`
+- `rg -n "route3_find_memory_access_record|find_bir_memory_access_identity|source_memory_identity_available|Route3MemoryAccessRecord|route3_source_memory_agrees" src/backend/mir/x86 src/backend/mir/query.cpp src/backend/bir/bir.hpp`
+- `rg -n "prepared_edge_publication_source_memory_matches_access|apply_source_memory_access_fact|PreparedEdgePublicationSourceMemoryAccessStatus|MissingPreparedMemoryAccess|IncompletePreparedMemoryAccess|source_memory_access" src/backend/prealloc src/backend/bir/bir.hpp`
+
+Targeted Step 2 evidence:
+
+- `src/backend/mir/riscv/codegen/emit.cpp:366` defines
+  `route3_source_memory_agrees_with_prepared_publication(...)`; `:438` and
+  `:495` feed the agreement result into RISC-V publication/move intent.
+- `src/backend/mir/riscv/codegen/emit.hpp:71` carries
+  `route3_source_memory_agrees`.
+- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1725`,
+  `:1743`, `:1761`, and `:1780` cover the `"memory_source"` row and
+  agreeing, mismatched, and incomplete Route 3 source-memory agreement flags.
+- The x86-targeted Route 3 query returned no `src/backend/mir/x86` hits, while
+  `src/backend/bir/bir.hpp:1756` exposes
+  `Route5CfgEdgePublicationRecord::source_memory_identity_available` and
+  `:1757` exposes its `Route3MemoryAccessRecord source_memory_access`.
+- `src/backend/mir/query.cpp:1419` exposes
+  `find_bir_memory_access_identity(...)`, but Step 1 found no x86 production
+  consumer for that query facade.
+- `src/backend/prealloc/publication_plans.hpp:65`, `:274`, and `:376` define
+  prepared source-memory status and retained source-memory fields;
+  `src/backend/prealloc/prepared_lookups.cpp:461` applies the prepared
+  source-memory fact; `src/backend/prealloc/publication_plans.cpp:877`
+  remains the prepared comparison oracle.
+
+Prior Step 1 inventory evidence retained below for continuity.
 
 Evidence commands used:
 
@@ -220,31 +323,29 @@ Addressing/storage-sensitive output that stays compatibility-owned:
 
 ## Suggested Next
 
-Execute Step 2 by selecting one narrow memory/source identity fact to evaluate
-for parity or explicit blocking. The strongest candidates from Step 1 are
-Route 3 `LoadLocal` result/source-memory agreement for the RISC-V dynamic
-publication row, or same-block load-local stored-value source agreement if the
-supervisor wants a prepared/query-helper oracle rather than emitted-output
-evidence.
+Execute Step 3 by proving or blocking x86 evidence for the selected Route 3
+`LoadLocal` result/source-memory identity fact. The expected question is
+whether x86 has any direct or indirect consumer for this Route 3 identity, or
+whether current x86 memory-source behavior is blocked as prepared-addressing
+and target-policy backed only.
 
 ## Watchouts
 
-- x86 currently appears prepared-only for this family: it renders local/global
-  memory from `PreparedMemoryAccess` and target policy, with no direct Route 3
-  consumer found under `src/backend/mir/x86`.
-- RISC-V has concrete agreement flags, but the emitted instruction remains
-  prepared-backed even when Route 3 is mismatched or incomplete.
-- Do not select final addressing text, frame/global storage placement,
-  base-plus-offset legality, register homes, or fallback output as the semantic
-  identity fact.
-- Keep prepared/helper strings and unsupported rows stable; any later adapter
-  must fail closed on duplicate, invalid, missing, incomplete, mismatch,
-  prepared-only, and policy-sensitive rows.
+- The selected fact is deliberately not final memory operand text. A later
+  adapter must not claim parity through x86 operand rendering or RISC-V `lw`
+  output alone.
+- x86 evidence is likely blocked unless a real Route 3 consumer exists outside
+  the Step 1/Step 2 targeted searches.
+- RISC-V agreement flags are useful identity evidence, but emitted output is
+  still prepared-backed and remains unchanged when Route 3 is mismatched or
+  incomplete.
+- Preserve fail-closed rows for missing prepared memory access, incomplete
+  prepared memory access, missing Route 3 source identity, incomplete Route 3
+  identity, mismatches, duplicates, invalid names, and target-policy cases.
 
 ## Proof
 
 No build/test proof required by the delegated packet. Analysis-only validation:
-`c4c-clang-tool-ccdb` signature queries succeeded for
-`src/backend/prealloc/prepared_lookups.cpp`, `src/backend/bir/bir.cpp`, and
-`src/backend/mir/riscv/codegen/emit.cpp`; targeted `rg`/`sed` evidence recorded
-above. No `test_after.log` produced because proof was explicitly not required.
+targeted `rg` evidence recorded above, plus prior Step 1 inventory retained in
+this packet. No `test_after.log` produced because proof was explicitly not
+required.
