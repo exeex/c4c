@@ -1,57 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Focused Agreement Proof
+Current Step ID: 4
+Current Step Title: Hand Back to Idea 258
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 3, `Focused Agreement Proof`.
+Completed plan Step 4, `Hand Back to Idea 258`.
 
-The existing joined-branch compare-join `EdgeStoreSlot` selected-`LoadLocal`
-rows cover the supported production proof surface without additional test
-edits:
+Idea 261 now provides the supported proof surface needed for idea 258 Step 4.
+The joined-branch compare-join `EdgeStoreSlot` selected-`LoadLocal` route is a
+production path that naturally carries both the Route 3 `LoadLocal` memory
+record and the prepared edge-publication `source_memory_access` facts into the
+x86 Route 3 statement-memory agreement facade.
 
-- positive x86 rendering through
-  `render_agreed_route3_load_local_statement_memory_operand(...)` via
-  `check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_route()`
-- missing predecessor source address rejection before a selected
-  `LoadLocal` compare-join packet is accepted via
-  `check_materialized_compare_join_edge_store_slot_selected_loadlocal_rejects_missing_source_memory()`
-- join-carrier-only `LoadLocal` drift rejection on the prepared contract side via
-  `check_materialized_compare_join_edge_store_slot_selected_loadlocal_rejects_carrier_only_loadlocal()`
-- incomplete prepared source-memory publication rejection by the x86
-  prepared-module consumer via
-  `check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_incomplete_source_memory()`
-
-No new rows were kept. Prepared-only, stale-publication, byte-offset drift, and
-cross-publication mismatch rows are not naturally expressible through this
-production fixture without hand-built or stale prepared publication state, so
-they remain recorded as intentionally out of scope for idea 261.
+The available proof surface covers positive x86 rendering plus the reachable
+fail-closed rows recorded in Step 3: missing source address rejection,
+join-carrier-only drift rejection, and incomplete prepared source-memory
+publication rejection. Prepared-only, stale-publication, byte-offset drift, and
+cross-publication mismatch rows remain out of scope for this fixture because
+they require synthetic or stale prepared publication state rather than the
+supported route.
 
 ## Suggested Next
 
-Execute plan Step 4, `Hand Back to Idea 258`.
+Route lifecycle handling back through the plan owner.
 
-Record that idea 261 now provides the supported joined-branch proof surface
-needed for idea 258 Step 4, then route lifecycle handling back through the plan
-owner.
+Recommended lifecycle action: close idea 261 as complete and resume idea 258
+from Step 4 using the validated joined-branch selected-`LoadLocal` proof
+surface.
 
 ## Watchouts
 
-- Keep idea 261 scoped to the supported joined-branch fixture surface; do not
-  reopen idea 262's compare-join lowering.
-- Do not hand-build `PreparedEdgePublication` rows or stale prepared render
-  contract state just to express prepared-only, byte-offset drift, or
-  cross-publication mismatch cases.
-- Legacy no-publication fallback remains compatibility behavior and was not
-  counted as positive Route 3/prepared agreement proof.
+- Keep the hand-back scoped to the supported joined-branch fixture surface; do
+  not reopen idea 262's compare-join lowering.
+- Idea 258 Step 4 should use the existing selected-`LoadLocal` joined-branch
+  rows as its reachable proof surface and should continue to avoid hand-built
+  `PreparedEdgePublication` rows or stale prepared render contract state.
+- Legacy no-publication fallback remains compatibility behavior and should not
+  be counted as positive Route 3/prepared agreement proof.
 
 ## Proof
 
-Delegated proof command passed and wrote `test_after.log`:
+Delegated proof command passed and refreshed `test_after.log`:
 
 ```bash
 (cmake --build --preset default && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_prepared_printer)$' --output-on-failure && cmake --build build-x86 --target backend_x86_route_debug_test backend_x86_handoff_boundary_test -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_x86_route_debug|backend_x86_handoff_boundary)$') > test_after.log 2>&1
