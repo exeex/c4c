@@ -74,3 +74,16 @@ prepared compatibility instead of weakening or renaming the existing surfaces.
   remains.
 - Adapter work is smuggled into this compatibility-retention packet.
 - The slice claims deletion, aggregate retirement, or draft 155 readiness.
+
+## Closure Notes
+
+Closed after matched before/after regression guard over
+`backend_prepared_lookup_helper`, `backend_x86_route_debug`, and
+`backend_riscv_prepared_edge_publication` passed 3/3 before and after.
+
+Retained prepared compatibility owners remain explicit in the prepared lookup
+helper and target edge-publication tests. x86 Route 6 and riscv Route 5/Route 3
+diagnostic rows are separately named beside compatibility rows and do not
+replace prepared fallback authority. This closure does not claim adapter
+implementation, prepared status deletion, aggregate retirement, or draft 155
+readiness.
