@@ -23,6 +23,23 @@ This idea exists to add the missing production compare-join `LoadLocal`
 selected-arm capability without turning idea 261 into fixture-only or
 synthetic publication work.
 
+## Completion Note
+
+Closed after implementing the bounded production bridge:
+
+- prepared compare-join selected-arm classification can represent a
+  same-predecessor-block `LoadLocal` with prepared local-slot addressing
+- x86 rendering opts into that selected-arm contract and routes through the
+  existing Route 3 statement-memory agreement facade
+- focused joined-branch handoff coverage proves the positive route and
+  fail-closed prepared source-memory behavior
+- Step 4 recorded that idea 261 can resume its supported publication fixture
+  work
+
+Close gate: canonical `test_before.log` and `test_after.log` covered the same
+prepared lookup/printer plus x86 route-debug/handoff-boundary proof scope, and
+`c4c-regression-guard` passed with no new failures.
+
 ## In Scope
 
 - Extend the prepared materialized compare-join return classification/render
