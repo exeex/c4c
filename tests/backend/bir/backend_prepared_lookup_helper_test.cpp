@@ -1944,6 +1944,25 @@ int verify_prepared_bir_value_home_agreement_boundary() {
           "BIR value-home agreement should allow absent optional indexes")) {
     return 1;
   }
+  prepare::PreparedValueLocationFunction copied_index_locations =
+      function_locations;
+  const auto copied_index_lookups =
+      prepare::make_prepared_value_home_lookups(&copied_index_locations);
+  if (!expect_same(
+          prepare::find_prepared_value_home_for_bir_value(
+              names, &copied_index_lookups, &regalloc, &function_locations, value),
+          &function_locations.value_homes[0],
+          "BIR value-home agreement should accept equivalent copied home indexes")) {
+    return 1;
+  }
+  copied_index_locations.value_homes[0].register_name = "stale";
+  const auto stale_copied_index_lookups =
+      prepare::make_prepared_value_home_lookups(&copied_index_locations);
+  if (prepare::find_prepared_value_home_for_bir_value(
+          names, &stale_copied_index_lookups, &regalloc, &function_locations, value) !=
+      nullptr) {
+    return fail("BIR value-home agreement should reject semantically stale copied homes");
+  }
 
   prepare::PreparedValueLocationFunction duplicate_name_locations = function_locations;
   duplicate_name_locations.value_homes.push_back(prepare::PreparedValueHome{

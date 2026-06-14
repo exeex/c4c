@@ -1,48 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Fail-Closed Proof Rows
+Current Step ID: 5
+Current Step Title: Broader Validation and Closure Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 proof audit complete for the `names` value-home lookup candidate.
+Step 5 regression fix complete for the `names` value-home lookup candidate.
 
-- Rechecked the Step 4 fail-closed checklist against
-  `verify_prepared_bir_value_home_agreement_boundary()`.
-- Step 3 already covered the accepted row, duplicate prepared names, duplicate
-  prepared ids, stale value-id indexes, stale home pointers, missing supplied
-  value-id indexes, conflicting/duplicate regalloc ids, prepared/BIR spelling
-  drift, immediate values, empty names, null function locations, absent
-  optional indexes, and public direct-lookup duplicate compatibility.
-- Added the remaining explicit rows for an uninterned BIR value name missing
-  from prepared `ValueNameId` tables, a supplied home index missing the agreed
-  `PreparedValueId`, and a prepared function-location record with the agreed
-  `ValueNameId` but no backing value-home row.
-- Preserved public direct prepared lookup compatibility and made no helper
-  behavior changes.
+- Broader validation exposed a compatibility regression in
+  `backend_aarch64_branch_control_lowering`: a stale prepared producer mismatch
+  expected BIR fallback, but value-home agreement rejected copied prepared
+  value-home lookup rows solely because the indexed home pointer came from an
+  equivalent snapshot.
+- Changed `prepared_bir_value_home_agreement(...)` to keep the prepared
+  `ValueNameId` and `PreparedValueId` index checks, then compare the indexed
+  home row semantically with the unique backing `PreparedValueLocationFunction`
+  row instead of requiring raw pointer equality.
+- Added focused helper-test coverage for accepting an equivalent copied home
+  index and rejecting a copied index with the same value id but stale home
+  payload.
+- Preserved fail-closed behavior for stale value ids, missing indexes, missing
+  backing homes, duplicate/conflicting names or ids, and conflicting regalloc
+  rows.
 
 ## Suggested Next
 
-Execute Step 5: broader validation and closure readiness for the value-home
-lookup candidate.
-
-Step 5 executor packet:
-
-```text
-to_subagent: c4c-executor
-Objective: validate closure readiness for idea 260 `names` value-home lookup candidate.
-Plan Step: Step 5: Broader Validation and Closure Readiness
-Owned Files: todo.md
-Do Not Touch: plan.md, ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md, route-debug files, target-output baselines, unsupported expectations, same-block lookup code, semantic resolver code, control-flow code, store-source publication code, printer/debug code.
-Context: Steps 3 and 4 implemented and proved the focused value-home agreement helper, including positive, stale, ambiguous, missing, and null/unavailable rows. No helper behavior changes are expected for Step 5.
-Task: Run the supervisor-selected broader validation for the candidate, record pass/fail evidence and closure readiness in `todo.md`, and leave lifecycle decisions to the plan owner.
-Proof: (cmake --build --preset default --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1
-Done When: `todo.md` records the final proof result, remaining out-of-scope rows if any, and whether the selected candidate is ready for plan-owner closure review.
-If Blocked: stop and report the exact ambiguity; do not edit plan.md or source idea.
-```
+Supervisor acceptance review for the Step 5 regression-fix slice, then closure
+readiness or plan-owner lifecycle review if the broader validation remains
+green.
 
 ## Watchouts
 
@@ -58,8 +46,9 @@ If Blocked: stop and report the exact ambiguity; do not edit plan.md or source i
   same-block lookup, semantic resolver API, control-flow, store-source
   publication, or backend lowering behavior to claim progress.
 - The helper distinguishes "public lookup returned a row" from "structured BIR
-  agreement exists"; keep Step 5 validation-only unless a fresh proof exposes a
-  real value-home agreement bug.
+  agreement exists"; this packet fixed one real value-home agreement bug found
+  by broader validation without relaxing the required prepared value-name and
+  prepared value-id agreement.
 - Direct prepared lookup compatibility intentionally keeps first-emplace
   behavior for duplicates. Do not reinterpret that compatibility behavior as
   BIR agreement.
@@ -72,8 +61,8 @@ If Blocked: stop and report the exact ambiguity; do not edit plan.md or source i
 Ran:
 
 ```bash
-(cmake --build --preset default --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering)$' --output-on-failure) > test_after.log 2>&1
 ```
 
 Result: passed. `test_after.log` shows `100% tests passed, 0 tests failed out
-of 1`.
+of 2`.

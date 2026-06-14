@@ -75,6 +75,26 @@ namespace {
   return nullptr;
 }
 
+[[nodiscard]] bool prepared_value_homes_semantically_equal(
+    const PreparedValueHome& lhs,
+    const PreparedValueHome& rhs) {
+  return lhs.value_id == rhs.value_id &&
+         lhs.function_name == rhs.function_name &&
+         lhs.value_name == rhs.value_name &&
+         lhs.kind == rhs.kind &&
+         lhs.register_name == rhs.register_name &&
+         lhs.target_register_identity == rhs.target_register_identity &&
+         lhs.slot_id == rhs.slot_id &&
+         lhs.offset_bytes == rhs.offset_bytes &&
+         lhs.size_bytes == rhs.size_bytes &&
+         lhs.align_bytes == rhs.align_bytes &&
+         lhs.immediate_i32 == rhs.immediate_i32 &&
+         lhs.immediate_f128 == rhs.immediate_f128 &&
+         lhs.pointer_base_value_name == rhs.pointer_base_value_name &&
+         lhs.pointer_base_symbol_name == rhs.pointer_base_symbol_name &&
+         lhs.pointer_byte_delta == rhs.pointer_byte_delta;
+}
+
 }  // namespace
 
 PreparedBirFunctionAgreement prepared_bir_function_agreement(
@@ -311,7 +331,8 @@ PreparedBirValueHomeAgreement prepared_bir_value_home_agreement(
     }
     const auto home_it = value_home_lookups->homes_by_id.find(value_id);
     if (home_it == value_home_lookups->homes_by_id.end() ||
-        home_it->second != agreed_home) {
+        home_it->second == nullptr ||
+        !prepared_value_homes_semantically_equal(*home_it->second, *agreed_home)) {
       return {};
     }
   }
