@@ -56,3 +56,26 @@ public prepared surface observable.
   outside this blocker map.
 - Reject any route that retains the old prepared source-producer failure mode
   while hiding it behind a new BIR producer-index name.
+
+## Completion Notes
+
+Closed as a completed analysis-only blocker map. The selected relation is
+same-edge CFG publication source-producer identity, with `LoadLocal` requiring
+Route 5 `memory_source` plus Route 3 source-memory identity agreement.
+
+Producer-adapter readiness is not safe:
+
+- x86 is blocked because no direct or indirect x86 consumer joins prepared
+  edge-publication source-producer rows to the same Route 5/BIR
+  source-producer identity and rejects disagreement fail-closed.
+- RISC-V has diagnostic agreement evidence only; non-agreeing Route 5/Route 3
+  facts can still preserve prepared fallback/output while clearing diagnostic
+  agreement booleans.
+- Public prepared source-producer lookup authority, helper/oracle names,
+  compatibility strings, fallback names, prepared statuses, target policy
+  rows, and output boundaries remain compatibility-owned.
+
+Any implementation work must be a separate narrow follow-up idea for one target
+and one producer/source sub-slice, with focused fail-closed proof for
+duplicate, conflict, mismatch, missing/absent, prepared-only, fallback,
+`LoadLocal` memory-source, immediate-producer, and policy-sensitive rows.
