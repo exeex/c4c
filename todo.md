@@ -1,45 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Narrow Dominance Bridge
+Current Step ID: 4
+Current Step Title: Add Fail-Closed Proof Rows
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Implement Narrow Dominance Bridge completed for idea 260's selected
+Step 4: Add Fail-Closed Proof Rows completed for idea 260's selected
 `control_flow` prior preserved-value lookup candidate.
 
-Implemented a private local agreement bridge in
-`src/backend/prealloc/prepared_lookups.cpp` for
-`find_unique_indexed_prior_preserved_value_source(...)`. The lookup now builds
-prepared dominance and reachability facts when `control_flow` is available,
-keeps strictly earlier same-block rows compatible without CFG context, rejects
-cross-block rows without explicit prepared CFG agreement, and scans candidate
-rows through that agreement boundary instead of using prepared block/instruction
-ordering as the eligibility gate.
+Added focused helper-test assertions in
+`tests/backend/bir/backend_prepared_lookup_helper_test.cpp` documenting the
+source-selection consumer gate for prior-preservation lookup results. The test
+now explicitly proves only complete `Found` lookup results are consumer-eligible,
+while `NotFound`, `Ambiguous`, `InvalidPreservation`, missing-source,
+out-of-range, non-dominating, and unreachable lookup results all fall through
+without being treated as a prior-preservation source.
 
-Focused tests in `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
-now cover same-block null-context compatibility, cross-block null-context
-rejection, later same-block rejection, invalid and empty rows, duplicate
-selected-position ambiguity, missing preserved pointers, incomplete preserved
-metadata, out-of-range CFG rows, a dominating reachable diamond source, and a
-reachable but non-dominating diamond source. No public `calls.hpp` declaration
-was needed.
+No implementation files were changed, and the Step 3 fail-closed lookup rows
+remain intact.
 
 ## Suggested Next
 
-Execute Step 4: add or confirm the remaining fail-closed proof rows for the
-selected lookup candidate, especially consumer fallthrough for non-`Found`
-prior-preservation lookup statuses if the supervisor wants that asserted
-outside the direct helper tests.
-
-Suggested ownership: keep the next packet limited to
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`, optional
-`src/backend/prealloc/call_plans.cpp` read-only inspection for source-selection
-fallthrough, and `todo.md`. Reuse the focused proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`.
+Ask the supervisor to decide whether Step 4 exhausts the current runbook slice
+or whether idea 260 needs a plan-owner/reviewer pass before close, replacement,
+or another selected candidate packet.
 
 ## Watchouts
 
@@ -56,18 +43,17 @@ fallthrough, and `todo.md`. Reuse the focused proof command:
   branch-target identity, block-index label bridge, value-name lookup,
   value-home lookup, semantic resolver API, module, store-source publication,
   or backend lowering behavior to claim progress.
-- The Step 3 helper requires both prepared dominance and reachability for
+- The Step 4 assertion is intentionally a helper-test consumer boundary, not a
+  new implementation route. The private `call_plans.cpp` selector remains
+  unchanged and still gates prior-preservation selection on `Found` plus
+  non-null lookup pointers.
+- The Step 3 helper still requires both prepared dominance and reachability for
   cross-block rows. This intentionally rejects branch-local rows that merely
   reach a join but do not dominate it.
-- `clang-format` is not installed in the current container; no formatting tool
-  was run.
-- The direct helper tests now cover most Step 4 fail-closed rows. The main
-  residual proof question is whether to add an explicit call-plan
-  source-selection fallthrough assertion for non-`Found` statuses.
 
 ## Proof
 
-Delegated Step 3 proof passed:
+Delegated Step 4 proof passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`
 with output preserved in `test_after.log`.
 

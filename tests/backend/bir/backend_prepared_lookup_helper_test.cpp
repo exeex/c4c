@@ -124,6 +124,12 @@ bool expect_same(const void* actual, const void* expected, std::string_view mess
   return true;
 }
 
+bool prior_preserved_value_lookup_is_consumer_eligible(
+    const prepare::PreparedPriorPreservedValueLookupResult& lookup) {
+  return lookup.status == prepare::PreparedPriorPreservedValueLookupStatus::Found &&
+         lookup.preserved != nullptr && lookup.entry != nullptr;
+}
+
 bool prepared_fused_compare_operand_producer_equal(
     const std::optional<prepare::PreparedFusedCompareOperandProducer>& actual,
     const std::optional<prepare::PreparedFusedCompareOperandProducer>& expected) {
@@ -1786,6 +1792,9 @@ int verify_linear_function_lookup() {
       same_block_prior.entry->instruction_index != 2) {
     return fail("unique prior-preservation lookup missed same-block indexed source");
   }
+  if (!prior_preserved_value_lookup_is_consumer_eligible(same_block_prior)) {
+    return fail("prior-preservation source selection should consume only complete Found lookups");
+  }
   const auto cross_block_prior =
       prepare::find_unique_indexed_prior_preserved_value_source(
           lookups.call_plans, &control_flow, call_plans->calls[1],
@@ -1817,6 +1826,10 @@ int verify_linear_function_lookup() {
       null_context_cross_block_prior.entry != nullptr) {
     return fail("unique prior-preservation lookup should reject cross-block null-context sources");
   }
+  if (prior_preserved_value_lookup_is_consumer_eligible(
+          null_context_cross_block_prior)) {
+    return fail("prior-preservation source selection should fall through for null-context NotFound lookups");
+  }
   const prepare::PreparedCallPlan before_same_block_prior{
       .block_index = 0,
       .instruction_index = 1,
@@ -1832,11 +1845,17 @@ int verify_linear_function_lookup() {
       later_same_block_prior.preserved != nullptr || later_same_block_prior.entry != nullptr) {
     return fail("unique prior-preservation lookup should reject later same-block sources");
   }
+  if (prior_preserved_value_lookup_is_consumer_eligible(later_same_block_prior)) {
+    return fail("prior-preservation source selection should fall through for later same-block NotFound lookups");
+  }
   const auto no_prior = prepare::find_unique_indexed_prior_preserved_value_source(
       lookups.call_plans, &control_flow, same_block_current, prepare::PreparedValueId{88});
   if (no_prior.status != prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
       no_prior.preserved != nullptr || no_prior.entry != nullptr) {
     return fail("unique prior-preservation lookup did not explicitly reject no-source case");
+  }
+  if (prior_preserved_value_lookup_is_consumer_eligible(no_prior)) {
+    return fail("prior-preservation source selection should fall through for no-source NotFound lookups");
   }
   auto empty_row_lookups = lookups.call_plans;
   empty_row_lookups.prior_preserved_by_value.resize(89);
@@ -1846,6 +1865,9 @@ int verify_linear_function_lookup() {
       empty_prior.preserved != nullptr || empty_prior.entry != nullptr) {
     return fail("unique prior-preservation lookup did not explicitly reject an empty prior row");
   }
+  if (prior_preserved_value_lookup_is_consumer_eligible(empty_prior)) {
+    return fail("prior-preservation source selection should fall through for empty-row NotFound lookups");
+  }
   const auto ambiguous_prior =
       prepare::find_unique_indexed_prior_preserved_value_source(
           lookups.call_plans, &control_flow, call_plans->calls[1],
@@ -1853,6 +1875,9 @@ int verify_linear_function_lookup() {
   if (ambiguous_prior.status !=
       prepare::PreparedPriorPreservedValueLookupStatus::Ambiguous) {
     return fail("unique prior-preservation lookup did not explicitly reject ambiguity");
+  }
+  if (prior_preserved_value_lookup_is_consumer_eligible(ambiguous_prior)) {
+    return fail("prior-preservation source selection should fall through for Ambiguous lookups");
   }
   const auto invalid_prior =
       prepare::find_unique_indexed_prior_preserved_value_source(
@@ -1862,6 +1887,9 @@ int verify_linear_function_lookup() {
           prepare::PreparedPriorPreservedValueLookupStatus::InvalidPreservation ||
       invalid_prior.preserved != &call_plans->calls[0].preserved_values[3]) {
     return fail("unique prior-preservation lookup did not explicitly reject incomplete source");
+  }
+  if (prior_preserved_value_lookup_is_consumer_eligible(invalid_prior)) {
+    return fail("prior-preservation source selection should fall through for InvalidPreservation lookups");
   }
   auto missing_source_lookups = lookups.call_plans;
   missing_source_lookups.prior_preserved_by_value.resize(13);
@@ -1882,6 +1910,9 @@ int verify_linear_function_lookup() {
       missing_source_prior.preserved != nullptr || missing_source_prior.entry != nullptr) {
     return fail("unique prior-preservation lookup should reject missing preserved pointers");
   }
+  if (prior_preserved_value_lookup_is_consumer_eligible(missing_source_prior)) {
+    return fail("prior-preservation source selection should fall through for missing-source NotFound lookups");
+  }
   auto out_of_range_lookups = lookups.call_plans;
   out_of_range_lookups.prior_preserved_by_value.resize(14);
   out_of_range_lookups.prior_preserved_by_value[13].push_back(
@@ -1900,6 +1931,9 @@ int verify_linear_function_lookup() {
           prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
       out_of_range_prior.preserved != nullptr || out_of_range_prior.entry != nullptr) {
     return fail("unique prior-preservation lookup should reject out-of-range CFG rows");
+  }
+  if (prior_preserved_value_lookup_is_consumer_eligible(out_of_range_prior)) {
+    return fail("prior-preservation source selection should fall through for out-of-range NotFound lookups");
   }
 
   const auto* entry_materializations =
@@ -2475,6 +2509,9 @@ int verify_diamond_function_lookup() {
       entry_to_join_prior.preserved != &call_plans->calls[0].preserved_values[0]) {
     return fail("unique prior-preservation lookup should accept a dominating reachable diamond source");
   }
+  if (!prior_preserved_value_lookup_is_consumer_eligible(entry_to_join_prior)) {
+    return fail("prior-preservation source selection should consume dominating reachable Found lookups");
+  }
   const auto left_to_join_prior =
       prepare::find_unique_indexed_prior_preserved_value_source(
           lookups.call_plans,
@@ -2485,6 +2522,9 @@ int verify_diamond_function_lookup() {
           prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
       left_to_join_prior.preserved != nullptr || left_to_join_prior.entry != nullptr) {
     return fail("unique prior-preservation lookup should reject reachable non-dominating diamond sources");
+  }
+  if (prior_preserved_value_lookup_is_consumer_eligible(left_to_join_prior)) {
+    return fail("prior-preservation source selection should fall through for non-dominating diamond NotFound lookups");
   }
   auto unreachable_lookups = lookups.call_plans;
   unreachable_lookups.prior_preserved_by_value.resize(24);
@@ -2504,6 +2544,9 @@ int verify_diamond_function_lookup() {
           prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
       unreachable_prior.preserved != nullptr || unreachable_prior.entry != nullptr) {
     return fail("unique prior-preservation lookup should reject unreachable prepared CFG rows");
+  }
+  if (prior_preserved_value_lookup_is_consumer_eligible(unreachable_prior)) {
+    return fail("prior-preservation source selection should fall through for unreachable NotFound lookups");
   }
 
   const auto* left_publication = prepare::find_unique_indexed_prepared_edge_publication(
