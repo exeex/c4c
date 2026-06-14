@@ -238,6 +238,25 @@ narrows it further:
   is not approval for broad `PreparedBirModule` deletion, privatization,
   wrapping, aggregate retirement, or migration of unrelated `module`, `names`,
   `control_flow`, or `store_source_publications` rows.
+- `control_flow` branch-target identity packet completed in the retired
+  active runbook: prepared branch-target helpers now use BIR conditional
+  true/false `BlockLabelId` identity only when the prepared control-flow row
+  and structured BIR label ids agree, while preserving public prepared-label
+  fallback.
+- Focused proof covered positive prepared/BIR agreement plus fail-closed rows
+  for absent private BIR context, raw-name drift or non-agreement, absent
+  prepared blocks, absent prepared control-flow rows, invalid prepared target
+  labels, invalid BIR structured ids, structured-id mismatch, private
+  invalid/conflict rejection, non-conditional BIR fallback, missing structured
+  label ids, and invalid prepared source labels.
+- Broader close-readiness proof passed with 180/180 default backend tests in
+  the canonical before/after logs, and the regression guard reported no new
+  failures.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed control-flow branch-target packet is
+  not approval for broad `PreparedBirModule` deletion, privatization,
+  wrapping, aggregate retirement, or migration of unrelated `module`, `names`,
+  `control_flow`, or `store_source_publications` rows.
 
 ## Acceptance Criteria
 
