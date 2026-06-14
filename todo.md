@@ -1,15 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/250_phase_f3_route3_memory_source_parity_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Build the Fail-Closed Proof Matrix
+Current Step ID: 6
+Current Step Title: Decide Adapter Readiness and Close or Split
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 5, "Build the Fail-Closed Proof Matrix", as an
-analysis-only matrix for the selected Route 3 `LoadLocal`
+Completed `plan.md` Step 6, "Decide Adapter Readiness and Close or Split", as
+an analysis-only blocker-map conclusion for the selected Route 3 `LoadLocal`
 result/source-memory identity fact.
 
 Selected fact: Route 3 `LoadLocal` result/source-memory identity agreement for
@@ -18,63 +18,83 @@ same-block `Route3MemoryAccessRecord` for `LoadLocal` identifies the same
 loaded result value and source-memory fields as
 `PreparedEdgePublication::source_memory_access`.
 
-Carried-forward target classifications:
+Adapter readiness decision: blocked for a shared x86+riscv adapter. One shared
+Route 3/BIR memory-source identity is not proven across both named target
+evidence buckets.
 
-- Step 3 x86 remains blocked, not non-applicable. x86 has prepared memory
-  consumers in `src/backend/mir/x86/module/module.cpp`, but no consumer that
-  reads the selected Route 3 `LoadLocal` memory record or MIR query facade and
-  compares it with prepared `source_memory_access`.
-- Step 4 RISC-V remains diagnostic-only. `route3_source_memory_agrees` and the
-  compared Route 3/prepared source-memory fields are semantic evidence; `lw`
-  text, register choices, source-home policy, fallback names, status strings,
-  helper/oracle names, and addressing/storage output remain prepared
-  compatibility or target policy.
+Named evidence conclusion:
 
-Fail-closed proof matrix:
+- x86 is blocked, not non-applicable. x86 has prepared memory consumers in
+  `src/backend/mir/x86/module/module.cpp`, including
+  `render_prepared_frame_slot_memory_operand(...)`,
+  `render_prepared_local_slot_statement_memory_operand(...)`, and
+  `render_prepared_same_module_global_memory_operand(...)`, but no consumer
+  that reads the selected Route 3 `LoadLocal` memory record or MIR query
+  facade and compares it with prepared `source_memory_access`.
+- RISC-V has diagnostic semantic evidence for the selected fact.
+  `route3_source_memory_agrees` and the compared Route 3/prepared
+  source-memory fields prove agreement or rejection for the diagnostic row,
+  including mismatch and cleared-identity cases. They do not make final output,
+  fallback/status strings, helper/oracle names, instruction text, registers,
+  source-home policy, addressing legality, or storage placement semantic Route
+  3 authority.
 
-| Case | Prepared compatibility surface that stays observable | Required Route 3/BIR behavior | Scope | Existing evidence or test |
-| --- | --- | --- | --- | --- |
-| Missing prepared source-memory row | `PreparedEdgePublicationSourceMemoryAccessStatus::MissingPreparedMemoryAccess`, public prepared publication lookup, and RISC-V `UnsupportedSourceHome` fallback/status rows remain observable. | Do not synthesize Route 3 agreement. A missing prepared row rejects semantic agreement even if a nearby Route 3 memory record exists. | Common prepared gate with RISC-V evidence; x86 remains blocked. | `apply_source_memory_access_fact(...)` reports missing prepared access; `backend_riscv_prepared_edge_publication_test.cpp:1465-1508` distinguishes missing prepared rows and keeps output fail-closed. |
-| Invalid or incomplete prepared row | `IncompletePreparedMemoryAccess`, prepared source-memory result/base/size/alignment completeness checks, and unsupported prepared output rows stay observable. | Reject agreement unless prepared result, base identity, size, alignment, address space, volatility, and offset are complete enough to compare. | Common prepared gate with RISC-V evidence; x86 remains blocked. | `apply_source_memory_access_fact(...)` rejects incomplete prepared rows; `backend_riscv_prepared_edge_publication_test.cpp:1465-1508` checks incomplete rows reject as `UnsupportedSourceHome`. |
-| Duplicate or conflict row | Prepared helper/oracle behavior for unique publication and memory lookup selection, duplicate lookup status, and conflict diagnostics stay compatibility-owned. | Reject agreement when more than one candidate prepared publication, prepared memory access, or Route 3 memory record could claim the same source identity without a unique same-function/same-block `LoadLocal` match. | Common rule; target-specific observability through current prepared helper names/statuses. | Existing helper names include `find_unique_indexed_prepared_edge_publication(...)`, `find_prepared_memory_access(...)`, and `route3_find_memory_access_record(...)`; no adapter may weaken duplicate/conflict expectations into first-match behavior. |
-| Route/prepared mismatch | Prepared source-memory row remains authoritative for fallback/output; RISC-V diagnostic bit remains observable as false. | Reject agreement when Route 3 node kind, loaded result kind/type/name, base kind/identity, address space, volatility, byte offset, size, or alignment differs from the prepared source-memory row. | Common semantic rule with RISC-V evidence; x86 remains blocked. | `route3_source_memory_agrees_with_prepared_publication(...)` performs the comparison; `backend_riscv_prepared_edge_publication_test.cpp:1748-1762` mutates the Route 3 byte offset to `16` and expects `route3_source_memory_agrees == false` while prepared output remains stable. |
-| Unsupported source-memory shape | Prepared `UnsupportedSourceHome`, `UnsupportedDestinationHome`, and `UnsupportedPublication` rows and exact status/fallback strings remain observable. | Reject Route 3 ownership for shapes outside the selected `LoadLocal` dynamic source-memory fact, including materialization-required rows, non-i32 dynamic loads, volatile or non-default address-space rows, and unsupported source/destination homes. | Common rejection with target-specific fallback/status spelling. | `backend_riscv_prepared_edge_publication_test.cpp:1555-1585` keeps unsupported source-memory shapes fail-closed; Step 4 classified fallback/status names as non-semantic. |
-| Prepared-only consumer row | x86 prepared frame-slot/global memory rendering and prepared lookup/status rows remain compatibility-owned. | Do not count prepared-only consumers as Route 3 proof. Without a Route 3 memory record or MIR query facade comparison, the adapter must remain blocked for x86. | Target-specific x86 blocker. | Step 3 found x86 prepared consumers such as `render_prepared_frame_slot_memory_operand(...)`, `render_prepared_local_slot_statement_memory_operand(...)`, and `render_prepared_same_module_global_memory_operand(...)`, but no Route 3 identity consumer. |
-| Fallback path | Prepared fallback names and statuses such as `MissingSharedLookups`, `MissingPublication`, `UnsupportedSourceHome`, `MissingPreparedMemoryAccess`, `IncompletePreparedMemoryAccess`, `available`, `memory_source`, `no_match`, and `no_source` remain observable. | Missing, rejected, or unavailable Route 3 diagnostics must preserve prepared-backed fallback behavior and must not invent Route 3-owned output. | Common compatibility rule; target-specific strings remain owned by current backends. | Step 4 recorded RISC-V fallback preservation when Route 3 diagnostics are absent, mismatched, or incomplete; `backend_riscv_prepared_edge_publication_test.cpp:1766-1781` clears Route 3 source-memory identity and expects agreement false with prepared output stable. |
-| Policy-sensitive memory/output row | x86 operand spelling and RISC-V instruction/register/addressing rows remain target-owned; prepared helper/oracle names remain compatibility-owned. | Route 3/BIR may only prove source-memory identity, not addressing legality, register allocation, frame/global placement, source-home policy, size spelling, final assembly, or helper/status naming. | Target-specific policy. | Step 3 classified x86 stack/global operand text, frame-slot/global span policy, and prepared drift errors as compatibility-owned; Step 4 classified RISC-V `lw` text, registers, source homes, large-offset handling, and status strings as non-semantic. |
+Exact missing x86 bridge: a Route 3/BIR agreement consumer, or explicit MIR
+query facade, that joins a same-function, same-block `Route3MemoryAccessRecord`
+for `LoadLocal` to the prepared `PreparedEdgePublication::source_memory_access`
+row and rejects disagreement before any prepared `memory_accesses` result is
+treated as a semantic mirror.
 
-Reviewer rejection rules derived from the matrix:
+Fail-closed rows that prevent adapter readiness:
 
-- Reject expectation weakening that hides prepared missing, incomplete,
-  unsupported, duplicate, fallback, or policy-sensitive rows.
-- Reject named-case shortcuts that only make the known RISC-V diagnostic row
-  agree without preserving the common reject cases above.
-- Reject any claim of adapter readiness while x86 lacks a Route 3
-  source-memory identity consumer or explicit agreement bridge.
-- Reject any implementation that makes Route 3/BIR own target output policy
-  instead of only the selected source-memory identity.
+- Prepared-only x86 memory rendering remains a blocker. Prepared frame-slot and
+  global-memory operand consumers cannot count as Route 3 proof until the
+  missing x86 agreement bridge exists.
+- Missing or incomplete prepared rows must continue to report prepared
+  lookup/status outcomes such as `MissingPreparedMemoryAccess` and
+  `IncompletePreparedMemoryAccess`; Route 3 must not synthesize agreement
+  around them.
+- Duplicate/conflict rows must reject ambiguous prepared publication,
+  prepared memory access, or Route 3 memory-record matches instead of falling
+  into first-match behavior.
+- Route/prepared mismatch rows must keep prepared output stable while reporting
+  semantic disagreement, as in the RISC-V diagnostic mismatch evidence.
+- Unsupported source-memory and fallback rows must preserve prepared
+  `UnsupportedSourceHome`, `UnsupportedDestinationHome`,
+  `UnsupportedPublication`, `MissingSharedLookups`, `MissingPublication`,
+  `available`, `memory_source`, `no_match`, and `no_source` behavior.
+- Policy-sensitive rows remain target-owned: x86 operand spelling and
+  frame/global placement, and RISC-V `lw` text, register choices, source-home
+  policy, addressing limits, helper/oracle names, and status strings are not
+  Route 3/BIR-owned identity facts.
+
+Safe closure recommendation: close idea 250 as a completed blocker map and, if
+the lifecycle owner wants implementation work, create a separate narrow idea to
+add or prove the missing x86 Route 3 `LoadLocal` source-memory agreement bridge
+while preserving prepared lookup/status authority and target policy
+boundaries.
 
 ## Suggested Next
 
-Execute Step 6 by deciding adapter readiness for idea 250. The next packet
-should conclude from the matrix that the selected identity has RISC-V
-diagnostic evidence but x86 remains blocked, then recommend closure or a split
-without implementing an adapter.
+Hand the completed blocker map to the plan owner. The next lifecycle action is
+to close idea 250, optionally with a separate narrow follow-up idea for the
+missing x86 Route 3 `LoadLocal` source-memory agreement bridge.
 
 ## Watchouts
 
-- The matrix supports a blocker-map conclusion, not adapter readiness: x86 has
-  no selected Route 3 source-memory identity consumer.
-- RISC-V agreement is still diagnostic-only; prepared output and fallback
-  behavior must stay stable on missing, mismatched, or incomplete Route 3 rows.
-- Do not broaden Step 6 into generic memory parity, expectation rewrites,
-  target output ownership, or implementation planning.
-- If a follow-up idea is created, keep it narrowly about adding or proving an
-  x86 agreement bridge for this selected fact.
+- Adapter readiness is intentionally blocked until x86 has a selected Route 3
+  source-memory identity consumer or explicit agreement bridge.
+- RISC-V agreement stays diagnostic-only; prepared output and fallback behavior
+  must stay stable on missing, mismatched, incomplete, unsupported, duplicate,
+  and policy-sensitive rows.
+- Do not broaden closure into generic memory parity, expectation rewrites,
+  target output ownership, or an implementation patch inside this plan.
+- Any follow-up idea should stay narrowly scoped to the missing x86 agreement
+  bridge for this selected fact.
 
 ## Proof
 
 No build/test proof required by the delegated packet. Analysis-only validation
-used the existing Step 3 and Step 4 `todo.md` evidence plus focused `rg`/`sed`
-inspection. No `test_after.log` produced because proof was explicitly not
+used the existing Step 3, Step 4, and Step 5 `todo.md` evidence plus focused
+`sed` inspection. No `test_after.log` produced because proof was explicitly not
 required.
