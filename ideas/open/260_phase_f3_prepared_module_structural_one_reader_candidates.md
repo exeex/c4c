@@ -312,6 +312,27 @@ narrows it further:
   metadata packet, broad `PreparedBirModule` deletion, privatization, wrapping,
   aggregate retirement, or migration of unrelated `module`, `names`,
   `control_flow`, or `store_source_publications` rows.
+- `store_source_publications` direct-global select-chain dependency packet
+  completed in the retired active runbook: direct-global select-chain
+  dependency lookup now reports dependency fields only when the prepared
+  source-producer row, BIR value identity, block identity, root producer index,
+  and consumer cutoff agree, while preserving prepared publication and
+  call-plan policy ownership.
+- Focused proof covered the positive prepared agreement path plus fail-closed
+  rows for absent or stale source-producer lookup, block conflict, value drift,
+  incomplete producer payloads, invalid or absent block identity, null block,
+  root-after-consumer cutoff, wrong producer kind, missing child payload,
+  conflicting producer-map entries, non-direct-global select chains,
+  child-after-root cutoff, and public store-source alias compatibility.
+- Broader close-readiness proof passed with 180/180 default backend tests in
+  the canonical before/after logs, and the regression guard reported no new
+  failures.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed direct-global packet is not approval
+  for the source-value/source-producer metadata packet, broad
+  `PreparedBirModule` deletion, privatization, wrapping, aggregate retirement,
+  or migration of unrelated `module`, `names`, `control_flow`, or
+  `store_source_publications` rows.
 
 ## Acceptance Criteria
 
