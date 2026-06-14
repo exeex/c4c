@@ -109,3 +109,62 @@ to restore 3428/3428 confidence.
   baseline regression.
 - The diagnosis deletes the failing candidate log before extracting the
   failing test and timeline evidence.
+
+## Close Note
+
+Closed on 2026-06-14. The diagnosis runbook completed and found no concrete
+semantic/backend regression to repair.
+
+Timeline audit:
+
+- Last known 3428/3428 baseline: `ab6efaf8a`, recorded in
+  `test_baseline.log` and
+  `log/baseline_ab6efaf8a3af38595cd8a4bdb64932b49fcea680.log`.
+- First later known 3427/3428 candidate: `b9d71a7a`, recorded in the stale
+  `test_baseline.new.log` and
+  `log/baseline_b9d71a7a9e10554c0496c50e82209ac6a3db9d06.log`.
+- Transition classification: bounded, not exact. No full-suite baseline
+  artifacts were available for intervening commits `728856001` through
+  `b6353fe6d`.
+
+Narrow reproduction result:
+
+- `ctest --test-dir build -R '^c_testsuite_aarch64_backend_src_00040_c$' --output-on-failure`
+  did not reproduce the timeout in narrow reruns.
+- The narrow rerun passed in approximately 2.85 seconds.
+- This evidence classified the timeout as not reproduced in isolation, not as
+  fixed by an implementation change.
+
+Root-cause classification:
+
+- No concrete semantic/backend root cause was identified.
+- The best-supported classification is a load-sensitive or environmental
+  full-suite timeout margin.
+- The bounded implementation diffs touched prepared prealloc lookup paths, but
+  no c-testsuite registration, timeout policy, AArch64 emitter, runner, or
+  `00040.c` source changes explained the stale 3427/3428 candidate.
+- Step 4 repair was intentionally skipped because there was no diagnosed real
+  regression to patch.
+
+Full-suite proof and baseline acceptance:
+
+- Supervisor full-suite proof command:
+  `ctest --test-dir build -j --output-on-failure 2>&1 | tee test_after.log`.
+- `test_after.log` records `100% tests passed, 0 tests failed out of 3428`.
+- `c_testsuite_aarch64_backend_src_00040_c` passed in 3.26 seconds in that
+  full-suite run.
+- The stale 3427/3428 candidate was replaced by the fresh 3428/3428 candidate
+  and accepted through `scripts/plan_review_state.py accept-baseline`.
+- `test_baseline.log` now records the accepted 3428/3428 baseline, and
+  `test_baseline.new.log` is absent after acceptance.
+
+Close-time regression guard:
+
+- Ran
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_baseline.log --after test_after.log --allow-non-decreasing-passed`.
+- Result: PASS, with 3428/3428 before and 3428/3428 after, no new failures,
+  and no new tests over the 30 second reporting threshold.
+
+No implementation files changed for this idea, no test contract was weakened,
+and no timeout, label, supported-status, or expected-output change was used to
+claim progress.
