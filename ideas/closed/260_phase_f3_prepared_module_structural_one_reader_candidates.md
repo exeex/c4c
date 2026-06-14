@@ -333,6 +333,28 @@ narrows it further:
   `PreparedBirModule` deletion, privatization, wrapping, aggregate retirement,
   or migration of unrelated `module`, `names`, `control_flow`, or
   `store_source_publications` rows.
+- `store_source_publications` source-value/source-producer metadata packet
+  completed in the closed active runbook: store-source publication planning
+  now publishes source value and source-producer metadata only behind complete
+  prepared planner agreement, while leaving status, intent, destination
+  access, source home, storage encoding, recovered/direct-global flags,
+  pointer-base homes, pending policy, and duplicate policy under prepared
+  planner authority.
+- Focused proof covered populated source metadata plus fail-closed rows for
+  missing source values, missing or stale source homes, stale prepared value
+  ids, invalid or drifted source value names, incomplete or mismatched producer
+  payloads, wrong producer kinds, block and instruction-order mismatches,
+  recovered/direct-global/pointer-base disagreements, pending-publication
+  policy, duplicate-publication policy, storage-policy rejection, and byval
+  load-local authority.
+- Broader close-readiness proof passed with 180/180 default backend tests in
+  the canonical before/after logs, and the regression guard reported no new
+  failures.
+- All candidates named by this bounded implementation queue have now been
+  completed through one-candidate runbooks. This closure is not approval for
+  broad `PreparedBirModule` deletion, privatization, wrapping, aggregate
+  retirement, expectation rewrites, or migration of unrelated backend,
+  printer, debug, fallback, target-output, or policy rows.
 
 ## Acceptance Criteria
 
