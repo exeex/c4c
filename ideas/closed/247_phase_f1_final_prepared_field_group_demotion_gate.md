@@ -82,3 +82,45 @@ without pretending a deletion candidate is ready now.
   is moved into BIR as part of a deletion claim.
 - Expectations, helper names, supported-path contracts, wrapper output, or
   baselines are weakened to make a field group appear unused.
+
+## Closure Notes
+
+Closed by the Phase F1 final prepared field-group demotion gate after the
+prerequisite x86 Route 6, riscv Route 5/Route 3, and prepared
+compatibility-retention ideas closed.
+
+Lifecycle result: no `PreparedBirModule` or `PreparedFunctionLookups` field
+group is safe for final deletion, demotion, or privatization from this gate.
+No follow-up implementation ideas were created.
+
+Draft 155 disposition: keep blocked with named blockers. The useful successor
+work from ideas 243-246 proves selected route-native diagnostics, adapters,
+compatibility-retention rows, and wrapper-output baselines, but it does not
+prove whole prepared aggregate retirement.
+
+Durable blockers:
+
+- Public lookup groups such as `call_plans`, `memory_accesses`,
+  `edge_publications`, and `edge_publication_source_producers` still lack full
+  cross-target route-native positive, missing, mismatch, duplicate, fallback,
+  wrapper-output, and baseline proof.
+- Prepared compatibility/status surfaces remain intentionally retained:
+  helper/oracle statuses, route-debug names, fallback names, and wrapper-output
+  compatibility rows still depend on stable prepared naming.
+- Target-policy groups for ABI, layout, register, stack, storage, addressing,
+  carriers, runtime helpers, emission, formatting, and wrapper behavior remain
+  target/prepared policy and are not BIR retirement candidates.
+- `PreparedBirModule` public/control fields including `module`, `names`,
+  `control_flow`, `call_plans`, and `store_source_publications` lack
+  whole-route replacement proof and cannot be hidden behind private wrappers.
+- Private pass context groups such as `route`, `invariants`,
+  `completed_phases`, `notes`, and possibly `liveness` are not enough to
+  justify implementation work from this gate.
+
+Closure proof used matching `test_before.log` and `test_after.log` for:
+
+```bash
+cmake --build build-x86 --target backend_prepared_lookup_helper_test backend_x86_route_debug_test backend_riscv_prepared_edge_publication_test && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_x86_route_debug|backend_riscv_prepared_edge_publication)$'
+```
+
+Regression guard result: PASS, 3/3 before and 3/3 after, with no new failures.
