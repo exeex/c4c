@@ -10094,6 +10094,268 @@ int verify_store_source_producer_metadata_requires_prepared_agreement() {
   return 0;
 }
 
+int verify_populated_store_source_producer_metadata_fails_closed() {
+  enum class ProducerDrift {
+    None,
+    StaleAfterStore,
+    DuplicateProducer,
+    ProducedTypeMismatch,
+  };
+  struct Case {
+    std::string_view label;
+    ProducerDrift drift = ProducerDrift::None;
+    bool expect_local_metadata = false;
+    bool expect_global_metadata = false;
+  };
+
+  const auto run_case = [](const Case& test_case) {
+    prepare::PreparedBirModule prepared;
+    const auto function_name =
+        prepared.names.function_names.intern("populated_store_source_metadata");
+    const auto block_label = prepared.names.block_labels.intern("entry");
+    const auto local_source_name = prepared.names.value_names.intern("%local.sum");
+    const auto global_source_name = prepared.names.value_names.intern("%global.sum");
+    const auto global_name = prepared.names.link_names.intern("global0");
+    const auto local_slot_id = prepare::PreparedFrameSlotId{41};
+
+    bir::Block block;
+    block.label = "entry";
+    block.label_id = block_label;
+    if (test_case.drift != ProducerDrift::StaleAfterStore) {
+      block.insts.push_back(bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result =
+              bir::Value::named(test_case.drift == ProducerDrift::ProducedTypeMismatch
+                                    ? bir::TypeKind::I32
+                                    : bir::TypeKind::I64,
+                                "%local.sum"),
+          .operand_type = test_case.drift == ProducerDrift::ProducedTypeMismatch
+                               ? bir::TypeKind::I32
+                               : bir::TypeKind::I64,
+          .lhs = test_case.drift == ProducerDrift::ProducedTypeMismatch
+                     ? bir::Value::immediate_i32(20)
+                     : bir::Value::immediate_i64(20),
+          .rhs = test_case.drift == ProducerDrift::ProducedTypeMismatch
+                     ? bir::Value::immediate_i32(1)
+                     : bir::Value::immediate_i64(1),
+      });
+    }
+    const std::size_t local_store_index = block.insts.size();
+    block.insts.push_back(bir::StoreLocalInst{
+        .slot_name = "local0",
+        .slot_id = static_cast<c4c::SlotNameId>(local_slot_id),
+        .value = bir::Value::named(bir::TypeKind::I64, "%local.sum"),
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                .base_name = "local0",
+                .size_bytes = 8,
+                .align_bytes = 8,
+                .base_slot_id = static_cast<c4c::SlotNameId>(local_slot_id),
+            },
+    });
+    if (test_case.drift == ProducerDrift::StaleAfterStore) {
+      block.insts.push_back(bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%local.sum"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::immediate_i64(20),
+          .rhs = bir::Value::immediate_i64(1),
+      });
+    } else if (test_case.drift == ProducerDrift::DuplicateProducer) {
+      block.insts.push_back(bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Sub,
+          .result = bir::Value::named(bir::TypeKind::I64, "%local.sum"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::immediate_i64(22),
+          .rhs = bir::Value::immediate_i64(1),
+      });
+    }
+    const std::size_t global_producer_index = block.insts.size();
+    block.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I64, "%global.sum"),
+        .operand_type = bir::TypeKind::I64,
+        .lhs = bir::Value::immediate_i64(30),
+        .rhs = bir::Value::immediate_i64(3),
+    });
+    const std::size_t global_store_index = block.insts.size();
+    block.insts.push_back(bir::StoreGlobalInst{
+        .global_name = "global0",
+        .global_name_id = global_name,
+        .value = bir::Value::named(bir::TypeKind::I64, "%global.sum"),
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                .base_name = "global0",
+                .size_bytes = 8,
+                .align_bytes = 8,
+                .base_link_name_id = global_name,
+            },
+    });
+
+    bir::Function function;
+    function.name = "populated_store_source_metadata";
+    function.blocks = {block};
+    prepared.module.functions.push_back(function);
+    prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+        .function_name = function_name,
+        .blocks = {return_block(block_label)},
+    });
+    prepared.value_locations.functions.push_back(
+        prepare::PreparedValueLocationFunction{
+            .function_name = function_name,
+            .value_homes =
+                {
+                    prepare::PreparedValueHome{
+                        .value_id = 77,
+                        .function_name = function_name,
+                        .value_name = local_source_name,
+                        .kind = prepare::PreparedValueHomeKind::Register,
+                        .register_name = std::string{"x9"},
+                    },
+                    prepare::PreparedValueHome{
+                        .value_id = 78,
+                        .function_name = function_name,
+                        .value_name = global_source_name,
+                        .kind = prepare::PreparedValueHomeKind::Register,
+                        .register_name = std::string{"x10"},
+                    },
+                },
+        });
+    prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+        .slot_id = local_slot_id,
+        .object_id = prepare::PreparedObjectId{12},
+        .function_name = function_name,
+        .offset_bytes = 96,
+        .size_bytes = 8,
+        .align_bytes = 8,
+    });
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_name,
+        .accesses =
+            {
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = local_store_index,
+                    .stored_value_name = local_source_name,
+                    .address =
+                        prepare::PreparedAddress{
+                            .base_kind =
+                                prepare::PreparedAddressBaseKind::FrameSlot,
+                            .frame_slot_id = local_slot_id,
+                            .size_bytes = 8,
+                            .align_bytes = 8,
+                            .can_use_base_plus_offset = true,
+                        },
+                },
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = global_store_index,
+                    .stored_value_name = global_source_name,
+                    .address =
+                        prepare::PreparedAddress{
+                            .base_kind =
+                                prepare::PreparedAddressBaseKind::GlobalSymbol,
+                            .symbol_name = global_name,
+                            .size_bytes = 8,
+                            .align_bytes = 8,
+                            .can_use_base_plus_offset = true,
+                        },
+                },
+            },
+    });
+
+    prepare::populate_store_source_publication_plans(prepared);
+    const auto& records = prepared.store_source_publications.records;
+    if (records.size() != 2) {
+      std::cerr << test_case.label << "\n";
+      return fail("populated store-source fixture should produce local/global records");
+    }
+
+    const auto& local_record = records.front();
+    const auto& global_record = records.back();
+    if (local_record.instruction_index != local_store_index ||
+        global_record.instruction_index != global_store_index ||
+        !prepare::prepared_store_source_publication_available(local_record.plan) ||
+        !prepare::prepared_store_source_publication_available(global_record.plan) ||
+        local_record.plan.source_value_name != local_source_name ||
+        global_record.plan.source_value_name != global_source_name) {
+      std::cerr << test_case.label << "\n";
+      return fail("populated store-source records should preserve publication availability");
+    }
+
+    const bool local_metadata_available =
+        local_record.plan.source_producer_kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::Binary &&
+        local_record.plan.source_producer_block_label == block_label &&
+        local_record.plan.source_producer_instruction_index == std::size_t{0} &&
+        local_record.plan.source_binary != nullptr;
+    const bool global_metadata_available =
+        global_record.plan.source_producer_kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::Binary &&
+        global_record.plan.source_producer_block_label == block_label &&
+        global_record.plan.source_producer_instruction_index ==
+            global_producer_index &&
+        global_record.plan.source_binary != nullptr;
+    if (local_metadata_available != test_case.expect_local_metadata ||
+        global_metadata_available != test_case.expect_global_metadata) {
+      std::cerr << test_case.label << "\n";
+      return fail("populated store-source producer metadata should require prepared agreement");
+    }
+    if (!test_case.expect_local_metadata &&
+        (local_record.plan.source_producer_kind !=
+             prepare::PreparedEdgePublicationSourceProducerKind::Unknown ||
+         local_record.plan.source_producer_block_label.has_value() ||
+         local_record.plan.source_producer_instruction_index.has_value() ||
+         local_record.plan.source_binary != nullptr)) {
+      std::cerr << test_case.label << "\n";
+      return fail("populated local producer metadata should fail closed");
+    }
+    if (global_record.plan.intent !=
+            prepare::PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||
+        !global_record.plan.stack_homes_only ||
+        global_record.plan.source_storage_encoding !=
+            prepare::PreparedStorageEncodingKind::Register) {
+      std::cerr << test_case.label << "\n";
+      return fail("populated global publication compatibility should be preserved");
+    }
+    return 0;
+  };
+
+  const std::vector<Case> cases = {
+      Case{
+          .label = "positive populated agreement",
+          .expect_local_metadata = true,
+          .expect_global_metadata = true,
+      },
+      Case{
+          .label = "stale producer after store",
+          .drift = ProducerDrift::StaleAfterStore,
+          .expect_global_metadata = true,
+      },
+      Case{
+          .label = "duplicate producer row",
+          .drift = ProducerDrift::DuplicateProducer,
+          .expect_global_metadata = true,
+      },
+      Case{
+          .label = "produced value type drift",
+          .drift = ProducerDrift::ProducedTypeMismatch,
+          .expect_global_metadata = true,
+      },
+  };
+
+  for (const auto& test_case : cases) {
+    if (const int result = run_case(test_case); result != 0) {
+      return result;
+    }
+  }
+  return 0;
+}
+
 int verify_bir_block_entry_publication_identity_lookup() {
   prepare::PreparedNameTables names;
   const auto function_name = names.function_names.intern("entry_publication");
@@ -13998,6 +14260,11 @@ int main() {
   }
   if (const int result =
           verify_store_source_producer_metadata_requires_prepared_agreement();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_populated_store_source_producer_metadata_fails_closed();
       result != 0) {
     return result;
   }
