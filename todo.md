@@ -1,124 +1,75 @@
 Status: Active
 Source Idea Path: ideas/open/243_phase_f0_x86_riscv_bir_portability_convergence_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Establish the Post-E5 Evidence Base
+Current Step ID: Step 2
+Current Step Title: Audit x86/riscv BIR Fact Parity
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 1 evidence-base inspection for the post-E5 x86/riscv
-BIR portability convergence audit.
+Completed plan.md Step 2 parity audit for x86/riscv BIR semantic facts.
 
-Inspected closure/source evidence:
+Inspected source/symbol surfaces:
 
-- `ideas/open/243_phase_f0_x86_riscv_bir_portability_convergence_audit.md`
-- `ideas/closed/238_phase_e4_x86_route6_scalar_i32_route_debug_consumedplans_compatibility_follow_up.md`
-- `ideas/closed/239_phase_e5_prepared_bir_module_demotion_or_retirement_gate.md`
-- `ideas/closed/240_phase_e5_route3_memory_source_identity_adapter_follow_up.md`
-- `ideas/closed/241_phase_e5_route45_edge_publication_identity_adapter_follow_up.md`
-- `ideas/closed/242_phase_e5_route6_scalar_call_use_source_identity_row_follow_up.md`
-- `docs/bir_prealloc_fusion/phase_e5_prepared_bir_module_demotion_or_retirement_gate.md`
-
-E4 follow-up 238 status: closed before F0/E5 successor evidence is being used,
-but it is narrow evidence only for the x86 Route 6 scalar `i32` route-debug /
-`ConsumedPlans` compatibility boundary. It is not riscv readiness, broad x86
-call-wrapper readiness, route-wide wrapper convergence, or prepared aggregate
-retirement evidence.
-
-Closure evidence captured:
-
-- E5/239 keeps draft 155 blocked, found no whole `PreparedBirModule` field
-  group and no whole `PreparedFunctionLookups` group ready for deletion,
-  privatization, aggregate replacement, or retirement, and opened only narrow
-  adapter successors 240-242.
-- 240 closed one AArch64 Route 3 same-block global-load memory/source identity
-  adapter: `route3_agreed_same_block_global_load_access(...)` agrees
-  `mir::find_bir_same_block_global_load_access_identity(...)` with
-  `prepare::find_prepared_same_block_global_load_access(...)` before retaining
-  the prepared emission path.
-- 241 closed one AArch64 Route 5 current-block join-source adapter:
-  `build_current_block_join_prepared_query_routing(...)` builds Route 5 edge
-  join sources, verifies `current_block_join_route5_source_agrees_with_prepared(...)`,
-  and lets `current_block_join_prepared_query_source(...)` consume
-  `routing.sources[instruction_index]` only after agreement.
-- 242 closed one AArch64 Route 6 call-result source-register adapter:
-  `call_result_source_register_route6_evidence(...)` reads
-  `bir::route6_find_call_result_source(...)` from
-  `Route6CallUseSourceIndex::result_records`, requires agreement with
-  `prepare::find_prepared_call_result_late_publication(...)` and the prepared
-  value-home name, and otherwise falls back.
-
-Current source/symbol surfaces inspected:
-
-- `src/backend/prealloc/module.hpp`: AST-backed symbol inventory shows
-  `c4c::backend::prepare::PreparedBirModule` at line 38. Fields include BIR
-  module/name/control-flow state, target profile/route/invariants,
-  value-locations, stack/frame/dynamic stack/addressing/liveness/regalloc,
-  call/store-source/variadic/storage/carrier/atomic/intrinsic/inline-asm/runtime
-  helper plans, completed phases, and notes. `BirPreAlloc::prepared()` and
-  `prepare_*_bir_module_with_options(...)` remain public aggregate delivery
+- `src/backend/bir/bir.cpp` and `src/backend/bir/bir.hpp`: Route 3 memory
+  access records and same-block global/load-local helpers; Route 4 publication
+  availability indexes and reference validators; Route 5 edge/join-source
+  records; Route 6 call-use source indexes, argument/result records, status
+  enums, and lookup helpers.
+- `src/backend/prealloc/module.hpp`: `PreparedBirModule` still owns BIR module
+  plus names, control-flow, value locations, stack/layout/addressing/liveness,
+  regalloc, frame/dynamic-stack, call/store-source/variadic/storage/carrier,
+  atomic/intrinsic/inline-asm/runtime-helper, phase, and note fields.
+- `src/backend/prealloc/prepared_lookups.hpp` and
+  `src/backend/prealloc/prepared_lookups.cpp`: `PreparedFunctionLookups`,
+  `make_prepared_function_lookups(...)`, memory-access lookups, edge
+  publication lookups, source-producer lookups, Route 4 block-entry attribution,
+  and same-block global/load-local prepared helpers.
+- `src/backend/prealloc/publication_plans.cpp` and
+  `src/backend/prealloc/publication_plans.hpp`: Route 5 join-source agreement
+  attachment for current-block parallel-copy source facts and prepared status
   surfaces.
-- `src/backend/prealloc/prepared_lookups.hpp`: AST-backed symbol inventory
-  shows `PreparedFunctionLookups` at line 15 with public groups
-  `call_plans`, `address_materializations`, `memory_accesses`, `move_bundles`,
-  `value_homes`, `edge_publications`, and
-  `edge_publication_source_producers`; `make_prepared_function_lookups(...)`
-  remains the public per-function lookup constructor.
-- `src/backend/prealloc/prepared_lookups.cpp`: lookup construction still
-  derives prepared dominance, value ids, and grouped caches from prepared
-  control-flow, names, value locations, addressing, and publication/source
-  helpers.
-- `src/backend/mir/x86/x86.hpp`: `ConsumedPlans` retains frame, dynamic stack,
-  control-flow, call, regalloc, storage, optional `PreparedFunctionLookups`,
-  and optional `Route6CallUseSourceIndex`; `consume_plans(...)` still builds
-  prepared lookups and a Route 6 call-use index side-by-side. The scalar `i32`
-  argument helper requires Route 6 and prepared `source_value_id` agreement.
-- `src/backend/mir/x86/prepared/prepared.hpp`: x86 prepared `Query` still reads
-  prepared addressing, value locations, call plans, regalloc, storage, BIR
-  function, formal publications, home/storage diagnostics, and edge-publication
-  move intents as target-local policy/debug context.
-- `src/backend/mir/riscv/codegen/emit.cpp`: riscv prepared emission rebuilds
-  `PreparedFunctionLookups` per function with
-  `make_prepared_function_lookups(...)`, then emits from
-  `lookups.edge_publications.publications`; edge-publication move intent status
-  uses prepared lookup/fallback statuses such as missing shared lookups, missing
-  publication, unsupported publication, unsupported source home, and available.
-- `src/backend/prealloc/prepared_printer.cpp`,
-  `src/backend/prealloc/prepared_printer/value_locations.cpp`, and
-  `src/backend/mir/x86/debug/prepared_route_debug.cpp.md`: prepared printer,
-  route-debug, status rows, and human-readable route reports remain diagnostic
-  and string-authority surfaces over `PreparedBirModule`.
+- `src/backend/mir/x86/x86.hpp`: `ConsumedPlans`,
+  `consume_prepared_function_lookups(...)`,
+  `route6_build_call_use_source_index(...)`, and
+  `find_consumed_scalar_i32_call_argument_source(...)`.
+- `src/backend/mir/x86/module/module.cpp`: x86 scalar direct extern-call
+  argument consumers pass an optional Route 6 record into
+  `append_prepared_direct_extern_call_argument(...)`.
+- `src/backend/mir/x86/prepared/dispatch.cpp` and
+  `src/backend/mir/x86/prepared/prepared.hpp`: x86 edge-publication move intent
+  still consumes prepared lookup/value-home facts.
+- `src/backend/mir/x86/debug/debug.cpp` and x86 route-debug surfaces: Route 6
+  is visible in x86 diagnostics only through agreement-gated scalar `i32`
+  helper rows.
+- `src/backend/mir/riscv/codegen/emit.cpp` and
+  `src/backend/mir/riscv/codegen/emit.hpp`: riscv codegen builds
+  `PreparedFunctionLookups` per function, iterates
+  `lookups.edge_publications.publications`, and consumes prepared publication,
+  source-home, value-home, move, stack, register, pointer, and status facts.
 
-Current blocker categories for Step 2:
+x86/riscv parity classification:
 
-- x86-only evidence cannot be generalized to riscv or to cross-target wrapper
-  convergence.
-- Whole-field and whole-lookup demotion/retirement remains blocked; only
-  one-reader or one-row agreement-gated adapter candidates have evidence.
-- Target policy must stay outside BIR: ABI placement, frame/register/stack,
-  value homes/storage, addressing/materialization/relocation, move scheduling,
-  helper/carrier protocols, formatting, instruction selection, emission, and
-  wrapper output.
-- Public prepared fallback, diagnostics, route-debug, helper-oracle names and
-  status labels, expected strings, wrapper output, supported-path contracts, and
-  baselines remain retained authority until replaced with equivalent proof.
-- Duplicate semantic caches are deletion candidates only after the matching BIR
-  facts are proven across x86 and riscv consumers, not merely AArch64 or x86
-  consumers.
+| Fact family | Classification | Evidence | Follow-up/blocker disposition |
+| --- | --- | --- | --- |
+| Route 3 memory/source identity | Unconsumed BIR fact | BIR has portable Route 3 access records and same-block global/load-local helpers. E5/240 proved one AArch64 global-load agreement-gated adapter. x86 inspection found no Route 3 consumer. riscv `render_edge_publication_source_operand(...)` reads prepared `PreparedEdgePublication` memory fields such as source producer kind, memory status, base kind, byte offset, size, alignment, volatile/address-space, and materialization flags. | Follow-up should target a selected riscv or x86 memory/publication reader that can compare Route 3 with prepared memory access before consuming it. No riscv parity claim yet. |
+| Route 4/5 publication and edge/join identity | Unconsumed BIR fact | BIR Route 4 and Route 5 indexes exist. Prepared has Route 4 block-entry attribution and Route 5 current-block join-source agreement attachment. E5/241 proved one AArch64 Route 5 current-block join-source adapter. x86 prepared dispatch and riscv emit still consume `PreparedFunctionLookups::edge_publications` and prepared move/value-home policy. | Follow-up should split semantic publication/source identity from target move emission for one x86 or riscv wrapper reader. Whole `edge_publications`/`edge_publication_source_producers` demotion is blocked. |
+| Route 6 scalar call-use source identity | Unconsumed BIR fact | BIR Route 6 builds argument, producer, direct-global dependency, publication-source, result, and lane records. x86 `ConsumedPlans` builds the index and the scalar `i32` direct-call path uses `find_consumed_scalar_i32_call_argument_source(...)` only when Route 6 source value id agrees with prepared call-plan `source_value_id`. E5/242 is AArch64 call-result evidence. riscv has no Route 6 reference. | Follow-up can extend the x86 scalar agreement boundary or add a riscv selected call-use consumer, but must not treat x86-only or AArch64-only Route 6 proof as riscv parity. |
+| Route/source/block/value identity in `PreparedBirModule` | Missing BIR fact | The BIR module has intrinsic function/block/value structure, but `PreparedBirModule` still owns the durable cross-pass name tables, prepared ids, control-flow lookup state, value-home ids, and target-prepared value-location products used by wrappers and diagnostics. No portable BIR index currently replaces these prepared identity tables across x86/riscv. | Follow-up should classify individual name/control-flow/value-id surfaces in Step 3. Broad aggregate retirement is blocked. |
+| Producer/consumer relationships | Portable BIR fact, partly unconsumed | Route 1 producer identity underlies Route 3/4/5/6 records and Route 5/6 include source-producer relationships. Consumers remain mostly prepared/AArch64-selected; x86 consumes Route 6 scalar `i32` only, riscv consumes prepared edge-publication source producers. | Treat route records as portable semantic candidates, but require target-specific adapter follow-ups before claiming x86/riscv parity. |
+| Diagnostics, oracle, fallback, and expected-string surfaces | Blocked by diagnostics/fallback/tests | Prepared printer, x86 route debug, helper-oracle/status names, riscv `EdgePublicationMoveIntentStatus`, prepared lookup statuses, fallback behavior, wrapper output, and expected strings still observe prepared structure. Route 4/5/6 status enums exist but do not replace public prepared diagnostics across both targets. | Step 5 must define string-stable route-native replacements and fallback tests before any public prepared diagnostic/oracle contraction. |
+| Target wrapper consumers | Target-policy fact | x86 and riscv wrappers consume prepared facts for ABI registers, stack/frame layout, value homes, move scheduling, scratch registers, concrete load/store/move spelling, offsets, pointer-base policy, and emitted assembly. riscv has no BIR route consumers; x86 has only a Route 6 scalar agreement assist while still retaining prepared wrapper policy. | Keep ABI/layout/register/stack/emission/formatting/wrapper policy target-owned. Follow-ups should make target wrappers consume BIR semantic facts only behind agreement gates. |
 
 ## Suggested Next
 
-Execute Step 2: classify x86/riscv BIR fact parity for these concrete surfaces:
-Route 3 memory/source identity (`memory_accesses`, same-block global-load,
-load-local/source identity), Route 4/5 publication and edge/join identity
-(`edge_publications`, `edge_publication_source_producers`, `routing.sources`),
-Route 6 scalar call-use source identity (`call_plans`, `ConsumedPlans`,
-`Route6CallUseSourceIndex` argument/result records), route/source/block/value
-identity in `PreparedBirModule` names/control-flow/value-location fields,
-diagnostic/oracle/fallback surfaces in prepared printer, x86 route-debug, helper
-tests, and riscv/x86 target wrapper consumers.
+Execute Step 3: classify `PreparedFunctionLookups` and `PreparedBirModule`
+field groups by destination: private pass context, BIR-owned index,
+target-policy product, compatibility adapter, deletion candidate, or blocker.
+Start from `PreparedFunctionLookups::{call_plans,address_materializations,
+memory_accesses,move_bundles,value_homes,edge_publications,
+edge_publication_source_producers}` and the `PreparedBirModule` field groups
+named above.
 
 ## Watchouts
 
@@ -128,19 +79,20 @@ tests, and riscv/x86 target wrapper consumers.
   target-owned.
 - Preserve strings, helper-oracle statuses, supported-path contracts, fallback
   behavior, route-debug output, wrapper output, and baseline expectations.
-- Step 2 should distinguish portable BIR facts from target policy and from
-  prepared public compatibility surfaces. The current riscv surface observed in
-  `emit_prepared_module(...)` is prepared edge-publication consumption, not yet
-  parity proof over the same semantic Route 3/5/6 facts.
-- The closed 240-242 adapters are AArch64-selected readers; they provide
-  agreement-gated patterns and blocker categories, not aggregate demotion or
-  riscv parity.
+- Current riscv evidence is prepared edge-publication consumption, not BIR
+  Route 3/4/5/6 consumption. Do not infer riscv parity from it.
+- Current x86 route evidence is narrow Route 6 scalar `i32` call-use identity,
+  not Route 3/4/5 parity and not broad Route 6 wrapper readiness.
+- Closed 240-242 are AArch64-selected adapters. They provide agreement-gated
+  migration patterns and blocker categories, not x86/riscv parity.
+- `PreparedFunctionLookups` likely contains mixed destinations: semantic route
+  candidates, transient pass context, target-policy products, compatibility
+  adapters, and diagnostic/oracle blockers. Step 3 should avoid whole-group
+  deletion claims unless every consumer class is accounted for.
 
 ## Proof
 
 Analysis-only packet; no build or ctest required by delegated proof. Used
-read-only inspection plus AST-backed `c4c-clang-tool list-symbols` for
-`src/backend/prealloc/module.hpp` and
-`src/backend/prealloc/prepared_lookups.hpp`. No `test_after.log` was generated
-because this packet has no compile/test proof requirement and changed only
-`todo.md`.
+read-only inspection with `rg` and targeted source reads. No `test_after.log`
+was generated because this packet has no compile/test proof requirement and
+changed only `todo.md`.
