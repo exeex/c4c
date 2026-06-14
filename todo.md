@@ -1,19 +1,21 @@
 Status: Active
 Source Idea Path: ideas/open/254_phase_f3_prepared_compatibility_fail_closed_proof_matrix.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Fact-Family-Specific Rows
+Current Step ID: 4
+Current Step Title: Validate Matrix Usability
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Add Fact-Family-Specific Rows completed as an analysis-only matrix.
-The Step 2 common matrix below remains the shared rejection reference for
-prepared-only, route/BIR-only, mismatch, duplicate/conflict, unsupported,
-fallback, expected-string, and policy-sensitive behavior. The family rows add
-only the exact prepared surface and route/BIR agreement gates a future reviewer
-should check.
+Step 4 - Validate Matrix Usability completed as an analysis-only packet. The
+matrix below is usable as the future reviewer checklist required by the source
+idea: every row identifies a public prepared compatibility surface and pairs it
+with either route/BIR agreement requirements or explicit fail-closed behavior.
+The common rows remain the shared rejection reference for prepared-only,
+route/BIR-only, mismatch, duplicate/conflict, unsupported, fallback,
+expected-string, and policy-sensitive behavior. The family rows add the exact
+prepared surface and route/BIR agreement gates a future reviewer should check.
 
 | Common row | Prepared surface | Required agreement or rejection condition | Reviewer reject signal |
 | --- | --- | --- | --- |
@@ -83,21 +85,72 @@ should check.
 | Store-source publication plans | `PreparedStoreSourcePublicationPlans`, `PreparedStoreSourcePublicationPlan`, `PreparedStoreSourcePublicationRecord`, `PreparedStoreSourcePublicationStatus`, `PreparedRecoveredStoreSourcePublication`, and `--- prepared-store-source-publications ---` printer rows. | Route 1/2/3/4/6 or BIR source/publication evidence may feed one store-source row only when stored value, store instruction, source producer, memory/source identity, publication destination, direct-global/select-chain dependency, and status agree with the prepared plan. Missing, invalid, duplicate/conflict, mismatch, unsupported, route/BIR-only, or prepared-only facts preserve prepared printer rows, helper statuses, and publication fallback. | Reject whole `store_source_publications` replacement, route-only stored-source authority, status-name weakening, or expected-string rewrites for store-source rows. |
 | Store-source output and policy | Prepared scalar load-local source producers, fixed-formal store-source publications, store-global publication candidates, AArch64 store/load output, and publication/materialization policy. | Route/BIR agreement covers source identity only; store materialization, fixed-formal policy, destination publication construction, ordering, and target output remain prepared/target-owned. Unsupported or policy-sensitive facts must fail closed without changing output or weakening contracts. | Reject moving publication/materialization mechanics into route facts, policy-insensitive store output changes, or named-case handling for one direct-global/load-local store. |
 
+### Usability Validation Summary
+
+- Source idea acceptance criteria are represented directly: the matrix is a
+  concrete rejection checklist, each row names the authoritative public
+  prepared compatibility surface, and no row authorizes field deletion,
+  privatization, helper/status renames, or broad prepared retirement.
+- Route/BIR agreement gates are explicit for calls, memory/source-memory, edge
+  publications, source producers, names, control flow, and store-source
+  publications. Where route/BIR evidence is absent, stale, invalid,
+  duplicate/conflicting, mismatched, unsupported, route-only, or
+  policy-insufficient, the row requires prepared fallback/output preservation
+  or an existing explicit fail-closed status.
+- Reviewer reject signals cover the source idea's required negative cases:
+  expectation weakening, old-failure retention through renamed surfaces, field
+  deletion or privatization, broad prepared retirement, helper/status renames,
+  classification-only preservation, and testcase-shaped shortcuts.
+- The matrix is scoped as compatibility-retention proof only. It does not
+  implement adapters, demotions, semantic ownership transfer, target-policy
+  migration into BIR, baseline rewrites, or expected-string refreshes.
+
+### Open Proof Gaps
+
+- Several rows name status families and printer/debug surfaces rather than
+  citing every exact enum value, CLI row, and expected string from code/tests.
+  Future implementation packets should add focused citations or row-specific
+  tests before claiming a compatibility surface is fully proven.
+- Target-policy-sensitive rows identify x86, RISC-V, and AArch64 output
+  classes, but do not enumerate every adjacent asm baseline. Future target
+  packets must prove nearby policy cases, not only the named positive case.
+- Route/BIR agreement requirements are intentionally strict where ownership
+  transfer is out of scope. A later source idea is required before relaxing any
+  prepared fallback, public-field, helper/status spelling, or target-policy
+  requirement.
+
+### Reviewer Checklist
+
+- Reject expectation weakening, unsupported downgrades, weaker fallback
+  behavior, or baseline rewrites without explicit source-idea approval.
+- Reject retaining the exact old failure mode while changing only the
+  compatibility surface name.
+- Reject public field deletion, API privatization, broad prepared retirement,
+  or removal of prepared fallback readers/helpers.
+- Reject helper renames, status renames, wrapper kind renames, route-debug name
+  churn, and prepared printer/debug spelling churn as compatibility proof.
+- Reject classification-only preservation claims that do not preserve the
+  observable prepared surface.
+- Reject testcase-shaped shortcuts, named-case materialization, first-match or
+  last-match duplicate handling, and proof that covers only one expected string
+  or one baseline.
+- Reject route/BIR-only authority unless identity, owner, key, value, status,
+  name, and target-policy fields agree with the prepared surface required by
+  the matching row.
+
 ## Suggested Next
 
-Proceed to Step 4 by validating the matrix as a future review checklist against
-the source idea acceptance criteria and recording any open proof gaps without
-weakening the requirements.
+Supervisor should decide whether the runbook is exhausted and whether to call
+the plan owner for close, deactivate, or split handling.
 
 ## Watchouts
 
-The family rows intentionally common-reference Step 2 instead of restating every
-shared fail-closed condition. Step 4 should check whether any exact status
-spelling or printer row still needs a code/test citation before the matrix is
-used as a reviewer checklist.
+The matrix intentionally records open proof gaps without weakening requirements.
+Future packets should treat those gaps as citation/test obligations, not as
+permission to relax public prepared compatibility contracts.
 
 ## Proof
 
-Analysis/documentation-only packet. No build, test, or `test_after.log` was
-required by the delegated proof contract. Ran required proof command:
-`git diff --check -- todo.md`.
+Analysis/documentation-only packet. No build, implementation tests, or
+`test_after.log` were required by the delegated proof contract. Required
+formatting proof: `git diff --check -- todo.md`.
