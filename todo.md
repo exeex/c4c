@@ -1,96 +1,74 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Same-Block Value-Name Contract
+Current Step ID: 2
+Current Step Title: Design the Value-Name Agreement Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: inventory for idea 260's `names` same-block value-name
-lookup candidate.
+Completed Step 2: designed the value-name agreement boundary for idea 260's
+`names` same-block lookup candidate.
 
-Definitions/declarations found:
+Chosen helper placement:
 
-- `src/backend/prealloc/prepared_lookups.cpp` has the private
-  `prepared_same_block_source_producer(...)` helper plus public
-  `find_prepared_same_block_scalar_producer(...)` and
-  `evaluate_prepared_same_block_integer_constant(...)` overloads declared in
-  `prepared_lookups.hpp`. The path resolves a named BIR value through
-  `PreparedNameTables::value_names`, indexes
-  `PreparedEdgePublicationSourceProducerLookups::producers_by_value_name`,
-  requires same prepared block label, producer instruction before cutoff, an
-  in-block instruction pointer match, result pointer match, result type match,
-  and prepared value-name match.
-- `src/backend/prealloc/select_chain_lookups.cpp` has the local
-  `find_prepared_select_chain_source_producer(...)` implementation declared in
-  `select_chain_lookups.hpp`. It uses the same source-producer lookup map but
-  resolves by value spelling, then requires same block label, before-cutoff
-  producer index, in-block instruction pointer match, named result spelling,
-  and result type match.
-- Direct BIR/MIR query equivalents live in `src/backend/mir/query.hpp` and
-  `src/backend/mir/query.cpp`: `find_same_block_named_producer_record(...)`,
-  `find_same_block_producer_identity(...)`,
-  `find_same_block_scalar_producer(...)`, and
-  `evaluate_same_block_integer_constant(...)`. These delegate to Route 1
-  producer records and fold immediates/binary integer constants.
-- `src/backend/prealloc/publication_plans.hpp` declares the shared
-  `PreparedEdgePublicationSourceProducer`,
-  `PreparedEdgePublicationSourceProducerLookups`, and
-  `find_prepared_same_block_load_local_source_producer(...)` contract used by
-  the same-block/select-chain consumers.
+- Put the shared boundary in `src/backend/prealloc/lookup_agreement.hpp` and
+  `src/backend/prealloc/lookup_agreement.cpp`, beside the existing prepared/BIR
+  function and block agreement helpers.
+- Use the shared helper from both `prepared_lookups.cpp` and
+  `select_chain_lookups.cpp` so the prepared scalar/integer lookup path and the
+  select-chain source-producer path accept the same named-value facts.
+- Keep each lookup file responsible for its current public return type and
+  recursive behavior; the shared helper should only answer whether one BIR
+  value, prepared `ValueNameId`, producer row, block, type, and cutoff agree.
 
-Direct callers and consumers:
+Accepted agreement rows:
 
-- Prepared comparison paths call the selected scalar/integer helpers in
-  `src/backend/prealloc/comparison.cpp` for fused compare operands and
-  materialized condition producers.
-- Call argument materialization calls the scalar helper in
-  `src/backend/prealloc/call_plans.cpp`.
-- Store-source and direct-global select-chain planning call the select-chain
-  helper in `src/backend/prealloc/publication_plans.cpp`.
-- MIR/AArch64 dispatch paths also consume the scalar/integer query family in
-  `src/backend/mir/aarch64/codegen/*`; they are broader consumers, not the
-  selected Step 2 design surface.
+- The queried BIR value must be named and have non-empty spelling.
+- The caller-supplied or resolved prepared `ValueNameId` must be valid and
+  must match `PreparedNameTables::value_names.find(value.name)`.
+- The producer lookup map must exist and contain exactly the queried prepared
+  value-name row; `Unknown` duplicate rows are not agreement.
+- The producer row must stay in the queried prepared block label and its
+  instruction index must be before the caller's cutoff.
+- The producer index must address the supplied BIR block and the indexed BIR
+  instruction must be the producer's stored instruction pointer/kind.
+- The producer result and indexed instruction result must be the same named BIR
+  value, with the same prepared value-name id and the expected result type.
+- Integer-constant lookup may fold only after every named operand reaches this
+  same agreement boundary; immediate operands remain directly foldable.
 
-Current handling:
+Rejected or compatibility rows:
 
-- Unnamed values and empty names already fail closed before prepared value-name
-  lookup in both prepared lookup files and in the direct BIR query facade.
-- Missing prepared value ids fail closed for the selected prepared scalar and
-  integer-constant lookups; select-chain currently resolves through prepared
-  spelling as compatibility behavior.
-- Stale producers and future producers fail closed through the producer index
-  cutoff, in-block instruction bounds, and pointer/instruction-kind checks.
-- Wrong result types fail closed for scalar and integer-constant lookups via
-  result type agreement; existing tests cover mismatched `%sum` type queries.
-- Mismatched prepared producer facts fail closed in the prepared path, while
-  direct BIR same-block facts can still be block-derived; Step 2 should define
-  when that block-derived answer is allowed to count as prepared/BIR agreement.
-- Duplicate spelling and prepared/BIR name drift are the main unproven
-  candidate-specific risk rows. Existing `publish_source_producer(...)` marks
-  duplicate prepared value-name source-producer entries as `Unknown`, but the
-  selected public same-block rows still need explicit coverage for duplicate
-  BIR spelling and prepared-name drift.
+- Unnamed BIR values, empty value names, missing prepared value ids, invalid
+  value-name ids, missing producer maps, and missing producer rows fail closed.
+- Stale producer rows, future producer rows at or after the cutoff, wrong
+  block labels, out-of-range instruction indexes, wrong instruction kinds,
+  wrong result pointers, and wrong result types fail closed.
+- Duplicate spelling rows published as `Unknown` fail closed instead of being
+  treated as agreement.
+- Prepared/BIR name drift fails closed when a BIR spelling resolves to a
+  different prepared value-name id than the row being queried.
+- Existing raw-spelling lookup behavior is retained only as public
+  compatibility where a caller already resolves spelling through prepared
+  tables; it must not be used to claim structured prepared/BIR agreement.
 
-Candidate implementation files:
+Candidate implementation and test files:
 
+- `src/backend/prealloc/lookup_agreement.hpp`
+- `src/backend/prealloc/lookup_agreement.cpp`
 - `src/backend/prealloc/prepared_lookups.cpp`
 - `src/backend/prealloc/select_chain_lookups.cpp`
-- possibly `src/backend/prealloc/lookup_agreement.hpp`
-- possibly `src/backend/prealloc/lookup_agreement.cpp`
 - `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
 
 ## Suggested Next
 
-Execute Step 2: design a narrow value-name agreement boundary shared by the
-prepared same-block scalar/integer lookup path and the select-chain source
-producer path. The design should accept only non-empty named BIR values whose
-prepared `ValueNameId`, BIR spelling, type, same-block producer, producer
-instruction index, and before-instruction cutoff agree; it should reject
-unnamed/empty values, missing prepared ids, stale producers, wrong types,
-duplicate spelling, and prepared/BIR name drift.
+Execute Step 3: implement the shared value-name agreement helper in
+`lookup_agreement.*`, wire it into `prepared_same_block_source_producer(...)`,
+`evaluate_prepared_same_block_integer_constant(...)`, and
+`find_prepared_select_chain_source_producer(...)`, and add focused positive and
+fail-closed rows in `backend_prepared_lookup_helper_test.cpp`.
 
 ## Watchouts
 
@@ -103,11 +81,13 @@ duplicate spelling, and prepared/BIR name drift.
   compatibility, and current null or unavailable fallback behavior.
 - Preserve raw-spelling lookup only as compatibility behavior; do not treat it
   as structured prepared/BIR value-name agreement.
-- Step 3/4 proof should add nearby rows in
-  `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` for positive
-  agreed scalar/integer lookups plus unnamed, empty, missing prepared id, stale
-  producer, wrong type, duplicate spelling, and prepared/BIR name-drift
-  rejection.
+- The Step 3 implementation packet should not change route-debug, target
+  output, baselines, unsupported expectations, helper/oracle status names,
+  printer/debug strings, value-home lookup, semantic resolver API,
+  control-flow, or store-source publication behavior.
+- Step 3/4 proof should add nearby rows for positive agreed scalar/integer
+  lookups plus unnamed, empty, missing prepared id, stale producer, wrong type,
+  duplicate spelling, missing maps, and prepared/BIR name-drift rejection.
 - Do not rewrite route-debug, target output, baselines, unsupported
   expectations, helper/oracle status names, printer/debug strings, value-home
   lookup, semantic resolver API, control-flow, or store-source publication
@@ -115,13 +95,27 @@ duplicate spelling, and prepared/BIR name drift.
 
 ## Proof
 
-Recommended focused proof for Step 2/3:
+Concrete Step 3 implementation packet:
+
+```text
+to_subagent: c4c-executor
+Objective: implement the shared value-name agreement helper for idea 260 `names` same-block lookup candidate.
+Plan Step: Step 3: Implement Narrow Value-Name Bridge
+Owned Files: src/backend/prealloc/lookup_agreement.hpp, src/backend/prealloc/lookup_agreement.cpp, src/backend/prealloc/prepared_lookups.cpp, src/backend/prealloc/select_chain_lookups.cpp, tests/backend/bir/backend_prepared_lookup_helper_test.cpp, todo.md
+Do Not Touch: plan.md, ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md, ideas/closed/*, review/*
+Tooling: no clang-tools needed; this is a narrow prealloc helper wiring packet with focused local tests.
+Proof: (cmake --build --preset default --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1
+Done When: the shared agreement helper accepts only non-empty named BIR values whose prepared ValueNameId, same block, before-cutoff producer, result type, and integer-constant operands agree; the selected prepared and select-chain paths use it; tests prove positive rows and fail-closed rows for unnamed/empty/missing prepared id/stale producer/wrong type/duplicate spelling/missing maps/prepared-BIR drift without changing unrelated candidates.
+If Blocked: stop and report the exact ambiguity; do not edit plan.md or source idea.
+```
+
+Supervisor-selected focused proof for Step 3:
 
 ```bash
 (cmake --build --preset default --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1
 ```
 
-Step 1 inventory proof:
+Step 2 design proof:
 
 ```bash
 git diff --check -- todo.md
