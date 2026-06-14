@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/247_phase_f1_final_prepared_field_group_demotion_gate.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Decide Draft 155 And Follow-Up Ideas
+Current Step ID: 4
+Current Step Title: Prepare Closure Evidence
 
 # Current Packet
 
@@ -129,12 +129,31 @@ aggregate retirement from draft 155, do not claim `PreparedBirModule` or
 `PreparedFunctionLookups` retirement, do not move target policy into BIR, and
 do not weaken expectations or baselines to make a field appear removable.
 
+Step 4 closure evidence is prepared.
+
+Lifecycle pointer check:
+
+- `plan.md` source idea:
+  `ideas/open/247_phase_f1_final_prepared_field_group_demotion_gate.md`.
+- `todo.md` source idea:
+  `ideas/open/247_phase_f1_final_prepared_field_group_demotion_gate.md`.
+- The field-group inventory, classification map, draft 155 disposition, and
+  no-follow-up outcome remain recorded above.
+
+Closure evidence:
+
+- Safe deletion candidates: none.
+- Safe demotion candidates: none.
+- Draft 155 disposition: keep blocked with the named blockers above.
+- Follow-up ideas created: none.
+- Closure is ready for plan-owner decision unless lifecycle proof or
+  regression comparison finds a blocker.
+
 ## Suggested Next
 
-Execute Step 4: prepare closure evidence for this gate. Confirm the inventory,
-classification map, draft 155 disposition, and no-follow-up outcome remain in
-`todo.md`, then use matching lifecycle proof logs and the regression guard for
-close.
+Ask the plan owner to decide closure for idea 247 using the recorded
+field-group blocker map, draft 155 disposition, no-follow-up outcome, and
+matching lifecycle proof logs.
 
 ## Watchouts
 
@@ -146,9 +165,16 @@ prepared names still matter.
 
 ## Proof
 
-Read-only inspection only; no build or ctest proof was required for this
-classification packet, and no `test_after.log` was produced. Inspected the
-active plan/todo, source idea 247, closed ideas 243-246, `PreparedBirModule`,
-`PreparedFunctionLookups`, prepared lookup constructors, value-location and
-addressing declarations, x86 Route 6 diagnostics, riscv Route 5/Route 3
-edge-publication adapter, and prepared lookup/riscv/x86 tests.
+Delegated proof completed and preserved in `test_after.log`:
+
+```bash
+cmake --build build-x86 --target backend_prepared_lookup_helper_test backend_x86_route_debug_test backend_riscv_prepared_edge_publication_test && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_x86_route_debug|backend_riscv_prepared_edge_publication)$' | tee test_after.log
+```
+
+Result: passed 3/3
+(`backend_prepared_lookup_helper`, `backend_x86_route_debug`, and
+`backend_riscv_prepared_edge_publication`).
+
+The proof is sufficient for this closure-evidence packet because it uses the
+supervisor-selected lifecycle close subset against the prepared compatibility,
+x86 Route 6 diagnostic, and riscv Route 5/Route 3 publication surfaces.
