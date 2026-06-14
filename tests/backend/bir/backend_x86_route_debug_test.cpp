@@ -1700,6 +1700,18 @@ int main() {
 
   const std::string selected_route6_scalar_arg_row =
       "    route6 scalar arg call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 kind=ArgumentValue\n";
+  const std::string selected_route6_scalar_arg_available_status_row =
+      "    route6 scalar arg status call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 status=available gate=agreed\n";
+  const std::string selected_route6_scalar_arg_missing_status_row =
+      "    route6 scalar arg status call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 status=missing_source_relationship gate=blocked\n";
+  const std::string selected_route6_scalar_arg_missing_source_value_status_row =
+      "    route6 scalar arg status call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 status=available gate=missing_source_value\n";
+  const std::string selected_route6_scalar_arg_duplicate_status_row =
+      "    route6 scalar arg status call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 status=duplicate_relationship gate=blocked\n";
+  const std::string selected_route6_scalar_arg_prepared_mismatch_status_row =
+      "    route6 scalar arg status call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 status=available gate=prepared_source_mismatch\n";
+  const std::string selected_route6_scalar_arg_source_name_mismatch_status_row =
+      "    route6 scalar arg status call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 status=available gate=source_value_mismatch\n";
   const std::string selected_route6_scalar_arg_function_row =
       "- function single_block_same_module_scalar_call_wrapper_miss: 1 blocks, return type void\n";
 
@@ -1780,6 +1792,9 @@ int main() {
                        "x86 route trace",
                        "single-block void call-sequence trace header") ||
       !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
+                       selected_route6_scalar_arg_available_status_row,
+                       "single-block same-module scalar call Route 6 status row") ||
+      !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
                        selected_route6_scalar_arg_row,
                        "single-block same-module scalar call Route 6 source row") ||
       !expect_contains(single_block_same_module_scalar_call_without_route6_trace,
@@ -1788,6 +1803,9 @@ int main() {
       !expect_contains(single_block_same_module_scalar_call_without_route6_trace,
                        selected_route6_scalar_arg_function_row,
                        "selected scalar call absent-Route-6 fallback function row") ||
+      !expect_contains(single_block_same_module_scalar_call_without_route6_trace,
+                       selected_route6_scalar_arg_missing_status_row,
+                       "selected scalar call absent-Route-6 status row") ||
       !expect_not_contains(single_block_same_module_scalar_call_without_route6_trace,
                            selected_route6_scalar_arg_row,
                            "selected scalar call absent-Route-6 source row") ||
@@ -1797,6 +1815,9 @@ int main() {
       !expect_contains(single_block_same_module_scalar_call_invalid_route6_trace,
                        selected_route6_scalar_arg_function_row,
                        "selected scalar call invalid-Route-6 fallback function row") ||
+      !expect_contains(single_block_same_module_scalar_call_invalid_route6_trace,
+                       selected_route6_scalar_arg_missing_source_value_status_row,
+                       "selected scalar call invalid-Route-6 status row") ||
       !expect_not_contains(single_block_same_module_scalar_call_invalid_route6_trace,
                            selected_route6_scalar_arg_row,
                            "selected scalar call invalid-Route-6 source row") ||
@@ -1806,6 +1827,9 @@ int main() {
       !expect_contains(single_block_same_module_scalar_call_duplicate_route6_trace,
                        selected_route6_scalar_arg_function_row,
                        "selected scalar call duplicate-Route-6 fallback function row") ||
+      !expect_contains(single_block_same_module_scalar_call_duplicate_route6_trace,
+                       selected_route6_scalar_arg_duplicate_status_row,
+                       "selected scalar call duplicate-Route-6 status row") ||
       !expect_not_contains(single_block_same_module_scalar_call_duplicate_route6_trace,
                            selected_route6_scalar_arg_row,
                            "selected scalar call duplicate-Route-6 source row") ||
@@ -1815,6 +1839,9 @@ int main() {
       !expect_contains(single_block_same_module_scalar_call_mismatched_route6_trace,
                        selected_route6_scalar_arg_function_row,
                        "selected scalar call Route-6/prepared mismatch fallback function row") ||
+      !expect_contains(single_block_same_module_scalar_call_mismatched_route6_trace,
+                       selected_route6_scalar_arg_prepared_mismatch_status_row,
+                       "selected scalar call Route-6/prepared mismatch status row") ||
       !expect_not_contains(single_block_same_module_scalar_call_mismatched_route6_trace,
                            selected_route6_scalar_arg_row,
                            "selected scalar call Route-6/prepared mismatch source row") ||
@@ -1824,6 +1851,9 @@ int main() {
       !expect_contains(single_block_same_module_scalar_call_source_name_mismatch_trace,
                        selected_route6_scalar_arg_function_row,
                        "selected scalar call Route-6 source-record mismatch fallback function row") ||
+      !expect_contains(single_block_same_module_scalar_call_source_name_mismatch_trace,
+                       selected_route6_scalar_arg_source_name_mismatch_status_row,
+                       "selected scalar call Route-6 source-record mismatch status row") ||
       !expect_not_contains(single_block_same_module_scalar_call_source_name_mismatch_trace,
                            selected_route6_scalar_arg_row,
                            "selected scalar call Route-6 source-record mismatch source row") ||

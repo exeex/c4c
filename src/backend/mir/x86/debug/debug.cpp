@@ -56,6 +56,29 @@ std::string render_optional_grouped_span(
                              occupied_register_names);
 }
 
+const char* route6_scalar_call_argument_gate_name(
+    const c4c::backend::bir::Route6CallArgumentSourceRecord& route6_source,
+    const c4c::backend::prepare::PreparedCallArgumentPlan* prepared_argument,
+    const c4c::backend::bir::Value& argument) {
+  if (!route6_source) {
+    return "blocked";
+  }
+  if (!c4c::backend::bir::route6_call_argument_source_matches_argument_value_record(
+          route6_source, argument)) {
+    return "source_value_mismatch";
+  }
+  if (!route6_source.source_value_id.has_value()) {
+    return "missing_source_value";
+  }
+  if (prepared_argument == nullptr || !prepared_argument->source_value_id.has_value()) {
+    return "missing_prepared_source";
+  }
+  if (*route6_source.source_value_id != *prepared_argument->source_value_id) {
+    return "prepared_source_mismatch";
+  }
+  return "agreed";
+}
+
 void append_route6_scalar_call_argument_sources(
     std::ostringstream& out,
     const c4c::backend::prepare::PreparedBirModule& module,
@@ -73,10 +96,30 @@ void append_route6_scalar_call_argument_sources(
       }
       for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
         const auto& argument = call->args[arg_index];
-        const auto route6_source =
-            c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
-                consumed, block, *call, block_index, instruction_index, arg_index, argument);
-        if (!route6_source.has_value()) {
+        if (argument.kind != c4c::backend::bir::Value::Kind::Named ||
+            argument.type != c4c::backend::bir::TypeKind::I32) {
+          continue;
+        }
+        const auto* prepared_argument =
+            c4c::backend::x86::find_consumed_call_argument_plan(
+                consumed, block_index, instruction_index, arg_index);
+        const auto* route6_sources = consumed.shared_route6_call_use_source_index();
+        if (prepared_argument == nullptr || route6_sources == nullptr || !*route6_sources) {
+          continue;
+        }
+        const auto route6_source = c4c::backend::bir::route6_find_call_argument_source(
+            *route6_sources, block, instruction_index, call->callee, arg_index);
+        const auto* gate =
+            route6_scalar_call_argument_gate_name(route6_source, prepared_argument, argument);
+        out << "    route6 scalar arg status call#" << call_index
+            << " block=" << block.label
+            << " inst#" << instruction_index
+            << " callee=" << call->callee
+            << " arg#" << arg_index
+            << " source=" << argument.name
+            << " status=" << c4c::backend::bir::route6_call_use_status_name(route6_source.status)
+            << " gate=" << gate << "\n";
+        if (std::string_view(gate) != "agreed") {
           continue;
         }
         out << "    route6 scalar arg call#" << call_index
