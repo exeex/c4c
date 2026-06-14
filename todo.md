@@ -8,8 +8,9 @@ Current Step Title: Focused Agreement and Rejection Proof
 
 ## Just Finished
 
-Step 4, Focused Agreement and Rejection Proof, is blocked on a direct x86 proof
-surface for the new Route 3 / prepared source-memory agreement facade.
+Step 4, Focused Agreement and Rejection Proof, hit a route blocker on the
+direct addressed-local-slot guard surface and is reset to a supported-fixture
+search for the new Route 3 / prepared source-memory agreement facade.
 
 What was checked:
 - `backend_x86_handoff_boundary_local_slot_guard_lane_test.cpp` has an
@@ -26,25 +27,43 @@ What was checked:
 
 No focused test was committed for Step 4 because the first attempted surface
 would have been route-shape overfit: it made an unsupported synthetic
-publication shape fail before the selected agreement code ran.
+publication shape fail before the selected agreement code ran. The active
+Step 4 route is now to search existing supported x86 fixtures before adding any
+new proof.
 
 ## Suggested Next
 
-Plan-owner or supervisor should decide the next route before more execution:
-either identify an existing supported x86 short-circuit/join fixture whose real
-prepared publication already reaches the agreement facade, or split a small
-testability/fixture idea for exposing the agreement predicate without adding a
-synthetic join-transfer shape to a route that forbids it.
+Next executor packet: identify a supported x86 fixture whose real prepared
+publication shape reaches
+`render_agreed_route3_load_local_statement_memory_operand(...)`, then add the
+minimal agreement/rejection proof there.
+
+Start with existing real-publication surfaces, in this order:
+- `tests/backend/bir/backend_x86_handoff_boundary_short_circuit_test.cpp`,
+  especially local-slot short-circuit compare/load rows that already publish
+  `join_transfers`, prepared frame-slot authority, and local-slot frame-slot
+  accesses;
+- if the short-circuit surface cannot cover the selected `LoadLocal`
+  `source_memory_access` agreement branch, inspect
+  `backend_x86_handoff_boundary_joined_branch_test.cpp` and
+  `backend_x86_handoff_boundary_loop_countdown_test.cpp` for a real prepared
+  publication path that reaches the same facade.
+
+Only return to plan-owner for a split testability/fixture idea if no existing
+supported x86 route can drive the agreement facade without hand-injecting an
+unsupported `join_transfers`/`PreparedEdgePublication` shape.
 
 ## Watchouts
 
 - Do not count legacy no-publication compatibility fallback as positive Route 3
   agreement proof.
 - A valid Step 4 test must use a route where prepared publication ownership is
-  already part of the supported x86 shape, or it must exercise a deliberately
-  exposed agreement predicate. Adding ad hoc `join_transfers` to the addressed
-  local-slot guard route only proves the route rejects unsupported control-flow
-  shape.
+  already part of the supported x86 shape. Adding ad hoc `join_transfers` to
+  the addressed local-slot guard route only proves the route rejects
+  unsupported control-flow shape.
+- Do not create a new fixture/testability idea until the existing supported
+  short-circuit, joined-branch, and loop-countdown x86 surfaces have been
+  checked for a real publication path into the agreement facade.
 - Duplicate/conflict source-memory pointer rows still appear not coverable
   through the current local prepared lookup surface because
   `find_prepared_memory_access(...)` returns a single access by block and
