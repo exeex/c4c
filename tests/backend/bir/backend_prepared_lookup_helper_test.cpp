@@ -8684,9 +8684,11 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
   const auto stored_name = names.value_names.intern("%stored");
   const auto narrow_stored_name = names.value_names.intern("%stored.byte");
   const auto wide_loaded_name = names.value_names.intern("%loaded.wide");
+  const auto wide_loaded_lane_name = names.value_names.intern("%loaded.wide.1");
   const auto conflict_name = names.value_names.intern("%conflict");
   const auto loaded_name = names.value_names.intern("%loaded");
   const auto slot_id = prepare::PreparedFrameSlotId{21};
+  const auto other_slot_id = prepare::PreparedFrameSlotId{22};
   bir::NameTables bir_names;
 
   bir::Block exact_block;
@@ -9042,6 +9044,186 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
           bir::Value::named(bir::TypeKind::I8, "%stored.byte") ||
       recovered->instruction_index != 0) {
     return fail("recovered narrow-store source should require prepared/BIR agreement");
+  }
+
+  auto find_recovered = [&](const prepare::PreparedStackLayout& layout,
+                            const prepare::PreparedAddressingFunction* candidate_addressing,
+                            const bir::Block& candidate_block,
+                            const bir::LoadLocalInst& candidate_load,
+                            std::size_t candidate_load_index) {
+    return prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
+        names,
+        bir_names,
+        layout,
+        candidate_addressing,
+        block_label,
+        &candidate_block,
+        candidate_load,
+        candidate_load_index);
+  };
+
+  if (find_recovered(stack_layout, nullptr, recovered_block, *recovered_load, 1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for missing prepared addressing");
+  }
+
+  auto missing_prepared_store_addressing = recovered_addressing;
+  missing_prepared_store_addressing.accesses.erase(
+      missing_prepared_store_addressing.accesses.begin());
+  if (find_recovered(stack_layout,
+                     &missing_prepared_store_addressing,
+                     recovered_block,
+                     *recovered_load,
+                     1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for missing prepared store access");
+  }
+
+  auto missing_prepared_load_addressing = recovered_addressing;
+  missing_prepared_load_addressing.accesses.erase(
+      missing_prepared_load_addressing.accesses.begin() + 1);
+  if (find_recovered(stack_layout,
+                     &missing_prepared_load_addressing,
+                     recovered_block,
+                     *recovered_load,
+                     1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for missing prepared load access");
+  }
+
+  auto mismatched_slot_layout = stack_layout;
+  mismatched_slot_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = other_slot_id,
+      .object_id = 2,
+      .function_name = function_name,
+      .offset_bytes = 32,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  auto mismatched_slot_addressing = recovered_addressing;
+  mismatched_slot_addressing.accesses[0].address.frame_slot_id = other_slot_id;
+  if (find_recovered(mismatched_slot_layout,
+                     &mismatched_slot_addressing,
+                     recovered_block,
+                     *recovered_load,
+                     1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for prepared/BIR frame-slot mismatch");
+  }
+
+  bir::Block lane_mismatch_block = recovered_block;
+  auto* lane_mismatch_load =
+      std::get_if<bir::LoadLocalInst>(&lane_mismatch_block.insts[1]);
+  if (lane_mismatch_load == nullptr) {
+    return fail("lane-mismatch recovered fixture should contain a load-local");
+  }
+  lane_mismatch_load->result =
+      bir::Value::named(bir::TypeKind::I32, "%loaded.wide.1");
+  auto lane_mismatch_addressing = recovered_addressing;
+  lane_mismatch_addressing.accesses[1].result_value_name =
+      wide_loaded_lane_name;
+  if (find_recovered(stack_layout,
+                     &lane_mismatch_addressing,
+                     lane_mismatch_block,
+                     *lane_mismatch_load,
+                     1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for lane offset mismatch");
+  }
+
+  bir::Block store_width_mismatch_block = recovered_block;
+  auto* width_mismatch_store =
+      std::get_if<bir::StoreLocalInst>(&store_width_mismatch_block.insts[0]);
+  auto* width_mismatch_load =
+      std::get_if<bir::LoadLocalInst>(&store_width_mismatch_block.insts[1]);
+  if (width_mismatch_store == nullptr || width_mismatch_load == nullptr) {
+    return fail("store-width recovered fixture should contain store/load locals");
+  }
+  width_mismatch_store->value =
+      bir::Value::named(bir::TypeKind::I16, "%stored.byte");
+  if (find_recovered(stack_layout,
+                     &recovered_addressing,
+                     store_width_mismatch_block,
+                     *width_mismatch_load,
+                     1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for non-byte store width");
+  }
+
+  bir::Block wrong_stored_value_block = recovered_block;
+  auto* wrong_stored_value_store =
+      std::get_if<bir::StoreLocalInst>(&wrong_stored_value_block.insts[0]);
+  auto* wrong_stored_value_load =
+      std::get_if<bir::LoadLocalInst>(&wrong_stored_value_block.insts[1]);
+  if (wrong_stored_value_store == nullptr || wrong_stored_value_load == nullptr) {
+    return fail("wrong-value recovered fixture should contain store/load locals");
+  }
+  wrong_stored_value_store->value =
+      bir::Value::named(bir::TypeKind::I8, "%other.byte");
+  if (find_recovered(stack_layout,
+                     &recovered_addressing,
+                     wrong_stored_value_block,
+                     *wrong_stored_value_load,
+                     1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for wrong stored value");
+  }
+
+  bir::Block after_store_block;
+  after_store_block.label = "entry";
+  after_store_block.label_id = block_label;
+  after_store_block.insts.push_back(recovered_block.insts[1]);
+  after_store_block.insts.push_back(recovered_block.insts[0]);
+  const auto* after_store_load =
+      std::get_if<bir::LoadLocalInst>(&after_store_block.insts[0]);
+  if (after_store_load == nullptr) {
+    return fail("after-store recovered fixture should contain leading load-local");
+  }
+  auto after_store_addressing = recovered_addressing;
+  after_store_addressing.accesses[0].inst_index = 1;
+  after_store_addressing.accesses[1].inst_index = 0;
+  if (find_recovered(stack_layout,
+                     &after_store_addressing,
+                     after_store_block,
+                     *after_store_load,
+                     0)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for stores after the load");
+  }
+
+  bir::Block missing_bir_store_access_block = recovered_block;
+  auto* missing_bir_store_access_store =
+      std::get_if<bir::StoreLocalInst>(&missing_bir_store_access_block.insts[0]);
+  auto* missing_bir_store_access_load =
+      std::get_if<bir::LoadLocalInst>(&missing_bir_store_access_block.insts[1]);
+  if (missing_bir_store_access_store == nullptr ||
+      missing_bir_store_access_load == nullptr) {
+    return fail("missing-store-access recovered fixture should contain store/load locals");
+  }
+  missing_bir_store_access_store->address.reset();
+  if (find_recovered(stack_layout,
+                     &recovered_addressing,
+                     missing_bir_store_access_block,
+                     *missing_bir_store_access_load,
+                     1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for missing BIR store access");
+  }
+
+  bir::Block missing_bir_load_access_block = recovered_block;
+  auto* missing_bir_load_access_load =
+      std::get_if<bir::LoadLocalInst>(&missing_bir_load_access_block.insts[1]);
+  if (missing_bir_load_access_load == nullptr) {
+    return fail("missing-load-access recovered fixture should contain a load-local");
+  }
+  missing_bir_load_access_load->address.reset();
+  if (find_recovered(stack_layout,
+                     &recovered_addressing,
+                     missing_bir_load_access_block,
+                     *missing_bir_load_access_load,
+                     1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for missing BIR load access");
   }
 
   bir::Block missing_bir_recovered_block = recovered_block;
