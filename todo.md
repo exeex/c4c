@@ -8,24 +8,24 @@ Current Step Title: Focused Agreement and Rejection Proof
 
 ## Just Finished
 
-Lifecycle resumed idea 258 after closing idea 261.
+Completed plan Step 4, `Focused Agreement and Rejection Proof`, using the
+supported joined-branch compare-join `EdgeStoreSlot` selected-`LoadLocal` route
+from idea 261.
 
-Idea 261 provides the supported joined-branch compare-join `EdgeStoreSlot`
-selected-`LoadLocal` proof surface needed for this plan's Step 4. Use that
-production route to prove the x86 Route 3/prepared source-memory agreement
-facade; do not return to synthetic `join_transfers` on routes that reject them
-before the facade.
+Existing focused rows prove the positive Route 3/prepared agreement path and
+the naturally reachable fail-closed rows for missing source-memory authority,
+join-carrier-only drift, and incomplete prepared source-memory publication.
+Prepared-only, stale-publication, byte-offset drift, and cross-publication
+mismatch rows remain unsupported by this surface because they require synthetic
+or stale prepared state.
 
 ## Suggested Next
 
-Execute plan Step 4, `Focused Agreement and Rejection Proof`.
+Execute plan Step 5, `Compatibility Sweep and Closure Readiness`.
 
-Start from the existing selected-`LoadLocal` joined-branch rows and prove the
-positive agreement path plus naturally reachable fail-closed rows: missing
-source address, join-carrier-only drift, and incomplete prepared source-memory
-publication. Record prepared-only, stale-publication, byte-offset drift, or
-cross-publication mismatch rows as unsupported by this surface unless a
-supported route can express them without synthetic or stale prepared state.
+Re-check that prepared lookup/status behavior, helper/oracle names, fallback
+names, route-debug output, x86 output spelling, and RISC-V behavior were
+preserved, then hand back to plan-owner for closure if no blocker remains.
 
 ## Watchouts
 
@@ -38,6 +38,11 @@ supported route can express them without synthetic or stale prepared state.
 
 ## Proof
 
-Close/resume validation used the existing executor logs. Regression guard
-passed with `test_before.log` and `test_after.log`; `test_after.log` shows 2/2
-default prepared tests and 2/2 x86 tests passed.
+Ran the supervisor-delegated proof command:
+
+```bash
+(cmake --build --preset default && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_prepared_printer)$' --output-on-failure && cmake --build build-x86 --target backend_x86_route_debug_test backend_x86_handoff_boundary_test -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_x86_route_debug|backend_x86_handoff_boundary)$') > test_after.log 2>&1
+```
+
+`test_after.log` shows 2/2 default prepared tests passed and 2/2 x86-enabled
+tests passed.
