@@ -3986,6 +3986,10 @@ bool route3_load_local_source_memory_matches_publication(
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::bir::Route3MemoryAccessRecord& route3_access,
     const c4c::backend::prepare::PreparedEdgePublication& publication) {
+  const auto* route3_load =
+      route3_access.instruction == nullptr
+          ? nullptr
+          : std::get_if<c4c::backend::bir::LoadLocalInst>(route3_access.instruction);
   const auto* frame_slot =
       publication.source_memory_frame_slot_id.has_value()
           ? find_prepared_frame_slot_by_id(module.stack_layout,
@@ -4002,13 +4006,17 @@ bool route3_load_local_source_memory_matches_publication(
       publication.source_memory_base_kind !=
           c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
       !publication.source_memory_frame_slot_id.has_value() ||
+      route3_load == nullptr ||
       frame_slot == nullptr ||
       !route3_local_slot_matches_prepared_frame_slot(
           module, route3_access, *publication.source_memory_frame_slot_id)) {
     return false;
   }
+  const auto route3_effective_byte_offset =
+      static_cast<std::int64_t>(route3_load->byte_offset) + route3_access.byte_offset;
   return publication.source_memory_address_space == route3_access.address_space &&
          publication.source_memory_is_volatile == route3_access.is_volatile &&
+         publication.source_memory_byte_offset == route3_effective_byte_offset &&
          publication.source_memory_size_bytes == route3_access.size_bytes &&
          publication.source_memory_align_bytes == route3_access.align_bytes &&
          publication.source_memory_can_use_base_plus_offset;

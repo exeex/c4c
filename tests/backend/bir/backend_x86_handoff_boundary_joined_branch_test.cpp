@@ -6069,6 +6069,13 @@ int check_materialized_compare_join_edge_store_slot_immediate_chain_route_ignore
       module, function_name, failure_context, true, true, false, false, true, &expected_asm);
 }
 
+enum class SelectedLoadLocalRoute5Drift {
+  None,
+  MissingSourceMemoryEvidence,
+  SourceMemoryOffsetMismatch,
+  SourceProducerIndexMismatch,
+};
+
 int check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
     const bir::Module& module,
     const char* function_name,
@@ -6076,6 +6083,7 @@ int check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_
     bool remove_source_address,
     bool carrier_only_loadlocal,
     bool make_prepared_source_memory_incomplete = false,
+    SelectedLoadLocalRoute5Drift route5_drift = SelectedLoadLocalRoute5Drift::None,
     const std::string* expected_asm = nullptr) {
   c4c::TargetProfile target_profile;
   auto prepared =
@@ -6349,6 +6357,54 @@ int check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_
     }
     return 0;
   }
+  if (route5_drift != SelectedLoadLocalRoute5Drift::None) {
+    if (expected_asm == nullptr || selected_load == nullptr || true_predecessor == nullptr) {
+      return fail((std::string(failure_context) +
+                   ": Route 5 drift proof requires an x86 expected output and selected LoadLocal")
+                      .c_str());
+    }
+    switch (route5_drift) {
+      case SelectedLoadLocalRoute5Drift::None:
+        break;
+      case SelectedLoadLocalRoute5Drift::MissingSourceMemoryEvidence:
+        selected_load->address.reset();
+        break;
+      case SelectedLoadLocalRoute5Drift::SourceMemoryOffsetMismatch:
+        selected_load->byte_offset += 4;
+        break;
+      case SelectedLoadLocalRoute5Drift::SourceProducerIndexMismatch:
+        true_predecessor->insts.insert(
+            true_predecessor->insts.begin(),
+            bir::BinaryInst{
+                .opcode = bir::BinaryOpcode::Add,
+                .result = bir::Value::named(bir::TypeKind::I32,
+                                            "contract.route5.extra.producer"),
+                .operand_type = bir::TypeKind::I32,
+                .lhs = bir::Value::immediate_i32(1),
+                .rhs = bir::Value::immediate_i32(0),
+            });
+        break;
+    }
+    try {
+      const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
+      if (prepared_asm == *expected_asm) {
+        return fail((std::string(failure_context) +
+                     ": x86 prepared-module consumer accepted selected LoadLocal output after Route 5 agreement drifted")
+                        .c_str());
+      }
+      return 0;
+    } catch (const std::invalid_argument& error) {
+      const auto message = std::string_view(error.what());
+      if (message.find("canonical prepared-module handoff") == std::string_view::npos &&
+          message.find("agreed Route 3 source-memory publication") == std::string_view::npos) {
+        return fail((std::string(failure_context) +
+                     ": x86 prepared-module consumer rejected Route 5 drift with the wrong contract message: " +
+                     error.what())
+                        .c_str());
+      }
+      return 0;
+    }
+  }
   if (expected_asm != nullptr) {
     const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
     if (prepared_asm != *expected_asm) {
@@ -6390,7 +6446,14 @@ int check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_route
     const char* function_name,
     const char* failure_context) {
   return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
-      module, function_name, failure_context, false, false, false, &expected_asm);
+      module,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      SelectedLoadLocalRoute5Drift::None,
+      &expected_asm);
 }
 
 int check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_incomplete_source_memory(
@@ -6399,6 +6462,54 @@ int check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejec
     const char* failure_context) {
   return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
       module, function_name, failure_context, false, false, true);
+}
+
+int check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_missing_route5_source_memory(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
+      module,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      SelectedLoadLocalRoute5Drift::MissingSourceMemoryEvidence,
+      &expected_asm);
+}
+
+int check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_route5_source_memory_mismatch(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
+      module,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      SelectedLoadLocalRoute5Drift::SourceMemoryOffsetMismatch,
+      &expected_asm);
+}
+
+int check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_route5_producer_index_mismatch(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_edge_store_slot_selected_loadlocal_contract_impl(
+      module,
+      function_name,
+      failure_context,
+      false,
+      false,
+      false,
+      SelectedLoadLocalRoute5Drift::SourceProducerIndexMismatch,
+      &expected_asm);
 }
 
 int check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
@@ -8540,6 +8651,36 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
               make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module(),
               "branch_join_loadlocal_then_add",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot selected LoadLocal x86 rejects incomplete source-memory authority");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_missing_route5_source_memory(
+              make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module(),
+              expected_minimal_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_asm(
+                  "branch_join_loadlocal_then_add", "is_nonzero", 1, 2),
+              "branch_join_loadlocal_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot selected LoadLocal x86 rejects missing Route 5 source-memory evidence");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_route5_source_memory_mismatch(
+              make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module(),
+              expected_minimal_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_asm(
+                  "branch_join_loadlocal_then_add", "is_nonzero", 1, 2),
+              "branch_join_loadlocal_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot selected LoadLocal x86 rejects Route 5/Route 3 source-memory mismatch");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_selected_loadlocal_x86_rejects_route5_producer_index_mismatch(
+              make_x86_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_module(),
+              expected_minimal_param_eq_zero_branch_joined_loadlocal_or_sub_then_add_asm(
+                  "branch_join_loadlocal_then_add", "is_nonzero", 1, 2),
+              "branch_join_loadlocal_then_add",
+              "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot selected LoadLocal x86 rejects Route 5 source-producer index mismatch");
       status != 0) {
     return status;
   }

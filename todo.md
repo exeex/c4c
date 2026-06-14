@@ -1,57 +1,70 @@
 Status: Active
 Source Idea Path: ideas/open/259_phase_f3_x86_route5_prepared_edge_publication_agreement_bridge.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Narrow x86 Agreement Bridge
+Current Step ID: 4
+Current Step Title: Focused Agreement and Rejection Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: `Implement Narrow x86 Agreement Bridge` is complete.
+Step 4: `Focused Agreement and Rejection Proof` is complete.
 
-Implemented a module-local Route 5/prepared agreement facade in
-`src/backend/mir/x86/module/module.cpp`, near the compare-join
-edge-publication consumer. `append_prepared_compare_join_parallel_copy(...)`
-now keeps BIR function/block context in the x86 module layer, calls the
-existing prepared dispatch helper for lookup/status/operand rendering, then
-uses the local facade to compare the selected `PreparedEdgePublication` row
-against Route 5 edge-publication facts.
+Extended
+`tests/backend/bir/backend_x86_handoff_boundary_joined_branch_test.cpp` around
+the existing `branch_join_loadlocal_then_add` EdgeStoreSlot selected-`LoadLocal`
+fixture. The proof keeps prepared edge-publication rows produced by normal
+preparation and drifts only the underlying BIR/Route 5 evidence before x86
+emission.
 
-The facade resolves predecessor and successor BIR blocks from prepared labels,
-builds the Route 5 edge/join source index for the current BIR function, rejects
-duplicate matching Route 5 edge records, and checks same edge, destination
-value name/type, source value kind/name/type, source producer kind, producer
-block label, and producer instruction index. Dynamic `LoadLocal` publications
-require Route 5 memory-source evidence and reuse the existing Route 3
-source-memory agreement helper before allowing the x86 publication move path.
+Proved rows:
 
-Compatibility retained: `consume_edge_publication_move_intent(...)` and public
-prepared edge-publication lookup/status APIs were not widened or renamed, and
-non-`LoadLocal` non-agreeing rows remain on the existing compatibility
-prepared-emission path instead of claiming Route 5 agreement. x86 output
-spelling, register choice, fallback behavior, route-debug text, and RISC-V
-diagnostics were preserved by the delegated proof.
+- positive selected `LoadLocal` Route 5 plus Route 3 agreement still emits the
+  canonical x86 arm
+- missing Route 5 source-memory evidence no longer accepts the agreed output
+- Route 5/Route 3 source-memory offset mismatch no longer accepts the agreed
+  output when only `LoadLocalInst::byte_offset` drifts and the Route 3
+  `address.byte_offset` evidence stays unchanged
+- Route 5 source-producer instruction-index mismatch no longer accepts the
+  agreed output
+- incomplete prepared source-memory authority still rejects through the
+  canonical handoff error
+
+The tightened offset-mismatch row exposed a narrow Step 3 wiring gap. Fixed
+`src/backend/mir/x86/module/module.cpp` so x86 Route 3 `LoadLocal`
+source-memory agreement compares the effective local load byte offset
+(`LoadLocalInst::byte_offset + address.byte_offset`) against the prepared
+frame-slot access before Route 5 accepts the selected publication. The proof
+now changes only the `LoadLocalInst::byte_offset` component, leaving the Route
+3 memory-address offset unchanged.
+
+Rows not added here because no supported x86 fixture surface expresses them
+without hand-building stale prepared publication state: duplicate Route 5
+records for one natural edge, prepared-only/Route 5-only publication rows, and
+wrong-edge publication rows. Existing missing-source-memory, producer mismatch,
+and incomplete-source-memory rows cover the reachable selected-`LoadLocal`
+fail-closed branch for this packet.
 
 ## Suggested Next
 
-Step 4: add focused agreement and rejection proof for the Route 5 bridge. Cover
-the positive selected `LoadLocal` publication path and naturally reachable
-fail-closed rows for missing/duplicate/wrong Route 5 evidence, source producer
-mismatch, and Route 3 source-memory disagreement. Do not hand-build stale
-prepared publication state or downgrade expectations.
+Step 5: run the compatibility sweep and closure-readiness proof. Recheck that
+prepared lookup/status names, helper/oracle names, x86 output spelling,
+route-debug output, RISC-V diagnostics, and non-`LoadLocal` compatibility
+fallback behavior stayed unchanged.
 
 ## Watchouts
 
-- The Step 3 implementation intentionally preserves compatibility fallback for
-  existing non-`LoadLocal` prepared publication moves; Step 4 should prove that
-  these rows do not claim Route 5 agreement rather than forcing a behavior
-  downgrade.
-- `LoadLocal` edge-publication moves are the fail-closed branch because they
-  require Route 5 memory-source identity plus Route 3 source-memory agreement.
-- Keep BIR context in `module.cpp`; do not move block discovery or target
-  policy into `consume_edge_publication_move_intent(...)`.
-- Avoid synthetic/stale publication rows and named-case shortcuts.
+- `LoadLocal` edge-publication moves are the fail-closed branch; non-`LoadLocal`
+  non-agreeing rows intentionally stay on the compatibility prepared-emission
+  path.
+- The new Route 5 drift tests assert that the canonical agreed output is not
+  accepted after evidence drift. Some drift modes reject with the canonical
+  handoff error; others suppress the publication move and produce non-canonical
+  output.
+- Avoid adding duplicate/wrong-edge rows by constructing stale prepared
+  publication records by hand. Record unsupported fixture surfaces instead.
+- `clang-format` is not installed in this environment; formatting was kept
+  manually consistent with nearby code.
 
 ## Proof
 
