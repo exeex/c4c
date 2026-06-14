@@ -1,153 +1,148 @@
-# Phase F3 x86 Route 3 LoadLocal Publication Fixture Support
+# Phase F3 x86 Compare-Join LoadLocal Selected-Arm Support
 
 Status: Active
-Source Idea: ideas/open/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md
+Source Idea: ideas/open/262_phase_f3_x86_compare_join_loadlocal_selected_arm_support.md
 
 ## Purpose
 
-Repair the x86 proof surface needed to validate the Route 3 selected
-`LoadLocal` source-memory agreement facade without synthetic publication
-injection.
+Add the bounded x86 production support that idea 261 needs before it can create
+a supported proof surface for idea 258.
 
 ## Goal
 
-Create or identify one supported x86 fixture path that naturally carries both a
-Route 3 `LoadLocal` memory record and a prepared
-`PreparedEdgePublication::source_memory_access` row into
-`render_agreed_route3_load_local_statement_memory_operand(...)`.
+Teach the prepared compare-join return path to classify and render one selected
+arm rooted in a same-predecessor-block `LoadLocal` through the existing Route 3
+statement-memory agreement facade.
 
 ## Core Rule
 
-Do not prove idea 258 by hand-building publications on a route that would
-reject them before the statement-memory agreement facade. The fixture must be a
-supported backend shape.
+Keep the route production-real and narrow. Do not prove this by injecting
+synthetic publications, weakening compare-join expectations, or broadening into
+generic selected-value lowering.
 
 ## Read First
 
+- `ideas/open/262_phase_f3_x86_compare_join_loadlocal_selected_arm_support.md`
 - `ideas/open/261_phase_f3_x86_route3_loadlocal_publication_fixture_support.md`
 - `ideas/open/258_phase_f3_x86_route3_loadlocal_source_memory_agreement_bridge.md`
-- `todo.md` history from idea 258 Step 4.
-- `tests/backend/bir/backend_x86_handoff_boundary_local_slot_guard_lane_test.cpp`
-- `tests/backend/bir/backend_x86_handoff_boundary_short_circuit_test.cpp`
+- `todo.md` Step 2 blocker history from idea 261.
+- `src/backend/mir/x86/module/module.cpp`
+- prepared materialized compare-join classification and render-contract helpers.
 - `tests/backend/bir/backend_x86_handoff_boundary_joined_branch_test.cpp`
-- `tests/backend/bir/backend_x86_handoff_boundary_loop_countdown_test.cpp`
-- x86 handoff publication builders and Route 3 memory/source lookup helpers.
+- `tests/backend/bir/backend_x86_route_debug_test.cpp`
 
 ## Current Targets
 
-- A supported x86 fixture shape that reaches
-  `render_agreed_route3_load_local_statement_memory_operand(...)`.
-- Natural selected `LoadLocal` `source_memory_access` publication ownership.
-- Focused tests for positive agreement and fail-closed rows needed by idea 258.
-- Existing prepared lookup/status and x86 route-debug/handoff-boundary
-  contracts.
+- Materialized compare-join return classification for selected
+  same-predecessor-block `LoadLocal`.
+- x86 rendering through
+  `render_agreed_route3_load_local_statement_memory_operand(...)` or an
+  equivalent narrow helper that keeps the same authority checks.
+- Focused x86 handoff coverage for positive selected-`LoadLocal` support and
+  fail-closed prepared metadata rejection.
+- Existing compare-join supported shapes and output spelling.
 
 ## Non-Goals
 
-- Do not rewrite x86 addressing, frame layout, register materialization, or
-  emitted output policy.
-- Do not make prepared `memory_accesses` the semantic authority for Route 3
-  selected-memory facts.
-- Do not implement generic memory parity beyond the selected `LoadLocal` proof
-  surface.
+- Do not implement generic compare-join selected-expression lowering.
+- Do not rewrite x86 addressing, register materialization, frame layout, or
+  emitted output policy beyond the selected `LoadLocal` arm.
+- Do not make prepared `memory_accesses` the authority for Route 3 selected
+  memory facts.
 - Do not change RISC-V behavior.
-- Do not weaken, delete, or rename existing prepared lookup/status, fallback,
-  helper/oracle, route-debug, or x86 output contracts.
+- Do not weaken existing route-debug, fallback, prepared status, or output
+  contracts.
 
 ## Working Model
 
-- Idea 258 already owns the agreement facade implementation.
-- This runbook owns the missing supported fixture/publication surface needed to
-  prove that facade.
-- Legacy no-publication fallback can remain compatible behavior, but it is not
-  positive Route 3/prepared agreement proof.
-- A valid fixture must use publication ownership that is already valid for the
-  x86 route reaching the statement-memory facade.
+- Idea 258 owns the Route 3/prepared agreement facade.
+- Idea 261 owns the supported fixture/proof surface after the compare-join
+  route can reach that facade.
+- This runbook owns the missing production bridge in the x86 materialized
+  compare-join return path.
+- Existing immediate, param, same-module global, pointer-backed global, and
+  trailing-immediate shapes are compatibility constraints.
 
 ## Execution Rules
 
-- Start from the existing Step 4 blocker notes; do not repeat unsupported
-  synthetic publication attempts.
-- Keep code changes limited to fixture/testability support required to reach
-  the selected facade.
-- Preserve existing supported fixture semantics and add coverage rather than
-  weakening current assertions.
+- Start from the idea 261 Step 2 blocker and reproduce only enough of the
+  fixture shape to understand the production route.
+- Prefer adding a narrow classified shape and render branch over generalized
+  expression support.
+- Use existing Route 3 and prepared publication lookup helpers instead of
+  comparing unrelated id domains directly.
+- Keep tests focused on production compare-join behavior; avoid fixture-only
+  shortcuts and expectation weakening.
 - Use x86-enabled validation for x86-only CTest targets.
-- Return to plan-owner if no supported publication route can be created without
-  broad target-policy rewrites.
 
 ## Steps
 
-### Step 1: Supported Publication Route Contract
+### Step 1: Contract Inventory
 
-Goal: select the smallest supported x86 route that can own a selected
-`LoadLocal` source-memory publication and reach the statement-memory agreement
-facade.
+Goal: identify the exact prepared and x86 contract points that reject the
+selected `LoadLocal` arm.
 
 Actions:
-- Re-read the idea 258 Step 4 blocker notes in `todo.md` and avoid the rejected
-  synthetic `join_transfers` path.
-- Inspect x86 handoff publication builders and existing short-circuit,
-  joined-branch, loop-countdown, and local-slot guard fixtures.
-- Identify the route where a selected `LoadLocal` publication can be validly
-  produced before the facade is called, or record why a tiny fixture helper is
-  required.
-- Record the accepted route contract in `todo.md`.
+- Inspect the materialized compare-join classification and render-contract
+  helpers used by
+  `append_prepared_i32_param_zero_compare_join_return_function(...)`.
+- Map where the selected arm currently becomes immediate, param, global, or
+  pointer-backed global, and where `LoadLocal` is rejected.
+- Identify the existing Route 3 and prepared publication facts needed by
+  `render_agreed_route3_load_local_statement_memory_operand(...)`.
+- Record the minimal extension target in `todo.md`.
 
 Completion check:
-- `todo.md` names the supported route, the publication ownership source, and
-  the route guards that make it non-synthetic.
+- `todo.md` names the precise classification helper, render-contract helper,
+  x86 render site, and authority facts for the selected `LoadLocal` arm.
 
-### Step 2: Fixture or Helper Implementation
+### Step 2: Selected LoadLocal Classification
 
-Goal: add the minimal supported fixture/helper wiring needed for tests to reach
-the existing agreement facade.
+Goal: add the minimal prepared compare-join contract support for a selected
+same-predecessor-block `LoadLocal` arm.
 
 Actions:
-- Implement only the fixture/testability support required by Step 1.
-- Keep Route 3 agreement semantics in
-  `render_agreed_route3_load_local_statement_memory_operand(...)`; do not move
-  target policy into test helpers.
-- Preserve existing prepared lookup/status, fallback names, route-debug output,
-  and x86 operand spelling.
-- Record any untestable rejection row explicitly in `todo.md`.
+- Extend only the selected-arm classification/render-contract data needed for
+  a same-predecessor-block `LoadLocal` with prepared local-slot addressing.
+- Preserve all existing supported compare-join shapes and failure statuses.
+- Add focused tests for classification ownership and rejected drift where the
+  prepared contract cannot authoritatively identify the selected `LoadLocal`.
 
 Completion check:
-- The supported fixture path reaches the existing agreement facade without
-  unsupported publication injection or broad x86 policy rewrites.
+- The prepared compare-join contract can represent the selected `LoadLocal`
+  arm without accepting unrelated selected-value shapes.
 
-### Step 3: Focused Agreement Proof
+### Step 3: x86 Render Bridge
 
-Goal: prove the positive agreement path and reachable fail-closed rows through
-the supported fixture surface.
+Goal: render the selected `LoadLocal` arm through the existing Route 3
+statement-memory agreement facade.
 
 Actions:
-- Add or update focused backend tests for the supported positive agreement
-  path.
-- Add missing, incomplete, prepared-only, route-only, unsupported, and mismatch
-  rows where the selected route can naturally express them.
-- Do not count legacy no-publication fallback as positive agreement.
+- Add the narrow x86 render branch for the new selected-arm contract.
+- Reuse the existing agreement facade or factor a small helper that preserves
+  the same Route 3/prepared source-memory checks.
+- Fail closed on missing, incomplete, mismatched, or unsupported authoritative
+  prepared metadata instead of falling back past the compare-join handoff.
+- Preserve current x86 output for existing compare-join shapes.
+
+Completion check:
+- The joined-branch selected-`LoadLocal` route reaches the agreement facade and
+  existing compare-join fixtures remain stable.
+
+### Step 4: Focused Proof and Resume Decision
+
+Goal: prove the bounded production support and decide whether idea 261 can
+resume.
+
+Actions:
+- Add or update focused x86 handoff and route-debug coverage for the positive
+  selected-`LoadLocal` route.
+- Add reachable fail-closed rows for missing, incomplete, drifted, or
+  unsupported authoritative prepared compare-join metadata.
 - Run the supervisor-delegated proof command and write `test_after.log` when
   code or tests change.
+- Record in `todo.md` whether idea 261 can resume.
 
 Completion check:
-- Focused x86 proof passes and covers positive agreement plus the reachable
-  fail-closed rows without weakening existing contracts.
-
-### Step 4: Hand Back to Idea 258
-
-Goal: decide whether idea 258 can resume or whether the fixture route remains
-blocked.
-
-Actions:
-- Re-check prepared lookup/status behavior, fallback names, route-debug output,
-  and x86 output stability.
-- Record in `todo.md` whether idea 258 Step 4 now has a valid proof surface.
-- If the proof surface exists and validation is green, request plan-owner
-  closure or switch back to idea 258.
-- If no supported route exists without broad target-policy rewrites, record the
-  exact blocker for supervisor review.
-
-Completion check:
-- `todo.md` records either validated resume readiness for idea 258 or the
-  remaining testability blocker.
+- Focused x86 proof is green, existing supported shapes are not weakened, and
+  `todo.md` states the resume decision for idea 261.

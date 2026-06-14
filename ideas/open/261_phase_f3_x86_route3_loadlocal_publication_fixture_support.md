@@ -21,6 +21,16 @@ or use specialized renderers outside the addressed statement-memory path.
 This idea exists so the proof surface can be repaired without overfitting idea
 258 with hand-built unsupported `join_transfers` or expectation-only changes.
 
+## Parked On Idea 262
+
+Step 2 found that the joined-branch route can naturally publish a selected
+`LoadLocal` with `source_memory_access`, but x86 rejects the prepared
+compare-join shape before it reaches
+`render_agreed_route3_load_local_statement_memory_operand(...)`. The blocker is
+now split to
+`ideas/open/262_phase_f3_x86_compare_join_loadlocal_selected_arm_support.md`.
+Resume this idea after that bounded production support lands.
+
 ## In Scope
 
 - Identify or add one supported x86 handoff fixture shape that reaches
