@@ -1,69 +1,97 @@
 Status: Active
 Source Idea Path: ideas/open/249_phase_f3_route6_call_identity_parity_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Call-Plan Surfaces and Consumers
+Current Step ID: 2
+Current Step Title: Name the Route 6 Semantic Fact
 
 # Current Packet
 
 ## Just Finished
 
-Executed Step 1 of `plan.md`: inventoried public prepared call-plan
-surfaces and current x86/riscv consumers relevant to Route 6 call-use/source
-identity.
+Executed Step 2 of `plan.md`: named the narrow Route 6 semantic fact for the
+current x86 agreement path and separated the required prepared agreement rows
+from retained prepared/target compatibility output.
 
 Evidence commands used:
 
-- `command -v c4c-clang-tool && command -v c4c-clang-tool-ccdb`
-- `c4c-clang-tool function-signatures src/backend/prealloc/module.hpp -- --std=c++17 -I/workspaces/c4c/src -I/workspaces/c4c/src/codegen/lir -I/workspaces/c4c/src/frontend/parser`
-- `c4c-clang-tool function-callers src/backend/mir/x86/x86.hpp consume_plans -- --std=c++17 -I/workspaces/c4c/src -I/workspaces/c4c/src/codegen/lir -I/workspaces/c4c/src/frontend/parser`
-- `c4c-clang-tool function-callers src/backend/mir/x86/x86.hpp find_consumed_scalar_i32_call_argument_source_authority -- --std=c++17 -I/workspaces/c4c/src -I/workspaces/c4c/src/codegen/lir -I/workspaces/c4c/src/frontend/parser`
-- `c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/riscv/codegen/emit.cpp build/compile_commands.json`
-- `c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/riscv/codegen/emit.cpp consume_edge_publication_move_intent build/compile_commands.json`
-- `rg -n "PreparedFunctionLookups|PreparedBirModule|find_prepared_call_plans|call_plans" src/backend/prealloc src/backend/mir/x86 src/backend/mir/riscv src/backend/bir src/backend/mir/aarch64/codegen/{calls.cpp,dispatch.cpp,select_materialization.cpp,traversal.cpp} src/backend/mir/aarch64/module/module.hpp`
-- `rg -n "ConsumedPlans|route6|call_argument|call_result|direct|wrapper|fallback|call_plans|find_consumed_call|prepared_lookups|calls\\(\\)" src/backend/mir/x86/x86.hpp src/backend/mir/x86/module/module.cpp src/backend/mir/x86/debug/debug.cpp src/backend/mir/x86/codegen/route_debug.hpp`
-- `rg -n "call|Call|route6|Route6|PreparedFunctionLookups|lookups|find_prepared_call_plans|call_plans" src/backend/mir/riscv/codegen/emit.cpp src/backend/mir/riscv/codegen/emit.hpp tests/backend/bir/*riscv*`
-- `rg -n "route6|Route6|call_use|call_plans|PreparedCallPlan|find_prepared_call_plans|shared_route6" src/backend/mir/riscv src/backend/mir/riscv/codegen`
+- `sed -n '1840,1975p' src/backend/bir/bir.hpp`
+- `sed -n '2610,2685p' src/backend/bir/bir.hpp`
+- `sed -n '80,145p' src/backend/mir/x86/x86.hpp`
+- `sed -n '3100,3275p' src/backend/mir/x86/module/module.cpp`
+- `sed -n '3480,3595p' src/backend/mir/x86/module/module.cpp`
 
-Consumer inventory:
+Candidate semantic authority:
 
-| Bucket | Current consumer classification | Evidence |
+The narrow Route 6 semantic fact is scalar i32 call argument source identity:
+for one BIR call argument at `(block, call instruction index, callee,
+arg_index)`, `route6_find_call_argument_source(...)` returns an available
+`Route6CallArgumentSourceRecord` whose call/argument relationship still
+matches the BIR argument object and spelling, whose `source_value_id` names
+the same source value as the prepared call argument plan, and whose
+`source_value_name` names the source value that x86 may use for the scalar i32
+argument home lookup.
+
+This fact is caller/source/use identity only. It does not own ABI registers,
+stack layout, wrapper kind, direct or indirect callee selection, helper choice,
+move bundles, emitted text, grouped authority output, route-debug labels, or
+call-result move policy.
+
+Current x86 agreement gate:
+
+`find_consumed_scalar_i32_call_argument_source_authority(...)` is the bounded
+x86 consumer. It succeeds only when all of these semantic/prepared agreement
+conditions hold:
+
+- The prepared argument row exists via `find_consumed_call_argument_plan(...)`.
+- A shared `Route6CallUseSourceIndex` exists in `ConsumedPlans`.
+- The BIR argument is a named `i32` value.
+- `route6_find_call_argument_source(...)` finds the Route 6 record for the
+  same block, call instruction index, callee spelling, and argument index.
+- `route6_call_argument_source_matches_argument_value_record(...)` confirms
+  the Route 6 `ArgumentValue` record still names the same call argument object
+  and spelling.
+- Route 6 and the prepared argument both have `source_value_id`.
+- The Route 6 `source_value_id` equals the prepared argument
+  `source_value_id`.
+- Route 6 has `source_value_name`, which becomes the returned authority
+  `source_name`.
+
+Prepared call-plan answers that must agree with the semantic fact or fail
+closed:
+
+| Prepared answer | Required relation to Route 6 fact | Classification |
 | --- | --- | --- |
-| Public prepared aggregate field | `PreparedBirModule::call_plans` is still a public prepared-module field, populated by prealloc and exposed through public finders. It is retained prepared authority, not a Route 6 semantic fact by itself. | `src/backend/prealloc/module.hpp:38`, `src/backend/prealloc/module.hpp:53`, `src/backend/prealloc/call_plans.cpp:2717` |
-| Public prepared lookup projection | `PreparedFunctionLookups::call_plans` is a public lookup-group member; `make_prepared_function_lookups(...)` obtains per-function call plans and constructs `PreparedCallPlanLookups`. This is compatibility/pass-context projection over prepared call plans. | `src/backend/prealloc/prepared_lookups.hpp:15`, `src/backend/prealloc/prepared_lookups.hpp:16`, `src/backend/prealloc/prepared_lookups.cpp:1135`, `src/backend/prealloc/prepared_lookups.cpp:1522`, `src/backend/prealloc/prepared_lookups.cpp:1525`, `src/backend/prealloc/prepared_lookups.cpp:1538` |
-| Public finder | `find_prepared_call_plans(const PreparedCallPlans&, FunctionNameId)` and `find_prepared_call_plans(const PreparedBirModule&, FunctionNameId)` are inline public definitions. They return per-function prepared call plans from the aggregate field and must remain observable. | AST `function-signatures` found definitions at `src/backend/prealloc/module.hpp:141` and `src/backend/prealloc/module.hpp:152`; text evidence at `src/backend/prealloc/module.hpp:141`, `src/backend/prealloc/module.hpp:153`, `src/backend/prealloc/module.hpp:155` |
-| Prepared call-plan producer | `populate_call_plans(...)` builds call records from BIR calls but owns ABI/wrapper/policy details: wrapper kind, variadic FPR count, indirect/direct callee facts, memory return, outgoing stack, argument destination/source, aggregate transport, result, preserved values, clobbers, and Route 6 named scalar publication. This remains prepared/target policy plus compatibility data. | `src/backend/prealloc/call_plans.cpp:2717`, `src/backend/prealloc/call_plans.cpp:2754`, `src/backend/prealloc/call_plans.cpp:2774`, `src/backend/prealloc/call_plans.cpp:2785`, `src/backend/prealloc/call_plans.cpp:2828`, `src/backend/prealloc/call_plans.cpp:2852`, `src/backend/prealloc/call_plans.cpp:2915` |
-| Route 6 semantic fact surface | BIR Route 6 currently models call-use/source identity through `Route6CallUseSourceIndex`, argument source, source-producer, direct-global dependency, publication-source, result, and result-lane records with fail-closed statuses. The semantic fact is source/use identity, not ABI/register/wrapper output. | `src/backend/bir/bir.hpp:1871`, `src/backend/bir/bir.hpp:1929`, `src/backend/bir/bir.hpp:1952`, `src/backend/bir/bir.hpp:2042`, `src/backend/bir/bir.hpp:2630`, `src/backend/bir/bir.hpp:2633`, `src/backend/bir/bir.hpp:2666` |
-| x86 `ConsumedPlans` wrapper | `ConsumedPlans` stores prepared call plans, prepared function lookups, and a Route 6 call-use/source index side by side. `consume_plans(...)` fills `.calls` from `find_prepared_call_plans(...)`, `.prepared_lookups` from `make_prepared_function_lookups(...)`, and `.route6_call_use_sources` from `route6_build_call_use_source_index(...)`. | `src/backend/mir/x86/x86.hpp:14`, `src/backend/mir/x86/x86.hpp:18`, `src/backend/mir/x86/x86.hpp:21`, `src/backend/mir/x86/x86.hpp:22`, `src/backend/mir/x86/x86.hpp:162`, `src/backend/mir/x86/x86.hpp:172`, `src/backend/mir/x86/x86.hpp:182`, `src/backend/mir/x86/x86.hpp:183`, `src/backend/mir/x86/x86.hpp:188` |
-| x86 semantic Route 6 use | `find_consumed_scalar_i32_call_argument_source_authority(...)` is the current semantic x86 agreement gate. It requires a prepared argument, a Route 6 index, named i32 argument, matching Route 6 argument record, matching prepared `source_value_id`, and a named Route 6 source before returning authority. | `src/backend/mir/x86/x86.hpp:101`, `src/backend/mir/x86/x86.hpp:110`, `src/backend/mir/x86/x86.hpp:111`, `src/backend/mir/x86/x86.hpp:117`, `src/backend/mir/x86/x86.hpp:119`, `src/backend/mir/x86/x86.hpp:123`, `src/backend/mir/x86/x86.hpp:128` |
-| x86 direct-call production path | Direct extern and same-module direct-call wrappers read prepared call plans for wrapper kind and callee agreement, require prepared before/after call bundles, and optionally pass the agreed Route 6 source name to scalar i32 argument rendering. If Route 6 authority is absent, the argument path falls back to the BIR argument name plus prepared value-home checks. | `src/backend/mir/x86/module/module.cpp:3118`, `src/backend/mir/x86/module/module.cpp:3126`, `src/backend/mir/x86/module/module.cpp:3147`, `src/backend/mir/x86/module/module.cpp:3226`, `src/backend/mir/x86/module/module.cpp:3254`, `src/backend/mir/x86/module/module.cpp:3260`, `src/backend/mir/x86/module/module.cpp:3495`, `src/backend/mir/x86/module/module.cpp:3566`, `src/backend/mir/x86/module/module.cpp:3578` |
-| x86 wrapper/fallback compatibility | Prepared call bundles and call plans remain compatibility authority for direct/indirect wrappers, call argument ABI registers, direct callee identity, indirect callee identity, call-result homes, result moves, and emitted text. Missing prepared call bundles throw handoff errors instead of reopening local ABI fallback. | `src/backend/mir/x86/module/module.cpp:3060`, `src/backend/mir/x86/module/module.cpp:3075`, `src/backend/mir/x86/module/module.cpp:3101`, `src/backend/mir/x86/module/module.cpp:3220`, `src/backend/mir/x86/module/module.cpp:3281`, `src/backend/mir/x86/module/module.cpp:3295`, `src/backend/mir/x86/module/module.cpp:3500`, `src/backend/mir/x86/module/module.cpp:3518`, `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:367`, `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:380`, `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:409`, `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:422` |
-| x86 compatibility output and route-debug | Grouped authority comments and debug reports count/render call-plan argument/result spans from prepared `call_plans`. Debug additionally emits Route 6 scalar arg status with gates `blocked`, `source_value_mismatch`, `missing_source_value`, `missing_source_name`, `missing_prepared_source`, `prepared_source_mismatch`, and `agreed`; these are diagnostic/compatibility strings, not ownership transfer. | `src/backend/mir/x86/module/module.cpp:1184`, `src/backend/mir/x86/module/module.cpp:1208`, `src/backend/mir/x86/module/module.cpp:1273`, `src/backend/mir/x86/debug/debug.cpp:59`, `src/backend/mir/x86/debug/debug.cpp:85`, `src/backend/mir/x86/debug/debug.cpp:117`, `src/backend/mir/x86/debug/debug.cpp:123`, `src/backend/mir/x86/debug/debug.cpp:148`, `src/backend/mir/x86/debug/debug.cpp:484`, `tests/backend/bir/backend_x86_route_debug_test.cpp:1716`, `tests/backend/bir/backend_x86_route_debug_test.cpp:1718`, `tests/backend/bir/backend_x86_route_debug_test.cpp:1720`, `tests/backend/bir/backend_x86_route_debug_test.cpp:1728`, `tests/backend/bir/backend_x86_route_debug_test.cpp:1730` |
-| x86 tests/oracles | Existing x86 tests assert `ConsumedPlans` threads Route 6 scalar argument source, rejects nameless Route 6 authority, fails closed when Route 6 facts are missing, preserves prepared call argument selector fallback, and keeps emitted asm stable. | `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:425`, `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:440`, `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:454`, `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:483`, `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:515`, `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:520`, `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp:533` |
-| AArch64 existing Route 6 consumers for context | AArch64 already has direct Route 6 semantic consumers for call argument source-producer materialization and call result source evidence, under route/prepared agreement and fallback. This is context only; this packet did not claim new x86/riscv behavior from AArch64. | `src/backend/mir/aarch64/codegen/calls.cpp:6318`, `src/backend/mir/aarch64/codegen/calls.cpp:6373`, `src/backend/mir/aarch64/codegen/calls.cpp:6420`, `src/backend/mir/aarch64/codegen/calls.cpp:8711`, `src/backend/mir/aarch64/codegen/calls.cpp:8744`, `src/backend/mir/aarch64/codegen/calls.cpp:8796` |
-| riscv direct call-plan use | No current direct riscv `Route6`, `route6`, `call_plans`, `PreparedCallPlan`, `find_prepared_call_plans`, or `shared_route6` hits under `src/backend/mir/riscv`. This is a concrete non-applicability candidate for Route 6 call-use/source identity on current riscv prepared emission. | `rg -n "route6|Route6|call_use|call_plans|PreparedCallPlan|find_prepared_call_plans|shared_route6" src/backend/mir/riscv src/backend/mir/riscv/codegen` returned no matches |
-| riscv indirect prepared lookup use | riscv `emit_prepared_module(...)` builds `PreparedFunctionLookups` per control-flow function, but consumes `lookups.edge_publications` and value-home/addressing-related state through edge-publication move helpers. It does not consume `lookups.call_plans` or Route 6 call-use/source records. | `src/backend/mir/riscv/codegen/emit.cpp:447`, `src/backend/mir/riscv/codegen/emit.cpp:471`, `src/backend/mir/riscv/codegen/emit.cpp:480`, `src/backend/mir/riscv/codegen/emit.cpp:705`, `src/backend/mir/riscv/codegen/emit.cpp:733`, `src/backend/mir/riscv/codegen/emit.cpp:747`, `src/backend/mir/riscv/codegen/emit.cpp:753`, `src/backend/mir/riscv/codegen/emit.cpp:764`, `src/backend/mir/riscv/codegen/emit.cpp:769` |
-| riscv call-related lowering or absence points | The riscv prepared emitter contains register-pool names for `CallArgument`/`CallResult`, but these are register-slot policy labels used by prepared value-home/edge publication code, not call-plan consumption. The current riscv compatibility tests target prepared edge publication and Route 3/5 fallback rows rather than Route 6 call identity. | `src/backend/mir/riscv/codegen/emit.cpp:87`, `src/backend/mir/riscv/codegen/emit.cpp:92`, `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1593`, `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1681`, `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1762`, `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1781`, `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1805` |
+| Per-call argument row existence and `arg_index` | Must find the same prepared argument row for the call instruction and argument index; missing prepared row fails closed to no semantic authority. | Semantic agreement gate |
+| Prepared argument `source_value_id` | Must be present and equal to Route 6 `source_value_id`; missing or mismatched id fails closed. | Semantic agreement gate |
+| Prepared i32 value home for returned `source_name` | May be queried only after Route 6/prepared id agreement. It chooses the actual prepared home for rendering the x86 move and remains prepared compatibility/policy. | Prepared compatibility after agreement |
+| Prepared before-call bundle and call argument register | Required to emit x86 argument moves, but it does not define the source identity fact. Missing bundle/register remains prepared fail-closed handoff behavior. | Target compatibility |
+| Prepared direct callee name and wrapper kind | Must remain stable for wrapper selection and direct-call eligibility, but it is not the Route 6 call-use/source fact. | Prepared/target compatibility |
+| Prepared indirect callee identity | Must remain stable for same-module indirect wrapper eligibility, but it is not the selected scalar argument source fact. | Prepared/target compatibility |
+| Prepared after-call bundle, result home, and call-result moves | Must remain prepared authority for result transport; Step 2 does not transfer call-result move ownership to Route 6. | Prepared/target compatibility |
+| Public `PreparedBirModule::call_plans`, `PreparedFunctionLookups::call_plans`, and `find_prepared_call_plans` answers | Must remain observable mirrors and lookup sources for compatibility. Public prepared call-plan authority is not deleted, privatized, or weakened by the selected fact. | Retained public compatibility |
+| Grouped authority output and route-debug strings | May report agreement/mismatch/fallback status, but strings and expected output are compatibility surface, not semantic ownership transfer. | Prepared/target compatibility |
+| ABI registers, wrapper text, move bundle contents, stack layout, and helper choice | Must stay target policy even when the scalar source identity fact agrees. | Target policy |
 
 ## Suggested Next
 
-Execute Step 2: name one narrow Route 6 call-use/source semantic fact for the
-current x86 agreement path, likely scalar i32 call argument source authority
-as exposed by `find_consumed_scalar_i32_call_argument_source_authority(...)`.
-Keep direct/indirect callee identity, ABI registers, move bundles,
-call-result moves, wrapper kind/text, grouped authority output, and route-debug
-strings classified as prepared/target compatibility.
+Execute Step 3: build the x86 agreement and compatibility matrix for the
+selected scalar i32 call argument source fact. The matrix should decide whether
+the existing x86 direct-call consumer can be classified as semantic agreement
+while preserving prepared call-plan output and target policy.
 
 ## Watchouts
 
-Keep ABI, register, stack, layout, helper selection, wrapper text, and expected
-strings as target policy or retained compatibility. Do not claim progress from
-expectation rewrites, helper/status renames, or named-case-only checks.
+For Step 3, keep the agreement claim narrower than "x86 calls use Route 6".
+The only named candidate here is scalar i32 call argument source identity after
+prepared `source_value_id` agreement. Direct and indirect callee identity, ABI
+registers, before/after move bundles, call-result moves, wrapper kind/text,
+grouped authority output, and route-debug strings remain prepared/target
+compatibility.
 
-Step 2 should treat riscv as no direct Route 6 call-plan consumer unless a
-newer search contradicts the no-match evidence above. Current riscv prepared
-emission is an indirect `PreparedFunctionLookups` consumer for edge
-publications/value homes, not `PreparedFunctionLookups::call_plans`.
+The Route 6 status enum includes ABI-bound and duplicate/missing cases, but
+this Step 2 fact does not move ABI-bound policy into Route 6. Those statuses
+should be treated as fail-closed diagnostics or negative proof rows in later
+steps, not positive semantic authority for wrapper/register behavior.
 
 ## Proof
 
