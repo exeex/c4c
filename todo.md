@@ -1,31 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Fail-Closed Proof Rows
+Current Step ID: 4
+Current Step Title: Broader Backend Validation
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Add Fail-Closed Proof Rows completed.
+Step 4: Broader Backend Validation completed.
 
-Focused helper rows in
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp` now cover the
-block-index label bridge through `populate_call_plans(...)` observations:
+Focused and broader proof are both green for the block-index label bridge
+candidate:
 
-- positive prepared/BIR structured-label agreement
-- absent prepared control-flow fallback to the BIR label
-- prepared control-flow shorter than the queried BIR block index
-- BIR rows absent at the public call-plan surface
-- invalid BIR labels retaining prepared fallback
-- prepared/BIR structured-label mismatch retaining prepared fallback
-- invalid prepared-label behavior without manufacturing a non-invalid label
+- focused proof from Step 3: `backend_prepared_lookup_helper` passed 1/1
+- broader proof from Step 4: 180/180 `backend_` tests passed
+
+The selected block-index label bridge candidate is complete under the idea 260
+one-candidate criteria. The implementation stays scoped to the block-index
+label bridge helper path, preserves prepared fallback and invalid-label
+compatibility, and the focused rows demonstrate the nearby fail-closed family
+rather than a named-case shortcut.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: run the supervisor-selected broader backend
-validation for the completed block-index label bridge candidate.
+Request plan-owner retirement review for this active runbook while keeping
+`ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md`
+open for the remaining idea 260 candidates.
 
 ## Watchouts
 
@@ -41,9 +42,11 @@ validation for the completed block-index label bridge candidate.
 
 Ran:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
-Result: passed. The focused helper test rebuilt and
-`backend_prepared_lookup_helper` passed 1/1.
+Result: passed. Build was up to date and 180/180 backend tests passed.
+
+Prior focused proof: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`
+passed with `backend_prepared_lookup_helper` 1/1.
 
 Proof log: `test_after.log`
