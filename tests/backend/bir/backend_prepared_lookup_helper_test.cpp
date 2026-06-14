@@ -9412,6 +9412,7 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
     bool conflicting_bir_block_label_id = false;
     bool include_addressing = true;
     bool include_load_access = true;
+    std::optional<std::string_view> prepared_result_value_name = "%loaded";
     prepare::PreparedAddressBaseKind load_base_kind =
         prepare::PreparedAddressBaseKind::PointerValue;
     std::optional<std::string_view> pointer_value_name = "%byval.ptr";
@@ -9429,10 +9430,9 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
     const auto byval_name = prepared.names.value_names.intern("%byval.ptr");
     const auto other_byval_name =
         prepared.names.value_names.intern("%other.byval.ptr");
-    const auto source_name =
-        test_case.producer_shape == ProducerShape::LoadLocal
-            ? byval_name
-            : prepared.names.value_names.intern("%binary.ptr");
+    const auto load_result_name = prepared.names.value_names.intern("%loaded");
+    const auto other_load_result_name =
+        prepared.names.value_names.intern("%other.loaded");
     const auto stored_name = prepared.names.value_names.intern("%stored");
     const auto slot_id = prepare::PreparedFrameSlotId{33};
     bir::Value source_value;
@@ -9443,7 +9443,7 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
                          ? prepared.module.names.block_labels.intern("other.entry")
                          : block_label;
     if (test_case.producer_shape == ProducerShape::LoadLocal) {
-      source_value = bir::Value::named(bir::TypeKind::Ptr, "%byval.ptr");
+      source_value = bir::Value::named(bir::TypeKind::Ptr, "%loaded");
       block.insts.push_back(bir::LoadLocalInst{
           .result = source_value,
           .slot_name = "byval.addr",
@@ -9506,7 +9506,12 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
             .function_name = function_name,
             .block_label = block_label,
             .inst_index = 0,
-            .result_value_name = source_name,
+            .result_value_name =
+                test_case.prepared_result_value_name == "%loaded"
+                    ? std::optional<c4c::ValueNameId>{load_result_name}
+                    : test_case.prepared_result_value_name == "%other.loaded"
+                          ? std::optional<c4c::ValueNameId>{other_load_result_name}
+                          : std::nullopt,
             .address =
                 prepare::PreparedAddress{
                     .base_kind = test_case.load_base_kind,
@@ -9598,8 +9603,8 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
           .can_use_base_plus_offset = false,
       },
       Case{
-          .label = "prepared pointer value disagrees with BIR load result",
-          .pointer_value_name = "%other.byval.ptr",
+          .label = "prepared result value disagrees with BIR load result",
+          .prepared_result_value_name = "%other.loaded",
       },
       Case{
           .label = "missing byval formal fact",

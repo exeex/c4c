@@ -2016,7 +2016,7 @@ bool prepared_store_source_load_local_is_byval_formal_pointer_source(
   const auto load_result_name =
       existing_prepared_value_name_id(names, source_producer->load_local->result);
   return load_result_name.has_value() &&
-         *load_result_name == *access->address.pointer_value_name &&
+         access->result_value_name == load_result_name &&
          is_byval_formal_value_name(
              names, bir_function, *access->address.pointer_value_name);
 }
