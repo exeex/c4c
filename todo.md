@@ -1,80 +1,109 @@
 Status: Active
 Source Idea Path: ideas/open/249_phase_f3_route6_call_identity_parity_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Build the riscv Applicability Matrix
+Current Step ID: 5
+Current Step Title: Define Fail-Closed and Mismatch Requirements
 
 # Current Packet
 
 ## Just Finished
 
-Executed Step 4 of `plan.md`: built the riscv applicability matrix for the
-selected scalar i32 Route 6 call argument source fact.
+Executed Step 5 of `plan.md`: defined the fail-closed and mismatch
+requirements for the selected scalar i32 Route 6 call argument source fact.
 
 Evidence commands used:
 
-- `command -v c4c-clang-tool && command -v c4c-clang-tool-ccdb`
-- `rg -n "call_plans|PreparedBirModule::call_plans|PreparedFunctionLookups::call_plans|find_prepared_call_plans|route6_call|route6_find_call_argument_source|call_argument_source|ConsumedPlans|consume_plans" src/backend/mir/riscv src/backend/bir src/backend -g '*.cpp' -g '*.hpp'`
-- `rg -n "call|callee|argument|arg|wrapper|extern|prepared" src/backend/mir/riscv -g '*.cpp' -g '*.hpp'`
-- `c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/riscv/codegen/emit.cpp build/compile_commands.json`
-- `c4c-clang-tool-ccdb type-refs /workspaces/c4c/src/backend/mir/riscv/codegen/emit.cpp PreparedFunctionLookups build/compile_commands.json`
-- `c4c-clang-tool-ccdb function-signatures /workspaces/c4c/src/backend/mir/riscv/codegen/calls.cpp build/compile_commands.json` (failed because `riscv/codegen/calls.cpp` is not present in `build/compile_commands.json`; direct targeted reads were used for that file)
-- `sed -n '1,540p' src/backend/mir/riscv/codegen/calls.cpp`
-- `sed -n '430,780p' src/backend/mir/riscv/codegen/emit.cpp`
-- `sed -n '470,710p' src/backend/mir/riscv/codegen/riscv_codegen.hpp`
-- `rg -n "emit_call_|call_abi_config_impl|CallArgClass|operand_to_t0|direct_name|func_ptr|find_prepared_call_plans|make_prepared_function_lookups|call_plan|route6|source_value_id|source_name|source_value" src/backend/mir/riscv/codegen/calls.cpp src/backend/mir/riscv/codegen/riscv_codegen.hpp src/backend/mir/riscv/codegen/emit.cpp`
-- `rg -n "PreparedFunctionLookups|call_plans|edge_publications|consume_edge_publication_move_intent|append_edge_publication_move_instruction|emit_prepared_module|route5|route3|Route6|route6" src/backend/mir/riscv/codegen/emit.cpp src/backend/mir/riscv/codegen/emit.hpp src/backend/mir/riscv -g '*.cpp' -g '*.hpp'`
-- `c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/riscv/codegen/emit.cpp consume_edge_publication_move_intent build/compile_commands.json`
+- `git log --oneline --decorate -8 -- todo.md`
+- `git show 8b1379bce:todo.md`
+- `git show 42e78a773:todo.md`
+- `git show f2feed12f:todo.md`
 
-Conclusion:
+Selected fact:
 
-No bounded riscv consumer currently applies to the selected scalar i32 Route 6
-call argument source fact. Riscv call lowering owns ABI/register/stack policy
-from generic call operands and `CallArgClass`, while the prepared riscv emission
-path consumes `PreparedFunctionLookups::edge_publications` plus optional
-Route 5/Route 3 edge-publication agreement. It does not consume
-`PreparedFunctionLookups::call_plans`, `PreparedBirModule::call_plans`,
-`find_prepared_call_plans`, `ConsumedPlans`, `route6_find_call_argument_source`,
-or `route6_call_argument_source_matches_argument_value_record`.
+The only candidate semantic authority remains scalar i32 call argument source
+identity after Route 6/prepared `source_value_id` agreement. It is x86-bounded
+through `find_consumed_scalar_i32_call_argument_source_authority(...)`. Public
+prepared call-plan surfaces remain compatibility authority:
+`PreparedBirModule::call_plans`, `PreparedFunctionLookups::call_plans`,
+`find_prepared_call_plans`, `ConsumedPlans`, wrapper output, route-debug
+strings, fallback strings, helper/oracle statuses, unsupported rows, and target
+ABI/register/stack/result policy.
 
-The riscv classification is concrete non-applicability with fail-closed
-behavior: the selected shared semantic fact remains valid as x86-only evidence
-for now, but no riscv call-plan adapter/readiness can be inferred from it. Any
-future riscv application needs a separate implementation idea that introduces a
-real riscv call-plan/Route 6 consumer rather than borrowing x86 authority.
+x86 agreement gate rows that must stay fail-closed:
 
-riscv applicability matrix:
-
-| riscv row | Evidence | Classification |
+| Gate row | Required behavior | Stable surface |
 | --- | --- | --- |
-| Public prepared call-plan surfaces in riscv | Targeted `rg` found no `PreparedBirModule::call_plans`, `PreparedFunctionLookups::call_plans`, `find_prepared_call_plans`, or `ConsumedPlans` use under `src/backend/mir/riscv`. Hits for these surfaces are in shared prealloc/BIR, x86, and aarch64, not riscv. | Non-applicable |
-| Route 6 call-use/source records in riscv | Targeted `rg` found no riscv use of `route6_find_call_argument_source`, `route6_call_argument_source_matches_argument_value_record`, or Route 6 call-use/source index APIs. | Non-applicable |
-| Ordinary riscv call argument lowering | `RiscvCodegen::emit_call_reg_args_impl(...)` and `emit_call_stack_args_impl(...)` consume `std::vector<Operand>`, `CallArgClass`, and target-local register/stack layout. Scalar integer register args are materialized through `operand_to_t0(args[i])` and moved to `RISCV_ARG_REGS[...]`; stack args similarly materialize generic operands. | Target policy, not selected semantic fact |
-| Riscv direct/indirect call instruction emission | `emit_call_instruction_impl(...)` emits `call <direct_name>` for direct calls or materializes `func_ptr` and emits `jalr ra, t2, 0`; it does not consult prepared call plans or Route 6 source identity. | Target policy |
-| Riscv result handling | `emit_call_store_result_impl(...)` stores from `a0`/`a1`/`fa0` or moves to assigned registers/slots based on target return policy, not the selected call argument source fact. | Target policy |
-| Prepared riscv module emission | AST signatures and direct reads show `emit_prepared_module(...)` builds `PreparedFunctionLookups` and iterates `lookups.edge_publications.publications`, calling `append_edge_publication_move_instruction(...)`; it never iterates `lookups.call_plans` or `module.call_plans`. | Retained prepared edge-publication compatibility |
-| Prepared riscv agreement path | `RiscvEdgePublicationMoveAdapter` optionally attaches Route 5/Route 3 agreement through `route5_edge_source_agrees_with_prepared_publication(...)` and `route3_source_memory_agrees_with_prepared_publication(...)`. This is edge-publication/source-memory authority, not call-use/source identity. | Separate semantic family |
-| Prepared riscv fail-closed gates | `consume_prepared_backed_move_intent()` returns `MissingSharedLookups`, `MissingPublication`, `UnsupportedPublication`, `UnsupportedSourceHome`, or `UnsupportedDestinationHome`; `emit_prepared_module(...)` skips unavailable publications. These gates prevent accidental prepared-only emission when the edge-publication contract is missing or unsupported, and there is no riscv call-plan path to accidentally consume the selected fact. | Fail-closed non-applicability |
-| Compile database coverage for riscv calls | `c4c-clang-tool-ccdb function-signatures` could not load `riscv/codegen/calls.cpp` because the file is absent from `build/compile_commands.json`; the source was inspected with targeted `sed`/`rg` instead. | Tooling limitation recorded |
+| Prepared argument row exists for the call instruction and `arg_index` | Missing row yields no Route 6 semantic authority. Do not synthesize or infer an argument plan. | `ConsumedPlans::calls`, public `call_plans`, direct-call fallback |
+| Shared `Route6CallUseSourceIndex` exists in `ConsumedPlans` | Missing index yields no Route 6 semantic authority. | `ConsumedPlans`, route-debug blocked/fallback status |
+| BIR argument is named `i32` | Non-named or non-i32 arguments do not enter the selected fact family. | Wrapper/direct-call output, fallback to original argument handling |
+| Route 6 record matches block, call instruction index, callee spelling, and argument index | Missing/invalid record yields no Route 6 semantic authority. | Route-debug status strings, public prepared call-plan output |
+| Route 6 `ArgumentValue` record still matches the BIR argument object and spelling | Object or spelling mismatch yields no authority. | Route-debug mismatch/fallback status, direct-call fallback |
+| Route 6 and prepared argument both have `source_value_id` | Missing id on either side yields no authority. | Route-debug `missing_source_value` or missing-prepared-source style status |
+| Route 6 `source_value_id` equals prepared argument `source_value_id` | Id mismatch yields no authority. | Route-debug `source_value_mismatch`/`prepared_source_mismatch` style status |
+| Route 6 has `source_value_name` | Missing name yields no authority. | Route-debug `missing_source_name`, direct-call fallback |
+| Prepared i32 value home for the agreed `source_name` remains available and supported | Unsupported or missing home remains prepared handoff failure/fallback behavior, not Route 6 ownership. | Prepared status/oracle surface, wrapper output stability |
+
+Fail-closed checklist:
+
+| Negative case | Requirement | Compatibility surface that must remain stable |
+| --- | --- | --- |
+| Missing prepared call-plan aggregate, function call plans, or argument row | Return no selected semantic authority and preserve public prepared lookup behavior. No code path may delete, privatize, or bypass `PreparedBirModule::call_plans`, `PreparedFunctionLookups::call_plans`, or `find_prepared_call_plans`. | Public prepared status and lookup surfaces, `ConsumedPlans::calls` |
+| Missing Route 6 call-use/source index or record | Treat Route 6 evidence as unavailable and use existing prepared/BIR fallback behavior. Do not mark the case as agreement. | `ConsumedPlans::route6_call_use_sources`, route-debug blocked/fallback strings |
+| Invalid call key, invalid `arg_index`, wrong callee spelling, wrong block, or stale instruction index | Reject Route 6 authority; the direct-call path must not consume a mismatched source name. | Route-debug mismatch status, wrapper/direct-call output |
+| Duplicate/conflicting prepared rows or duplicate/conflicting Route 6 source rows | Fail closed to blocked public prepared authority unless existing producers already define a deterministic rejection status. Do not resolve conflicts by picking a convenient row. | Public prepared status/oracle output, route-debug conflict/blocked strings, `ConsumedPlans` |
+| Route 6 `ArgumentValue` object or spelling mismatch | Return no authority even if an id happens to match. | Route-debug mismatch/fallback status, direct-call fallback |
+| Missing Route 6 `source_value_id`, missing prepared `source_value_id`, or unequal ids | Return no authority. This is the core mismatch gate and cannot be weakened into name-only agreement. | Route-debug `missing_source_value`, `missing_prepared_source`, `source_value_mismatch`, or `prepared_source_mismatch` style strings |
+| Missing Route 6 `source_value_name` after id agreement | Return no authority because x86 has no stable source name to hand to prepared home lookup. | Route-debug `missing_source_name`, fallback to original argument name |
+| Unsupported argument family: non-named value, non-i32 value, pointer/string literal, immediate i32, aggregate, indirect-only, result move, or ABI-bound case | Keep outside the selected fact family. Existing wrapper, helper, fallback, and unsupported statuses stay compatibility output. | Wrapper output, helper/oracle status, unsupported rows, target fallback strings |
+| Prepared-only source fact without Route 6 agreement | Prepared call-plan rows may remain observable and may drive compatibility rendering, but they cannot be reclassified as Route 6 semantic authority. | Public prepared `call_plans`, grouped authority output, `ConsumedPlans` |
+| Route 6-only source fact without prepared agreement | Route 6 may be diagnostic evidence, but it cannot select x86 move source homes without matching prepared `source_value_id` and prepared home lookup. | Route-debug strings, direct-call fallback, prepared value-home status |
+| Prepared i32 home missing or unsupported after semantic agreement | Preserve prepared fail-closed behavior; Route 6 owns only source identity, not home availability or register/stack placement. | Prepared handoff status, wrapper/direct-call output, helper/oracle statuses |
+| Fallback from absent or blocked authority | Use the existing fallback path, currently the original BIR argument name plus prepared home checks for x86 direct-call argument rendering. Fallback names and emitted output must not be renamed to claim progress. | Direct-call fallback strings, wrapper baselines, route-debug fallback names |
+| Policy-sensitive callee, wrapper, ABI register, stack layout, variadic FPR count, result home, before/after bundle, helper choice, or emitted text | Remain target/prepared policy. The selected fact may not absorb these rows even when source identity agrees. | Wrapper output, target ABI output, helper/oracle status, public expected strings |
+| riscv direct call-plan or Route 6 use | Non-applicable in the current tree. No riscv readiness follows from x86 agreement. Any future riscv use needs a separate implementation idea with a real consumer. | Absence of riscv `call_plans`/Route 6 consumer, prepared edge-publication status |
+| riscv prepared emission path | Must keep consuming edge-publication/value-home state only. Route 5/Route 3 edge-publication agreement does not prove Route 6 call identity applicability. | Riscv prepared edge-publication statuses and fallback behavior |
+| Baseline or expectation change required to make a negative row pass | Reject the row as route drift. The correct result is blocked authority or a separate idea, not expectation weakening. | Test expectations, wrapper baselines, route-debug/helper/status names |
+
+riscv non-applicability proof to carry forward:
+
+No bounded riscv consumer currently applies to the selected fact. Prior Step 4
+evidence found no `PreparedFunctionLookups::call_plans`,
+`PreparedBirModule::call_plans`, `find_prepared_call_plans`, `ConsumedPlans`,
+`route6_find_call_argument_source`, or
+`route6_call_argument_source_matches_argument_value_record` use under
+`src/backend/mir/riscv`. Ordinary riscv call lowering consumes generic call
+operands and target-local `CallArgClass`/register/stack policy. Prepared riscv
+module emission consumes `PreparedFunctionLookups::edge_publications` plus
+Route 5/Route 3 edge-publication agreement gates, not Route 6 call-use/source
+identity.
+
+Reviewer rejection rule:
+
+Any Step 6 readiness claim must be rejected if it depends on weakening expected
+strings, renaming helper/status/debug/fallback output, rewriting wrapper
+baselines, treating prepared-only evidence as Route 6 agreement, borrowing
+riscv applicability from x86, or moving ABI/wrapper/result policy into the
+selected scalar source identity fact.
 
 ## Suggested Next
 
-Execute Step 5: define fail-closed and mismatch requirements for the selected
-fact family. Include the x86 agreement gate rows and the riscv non-applicability
-proof so public prepared call-plan surfaces stay blocked unless a future packet
-adds a real riscv consumer.
+Execute Step 6: decide adapter readiness or blocker status. Compare the x86
+agreement gate, the riscv non-applicability proof, and this fail-closed
+checklist. If readiness is blocked, record the retained public prepared
+authority and the narrow follow-up shape without implementation changes.
 
 ## Watchouts
 
-For Step 5, keep the selected positive fact narrow: scalar named-i32 call
-argument source identity after Route 6/prepared `source_value_id` agreement.
-Negative rows must cover missing/mismatched Route 6 or prepared evidence,
-non-named/non-i32 arguments, unsupported prepared homes, and public output
-stability without renaming or weakening statuses.
+The only positive semantic row is x86 scalar named-i32 source identity after
+Route 6/prepared `source_value_id` agreement. Public prepared call-plan APIs,
+`ConsumedPlans`, wrappers, route-debug, fallback strings, helper/oracle
+statuses, unsupported rows, and ABI/result policy remain compatibility or
+target authority.
 
-Riscv remains a concrete non-applicability proof, not a readiness proof. Do not
-infer riscv adapter safety from x86, aarch64, Route 5/Route 3 edge-publication
-agreement, or generic riscv ABI call lowering.
+Riscv remains concrete non-applicability, not parity readiness. A later adapter
+claim is unsafe unless it either stays explicitly x86-bounded or a separate
+riscv implementation idea introduces and proves a real riscv Route 6 call-plan
+consumer.
 
 ## Proof
 
