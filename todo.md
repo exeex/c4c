@@ -1,61 +1,71 @@
 Status: Active
 Source Idea Path: ideas/open/257_phase_f3_x86_route6_call_argument_source_identity_adapter.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement x86 Agreement Path
+Current Step ID: 4
+Current Step Title: Focused Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Implement x86 Agreement Path verified the selected x86 scalar
-named-`i32` call argument source identity path is already routed through the
-accepted authority helper. No code churn was needed.
+Step 4 - Focused Proof assessed the available enabled proof for the selected
+x86 scalar named-`i32` Route 6 / prepared call argument source agreement path.
+No enabled test was added or changed.
 
-Implementation evidence:
+Proof rows assessed:
 
-- `src/backend/mir/x86/x86.hpp` already implements
-  `find_consumed_scalar_i32_call_argument_source_authority(...)` as the
-  agreement gate.
-- The helper first requires a prepared call argument plan from
-  `find_consumed_call_argument_plan(...)`, a Route 6 call-use/source index from
-  `ConsumedPlans::shared_route6_call_use_source_index()`, and a named
-  `bir::TypeKind::I32` BIR argument.
-- The helper then calls `route6_find_call_argument_source(...)` and accepts
-  only rows that pass
-  `route6_call_argument_source_matches_argument_value_record(...)`.
-- It returns `std::nullopt` unless Route 6 and prepared `source_value_id` are
-  both present and equal.
-- It also returns `std::nullopt` when Route 6 `source_value_name` is absent,
-  preserving the named-source authority requirement.
-- The direct-extern prepared handoff path in
-  `src/backend/mir/x86/module/module.cpp` routes each call argument through
-  `find_consumed_scalar_i32_call_argument_source_authority(...)` before passing
-  an optional source name to `append_prepared_direct_extern_call_argument(...)`.
-- The broader prepared module lowering path also gates named `i32` arguments
-  through the same helper before using an optional source name; non-`i32` and
-  unsupported shapes keep the existing fallback argument path.
-- `rg` found no alternate selected x86 scalar named-`i32` call argument source
-  consumer bypassing the accepted authority helper.
-- No public prepared call-plan APIs, route-debug strings, wrapper/fallback
-  names, helper/oracle status, expected output, `ConsumedPlans` contracts,
-  ABI/register/stack/result policy, or riscv behavior were changed.
+- Agreement path: Step 3 found the x86 path was already wired through
+  `find_consumed_scalar_i32_call_argument_source_authority(...)`, which requires
+  a prepared call argument plan, a shared Route 6 call-use/source index, named
+  `bir::TypeKind::I32`, matching `argument_value`, matching prepared and Route
+  6 `source_value_id`, and a present Route 6 `source_value_name`.
+- Prepared-only and Route 6-only rows: the helper returns `std::nullopt` unless
+  both evidence sources are present, so the enabled proof is compatibility
+  preservation rather than a direct x86 rejection-row CTest.
+- Mismatch rows: `source_value_id` and Route 6 argument/source matching remain
+  required before a source name is accepted; the enabled proof preserves the
+  existing stdarg semantic/prepared handoff outputs.
+- Unsupported, fallback, and policy-sensitive rows: non-`i32`, missing-name,
+  missing-plan, and unsupported shapes keep the existing fallback path by
+  helper contract; no ABI/register/stack/result policy, wrapper/fallback name,
+  helper/oracle status, public prepared call-plan API, route-debug string,
+  expected output, `ConsumedPlans` contract, or riscv behavior changed.
+- Duplicate/conflict rows: no enabled CTest in this configured build directly
+  exercises x86 duplicate/conflict Route 6 call-source rejection for this
+  adapter.
+
+Direct x86 proof limitation:
+
+- `build/CMakeCache.txt` has `C4C_ENABLE_X86_BACKEND_TESTS:BOOL=OFF`.
+- `ctest --test-dir build -N` registers the delegated prepared/stdarg tests
+  but does not register `backend_x86_route_debug` or
+  `backend_x86_handoff_boundary` in this configured test set.
+- Therefore this packet does not claim those disabled direct x86 tests ran.
+  The available enabled proof is sufficient for the Step 4 todo-only focused
+  proof record because Step 3 made no code changes and confirmed the adapter was
+  already wired, but source-level direct x86 row coverage remains limited by
+  the disabled test surface.
 
 ## Suggested Next
 
-Execute Step 4 by adding or updating focused proof for the agreed scalar
-named-`i32` x86 path and the fail-closed rejection rows named by Steps 1-3.
+Execute Step 5 by sweeping compatibility surfaces and deciding whether the
+remaining disabled direct x86 proof limitation needs supervisor-selected
+configuration work before lifecycle close.
 
 ## Watchouts
 
-- Step 3 was already wired in code, so Step 4 should focus on proving behavior
-  rather than reworking the helper boundary.
+- Step 3 was already wired in code, and Step 4 did not add tests because the
+  direct x86 route-debug / handoff-boundary tests are disabled in the current
+  default build configuration.
 - Keep the `source_value_name` requirement as part of named authority; missing
   names are fallback rows, not partial successes.
 - Route-debug status rows already name `gate=agreed`,
   `gate=missing_source_value`, `gate=missing_source_name`,
   `gate=prepared_source_mismatch`, `gate=source_value_mismatch`, and
   `gate=blocked`; do not rewrite these strings as an implementation shortcut.
+- The enabled proof subset preserves prepared printer and stdarg semantic /
+  prepared handoff behavior, but it is not a direct substitute for disabled x86
+  rejection-row CTests.
 - Riscv, ABI/register/stack/result policy, helper selection, wrapper
   instruction text, and fallback names remain out of scope.
 
