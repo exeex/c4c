@@ -1,35 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Nearby Fail-Closed Rows
+Current Step ID: 4
+Current Step Title: Broader Backend Validation
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 fixed the recovered-source compatibility regression while preserving the
-prepared/BIR disagreement boundary.
+Step 4 completed broader backend validation for the recovered-source identity
+candidate.
 
-- Clarified that absent Route 3 BIR same-block identity is treated as no BIR
-  evidence, so complete prepared frame-slot recovered-source facts remain
-  usable for prepared-only fixtures.
-- Kept present complete BIR identity authoritative as a cross-check: if Route 3
-  returns load/store memory identity that disagrees with complete prepared
-  frame-slot/source facts, the recovered-source helper still returns
-  `std::nullopt`.
-- Updated the nearby helper rows so missing BIR load/store access and fully
-  missing BIR identity prove prepared-only compatibility, while the explicit
-  prepared/BIR byte-offset mismatch row still proves fail-closed behavior.
+- Preserved the focused Step 3 proof status: `backend_prepared_lookup_helper`
+  and `backend_store_source_publication_plan` passed 2/2 with the recovered
+  source agreement and fail-closed rows.
+- Ran the delegated broader backend subset after the recovered-source helper
+  and nearby publication-planner rows were in place.
+- The selected recovered-source identity candidate is complete under idea 260
+  one-candidate criteria: BIR same-block load/store identity is accepted only
+  behind prepared recovered-source agreement, compatibility fallback remains
+  intact when BIR evidence is absent, and broader backend proof is green.
 
 ## Suggested Next
 
-Execute Step 4 broader backend validation for the recovered-source identity
-candidate.
+Recommend plan-owner retirement review for this recovered-source identity
+runbook while keeping the source idea open for the remaining idea 260
+candidates.
 
 ## Watchouts
 
-- Keep this packet limited to the recovered-source identity candidate.
+- Keep retirement limited to the recovered-source identity candidate.
 - Missing Route 3 BIR memory identity is compatibility fallback, not
   disagreement. Only a complete present BIR identity can reject prepared
   recovered-source facts for prepared/BIR mismatch.
@@ -56,10 +56,13 @@ candidate.
 
 Ran:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_store_source_publication_plan)$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
-Result: passed. `backend_prepared_lookup_helper` and
-`backend_store_source_publication_plan` passed 2/2. `git diff --check` also
-passed.
+Result: passed. Build was up to date and the broader backend subset passed
+180/180.
+
+Focused proof already completed before this packet:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_store_source_publication_plan)$'`
+passed 2/2.
 
 Proof log: `test_after.log`.
