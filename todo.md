@@ -1,72 +1,98 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Top-Level Printer Contract
+Current Step ID: 2
+Current Step Title: Design the Complete-Module-Text Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Inventory Top-Level Printer Contract completed for idea 260's
+Step 2: Design the Complete-Module-Text Boundary completed for idea 260's
 `module` top-level printer candidate.
 
-Definitions/declarations/direct callers owning the current prepared-printer
-top-level BIR body surface:
+Chosen helper placement:
 
-- Public declaration: `src/backend/prealloc/prepared_printer.hpp` exposes
-  `prepare::print(const PreparedBirModule&)` as the prepared backend dump.
-- Top-level definition: `src/backend/prealloc/prepared_printer.cpp` writes the
-  prepared module header, optional `completed_phases`, `invariants`, and
-  `notes` sections, the `--- prepared-bir ---` marker, then
-  `c4c::backend::bir::print(module.module)`.
-- Metadata section declarations live in
-  `src/backend/prealloc/prepared_printer/private.hpp`; implementation files
-  under `src/backend/prealloc/prepared_printer/*.cpp` append the prepared-only
-  sections after the BIR body.
-- Direct production callers include `src/backend/backend.cpp` debug/dump paths,
-  `src/backend/mir/x86/module/module.cpp` fallback diagnostics, and focused
-  tests in `tests/backend/bir/backend_prepared_printer_test.cpp`,
-  `backend_prepare_*`, `backend_x86_route_debug_test.cpp`, and
-  `backend_x86_handoff_boundary_lir_test.cpp`.
+- Keep the boundary local to `src/backend/prealloc/prepared_printer.cpp`.
+- Add a small file-local helper or adapter that renders the BIR body text and
+  returns whether that text is an agreed complete-module body for this prepared
+  printer integration point.
+- Do not add a public declaration in `prepared_printer.hpp`; the selected
+  candidate is the top-level prepared-printer reader path, not a shared BIR
+  printer API or aggregate wrapper.
 
-Current byte-stable behavior to preserve:
+Accepted complete-module-text rows:
 
-- Section order is: `prepared.module target=<triple> route=<route>`,
-  optional `completed_phases`, optional `invariants`, optional `notes`,
-  `--- prepared-bir ---`, complete BIR module text, then prepared metadata
-  sections in the existing `append_*` order.
-- BIR body text currently comes from `bir::print(module.module)`; the BIR
-  printer emits functions only, with one blank line between multiple functions.
-- Empty modules print no BIR body text after `--- prepared-bir ---` and do not
-  add the conditional post-BIR blank line.
-- Function-only modules print the `bir.func` body exactly as rendered by
-  `bir::print`, followed by one extra blank line before prepared metadata.
-- `PreparedBirModule::module.globals` and `string_constants` participate in the
-  prepared-printer post-BIR blank-line condition even though current
-  `bir::print` does not emit top-level global/string-constant text.
-- Phase and note headers appear before `--- prepared-bir ---`; they must not be
-  reordered into the BIR body or after prepared metadata.
-- Existing tests assert the top-level module header, `--- prepared-bir ---`,
-  and prepared function/control-flow sections, but they do not yet have a
-  dedicated byte-for-byte row for empty-module, function-only,
-  global/string-constant, phase-header, note-header, or surrounding blank-line
-  behavior.
+- Empty module: accepted only when complete module text is the empty string and
+  the prepared printer keeps `--- prepared-bir ---\n` with no extra
+  post-body blank line.
+- Function-only module: accepted when body text is exactly
+  `bir::print(module.module)` and the prepared printer keeps the existing one
+  extra blank line before prepared metadata.
+- Multiple-function module: accepted when the BIR body preserves the BIR
+  printer's one blank line between functions and the prepared printer adds only
+  the existing single post-body blank line.
+- Phase and note rows: accepted only when `completed_phases`, `invariants`, and
+  `notes` remain before `--- prepared-bir ---`; the complete-module-text helper
+  must not absorb or reorder prepared-only headers.
+- Surrounding layout: accepted only when the full prepared dump remains
+  byte-stable for section order, marker placement, BIR body bytes, and the
+  prepared metadata append order.
 
-Candidate implementation files for Step 2/3:
+Rejected or compatibility rows:
+
+- Partial BIR module text, missing function text, reordered function text, or
+  any helper output that differs from `bir::print(module.module)` must not be
+  treated as agreement.
+- Global-only or string-constant-only modules remain on the prepared-printer
+  compatibility layout: current `bir::print` emits no top-level global/string
+  text, but existing prepared output still adds the conditional post-BIR blank
+  line when `module.globals` or `module.string_constants` are present.
+- Mixed function plus global/string-constant modules are compatible only if the
+  helper preserves the current function body bytes and the existing
+  global/string-sensitive post-body blank-line behavior; they are not proof
+  that global/string top-level text is complete.
+- Any phase, invariant, note, prepared metadata section, or blank-line drift is
+  a compatibility/fail-closed row for this candidate rather than an output
+  rewrite opportunity.
+- Raw baseline rewrites, unsupported expectation downgrades, or moving
+  prepared-only sections into BIR text are out of scope.
+
+Retained behavior:
+
+- Prepared printer remains the owner of the header, optional phase/invariant
+  and note headers, the `--- prepared-bir ---` marker, the post-BIR blank-line
+  policy, and all prepared metadata sections.
+- `bir::print(const bir::Module&)` remains the source of function body text;
+  the Step 3 helper only makes the agreement boundary explicit for using that
+  complete text in the selected prepared-printer body emission path.
+
+Candidate implementation/test files:
 
 - `src/backend/prealloc/prepared_printer.cpp`
-- `src/backend/prealloc/prepared_printer.hpp` only if the agreement helper
-  needs a public declaration; prefer a local helper otherwise.
 - `tests/backend/bir/backend_prepared_printer_test.cpp`
 
 ## Suggested Next
 
-Execute Step 2: design the complete-module-text agreement boundary in
-`todo.md`. The next packet should specify whether a small local helper in
-`prepared_printer.cpp` is enough, define accepted complete-module rows, define
-compatibility/fail-closed rows for partial or layout-sensitive module text, and
-name the Step 3 implementation/test ownership.
+Execute Step 3: implement the narrow printer bridge in
+`src/backend/prealloc/prepared_printer.cpp` and add focused byte-stability rows
+in `tests/backend/bir/backend_prepared_printer_test.cpp`.
+
+Suggested packet:
+
+- Objective: implement the local complete-module-text agreement helper for the
+  prepared-printer BIR body emission path.
+- Owned files: `src/backend/prealloc/prepared_printer.cpp`,
+  `tests/backend/bir/backend_prepared_printer_test.cpp`, `todo.md`.
+- Do not touch: `plan.md`,
+  `ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md`,
+  unrelated implementation files, route-debug output, target-output baselines,
+  unsupported expectations, or other idea 260 candidates.
+- Required behavior: preserve byte-stable output for empty modules,
+  function-only modules, global-only or string-constant-only compatibility
+  blank lines, phase headers, note headers, and post-body blank-line placement.
+- Focused proof command:
+  `(cmake --build --preset default --target backend_prepared_printer_test && ctest --test-dir build -R '^backend_prepared_printer$' --output-on-failure) > test_after.log 2>&1`
 
 ## Watchouts
 
@@ -79,13 +105,17 @@ name the Step 3 implementation/test ownership.
   empty-module output, function-only output, global/string-constant blank-line
   behavior, phase output, and note-header behavior.
 - The current BIR printer does not emit top-level globals or string constants;
-  Step 2 should decide whether that means the agreement boundary rejects those
-  as incomplete module-text rows or preserves the existing prepared-printer
-  compatibility blank-line rule.
+  Step 3 must preserve the existing prepared-printer compatibility blank-line
+  rule instead of claiming complete global/string text agreement.
+- Do not make the helper public unless implementation proves a local helper
+  cannot express the boundary.
+- A full-output byte comparison is preferable for the new rows because this
+  packet is about marker placement and blank-line stability, not substring
+  presence.
 - Do not rewrite route-debug, target output, baselines, unsupported
   expectations, helper/oracle status names, or unrelated printer/debug strings
   to claim progress.
-- Recommended narrow Step 2/3 proof command:
+- Recommended narrow Step 3 proof command:
   `(cmake --build --preset default --target backend_prepared_printer_test && ctest --test-dir build -R '^backend_prepared_printer$' --output-on-failure) > test_after.log 2>&1`
 
 ## Proof
