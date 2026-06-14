@@ -4,6 +4,7 @@
 #include "module.hpp"
 
 #include <algorithm>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <variant>
@@ -829,44 +830,26 @@ prepared_same_block_source_producer(
     const PreparedEdgePublicationSourceProducerLookups* source_producers,
     BlockLabelId block_label,
     const bir::Block* block,
+    const bir::Value& value,
     ValueNameId value_name,
-    bir::TypeKind value_type,
     std::size_t before_instruction_index) {
-  if (source_producers == nullptr ||
-      block_label == kInvalidBlockLabel ||
-      block == nullptr ||
-      value_name == kInvalidValueName) {
-    return std::nullopt;
-  }
-  const auto* producer =
-      find_indexed_prepared_edge_publication_source_producer(
-          source_producers, value_name);
-  if (producer == nullptr ||
-      producer->block_label != block_label ||
-      producer->instruction_index >= before_instruction_index ||
-      producer->instruction_index >= block->insts.size()) {
-    return std::nullopt;
-  }
-  const auto& inst = block->insts[producer->instruction_index];
-  if (!prepared_source_producer_matches_instruction(*producer, inst)) {
-    return std::nullopt;
-  }
-  const auto* producer_result = prepared_lookup_source_producer_result(*producer);
-  const auto* instruction_result = prepared_instruction_result_value_ref(inst);
-  if (producer_result == nullptr ||
-      instruction_result == nullptr ||
-      producer_result != instruction_result ||
-      !prepared_result_matches_value_name(names,
-                                          *instruction_result,
-                                          value_type,
-                                          value_name)) {
+  const auto agreement = prepared_bir_value_name_agreement(names,
+                                                          source_producers,
+                                                          block_label,
+                                                          block,
+                                                          value,
+                                                          value_name,
+                                                          before_instruction_index);
+  if (!agreement.available ||
+      agreement.source_producer == nullptr ||
+      agreement.instruction == nullptr) {
     return std::nullopt;
   }
   return PreparedSameBlockScalarProducer{
-      .producer = *producer,
-      .instruction = &inst,
-      .instruction_index = producer->instruction_index,
-      .value_name = value_name,
+      .producer = *agreement.source_producer,
+      .instruction = agreement.instruction,
+      .instruction_index = agreement.instruction_index,
+      .value_name = agreement.value_name,
   };
 }
 
@@ -893,8 +876,8 @@ prepared_same_block_source_producer(
                                                 source_producers,
                                                 block_label,
                                                 block,
+                                                value,
                                                 *value_name,
-                                                value.type,
                                                 before_instruction_index)
           : std::nullopt;
   if (!producer.has_value() ||
@@ -2116,12 +2099,18 @@ find_prepared_same_block_scalar_producer(
     ValueNameId value_name,
     bir::TypeKind value_type,
     std::size_t before_instruction_index) {
+  const std::string_view value_spelling = prepared_value_name(names, value_name);
+  if (value_spelling.empty()) {
+    return std::nullopt;
+  }
   return prepared_same_block_source_producer(names,
                                             source_producers,
                                             block_label,
                                             block,
+                                            bir::Value::named(
+                                                value_type,
+                                                std::string{value_spelling}),
                                             value_name,
-                                            value_type,
                                             before_instruction_index);
 }
 
@@ -2137,13 +2126,13 @@ find_prepared_same_block_scalar_producer(
   if (!value_name.has_value()) {
     return std::nullopt;
   }
-  return find_prepared_same_block_scalar_producer(names,
-                                                 source_producers,
-                                                 block_label,
-                                                 block,
-                                                 *value_name,
-                                                 value.type,
-                                                 before_instruction_index);
+  return prepared_same_block_source_producer(names,
+                                            source_producers,
+                                            block_label,
+                                            block,
+                                            value,
+                                            *value_name,
+                                            before_instruction_index);
 }
 
 std::optional<PreparedSameBlockScalarProducer>

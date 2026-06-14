@@ -6645,6 +6645,109 @@ int verify_prepared_same_block_scalar_source_facts() {
       prepared_sum->value_name != sum_name) {
     return fail("value-based scalar source facade should expose prepared producer facts");
   }
+  const auto scalar_available =
+      [&](const prepare::PreparedEdgePublicationSourceProducerLookups* lookups,
+          const bir::Value& value,
+          std::size_t before_instruction_index) {
+        return prepare::find_prepared_same_block_scalar_producer(
+                   names, lookups, block_label, &block, value,
+                   before_instruction_index)
+            .has_value();
+      };
+  const auto integer_constant_available =
+      [&](const prepare::PreparedEdgePublicationSourceProducerLookups* lookups,
+          const bir::Value& value) {
+        return prepare::evaluate_prepared_same_block_integer_constant(
+            names, lookups, block_label, &block, value, block.insts.size());
+      };
+  const auto select_chain_available =
+      [&](const prepare::PreparedEdgePublicationSourceProducerLookups* lookups,
+          const bir::Value& value) {
+        return prepare::find_prepared_select_chain_source_producer(
+                   names, lookups, block_label, &block, value,
+                   block.insts.size()) != nullptr;
+      };
+  if (!scalar_available(&source_producers,
+                        bir::Value::named(bir::TypeKind::I64, "%sum"),
+                        block.insts.size()) ||
+      !select_chain_available(&source_producers,
+                              bir::Value::named(bir::TypeKind::I64, "%choice"))) {
+    return fail("shared value-name agreement should accept agreed scalar and select-chain producers");
+  }
+  const auto folded_sum =
+      integer_constant_available(&source_producers,
+                                 bir::Value::named(bir::TypeKind::I64, "%sum"));
+  if (folded_sum != std::optional<std::int64_t>{21}) {
+    return fail("shared value-name agreement should allow agreed integer-constant operands to fold");
+  }
+
+  auto stale_source_producers = source_producers;
+  stale_source_producers.producers_by_value_name[sum_name].instruction_index =
+      block.insts.size();
+  auto duplicate_source_producers = source_producers;
+  duplicate_source_producers.producers_by_value_name[sum_name] =
+      prepare::PreparedEdgePublicationSourceProducer{};
+  auto wrong_type_source_producers = source_producers;
+  wrong_type_source_producers.producers_by_value_name[sum_name].binary = rhs;
+  wrong_type_source_producers.producers_by_value_name[sum_name].instruction_index = 1;
+  auto drift_source_producers = source_producers;
+  const auto drift_name = names.value_names.intern("%drift");
+  drift_source_producers.producers_by_value_name.emplace(
+      drift_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .binary = sum,
+      });
+  if (scalar_available(&source_producers, bir::Value::immediate_i64(21),
+                       block.insts.size()) ||
+      scalar_available(&source_producers, bir::Value::named(bir::TypeKind::I64, ""),
+                       block.insts.size()) ||
+      scalar_available(&source_producers,
+                       bir::Value::named(bir::TypeKind::I64, "%not_in_names"),
+                       block.insts.size()) ||
+      scalar_available(&stale_source_producers,
+                       bir::Value::named(bir::TypeKind::I64, "%sum"),
+                       block.insts.size()) ||
+      scalar_available(&source_producers,
+                       bir::Value::named(bir::TypeKind::I32, "%sum"),
+                       block.insts.size()) ||
+      scalar_available(&duplicate_source_producers,
+                       bir::Value::named(bir::TypeKind::I64, "%sum"),
+                       block.insts.size()) ||
+      scalar_available(nullptr, bir::Value::named(bir::TypeKind::I64, "%sum"),
+                       block.insts.size()) ||
+      prepare::find_prepared_same_block_scalar_producer(
+          names, &drift_source_producers, block_label, &block, drift_name,
+          bir::TypeKind::I64, block.insts.size())
+          .has_value()) {
+    return fail("shared value-name scalar agreement should fail closed for invalid, stale, duplicate, missing, or drifted rows");
+  }
+  if (integer_constant_available(&stale_source_producers,
+                                 bir::Value::named(bir::TypeKind::I64, "%sum"))
+          .has_value() ||
+      integer_constant_available(&wrong_type_source_producers,
+                                 bir::Value::named(bir::TypeKind::I64, "%sum"))
+          .has_value() ||
+      integer_constant_available(nullptr,
+                                 bir::Value::named(bir::TypeKind::I64, "%sum"))
+          .has_value()) {
+    return fail("shared value-name integer-constant lookup should fail closed for stale, wrong-type, or missing producer maps");
+  }
+  if (select_chain_available(&source_producers, bir::Value::immediate_i64(0)) ||
+      select_chain_available(&source_producers,
+                             bir::Value::named(bir::TypeKind::I64, "")) ||
+      select_chain_available(&source_producers,
+                             bir::Value::named(bir::TypeKind::I64, "%missing")) ||
+      select_chain_available(&source_producers,
+                             bir::Value::named(bir::TypeKind::I32, "%choice")) ||
+      select_chain_available(&duplicate_source_producers,
+                             bir::Value::named(bir::TypeKind::I64, "%sum")) ||
+      select_chain_available(nullptr,
+                             bir::Value::named(bir::TypeKind::I64, "%choice"))) {
+    return fail("shared value-name select-chain agreement should fail closed for invalid, mismatched, duplicate, or missing rows");
+  }
   const auto bir_query = mir::SameBlockValueMaterializationQuery{
       .block = &block,
       .block_label = "entry",
