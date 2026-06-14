@@ -1,5 +1,7 @@
 #include "publication_plans.hpp"
 
+#include "mir/query.hpp"
+
 #include "module.hpp"
 #include "select_chain_lookups.hpp"
 
@@ -316,6 +318,63 @@ prepared_current_block_join_instruction_result_value_ref(const bir::Inst& inst) 
           ? static_cast<std::int64_t>(*load_lane_offset)
           : std::int64_t{0};
   return *store_offset == *load_offset + lane_offset;
+}
+
+[[nodiscard]] bool prepared_recovered_store_source_agrees_with_bir(
+    const PreparedMemoryAccess* load_access,
+    const PreparedMemoryAccess* store_access,
+    const bir::Block& block,
+    const bir::LoadLocalInst& load,
+    std::size_t load_instruction_index,
+    const bir::StoreLocalInst& store,
+    std::size_t store_instruction_index) {
+  const auto bir_identity =
+      mir::find_bir_same_block_load_local_stored_value_source_identity(
+          mir::BirSameBlockLoadLocalSourceRequest{
+              .block = &block,
+              .block_label = block.label,
+              .root_value = &load.result,
+              .before_instruction_index = load_instruction_index + 1U,
+          });
+  if (!bir_identity ||
+      bir_identity.load_local != &load ||
+      bir_identity.store_local != &store ||
+      bir_identity.load_memory_access.instruction_index !=
+          load_instruction_index ||
+      bir_identity.store_memory_access.instruction_index !=
+          store_instruction_index ||
+      bir_identity.load_memory_access.node_kind !=
+          mir::BirMemoryAccessNodeKind::LoadLocal ||
+      bir_identity.store_memory_access.node_kind !=
+          mir::BirMemoryAccessNodeKind::StoreLocal ||
+      bir_identity.load_memory_access.base_kind !=
+          mir::BirMemoryAccessBaseKind::LocalSlot ||
+      bir_identity.store_memory_access.base_kind !=
+          mir::BirMemoryAccessBaseKind::LocalSlot ||
+      bir_identity.load_memory_access.result_value_name != load.result.name ||
+      bir_identity.stored_value.name != store.value.name ||
+      bir_identity.stored_value.type != store.value.type) {
+    return false;
+  }
+  if (load_access == nullptr || store_access == nullptr ||
+      load_access->address.base_kind != PreparedAddressBaseKind::FrameSlot ||
+      store_access->address.base_kind != PreparedAddressBaseKind::FrameSlot ||
+      !load_access->address.frame_slot_id.has_value() ||
+      !store_access->address.frame_slot_id.has_value()) {
+    return false;
+  }
+  return bir_identity.load_memory_access.local_slot_id ==
+             static_cast<c4c::SlotNameId>(*load_access->address.frame_slot_id) &&
+         bir_identity.store_memory_access.local_slot_id ==
+             static_cast<c4c::SlotNameId>(*store_access->address.frame_slot_id) &&
+         bir_identity.load_memory_access.byte_offset ==
+             load_access->address.byte_offset &&
+         bir_identity.store_memory_access.byte_offset ==
+             store_access->address.byte_offset &&
+         bir_identity.load_memory_access.size_bytes ==
+             load_access->address.size_bytes &&
+         bir_identity.store_memory_access.size_bytes ==
+             store_access->address.size_bytes;
 }
 
 [[nodiscard]] bool prepared_access_ranges_overlap(
@@ -1913,6 +1972,16 @@ find_prepared_recovered_narrow_store_source_for_wide_local_load(
     }
     const auto store_bits = integer_bit_width(store->value.type);
     if (!store_bits.has_value() || *store_bits != 8U || *store_bits >= *load_bits) {
+      return std::nullopt;
+    }
+    if (!prepared_recovered_store_source_agrees_with_bir(
+            load_access,
+            store_access,
+            *block,
+            load,
+            load_instruction_index,
+            *store,
+            index - 1U)) {
       return std::nullopt;
     }
     return PreparedRecoveredStoreSourcePublication{

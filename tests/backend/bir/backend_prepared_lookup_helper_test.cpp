@@ -8682,9 +8682,12 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
   const auto function_name = names.function_names.intern("stored_source");
   const auto block_label = names.block_labels.intern("entry");
   const auto stored_name = names.value_names.intern("%stored");
+  const auto narrow_stored_name = names.value_names.intern("%stored.byte");
+  const auto wide_loaded_name = names.value_names.intern("%loaded.wide");
   const auto conflict_name = names.value_names.intern("%conflict");
   const auto loaded_name = names.value_names.intern("%loaded");
   const auto slot_id = prepare::PreparedFrameSlotId{21};
+  bir::NameTables bir_names;
 
   bir::Block exact_block;
   exact_block.label = "entry";
@@ -8944,6 +8947,147 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
       !target_policy_prepared->load_access ||
       target_policy_prepared->load_access->address.can_use_base_plus_offset) {
     return fail("prepared target-addressing policy should remain authoritative outside Route 3 source identity");
+  }
+
+  bir::Block recovered_block;
+  recovered_block.label = "entry";
+  recovered_block.label_id = block_label;
+  recovered_block.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "local0",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+      .value = bir::Value::named(bir::TypeKind::I8, "%stored.byte"),
+      .byte_offset = 8,
+      .align_bytes = 1,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "local0",
+              .byte_offset = 8,
+              .size_bytes = 1,
+              .align_bytes = 1,
+              .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          },
+  });
+  recovered_block.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%loaded.wide"),
+      .slot_name = "local0",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+      .byte_offset = 8,
+      .align_bytes = 1,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "local0",
+              .byte_offset = 8,
+              .size_bytes = 1,
+              .align_bytes = 1,
+              .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+          },
+  });
+  const auto* recovered_load =
+      std::get_if<bir::LoadLocalInst>(&recovered_block.insts[1]);
+  if (recovered_load == nullptr) {
+    return fail("recovered-source fixture should contain a wide load-local");
+  }
+  const prepare::PreparedAddressingFunction recovered_addressing{
+      .function_name = function_name,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .stored_value_name = narrow_stored_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind =
+                              prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = slot_id,
+                          .byte_offset = 8,
+                          .size_bytes = 1,
+                          .align_bytes = 1,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .result_value_name = wide_loaded_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind =
+                              prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = slot_id,
+                          .byte_offset = 8,
+                          .size_bytes = 1,
+                          .align_bytes = 1,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+          },
+  };
+  const auto recovered =
+      prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
+          names,
+          bir_names,
+          stack_layout,
+          &recovered_addressing,
+          block_label,
+          &recovered_block,
+          *recovered_load,
+          1);
+  if (!recovered.has_value() ||
+      recovered->stored_value !=
+          bir::Value::named(bir::TypeKind::I8, "%stored.byte") ||
+      recovered->instruction_index != 0) {
+    return fail("recovered narrow-store source should require prepared/BIR agreement");
+  }
+
+  bir::Block missing_bir_recovered_block = recovered_block;
+  auto* missing_bir_store =
+      std::get_if<bir::StoreLocalInst>(&missing_bir_recovered_block.insts[0]);
+  auto* missing_bir_load =
+      std::get_if<bir::LoadLocalInst>(&missing_bir_recovered_block.insts[1]);
+  if (missing_bir_store == nullptr || missing_bir_load == nullptr) {
+    return fail("missing-BIR recovered fixture should contain store/load locals");
+  }
+  missing_bir_store->address.reset();
+  missing_bir_load->address.reset();
+  if (prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
+          names,
+          bir_names,
+          stack_layout,
+          &recovered_addressing,
+          block_label,
+          &missing_bir_recovered_block,
+          *missing_bir_load,
+          1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for missing BIR identity");
+  }
+
+  bir::Block mismatched_bir_recovered_block = recovered_block;
+  auto* mismatched_bir_store =
+      std::get_if<bir::StoreLocalInst>(&mismatched_bir_recovered_block.insts[0]);
+  auto* mismatched_bir_load =
+      std::get_if<bir::LoadLocalInst>(&mismatched_bir_recovered_block.insts[1]);
+  if (mismatched_bir_store == nullptr || mismatched_bir_load == nullptr ||
+      !mismatched_bir_store->address.has_value()) {
+    return fail("mismatched-BIR recovered fixture should contain addressed store/load locals");
+  }
+  mismatched_bir_store->address->byte_offset = 9;
+  if (prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
+          names,
+          bir_names,
+          stack_layout,
+          &recovered_addressing,
+          block_label,
+          &mismatched_bir_recovered_block,
+          *mismatched_bir_load,
+          1)
+          .has_value()) {
+    return fail("recovered narrow-store source should fail closed for prepared/BIR mismatch");
   }
 
   auto mismatched_addressing = addressing;
