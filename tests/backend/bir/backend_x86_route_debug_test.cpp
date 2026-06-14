@@ -1170,6 +1170,15 @@ prepare::PreparedBirModule selected_route6_scalar_arg_with_invalid_source_id() {
   return prepared;
 }
 
+prepare::PreparedBirModule selected_route6_scalar_arg_with_missing_source_name() {
+  auto prepared = legalize_single_block_same_module_scalar_call_wrapper_miss_module();
+  auto* call = find_selected_route6_scalar_arg_call(prepared);
+  if (call != nullptr && !call->arg_sources.empty()) {
+    call->arg_sources.front().source_value_name.reset();
+  }
+  return prepared;
+}
+
 prepare::PreparedBirModule selected_route6_scalar_arg_with_duplicate_conflict() {
   auto prepared = legalize_single_block_same_module_scalar_call_wrapper_miss_module();
   auto* call = find_selected_route6_scalar_arg_call(prepared);
@@ -1660,6 +1669,11 @@ int main() {
   const std::string single_block_same_module_scalar_call_invalid_route6_trace =
       c4c::backend::x86::trace_prepared_module_routes(
           single_block_same_module_scalar_call_invalid_route6);
+  const auto single_block_same_module_scalar_call_missing_source_name_route6 =
+      selected_route6_scalar_arg_with_missing_source_name();
+  const std::string single_block_same_module_scalar_call_missing_source_name_route6_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          single_block_same_module_scalar_call_missing_source_name_route6);
   const auto single_block_same_module_scalar_call_duplicate_route6 =
       selected_route6_scalar_arg_with_duplicate_conflict();
   const std::string single_block_same_module_scalar_call_duplicate_route6_trace =
@@ -1706,6 +1720,8 @@ int main() {
       "    route6 scalar arg status call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 status=missing_source_relationship gate=blocked\n";
   const std::string selected_route6_scalar_arg_missing_source_value_status_row =
       "    route6 scalar arg status call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 status=available gate=missing_source_value\n";
+  const std::string selected_route6_scalar_arg_missing_source_name_status_row =
+      "    route6 scalar arg status call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 status=available gate=missing_source_name\n";
   const std::string selected_route6_scalar_arg_duplicate_status_row =
       "    route6 scalar arg status call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 status=duplicate_relationship gate=blocked\n";
   const std::string selected_route6_scalar_arg_prepared_mismatch_status_row =
@@ -1821,6 +1837,18 @@ int main() {
       !expect_not_contains(single_block_same_module_scalar_call_invalid_route6_trace,
                            selected_route6_scalar_arg_row,
                            "selected scalar call invalid-Route-6 source row") ||
+      !expect_contains(single_block_same_module_scalar_call_missing_source_name_route6_trace,
+                       "x86 route trace",
+                       "selected scalar call missing-source-name fallback trace header") ||
+      !expect_contains(single_block_same_module_scalar_call_missing_source_name_route6_trace,
+                       selected_route6_scalar_arg_function_row,
+                       "selected scalar call missing-source-name fallback function row") ||
+      !expect_contains(single_block_same_module_scalar_call_missing_source_name_route6_trace,
+                       selected_route6_scalar_arg_missing_source_name_status_row,
+                       "selected scalar call missing-source-name status row") ||
+      !expect_not_contains(single_block_same_module_scalar_call_missing_source_name_route6_trace,
+                           selected_route6_scalar_arg_row,
+                           "selected scalar call missing-source-name source row") ||
       !expect_contains(single_block_same_module_scalar_call_duplicate_route6_trace,
                        "x86 route trace",
                        "selected scalar call duplicate-Route-6 fallback trace header") ||

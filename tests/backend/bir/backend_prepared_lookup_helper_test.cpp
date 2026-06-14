@@ -8774,6 +8774,40 @@ int verify_bir_call_argument_publication_source_routing_lookup() {
         "x86 Route 6 consumed-plans helper should consume Route 6 ArgumentValue record compatibility, not same-id local inference");
   }
 
+  auto x86_missing_source_name_function = x86_function;
+  auto& x86_missing_source_name_block =
+      x86_missing_source_name_function.blocks.front();
+  auto* x86_missing_source_name_call =
+      std::get_if<bir::CallInst>(&x86_missing_source_name_block.insts.front());
+  if (x86_missing_source_name_call == nullptr ||
+      x86_missing_source_name_call->arg_sources.empty()) {
+    return fail(
+        "x86 Route 6 missing-source-name consumed-plans fixture is malformed");
+  }
+  x86_missing_source_name_call->arg_sources.front().source_value_name.reset();
+  const auto x86_missing_source_name_index =
+      bir::route6_build_call_use_source_index(x86_missing_source_name_function);
+  const c4c::backend::x86::ConsumedPlans x86_missing_source_name{
+      .calls = &x86_call_plans,
+      .route6_call_use_sources = x86_missing_source_name_index,
+  };
+  if (c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority(
+          x86_missing_source_name,
+          x86_missing_source_name_block,
+          *x86_missing_source_name_call,
+          0,
+          0,
+          0,
+          x86_missing_source_name_call->args.front())) {
+    return fail(
+        "x86 Route 6 consumed-plans authority should fail closed when an agreed source id has no source name");
+  }
+  if (c4c::backend::x86::find_consumed_call_argument_plan(
+          x86_missing_source_name, 0, 0, 0) == nullptr) {
+    return fail(
+        "x86 Route 6 missing-source-name fallback should preserve prepared call argument selection");
+  }
+
   c4c::backend::x86::ConsumedPlans x86_no_route6 = x86_consumed;
   x86_no_route6.route6_call_use_sources.reset();
   if (c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(

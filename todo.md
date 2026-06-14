@@ -1,51 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/244_phase_f1_x86_route6_call_wrapper_diagnostic_oracle_replacement.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add or tighten route-native fail-closed diagnostic coverage
+Current Step ID: Step 3
+Current Step Title: Introduce agreement-gated Route 6 source authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Add or tighten route-native fail-closed diagnostic coverage completed.
+Step 3 - Introduce agreement-gated Route 6 source authority completed.
 
 Changed implementation surface:
 
-- `src/backend/mir/x86/debug/debug.cpp`: `append_route6_scalar_call_argument_sources(...)`
-  now emits a route-native `route6 scalar arg status` row for named scalar
-  `i32` call arguments when both prepared call-plan visibility and a Route 6
-  source index are available. The row uses `route6_call_use_status_name(...)`
-  for the raw Route 6 lookup status and a separate `gate=` token for the
-  x86/prepared agreement gate.
+- `src/backend/mir/x86/x86.hpp`: added
+  `find_consumed_scalar_i32_call_argument_source_authority(...)`, which only
+  returns Route 6 authority for the selected scalar `i32` call-argument path
+  when the Route 6 argument-value record matches the BIR argument, has a
+  source id, has a source name, and agrees with the existing prepared source
+  id. The existing record helper remains as compatibility surface and now
+  delegates through the authority helper.
+- `src/backend/mir/x86/module/module.cpp`: the two x86 direct extern scalar
+  call-argument emission paths now pass an agreed Route 6 source name as the
+  explicit source authority. Missing or non-agreeing Route 6 authority passes
+  `std::nullopt`, preserving the existing prepared argument-name fallback.
+- `src/backend/mir/x86/debug/debug.cpp`: route-debug now reports
+  `gate=missing_source_name` for records with an agreed source id shape but no
+  named source value, keeping that incomplete case fail-closed and visible.
 
 Changed test surface:
 
-- `tests/backend/bir/backend_x86_route_debug_test.cpp`: the selected scalar
-  `i32` fixture now asserts named status rows for the positive `available`
-  case and fail-closed absent Route 6, missing source id, duplicate Route 6,
-  Route 6/prepared id mismatch, and source-name mismatch cases.
+- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`: asserts the
+  new authority helper fails closed when a Route 6 record has the agreed source
+  id but no source name, while the prepared call-argument selector remains
+  available.
+- `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp`:
+  asserts the positive scalar source becomes named Route 6 authority and that
+  the missing-source-name case falls back to prepared emission with unchanged
+  `expected_minimal_direct_extern_call_lane_asm()`.
+- `tests/backend/bir/backend_x86_route_debug_test.cpp`: adds the
+  `status=available gate=missing_source_name` row and confirms it does not emit
+  the accepted `route6 scalar arg ... kind=ArgumentValue` source row.
 
-Observed route-debug rows for the selected matrix:
-
-- Positive: `status=available gate=agreed`, followed by the existing
-  `route6 scalar arg ... kind=ArgumentValue` row.
-- Absent Route 6 relationship: `status=missing_source_relationship gate=blocked`.
-- Missing Route 6 source id: `status=available gate=missing_source_value`.
-- Duplicate Route 6 relationship: `status=duplicate_relationship gate=blocked`.
-- Prepared source-id mismatch: `status=available gate=prepared_source_mismatch`.
-- Source-name mismatch: `status=available gate=source_value_mismatch`.
-
-Compatibility rows, prepared helper-oracle expectations, handoff boundary
-expectations, and wrapper assembly were left unchanged.
+Wrapper assembly expectations, prepared fallback behavior, public
+`ConsumedPlans` compatibility, and non-agreeing Route 6 fail-closed behavior
+were preserved.
 
 ## Suggested Next
 
-Next coherent packet: Step 3 should introduce the smallest agreement-gated
-Route 6 source-authority helper for the selected scalar `i32` direct-call
-argument path, reusing the now-visible `gate=agreed` versus fail-closed
-diagnostic states and preserving prepared fallback for every non-agreeing
-case.
+Next coherent packet: Step 4 should prove wrapper output and prepared
+compatibility stability around the selected scalar `i32` direct-call argument
+path, with particular attention to `expected_minimal_direct_extern_call_lane_asm()`
+and retained public `ConsumedPlans` compatibility rows.
 
 ## Watchouts
 
@@ -53,21 +58,24 @@ case.
 - Do not claim prepared aggregate or draft retirement.
 - Do not weaken expected strings, helper-oracle statuses, supported-path
   contracts, fallback behavior, or wrapper assembly as proof.
-- Route 6 source authority must be agreement-gated against the current
-  prepared call argument source selection.
-- The new status rows are diagnostic-only. They do not change wrapper
-  authority, prepared source selection, fallback behavior, or `ConsumedPlans`
-  compatibility.
+- Route 6 source authority is now limited to named, argument-value Route 6
+  records whose source id agrees with the prepared call argument source id.
+- Missing Route 6 facts, missing source ids, missing source names, duplicate
+  records, prepared-source mismatches, and source-name mismatches must continue
+  to preserve prepared fallback and avoid false positive Route 6 authority.
 - `status=available gate=missing_source_value` is intentionally a consumer-side
   agreement-gate result: the raw Route 6 lookup found a relationship, but the
   selected relationship lacks the source id required for x86/prepared
   agreement.
-- `status=available gate=prepared_source_mismatch` and
+- `status=available gate=missing_source_name`,
+  `status=available gate=prepared_source_mismatch`, and
   `status=available gate=source_value_mismatch` distinguish post-lookup
-  agreement failures from raw Route 6 lookup failures.
+  authority-gate failures from raw Route 6 lookup failures.
 - Keep `ConsumedPlans` public compatibility visible; do not hide or demote
   `PreparedFunctionLookups`, prepared call plans, or fallback labels in this
   idea.
+- `clang-format` was not available in this environment
+  (`/bin/bash: clang-format: command not found`); formatting was kept manual.
 
 ## Proof
 

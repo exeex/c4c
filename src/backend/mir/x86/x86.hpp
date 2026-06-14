@@ -38,6 +38,11 @@ struct ConsumedPlans {
   }
 };
 
+struct ConsumedScalarI32CallArgumentSourceAuthority {
+  c4c::backend::bir::Route6CallArgumentSourceRecord route6_source;
+  std::string_view source_name;
+};
+
 [[nodiscard]] inline const c4c::backend::bir::Function* find_consumed_bir_function(
     const c4c::backend::prepare::PreparedBirModule& module,
     c4c::FunctionNameId function_name) {
@@ -92,8 +97,8 @@ find_consumed_call_argument_plan(const ConsumedPlans& consumed,
   return nullptr;
 }
 
-[[nodiscard]] inline std::optional<c4c::backend::bir::Route6CallArgumentSourceRecord>
-find_consumed_scalar_i32_call_argument_source(
+[[nodiscard]] inline std::optional<ConsumedScalarI32CallArgumentSourceAuthority>
+find_consumed_scalar_i32_call_argument_source_authority(
     const ConsumedPlans& consumed,
     const c4c::backend::bir::Block& block,
     const c4c::backend::bir::CallInst& call,
@@ -117,7 +122,30 @@ find_consumed_scalar_i32_call_argument_source(
       *record.source_value_id != *prepared_argument->source_value_id) {
     return std::nullopt;
   }
-  return record;
+  if (!record.source_value_name.has_value()) {
+    return std::nullopt;
+  }
+  return ConsumedScalarI32CallArgumentSourceAuthority{
+      .route6_source = record,
+      .source_name = *record.source_value_name,
+  };
+}
+
+[[nodiscard]] inline std::optional<c4c::backend::bir::Route6CallArgumentSourceRecord>
+find_consumed_scalar_i32_call_argument_source(
+    const ConsumedPlans& consumed,
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::bir::CallInst& call,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t arg_index,
+    const c4c::backend::bir::Value& argument) {
+  const auto authority = find_consumed_scalar_i32_call_argument_source_authority(
+      consumed, block, call, block_index, instruction_index, arg_index, argument);
+  if (!authority.has_value()) {
+    return std::nullopt;
+  }
+  return authority->route6_source;
 }
 
 [[nodiscard]] inline const c4c::backend::prepare::PreparedCallResultPlan*

@@ -3123,7 +3123,7 @@ bool append_prepared_direct_extern_call_argument(
     const Data& data,
     const c4c::backend::bir::Value& argument,
     const std::string& destination_register,
-    const c4c::backend::bir::Route6CallArgumentSourceRecord* route6_argument_source = nullptr) {
+    std::optional<std::string_view> route6_source_authority = std::nullopt) {
   if (argument.kind == c4c::backend::bir::Value::Kind::Named && !argument.name.empty() &&
       argument.name.front() == '@' && argument.type == c4c::backend::bir::TypeKind::Ptr) {
     std::string_view symbol_name(argument.name.data() + 1, argument.name.size() - 1);
@@ -3144,10 +3144,7 @@ bool append_prepared_direct_extern_call_argument(
   if (argument.kind == c4c::backend::bir::Value::Kind::Named &&
       argument.type == c4c::backend::bir::TypeKind::I32) {
     const auto source_name =
-        route6_argument_source != nullptr &&
-                route6_argument_source->source_value_name.has_value()
-            ? *route6_argument_source->source_value_name
-            : std::string_view(argument.name);
+        route6_source_authority.value_or(std::string_view(argument.name));
     const auto& home = require_prepared_i32_value_home(
         module, function_locations, function, source_name, "direct extern call argument");
     if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
@@ -3253,9 +3250,13 @@ bool append_prepared_direct_extern_call_return_function(
             "defined function '" + function.name +
             "' has no authoritative prepared call-bundle handoff");
       }
-      const auto route6_argument_source =
-          c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+      const auto route6_argument_source_authority =
+          c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority(
               consumed, block, *call, 0, instruction_index, arg_index, call->args[arg_index]);
+      const std::optional<std::string_view> route6_source_authority =
+          route6_argument_source_authority.has_value()
+              ? std::optional<std::string_view>{route6_argument_source_authority->source_name}
+              : std::nullopt;
       if (!append_prepared_direct_extern_call_argument(function_out,
                                                       module,
                                                       *function_locations,
@@ -3263,9 +3264,7 @@ bool append_prepared_direct_extern_call_return_function(
                                                       data,
                                                       call->args[arg_index],
                                                       *destination_register,
-                                                      route6_argument_source.has_value()
-                                                          ? &*route6_argument_source
-                                                          : nullptr)) {
+                                                      route6_source_authority)) {
         return false;
       }
     }
@@ -3563,9 +3562,13 @@ bool append_prepared_symbol_call_local_i32_function(
           }
           if (argument.kind == c4c::backend::bir::Value::Kind::Named &&
               argument.type == c4c::backend::bir::TypeKind::I32) {
-            const auto route6_argument_source =
-                c4c::backend::x86::find_consumed_scalar_i32_call_argument_source(
+            const auto route6_argument_source_authority =
+                c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority(
                     consumed, block, *call, 0, instruction_index, arg_index, argument);
+            const std::optional<std::string_view> route6_source_authority =
+                route6_argument_source_authority.has_value()
+                    ? std::optional<std::string_view>{route6_argument_source_authority->source_name}
+                    : std::nullopt;
             const auto loaded_value = loaded_i32_values.find(argument.name);
             if (loaded_value != loaded_i32_values.end()) {
               function_out.append_line("    mov " +
@@ -3579,9 +3582,7 @@ bool append_prepared_symbol_call_local_i32_function(
                                                                     data,
                                                                     argument,
                                                                     *destination_register,
-                                                                    route6_argument_source.has_value()
-                                                                        ? &*route6_argument_source
-                                                                        : nullptr)) {
+                                                                    route6_source_authority)) {
               return false;
             }
           } else {

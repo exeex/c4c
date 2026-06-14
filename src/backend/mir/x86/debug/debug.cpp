@@ -70,6 +70,9 @@ const char* route6_scalar_call_argument_gate_name(
   if (!route6_source.source_value_id.has_value()) {
     return "missing_source_value";
   }
+  if (!route6_source.source_value_name.has_value()) {
+    return "missing_source_name";
+  }
   if (prepared_argument == nullptr || !prepared_argument->source_value_id.has_value()) {
     return "missing_prepared_source";
   }

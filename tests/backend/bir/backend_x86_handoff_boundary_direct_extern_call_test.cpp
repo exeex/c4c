@@ -450,6 +450,52 @@ int check_consumed_plans_threads_route6_scalar_call_argument_source() {
       *route6_source->source_value_id != *prepared_argument->source_value_id) {
     return fail("x86 Route 6 call-use boundary: scalar call argument source did not thread through ConsumedPlans");
   }
+  const auto route6_authority =
+      c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority(
+          consumed, block, *call, 0, 1, 1, call->args[1]);
+  if (!route6_authority || route6_authority->source_name != "%t0") {
+    return fail("x86 Route 6 call-use boundary: agreed scalar source did not become named Route 6 authority");
+  }
+
+  auto nameless_prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_direct_extern_call_lane_module(),
+                                                        x86_target_profile());
+  auto* nameless_main = find_mutable_bir_function(nameless_prepared, "main");
+  if (nameless_main == nullptr || nameless_main->blocks.empty()) {
+    return fail("x86 Route 6 call-use boundary nameless fallback: malformed main fixture");
+  }
+  auto& nameless_block = nameless_main->blocks.front();
+  auto* nameless_call = std::get_if<bir::CallInst>(&nameless_block.insts[1]);
+  if (nameless_call == nullptr || nameless_call->args.size() <= 1) {
+    return fail("x86 Route 6 call-use boundary nameless fallback: malformed printf call fixture");
+  }
+  auto nameless_arg_source =
+      std::find_if(nameless_call->arg_sources.begin(),
+                   nameless_call->arg_sources.end(),
+                   [](const bir::CallArgumentSourceRelationship& source) {
+                     return source.arg_index == 1;
+                   });
+  if (nameless_arg_source == nameless_call->arg_sources.end()) {
+    return fail("x86 Route 6 call-use boundary nameless fallback: missing printf scalar source");
+  }
+  nameless_arg_source->source_value_name.reset();
+  const auto nameless_consumed = c4c::backend::x86::consume_plans(nameless_prepared, "main");
+  if (c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority(
+          nameless_consumed, nameless_block, *nameless_call, 0, 1, 1, nameless_call->args[1])) {
+    return fail("x86 Route 6 call-use boundary nameless fallback: nameless Route 6 source became named authority");
+  }
+
+  std::string nameless_asm;
+  try {
+    nameless_asm = c4c::backend::x86::api::emit_prepared_module(nameless_prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string("x86 Route 6 call-use boundary nameless fallback: prepared fallback rejected with exception: ") +
+                 ex.what())
+                    .c_str());
+  }
+  if (nameless_asm != expected_minimal_direct_extern_call_lane_asm()) {
+    return fail("x86 Route 6 call-use boundary nameless fallback: prepared call-plan fallback changed asm");
+  }
 
   auto fallback_prepared =
       prepare::prepare_semantic_bir_module_with_options(make_x86_direct_extern_call_lane_module(),
