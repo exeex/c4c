@@ -1,113 +1,154 @@
 Status: Active
 Source Idea Path: ideas/open/253_phase_f3_prepared_module_structural_exit_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Map `module` Structural Exit Preconditions
+Current Step ID: 3
+Current Step Title: Map `names` Structural Exit Preconditions
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Map `module` Structural Exit Preconditions completed as an
-analysis-only map for `PreparedBirModule::module`.
+Step 3 - Map `names` Structural Exit Preconditions completed as an
+analysis-only map for `PreparedBirModule::names`.
 
-`module` structural exit map:
+`names` structural exit map:
 
-- Semantic BIR module/function/block structure:
-  `PreparedBirModule::module` is still the semantic BIR carrier seeded by
-  `BirPreAlloc` and returned after prealloc phases. `run_legalize` and
-  `run_out_of_ssa` mutate it directly; `run_stack_layout`, `run_liveness`, and
-  `run_regalloc` iterate functions/blocks/instructions and use
-  `prepared_.module.names` to bridge BIR labels to prepared ids. These are
-  semantic structure readers, but they are not one-reader exits because the
-  live mutable module is also the phase handoff object.
-- Prepared aggregate handoff:
-  contract publishers still read `prepared.module.functions`, block contents,
-  globals, calls, stores, atomics, intrinsics, inline asm, and
-  `prepared.module.names` while publishing prepared facts. Concrete examples:
-  `populate_call_plans` passes `prepared.module` to `resolve_direct_callee`,
-  `build_memory_return_plan`, and `plan_call_argument_source`;
-  `populate_store_source_publication_plans` scans stores and calls recovered
-  source helpers with `prepared.module.names`; `populate_dynamic_stack_plan`,
-  `populate_variadic_entry_plans`, `populate_atomic_operations`,
-  `populate_intrinsic_carriers`, and `populate_inline_asm_carriers` scan BIR
-  functions. These remain blocked prepared authority until each publisher has a
-  semantic view or retained aggregate adapter plus fail-closed drift proof.
-- Printer/module output compatibility:
-  `prepared_printer.cpp::print` emits `bir::print(module.module)` and preserves
-  the blank-line rule based on BIR functions/globals/string constants.
-  `prepared_printer/functions.cpp`, `prepared_printer/value_locations.cpp`, and
-  `prepared_printer/select_chains.cpp` re-find BIR functions/blocks from
-  `module.module.functions` for debug rows. These readers are output
-  compatibility surfaces; a structural exit cannot change text ordering,
-  missing-id elision, or blank-line behavior without an explicit output
-  compatibility decision.
-- Target-policy consumers:
-  x86 and AArch64 keep `module.module` as part of backend handoff. x86 readers
-  include `find_consumed_bir_function`, fast-path classification, control-flow
-  handoff validation, same-module global/function/string-constant policy,
-  pointer-compare folding, function emission, and data emission. AArch64
-  readers include `codegen::traversal::find_bir_function`,
-  `append_string_constants`, `append_global_objects`, and ABI target-triple
-  fallback. These are target-policy/output consumers, not semantic-only exits.
-- Retained public compatibility:
-  tests and handoff helpers directly seed, mutate, print, or assert
-  `prepared.module`. That surface is evidence for compatibility, but it is not
-  implementation authority for this packet. Any future adapter must preserve
-  the public prepared aggregate shape or explicitly migrate tests as part of a
-  compatibility-approved packet.
+- Semantic name-to-id lookup readers:
+  `PreparedNameTables` owns the prepared text table plus function, block,
+  value, slot, and link-name tables. Semantic readers use `find` or the
+  `resolve_prepared_*_id` wrappers to convert BIR spelling back to prepared
+  ids and fail closed on missing entries. Concrete readers include
+  `control_flow.hpp::resolve_prepared_function_name_id`,
+  `resolve_prepared_block_label_id`, `resolve_prepared_value_name_id`,
+  `prepared_lookups.cpp::existing_prepared_value_name_id`,
+  `prepared_result_matches_value_name`,
+  `find_prepared_same_block_scalar_producer`,
+  `evaluate_prepared_same_block_integer_constant`,
+  `value_locations.hpp::find_prepared_value_home(..., string_view)`,
+  `find_prepared_value_home_for_bir_value`,
+  `dynamic_stack.cpp::maybe_named_value_id`,
+  `variadic_entry_plans.cpp::prepared_home_for_named_value`, and
+  `select_chain_lookups.cpp` value/block lookup helpers. These are the only
+  positive structural-exit candidates: each needs a replacement semantic fact
+  that supplies the prepared id directly or proves the text-to-id miss remains
+  authoritative.
+- BIR/prepared label bridge and duplicate/conflict compatibility:
+  `prepared_lookups.cpp::prepared_bir_block`,
+  `prepared_bir_block_label_id`, `select_chain_lookups.cpp` block lookup
+  helpers, AArch64 dispatch block lookup, and x86
+  `bir_block_label_id`/`find_bir_block_by_prepared_label` compare prepared
+  block labels against both BIR structured ids and raw labels. This is not a
+  simple formatting surface: the current compatibility accepts structured-id
+  spelling first, then raw-label fallback, and returns null/invalid or throws
+  target handoff errors when names are missing or drifted. Any exit must keep
+  duplicate-label/conflicting-table behavior fail-closed instead of silently
+  selecting a different block.
+- Debug text and prepared-printer spelling:
+  `prepared_printer/*` readers call `prepared_function_name`,
+  `prepared_block_label`, `prepared_value_name`, `prepared_slot_name`, and
+  `prepared_link_name` to render prepared sections for control-flow, value
+  locations, frame, calls, storage, addressing, select chains, atomics,
+  intrinsics, inline asm, runtime helpers, and special carriers. x86
+  `debug/debug.cpp` and x86 module debug comments also render prepared value
+  and function names. These are output compatibility surfaces, not semantic
+  exits; missing-id spelling, blank fields, row order, and exact text remain
+  guarded by expected-output behavior.
+- Route-debug names and diagnostic/fallback rendering:
+  AArch64 diagnostics and route helpers carry prepared function/block/value ids
+  but often render names later through `prepared.names`; examples include
+  dispatch diagnostics, publication/debug queries with optional
+  `PreparedNameTables*`, comparison/materialization debug helpers, and x86
+  fast-path comments/errors. These names explain or guard target route choices
+  and must stay retained until a packet names the diagnostic row, the semantic
+  id source, and the unchanged text/fallback proof.
+- Target formatting and policy consumers:
+  AArch64 and x86 use prepared names for assembly labels, symbol labels,
+  global/string address materialization, loop-countdown labels, pointer/global
+  folding, handoff validation, and target-specific fallback. Concrete examples
+  include AArch64 `traversal.cpp::find_bir_function`,
+  `dispatch.cpp::find_bir_block`, `dispatch_producers.cpp::find_bir_block`,
+  `globals.cpp` symbol/target-label rendering, `calls.cpp` value-name
+  fallbacks, `asm_emitter.cpp` function/global labels, x86
+  `validate_prepared_control_flow_handoff`,
+  `append_prepared_loop_join_countdown_function`, and data/function emission.
+  These are target-policy/output consumers. They may use semantic ids, but the
+  structural exit is blocked until target formatting and fail-closed handoff
+  behavior are proved unchanged.
+- Name construction and public aggregate compatibility:
+  prealloc phases intern prepared names while deriving control-flow,
+  stack-layout, addressing, liveness, out-of-ssa, regalloc, call, publication,
+  variadic, storage, carrier, intrinsic, inline-asm, and helper facts.
+  `PreparedNameTables` copy/move reattachment also preserves public aggregate
+  behavior for tests and handoff helpers. This construction/compatibility
+  surface is retained; broad deletion, privatization, or table replacement is
+  not opened by Step 3.
 
 Concrete future packets:
 
 - One-reader packet candidate:
-  `prepared_lookups.cpp::prepared_bir_function`,
-  `prepared_lookups.cpp::prepared_bir_block`, and
-  `prepared_lookups.cpp::prepared_bir_block_label_id` can be grouped as a
-  lookup-reader packet only if the new input is a semantic BIR function/block
-  view. Reader: prepared lookup construction, including
-  `make_prepared_function_lookups`. Semantic fact: resolve prepared
-  function/block ids to BIR functions/blocks using function names, block label
-  ids, and label spelling fallback. Compatibility surface: current null return
-  and `kInvalidBlockLabel` behavior for missing ids, missing names, and stale
-  labels. Fail-closed proof: valid lookup, missing function id, missing block
-  id, stale BIR label id, and label-string fallback cases must continue to
-  return the current null/invalid result instead of inventing authority.
+  `prepared_lookups.cpp::existing_prepared_value_name_id`,
+  `prepared_result_matches_value_name`, `prepared_same_block_source_producer`,
+  and `evaluate_prepared_same_block_integer_constant` can be grouped only as a
+  same-block value-name lookup packet. Reader: prepared source-producer and
+  integer-constant helpers. Semantic fact: named BIR values map to existing
+  prepared `ValueNameId` before producer/value-home lookup. Compatibility
+  surface: unnamed values, empty names, missing prepared names, stale producer
+  indexes, type mismatches, and duplicate text conflicts keep returning
+  `nullopt`/false. Fail-closed proof: valid named value, unnamed value,
+  missing prepared id, stale producer record, wrong type, and duplicate-same
+  spelling cases must not invent authority.
 - One-reader packet candidate:
-  `prepared_printer.cpp::print` can be isolated only as a printer-output
-  packet. Reader: the top-level prepared printer BIR body emission and
-  non-empty-module blank-line check. Semantic fact: complete BIR module text
-  supplied to `bir::print`. Compatibility surface: exact prepared-printer
-  section order, BIR text, and blank-line behavior. Fail-closed proof: empty
-  module, function-only module, global/string-constant module, and prepared
-  phase/note header cases must produce unchanged printer output.
+  `value_locations.hpp::find_prepared_value_home(..., string_view)` and
+  `find_prepared_value_home_for_bir_value` can be grouped as a value-home
+  lookup packet. Reader: text/BIR-value entrypoints into value homes. Semantic
+  fact: caller supplies or resolves one prepared `ValueNameId` before lookup.
+  Compatibility surface: null function locations, non-named BIR values, empty
+  names, missing prepared names, and missing home rows return `nullptr`.
+  Fail-closed proof: valid home, missing name id, missing home, immediate
+  value, empty named value, and stale indexed lookup cases must retain current
+  null behavior.
+- One-reader packet candidate:
+  `control_flow.hpp::resolve_prepared_function_name_id`,
+  `resolve_prepared_block_label_id`, and `resolve_prepared_value_name_id` can
+  be isolated only as a semantic resolver API packet. Reader: name-to-id
+  wrappers that currently return `std::nullopt` for missing table entries.
+  Semantic fact: the caller has an authoritative prepared id or an explicit
+  absent-id fact. Compatibility surface: no interning on lookup, no fallback to
+  BIR ids, and current missing-name behavior. Fail-closed proof: each resolver
+  covers present name, absent name, empty spelling, and duplicate/conflicting
+  prepared/BIR table scenarios without creating a new id.
 
 Blocked exits:
 
-- Prealloc phase mutation (`run_legalize`, `run_out_of_ssa`) is blocked because
-  the mutable BIR module is the phase output, not just a reader.
-- Contract-plan publishers are blocked unless a packet names one publisher,
-  the semantic BIR fact it needs, the retained prepared aggregate/output
-  surface, and a fail-closed proof for missing ids, stale labels, and policy
-  fallbacks.
-- x86 and AArch64 backend readers are blocked because they combine semantic BIR
-  structure with target policy, assembly output, target-triple fallback, and
-  handoff validation.
-- Broad `PreparedBirModule::module` deletion, privatization, or wrapper work is
-  blocked by the public aggregate compatibility surface.
+- Prepared-printer and x86 debug spelling exits are blocked because they are
+  expected-text compatibility surfaces, not semantic authority changes.
+- Route-debug and diagnostic names are blocked unless a packet names one
+  diagnostic row, its semantic id source, the retained fallback text, and exact
+  output proof.
+- AArch64 and x86 target readers are blocked because prepared names participate
+  in assembly formatting, symbol policy, control-flow handoff validation,
+  target fallback, and target-specific fast paths.
+- BIR/prepared block-label bridge removal is blocked until duplicate,
+  conflicting, missing, structured-id, and raw-label fallback cases are proved
+  fail-closed.
+- Name-table construction, copy/move reattachment, public aggregate exposure,
+  and broad `PreparedBirModule::names` deletion/privatization are blocked by
+  public compatibility.
 
 ## Suggested Next
 
-Proceed to Step 3 by mapping `PreparedBirModule::names` structural exit
-preconditions, separating semantic lookup readers from debug/printer text,
-target formatting, fallback rendering, and duplicate/conflict compatibility.
+Proceed to Step 4 by mapping the next `PreparedBirModule` field named by the
+plan. Keep the run in analysis-only mode; the same-block value-name lookup
+candidate above is future packet evidence, not approval to start code work
+before the structural blocker map is complete.
 
 ## Watchouts
 
-Do not promote target-side `module.module` readers into semantic-only exits:
-x86 same-module/global/string/fold paths and AArch64 global/string emission are
-target-policy and output-sensitive. The two named future packets are bounded
-analysis candidates, not implementation approval; each still needs the proof
-listed above before code changes.
+Do not treat spelling-only printer/debug readers as safe semantic exits.
+Preserve the distinction between prepared-name lookup misses that return
+`nullopt`/`nullptr`/false and target handoff misses that intentionally throw.
+The concrete packet candidates above are not broad permission to remove
+`PreparedNameTables`; each requires duplicate/conflict and fail-closed proof.
 
 ## Proof
 
