@@ -1,5 +1,6 @@
 #include "prepared_lookups.hpp"
 
+#include "lookup_agreement.hpp"
 #include "module.hpp"
 
 #include <algorithm>
@@ -221,27 +222,19 @@ namespace {
 [[nodiscard]] const bir::Function* prepared_bir_function(
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function) {
-  if (function.function_name == kInvalidFunctionName) {
-    return nullptr;
-  }
-  const std::string_view function_name =
-      prepared_function_name(prepared.names, function.function_name);
-  if (function_name.empty()) {
-    return nullptr;
-  }
-  for (const auto& bir_function : prepared.module.functions) {
-    if (std::string_view{bir_function.name} == function_name) {
-      return &bir_function;
-    }
-  }
-  return nullptr;
+  const auto agreement = prepared_bir_function_agreement(prepared, function);
+  return agreement.available ? agreement.function : nullptr;
 }
 
 [[nodiscard]] const bir::Block* prepared_bir_block(
     const PreparedBirModule& prepared,
     const bir::Function& function,
     const PreparedControlFlowBlock& block) {
-  if (block.block_label == kInvalidBlockLabel) {
+  const auto agreement = prepared_bir_block_agreement(prepared, function, block);
+  if (agreement.available) {
+    return agreement.block;
+  }
+  if (agreement.conflicted || block.block_label == kInvalidBlockLabel) {
     return nullptr;
   }
   const std::string_view block_label =
@@ -263,17 +256,7 @@ namespace {
 
 [[nodiscard]] BlockLabelId prepared_bir_block_label_id(const PreparedBirModule& prepared,
                                                        const bir::Block& block) {
-  if (block.label_id != kInvalidBlockLabel) {
-    const std::string_view label =
-        prepared.module.names.block_labels.spelling(block.label_id);
-    if (!label.empty()) {
-      const BlockLabelId prepared_label = prepared.names.block_labels.find(label);
-      if (prepared_label != kInvalidBlockLabel) {
-        return prepared_label;
-      }
-    }
-  }
-  return prepared.names.block_labels.find(block.label);
+  return compatible_prepared_bir_block_label_id(prepared, block);
 }
 
 void append_prepared_after_call_result_lane_binding(

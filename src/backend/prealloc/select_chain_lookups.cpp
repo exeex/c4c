@@ -1,5 +1,6 @@
 #include "select_chain_lookups.hpp"
 
+#include "lookup_agreement.hpp"
 #include "module.hpp"
 
 #include <optional>
@@ -25,35 +26,13 @@ namespace {
 [[nodiscard]] const bir::Function* prepared_bir_function(
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function) {
-  if (function.function_name == kInvalidFunctionName) {
-    return nullptr;
-  }
-  const std::string_view function_name =
-      prepared_function_name(prepared.names, function.function_name);
-  if (function_name.empty()) {
-    return nullptr;
-  }
-  for (const auto& bir_function : prepared.module.functions) {
-    if (std::string_view{bir_function.name} == function_name) {
-      return &bir_function;
-    }
-  }
-  return nullptr;
+  const auto agreement = prepared_bir_function_agreement(prepared, function);
+  return agreement.available ? agreement.function : nullptr;
 }
 
 [[nodiscard]] BlockLabelId prepared_bir_block_label_id(const PreparedBirModule& prepared,
                                                        const bir::Block& block) {
-  if (block.label_id != kInvalidBlockLabel) {
-    const std::string_view label =
-        prepared.module.names.block_labels.spelling(block.label_id);
-    if (!label.empty()) {
-      const BlockLabelId prepared_label = prepared.names.block_labels.find(label);
-      if (prepared_label != kInvalidBlockLabel) {
-        return prepared_label;
-      }
-    }
-  }
-  return prepared.names.block_labels.find(block.label);
+  return compatible_prepared_bir_block_label_id(prepared, block);
 }
 
 void publish_source_producer(
@@ -224,6 +203,9 @@ make_prepared_edge_publication_source_producer_lookups(
 
   for (const auto& block : bir_function->blocks) {
     const BlockLabelId block_label = prepared_bir_block_label_id(prepared, block);
+    if (block_label == kInvalidBlockLabel) {
+      continue;
+    }
     for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
       const auto& inst = block.insts[inst_index];
       if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst);
