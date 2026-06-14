@@ -1,94 +1,102 @@
 Status: Active
 Source Idea Path: ideas/open/251_phase_f3_route45_edge_publication_parity_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Select One Candidate Edge-Publication Identity Fact
+Current Step ID: 3
+Current Step Title: Prove or Block x86 Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2, "Select One Candidate Edge-Publication Identity
-Fact", as an analysis-only selection packet.
+Completed `plan.md` Step 3, "Prove or Block x86 Evidence", as an
+analysis-only evidence packet.
 
-Selected narrow fact:
+Classification: x86 is blocked for the selected Route 5 CFG-edge publication
+source identity.
 
-- Use the Route 5 CFG-edge publication source identity as the candidate
-  Route 4/5 edge-publication fact. The selected fact is: for one predecessor
-  block, successor block, and successor phi destination value,
-  `Route5CfgEdgePublicationRecord` /
-  `BirCfgEdgePublicationSourceIdentity` identifies the same destination value,
-  incoming source value, source producer kind, source producer instruction
-  identity, and edge labels as the prepared `PreparedEdgePublication` lookup
-  answer for the same edge-publication key.
-- Route 4 remains only the publication-availability/value context around the
-  successor publication. The selected semantic boundary is not broad Route 4
-  publication parity; it is the Route 5 edge/source identity that can be checked
-  against a prepared edge-publication lookup answer.
-- For a load-local publication source, the selected fact may include the Route
-  5 `memory_source` row and its Route 3 `source_memory_access` identity, but
-  only as evidence attached to the same edge/source publication. Broader
-  source-memory parity remains outside this plan.
+Concrete x86 evidence found:
 
-Agreement rule:
+- `src/backend/mir/x86/prepared/dispatch.cpp` has
+  `consume_edge_publication_move_intent(...)`, which reads
+  `ConsumedPlans::shared_function_lookups()` and calls
+  `prepare::find_unique_indexed_prepared_edge_publication(...)` by
+  predecessor label, successor label, and destination prepared value id. It
+  copies prepared source/destination ids, checks prepared lookup status and
+  prepared move/home rows, renders x86 source/destination operands, and returns
+  `EdgePublicationMoveIntentStatus`.
+- `append_edge_publication_move_instruction(...)` only appends the rendered
+  x86 `mov` text when that prepared-backed intent is `Available`.
+- `src/backend/mir/x86/module/module.cpp` function
+  `append_prepared_compare_join_parallel_copy(...)` consumes
+  `consume_edge_publication_move_intent(...)` for compare-join parallel-copy
+  steps and maps statuses to module behavior or diagnostics.
+- `tests/backend/bir/backend_x86_prepared_decoded_home_storage_test.cpp`
+  covers the prepared x86 consumer in
+  `check_x86_consumed_plans_read_shared_edge_publications`,
+  `check_x86_edge_publication_move_intent_accepts_register_source_home`,
+  `check_x86_edge_publication_move_intent_accepts_rematerialized_immediate_source_home`,
+  `check_x86_edge_publication_move_intent_missing_authority`,
+  `check_x86_edge_publication_move_intent_rejects_unsupported_homes`, and
+  `check_x86_edge_publication_lowering_appends_shared_move_instruction`.
 
-- Prepared side: `find_unique_indexed_prepared_edge_publication(...)` or the
-  equivalent prepared lookup answer must produce exactly one
-  `PreparedEdgePublication` with `PreparedEdgePublicationLookupStatus::Available`
-  for the predecessor, successor, and destination publication key.
-- Route/BIR side: `route5_find_cfg_edge_publication(...)` or
-  `find_bir_cfg_edge_publication_source_identity(...)` must produce an
-  available CFG-edge publication record for the same predecessor/successor
-  edge and destination value. Route 5 status `Available` is agreement for
-  non-memory source producers; Route 5 status `MemorySource` is agreement only
-  when the attached Route 3 source-memory identity also agrees with the prepared
-  publication's source-memory fact.
-- Identity fields that must agree are predecessor label/id, successor label/id,
-  destination value kind/name/type, source value kind/name/type or immediate,
-  source producer kind, source producer instruction block/index when present,
-  and, for load-local sources, the attached source-memory identity.
-- Missing, duplicate, mismatched, unsupported, prepared-only, fallback, or
-  policy-sensitive rows must fail closed: the prepared answer remains
-  compatibility-visible, but it must not be promoted to shared Route 4/5
-  semantic authority.
+Route 4/5 consumption check:
 
-Semantic identity exclusions:
+- AST-backed caller/callee checks confirm
+  `consume_edge_publication_move_intent(...)` calls
+  `find_unique_indexed_prepared_edge_publication(...)` and
+  `render_edge_publication_source_operand(...)`, but not
+  `bir::route5_find_cfg_edge_publication(...)`,
+  `mir::find_bir_cfg_edge_publication_source_identity(...)`, or any
+  `Route5CfgEdgePublicationRecord` / `BirCfgEdgePublicationSourceIdentity`
+  consumer.
+- AST-backed callee checks for
+  `append_prepared_compare_join_parallel_copy(...)` confirm the module path
+  calls prepared parallel-copy/value-home helpers and the x86 prepared intent
+  helper, but no Route 5/BIR agreement query.
+- Focused search found no Route 5 or BIR CFG-edge publication identity
+  references under `src/backend/mir/x86` or in
+  `tests/backend/bir/backend_x86_prepared_decoded_home_storage_test.cpp`.
+  Route 5 evidence exists in shared/riscv-oriented surfaces such as
+  `src/backend/bir/bir.cpp`, `src/backend/mir/query.cpp`,
+  `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`, and
+  `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`, but
+  the x86 consumer does not join against it.
 
-- Move selection, carrier/helper selection, register choice, source/destination
-  home policy, stack/global layout, operand addressing, exact instruction
-  spelling, exact status-string spelling, helper/oracle names, module-output
-  text, and final output formatting are not part of the selected Route 4/5
-  semantic fact.
-- x86 `EdgePublicationMoveIntentStatus` rows, x86 module diagnostics, x86
-  `mov` text and operand spelling, riscv `mv`/`li`/`lw` text, riscv register
-  names, riscv stack offsets, source-home decisions, destination-home
-  decisions, and unsupported/fallback publication names remain target policy or
-  compatibility rows.
-- Prepared `edge_publications` helper names, lookup key spelling, prepared
-  status names, source-producer names, and source-memory status names remain
-  public compatibility surfaces even if a later adapter proves agreement.
+Compatibility-owned x86 rows:
 
-Why broader parity is outside this plan:
+- `EdgePublicationMoveIntentStatus::{MissingSharedLookups,MissingPublication,UnsupportedPublication,UnsupportedSourceHome,UnsupportedDestinationHome,Available}`
+  remain x86/prepared compatibility rows, not Route 5 semantic proof.
+- x86 `mov` instruction text, operand spelling (`ebx`, `eax`,
+  `DWORD PTR [rsp + 56]`, immediates), source/destination home acceptance,
+  i32 operand filtering, and module diagnostics such as
+  "compare-join edge has no shared prepared edge-publication lookup authority"
+  and "compare-join edge parallel-copy step has no shared prepared
+  edge-publication fact" remain target policy or prepared compatibility output.
 
-- This plan only needs one shared route/BIR edge-publication identity boundary
-  before prepared `edge_publications` can be considered compatibility mirrors.
-  Broad scalar/store publication plans, generic publication lowering, Route 4
-  publication availability rewrites, all source-producer families, register
-  allocation, carrier/helper selection, layout, and target emission policy
-  would expand beyond the source idea and risk treating compatibility output as
-  semantic proof.
+Blocker:
+
+- x86 has prepared edge-publication lookup/status consumers, but no direct or
+  indirect Route 5/BIR agreement consumer that compares the prepared
+  `PreparedEdgePublication` answer with a same-edge
+  `Route5CfgEdgePublicationRecord` or
+  `BirCfgEdgePublicationSourceIdentity` and rejects disagreement. Therefore
+  x86 cannot prove the selected Route 5 CFG-edge publication source identity
+  in this plan step.
 
 ## Suggested Next
 
-Execute `plan.md` Step 3, "Prove or Block x86 Evidence", as an analysis-only
-packet for the selected Route 5 CFG-edge publication source identity.
+Execute `plan.md` Step 4, "Recheck Riscv Evidence Against the Same Fact", as
+an analysis-only packet for the same selected Route 5 CFG-edge publication
+source identity.
 
 ## Watchouts
 
 - Keep source idea 251 unchanged unless durable intent truly changes.
 - Do not implement an adapter during this blocker map.
-- Step 3 should test x86 against the selected Route 5 CFG-edge source identity,
-  not against scalar/store publication plans or module-output formatting.
+- Step 4 should test riscv against the same selected Route 5 CFG-edge source
+  identity, not against nearby output formatting or carrier/register choices.
+- Keep the x86 result classified as blocked unless a later implementation
+  introduces a Route 5/BIR agreement consumer or MIR query facade for x86.
 - Preserve prepared edge-publication lookup/status, helper/oracle names,
   fallback publication rows, x86 dispatch/status/module output, riscv status
   fields, and riscv/x86 instruction/output strings as compatibility-owned
@@ -98,5 +106,12 @@ packet for the selected Route 5 CFG-edge publication source identity.
 
 ## Proof
 
-No build or test proof required; analysis-only packet. Local validation:
-`git diff --check -- todo.md`.
+No build or test proof required; analysis-only packet. AST/focused inspection
+used:
+
+- `c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/x86/prepared/dispatch.cpp consume_edge_publication_move_intent build/compile_commands.json`
+- `c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/x86/prepared/dispatch.cpp consume_edge_publication_move_intent build/compile_commands.json`
+- `c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/x86/module/module.cpp append_prepared_compare_join_parallel_copy build/compile_commands.json`
+- focused `rg` over x86 prepared/module code and x86 edge-publication tests
+
+Local validation: `git diff --check -- todo.md`.
