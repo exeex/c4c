@@ -1,128 +1,109 @@
 Status: Active
 Source Idea Path: ideas/open/247_phase_f1_final_prepared_field_group_demotion_gate.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Verify Prerequisites And Inventory Field Groups
+Current Step ID: 2
+Current Step Title: Classify Each Field Group
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 read-only inventory is complete.
+Step 2 classification is complete by read-only inspection.
 
-Prerequisite closure status: all prerequisites are closed; no prerequisite
-blocks this gate.
+Deletion/demotion proof gate used for every possible candidate:
+cross-target route-native positive, missing, mismatch, duplicate, fallback,
+wrapper-output, and baseline proof must exist unless the group is strictly
+target-local private pass context. No inventoried group satisfies that full
+gate. Existing proof is narrower:
 
-- 243 is closed and contributes the Phase F0 convergence map: no whole
-  `PreparedBirModule`, `PreparedFunctionLookups`, lookup group, or field group
-  was deletion-ready, and x86/riscv parity, diagnostics, fallback,
-  compatibility, wrapper output, and target-policy boundaries must be proven
-  field-by-field.
-- 244 is closed and contributes x86 Route 6 proof for the selected scalar `i32`
-  direct-call argument path: route-native status rows cover available, missing,
-  invalid, duplicate, prepared mismatch, source-name mismatch, and fallback
-  behavior while `ConsumedPlans`, helper-oracle statuses, and wrapper assembly
-  stay stable.
-- 245 is closed and contributes riscv Route 5/Route 3 adapter proof:
-  edge/source and memory/source identities are consumed only through agreement
-  with prepared publication/source-memory authority, with exact instruction
-  text, fail-closed statuses, and target-local register/stack/offset policy
-  preserved.
-- 246 is closed and contributes compatibility-retention proof: prepared
-  publication, source-memory, typed-stack-source, aggregate-stack-source,
-  current-block publication, helper-oracle, route-debug, fallback, and
-  wrapper-output names remain explicit compatibility contracts beside
-  route-native rows.
+- x86 Route 6 proof covers the selected scalar `i32` direct-call argument path
+  with positive, absent, invalid, duplicate, prepared-mismatch,
+  source-name-mismatch, fallback, `ConsumedPlans`, and wrapper-output coverage.
+  It is x86-local and call-argument-specific.
+- riscv Route 5/Route 3 proof covers edge/source and memory/source agreement,
+  missing, mismatch, duplicate/conflict, incomplete source-memory, fallback,
+  and exact wrapper instruction text for the selected edge-publication adapter.
+  It is riscv-local and edge-publication-specific.
+- Compatibility-retention proof keeps prepared status strings, helper-oracle
+  rows, route-debug names, fallback names, and wrapper-output baselines
+  explicit beside route-native rows. It preserves public compatibility; it is
+  not deletion authority.
 
-Inventoried public `PreparedFunctionLookups` field groups:
+Public `PreparedFunctionLookups` classification map:
 
-- `call_plans`: call-site, argument, result, preserved-value, boundary-effect,
-  outgoing-stack, and wrapper/public `ConsumedPlans` authority relevant to
-  Route 6 and x86 wrappers.
-- `address_materializations`: block-keyed address-materialization lookup for
-  frame slots, globals, strings, labels, GOT/TLS, byte offsets, and target
-  address policy.
-- `memory_accesses`: Route 3-relevant memory accesses by position, result
-  value name, and result value id, including prepared address base, size,
-  align, volatility, and materialization requirements.
-- `move_bundles`: prepared move bundles by phase/position plus before-call
-  argument moves, before-return ABI moves, and after-call result lane bindings.
-- `value_homes`: prepared value id/name to home maps for register, stack,
-  immediate, and pointer-base-plus-offset homes used by wrappers, fallback,
-  and edge-publication consumers.
-- `edge_publications`: Route 4/Route 5-relevant edge publications indexed by
-  predecessor, successor, and destination value, carrying source/destination
-  values, source producer, source memory, aggregate stack authority, homes,
-  move/parallel-copy, carrier, and status/fallback state.
-- `edge_publication_source_producers`: source-producer records by value name
-  for immediate, load-local, load-global, cast, binary, and select
-  materialization producers.
+| Field group | Classification | Evidence | Status |
+| --- | --- | --- | --- |
+| `call_plans` | blocked public authority | x86 Route 6 now has route-native rows for the selected scalar call-argument path, but public `PreparedCallPlanLookups`, `ConsumedPlans`, helper-oracle statuses, preserved values, outgoing stack arguments, result lanes, and wrapper assembly remain observable compatibility/wrapper authority. | Blocked; proof is x86-local and path-specific, not cross-target call-plan retirement proof. |
+| `address_materializations` | target-policy product | Carries frame-slot, global, string, label, GOT/TLS, byte-offset, relocation, and base-plus-offset materialization policy consumed by addressing, calls, variadic entry, and target emission. | Not a deletion candidate; target ABI/layout/address policy must stay outside BIR. |
+| `memory_accesses` | blocked public authority | Route 3 source-memory agreement exists for the riscv edge-publication adapter, and prepared helper/status names such as `missing_prepared_memory_access` and `incomplete_prepared_memory_access` remain retained compatibility. | Blocked; proof is riscv-local/adapter-local and compatibility-only outside that route. |
+| `move_bundles` | target-policy product | Publishes block-entry, before-call, after-call, before-return, ABI binding, register-bank, lane, and parallel-copy move facts consumed by wrappers and publication helpers. | Not a deletion candidate; no cross-target route-native replacement proves ABI moves, wrapper output, and fallback behavior. |
+| `value_homes` | target-policy product | Maps prepared values to registers, stack slots, immediates, and pointer-base-plus-offset homes used by wrappers, edge publications, stack-source publications, and fallback helpers. | Not a deletion candidate; register/stack home policy remains target/prepared-owned. |
+| `edge_publications` | blocked public authority | riscv Route 5/Route 3 consumes route facts only when they agree with prepared publication/source-memory authority; prepared publication statuses and fallback remain explicit compatibility. | Blocked; proof is riscv-local and does not prove x86, Route 4/current-block, aggregate-stack, wrapper-output, and baseline parity for deletion. |
+| `edge_publication_source_producers` | blocked public authority | Indexes source producer identity for immediates, loads, casts, binaries, and select materialization; riscv adapter uses this only as agreement input beside prepared source-memory authority. | Blocked; source-producer route ownership is not proven cross-target with the full positive/negative/fallback matrix. |
 
-Inventoried `PreparedBirModule` backing field groups in scope:
+`PreparedBirModule` field-group classification map:
 
-- Core semantic/base state: `module`, `route`, `invariants`, `names`,
-  `control_flow`, `completed_phases`, and `notes`.
-- Target policy and layout state: `target_profile`, `stack_layout`,
-  `regalloc`, `register_group_overrides`, `frame_plan`,
-  `dynamic_stack_plan`, and `storage_plans`.
-- Prepared value/address state: `value_locations`, `addressing`, and
-  `liveness`.
-- Route/wrapper/public lookup backing state: `call_plans`,
-  `store_source_publications`, `variadic_entry_plans`, `i128_carriers`,
-  `f128_carriers`, `atomic_operations`, `intrinsic_carriers`,
-  `inline_asm_carriers`, `f128_runtime_helpers`, and
-  `i128_runtime_helpers`.
+| Field group | Classification | Evidence | Status |
+| --- | --- | --- | --- |
+| `module` | blocked public authority | Owns the BIR module that route-native facts are derived from and remains the root input for prepared and target consumers. | Not a demotion/deletion candidate in this gate. |
+| `route`, `invariants`, `completed_phases`, `notes` | private pass context | These record prepare-run mode, invariant diagnostics, phase markers, and notes rather than public route/source authority. | No implementation idea needed; safe only as private context, not deletion work. |
+| `names` | compatibility adapter | Interned function/value/block/link/text IDs are required to bridge BIR spellings to prepared lookup/status helpers and target diagnostics. | Blocked; public status/debug rows still depend on stable prepared naming. |
+| `control_flow` | blocked public authority | Provides block labels, dominance, join transfers, branch/edge facts, and function/block mapping used by edge publications, call plans, and wrappers. | Blocked; Route 4/5/6 subsets do not prove whole control-flow-publication replacement. |
+| `target_profile` | target-policy product | Drives ABI, register classes, relocation model, legalization, call lowering, and target wrapper choices. | Not a deletion candidate; must remain outside BIR. |
+| `stack_layout` | target-policy product | Owns frame objects, slots, offsets, alignment, and frame-size facts used by calls, addressing, variadic entry, helpers, and wrappers. | Not a deletion candidate; layout/stack policy remains target/prepared-owned. |
+| `register_group_overrides` | target-policy product | Publishes target register grouping overrides that feed register placement and wrapper/helper policy. | Not a deletion candidate without separate target-policy proof. |
+| `regalloc` | target-policy product | Owns assigned registers, register banks/classes, spill/reload, and placement identity used by wrappers, call plans, storage, and helpers. | Not a deletion candidate; register allocation remains target/prepared-owned. |
+| `frame_plan` | target-policy product | Owns prologue/epilogue, saved registers, frame-pointer, and callee-save policy. | Not a deletion candidate; ABI/frame policy remains target/prepared-owned. |
+| `dynamic_stack_plan` | target-policy product | Publishes dynamic stack and frame-pointer interactions derived from frame policy. | Not a deletion candidate; no route-native replacement proof exists. |
+| `storage_plans` | target-policy product | Owns storage and ABI placement plans for special carriers and helper paths. | Not a deletion candidate; target storage policy remains prepared-owned. |
+| `value_locations` | target-policy product | Backing store for `value_homes` and `move_bundles`; consumed by calls, edge publications, helpers, wrappers, and fallback. | Not a deletion candidate; no cross-target replacement proves register/stack/move behavior. |
+| `addressing` | target-policy product | Backing store for `address_materializations` and `memory_accesses`; carries address base, size, align, volatility, and materialization policy. | Not a deletion candidate; Route 3 proof is riscv-local and address policy remains target/prepared-owned. |
+| `liveness` | private pass context | Feeds regalloc, call preservation, and runtime-helper ownership but is not itself a public route diagnostic surface. | Demotion can only be considered as private pass cleanup; no deletion candidate is proven here. |
+| `call_plans` | blocked public authority | Backing state for public call lookup group and x86 wrapper compatibility. | Blocked for the same reasons as `PreparedFunctionLookups::call_plans`. |
+| `store_source_publications` | blocked public authority | Publishes store-source relationships used by prepared memory/source reasoning and compatibility helpers. | Blocked; no cross-target route-native positive/negative/fallback matrix proves replacement. |
+| `variadic_entry_plans` | target-policy product | Uses stack layout, addressing, value homes, and target ABI for variadic entry setup. | Not a deletion candidate; ABI/layout policy remains target/prepared-owned. |
+| `i128_carriers`, `f128_carriers` | target-policy product | Carry target storage/register policy for wide scalar lowering and helper ownership. | Not a deletion candidate; no cross-target route-native carrier replacement proof. |
+| `atomic_operations` | target-policy product | Publishes target-sensitive atomic lowering facts. | Not a deletion candidate without separate atomic route/emission proof. |
+| `intrinsic_carriers` | target-policy product | Carries target-sensitive intrinsic lowering metadata. | Not a deletion candidate without separate intrinsic route/emission proof. |
+| `inline_asm_carriers` | target-policy product | Owns inline-asm operand/result homes, register identities, and target constraints. | Not a deletion candidate; formatting/register policy must stay target-local. |
+| `f128_runtime_helpers`, `i128_runtime_helpers` | target-policy product | Own runtime-helper ABI bindings, clobber sets, scalar ownership, call preservation, and helper protocol. | Not a deletion candidate; helper ABI/wrapper behavior lacks route-native replacement proof. |
 
-Inventoried public helper/status compatibility surfaces:
+Candidate outcome:
 
-- Route 3/source-memory: `PreparedMemoryAccessLookups`,
-  `prepared_edge_publication_source_memory_access_status_name`,
-  `prepared_edge_publication_source_memory_matches_access`, and riscv
-  `route3_source_memory_agrees_with_prepared_publication`.
-- Route 4/current-block publication: `PreparedCurrentBlockEntryPublication`,
-  `PreparedCurrentBlockJoinParallelCopySourceFacts`,
-  `prepared_current_block_entry_publication_status_name`, and
-  `prepared_current_block_join_parallel_copy_source_status_name`.
-- Route 5/edge publication: `PreparedEdgePublicationLookups`,
-  `find_unique_indexed_prepared_edge_publication`,
-  `PreparedEdgePublicationSourceProducerLookups`,
-  `prepared_edge_copy_source_facts_status_name`, and riscv
-  `route5_edge_source_agrees_with_prepared_publication`.
-- Route 6/call wrapper: `PreparedCallPlanLookups`, x86 `ConsumedPlans`,
-  `find_consumed_call_argument_plan`, `route6_scalar_call_argument_gate_name`,
-  and the route-debug rows for `agreed`, `blocked`,
-  `missing_source_value`, `missing_source_name`,
-  `prepared_source_mismatch`, and `source_value_mismatch`.
-- Wrapper/output/fallback helpers: riscv `EdgePublicationMoveIntentStatus`,
-  `consume_edge_publication_move_intent`, `route5_edge_status`,
-  `route5_edge_source_agrees`, `route3_source_memory_agrees`, and x86 direct
-  call wrapper consumption through prepared call plans.
-- Compatibility status families retained by 246: `missing_prepared_memory_access`,
-  `incomplete_prepared_memory_access`, `publication_unavailable`,
-  `unsupported_source_home`, `missing_same_width_i32_type`,
-  `missing_destination_gpr_bank`, and
-  `missing_aggregate_copy_authority`.
+- Deletion candidates: none.
+- Demotion candidates ready for implementation ideas: none.
+- Private pass context only: `route`, `invariants`, `completed_phases`,
+  `notes`, and possibly `liveness` for a future cleanup discussion, but no
+  deletion packet is justified by Step 2 because Step 3 owns draft 155 and
+  follow-up disposition.
+- Blocked public authority: all public lookup groups that expose route/source,
+  publication, call, memory, or status semantics remain blocked until full
+  cross-target route-native proof replaces or explicitly preserves each public
+  behavior.
+- Target-policy products: ABI, layout, register, stack, storage, addressing,
+  carrier, helper, emission, formatting, and wrapper policy groups remain out
+  of BIR ownership and should not be proposed for demotion by this gate.
 
 ## Suggested Next
 
-Execute Step 2: classify each inventoried field group as duplicate semantic
-cache, private pass context, target-policy product, compatibility adapter,
-blocked public authority, or deletion candidate. Keep the classification
-field-by-field and require cross-target positive, missing, mismatch, duplicate,
-fallback, wrapper-output, and baseline evidence before naming any deletion or
-demotion candidate.
+Execute Step 3: decide draft 155 disposition against this blocker map. The
+executor recommendation is to keep broad draft 155 blocked or supersede it with
+no implementation ideas from this gate, because Step 2 found no safe
+field-group deletion/demotion candidate.
 
 ## Watchouts
 
-This is a gate, not an implementation packet. The Step 1 inventory found no
-prerequisite blocker, but it also did not classify readiness. Step 2 should
-avoid treating x86-only Route 6, riscv-only Route 5/Route 3, diagnostic-only,
-or compatibility-only proof as whole-field-group demotion evidence.
+Do not convert `target-policy product` into a BIR migration request. The gate
+requires preserving target-local ABI, layout, register, stack, storage,
+emission, formatting, and wrapper policy outside BIR. Also do not treat
+compatibility-retention proof as deletion authority; it is evidence that public
+prepared names still matter.
 
 ## Proof
 
 Read-only inspection only; no build or ctest proof was required for this
-inventory packet. Inspected the active plan/todo, closed ideas 243-246,
-`PreparedBirModule`, `PreparedFunctionLookups`, prepared lookup constructors,
-public helper/status declarations, x86 Route 6 diagnostics, riscv Route 5/Route
-3 edge-publication adapter, and prepared lookup/riscv/x86 tests.
+classification packet, and no `test_after.log` was produced. Inspected the
+active plan/todo, source idea 247, closed ideas 243-246, `PreparedBirModule`,
+`PreparedFunctionLookups`, prepared lookup constructors, value-location and
+addressing declarations, x86 Route 6 diagnostics, riscv Route 5/Route 3
+edge-publication adapter, and prepared lookup/riscv/x86 tests.
