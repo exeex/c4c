@@ -1730,8 +1730,46 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
                   intent.instruction_text == "lw a1, 12(s2)" &&
                   intent.route5_edge_status ==
                       bir::Route5PublicationStatus::MemorySource &&
-                  intent.route5_edge_source_agrees,
+                  intent.route5_edge_source_agrees &&
+                  intent.route3_source_memory_agrees,
               "RISC-V dynamic memory-source output should stay prepared-backed with agreeing Route 3 facts")) {
+    return 1;
+  }
+
+  auto mismatched_route3_memory_edge = route5_memory_edge;
+  mismatched_route3_memory_edge.source_memory_access.byte_offset = 16;
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups,
+      dynamic_ids.predecessor,
+      dynamic_ids.successor,
+      2,
+      &mismatched_route3_memory_edge);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.instruction_text == "lw a1, 12(s2)" &&
+                  intent.route5_edge_status ==
+                      bir::Route5PublicationStatus::MemorySource &&
+                  !intent.route5_edge_source_agrees &&
+                  !intent.route3_source_memory_agrees,
+              "RISC-V dynamic memory-source output should preserve prepared fallback on non-agreeing Route 3 facts")) {
+    return 1;
+  }
+
+  auto incomplete_route3_memory_edge = route5_memory_edge;
+  incomplete_route3_memory_edge.source_memory_identity_available = false;
+  incomplete_route3_memory_edge.source_memory_access = {};
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups,
+      dynamic_ids.predecessor,
+      dynamic_ids.successor,
+      2,
+      &incomplete_route3_memory_edge);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                  intent.instruction_text == "lw a1, 12(s2)" &&
+                  intent.route5_edge_status ==
+                      bir::Route5PublicationStatus::MemorySource &&
+                  !intent.route5_edge_source_agrees &&
+                  !intent.route3_source_memory_agrees,
+              "RISC-V dynamic memory-source output should preserve prepared fallback on incomplete Route 3 facts")) {
     return 1;
   }
 

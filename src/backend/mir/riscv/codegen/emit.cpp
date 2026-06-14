@@ -325,6 +325,72 @@ bir::Route5PublicationSourceKind route5_source_kind_from_prepared(
   return bir::Route5PublicationSourceKind::Unknown;
 }
 
+bool route3_base_kind_agrees_with_prepared_source_memory(
+    const c4c::backend::prepare::PreparedEdgePublication& publication,
+    const bir::Route3MemoryAccessRecord& route3_access) {
+  namespace prepare = c4c::backend::prepare;
+
+  switch (publication.source_memory_base_kind) {
+    case prepare::PreparedAddressBaseKind::FrameSlot:
+      return route3_access.base_kind ==
+                 bir::Route3MemoryAccessBaseKind::LocalSlot &&
+             publication.source_memory_frame_slot_id.has_value() &&
+             route3_access.local_slot_id != c4c::kInvalidSlotName;
+    case prepare::PreparedAddressBaseKind::GlobalSymbol:
+      return route3_access.base_kind ==
+                 bir::Route3MemoryAccessBaseKind::GlobalSymbol &&
+             publication.source_memory_symbol_name.has_value() &&
+             route3_access.global_name_id == *publication.source_memory_symbol_name;
+    case prepare::PreparedAddressBaseKind::PointerValue:
+      if (route3_access.base_kind !=
+              bir::Route3MemoryAccessBaseKind::PointerValue ||
+          !publication.source_memory_pointer_value_name.has_value() ||
+          !route3_access.pointer_value) {
+        return false;
+      }
+      return route3_access.pointer_value.name_id == c4c::kInvalidValueName ||
+             route3_access.pointer_value.name_id ==
+                 *publication.source_memory_pointer_value_name;
+    case prepare::PreparedAddressBaseKind::StringConstant:
+      return route3_access.base_kind ==
+                 bir::Route3MemoryAccessBaseKind::StringConstant &&
+             publication.source_memory_symbol_name.has_value() &&
+             route3_access.string_constant_name_id ==
+                 *publication.source_memory_symbol_name;
+    case prepare::PreparedAddressBaseKind::None:
+      return route3_access.base_kind == bir::Route3MemoryAccessBaseKind::None;
+  }
+  return false;
+}
+
+bool route3_source_memory_agrees_with_prepared_publication(
+    const c4c::backend::prepare::PreparedEdgePublication& publication,
+    const bir::Route3MemoryAccessRecord& route3_access) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (publication.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal ||
+      publication.source_memory_access_status !=
+          prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available ||
+      publication.source_memory_access == nullptr ||
+      !route3_access ||
+      route3_access.node_kind != bir::Route3MemoryAccessNodeKind::LoadLocal ||
+      !route3_access.result_value ||
+      route3_access.result_value.value_kind != publication.source_value.kind ||
+      route3_access.result_value.type != publication.source_value.type ||
+      route3_access.result_value.name != publication.source_value.name ||
+      route3_access.address_space != publication.source_memory_address_space ||
+      route3_access.is_volatile != publication.source_memory_is_volatile ||
+      route3_access.byte_offset != publication.source_memory_byte_offset ||
+      route3_access.size_bytes != publication.source_memory_size_bytes ||
+      route3_access.align_bytes != publication.source_memory_align_bytes) {
+    return false;
+  }
+
+  return route3_base_kind_agrees_with_prepared_source_memory(publication,
+                                                            route3_access);
+}
+
 bool route5_edge_source_agrees_with_prepared_publication(
     const c4c::backend::prepare::PreparedEdgePublication& publication,
     const bir::Route5CfgEdgePublicationRecord& route5_edge) {
@@ -369,7 +435,8 @@ bool route5_edge_source_agrees_with_prepared_publication(
       prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) {
     return route5_edge.status == bir::Route5PublicationStatus::MemorySource &&
            route5_edge.source_memory_identity_available &&
-           route5_edge.source_memory_access.instruction != nullptr;
+           route3_source_memory_agrees_with_prepared_publication(
+               publication, route5_edge.source_memory_access);
   }
 
   return !comparable_prepared_producer ||
@@ -424,6 +491,11 @@ void RiscvEdgePublicationMoveAdapter::attach_route5_edge_agreement(
   intent.route5_edge_status = route5_edge->status;
   intent.route5_edge_source_agrees =
       route5_edge_source_agrees_with_prepared_publication(publication, *route5_edge);
+  if (route5_edge->source_memory_identity_available) {
+    intent.route3_source_memory_agrees =
+        route3_source_memory_agrees_with_prepared_publication(
+            publication, route5_edge->source_memory_access);
+  }
 }
 
 EdgePublicationMoveIntent

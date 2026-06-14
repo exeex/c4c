@@ -68,6 +68,7 @@ struct EdgePublicationMoveIntent {
   std::optional<std::size_t> destination_stack_size_bytes;
   std::optional<c4c::backend::bir::Route5PublicationStatus> route5_edge_status;
   bool route5_edge_source_agrees = false;
+  bool route3_source_memory_agrees = false;
   std::string instruction_text;
 };
 
