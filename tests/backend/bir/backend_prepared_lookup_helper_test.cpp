@@ -9409,12 +9409,15 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
     std::string_view label;
     ProducerShape producer_shape = ProducerShape::LoadLocal;
     bool include_control_flow = true;
+    bool conflicting_bir_block_label_id = false;
+    bool include_addressing = true;
     bool include_load_access = true;
     prepare::PreparedAddressBaseKind load_base_kind =
         prepare::PreparedAddressBaseKind::PointerValue;
     std::optional<std::string_view> pointer_value_name = "%byval.ptr";
     bool can_use_base_plus_offset = true;
     bool include_byval_param = true;
+    bool byval_param_is_byval = true;
     bool expected_byval = false;
   };
 
@@ -9436,7 +9439,9 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
 
     bir::Block block;
     block.label = "entry";
-    block.label_id = block_label;
+    block.label_id = test_case.conflicting_bir_block_label_id
+                         ? prepared.module.names.block_labels.intern("other.entry")
+                         : block_label;
     if (test_case.producer_shape == ProducerShape::LoadLocal) {
       source_value = bir::Value::named(bir::TypeKind::Ptr, "%byval.ptr");
       block.insts.push_back(bir::LoadLocalInst{
@@ -9466,7 +9471,7 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
       function.params.push_back(bir::Param{
           .type = bir::TypeKind::Ptr,
           .name = "%byval.ptr",
-          .is_byval = true,
+          .is_byval = test_case.byval_param_is_byval,
       });
     }
     function.params.push_back(bir::Param{
@@ -9492,51 +9497,53 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
         .align_bytes = 8,
     });
 
-    prepare::PreparedAddressingFunction addressing{
-        .function_name = function_name,
-    };
-    if (test_case.include_load_access) {
+    if (test_case.include_addressing) {
+      prepare::PreparedAddressingFunction addressing{
+          .function_name = function_name,
+      };
+      if (test_case.include_load_access) {
+        addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+            .function_name = function_name,
+            .block_label = block_label,
+            .inst_index = 0,
+            .result_value_name = source_name,
+            .address =
+                prepare::PreparedAddress{
+                    .base_kind = test_case.load_base_kind,
+                    .frame_slot_id =
+                        test_case.load_base_kind ==
+                                prepare::PreparedAddressBaseKind::FrameSlot
+                            ? std::optional<prepare::PreparedFrameSlotId>{slot_id}
+                            : std::nullopt,
+                    .pointer_value_name =
+                        test_case.pointer_value_name == "%byval.ptr"
+                            ? std::optional<c4c::ValueNameId>{byval_name}
+                            : test_case.pointer_value_name == "%other.byval.ptr"
+                                  ? std::optional<c4c::ValueNameId>{other_byval_name}
+                                  : std::nullopt,
+                    .size_bytes = 8,
+                    .align_bytes = 8,
+                    .can_use_base_plus_offset =
+                        test_case.can_use_base_plus_offset,
+                },
+        });
+      }
       addressing.accesses.push_back(prepare::PreparedMemoryAccess{
           .function_name = function_name,
           .block_label = block_label,
-          .inst_index = 0,
-          .result_value_name = source_name,
+          .inst_index = 1,
+          .stored_value_name = stored_name,
           .address =
               prepare::PreparedAddress{
-                  .base_kind = test_case.load_base_kind,
-                  .frame_slot_id =
-                      test_case.load_base_kind ==
-                              prepare::PreparedAddressBaseKind::FrameSlot
-                          ? std::optional<prepare::PreparedFrameSlotId>{slot_id}
-                          : std::nullopt,
-                  .pointer_value_name =
-                      test_case.pointer_value_name == "%byval.ptr"
-                          ? std::optional<c4c::ValueNameId>{byval_name}
-                          : test_case.pointer_value_name == "%other.byval.ptr"
-                                ? std::optional<c4c::ValueNameId>{other_byval_name}
-                                : std::nullopt,
+                  .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                  .frame_slot_id = slot_id,
                   .size_bytes = 8,
                   .align_bytes = 8,
-                  .can_use_base_plus_offset =
-                      test_case.can_use_base_plus_offset,
+                  .can_use_base_plus_offset = true,
               },
       });
+      prepared.addressing.functions.push_back(std::move(addressing));
     }
-    addressing.accesses.push_back(prepare::PreparedMemoryAccess{
-        .function_name = function_name,
-        .block_label = block_label,
-        .inst_index = 1,
-        .stored_value_name = stored_name,
-        .address =
-            prepare::PreparedAddress{
-                .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
-                .frame_slot_id = slot_id,
-                .size_bytes = 8,
-                .align_bytes = 8,
-                .can_use_base_plus_offset = true,
-            },
-    });
-    prepared.addressing.functions.push_back(std::move(addressing));
 
     prepare::populate_store_source_publication_plans(prepared);
     const auto& records = prepared.store_source_publications.records;
@@ -9567,6 +9574,14 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
           .producer_shape = ProducerShape::Binary,
       },
       Case{
+          .label = "invalid prepared/BIR block label identity",
+          .conflicting_bir_block_label_id = true,
+      },
+      Case{
+          .label = "absent prepared addressing",
+          .include_addressing = false,
+      },
+      Case{
           .label = "missing prepared load access",
           .include_load_access = false,
       },
@@ -9589,6 +9604,10 @@ int verify_byval_pointer_source_classification_requires_prepared_agreement() {
       Case{
           .label = "missing byval formal fact",
           .include_byval_param = false,
+      },
+      Case{
+          .label = "non-byval formal fact",
+          .byval_param_is_byval = false,
       },
   };
 
