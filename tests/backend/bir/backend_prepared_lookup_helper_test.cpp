@@ -3006,6 +3006,16 @@ int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
           return_block(false_label),
       },
   };
+  const prepare::PreparedControlFlowFunction empty_control_flow{
+      .function_name = function_id,
+  };
+  const prepare::PreparedControlFlowFunction invalid_target_control_flow{
+      .function_name = function_id,
+      .blocks = {
+          cond_branch_block(entry_label, true_label, c4c::kInvalidBlockLabel),
+          return_block(true_label),
+      },
+  };
 
   const auto prepared_only_labels =
       prepare::find_prepared_control_flow_branch_target_labels(control_flow, entry_label);
@@ -3021,6 +3031,12 @@ int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
           *prepared_only_labels);
   if (private_absent_context_labels.has_value()) {
     return fail("private branch-target identity should reject absent BIR context");
+  }
+
+  if (prepare::find_prepared_control_flow_branch_target_labels(
+          empty_control_flow, entry_label)
+          .has_value()) {
+    return fail("control-flow target helper should fail closed for absent control-flow rows");
   }
 
   bir::Block source_block;
@@ -3064,6 +3080,12 @@ int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
     return fail("control-flow target helper should fail closed for absent prepared blocks");
   }
 
+  if (prepare::find_prepared_control_flow_branch_target_labels(
+          invalid_target_control_flow, entry_label, source_block)
+          .has_value()) {
+    return fail("control-flow target helper should fail closed for invalid prepared target labels");
+  }
+
   const auto agreeing_labels = prepare::find_prepared_control_flow_branch_target_labels(
       control_flow, entry_label, source_block);
   if (!agreeing_labels.has_value() || agreeing_labels->true_label != true_label ||
@@ -3088,6 +3110,17 @@ int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
   if (!invalid_id_labels.has_value() || invalid_id_labels->true_label != true_label ||
       invalid_id_labels->false_label != false_label) {
     return fail("control-flow target helper did not preserve prepared fallback for invalid ids");
+  }
+
+  auto missing_structured_id_block = source_block;
+  missing_structured_id_block.terminator.false_label_id = c4c::kInvalidBlockLabel;
+  const auto missing_structured_id_labels =
+      prepare::find_prepared_control_flow_branch_target_labels(
+          control_flow, entry_label, missing_structured_id_block);
+  if (!missing_structured_id_labels.has_value() ||
+      missing_structured_id_labels->true_label != true_label ||
+      missing_structured_id_labels->false_label != false_label) {
+    return fail("control-flow target helper did not preserve prepared fallback for missing structured ids");
   }
 
   auto mismatch_block = source_block;
