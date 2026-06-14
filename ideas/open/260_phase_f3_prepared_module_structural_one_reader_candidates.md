@@ -275,6 +275,24 @@ narrows it further:
   not approval for broad `PreparedBirModule` deletion, privatization,
   wrapping, aggregate retirement, or migration of unrelated `module`, `names`,
   `control_flow`, or `store_source_publications` rows.
+- `store_source_publications` recovered-source identity packet completed in
+  the retired active runbook: recovered narrow-store source lookup now accepts
+  same-block BIR load/store identity only behind a local prepared/BIR
+  agreement boundary, while preserving prepared recovered-source publication
+  planning as the policy owner.
+- Focused proof covered the positive prepared/BIR recovered-source agreement
+  path plus fail-closed rows for absent BIR identity fallback, complete BIR
+  identity mismatch, frame-slot or object mismatch, lane offset mismatch,
+  store width mismatch, wrong stored value, after-store ordering, missing
+  memory-access evidence, and nearby public publication-planner compatibility.
+- Broader close-readiness proof passed with 180/180 default backend tests in
+  the canonical before/after logs, and the regression guard reported no new
+  failures.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed recovered-source packet is not
+  approval for broad `PreparedBirModule` deletion, privatization, wrapping,
+  aggregate retirement, or migration of unrelated `module`, `names`,
+  `control_flow`, or `store_source_publications` rows.
 
 ## Acceptance Criteria
 
