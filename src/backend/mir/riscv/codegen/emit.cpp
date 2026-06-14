@@ -302,13 +302,42 @@ bool has_existing_concrete_i64_stack_source_register_policy(
          intent.source_stack_size_bytes == std::optional<std::size_t>{8};
 }
 
-}  // namespace
+struct RiscvEdgePublicationMoveAdapter {
+  const c4c::backend::prepare::PreparedFunctionLookups* lookups = nullptr;
+  c4c::BlockLabelId predecessor_label = c4c::kInvalidBlockLabel;
+  c4c::BlockLabelId successor_label = c4c::kInvalidBlockLabel;
+  c4c::backend::prepare::PreparedValueId destination_value_id = 0;
 
-EdgePublicationMoveIntent consume_edge_publication_move_intent(
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    c4c::BlockLabelId predecessor_label,
-    c4c::BlockLabelId successor_label,
-    c4c::backend::prepare::PreparedValueId destination_value_id) {
+  [[nodiscard]] EdgePublicationMoveIntent consume_prepared_backed_move_intent() const;
+
+ private:
+  [[nodiscard]] const c4c::backend::prepare::PreparedEdgePublication*
+  find_prepared_publication() const;
+
+  [[nodiscard]] std::optional<std::string> render_prepared_source_operand(
+      EdgePublicationMoveIntent& intent,
+      const c4c::backend::prepare::PreparedEdgePublication& publication) const;
+};
+
+const c4c::backend::prepare::PreparedEdgePublication*
+RiscvEdgePublicationMoveAdapter::find_prepared_publication() const {
+  return c4c::backend::prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups->edge_publications, predecessor_label, successor_label,
+      destination_value_id);
+}
+
+std::optional<std::string>
+RiscvEdgePublicationMoveAdapter::render_prepared_source_operand(
+    EdgePublicationMoveIntent& intent,
+    const c4c::backend::prepare::PreparedEdgePublication& publication) const {
+  return render_edge_publication_source_operand(intent,
+                                                lookups,
+                                                publication,
+                                                *publication.source_home);
+}
+
+EdgePublicationMoveIntent
+RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
   namespace prepare = c4c::backend::prepare;
 
   if (lookups == nullptr) {
@@ -317,9 +346,7 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
     };
   }
 
-  const auto* publication = prepare::find_unique_indexed_prepared_edge_publication(
-      &lookups->edge_publications, predecessor_label, successor_label,
-      destination_value_id);
+  const auto* publication = find_prepared_publication();
   if (publication == nullptr) {
     return EdgePublicationMoveIntent{
         .status = EdgePublicationMoveIntentStatus::MissingPublication,
@@ -344,11 +371,7 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
     return intent;
   }
-  const auto source_operand =
-      render_edge_publication_source_operand(intent,
-                                             lookups,
-                                             *publication,
-                                             *publication->source_home);
+  const auto source_operand = render_prepared_source_operand(intent, *publication);
   if (!source_operand.has_value()) {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
     return intent;
@@ -512,6 +535,22 @@ EdgePublicationMoveIntent consume_edge_publication_move_intent(
 
   intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
   return intent;
+}
+
+}  // namespace
+
+EdgePublicationMoveIntent consume_edge_publication_move_intent(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    c4c::backend::prepare::PreparedValueId destination_value_id) {
+  const RiscvEdgePublicationMoveAdapter adapter{
+      .lookups = lookups,
+      .predecessor_label = predecessor_label,
+      .successor_label = successor_label,
+      .destination_value_id = destination_value_id,
+  };
+  return adapter.consume_prepared_backed_move_intent();
 }
 
 EdgePublicationMoveIntent append_edge_publication_move_instruction(

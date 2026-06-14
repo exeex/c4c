@@ -1,36 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/245_phase_f1_riscv_route5_route3_edge_publication_adapter.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add route diagnostic/oracle coverage before authority changes
+Current Step ID: 3
+Current Step Title: Introduce the riscv adapter boundary
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: added route diagnostic/oracle coverage before changing riscv
-wrapper authority.
+Completed Step 3: introduced the riscv adapter boundary around prepared
+edge-publication consumption without changing externally visible behavior.
 
 Changed surfaces:
 
-- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp` now has
-  a route fixture that exposes agreeing Route 5 scalar edge identity, Route 5
-  mismatch/absence diagnostics, duplicated edge-record visibility, and Route
-  5/Route 3 dynamic memory-source identity while preserving the existing
-  prepared-backed riscv statuses and exact output (`mv a1, a0` and
-  `lw a1, 12(s2)`).
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` now records
-  duplicate Route 5 edge-record visibility next to the existing Route 5
-  memory-source, missing, mismatch, wrong-predecessor/successor, and Route 3
-  fallback/conflict oracle rows.
-- No riscv implementation or wrapper-output expectations were changed.
+- `src/backend/mir/riscv/codegen/emit.cpp` now routes
+  `consume_edge_publication_move_intent()` through an internal
+  `RiscvEdgePublicationMoveAdapter` seam.
+- The adapter owns the prepared edge-publication lookup and prepared source-home
+  rendering handoff, keeping fallback/status behavior visibly prepared-backed.
+- `append_edge_publication_move_instruction()`, `EdgePublicationMoveIntent`,
+  `EdgePublicationMoveIntentStatus`, prepared fallback behavior, and exact
+  instruction text remain unchanged.
+- No Route 5 or Route 3 fact is agreement-gated as authority in this packet.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: introduce the riscv adapter boundary around
-`consume_edge_publication_move_intent()` while preserving existing
-`EdgePublicationMoveIntentStatus` values, prepared fallback behavior, and exact
-instruction text.
+Execute Step 4 from `plan.md`: agreement-gate Route 5 edge/source identity
+behind the new riscv adapter seam while preserving prepared fallback behavior,
+status names, and exact instruction text.
 
 ## Watchouts
 
@@ -39,9 +36,8 @@ instruction text.
 - Treat Route 5 and Route 3 facts as agreement evidence only; riscv keeps
   target-local policy.
 - Do not claim prepared lookup, aggregate, or draft 155 demotion readiness.
-- The first code seam should be an adapter around
-  `consume_edge_publication_move_intent()`, not a replacement of
-  `PreparedFunctionLookups` or `PreparedBirModule` publication fields.
+- Route 5 gating should extend `RiscvEdgePublicationMoveAdapter`, not bypass it
+  or replace `PreparedFunctionLookups`/`PreparedBirModule` publication fields.
 - Route 5 can identify edge/current-block publication source facts, including
   memory-source records, but it must not select riscv registers, stack offsets,
   scratch registers, or instruction spelling.
@@ -51,6 +47,8 @@ instruction text.
 - Current Route 5 edge index diagnostics expose duplicate edge records, but the
   finder does not reject duplicated edge rows as a conflict today. Treat that
   as diagnostic visibility for the adapter, not as existing route authority.
+- The Step 3 seam is behavior-preserving and prepared-backed; Step 4 still owns
+  the first route-agreement decision.
 
 ## Proof
 
