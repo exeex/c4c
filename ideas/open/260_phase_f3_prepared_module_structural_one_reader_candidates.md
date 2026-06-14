@@ -199,6 +199,26 @@ narrows it further:
   approval for broad `PreparedBirModule` deletion, privatization, wrapping,
   aggregate retirement, or migration of unrelated `names`, `module`,
   `control_flow`, or `store_source_publications` rows.
+- `names` semantic resolver API packet completed in the retired active
+  runbook: prepared function-name, block-label, and value-name resolver
+  agreement helpers now report authoritative prepared ids only when prepared
+  names, raw spellings or ids where applicable, and prepared-table round trips
+  agree without interning during resolver queries.
+- Focused proof covered positive prepared function-name, block-label, and
+  value-name rows plus fail-closed rows for empty spellings, absent prepared
+  names, immediate values, invalid and out-of-range raw block-label ids,
+  raw-only missing prepared ids, prepared/BIR spelling drift, corrupted
+  prepared-table round-trip mismatches, repeated non-interning queries, and
+  retained direct `names.*.find(...)` compatibility.
+- Broader close-readiness proof passed with 180/180 default backend tests in
+  the canonical before/after logs, and the regression guard reported no new
+  failures.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed semantic resolver packet is not
+  approval for broad `PreparedBirModule` deletion, privatization, wrapping,
+  aggregate retirement, construction-time interning changes, or migration of
+  unrelated `names`, `module`, `control_flow`, or
+  `store_source_publications` rows.
 
 ## Acceptance Criteria
 
