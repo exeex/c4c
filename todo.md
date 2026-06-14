@@ -1,109 +1,65 @@
 Status: Active
 Source Idea Path: ideas/open/259_phase_f3_x86_route5_prepared_edge_publication_agreement_bridge.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Agreement Facade Design
+Current Step ID: 3
+Current Step Title: Implement Narrow x86 Agreement Bridge
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: `Agreement Facade Design` is complete.
+Step 3: `Implement Narrow x86 Agreement Bridge` is complete.
 
-Selected contract: keep the agreement bridge x86-local and split at the
-existing ownership boundary. `append_prepared_compare_join_parallel_copy(...)`
-should own the BIR context because it already has the prepared module
-function, control-flow edge, prepared value-location function, predecessor
-label, successor label, and parallel-copy destination. It should build/query
-Route 5 for the current function and pass an agreement decision into the
-existing prepared-dispatch consumer. Do not widen public prepared lookup APIs.
+Implemented a module-local Route 5/prepared agreement facade in
+`src/backend/mir/x86/module/module.cpp`, near the compare-join
+edge-publication consumer. `append_prepared_compare_join_parallel_copy(...)`
+now keeps BIR function/block context in the x86 module layer, calls the
+existing prepared dispatch helper for lookup/status/operand rendering, then
+uses the local facade to compare the selected `PreparedEdgePublication` row
+against Route 5 edge-publication facts.
 
-Smallest context shape: add a narrow module-local facade, e.g.
-`find_agreed_route5_edge_publication_source(...)`, that accepts the prepared
-module, consumed plans, BIR function, predecessor label id, successor label id,
-destination prepared value id, and the selected
-`PreparedEdgePublication` row. The facade may resolve predecessor/successor BIR
-blocks and destination value identity locally, then query
-`route5_build_edge_join_source_index(...)` /
-`route5_find_cfg_edge_publication(...)` or the MIR
-`find_bir_cfg_edge_publication_source_identity(...)` adapter. The prepared
-dispatch helper should continue to find the unique prepared row and render the
-move intent/status; the new agreement result is only a gate before intent
-`Available`.
+The facade resolves predecessor and successor BIR blocks from prepared labels,
+builds the Route 5 edge/join source index for the current BIR function, rejects
+duplicate matching Route 5 edge records, and checks same edge, destination
+value name/type, source value kind/name/type, source producer kind, producer
+block label, and producer instruction index. Dynamic `LoadLocal` publications
+require Route 5 memory-source evidence and reuse the existing Route 3
+source-memory agreement helper before allowing the x86 publication move path.
 
-Required equality checks: agreement requires the same predecessor label/id,
-same successor label/id, same destination value id/name/type, same source value
-id/name/type, same source producer kind, same producer block label/id, and same
-producer instruction index. Immediate, param, same-module global, pointer-backed
-global, trailing-immediate, and selected `LoadLocal` rows should only agree
-when Route 5/BIR and the prepared publication describe the same semantic source
-for the same edge and destination. The facade must not compare unrelated raw id
-domains as authority when a resolved prepared/BIR identity is available.
-
-Dynamic `LoadLocal` branch: when Route 5 reports
-`Route5PublicationSourceKind::LoadLocal`, the facade must require Route 5
-source-memory identity to be available and delegate memory agreement to the
-existing Route 3 source-memory authority used by the x86 Route 3 bridge. The
-accepted row must tie the Route 5 producer block/instruction/source value to
-the selected prepared publication and then require Route 3/prepared memory
-agreement for base slot, address space, volatility, size, alignment, and
-supported base-plus-offset addressing. Prepared source-memory facts alone are
-not sufficient, and Route 5 producer identity without Route 3 source-memory
-agreement is not sufficient.
-
-Fail-closed matrix: missing shared lookups, absent prepared publication,
-duplicate/ambiguous prepared publication, absent Route 5 record, duplicate or
-ambiguous Route 5 record, wrong predecessor, wrong successor, wrong destination
-value/id/type, missing source value, source value mismatch, missing source
-producer, unsupported producer kind, producer kind mismatch, producer
-block/instruction mismatch, prepared-only row, Route 5-only row, unsupported
-publication, unsupported source/destination home, existing fallback rows,
-non-agreeing fallback rows, dynamic `LoadLocal` missing source-memory
-identity, incomplete prepared source-memory publication, and Route 3 memory
-disagreement all return non-agreement and must not produce an x86 agreement
-claim.
-
-Compatibility retained: public
-`PreparedEdgePublicationLookups::publications_by_edge_destination`,
-`find_indexed_prepared_edge_publications(...)`,
-`find_unique_indexed_prepared_edge_publication(...)`,
-`prepare_edge_copy_source_facts(...)`, prepared lookup/status names,
-helper/oracle names, x86 intent status spelling, fallback behavior, register
-choice, carrier choice, output instruction text, module output formatting,
-route-debug text, and RISC-V diagnostics remain compatibility authority. The
-Route 5 bridge may only gate agreement in the x86 compare-join edge-publication
-consumer; it must not move formatting or target policy into Route 5/BIR.
+Compatibility retained: `consume_edge_publication_move_intent(...)` and public
+prepared edge-publication lookup/status APIs were not widened or renamed, and
+non-`LoadLocal` non-agreeing rows remain on the existing compatibility
+prepared-emission path instead of claiming Route 5 agreement. x86 output
+spelling, register choice, fallback behavior, route-debug text, and RISC-V
+diagnostics were preserved by the delegated proof.
 
 ## Suggested Next
 
-Step 3: implement the narrow x86 agreement bridge by adding the module-local
-facade described above, passing its decision into the prepared
-edge-publication move intent path, and keeping non-agreeing rows on the
-existing compatibility fallback path.
+Step 4: add focused agreement and rejection proof for the Route 5 bridge. Cover
+the positive selected `LoadLocal` publication path and naturally reachable
+fail-closed rows for missing/duplicate/wrong Route 5 evidence, source producer
+mismatch, and Route 3 source-memory disagreement. Do not hand-build stale
+prepared publication state or downgrade expectations.
 
 ## Watchouts
 
-- Keep this bridge x86-local and narrow.
-- Do not rename, delete, privatize, or bypass public prepared
-  `edge_publications` helpers.
-- Do not move target policy, output spelling, carrier selection, or register
-  choice into Route 5/BIR.
-- Dynamic `LoadLocal` publication agreement must depend on the existing Route 3
-  source-memory agreement authority, not raw id comparisons.
-- Reject testcase-shaped shortcuts and expectation downgrades.
-- Do not use the RISC-V Route 5 oracle as an x86 implementation template for
-  target policy; use it only as compatibility/proof context.
-- Keep BIR function/block and Route 5 query context in
-  `append_prepared_compare_join_parallel_copy(...)` or a nearby x86 module
-  helper; avoid widening public prepared lookup APIs.
-- Do not make `consume_edge_publication_move_intent(...)` responsible for BIR
-  block discovery or target policy beyond its current prepared row/status and
-  operand rendering role.
-- The `LoadLocal` branch must reuse or closely wrap the existing x86 Route 3
-  source-memory agreement authority; do not recreate the rejected raw-id
-  comparison path from idea 258.
+- The Step 3 implementation intentionally preserves compatibility fallback for
+  existing non-`LoadLocal` prepared publication moves; Step 4 should prove that
+  these rows do not claim Route 5 agreement rather than forcing a behavior
+  downgrade.
+- `LoadLocal` edge-publication moves are the fail-closed branch because they
+  require Route 5 memory-source identity plus Route 3 source-memory agreement.
+- Keep BIR context in `module.cpp`; do not move block discovery or target
+  policy into `consume_edge_publication_move_intent(...)`.
+- Avoid synthetic/stale publication rows and named-case shortcuts.
 
 ## Proof
 
-Read-only/design packet. No build was required by the delegated packet.
-Validation: `git diff --check -- todo.md`.
+Delegated proof command:
+
+```bash
+(cmake --build --preset default && ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_prepared_printer|backend_riscv_prepared_edge_publication)$' --output-on-failure && cmake --build build-x86 --target backend_x86_route_debug_test backend_x86_handoff_boundary_test -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_x86_route_debug|backend_x86_handoff_boundary)$') > test_after.log 2>&1
+```
+
+Result: passed. `test_after.log` shows 3/3 default
+prepared/RISC-V tests and 2/2 x86-enabled tests passed.

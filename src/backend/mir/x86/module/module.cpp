@@ -2486,8 +2486,23 @@ bool prepared_edge_publication_move_has_i32_operands(
              intent.destination_operand;
 }
 
+bool agreed_route5_edge_publication_source(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    const c4c::backend::prepare::PreparedEdgePublication& publication);
+
+bool edge_publication_move_allowed_by_route5_agreement_or_compatibility(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    const c4c::backend::prepare::PreparedEdgePublication& publication);
+
 void append_prepared_compare_join_parallel_copy(
     c4c::backend::x86::core::Text& function_out,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::x86::ConsumedPlans& consumed,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::bir::Function& function,
@@ -2536,6 +2551,13 @@ void append_prepared_compare_join_parallel_copy(
     switch (intent.status) {
       case c4c::backend::x86::prepared::EdgePublicationMoveIntentStatus::Available:
         if (emit_publication_moves &&
+            intent.publication != nullptr &&
+            edge_publication_move_allowed_by_route5_agreement_or_compatibility(
+                module,
+                function,
+                predecessor_label,
+                successor_label,
+                *intent.publication) &&
             prepared_edge_publication_move_has_i32_operands(intent)) {
           function_out.append_line("    " + intent.instruction_text);
         }
@@ -2988,6 +3010,7 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
                                            module.names,
                                            render_contract->branch_plan.target_labels.false_label)));
     append_prepared_compare_join_parallel_copy(function_out,
+                                               module,
                                                consumed,
                                                module.names,
                                                function,
@@ -3014,6 +3037,7 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
                                      render_contract->branch_plan.target_labels.false_label)) +
                              ":");
     append_prepared_compare_join_parallel_copy(function_out,
+                                               module,
                                                consumed,
                                                module.names,
                                                function,
@@ -4040,6 +4064,168 @@ find_agreed_route3_load_local_source_memory_access(
     agreed_access = publication.source_memory_access;
   }
   return agreed_access;
+}
+
+c4c::backend::bir::Route5PublicationSourceKind route5_source_kind_from_prepared(
+    c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind kind) {
+  switch (kind) {
+    case c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::Immediate:
+      return c4c::backend::bir::Route5PublicationSourceKind::Immediate;
+    case c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return c4c::backend::bir::Route5PublicationSourceKind::LoadLocal;
+    case c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return c4c::backend::bir::Route5PublicationSourceKind::LoadGlobal;
+    case c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::Cast:
+      return c4c::backend::bir::Route5PublicationSourceKind::Cast;
+    case c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::Binary:
+      return c4c::backend::bir::Route5PublicationSourceKind::Binary;
+    case c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::
+        SelectMaterialization:
+      return c4c::backend::bir::Route5PublicationSourceKind::SelectMaterialization;
+    case c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::Unknown:
+      return c4c::backend::bir::Route5PublicationSourceKind::Unknown;
+  }
+  return c4c::backend::bir::Route5PublicationSourceKind::Unknown;
+}
+
+bool route5_edge_record_matches_prepared_publication_key(
+    const c4c::backend::bir::Route5CfgEdgePublicationRecord& record,
+    const c4c::backend::bir::Block& predecessor_block,
+    const c4c::backend::bir::Block& successor_block,
+    const c4c::backend::prepare::PreparedEdgePublication& publication) {
+  return record.predecessor_block == &predecessor_block &&
+         record.successor_block == &successor_block &&
+         record.destination_value_name == publication.destination_value.name &&
+         record.destination_value_type == publication.destination_value.type;
+}
+
+bool route5_edge_source_agrees_with_prepared_publication(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Route5EdgeJoinSourceIndex& route5_index,
+    const c4c::backend::bir::Block& predecessor_block,
+    const c4c::backend::bir::Block& successor_block,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    const c4c::backend::prepare::PreparedEdgePublication& publication) {
+  if (publication.status !=
+          c4c::backend::prepare::PreparedEdgePublicationLookupStatus::Available ||
+      publication.predecessor_label != predecessor_label ||
+      publication.successor_label != successor_label ||
+      publication.destination_value.kind != c4c::backend::bir::Value::Kind::Named ||
+      publication.destination_value.type == c4c::backend::bir::TypeKind::Void) {
+    return false;
+  }
+
+  const c4c::backend::bir::Route5CfgEdgePublicationRecord* matched = nullptr;
+  for (const auto& candidate : route5_index.edge_records) {
+    if (!route5_edge_record_matches_prepared_publication_key(
+            candidate, predecessor_block, successor_block, publication)) {
+      continue;
+    }
+    if (matched != nullptr) {
+      return false;
+    }
+    matched = &candidate;
+  }
+  if (matched == nullptr ||
+      (matched->status != c4c::backend::bir::Route5PublicationStatus::Available &&
+       matched->status != c4c::backend::bir::Route5PublicationStatus::MemorySource) ||
+      !*matched) {
+    return false;
+  }
+
+  if (matched->predecessor_label_id != predecessor_block.label_id ||
+      matched->successor_label_id != successor_block.label_id ||
+      matched->source_value_kind != publication.source_value_kind ||
+      matched->source_value_type != publication.source_value.type ||
+      matched->source_producer_kind !=
+          route5_source_kind_from_prepared(publication.source_producer_kind)) {
+    return false;
+  }
+
+  if (publication.source_value_kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return matched->source_value.value_kind ==
+               c4c::backend::bir::Value::Kind::Immediate &&
+           matched->source_value.integer_constant.has_value() &&
+           matched->source_value.integer_constant ==
+               publication.source_value.immediate;
+  }
+
+  if (publication.source_value_kind != c4c::backend::bir::Value::Kind::Named ||
+      matched->source_value_name != publication.source_value.name ||
+      !publication.source_value_id.has_value() ||
+      !publication.source_producer_block_label.has_value() ||
+      !publication.source_producer_instruction_index.has_value() ||
+      matched->source_producer_instruction == nullptr ||
+      !matched->source_producer_instruction_index.has_value() ||
+      *publication.source_producer_block_label != predecessor_label ||
+      *publication.source_producer_instruction_index !=
+          *matched->source_producer_instruction_index) {
+    return false;
+  }
+
+  const auto producer_prepared_label =
+      bir_block_label_id(module.module.names, module.names, predecessor_block);
+  if (!producer_prepared_label.has_value() ||
+      producer_prepared_label != publication.source_producer_block_label) {
+    return false;
+  }
+
+  if (publication.source_producer_kind !=
+      c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal) {
+    return matched->status == c4c::backend::bir::Route5PublicationStatus::Available;
+  }
+
+  if (matched->status != c4c::backend::bir::Route5PublicationStatus::MemorySource ||
+      !matched->source_memory_identity_available ||
+      matched->source_producer_block_label_id != predecessor_block.label_id) {
+    return false;
+  }
+  return route3_load_local_source_memory_matches_publication(
+      module, matched->source_memory_access, publication);
+}
+
+bool agreed_route5_edge_publication_source(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    const c4c::backend::prepare::PreparedEdgePublication& publication) {
+  const auto* predecessor_block = find_bir_block_by_prepared_label(
+      function, module.module.names, module.names, predecessor_label);
+  const auto* successor_block = find_bir_block_by_prepared_label(
+      function, module.module.names, module.names, successor_label);
+  if (predecessor_block == nullptr || successor_block == nullptr) {
+    return false;
+  }
+
+  const auto route5_index =
+      c4c::backend::bir::route5_build_edge_join_source_index(function);
+  return route5_edge_source_agrees_with_prepared_publication(module,
+                                                            route5_index,
+                                                            *predecessor_block,
+                                                            *successor_block,
+                                                            predecessor_label,
+                                                            successor_label,
+                                                            publication);
+}
+
+bool edge_publication_move_allowed_by_route5_agreement_or_compatibility(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label,
+    const c4c::backend::prepare::PreparedEdgePublication& publication) {
+  const bool agreed = agreed_route5_edge_publication_source(module,
+                                                           function,
+                                                           predecessor_label,
+                                                           successor_label,
+                                                           publication);
+  if (agreed) {
+    return true;
+  }
+  return publication.source_producer_kind !=
+         c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal;
 }
 
 bool has_prepared_load_local_source_publication_candidate(
