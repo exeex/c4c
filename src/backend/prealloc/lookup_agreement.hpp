@@ -1,6 +1,7 @@
 #pragma once
 
-#include "../../shared/text_id_table.hpp"
+#include "names.hpp"
+
 #include "../bir/bir.hpp"
 
 #include <cstddef>
@@ -19,6 +20,10 @@ struct PreparedControlFlowFunction;
 struct PreparedEdgePublicationSourceProducer;
 struct PreparedEdgePublicationSourceProducerLookups;
 struct PreparedNameTables;
+struct PreparedRegallocFunction;
+struct PreparedValueHome;
+struct PreparedValueHomeLookups;
+struct PreparedValueLocationFunction;
 
 struct PreparedBirFunctionAgreement {
   const bir::Function* function = nullptr;
@@ -47,6 +52,13 @@ struct PreparedBirValueNameAgreement {
   bool available = false;
 };
 
+struct PreparedBirValueHomeAgreement {
+  const PreparedValueHome* home = nullptr;
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  bool available = false;
+};
+
 [[nodiscard]] PreparedBirFunctionAgreement prepared_bir_function_agreement(
     const PreparedBirModule& prepared,
     const PreparedControlFlowFunction& function);
@@ -72,5 +84,12 @@ struct PreparedBirValueNameAgreement {
     const bir::Value& value,
     ValueNameId value_name,
     std::size_t before_instruction_index);
+
+[[nodiscard]] PreparedBirValueHomeAgreement prepared_bir_value_home_agreement(
+    const PreparedNameTables& names,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const PreparedRegallocFunction* regalloc,
+    const PreparedValueLocationFunction* function_locations,
+    const bir::Value& value);
 
 }  // namespace c4c::backend::prepare

@@ -3,6 +3,7 @@
 #include "module.hpp"
 #include "publication_plans.hpp"
 #include "select_chain_lookups.hpp"
+#include "value_locations.hpp"
 
 #include <string_view>
 
@@ -243,6 +244,82 @@ PreparedBirValueNameAgreement prepared_bir_value_name_agreement(
       .produced_value = instruction_result,
       .value_name = value_name,
       .instruction_index = producer->instruction_index,
+      .available = true,
+  };
+}
+
+PreparedBirValueHomeAgreement prepared_bir_value_home_agreement(
+    const PreparedNameTables& names,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const PreparedRegallocFunction* regalloc,
+    const PreparedValueLocationFunction* function_locations,
+    const bir::Value& value) {
+  if (function_locations == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return {};
+  }
+
+  const ValueNameId value_name = names.value_names.find(value.name);
+  if (value_name == kInvalidValueName) {
+    return {};
+  }
+
+  const PreparedValueHome* agreed_home = nullptr;
+  for (const auto& home : function_locations->value_homes) {
+    if (home.value_name != value_name) {
+      continue;
+    }
+    if (agreed_home != nullptr) {
+      return {};
+    }
+    agreed_home = &home;
+  }
+  if (agreed_home == nullptr) {
+    return {};
+  }
+
+  const PreparedValueId value_id = agreed_home->value_id;
+  for (const auto& home : function_locations->value_homes) {
+    if (home.value_id == value_id && &home != agreed_home) {
+      return {};
+    }
+  }
+
+  if (regalloc != nullptr) {
+    const PreparedRegallocValue* agreed_regalloc_value = nullptr;
+    for (const auto& regalloc_value : regalloc->values) {
+      if (regalloc_value.value_name != value_name) {
+        continue;
+      }
+      if (agreed_regalloc_value != nullptr) {
+        return {};
+      }
+      agreed_regalloc_value = &regalloc_value;
+    }
+    if (agreed_regalloc_value != nullptr &&
+        agreed_regalloc_value->value_id != value_id) {
+      return {};
+    }
+  }
+
+  if (value_home_lookups != nullptr) {
+    const auto value_id_it = value_home_lookups->value_ids.find(value_name);
+    if (value_id_it == value_home_lookups->value_ids.end() ||
+        value_id_it->second != value_id) {
+      return {};
+    }
+    const auto home_it = value_home_lookups->homes_by_id.find(value_id);
+    if (home_it == value_home_lookups->homes_by_id.end() ||
+        home_it->second != agreed_home) {
+      return {};
+    }
+  }
+
+  return PreparedBirValueHomeAgreement{
+      .home = agreed_home,
+      .value_id = value_id,
+      .value_name = value_name,
       .available = true,
   };
 }

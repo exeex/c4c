@@ -1,64 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Design the Value-Home Agreement Boundary
+Current Step ID: 3
+Current Step Title: Implement Narrow Value-Home Bridge
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 design complete for the `names` value-home lookup candidate.
+Step 3 implementation complete for the `names` value-home lookup candidate.
 
-- Boundary placement: add a narrow shared agreement helper in
-  `src/backend/prealloc/lookup_agreement.hpp` /
-  `src/backend/prealloc/lookup_agreement.cpp`, then call it from the selected
-  BIR-value value-home path in `src/backend/prealloc/prepared_lookups.cpp`.
-- The helper should sit beside the existing prepared lookup agreement helpers
-  because it must compare BIR-name spelling, prepared name-table resolution,
-  backing function locations, and optional indexes before any BIR-value result
-  is treated as structurally agreed.
-- Keep `src/backend/prealloc/value_locations.hpp` behavior and public
-  prepared lookup helpers compatible; do not move the public first-emplace or
-  scan fallback semantics into a BIR agreement claim.
-- Accepted agreement row: the BIR value is named and non-empty, the prepared
-  name table resolves that spelling to exactly one `ValueNameId`, function
-  locations are available, the resolved prepared value id exists, the prepared
-  value home exists in backing `PreparedFunctionLocations`, and any supplied
-  `PreparedValueHomeLookups` row points to the same backing value id/home.
-- Rejected/fail-closed rows: null function locations, immediate or otherwise
-  non-named BIR values, empty BIR names, missing prepared name-table entries,
-  absent prepared value ids, missing prepared homes, stale supplied indexes,
-  duplicate or conflicting prepared names, duplicate or conflicting prepared
-  value ids, and prepared/BIR spelling drift.
-- Public compatibility rows to preserve: direct prepared lookups can still use
-  the current index-or-scan behavior, including first row retained by
-  `emplace` and null results for missing data. Those rows remain compatibility
-  behavior only and must not become evidence of structured BIR agreement.
-- Candidate implementation files for Step 3:
-  `src/backend/prealloc/lookup_agreement.hpp`,
-  `src/backend/prealloc/lookup_agreement.cpp`,
-  `src/backend/prealloc/prepared_lookups.cpp`, and
-  `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
-- Step 3 should not edit `value_locations.hpp` unless the existing declarations
-  prevent the adapter from calling already-public prepared lookup helpers.
+- Added `PreparedBirValueHomeAgreement` and
+  `prepared_bir_value_home_agreement(...)` in `lookup_agreement.*`.
+- Wired only `find_prepared_value_home_for_bir_value(...)` through the new
+  agreement helper; direct prepared value-home lookup by `PreparedValueId` and
+  `ValueNameId` remains on the existing index-or-scan compatibility path.
+- The BIR-value agreement path now requires a named non-empty BIR value,
+  prepared name-table resolution, exactly one backing value-home row for the
+  prepared name, no duplicate backing value id, optional regalloc agreement
+  when present, and supplied lookup indexes that point back to the same
+  backing home.
+- Added focused helper-test rows for an accepted named value-home lookup and
+  fail-closed behavior for duplicate prepared names, duplicate prepared ids,
+  stale value-id indexes, stale home indexes, missing supplied indexes,
+  conflicting/duplicate regalloc ids, prepared/BIR spelling drift, immediate
+  values, empty names, and null function locations.
+- Preserved a public compatibility check showing duplicate prepared names still
+  return the first indexed value-home row for direct prepared lookup, while the
+  BIR-value agreement path rejects the same duplicate state.
 
 ## Suggested Next
 
-Execute Step 3: implement the narrow value-home agreement bridge.
+Execute Step 4: add or confirm any remaining fail-closed proof rows for the
+value-home lookup candidate.
 
-Step 3 executor packet:
+Step 4 executor packet:
 
 ```text
 to_subagent: c4c-executor
-Objective: implement the shared value-home agreement helper for idea 260 `names` value-home lookup candidate.
-Plan Step: Step 3: Implement Narrow Value-Home Bridge
-Owned Files: src/backend/prealloc/lookup_agreement.hpp, src/backend/prealloc/lookup_agreement.cpp, src/backend/prealloc/prepared_lookups.cpp, tests/backend/bir/backend_prepared_lookup_helper_test.cpp, todo.md
-Do Not Touch: plan.md, ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md, src/backend/prealloc/value_locations.hpp unless the existing public helper declarations block the adapter, route-debug files, target-output baselines, unsupported expectations, same-block lookup code, semantic resolver code, control-flow code, store-source publication code, printer/debug code.
-Context: Step 2 chose a shared helper in `lookup_agreement.*`. Public prepared value-home lookup compatibility must remain unchanged: direct prepared lookup rows may keep current index-or-scan and first-emplace behavior, but BIR-value agreement must fail closed on stale indexes, duplicate/conflicting prepared names or ids, missing backing rows, and prepared/BIR spelling drift.
-Task: Add the narrow helper/adaptor, wire it only into `find_prepared_value_home_for_bir_value(...)`, and add focused prepared lookup helper rows for one accepted named value-home lookup plus nearby fail-closed rows. Keep the helper scoped to value-home agreement; do not absorb other idea 260 candidates.
+Objective: confirm the remaining fail-closed proof surface for idea 260 `names` value-home lookup candidate.
+Plan Step: Step 4: Add Fail-Closed Proof Rows
+Owned Files: tests/backend/bir/backend_prepared_lookup_helper_test.cpp, todo.md
+Do Not Touch: plan.md, ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md, route-debug files, target-output baselines, unsupported expectations, same-block lookup code, semantic resolver code, control-flow code, store-source publication code, printer/debug code, value-home helper behavior unless an unproved Step 4 row exposes a real agreement bug.
+Context: Step 3 already added the shared value-home agreement helper and covered the main positive and fail-closed rows. Step 4 should audit the plan's remaining fail-closed checklist against the focused helper test and add only missing proof rows, not broaden into another idea 260 candidate.
+Task: Add any missing value-home helper proof rows for missing prepared ids/homes or null behavior not already covered, or record that Step 3's helper-test rows cover the Step 4 surface. Preserve public direct prepared lookup compatibility.
 Proof: (cmake --build --preset default --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1
-Done When: focused helper tests prove the accepted value-home row and fail-closed agreement rows, `todo.md` records the implementation/proof result, and no unrelated output or unsupported expectation files are changed.
+Done When: focused proof covers positive and fail-closed value-home rows, `todo.md` records whether Step 4 added rows or confirmed coverage, and no unrelated output or unsupported expectation files are changed.
 If Blocked: stop and report the exact ambiguity; do not edit plan.md or source idea.
 ```
 
@@ -75,17 +62,23 @@ If Blocked: stop and report the exact ambiguity; do not edit plan.md or source i
   expectations, helper/oracle status names, printer/debug strings,
   same-block lookup, semantic resolver API, control-flow, store-source
   publication, or backend lowering behavior to claim progress.
-- Stale supplied indexes are currently authoritative when non-null; Step 2
-  requires agreement with the backing value locations before Step 3 wires any
-  BIR-value authority through them.
-- Duplicate/conflicting prepared ids or names are currently first-inserted by
-  the lookup builder; Step 3 should fail closed for BIR agreement without
-  breaking existing public prepared lookup compatibility.
-- The helper must distinguish "public lookup returned a row" from "structured
-  BIR agreement exists"; stale indexes and duplicate rows are the key route
-  risks for this packet.
+- The helper now distinguishes "public lookup returned a row" from "structured
+  BIR agreement exists"; keep Step 4 proof-only unless it finds a real missing
+  agreement check.
+- Direct prepared lookup compatibility intentionally keeps first-emplace
+  behavior for duplicates. Do not reinterpret that compatibility behavior as
+  BIR agreement.
+- `src/backend/prealloc/prepared_lookups.cpp` was owned for Step 3 but did not
+  need changes because the selected public BIR-value entrypoint is inline in
+  `value_locations.hpp`.
 
 ## Proof
 
-Ran `git diff --check -- todo.md`; proof passed. No `test_after.log` is needed
-for this design-only packet.
+Ran:
+
+```bash
+(cmake --build --preset default --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1
+```
+
+Result: passed. `test_after.log` shows `100% tests passed, 0 tests failed out
+of 1`.

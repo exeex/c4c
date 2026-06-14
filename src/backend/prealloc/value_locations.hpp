@@ -1,5 +1,6 @@
 #pragma once
 
+#include "lookup_agreement.hpp"
 #include "names.hpp"
 #include "regalloc.hpp"
 
@@ -399,26 +400,18 @@ template <typename PreparedValueHomeIndexes>
              : nullptr;
 }
 
-template <typename PreparedValueHomeIndexes>
 [[nodiscard]] inline const PreparedValueHome* find_prepared_value_home_for_bir_value(
     const PreparedNameTables& names,
-    const PreparedValueHomeIndexes* value_home_indexes,
+    const PreparedValueHomeLookups* value_home_indexes,
     const PreparedRegallocFunction* regalloc,
     const PreparedValueLocationFunction* function_locations,
     const bir::Value& value) {
-  if (function_locations == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return nullptr;
-  }
-  const ValueNameId value_name = names.value_names.find(value.name);
-  if (value_name == kInvalidValueName) {
-    return nullptr;
-  }
-  return find_indexed_prepared_value_home(value_home_indexes,
-                                          regalloc,
-                                          function_locations,
-                                          value_name);
+  const auto agreement = prepared_bir_value_home_agreement(names,
+                                                           value_home_indexes,
+                                                           regalloc,
+                                                           function_locations,
+                                                           value);
+  return agreement.available ? agreement.home : nullptr;
 }
 
 [[nodiscard]] inline const PreparedMoveBundle* find_prepared_move_bundle(

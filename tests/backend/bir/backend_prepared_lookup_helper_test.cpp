@@ -1892,6 +1892,166 @@ int verify_linear_function_lookup() {
   return 0;
 }
 
+int verify_prepared_bir_value_home_agreement_boundary() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("value_home");
+  const auto value_name = names.value_names.intern("%value");
+  const auto other_value_name = names.value_names.intern("%other");
+  const auto drift_value_name = names.value_names.intern("%drift");
+
+  prepare::PreparedValueLocationFunction function_locations{
+      .function_name = function_name,
+      .value_homes = {
+          prepare::PreparedValueHome{
+              .value_id = 4,
+              .function_name = function_name,
+              .value_name = value_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = "r4",
+          },
+      },
+  };
+  prepare::PreparedRegallocFunction regalloc{
+      .function_name = function_name,
+      .values = {
+          prepare::PreparedRegallocValue{
+              .value_id = 4,
+              .function_name = function_name,
+              .value_name = value_name,
+              .type = bir::TypeKind::I64,
+          },
+      },
+  };
+  const auto lookups = prepare::make_prepared_value_home_lookups(&function_locations);
+  const bir::Value value = bir::Value::named(bir::TypeKind::I64, "%value");
+  if (!expect_same(
+          prepare::find_prepared_value_home_for_bir_value(
+              names, &lookups, &regalloc, &function_locations, value),
+          &function_locations.value_homes[0],
+          "BIR value-home agreement should accept matching prepared name and home")) {
+    return 1;
+  }
+  const auto agreement = prepare::prepared_bir_value_home_agreement(
+      names, &lookups, &regalloc, &function_locations, value);
+  if (!agreement.available || agreement.home != &function_locations.value_homes[0] ||
+      agreement.value_id != 4 || agreement.value_name != value_name) {
+    return fail("value-home agreement should publish agreed identity fields");
+  }
+  if (!expect_same(
+          prepare::find_prepared_value_home_for_bir_value(
+              names, nullptr, nullptr, &function_locations, value),
+          &function_locations.value_homes[0],
+          "BIR value-home agreement should allow absent optional indexes")) {
+    return 1;
+  }
+
+  prepare::PreparedValueLocationFunction duplicate_name_locations = function_locations;
+  duplicate_name_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 5,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+  });
+  const auto duplicate_name_lookups =
+      prepare::make_prepared_value_home_lookups(&duplicate_name_locations);
+  if (!expect_same(prepare::find_indexed_prepared_value_home(
+                       &duplicate_name_lookups,
+                       nullptr,
+                       &duplicate_name_locations,
+                       value_name),
+                   &duplicate_name_locations.value_homes[0],
+                   "public value-home lookup should retain first-emplace compatibility")) {
+    return 1;
+  }
+  if (prepare::find_prepared_value_home_for_bir_value(
+          names, &duplicate_name_lookups, nullptr, &duplicate_name_locations, value) !=
+      nullptr) {
+    return fail("BIR value-home agreement should reject duplicate prepared names");
+  }
+
+  prepare::PreparedValueLocationFunction duplicate_id_locations = function_locations;
+  duplicate_id_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 4,
+      .function_name = function_name,
+      .value_name = other_value_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+  });
+  const auto duplicate_id_lookups =
+      prepare::make_prepared_value_home_lookups(&duplicate_id_locations);
+  if (!expect_same(prepare::find_indexed_prepared_value_home(
+                       &duplicate_id_lookups,
+                       &duplicate_id_locations,
+                       prepare::PreparedValueId{4}),
+                   &duplicate_id_locations.value_homes[0],
+                   "public value-id lookup should retain first-emplace compatibility")) {
+    return 1;
+  }
+  if (prepare::find_prepared_value_home_for_bir_value(
+          names, &duplicate_id_lookups, nullptr, &duplicate_id_locations, value) !=
+      nullptr) {
+    return fail("BIR value-home agreement should reject duplicate prepared ids");
+  }
+
+  auto stale_value_id_lookups = lookups;
+  stale_value_id_lookups.value_ids[value_name] = 99;
+  auto stale_home_lookups = lookups;
+  stale_home_lookups.homes_by_id[4] = nullptr;
+  auto missing_index_lookups = lookups;
+  missing_index_lookups.value_ids.erase(value_name);
+  if (prepare::find_prepared_value_home_for_bir_value(
+          names, &stale_value_id_lookups, nullptr, &function_locations, value) !=
+          nullptr ||
+      prepare::find_prepared_value_home_for_bir_value(
+          names, &stale_home_lookups, nullptr, &function_locations, value) !=
+          nullptr ||
+      prepare::find_prepared_value_home_for_bir_value(
+          names, &missing_index_lookups, nullptr, &function_locations, value) !=
+          nullptr) {
+    return fail("BIR value-home agreement should reject stale or incomplete indexes");
+  }
+
+  prepare::PreparedRegallocFunction conflicting_regalloc = regalloc;
+  conflicting_regalloc.values[0].value_id = 99;
+  prepare::PreparedRegallocFunction duplicate_regalloc = regalloc;
+  duplicate_regalloc.values.push_back(prepare::PreparedRegallocValue{
+      .value_id = 4,
+      .function_name = function_name,
+      .value_name = value_name,
+      .type = bir::TypeKind::I64,
+  });
+  if (prepare::find_prepared_value_home_for_bir_value(
+          names, &lookups, &conflicting_regalloc, &function_locations, value) !=
+          nullptr ||
+      prepare::find_prepared_value_home_for_bir_value(
+          names, &lookups, &duplicate_regalloc, &function_locations, value) !=
+          nullptr) {
+    return fail("BIR value-home agreement should reject conflicting regalloc ids");
+  }
+
+  const bir::Value drift_value = bir::Value::named(bir::TypeKind::I64, "%drift");
+  if (drift_value_name == c4c::kInvalidValueName ||
+      prepare::find_prepared_value_home_for_bir_value(
+          names, &lookups, nullptr, &function_locations, drift_value) != nullptr ||
+      prepare::find_prepared_value_home_for_bir_value(
+          names,
+          &lookups,
+          nullptr,
+          &function_locations,
+          bir::Value::named(bir::TypeKind::I64, "")) != nullptr ||
+      prepare::find_prepared_value_home_for_bir_value(
+          names,
+          &lookups,
+          nullptr,
+          &function_locations,
+          bir::Value::immediate_i64(4)) != nullptr ||
+      prepare::find_prepared_value_home_for_bir_value(
+          names, &lookups, nullptr, nullptr, value) != nullptr) {
+    return fail("BIR value-home agreement should reject drift and unavailable inputs");
+  }
+
+  return 0;
+}
+
 int verify_diamond_function_lookup() {
   prepare::PreparedBirModule prepared;
   const auto function_id = prepared.names.function_names.intern("diamond");
@@ -12068,6 +12228,10 @@ int main() {
     return result;
   }
   if (const int result = verify_linear_function_lookup(); result != 0) {
+    return result;
+  }
+  if (const int result = verify_prepared_bir_value_home_agreement_boundary();
+      result != 0) {
     return result;
   }
   if (const int result = verify_diamond_function_lookup(); result != 0) {
