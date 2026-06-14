@@ -1,56 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/255_phase_f3_prepared_private_pass_context_metadata_gate.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Field-Scoped Demotion Slice
+Current Step ID: 5
+Current Step Title: Final Field Decision Matrix
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Field-Scoped Demotion Slice completed for `PreparedBirModule::route`.
-Route storage was demoted from the public `route` field to private `route_`;
-the accepted read surface remains `prepared_route(const PreparedBirModule&)`.
+Step 5 - Final Field Decision Matrix completed for idea 255. Final field
+states:
 
-Compatibility surface preserved:
+| Field | Final state | Decision evidence and proof notes |
+| --- | --- | --- |
+| `route` | Demoted | `PreparedBirModule::route` moved behind private `route_`; the public read surface is `prepared_route(const PreparedBirModule&)`. Step 1 found no x86/riscv target-facing direct public consumer. Step 2 required the prepared header row to remain `route=semantic_bir_shared`, invalid enum values to continue flowing through `prepare_route_name(...) == "unknown"`, and x86 route-debug/prepared-dump strings to stay unchanged. Step 4 preserved the header path through `prepare_route_name(prepared_route(module))`, kept the default `PrepareRoute::SemanticBirShared`, and updated the only route-specific designated initializer without reworking unrelated fields. Route code proof passed the 3/3 focused prepared-printer/CLI tests selected by the supervisor. Supervisor-side regression guard also passed non-decreasing with 3/3 before and 3/3 after. |
+| `invariants` | Retained as public compatibility | Step 1 found pass-context writers, prepared-printer reads, and direct test reads in `backend_prepare_phi_materialize_test.cpp`; no x86/riscv target-facing direct read was found. Step 2 recorded stable invariant-name behavior for `no_target_facing_i1` and `no_phi_nodes`, but also recorded missing printer/CLI proof for rendered `invariants:` rows, missing invalid-enum fail-closed coverage, and missing mismatched-state coverage such as invariant-without-phase or phase-without-invariant. Because this runbook did not add those proof fences or an accepted accessor shape for invariants, the field remains public compatibility rather than demoted. |
+| `completed_phases` | Retained as public compatibility | Step 1 found pass-context writers and prepared-printer/CLI readers; no direct x86/riscv target-facing public consumer was found. Step 2 recorded the byte-stable row `completed_phases: legalize stack_layout liveness out_of_ssa regalloc` as required by the prepared CLI dump, but also recorded missing focused omission coverage for empty phase lists and missing mismatched metadata fences such as completed phase without the corresponding invariant or note. Because the field ordering/status row remains a compatibility surface and no demotion slice proved those gaps, the field remains public compatibility. |
+| `notes` | Retained as public compatibility | Step 1 found pass-context writers, stack-layout publication append paths, prepared-printer reads, CLI note snippets, and direct test reads in `backend_prepare_stack_layout_test.cpp`; no x86/riscv prepared-module target-facing direct read was found. Step 2 recorded populated note rows and unresolved-PIC diagnostic payload compatibility, but also recorded that absent-note fallback is currently omission-only with no focused fail-closed test proving empty notes omit the section or fallback state avoids synthesizing a note. Because direct payload access and absent-note omission remain under-proved for demotion, the field remains public compatibility. |
 
-- Header output continues to route through `prepare_route_name(prepared_route(module))`,
-  so the prepared printer contract remains unchanged.
-- The stored value still defaults to `PrepareRoute::SemanticBirShared`.
-- The only route-specific designated initializer in `BirPreAlloc` was replaced
-  with default construction plus assignment to public fields, preserving the
-  same prepared module state without reworking unrelated construction.
-- `PreparedBirModule::liveness`, `invariants`, `completed_phases`, and `notes`
-  remained public analysis fields and were not edited.
+`PreparedBirModule::liveness` stayed outside the runbook and was not edited or
+classified as part of this field matrix.
 
-Route decision: demoted. No external named consumer required retaining
-`PreparedBirModule::route` as public; the remaining access is field-scoped to
-the `prepared_route(...)` helper.
+No source-idea change is proposed by this executor packet; lifecycle closure or
+split decisions remain supervisor/plan-owner work.
 
 ## Suggested Next
 
-Proceed to the next plan step selected by the supervisor. Suggested packet:
-continue the metadata-gate pass with the next single field or consumer family,
-keeping `PreparedBirModule::liveness`, `invariants`, `completed_phases`, and
-`notes` out of any route-only follow-up.
+Supervisor should decide whether to hand the completed Step 5 matrix to the
+plan owner for lifecycle close, retirement, or split. The next implementation
+packet, if any, should be a new lifecycle-selected field/proof initiative, not
+an expansion of this completed route demotion slice.
 
 ## Watchouts
 
-- `PreparedBirModule` is no longer an aggregate because `route_` is private;
-  the only observed route-specific designated initializer was the owned
-  `BirPreAlloc` construction path and it was updated narrowly.
-- Keep future access to the route value through `prepared_route(...)`; do not
-  reintroduce direct field access.
-- The delegated proof did not include `backend_x86_route_debug`; route-debug
-  compatibility was preserved by leaving debug code untouched and keeping the
-  prepared dump header path unchanged.
+- Keep future `route` reads on the `prepared_route(...)` helper; do not
+  reintroduce public `PreparedBirModule::route`.
+- Do not treat the retained-public decisions for `invariants`,
+  `completed_phases`, or `notes` as blocker-free demotion approval. Their
+  current reasons are proof gaps and compatibility surfaces named in Step 2,
+  not target-facing x86/riscv consumers.
+- `PreparedBirModule::liveness` remains explicitly out of scope for idea 255.
 
 ## Proof
 
-Code-changing packet proof passed.
+Analysis/todo-only packet; no build required by the supervisor.
 
 Command:
-`(cmake --build --preset default && ctest --test-dir build -R '^(backend_prepared_printer|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_focus_function_filters_00204)$' --output-on-failure) > test_after.log 2>&1`
+`git diff --check -- todo.md`
 
-Result: build succeeded and all 3 selected tests passed. Proof log:
-`test_after.log`.
+Result: passed.
+
+Related supervisor-side validation note recorded as requested: route code proof
+passed 3/3 focused prepared-printer/CLI tests, and non-decreasing regression
+guard passed with 3/3 before and 3/3 after.
