@@ -88,6 +88,19 @@ incomplete prepared source-memory publication. Do not attempt prepared-only,
 stale-publication, byte-offset drift, or cross-publication mismatch rows unless
 a supported route can express them without synthetic or stale prepared state.
 
+## Closure Note
+
+Closed after the x86 bridge and its supported proof surface landed. The selected
+x86 reader path now requires matching Route 3 `LoadLocal` memory authority and
+`PreparedEdgePublication::source_memory_access` before treating prepared data as
+the semantic mirror. Focused proof covers the positive agreement path plus the
+naturally reachable fail-closed rows from the joined-branch selected-`LoadLocal`
+surface, while prepared-only, stale-publication, byte-offset drift, and
+cross-publication mismatch rows remain out of scope because they require
+synthetic or stale prepared state. Compatibility checks preserved prepared
+lookup/status behavior, helper/oracle names, fallback names, x86 output
+spelling, and RISC-V prepared edge-publication behavior.
+
 ## Reviewer Reject Signals
 
 - Reject named-case shortcuts that only match one test function, one local
