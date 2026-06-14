@@ -448,7 +448,19 @@ struct CallArgumentSourcePlan {
     const bir::Function& function,
     std::size_t block_index) {
   if (control_flow != nullptr && block_index < control_flow->blocks.size()) {
-    return control_flow->blocks[block_index].block_label;
+    const BlockLabelId prepared_label =
+        control_flow->blocks[block_index].block_label;
+    if (prepared_label == kInvalidBlockLabel) {
+      return kInvalidBlockLabel;
+    }
+    if (block_index >= function.blocks.size()) {
+      return prepared_label;
+    }
+    const BlockLabelId bir_label = function.blocks[block_index].label_id;
+    if (bir_label != kInvalidBlockLabel && bir_label == prepared_label) {
+      return bir_label;
+    }
+    return prepared_label;
   }
   if (block_index < function.blocks.size()) {
     return function.blocks[block_index].label_id;

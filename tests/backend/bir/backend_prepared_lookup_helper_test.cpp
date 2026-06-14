@@ -1,3 +1,4 @@
+#include "src/backend/prealloc/call_plans.hpp"
 #include "src/backend/prealloc/comparison.hpp"
 #include "src/backend/prealloc/lookup_agreement.hpp"
 #include "src/backend/prealloc/module.hpp"
@@ -3179,6 +3180,190 @@ int verify_control_flow_branch_target_labels_use_agreeing_structured_ids() {
           control_flow, c4c::kInvalidBlockLabel, source_block)
           .has_value()) {
     return fail("control-flow target helper should reject invalid prepared source labels");
+  }
+
+  return 0;
+}
+
+std::optional<c4c::BlockLabelId> populated_call_frame_address_label(
+    c4c::BlockLabelId prepared_label,
+    c4c::BlockLabelId bir_label,
+    bool include_control_flow,
+    bool include_prepared_block) {
+  prepare::PreparedBirModule prepared;
+  const auto function_id =
+      prepared.names.function_names.intern("block_index_bridge");
+  const auto source_name = prepared.names.value_names.intern("%frame.ptr");
+  const auto prepared_slot = prepare::PreparedFrameSlotId{11};
+  const auto bir_slot = prepare::PreparedFrameSlotId{22};
+
+  bir::Block block{
+      .label = "raw.block_index_bridge.entry",
+      .insts =
+          {
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::Ptr, "%seed"),
+                  .slot_id = c4c::SlotNameId{99},
+              },
+              bir::CallInst{
+                  .callee = "consume_frame_ptr",
+                  .args = {bir::Value::named(bir::TypeKind::Ptr, "%frame.ptr")},
+                  .arg_types = {bir::TypeKind::Ptr},
+                  .return_type = bir::TypeKind::Void,
+              },
+          },
+      .terminator = bir::Terminator{bir::ReturnTerminator{}},
+      .label_id = bir_label,
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "block_index_bridge",
+      .blocks = {block},
+  });
+
+  if (include_control_flow) {
+    prepare::PreparedControlFlowFunction control_flow{
+        .function_name = function_id,
+    };
+    if (include_prepared_block) {
+      control_flow.blocks.push_back(return_block(prepared_label));
+    }
+    prepared.control_flow.functions.push_back(control_flow);
+  }
+
+  prepared.value_locations.functions.push_back(
+      prepare::PreparedValueLocationFunction{
+          .function_name = function_id,
+          .value_homes =
+              {
+                  prepare::PreparedValueHome{
+                      .value_id = prepare::PreparedValueId{101},
+                      .function_name = function_id,
+                      .value_name = source_name,
+                      .kind = prepare::PreparedValueHomeKind::StackSlot,
+                      .slot_id = prepared_slot,
+                      .offset_bytes = std::size_t{40},
+                      .size_bytes = std::size_t{8},
+                      .align_bytes = std::size_t{8},
+                  },
+              },
+          .move_bundles =
+              {
+                  prepare::PreparedMoveBundle{
+                      .function_name = function_id,
+                      .phase = prepare::PreparedMovePhase::BeforeCall,
+                      .block_index = 0,
+                      .instruction_index = 1,
+                      .moves =
+                          {
+                              prepare::PreparedMoveResolution{
+                                  .from_value_id = prepare::PreparedValueId{101},
+                                  .destination_kind =
+                                      prepare::PreparedMoveDestinationKind::
+                                          CallArgumentAbi,
+                                  .destination_storage_kind =
+                                      prepare::PreparedMoveStorageKind::Register,
+                                  .destination_abi_index = std::size_t{0},
+                              },
+                          },
+                  },
+              },
+      });
+  prepared.regalloc.functions.push_back(prepare::PreparedRegallocFunction{
+      .function_name = function_id,
+      .values =
+          {
+              prepare::PreparedRegallocValue{
+                  .value_id = prepare::PreparedValueId{101},
+                  .function_name = function_id,
+                  .value_name = source_name,
+                  .type = bir::TypeKind::Ptr,
+                  .register_class = prepare::PreparedRegisterClass::General,
+              },
+          },
+  });
+
+  auto materialization = [&](c4c::BlockLabelId label,
+                             prepare::PreparedFrameSlotId slot,
+                             std::int64_t byte_offset) {
+    return prepare::PreparedAddressMaterialization{
+        .function_name = function_id,
+        .block_label = label,
+        .inst_index = 0,
+        .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+        .result_value_name = source_name,
+        .frame_slot_id = slot,
+        .byte_offset = byte_offset,
+    };
+  };
+  if (prepared_label != c4c::kInvalidBlockLabel) {
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_id,
+        .address_materializations =
+            {materialization(prepared_label, prepared_slot, 40)},
+    });
+  } else {
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_id,
+    });
+  }
+  if (bir_label != c4c::kInvalidBlockLabel && bir_label != prepared_label) {
+    prepared.addressing.functions.front().address_materializations.push_back(
+        materialization(bir_label, bir_slot, 80));
+  }
+
+  prepare::populate_call_plans(prepared);
+  const auto* calls = prepare::find_prepared_call_plans(prepared, function_id);
+  if (calls == nullptr || calls->calls.size() != 1U ||
+      calls->calls.front().arguments.size() != 1U) {
+    return std::nullopt;
+  }
+  const auto& argument = calls->calls.front().arguments.front();
+  if (!argument.source_selection.has_value()) {
+    return std::nullopt;
+  }
+  return argument.source_selection->address_materialization_block_label;
+}
+
+int verify_control_flow_block_index_labels_use_agreeing_structured_ids() {
+  prepare::PreparedNameTables names;
+  const auto prepared_label = names.block_labels.intern("block_index.prepared");
+  const auto bir_label = names.block_labels.intern("block_index.bir");
+
+  const auto agreeing_label = populated_call_frame_address_label(
+      prepared_label, prepared_label, true, true);
+  if (agreeing_label != std::optional<c4c::BlockLabelId>{prepared_label}) {
+    return fail("block-index label bridge should accept agreeing structured ids");
+  }
+
+  const auto absent_control_flow_label = populated_call_frame_address_label(
+      prepared_label, bir_label, false, false);
+  if (absent_control_flow_label != std::optional<c4c::BlockLabelId>{bir_label}) {
+    return fail("block-index label bridge should preserve BIR fallback when control-flow is absent");
+  }
+
+  const auto short_control_flow_label = populated_call_frame_address_label(
+      prepared_label, bir_label, true, false);
+  if (short_control_flow_label != std::optional<c4c::BlockLabelId>{bir_label}) {
+    return fail("block-index label bridge should preserve BIR fallback when prepared rows are absent");
+  }
+
+  const auto invalid_prepared_label = populated_call_frame_address_label(
+      c4c::kInvalidBlockLabel, bir_label, true, true);
+  if (invalid_prepared_label.has_value() &&
+      *invalid_prepared_label != c4c::kInvalidBlockLabel) {
+    return fail("block-index label bridge should preserve invalid prepared labels");
+  }
+
+  const auto invalid_bir_label = populated_call_frame_address_label(
+      prepared_label, c4c::kInvalidBlockLabel, true, true);
+  if (invalid_bir_label != std::optional<c4c::BlockLabelId>{prepared_label}) {
+    return fail("block-index label bridge should keep prepared fallback for invalid BIR ids");
+  }
+
+  const auto mismatch_label = populated_call_frame_address_label(
+      prepared_label, bir_label, true, true);
+  if (mismatch_label != std::optional<c4c::BlockLabelId>{prepared_label}) {
+    return fail("block-index label bridge should keep prepared fallback on id mismatch");
   }
 
   return 0;
@@ -12715,6 +12900,11 @@ int main() {
   }
   if (const int result =
           verify_control_flow_branch_target_labels_use_agreeing_structured_ids();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_control_flow_block_index_labels_use_agreeing_structured_ids();
       result != 0) {
     return result;
   }
