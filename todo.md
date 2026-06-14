@@ -1,87 +1,109 @@
 Status: Active
 Source Idea Path: ideas/open/258_phase_f3_x86_route3_loadlocal_source_memory_agreement_bridge.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Route 3 and x86 Memory Consumer Inventory
+Current Step ID: 2
+Current Step Title: Agreement Boundary and Fail-Closed Matrix
 
 # Current Packet
 
 ## Just Finished
 
-Step 1, Route 3 and x86 Memory Consumer Inventory, is complete.
+Step 2, Agreement Boundary and Fail-Closed Matrix, is complete.
 
-Route 3 `LoadLocal` memory/source identity is represented by
-`bir::Route3MemoryAccessRecord`, built through
-`route3_memory_access_record(...)`, indexed by
-`route3_build_memory_access_index(...)`, and looked up with
-`route3_find_memory_access_record(...)`,
-`route3_find_same_block_load_local_source(...)`, and
-`mir::find_bir_same_block_load_local_source_identity(...)`. The selected
-fields for the bridge are `instruction`, `instruction_index`, `node_kind =
-LoadLocal`, `block_label` / `block_label_id`, `result_value`, `address_space`,
-`is_volatile`, `base_kind`, local-slot identity (`local_slot_name` /
-`local_slot_id`), pointer/global/string identity when applicable,
-`byte_offset`, `size_bytes`, and `align_bytes`. The MIR facade exposes the same
-surface as `mir::BirMemoryAccessIdentity` with `result_value_name`,
-`base_kind`, local/global/pointer/string identities, volatility, address space,
-offset, size, and alignment.
+Accepted boundary: add a narrow x86-local agreement facade at the local-slot
+statement/compare-load memory consumer path in
+`src/backend/mir/x86/module/module.cpp`, around
+`render_prepared_local_slot_statement_memory_operand(...)` and
+`find_prepared_local_slot_compare_load(...)`. No existing x86 helper already
+forms the required Route 3/prepared join: the current path checks prepared
+`result_value_name` / `stored_value_name` before rendering a frame-slot operand
+but does not call `mir::find_bir_memory_access_identity(...)`,
+`mir::find_bir_same_block_load_local_source_identity(...)`, or compare Route 3
+identity with `PreparedEdgePublication::source_memory_access`. The facade
+should be x86-local and should return agreement evidence to the caller before
+the prepared memory row is treated as a semantic mirror; it must not rename
+`PreparedFunctionLookups::memory_accesses` into route authority.
 
-Prepared memory identity is carried by `prepare::PreparedMemoryAccess`:
-`function_name`, `block_label`, `inst_index`, `result_value_name`,
-`stored_value_name`, `address_space`, `is_volatile`, and `address`
-(`base_kind`, frame slot, symbol, pointer value, byte offset, size, alignment,
-and base-plus-offset support). `apply_source_memory_access_fact(...)` copies a
-`LoadLocal` producer's prepared memory access into
-`PreparedEdgePublication::source_memory_access` and the public
-`source_memory_*` snapshot fields, with status rows
-`Unavailable`, `MissingPreparedMemoryAccess`,
-`IncompletePreparedMemoryAccess`, and `Available`. Stable public surfaces are
-`PreparedFunctionLookups::memory_accesses`,
-`find_prepared_memory_access(...)`,
-`find_indexed_prepared_memory_access(...)`, unique result-name/id lookup
-helpers, `PreparedEdgePublication::source_memory_access_status`,
-`PreparedEdgePublication::source_memory_access`,
-`PreparedEdgeCopySourceFacts`, prepared printer output, and route-debug status
-strings.
+Agreement predicates for the selected row:
+- same function: the facade is called with the active BIR function and prepared
+  function/addressing rows for the same `FunctionNameId`;
+- same block: the selected BIR block and prepared `BlockLabelId` match the
+  block label used for the prepared memory access and Route 3 request;
+- selected `LoadLocal`: the selected BIR instruction is a `LoadLocalInst` at
+  the candidate instruction index, and the Route 3/MIR identity reports
+  `node_kind = LoadLocal`;
+- source-memory identity: Route 3 reports the selected result value name/type,
+  local-slot base identity, address space, volatility, byte offset, size, and
+  alignment for that load;
+- prepared row completeness: `PreparedEdgePublication::source_memory_access`
+  is `Available`, points at a non-null `PreparedMemoryAccess`, has a complete
+  frame-slot base, nonzero size/alignment, and a result value matching the
+  selected `LoadLocal`;
+- prepared/Route 3 row match: prepared and Route 3 agree on result value,
+  local-slot/frame-slot identity, address space, volatility, byte offset, size,
+  and alignment before x86 may reuse the prepared frame-slot operand as the
+  selected source-memory mirror.
 
-Current x86 candidate boundary: no existing x86 reader/facade joins Route 3
-and prepared source-memory identity. The narrow candidate for Step 2 is a new
-x86-local facade around the local-slot memory consumer path used by
-`render_prepared_local_slot_statement_memory_operand(...)` /
-`find_prepared_local_slot_compare_load(...)` in
-`src/backend/mir/x86/module/module.cpp`. That path already verifies prepared
-`result_value_name` / `stored_value_name` before rendering a prepared frame-slot
-operand, but it does not call `mir::find_bir_memory_access_identity(...)` or
-`mir::find_bir_same_block_load_local_source_identity(...)`, so prepared
-`memory_accesses` remains the only authority there today.
+Fail-closed matrix:
+- Missing: no BIR block, block label, Route 3 record, prepared addressing row,
+  or prepared publication row means no agreement; x86 keeps current fallback or
+  rejection behavior.
+- Incomplete: null `source_memory_access`, unavailable/missing/incomplete
+  source-memory status, missing frame slot, incomplete base, zero size, zero
+  alignment, negative unsupported offset, or unusable base-plus-offset means no
+  agreement.
+- Duplicate/conflict: duplicate prepared result-name rows, ambiguous prepared
+  memory lookup answers, or multiple/conflicting Route 3 candidates for the
+  selected `LoadLocal` must reject rather than choose one arbitrarily.
+- Prepared-only: prepared `memory_accesses` or `source_memory_access` without a
+  matching Route 3 `LoadLocal` record remains compatibility evidence only, not
+  semantic agreement.
+- Route-only: a Route 3 `LoadLocal` record without a complete prepared
+  `source_memory_access` row does not authorize x86 prepared operand reuse.
+- Unsupported: non-local-slot bases, unsupported type/size combinations,
+  unsupported address materialization, and target-policy-sensitive addressing
+  rows stay outside this bridge and follow existing x86 fallback/rejection.
+- Fallback: existing fallback names, helper/oracle names, status strings,
+  prepared printer rows, and public prepared lookup/status surfaces remain
+  observable and unchanged.
+- Mismatch: disagreement on function, block, instruction index, result value,
+  base kind, slot identity, address space, volatility, offset, size, or
+  alignment rejects; no output baseline rewrite or status weakening counts as
+  progress.
+- Policy-sensitive: x86 frame placement, operand spelling, register
+  materialization, emitted-output formatting, ABI behavior, and final storage
+  policy remain target-owned and are not imported into Route 3/BIR.
 
-Existing proof surfaces:
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp` covers Route 3
-`LoadLocal` memory identity, BIR/MIR query wrappers, prepared
-`source_memory_access` status and match helpers, and stored-value source
-fallback rows. `backend_prepared_printer` covers public prepared printing.
-`backend_x86_handoff_boundary` covers x86 local-slot guard and LoadLocal-heavy
-handoff behavior; `backend_x86_route_debug` covers x86 route diagnostics.
-Those x86 tests are registered only when `C4C_ENABLE_X86_BACKEND_TESTS` is on,
-so focused x86 proof needs an x86-enabled build.
+Proof row split:
+`backend_prepared_lookup_helper` and `backend_prepared_printer` cover default
+prepared lookup/status and printer observability rows, including Route 3
+`LoadLocal` identity, prepared `source_memory_access` status, and stable public
+prepared `memory_accesses` surfaces. The x86 agreement facade, accepted local
+slot path, direct x86 missing/incomplete/mismatch/duplicate/conflict rows, and
+byte-stability for x86 output require x86-enabled validation because
+`backend_x86_handoff_boundary` and `backend_x86_route_debug` are registered
+only when `C4C_ENABLE_X86_BACKEND_TESTS` is on.
 
 ## Suggested Next
 
-Execute Step 2: define the smallest agreement facade around the x86 local-slot
-prepared memory consumer path and write the fail-closed matrix for missing,
-incomplete, duplicate/conflict, prepared-only, route-only, unsupported, and
-mismatch cases.
+Execute Step 3: implement, or prove already implemented, the narrow x86
+agreement facade around the local-slot prepared memory consumer path. The
+implementation should gate only the selected Route 3 `LoadLocal`
+source-memory mirror and leave public prepared lookup/status surfaces
+unchanged.
 
 ## Watchouts
 
-- Agreement must compare a Route 3 record with the prepared source-memory row;
-  prepared `memory_accesses` alone is not semantic authority.
-- Preserve prepared lookup/status observability, helper/oracle names, fallback
-  names, x86 output formatting, and target-owned addressing/register policy.
-- Use x86-enabled validation if the focused x86 tests are not registered in the
-  default build.
-- The analogous AArch64/RISC-V paths are useful shape references, but this
-  packet did not implement or prove an x86 agreement gate.
+- Do not implement generic memory parity; this bridge is only for the selected
+  x86 Route 3 `LoadLocal` source-memory fact.
+- Keep `PreparedFunctionLookups::memory_accesses`,
+  `find_prepared_memory_access(...)`, prepared source-memory status rows,
+  prepared printer output, route-debug strings, and fallback/helper names
+  observable and unchanged.
+- Step 3 should reject prepared-only and route-only rows instead of using either
+  side as unilateral authority.
+- Use x86-enabled validation for direct x86 rows; default prepared
+  lookup/printer tests are not closure-grade proof for the x86 facade.
 
 ## Proof
 
