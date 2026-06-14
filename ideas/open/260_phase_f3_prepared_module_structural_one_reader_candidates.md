@@ -181,6 +181,24 @@ narrows it further:
   approval for broad `PreparedBirModule` deletion, privatization, wrapping,
   aggregate retirement, or migration of unrelated `names`, `module`,
   `control_flow`, or `store_source_publications` rows.
+- `names` value-home lookup packet completed in the retired active runbook:
+  value-home lookup now uses a prepared/BIR value-name agreement helper only
+  when the named BIR value, prepared `ValueNameId`, prepared `PreparedValueId`,
+  indexed value-home row, and backing prepared value-home record agree.
+- Focused proof covered the positive structured-agreement path plus
+  fail-closed rows for null function locations, immediate values, empty names,
+  missing prepared ids, uninterned prepared names, missing indexed homes,
+  missing backing homes, stale value ids, stale home payloads, duplicate or
+  conflicting names and ids, conflicting regalloc rows, prepared/BIR
+  name-drift, and retained public prepared-lookup compatibility.
+- Broader close-readiness proof passed with 180/180 default backend tests in
+  the canonical before/after logs, and the regression guard reported no new
+  failures.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed value-home lookup packet is not
+  approval for broad `PreparedBirModule` deletion, privatization, wrapping,
+  aggregate retirement, or migration of unrelated `names`, `module`,
+  `control_flow`, or `store_source_publications` rows.
 
 ## Acceptance Criteria
 
