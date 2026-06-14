@@ -1,44 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/262_phase_f3_x86_compare_join_loadlocal_selected_arm_support.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: x86 Render Bridge
+Current Step ID: 4
+Current Step Title: Focused Proof and Resume Decision
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 3, `x86 Render Bridge`.
+Completed plan Step 4, `Focused Proof and Resume Decision`.
 
-The x86 compare-join renderer now explicitly opts into the selected
-`LoadLocal` prepared contract, treats `LocalI32Load` return shapes as
-supported only with the new render branch, and renders the selected arm through
-`render_agreed_route3_load_local_statement_memory_operand(...)`. The branch
-revalidates the prepared predecessor block, instruction index, result id,
-slot identity, byte offset, size, alignment, address space, and volatility
-before loading from the agreed Route 3/prepared source-memory operand.
+No new focused test rows were kept. The existing Step 2/3 joined-branch handoff
+coverage already proves the real `EdgeStoreSlot` selected-`LoadLocal` route:
+the positive x86 row emits through the Route 3/prepared source-memory bridge,
+the incomplete source-memory publication row fails closed, carrier-only
+`LoadLocal` drift is rejected on the prepared contract side, and nearby
+compare-join shapes continue to run in the same handoff target.
 
-Focused x86 handoff coverage now proves the real `EdgeStoreSlot`
-joined-branch selected-`LoadLocal` fixture emits through the bridge and rejects
-an incomplete prepared source-memory publication instead of falling back past
-the compare-join handoff.
+I tried the reviewer-recommended byte-offset drift row through a real prepared
+addressing mutation, but it is not a supported proof surface for this packet:
+Route 3 records the BIR local-slot-relative offset while prepared source-memory
+publications expose final frame-operand offsets. Expressing stale selected-arm
+byte-offset drift would require a synthetic or stale prepared render contract,
+so no such row was kept.
+
+Resume decision: idea 261 can resume. Idea 262 has supplied the bounded
+production compare-join selected-`LoadLocal` bridge needed for idea 261's
+supported publication fixture work.
 
 ## Suggested Next
 
-Execute Step 4 by broadening the focused proof around the production bridge,
-including route-debug coverage where applicable, and record whether idea 261
-can resume its supported publication fixture work.
+Return to the supervisor for lifecycle handling. The next coherent lifecycle
+packet is to close or park idea 262 as complete and resume idea 261.
 
 ## Watchouts
 
-- The Route 3 memory record stores the BIR local-slot-relative byte offset;
-  prepared source-memory publications expose the rendered frame operand
-  offset. The bridge therefore keeps byte-offset authority on the selected
-  `LoadLocal` itself and uses publication availability, producer identity,
-  slot ownership, size, alignment, address space, and volatility for the
-  Route 3/prepared agreement check.
-- Step 4 should add any remaining reachable negative rows without synthetic
-  publications or fixture-only `join_transfers`.
+- Do not add a byte-offset drift row by hand-building `PreparedEdgePublication`
+  records or by forcing stale render-contract state; that would be a synthetic
+  proof rather than the production route this idea owns.
+- Route-debug did not get new coverage because the existing route-debug surface
+  does not naturally expose the selected-`LoadLocal` compare-join bridge.
 
 ## Proof
 
