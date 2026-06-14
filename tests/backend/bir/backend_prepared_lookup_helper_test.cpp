@@ -1798,11 +1798,53 @@ int verify_linear_function_lookup() {
       cross_block_prior.entry->instruction_index != 2) {
     return fail("unique prior-preservation lookup missed cross-block dominating source");
   }
+  const auto null_context_same_block_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          lookups.call_plans, nullptr, same_block_current, prepare::PreparedValueId{4});
+  if (null_context_same_block_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::Found ||
+      null_context_same_block_prior.preserved !=
+          &call_plans->calls[0].preserved_values[0]) {
+    return fail("unique prior-preservation lookup should keep same-block null-context compatibility");
+  }
+  const auto null_context_cross_block_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          lookups.call_plans, nullptr, call_plans->calls[1],
+          prepare::PreparedValueId{4});
+  if (null_context_cross_block_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
+      null_context_cross_block_prior.preserved != nullptr ||
+      null_context_cross_block_prior.entry != nullptr) {
+    return fail("unique prior-preservation lookup should reject cross-block null-context sources");
+  }
+  const prepare::PreparedCallPlan before_same_block_prior{
+      .block_index = 0,
+      .instruction_index = 1,
+  };
+  const auto later_same_block_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          lookups.call_plans,
+          &control_flow,
+          before_same_block_prior,
+          prepare::PreparedValueId{4});
+  if (later_same_block_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
+      later_same_block_prior.preserved != nullptr || later_same_block_prior.entry != nullptr) {
+    return fail("unique prior-preservation lookup should reject later same-block sources");
+  }
   const auto no_prior = prepare::find_unique_indexed_prior_preserved_value_source(
       lookups.call_plans, &control_flow, same_block_current, prepare::PreparedValueId{88});
   if (no_prior.status != prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
       no_prior.preserved != nullptr || no_prior.entry != nullptr) {
     return fail("unique prior-preservation lookup did not explicitly reject no-source case");
+  }
+  auto empty_row_lookups = lookups.call_plans;
+  empty_row_lookups.prior_preserved_by_value.resize(89);
+  const auto empty_prior = prepare::find_unique_indexed_prior_preserved_value_source(
+      empty_row_lookups, &control_flow, same_block_current, prepare::PreparedValueId{88});
+  if (empty_prior.status != prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
+      empty_prior.preserved != nullptr || empty_prior.entry != nullptr) {
+    return fail("unique prior-preservation lookup did not explicitly reject an empty prior row");
   }
   const auto ambiguous_prior =
       prepare::find_unique_indexed_prior_preserved_value_source(
@@ -1820,6 +1862,44 @@ int verify_linear_function_lookup() {
           prepare::PreparedPriorPreservedValueLookupStatus::InvalidPreservation ||
       invalid_prior.preserved != &call_plans->calls[0].preserved_values[3]) {
     return fail("unique prior-preservation lookup did not explicitly reject incomplete source");
+  }
+  auto missing_source_lookups = lookups.call_plans;
+  missing_source_lookups.prior_preserved_by_value.resize(13);
+  missing_source_lookups.prior_preserved_by_value[12].push_back(
+      prepare::PreparedPriorPreservedValueEntry{
+          .block_index = 0,
+          .instruction_index = 2,
+          .preserved = nullptr,
+      });
+  const auto missing_source_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          missing_source_lookups,
+          &control_flow,
+          same_block_current,
+          prepare::PreparedValueId{12});
+  if (missing_source_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
+      missing_source_prior.preserved != nullptr || missing_source_prior.entry != nullptr) {
+    return fail("unique prior-preservation lookup should reject missing preserved pointers");
+  }
+  auto out_of_range_lookups = lookups.call_plans;
+  out_of_range_lookups.prior_preserved_by_value.resize(14);
+  out_of_range_lookups.prior_preserved_by_value[13].push_back(
+      prepare::PreparedPriorPreservedValueEntry{
+          .block_index = 8,
+          .instruction_index = 0,
+          .preserved = &call_plans->calls[0].preserved_values[0],
+      });
+  const auto out_of_range_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          out_of_range_lookups,
+          &control_flow,
+          call_plans->calls[1],
+          prepare::PreparedValueId{13});
+  if (out_of_range_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
+      out_of_range_prior.preserved != nullptr || out_of_range_prior.entry != nullptr) {
+    return fail("unique prior-preservation lookup should reject out-of-range CFG rows");
   }
 
   const auto* entry_materializations =
@@ -2095,6 +2175,7 @@ int verify_diamond_function_lookup() {
   const auto left_label = prepared.names.block_labels.intern("diamond.left");
   const auto right_label = prepared.names.block_labels.intern("diamond.right");
   const auto join_label = prepared.names.block_labels.intern("diamond.join");
+  const auto isolated_label = prepared.names.block_labels.intern("diamond.isolated");
   const auto value_name = prepared.names.value_names.intern("%diamond.value");
   const auto left_source_name = prepared.names.value_names.intern("%diamond.left");
   const auto right_source_name = prepared.names.value_names.intern("%diamond.right");
@@ -2106,6 +2187,7 @@ int verify_diamond_function_lookup() {
           branch_block(left_label, join_label),
           branch_block(right_label, join_label),
           return_block(join_label),
+          return_block(isolated_label),
       },
       .join_transfers = {
           prepare::PreparedJoinTransfer{
@@ -2155,16 +2237,73 @@ int verify_diamond_function_lookup() {
       .function_name = function_id,
       .calls = {
           prepare::PreparedCallPlan{
+              .block_index = 0,
+              .instruction_index = 0,
+              .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+              .direct_callee_name = std::string("entry_call"),
+              .preserved_values = {
+                  prepare::PreparedCallPreservedValue{
+                      .value_id = 20,
+                      .value_name = value_name,
+                      .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+                      .contiguous_width = 1,
+                      .register_name = std::string("x20"),
+                      .register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .occupied_register_names = {"x20"},
+                      .register_placement = prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                          .slot_index = 1,
+                          .contiguous_width = 1,
+                      },
+                  },
+              },
+          },
+          prepare::PreparedCallPlan{
               .block_index = 1,
               .instruction_index = 0,
               .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
               .direct_callee_name = std::string("left_call"),
+              .preserved_values = {
+                  prepare::PreparedCallPreservedValue{
+                      .value_id = 21,
+                      .value_name = left_source_name,
+                      .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+                      .contiguous_width = 1,
+                      .register_name = std::string("x21"),
+                      .register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .occupied_register_names = {"x21"},
+                      .register_placement = prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                          .slot_index = 2,
+                          .contiguous_width = 1,
+                      },
+                  },
+              },
           },
           prepare::PreparedCallPlan{
               .block_index = 2,
               .instruction_index = 0,
               .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
               .direct_callee_name = std::string("right_call"),
+              .preserved_values = {
+                  prepare::PreparedCallPreservedValue{
+                      .value_id = 22,
+                      .value_name = right_source_name,
+                      .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+                      .contiguous_width = 1,
+                      .register_name = std::string("x22"),
+                      .register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .occupied_register_names = {"x22"},
+                      .register_placement = prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                          .slot_index = 3,
+                          .contiguous_width = 1,
+                      },
+                  },
+              },
           },
           prepare::PreparedCallPlan{
               .block_index = 3,
@@ -2323,6 +2462,48 @@ int verify_diamond_function_lookup() {
       &lookups.value_homes, nullptr, function_locations, value_name);
   if (!value_id.has_value() || *value_id != 11) {
     return fail("indexed value-id lookup missed diamond value-name mapping");
+  }
+
+  const auto entry_to_join_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          lookups.call_plans,
+          &control_flow,
+          call_plans->calls[3],
+          prepare::PreparedValueId{20});
+  if (entry_to_join_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::Found ||
+      entry_to_join_prior.preserved != &call_plans->calls[0].preserved_values[0]) {
+    return fail("unique prior-preservation lookup should accept a dominating reachable diamond source");
+  }
+  const auto left_to_join_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          lookups.call_plans,
+          &control_flow,
+          call_plans->calls[3],
+          prepare::PreparedValueId{21});
+  if (left_to_join_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
+      left_to_join_prior.preserved != nullptr || left_to_join_prior.entry != nullptr) {
+    return fail("unique prior-preservation lookup should reject reachable non-dominating diamond sources");
+  }
+  auto unreachable_lookups = lookups.call_plans;
+  unreachable_lookups.prior_preserved_by_value.resize(24);
+  unreachable_lookups.prior_preserved_by_value[23].push_back(
+      prepare::PreparedPriorPreservedValueEntry{
+          .block_index = 4,
+          .instruction_index = 0,
+          .preserved = &call_plans->calls[0].preserved_values[0],
+      });
+  const auto unreachable_prior =
+      prepare::find_unique_indexed_prior_preserved_value_source(
+          unreachable_lookups,
+          &control_flow,
+          call_plans->calls[3],
+          prepare::PreparedValueId{23});
+  if (unreachable_prior.status !=
+          prepare::PreparedPriorPreservedValueLookupStatus::NotFound ||
+      unreachable_prior.preserved != nullptr || unreachable_prior.entry != nullptr) {
+    return fail("unique prior-preservation lookup should reject unreachable prepared CFG rows");
   }
 
   const auto* left_publication = prepare::find_unique_indexed_prepared_edge_publication(

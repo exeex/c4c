@@ -101,6 +101,28 @@ namespace {
   return dominates;
 }
 
+[[nodiscard]] std::vector<std::vector<bool>> make_prepared_reachability_matrix(
+    const PreparedControlFlowFunction& function) {
+  const std::size_t count = function.blocks.size();
+  std::vector<std::vector<bool>> reaches(count, std::vector<bool>(count, false));
+  for (std::size_t source_index = 0; source_index < count; ++source_index) {
+    auto& source_reaches = reaches[source_index];
+    source_reaches[source_index] = true;
+    std::vector<std::size_t> worklist{source_index};
+    while (!worklist.empty()) {
+      const auto index = worklist.back();
+      worklist.pop_back();
+      for (const auto successor : prepared_block_successors(function, function.blocks[index])) {
+        if (successor < count && !source_reaches[successor]) {
+          source_reaches[successor] = true;
+          worklist.push_back(successor);
+        }
+      }
+    }
+  }
+  return reaches;
+}
+
 [[nodiscard]] bool prepared_block_dominates(const PreparedControlFlowFunction& function,
                                             std::size_t dominator_index,
                                             std::size_t dominated_index) {
@@ -1064,16 +1086,23 @@ prepared_same_block_source_producer(
          lhs.instruction_index == rhs.instruction_index;
 }
 
-[[nodiscard]] bool prepared_prior_preserved_value_entry_reaches_call(
+[[nodiscard]] bool prepared_prior_preserved_value_entry_agrees_with_call(
     const PreparedPriorPreservedValueEntry& entry,
-    const PreparedControlFlowFunction* control_flow,
-    const PreparedCallPlan& current_call_plan) {
+    const PreparedCallPlan& current_call_plan,
+    const std::vector<std::vector<bool>>* dominates,
+    const std::vector<std::vector<bool>>* reaches) {
   if (entry.block_index == current_call_plan.block_index) {
     return entry.instruction_index < current_call_plan.instruction_index;
   }
-  return control_flow != nullptr &&
-         prepared_block_dominates(*control_flow, entry.block_index,
-                                  current_call_plan.block_index);
+  if (dominates == nullptr || reaches == nullptr ||
+      current_call_plan.block_index >= dominates->size() ||
+      entry.block_index >= (*dominates)[current_call_plan.block_index].size() ||
+      entry.block_index >= reaches->size() ||
+      current_call_plan.block_index >= (*reaches)[entry.block_index].size()) {
+    return false;
+  }
+  return (*dominates)[current_call_plan.block_index][entry.block_index] &&
+         (*reaches)[entry.block_index][current_call_plan.block_index];
 }
 
 [[nodiscard]] bool prepared_prior_preserved_value_has_complete_source(
@@ -2383,34 +2412,36 @@ find_unique_indexed_prior_preserved_value_source(
   if (entries.empty()) {
     return {};
   }
-  const PreparedPriorPreservedValueEntry current{
-      .block_index = current_call_plan.block_index,
-      .instruction_index = current_call_plan.instruction_index,
-      .preserved = nullptr,
-  };
-  auto it = std::lower_bound(entries.begin(),
-                             entries.end(),
-                             current,
-                             prepared_prior_preserved_value_entry_position_less);
+  std::vector<std::vector<bool>> dominates;
+  std::vector<std::vector<bool>> reaches;
+  const std::vector<std::vector<bool>>* dominates_ptr = nullptr;
+  const std::vector<std::vector<bool>>* reaches_ptr = nullptr;
+  if (control_flow != nullptr) {
+    dominates = make_prepared_dominance_matrix(*control_flow);
+    reaches = make_prepared_reachability_matrix(*control_flow);
+    dominates_ptr = &dominates;
+    reaches_ptr = &reaches;
+  }
   const PreparedPriorPreservedValueEntry* selected = nullptr;
-  while (it != entries.begin()) {
-    --it;
-    if (!prepared_prior_preserved_value_entry_reaches_call(
-            *it, control_flow, current_call_plan)) {
+  for (const auto& entry : entries) {
+    if (!prepared_prior_preserved_value_entry_agrees_with_call(
+            entry, current_call_plan, dominates_ptr, reaches_ptr)) {
       continue;
     }
     if (selected == nullptr) {
-      selected = &*it;
+      selected = &entry;
       continue;
     }
-    if (prepared_prior_preserved_value_entry_same_position(*selected, *it)) {
+    if (prepared_prior_preserved_value_entry_same_position(*selected, entry)) {
       return PreparedPriorPreservedValueLookupResult{
           .status = PreparedPriorPreservedValueLookupStatus::Ambiguous,
           .entry = selected,
           .preserved = selected->preserved,
       };
     }
-    break;
+    if (prepared_prior_preserved_value_entry_position_less(*selected, entry)) {
+      selected = &entry;
+    }
   }
   if (selected == nullptr || selected->preserved == nullptr) {
     return {};
