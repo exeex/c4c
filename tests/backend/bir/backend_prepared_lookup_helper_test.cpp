@@ -42,6 +42,40 @@ int fail(std::string_view message) {
   return 1;
 }
 
+int verify_prepared_compatibility_status_names() {
+  if (prepare::prepared_edge_publication_source_memory_access_status_name(
+          prepare::PreparedEdgePublicationSourceMemoryAccessStatus::
+              MissingPreparedMemoryAccess) != "missing_prepared_memory_access" ||
+      prepare::prepared_edge_publication_source_memory_access_status_name(
+          prepare::PreparedEdgePublicationSourceMemoryAccessStatus::
+              IncompletePreparedMemoryAccess) !=
+          "incomplete_prepared_memory_access") {
+    return fail("prepared source-memory access status names should remain stable");
+  }
+  if (prepare::prepared_edge_copy_source_facts_status_name(
+          prepare::PreparedEdgeCopySourceFactsStatus::PublicationUnavailable) !=
+      "publication_unavailable") {
+    return fail("prepared edge-copy publication-unavailable status name should remain stable");
+  }
+  if (prepare::prepared_typed_stack_source_publication_status_name(
+          prepare::PreparedTypedStackSourcePublicationStatus::
+              UnsupportedSourceHome) != "unsupported_source_home" ||
+      prepare::prepared_typed_stack_source_publication_status_name(
+          prepare::PreparedTypedStackSourcePublicationStatus::
+              MissingSameWidthI32Type) != "missing_same_width_i32_type" ||
+      prepare::prepared_typed_stack_source_publication_status_name(
+          prepare::PreparedTypedStackSourcePublicationStatus::
+              MissingDestinationGprBank) != "missing_destination_gpr_bank") {
+    return fail("prepared typed stack-source publication status names should remain stable");
+  }
+  if (prepare::prepared_current_block_entry_publication_status_name(
+          prepare::PreparedCurrentBlockEntryPublicationStatus::
+              PublicationUnavailable) != "publication_unavailable") {
+    return fail("prepared current-block-entry publication-unavailable status name should remain stable");
+  }
+  return 0;
+}
+
 prepare::PreparedControlFlowBlock return_block(c4c::BlockLabelId label) {
   return prepare::PreparedControlFlowBlock{
       .block_label = label,
@@ -11626,6 +11660,10 @@ int verify_bir_return_chain_schema_and_index_lookup() {
 }  // namespace
 
 int main() {
+  if (const int result = verify_prepared_compatibility_status_names();
+      result != 0) {
+    return result;
+  }
   if (const int result = verify_prepared_home_same_register_helper(); result != 0) {
     return result;
   }
