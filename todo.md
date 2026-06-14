@@ -1,15 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/252_phase_f3_edge_publication_source_producer_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Build the Producer/Source Fail-Closed Matrix
+Current Step ID: 6
+Current Step Title: Decide Producer-Adapter Readiness and Close or Split
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5, "Build the Producer/Source Fail-Closed Matrix", as an
-analysis-only matrix for idea 252.
+Completed Step 6, "Decide Producer-Adapter Readiness and Close or Split", as
+an analysis-only closure decision for idea 252.
 
 Selected relation carried forward:
 
@@ -25,7 +25,68 @@ Selected relation carried forward:
   evidence only. Prepared lookup/status/output rows remain compatibility
   surfaces until a later adapter can reject disagreement fail-closed.
 
-Producer/source fail-closed matrix:
+Target decision:
+
+- x86 is blocked for the selected relation, not proven and not explicitly
+  non-applicable. The missing consumer is any x86 direct or indirect consumer
+  that joins prepared publication/source-producer rows to the same Route 5/BIR
+  source-producer identity, such as
+  `BirCfgEdgePublicationSourceIdentity` or
+  `Route5CfgEdgePublicationRecord`, and rejects disagreement fail-closed.
+  Current x86 evidence remains prepared move/home compatibility through
+  `src/backend/mir/x86/prepared/dispatch.cpp` and target output policy through
+  `src/backend/mir/x86/module/module.cpp`, including final `mov` spelling.
+- RISC-V is blocked for producer-adapter readiness, not proven and not
+  explicitly non-applicable. It has diagnostic agreement evidence through
+  `route5_edge_source_agrees_with_prepared_publication(...)`, Route 5 source
+  rows, and Route 3 memory-source checks, but normal emission still has a
+  prepared-backed path without a Route 5 record and non-agreeing Route 5/Route
+  3 facts can preserve prepared fallback output such as `mv a1, a0` and
+  `lw a1, 12(s2)` while only clearing diagnostic agreement booleans.
+
+Missing closure evidence:
+
+- x86 needs a named direct or indirect consumer joining
+  `PreparedFunctionLookups::edge_publication_source_producers` /
+  `PreparedEdgePublication::source_producer_*` authority to same-edge Route
+  5/BIR source-producer identity, with disagreement rejected instead of
+  falling back to prepared-only move/home authority.
+- RISC-V needs authority-transfer behavior that fails closed on non-agreeing
+  Route 5 and Route 3 facts instead of preserving prepared fallback/output
+  while claiming semantic agreement.
+- Both targets need focused proof rows for duplicate Route 5 edge records,
+  conflicting producer records, destination/source mismatch, missing or absent
+  Route 5/BIR source, unsupported prepared publication or homes,
+  prepared-only authority, fallback on non-agreeing route facts,
+  `LoadLocal` memory-source mismatch or incompleteness, immediate producer
+  handling, and policy-sensitive target rows.
+
+Prepared authority and compatibility boundaries that must remain stable:
+
+- Public prepared helpers and lookup authority:
+  `PreparedFunctionLookups::edge_publication_source_producers`,
+  `PreparedEdgePublication::source_producer_*`, and
+  `find_indexed_prepared_edge_publication_source_producer(...)`.
+- Prepared producer kind strings: `unknown`, `immediate`, `load_local`,
+  `load_global`, `cast`, `binary`, and `select_materialization`.
+- Prepared and target status strings/surfaces, including
+  `missing_publication`, `missing_source_producer`,
+  `missing_source_memory_access`, `incomplete_source_memory_access`,
+  `MissingSharedLookups`, `MissingPublication`, `UnsupportedPublication`,
+  `UnsupportedSourceHome`, `UnsupportedDestinationHome`, `Available`,
+  `unavailable`, `available`, `missing_prepared_memory_access`, and
+  `incomplete_prepared_memory_access`.
+- Route 5 diagnostic compatibility strings such as `no_match`, `no_source`,
+  `missing_predecessor`, `missing_successor`, `missing_destination`,
+  `missing_publication`, `missing_source_value`, and
+  `missing_source_producer`.
+- Fallback names, helper/oracle names, source/destination value rows, source
+  home rows, register/home/storage policy, stack-slot width/offset policy,
+  pointer-base materialization, scratch/carrier choices,
+  branch/parallel-copy placement, and final assembly output boundaries such as
+  x86 `mov`, RISC-V `mv a1, a0`, and RISC-V `lw a1, 12(s2)`.
+
+Producer/source fail-closed matrix retained for the follow-up split:
 
 | Case | Prepared compatibility surface that must remain observable | Required Route 5/BIR behavior for any later adapter | Scope | Existing evidence |
 | --- | --- | --- | --- | --- |
@@ -60,14 +121,26 @@ Reviewer rejection rules derived from the matrix:
   rows fail closed instead of merely clearing diagnostic agreement booleans
   while preserving prepared fallback/output.
 
+Closure/split recommendation:
+
+- Producer-adapter readiness is blocked, not safe. Idea 252 should be eligible
+  for plan-owner closure as a completed blocker map because it names the
+  selected relation, target evidence, exact blockers, compatibility surfaces,
+  and fail-closed rows.
+- Do not expand this blocker-map plan into implementation work. If the
+  supervisor wants code work next, split a new bounded implementation idea for
+  one target and one producer/source sub-slice, requiring focused tests that
+  prove duplicate/conflict/mismatch/missing/prepared-only/fallback/policy rows
+  fail closed without weakening helper/oracle names, compatibility strings,
+  fallback names, prepared statuses, or target output boundaries.
+
 ## Suggested Next
 
-Execute Step 6, "Decide Producer-Adapter Readiness and Close or Split", as an
-analysis-only closure packet. Summarize that x86 is blocked, RISC-V has
-diagnostic agreement but not fail-closed authority transfer, and this matrix
-requires any implementation follow-up to be a separate narrow idea with
-explicit duplicate/conflict/mismatch/missing/prepared-only/fallback/policy
-rejection tests before adapter readiness can be claimed.
+Return to the supervisor for plan-owner lifecycle handling. Recommended
+handling: close idea 252 as a completed analysis-only blocker map and, only if
+implementation work is desired, split a separate narrow follow-up idea for
+producer/source authority transfer with explicit fail-closed proof
+requirements.
 
 ## Watchouts
 
@@ -80,9 +153,13 @@ rejection tests before adapter readiness can be claimed.
   transfer.
 - Treat target output, fallback names, helper/status strings, and home/storage
   policy as compatibility or target-policy surfaces, not semantic agreement.
-- Step 6 should not close this as adapter-ready unless it preserves the
-  blockers above or splits a new implementation idea with fail-closed proof
-  requirements.
+- Do not claim x86 readiness until an x86 consumer joins prepared publication
+  source-producer rows to Route 5/BIR source-producer identity and rejects
+  disagreement.
+- Do not claim RISC-V readiness until non-agreeing Route 5/Route 3 rows fail
+  closed instead of preserving prepared fallback/output while only clearing
+  diagnostics.
+- Plan-owner closure should close the blocker map, not adapter readiness.
 
 ## Proof
 
