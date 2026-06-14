@@ -1,99 +1,121 @@
 Status: Active
 Source Idea Path: ideas/open/252_phase_f3_edge_publication_source_producer_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove or Block x86 Evidence
+Current Step ID: 4
+Current Step Title: Recheck Riscv Evidence Against the Same Relation
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3, "Prove or Block x86 Evidence", as an analysis-only x86
-classification for idea 252.
+Completed Step 4, "Recheck Riscv Evidence Against the Same Relation", as an
+analysis-only RISC-V classification for idea 252.
 
-Classification: x86 is blocked for the selected same-edge CFG publication
-source-producer identity relation, not proven and not explicitly
-non-applicable.
+Classification: RISC-V is proven for the selected same-edge CFG publication
+source-producer identity relation as diagnostic agreement evidence, not as
+authority transfer. RISC-V has an explicit prepared-to-Route 5/Route 3
+agreement bridge and tests for agreeing and non-agreeing rows, while prepared
+lookup/status/fallback/output remains authoritative.
 
-x86 prepared-publication evidence:
+Semantic Route 5/BIR agreement evidence:
 
-- `src/backend/mir/x86/prepared/dispatch.cpp:55` defines
-  `consume_edge_publication_move_intent(...)`. AST-backed callee tracing showed
-  that it reads `ConsumedPlans::shared_function_lookups()`, then calls
-  `prepare::find_unique_indexed_prepared_edge_publication(...)` on
-  `lookups->edge_publications`; it does not read
-  `edge_publication_source_producers`, `PreparedEdgePublication` source-producer
-  fields, `BirCfgEdgePublicationSourceIdentity`, or
-  `bir::Route5CfgEdgePublicationRecord`.
-- The same function turns prepared publication status and prepared homes into
-  an `EdgePublicationMoveIntent`: `MissingSharedLookups`,
-  `MissingPublication`, `UnsupportedPublication`, `UnsupportedSourceHome`,
-  `UnsupportedDestinationHome`, or `Available`, plus final `mov` text from
-  prepared source/destination homes.
-- `src/backend/mir/x86/module/module.cpp:2523` is the production caller inside
-  `append_prepared_compare_join_parallel_copy(...)`. It uses the prepared
-  move-intent status to emit an i32 `mov` only when
-  `prepared_edge_publication_move_has_i32_operands(...)` accepts the operands,
-  and otherwise preserves prepared lookup/value-home error behavior or silently
-  leaves unsupported publication/home cases as non-emitted target policy.
-- `src/backend/mir/x86/prepared/prepared.hpp:154` exposes the
-  `EdgePublicationMoveIntentStatus` rows, which are compatibility/output
-  surface rows for the x86 prepared edge-publication bridge rather than
-  semantic source-producer proof.
+- `src/backend/mir/riscv/codegen/emit.hpp:59` exposes optional diagnostic
+  fields on `EdgePublicationMoveIntent`: `route5_edge_status`,
+  `route5_edge_source_agrees`, and `route3_source_memory_agrees`.
+- `src/backend/mir/riscv/codegen/emit.hpp:84` declares the overload of
+  `consume_edge_publication_move_intent(...)` that accepts a
+  `const bir::Route5CfgEdgePublicationRecord*` for the same predecessor,
+  successor, and destination value relation.
+- `src/backend/mir/riscv/codegen/emit.cpp:305` maps prepared
+  `PreparedEdgePublicationSourceProducerKind` rows to
+  `bir::Route5PublicationSourceKind`, covering `Immediate`, `LoadLocal`,
+  `LoadGlobal`, `Cast`, `Binary`, `SelectMaterialization`, and `Unknown`.
+- `src/backend/mir/riscv/codegen/emit.cpp:366` defines
+  `route3_source_memory_agrees_with_prepared_publication(...)`; for a
+  `LoadLocal` source it checks prepared source memory access status, Route 3
+  node kind, result value, address space, volatility, byte offset, size,
+  alignment, and base identity.
+- `src/backend/mir/riscv/codegen/emit.cpp:394` defines
+  `route5_edge_source_agrees_with_prepared_publication(...)`; it requires
+  Route 5 status `Available` or `MemorySource`, same predecessor/successor
+  labels, same destination value name/type, same source value kind/type, and
+  matching prepared-vs-Route 5 source producer kind. Named sources also require
+  a Route 5 source producer instruction and instruction index. `LoadLocal`
+  sources additionally require `MemorySource`, source-memory identity, and
+  Route 3 agreement.
+- `src/backend/mir/riscv/codegen/emit.cpp:485` attaches those Route 5/Route 3
+  results to the intent when a Route 5 record is supplied; `emit.cpp:717`
+  threads the optional Route 5 record through the public helper overload.
+- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1594`
+  starts `check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback()`.
+  The scalar case proves an agreeing Route 5 edge with status `available`,
+  same edge labels, `%src` -> `%dst`, `Binary` producer kind, and the
+  predecessor instruction pointer; the helper records
+  `route5_edge_source_agrees`.
+- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1652`
+  checks non-agreeing Route 5 rows: destination-type mismatch reports
+  `no_match`, absent predecessor reports `no_source`, and the helper records
+  `route5_edge_source_agrees == false`.
+- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1705`
+  checks the dynamic memory-source relation: Route 3 exposes `load_local`,
+  pointer-value base `%base`, byte offset 12, size 4, and Route 5 reports
+  `memory_source`; the helper records both `route5_edge_source_agrees` and
+  `route3_source_memory_agrees`.
+- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1749`
+  and `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1768`
+  prove mismatched or incomplete Route 3 memory identity rows clear both
+  agreement booleans.
 
-Route/BIR evidence gap:
+Prepared lookup/status, fallback, output, and target emission policy that
+remain non-semantic:
 
-- `src/backend/mir/query.hpp:218` defines
-  `BirCfgEdgePublicationSourceIdentity` with the selected semantic fields:
-  source value identity, `source_producer`, `source_producer_kind`,
-  `source_producer_block_label_id`, and
-  `source_producer_instruction_index`.
-- `src/backend/mir/query.cpp:690` converts a
-  `bir::Route5CfgEdgePublicationRecord` into that MIR identity, including
-  `route5_edge_source_producer_to_mir(...)` and optional Route 3
-  source-memory access.
-- `src/backend/mir/query.cpp:1591` defines
-  `find_bir_cfg_edge_publication_source_identity(...)`; targeted caller
-  tracing in that translation unit found no caller, and repo search shows its
-  consumers are helper/oracle tests and riscv diagnostics, not x86 production
-  code.
-- Focused x86 search found no use of
-  `find_bir_cfg_edge_publication_source_identity`,
-  `BirCfgEdgePublicationSourceIdentity`,
-  `Route5CfgEdgePublicationRecord`, or
-  `edge_publication_source_producers` under `src/backend/mir/x86`.
+- `src/backend/mir/riscv/codegen/emit.cpp:468` still finds the concrete
+  publication through `prepare::find_unique_indexed_prepared_edge_publication`
+  on `lookups->edge_publications`; this is prepared publication lookup
+  authority, not Route 5/BIR authority.
+- `src/backend/mir/riscv/codegen/emit.cpp:501` returns prepared/status-driven
+  intent rows: `MissingSharedLookups`, `MissingPublication`,
+  `UnsupportedPublication`, `UnsupportedSourceHome`,
+  `UnsupportedDestinationHome`, or `Available`.
+- `src/backend/mir/riscv/codegen/emit.cpp:528` through `emit.cpp:699` keeps
+  publication availability, source/destination homes, stack-slot width/offset
+  policy, pointer-base materialization policy, and instruction text as
+  prepared-backed target policy.
+- `src/backend/mir/riscv/codegen/emit.cpp:733` appends output only when the
+  prepared-backed intent status is `Available`; it calls the overload without
+  a Route 5 record, so normal emission does not require Route 5 agreement.
+- `src/backend/mir/riscv/codegen/emit.cpp:747` emits prepared modules by
+  iterating `lookups.edge_publications.publications` and appending
+  prepared-backed edge-publication moves.
+- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1641`
+  proves missing prepared publication still returns `MissingPublication` even
+  when Route 5 facts exist.
+- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1674`,
+  `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1750`,
+  and `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1769`
+  prove non-agreeing Route 5/Route 3 rows preserve prepared fallback output
+  (`mv a1, a0` or `lw a1, 12(s2)`) instead of rejecting emission.
+- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp:1797`
+  keeps missing lookup, missing publication, malformed homes, unsupported
+  sources/destinations, and non-move publication rows fail-closed through the
+  prepared status surface.
 
-Rows that remain compatibility-owned for x86:
+Boundary:
 
-- Prepared move-intent status rows:
-  `MissingSharedLookups`, `MissingPublication`, `UnsupportedPublication`,
-  `UnsupportedSourceHome`, `UnsupportedDestinationHome`, and `Available`.
-- Prepared publication lookup status, prepared source/destination homes,
-  out-of-SSA parallel-copy/move-bundle authority, and the compare-join errors:
-  `compare-join edge has no shared prepared edge-publication lookup authority`
-  and `compare-join edge parallel-copy step has no shared prepared
-  edge-publication fact`.
-- x86 operand and output policy: i32-only acceptance,
-  register-vs-memory filtering, source/destination operand spelling, and final
-  `mov <dest>, <source>` text.
-
-Blocker:
-
-- x86 has a prepared edge-publication move/home consumer, but no direct or
-  indirect x86 consumer that joins the same-edge prepared
-  `PreparedEdgePublication` answer to a Route 5/BIR
-  `BirCfgEdgePublicationSourceIdentity` / `Route5CfgEdgePublicationRecord`
-  source-producer identity and rejects disagreement. Until such an x86 query
-  facade or bridge exists, prepared move/home consumption and emitted `mov`
-  rows cannot count as semantic source-producer proof.
+- RISC-V evidence proves the same selected relation can be observed and
+  classified against Route 5/Route 3 facts. It does not prove adapter
+  readiness or fail-closed source-producer authority transfer, because
+  disagreement currently clears diagnostic agreement booleans while preserving
+  prepared-backed fallback/output.
 
 ## Suggested Next
 
-Execute Step 4, "Recheck Riscv Evidence Against the Same Relation", as an
-analysis-only packet. Recheck riscv evidence against the same selected
-same-edge CFG publication source-producer identity relation, separating
-Route 5/BIR semantic agreement rows from prepared lookup/status, fallback, and
-target emission policy.
+Execute Step 5, "Build the Producer/Source Fail-Closed Matrix", as an
+analysis-only packet. Build the duplicate, conflict, mismatch, absent,
+unsupported, prepared-only, fallback, and target-policy matrix needed before a
+later adapter can turn RISC-V diagnostic agreement evidence, x86 blocker
+evidence, and prepared compatibility rows into any source-producer authority
+claim.
 
 ## Watchouts
 
@@ -101,17 +123,23 @@ target emission policy.
 - Do not implement a BIR producer index or adapter in this blocker-map plan.
 - Do not delete, privatize, wrap, rename, or bypass public prepared
   `edge_publication_source_producers` helpers.
-- Step 3 leaves x86 blocked, not non-applicable: x86 consumes prepared
+- Step 3 left x86 blocked, not non-applicable: x86 consumes prepared
   edge-publication move/home status but has no Route 5/BIR source-producer
   agreement consumer.
+- Step 4 leaves RISC-V proven for diagnostic same-edge Route 5/Route 3
+  agreement evidence, but not proven for fail-closed authority transfer:
+  non-agreeing Route rows preserve prepared fallback/output.
+- Keep RISC-V semantic rows separate from prepared lookup/status rows:
+  `route5_edge_status`, `route5_edge_source_agrees`, and
+  `route3_source_memory_agrees` are diagnostic agreement rows; instruction
+  text, fallback behavior, source/destination homes, and status rows remain
+  compatibility or target policy.
 - Do not infer x86 readiness from prepared edge-publication move consumption,
   `mov` output, operand spelling, module diagnostics, helper names, prepared
   publication statuses, or value-home checks.
-- Do not infer readiness from Route 5 edge/source evidence alone; it is only
-  the selected semantic fact to prove, block, or exclude per target.
-- Treat RISC-V Route 5/Route 3 agreement rows as diagnostic evidence until
-  Step 4 rechecks them against this exact selected relation; prepared output
-  and fallback remain authoritative.
+- Do not infer adapter readiness from RISC-V Route 5/Route 3 agreement alone;
+  Step 5 still needs fail-closed duplicate, conflict, mismatch, absent,
+  prepared-only, fallback, unsupported, and policy-sensitive rows.
 - Preserve helper/oracle names, compatibility strings, fallback names,
   publication/output rows, and target-policy-sensitive behavior.
 - Treat testcase-shaped shortcuts, expectation weakening, helper/status/output
@@ -121,4 +149,4 @@ target emission policy.
 ## Proof
 
 Analysis-only packet. No build or test proof required by supervisor.
-Local validation: `git diff --check -- todo.md`.
+Local validation: `git diff --check -- todo.md` passed.
