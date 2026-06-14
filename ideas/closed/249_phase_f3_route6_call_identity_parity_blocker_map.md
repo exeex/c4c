@@ -63,3 +63,34 @@ unsupported fail-closed rows.
   rewrites outside the call-use/source identity boundary.
 - Reject any route that leaves prepared call-plan lookup data as the exact old
   semantic source while renaming the access path as route/BIR-owned.
+
+## Closure Evidence
+
+Closed after the active runbook completed Steps 1-6. The blocker map is
+complete as an analysis result, not as an implementation change.
+
+The mapped Route 6 semantic fact is scalar `i32` call argument source identity
+after Route 6 and prepared `source_value_id` agreement. The only bounded
+implementation-ready consumer is x86-local and must pass all recorded
+agreement gates before using the fact.
+
+Public prepared call-plan APIs remain compatibility authority:
+
+- `PreparedFunctionLookups::call_plans`
+- `PreparedBirModule::call_plans`
+- `find_prepared_call_plans`
+
+They must remain public and observable. `ConsumedPlans`, wrapper output,
+route-debug names, fallback names, helper/oracle statuses, unsupported rows,
+and target ABI/register/stack/result policy remain compatibility or target
+authority, not Route 6 semantic ownership.
+
+The riscv side is explicitly non-applicable for this fact family in the
+current tree. No bounded riscv consumer currently reads the selected Route 6
+call-use/source identity; ordinary riscv call lowering uses generic operands
+and target-local call policy, while prepared riscv module emission consumes
+edge-publication agreement rather than Route 6 call-plan identity.
+
+Broad x86/riscv parity and public prepared call-plan authority demotion remain
+blocked. The implementation-ready remainder has been split into
+`ideas/open/257_phase_f3_x86_route6_call_argument_source_identity_adapter.md`.
