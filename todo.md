@@ -8,7 +8,8 @@ Current Step Title: Broader Validation and Closure Readiness
 
 ## Just Finished
 
-Step 5 regression fix complete for the `names` value-home lookup candidate.
+Step 5 broader validation and closure-readiness review complete for the
+`names` value-home lookup candidate.
 
 - Broader validation exposed a compatibility regression in
   `backend_aarch64_branch_control_lowering`: a stale prepared producer mismatch
@@ -25,12 +26,14 @@ Step 5 regression fix complete for the `names` value-home lookup candidate.
 - Preserved fail-closed behavior for stale value ids, missing indexes, missing
   backing homes, duplicate/conflicting names or ids, and conflicting regalloc
   rows.
+- Reran the broader backend subset after the fix; it passed and the selected
+  value-home candidate is ready for plan-owner closure review.
 
 ## Suggested Next
 
-Supervisor acceptance review for the Step 5 regression-fix slice, then closure
-readiness or plan-owner lifecycle review if the broader validation remains
-green.
+Request plan-owner closure review for this selected value-home lookup
+candidate. Remaining idea 260 candidates should stay open for separate
+one-candidate runbooks.
 
 ## Watchouts
 
@@ -66,3 +69,13 @@ Ran:
 
 Result: passed. `test_after.log` shows `100% tests passed, 0 tests failed out
 of 2`.
+
+Broader Step 5 proof:
+
+```bash
+(cmake --build --preset default && ctest --test-dir build -R '^backend_' -j --output-on-failure) > test_before.log 2>&1
+```
+
+Result: passed before and after this closure-readiness update.
+`test_before.log` and `test_after.log` both show 180/180 backend tests passed.
+The regression guard comparison reported no new failures.
