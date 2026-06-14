@@ -11,7 +11,7 @@ namespace c4c::backend::prepare {
 std::string print(const PreparedBirModule& module) {
   std::ostringstream out;
   out << "prepared.module target=" << module.target_profile.triple
-      << " route=" << prepare_route_name(module.route) << "\n";
+      << " route=" << prepare_route_name(prepared_route(module)) << "\n";
 
   if (!module.completed_phases.empty()) {
     out << "completed_phases:";

@@ -65,6 +65,10 @@ struct PreparedBirModule {
   std::vector<PrepareNote> notes;
 };
 
+[[nodiscard]] inline PrepareRoute prepared_route(const PreparedBirModule& module) {
+  return module.route;
+}
+
 [[nodiscard]] inline const PreparedRegisterGroupOverride* find_prepared_register_group_override(
     const PreparedRegisterGroupOverrides& overrides,
     FunctionNameId function_name,
