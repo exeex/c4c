@@ -1,99 +1,111 @@
 Status: Active
 Source Idea Path: ideas/open/257_phase_f3_x86_route6_call_argument_source_identity_adapter.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Call Argument Source Inventory
+Current Step ID: 2
+Current Step Title: Agreement Adapter Design
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Call Argument Source Inventory recorded the exact x86 scalar
-named-`i32` Route 6/prepared agreement row and nearby proof surfaces.
+Step 2 - Agreement Adapter Design accepted the existing x86-local helper as
+the adapter boundary and recorded the precise agreement and rejection contract.
 
-Reader/helper row:
+Adapter boundary decision:
 
-- `c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority`
-  in `src/backend/mir/x86/x86.hpp` is the concrete authority gate.
-- It reads `find_consumed_call_argument_plan(...)` for the prepared
-  `PreparedCallArgumentPlan` at `(block_index, instruction_index, arg_index)`
-  and `ConsumedPlans::shared_route6_call_use_source_index()` for the Route 6
-  index.
-- It is already narrowed to a named `bir::TypeKind::I32` call argument and
-  returns only after Route 6 `ArgumentValue` evidence and prepared
-  `source_value_id` agree.
+- Use `c4c::backend::x86::find_consumed_scalar_i32_call_argument_source_authority(...)`
+  in `src/backend/mir/x86/x86.hpp` as the Step 3 implementation boundary.
+- Do not introduce a smaller parallel query for this packet: the existing
+  helper is already x86-local, not a public prepared API, and already receives
+  the selected `ConsumedPlans`, block, call, block/instruction/arg indexes, and
+  BIR argument needed for the one scalar named-`i32` fact.
+- Keep `find_consumed_scalar_i32_call_argument_source(...)` as the compatibility
+  convenience wrapper that returns only the Route 6 record after the authority
+  helper succeeds.
 
-Route 6 fields available for agreement:
+Accepted agreement row:
 
-- `Route6CallArgumentSourceRecord::status`, `source_kind`, `argument_value`,
-  `source_value`, `source_value_id`, and `source_value_name`.
-- Lookup key: `block`, `call_instruction_index`, `call.callee`, and
-  `arg_index` through `route6_find_call_argument_source(...)`.
-- Record validation helper:
-  `route6_call_argument_source_matches_argument_value_record(...)`.
-- Publication path:
-  `publish_route6_named_scalar_i32_call_argument_source(...)` creates or
-  completes `CallInst::arg_sources` only for named scalar `i32` argument values
-  whose prepared source id/name and storage encoding are compatible.
+- Argument must be a named `bir::TypeKind::I32` BIR call argument.
+- Prepared evidence must include a `PreparedCallArgumentPlan` found through
+  `find_consumed_call_argument_plan(...)` for the same
+  `(block_index, instruction_index, arg_index)`.
+- Route 6 evidence must come from
+  `ConsumedPlans::shared_route6_call_use_source_index()` through
+  `route6_find_call_argument_source(...)` for the same block, call instruction,
+  callee, and argument index.
+- Route 6 status must be available through an `ArgumentValue` row accepted by
+  `route6_call_argument_source_matches_argument_value_record(...)`, including a
+  matching argument value/name.
+- Route 6 `source_value_id` and prepared `PreparedCallArgumentPlan::source_value_id`
+  must both be present and equal.
+- Route 6 `source_value_name` must be present and is the returned
+  `ConsumedScalarI32CallArgumentSourceAuthority::source_name`.
+- Public prepared call-plan compatibility remains observable through
+  `PreparedBirModule::call_plans`, `PreparedFunctionLookups::call_plans`,
+  `find_prepared_call_plans(...)`, `find_indexed_prepared_call_plan(...)`, and
+  x86 `find_consumed_call_argument_plan(...)`.
 
-Prepared fields available for agreement:
+Rejection matrix:
 
-- `PreparedCallArgumentPlan::source_value_id` is the prepared identity row
-  compared against `Route6CallArgumentSourceRecord::source_value_id`.
-- Public retained lookup/API surfaces remain
-  `PreparedBirModule::call_plans`,
-  `PreparedFunctionLookups::call_plans`,
-  `find_prepared_call_plans(...)`,
-  `find_indexed_prepared_call_plan(...)`, and x86
-  `find_consumed_call_argument_plan(...)`.
+- Missing prepared call-plan row: return `std::nullopt`; prepared lookup APIs
+  remain callable and unchanged.
+- Missing Route 6 index or empty Route 6 index: return `std::nullopt`;
+  fallback behavior continues through prepared call-plan selection.
+- Invalid or unsupported argument shape, including non-named, non-`i32`,
+  immediate, aggregate, ABI-bound, computed/symbol-address, direct-global,
+  source-selection, register/stack policy, helper-selection, or target-policy
+  rows: return `std::nullopt`; do not infer authority from prepared metadata.
+- Route 6 record absent, missing-source-relationship, invalid, or any other
+  non-available status: return `std::nullopt`; route-debug may report the
+  existing blocked status but strings stay unchanged.
+- Route 6 `ArgumentValue` mismatch against the BIR argument, including source
+  value/name mismatch: return `std::nullopt`.
+- Missing Route 6 `source_value_id`: return `std::nullopt`.
+- Missing prepared `source_value_id`: return `std::nullopt`.
+- Route 6/prepared `source_value_id` mismatch: return `std::nullopt`.
+- Missing Route 6 `source_value_name`: return `std::nullopt` even when ids
+  agree.
+- Duplicate or conflicting Route 6 relationships/source evidence: return
+  `std::nullopt` through the Route 6 record status/matching gate.
+- Prepared-only evidence: return `std::nullopt`; do not promote prepared
+  `source_value_id` alone into Route 6 semantic authority.
+- Route 6-only evidence: return `std::nullopt`; do not bypass missing prepared
+  agreement.
+- Fallback rows: preserve prepared call-plan selection and emitted x86 asm when
+  agreement is absent or non-authoritative.
+- Policy-sensitive rows: leave ABI call sequence, argument/result layout,
+  register/stack policy, helper/oracle status, wrapper instruction text,
+  fallback names, route-debug strings, expected output, and `ConsumedPlans`
+  contracts unchanged.
 
-Compatibility and proof surfaces identified:
+Compatibility surfaces confirmed unchanged:
 
-- `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
-  checks `ConsumedPlans` threading, agreement becoming named Route 6 authority,
-  missing Route 6 fallback, missing source-name fallback, prepared call-plan
-  selector preservation, and unchanged fallback assembly.
-- The same file has prepared handoff drift rows that reject reopening local
-  x86 call-argument/result ABI fallbacks when authoritative prepared
-  BeforeCall/AfterCall bundles are removed.
-- `tests/backend/bir/backend_x86_route_debug_test.cpp` checks route-debug
-  output for available/agreed, missing source relationship, missing source
-  value, missing source name, duplicate relationship, prepared source mismatch,
-  and source value/name mismatch gates.
-- `tests/backend/bir/backend_prepared_printer_test.cpp` and
-  `src/backend/prealloc/prepared_printer/*` retain public prepared call-plan
-  wrapper, fallback, and callsite dump visibility.
-
-Fail-closed rows needed before code changes:
-
-- Prepared-only evidence must not become Route 6 authority.
-- Route 6-only evidence must not bypass missing prepared `source_value_id`.
-- Mismatched Route 6/prepared source ids or source names must keep the gate
-  blocked.
-- Unsupported/non-selected rows must remain blocked, including non-named,
-  non-`i32`, immediate, computed/symbol address, direct-global dependency,
-  source-selection, ABI-bound, aggregate, and target-policy-sensitive rows.
-- Duplicate/conflict rows must remain blocked through duplicate
-  `CallArgumentSourceRelationship` or conflicting source id/name evidence.
-- Fallback rows must preserve prepared call-plan selection and emitted x86 asm
-  when Route 6 evidence is absent or non-authoritative.
-- Public helper/oracle status, route-debug strings, wrapper/fallback names, and
-  `ConsumedPlans` expectations must remain stable.
+- Public prepared call-plan APIs stay visible and stable:
+  `PreparedBirModule::call_plans`, `PreparedFunctionLookups::call_plans`,
+  `find_prepared_call_plans(...)`, `find_indexed_prepared_call_plan(...)`, and
+  x86 `find_consumed_call_argument_plan(...)`.
+- Existing route-debug gate names remain unchanged:
+  `agreed`, `blocked`, `missing_source_value`, `missing_source_name`,
+  `missing_prepared_source`, `prepared_source_mismatch`, and
+  `source_value_mismatch`.
+- Wrapper/fallback names, helper/oracle status, expected output strings,
+  fallback assembly, and `ConsumedPlans` threading remain compatibility
+  surfaces, not implementation targets for this design-only step.
 
 ## Suggested Next
 
-Execute Step 2 by deciding whether the existing
-`find_consumed_scalar_i32_call_argument_source_authority(...)` helper is already
-the adapter boundary or should be wrapped by a smaller x86-local query name, and
-record the accepted agreement row plus rejection matrix without changing public
-prepared call-plan APIs.
+Execute Step 3 by routing the selected x86 scalar named-`i32` call argument
+source identity through the accepted
+`find_consumed_scalar_i32_call_argument_source_authority(...)` boundary, only if
+the code still has a caller that does not use this authority helper directly.
 
 ## Watchouts
 
-- The reader/helper row already exists, so Step 2 should avoid designing a
-  parallel abstraction unless it removes real ambiguity.
-- The current helper requires `source_value_name`; the design step should keep
-  this named-authority gate unless a proof row explicitly justifies otherwise.
+- The authority helper already implements the Step 2 agreement predicates; Step
+  3 should first check whether implementation work is already complete and only
+  make a code change if a selected caller bypasses the authority boundary.
+- Keep the `source_value_name` requirement as part of named authority; missing
+  names are fallback rows, not partial successes.
 - Route-debug status rows already name `gate=agreed`,
   `gate=missing_source_value`, `gate=missing_source_name`,
   `gate=prepared_source_mismatch`, `gate=source_value_mismatch`, and
