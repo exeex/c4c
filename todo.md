@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/246_phase_f1_prepared_publication_status_compatibility_retention.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add riscv Route 5/Route 3 diagnostic naming beside compatibility rows
+Current Step ID: Step 5
+Current Step Title: Prepare Closure Evidence
 
 # Current Packet
 
