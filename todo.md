@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/247_phase_f1_final_prepared_field_group_demotion_gate.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Each Field Group
+Current Step ID: 3
+Current Step Title: Decide Draft 155 And Follow-Up Ideas
 
 # Current Packet
 
@@ -84,12 +84,57 @@ Candidate outcome:
   carrier, helper, emission, formatting, and wrapper policy groups remain out
   of BIR ownership and should not be proposed for demotion by this gate.
 
+Step 3 disposition is complete by comparing the Step 2 blocker map with
+`ideas/draft/155_phase_e_prepared_bir_module_retirement_plan.md`.
+
+Draft 155 disposition: keep blocked with named blockers.
+
+Rationale: draft 155 asks for broad `PreparedBirModule` retirement/demotion
+analysis after earlier BIR/prealloc phases, but the current field-by-field gate
+finds no safe final deletion or demotion candidate. The useful successor work
+from ideas 243-246 proves selected x86/riscv route-native diagnostics,
+adapters, compatibility-retention rows, and wrapper-output baselines; it does
+not prove whole prepared aggregate retirement.
+
+Named blockers for draft 155:
+
+- Public `PreparedFunctionLookups` groups remain observable prepared authority:
+  `call_plans`, `memory_accesses`, `edge_publications`, and
+  `edge_publication_source_producers` still lack full cross-target
+  route-native positive, missing, mismatch, duplicate, fallback,
+  wrapper-output, and baseline proof.
+- Public compatibility/status surfaces remain intentionally retained:
+  prepared helper/oracle statuses, route-debug names, fallback names, and
+  wrapper-output compatibility rows still need stable prepared names and
+  status families.
+- Target-policy field groups are not BIR retirement candidates:
+  address materialization, ABI moves, value homes, stack layout, register
+  allocation, frame plans, dynamic stack plans, storage plans, value
+  locations, addressing, variadic entry, wide-scalar carriers, atomics,
+  intrinsics, inline asm, and runtime helper protocol remain target/prepared
+  policy.
+- `PreparedBirModule` public/control fields remain blocked:
+  `module`, `names`, `control_flow`, `call_plans`, and
+  `store_source_publications` lack whole-route replacement proof and cannot be
+  hidden behind private wrappers.
+- Private pass context groups (`route`, `invariants`, `completed_phases`,
+  `notes`, and possibly `liveness`) are not enough to justify an
+  implementation idea from this gate because draft 155's broad aggregate
+  retirement scope remains blocked.
+
+Follow-up ideas created: none.
+
+No field group is safe for final demotion or deletion. Do not open broad
+aggregate retirement from draft 155, do not claim `PreparedBirModule` or
+`PreparedFunctionLookups` retirement, do not move target policy into BIR, and
+do not weaken expectations or baselines to make a field appear removable.
+
 ## Suggested Next
 
-Execute Step 3: decide draft 155 disposition against this blocker map. The
-executor recommendation is to keep broad draft 155 blocked or supersede it with
-no implementation ideas from this gate, because Step 2 found no safe
-field-group deletion/demotion candidate.
+Execute Step 4: prepare closure evidence for this gate. Confirm the inventory,
+classification map, draft 155 disposition, and no-follow-up outcome remain in
+`todo.md`, then use matching lifecycle proof logs and the regression guard for
+close.
 
 ## Watchouts
 
