@@ -6645,6 +6645,21 @@ int verify_prepared_same_block_scalar_source_facts() {
       prepared_sum->value_name != sum_name) {
     return fail("value-based scalar source facade should expose prepared producer facts");
   }
+  const auto prepared_sum_by_id =
+      prepare::find_prepared_same_block_scalar_producer(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          sum_name,
+          bir::TypeKind::I64,
+          block.insts.size());
+  if (!prepared_sum_by_id.has_value() ||
+      prepared_sum_by_id->producer.binary != sum ||
+      prepared_sum_by_id->instruction_index != 2 ||
+      prepared_sum_by_id->value_name != sum_name) {
+    return fail("ValueNameId scalar source facade should expose agreed prepared producer facts");
+  }
   const auto scalar_available =
       [&](const prepare::PreparedEdgePublicationSourceProducerLookups* lookups,
           const bir::Value& value,
@@ -6700,6 +6715,50 @@ int verify_prepared_same_block_scalar_source_facts() {
           .instruction_index = 2,
           .binary = sum,
       });
+  auto raw_spelling_block = block;
+  auto* raw_spelling_sum =
+      std::get_if<bir::BinaryInst>(&raw_spelling_block.insts[2]);
+  if (raw_spelling_sum == nullptr) {
+    return fail("raw-spelling scalar source fixture is malformed");
+  }
+  raw_spelling_sum->result = bir::Value::named(bir::TypeKind::I64, "%sum.raw");
+  const auto raw_sum_name = names.value_names.intern("%sum.raw");
+  auto raw_spelling_source_producers = source_producers;
+  raw_spelling_source_producers.producers_by_value_name[sum_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .binary = raw_spelling_sum,
+      };
+  raw_spelling_source_producers.producers_by_value_name.emplace(
+      raw_sum_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .binary = raw_spelling_sum,
+      });
+  const auto raw_spelling_by_value =
+      prepare::find_prepared_same_block_scalar_producer(
+          names,
+          &raw_spelling_source_producers,
+          block_label,
+          &raw_spelling_block,
+          bir::Value::named(bir::TypeKind::I64, "%sum.raw"),
+          raw_spelling_block.insts.size());
+  if (!raw_spelling_by_value.has_value() ||
+      raw_spelling_by_value->value_name != raw_sum_name ||
+      raw_spelling_by_value->producer.binary != raw_spelling_sum ||
+      prepare::find_prepared_select_chain_source_producer(
+          names,
+          &raw_spelling_source_producers,
+          block_label,
+          &raw_spelling_block,
+          bir::Value::named(bir::TypeKind::I64, "%sum.raw"),
+          raw_spelling_block.insts.size()) == nullptr) {
+    return fail("raw-spelling compatibility should remain available only for agreed prepared rows");
+  }
   if (scalar_available(&source_producers, bir::Value::immediate_i64(21),
                        block.insts.size()) ||
       scalar_available(&source_producers, bir::Value::named(bir::TypeKind::I64, ""),
@@ -6721,8 +6780,17 @@ int verify_prepared_same_block_scalar_source_facts() {
       prepare::find_prepared_same_block_scalar_producer(
           names, &drift_source_producers, block_label, &block, drift_name,
           bir::TypeKind::I64, block.insts.size())
+          .has_value() ||
+      prepare::find_prepared_same_block_scalar_producer(
+          names,
+          &raw_spelling_source_producers,
+          block_label,
+          &raw_spelling_block,
+          sum_name,
+          bir::TypeKind::I64,
+          raw_spelling_block.insts.size())
           .has_value()) {
-    return fail("shared value-name scalar agreement should fail closed for invalid, stale, duplicate, missing, or drifted rows");
+    return fail("shared value-name scalar agreement should fail closed for invalid, stale, duplicate, missing, public-id, or drifted rows");
   }
   if (integer_constant_available(&stale_source_producers,
                                  bir::Value::named(bir::TypeKind::I64, "%sum"))

@@ -1,37 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Narrow Value-Name Bridge
+Current Step ID: 4
+Current Step Title: Add Fail-Closed Proof Rows
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3: implemented the shared value-name agreement bridge for idea
+Completed Step 4: added the remaining public compatibility proof rows for idea
 260's `names` same-block lookup candidate.
 
-- `src/backend/prealloc/lookup_agreement.hpp`
-- `src/backend/prealloc/lookup_agreement.cpp`
-- `src/backend/prealloc/prepared_lookups.cpp`
-- `src/backend/prealloc/select_chain_lookups.cpp`
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
-
-The new `prepared_bir_value_name_agreement(...)` helper accepts only non-empty
-named BIR values whose prepared `ValueNameId`, source-producer map row, same
-prepared block label, before-cutoff producer instruction, result pointer,
-result type, and prepared value-name spelling agree. The selected prepared
-same-block scalar/integer lookup path and select-chain source-producer path now
-share that boundary. Focused rows prove positive scalar, integer-constant, and
-select-chain agreement plus fail-closed behavior for unnamed, empty, missing
-prepared id, stale producer, wrong type, duplicate/unknown producer rows,
-missing maps, and prepared/BIR name drift.
+The existing Step 3 rows already covered the main positive scalar,
+integer-constant, and select-chain paths plus fail-closed behavior for unnamed,
+empty, missing prepared id, stale producer, wrong type, duplicate/unknown
+producer rows, missing maps, and prepared/BIR name drift through the `bir::Value`
+surface. Step 4 adds focused `ValueNameId` overload coverage: agreed prepared
+ids still resolve, raw-spelling compatibility remains available only when the
+prepared id/spelling/result agree, and the public `ValueNameId` overload fails
+closed when a prepared id is paired with a drifted BIR producer result.
 
 ## Suggested Next
 
-Execute Step 4: add any remaining fail-closed proof rows the supervisor wants
-around public compatibility boundaries, especially raw-spelling compatibility
-that must not be counted as structured agreement.
+Execute Step 5: run broader validation and decide whether this selected
+same-block value-name candidate is ready for plan-owner closure review.
 
 ## Watchouts
 
@@ -48,9 +40,11 @@ that must not be counted as structured agreement.
   unsupported expectations, helper/oracle status names, printer/debug strings,
   value-home lookup, semantic resolver API, control-flow, and store-source
   publication behavior.
-- Step 3 covered the main positive and fail-closed rows through public prepared
-  scalar, integer-constant, and select-chain APIs. Step 4 should focus on any
-  remaining public compatibility surfaces rather than reworking helper logic.
+- Step 4 preserved helper behavior and only added proof rows. Residual
+  out-of-scope surfaces remain route-debug, target output, baselines,
+  unsupported expectations, helper/oracle status names, printer/debug strings,
+  value-home lookup, semantic resolver API, control-flow, and store-source
+  publication behavior.
 - Do not rewrite route-debug, target output, baselines, unsupported
   expectations, helper/oracle status names, printer/debug strings, value-home
   lookup, semantic resolver API, control-flow, or store-source publication
@@ -58,12 +52,12 @@ that must not be counted as structured agreement.
 
 ## Proof
 
-Step 3 implementation proof:
+Step 4 proof:
 
 ```bash
 (cmake --build --preset default --target backend_prepared_lookup_helper_test && ctest --test-dir build -R '^backend_prepared_lookup_helper$' --output-on-failure) > test_after.log 2>&1
 ```
 
 Result: passed. `test_after.log` shows `backend_prepared_lookup_helper` passed.
-`git diff --check` passed for the owned implementation/test files before this
-`todo.md` update.
+`git diff --check -- tests/backend/bir/backend_prepared_lookup_helper_test.cpp
+todo.md` passed.
