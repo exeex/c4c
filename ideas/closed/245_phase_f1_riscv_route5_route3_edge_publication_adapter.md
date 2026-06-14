@@ -71,6 +71,21 @@ spelling, and wrapper output remain target policy.
 - Matching before/after regression guard over riscv edge publication and
   prepared lookup helper tests.
 
+## Completion Notes
+
+Closed after adding the riscv adapter seam, Route 5 edge/source agreement
+diagnostics, and Route 3 memory-source agreement diagnostics while preserving
+prepared fallback, `EdgePublicationMoveIntentStatus`, prepared status strings,
+and exact riscv instruction text.
+
+Close-scope validation used matching before/after logs for
+`backend_riscv_prepared_edge_publication` and
+`backend_prepared_lookup_helper`; both runs passed 2/2 and
+`c4c-regression-guard` reported no new failures.
+
+Prepared lookup and `PreparedBirModule` field group deletion, draft 155
+readiness, and broad prepared-field demotion remain deferred to later ideas.
+
 ## Reviewer Reject Signals
 
 - The patch treats prepared edge-publication shape as route-native truth
