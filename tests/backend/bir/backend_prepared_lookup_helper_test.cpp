@@ -1996,8 +1996,12 @@ int verify_prepared_bir_value_home_agreement_boundary() {
   stale_value_id_lookups.value_ids[value_name] = 99;
   auto stale_home_lookups = lookups;
   stale_home_lookups.homes_by_id[4] = nullptr;
+  auto missing_home_lookups = lookups;
+  missing_home_lookups.homes_by_id.erase(4);
   auto missing_index_lookups = lookups;
   missing_index_lookups.value_ids.erase(value_name);
+  prepare::PreparedValueLocationFunction missing_home_locations = function_locations;
+  missing_home_locations.value_homes.clear();
   if (prepare::find_prepared_value_home_for_bir_value(
           names, &stale_value_id_lookups, nullptr, &function_locations, value) !=
           nullptr ||
@@ -2005,9 +2009,15 @@ int verify_prepared_bir_value_home_agreement_boundary() {
           names, &stale_home_lookups, nullptr, &function_locations, value) !=
           nullptr ||
       prepare::find_prepared_value_home_for_bir_value(
+          names, &missing_home_lookups, nullptr, &function_locations, value) !=
+          nullptr ||
+      prepare::find_prepared_value_home_for_bir_value(
           names, &missing_index_lookups, nullptr, &function_locations, value) !=
+          nullptr ||
+      prepare::find_prepared_value_home_for_bir_value(
+          names, &lookups, nullptr, &missing_home_locations, value) !=
           nullptr) {
-    return fail("BIR value-home agreement should reject stale or incomplete indexes");
+    return fail("BIR value-home agreement should reject stale or incomplete homes and indexes");
   }
 
   prepare::PreparedRegallocFunction conflicting_regalloc = regalloc;
@@ -2029,9 +2039,16 @@ int verify_prepared_bir_value_home_agreement_boundary() {
   }
 
   const bir::Value drift_value = bir::Value::named(bir::TypeKind::I64, "%drift");
+  const bir::Value missing_prepared_id_value =
+      bir::Value::named(bir::TypeKind::I64, "%missing.prepared.id");
   if (drift_value_name == c4c::kInvalidValueName ||
+      names.value_names.find(missing_prepared_id_value.name) !=
+          c4c::kInvalidValueName ||
       prepare::find_prepared_value_home_for_bir_value(
           names, &lookups, nullptr, &function_locations, drift_value) != nullptr ||
+      prepare::find_prepared_value_home_for_bir_value(
+          names, &lookups, nullptr, &function_locations,
+          missing_prepared_id_value) != nullptr ||
       prepare::find_prepared_value_home_for_bir_value(
           names,
           &lookups,
