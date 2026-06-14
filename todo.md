@@ -1,18 +1,18 @@
 Status: Active
 Source Idea Path: ideas/open/251_phase_f3_route45_edge_publication_parity_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Build the Fail-Closed Proof Matrix
+Current Step ID: 6
+Current Step Title: Decide Adapter Readiness and Close or Split
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 5, "Build the Fail-Closed Proof Matrix", as an
-analysis-only matrix packet for the selected Route 5 CFG-edge publication
-source identity.
+Completed `plan.md` Step 6, "Decide Adapter Readiness and Close or Split", as
+an analysis-only readiness decision for the selected Route 5 CFG-edge
+publication source identity.
 
-Selected fact held constant:
+Selected fact evaluated:
 
 - Route 5 CFG-edge publication source identity checked against prepared
   `PreparedEdgePublication` lookup agreement for the same predecessor,
@@ -23,7 +23,36 @@ Selected fact held constant:
   the Route 3 source-memory identity to agree with the prepared source-memory
   publication before it can be treated as an agreeing diagnostic row.
 
-Fail-closed matrix:
+Adapter readiness decision: blocked.
+
+One shared Route 4/5 edge-publication identity is not proven across named x86
+and riscv evidence:
+
+- x86 is blocked, not non-applicable. It consumes prepared edge-publication
+  lookup/status data through `consume_edge_publication_move_intent(...)` and
+  prepared-backed module output in `module.cpp`, but no x86 consumer directly
+  or indirectly reads `Route5CfgEdgePublicationRecord` /
+  `BirCfgEdgePublicationSourceIdentity` and joins the same-edge prepared
+  publication to reject disagreement.
+- riscv provides diagnostic evidence for the selected Route 5 fact through
+  `route5_edge_status`, `route5_edge_source_agrees`, and, for dynamic
+  `LoadLocal` sources, `route3_source_memory_agrees`; however prepared
+  lookup/status and target emission still remain authoritative.
+- Route 4 provides only publication-availability/value context in this plan;
+  it is not enough by itself to claim migrated semantic authority for prepared
+  edge-publication lookup answers.
+
+Exact missing x86 bridge:
+
+- A narrow x86 Route 5/BIR agreement consumer or MIR query facade that can join
+  the same predecessor/successor/destination/source/source-producer
+  `Route5CfgEdgePublicationRecord` to the prepared `PreparedEdgePublication`
+  lookup row used by `consume_edge_publication_move_intent(...)`.
+- The bridge must fail closed when Route 5 is duplicate, mismatched, absent,
+  unsupported, prepared-only, or, for dynamic `LoadLocal` publication sources,
+  when Route 3 source-memory identity disagrees or is incomplete.
+
+Fail-closed rows that prevent adapter readiness:
 
 | Case | Prepared compatibility surface that stays observable | Required Route 4/5 agreement or rejection | Common or target-specific | Existing evidence |
 | --- | --- | --- | --- | --- |
@@ -59,13 +88,16 @@ Preserved classifications:
 
 ## Suggested Next
 
-Execute `plan.md` Step 6, "Decide Adapter Readiness and Close or Split", as an
-analysis-only lifecycle-decision packet.
+Ask the plan owner to close idea 251 as a completed blocker map and, if the
+supervisor accepts the blocked conclusion, create a separate narrow follow-up
+implementation idea for the x86 Route 5 `PreparedEdgePublication` agreement
+bridge.
 
 ## Watchouts
 
 - Keep source idea 251 unchanged unless durable intent truly changes.
-- Do not implement an adapter during this blocker map.
+- Do not implement an adapter during this blocker map; the safe follow-up is a
+  separate implementation idea.
 - The fail-closed matrix is sufficient to reject expectation weakening,
   helper/status renames, named-case shortcuts, and old-failure retention as
   proof of migration.
@@ -81,14 +113,7 @@ analysis-only lifecycle-decision packet.
 
 ## Proof
 
-No build or test proof required; analysis-only packet. Focused inspection used
-`rg` and `sed` over:
-
-- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`
-- `src/backend/mir/riscv/codegen/emit.cpp`
-- `src/backend/mir/riscv/codegen/emit.hpp`
-- `src/backend/mir/x86/prepared/dispatch.cpp`
-- `src/backend/mir/x86/prepared/prepared.hpp`
-- `src/backend/mir/x86/module/module.cpp`
+No build or test proof required; analysis-only packet. This packet synthesized
+Steps 3-5 and did not inspect new implementation files.
 
 Local validation: `git diff --check -- todo.md`.
