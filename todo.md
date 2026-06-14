@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/244_phase_f1_x86_route6_call_wrapper_diagnostic_oracle_replacement.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Introduce agreement-gated Route 6 source authority
+Current Step ID: Step 4
+Current Step Title: Prove wrapper output and prepared compatibility stability
 
 # Current Packet
 
@@ -86,3 +86,6 @@ Passed:
 `test_after.log` is the proof log path. The selected subset passed 3/3:
 `backend_x86_route_debug`, `backend_prepared_lookup_helper`, and
 `backend_x86_handoff_boundary`.
+
+Baseline review accepted this candidate because the full-suite candidate stayed
+3428/3428 with no failures.
