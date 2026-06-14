@@ -1,105 +1,99 @@
 Status: Active
 Source Idea Path: ideas/open/252_phase_f3_edge_publication_source_producer_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Select One Candidate Producer/Source Relation
+Current Step ID: 3
+Current Step Title: Prove or Block x86 Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2, "Select One Candidate Producer/Source Relation", as an
-analysis-only selection for idea 252.
+Completed Step 3, "Prove or Block x86 Evidence", as an analysis-only x86
+classification for idea 252.
 
-Selected narrow relation:
+Classification: x86 is blocked for the selected same-edge CFG publication
+source-producer identity relation, not proven and not explicitly
+non-applicable.
 
-- The selected relation is same-edge CFG publication source-producer identity:
-  the Route 5/BIR edge publication source record for one predecessor/successor
-  edge and destination must identify the same source value and same-block
-  producer as the prepared `PreparedEdgePublication` answer populated from
-  `PreparedFunctionLookups::edge_publication_source_producers`.
-- The route/BIR side is
-  `bir::Route5CfgEdgePublicationRecord` plus MIR
-  `BirCfgEdgePublicationSourceIdentity`, especially
-  `source_value_kind`, `source_value_name`, `source_value_type`,
-  `source_producer_kind`, `source_producer_instruction`,
+x86 prepared-publication evidence:
+
+- `src/backend/mir/x86/prepared/dispatch.cpp:55` defines
+  `consume_edge_publication_move_intent(...)`. AST-backed callee tracing showed
+  that it reads `ConsumedPlans::shared_function_lookups()`, then calls
+  `prepare::find_unique_indexed_prepared_edge_publication(...)` on
+  `lookups->edge_publications`; it does not read
+  `edge_publication_source_producers`, `PreparedEdgePublication` source-producer
+  fields, `BirCfgEdgePublicationSourceIdentity`, or
+  `bir::Route5CfgEdgePublicationRecord`.
+- The same function turns prepared publication status and prepared homes into
+  an `EdgePublicationMoveIntent`: `MissingSharedLookups`,
+  `MissingPublication`, `UnsupportedPublication`, `UnsupportedSourceHome`,
+  `UnsupportedDestinationHome`, or `Available`, plus final `mov` text from
+  prepared source/destination homes.
+- `src/backend/mir/x86/module/module.cpp:2523` is the production caller inside
+  `append_prepared_compare_join_parallel_copy(...)`. It uses the prepared
+  move-intent status to emit an i32 `mov` only when
+  `prepared_edge_publication_move_has_i32_operands(...)` accepts the operands,
+  and otherwise preserves prepared lookup/value-home error behavior or silently
+  leaves unsupported publication/home cases as non-emitted target policy.
+- `src/backend/mir/x86/prepared/prepared.hpp:154` exposes the
+  `EdgePublicationMoveIntentStatus` rows, which are compatibility/output
+  surface rows for the x86 prepared edge-publication bridge rather than
+  semantic source-producer proof.
+
+Route/BIR evidence gap:
+
+- `src/backend/mir/query.hpp:218` defines
+  `BirCfgEdgePublicationSourceIdentity` with the selected semantic fields:
+  source value identity, `source_producer`, `source_producer_kind`,
   `source_producer_block_label_id`, and
   `source_producer_instruction_index`.
-- The prepared side is the already-public prepared publication row:
-  `PreparedEdgePublication::source_value_kind`, `source_value`,
-  `source_producer_kind`, `source_producer_block_label`,
-  `source_producer_instruction_index`, and the lookup source that produced
-  those fields through `edge_publication_source_producers`.
-- For `LoadLocal`, the selected relation includes the required companion
-  source-memory identity: Route 5 must expose `MemorySource` with
-  `source_memory_identity_available`, and the embedded Route 3 memory access
-  must match the prepared `source_memory_access_status == available`,
-  loaded result value, base identity, address space, volatility, offset, size,
-  and alignment. For non-memory producer kinds, the relation stops at the
-  producer/source identity and must not claim memory-source migration.
+- `src/backend/mir/query.cpp:690` converts a
+  `bir::Route5CfgEdgePublicationRecord` into that MIR identity, including
+  `route5_edge_source_producer_to_mir(...)` and optional Route 3
+  source-memory access.
+- `src/backend/mir/query.cpp:1591` defines
+  `find_bir_cfg_edge_publication_source_identity(...)`; targeted caller
+  tracing in that translation unit found no caller, and repo search shows its
+  consumers are helper/oracle tests and riscv diagnostics, not x86 production
+  code.
+- Focused x86 search found no use of
+  `find_bir_cfg_edge_publication_source_identity`,
+  `BirCfgEdgePublicationSourceIdentity`,
+  `Route5CfgEdgePublicationRecord`, or
+  `edge_publication_source_producers` under `src/backend/mir/x86`.
 
-Agreement rule:
+Rows that remain compatibility-owned for x86:
 
-- The prepared publication and Route 5/BIR record must refer to the same
-  predecessor label/id, successor label/id, destination value name/type, source
-  value kind/name/type, source-producer kind after the existing kind mapping,
-  source-producer predecessor block label/id, and source-producer instruction
-  index.
-- Named sources must have a non-null Route 5 `source_producer_instruction` and
-  a BIR/MIR same-block producer identity whose produced value matches the
-  prepared source value; immediate sources agree only through the immediate
-  value/type and `Immediate` producer kind.
-- `LoadLocal` agreement additionally requires the Route 3 memory-access fact to
-  be available and to describe the same loaded value and memory source as the
-  prepared source-memory fields. Missing, incomplete, absent, duplicate, or
-  mismatched memory rows remain fail-closed cases for Step 5.
-- A Route 5 status of `available` or `memory_source` is semantic evidence only
-  when all of the fields above agree with the prepared publication. Status
-  rows such as `no_match`, `no_source`, `missing_source_producer`, missing
-  publication, and duplicate rows are diagnostic/fail-closed evidence, not
-  authority transfer.
+- Prepared move-intent status rows:
+  `MissingSharedLookups`, `MissingPublication`, `UnsupportedPublication`,
+  `UnsupportedSourceHome`, `UnsupportedDestinationHome`, and `Available`.
+- Prepared publication lookup status, prepared source/destination homes,
+  out-of-SSA parallel-copy/move-bundle authority, and the compare-join errors:
+  `compare-join edge has no shared prepared edge-publication lookup authority`
+  and `compare-join edge parallel-copy step has no shared prepared
+  edge-publication fact`.
+- x86 operand and output policy: i32-only acceptance,
+  register-vs-memory filtering, source/destination operand spelling, and final
+  `mov <dest>, <source>` text.
 
-Excluded policy and compatibility surfaces:
+Blocker:
 
-- Publication availability is not the selected semantic relation by itself.
-  Prepared `edge_publications` lookup status, missing-publication behavior, and
-  edge-copy availability remain prepared compatibility authority.
-- Move selection, register/home/storage policy, stack-source legality, carrier
-  helper choice, scratch policy, branch/parallel-copy placement, and final
-  source/destination operand selection are target policy, not producer/source
-  identity.
-- Instruction spelling and output formatting remain target owned, including
-  x86 `mov` output and RISC-V `mv` / `lw` text, register names, offsets, and
-  final emitted assembly.
-- Helper/oracle names, prepared helper status strings, source-producer kind
-  strings (`unknown`, `immediate`, `load_local`, `load_global`, `cast`,
-  `binary`, `select_materialization`), source-memory status strings, Route 5
-  diagnostic status names, fallback names, and prepared printer rows such as
-  `source_producer=...`, `source_producer_block=...`, and
-  `source_producer_inst=...` remain compatibility rows.
-- AArch64/prepared helper consumers remain evidence that the public prepared
-  helper surface must stay stable; they are not migration proof for x86 or
-  riscv.
-
-Out-of-plan boundaries:
-
-- This plan will not broaden the selected relation into a generic BIR producer
-  index, all same-block producer parity, generic publication parity, Route 6
-  call-argument producer parity, AArch64 source-producer migration, or target
-  output policy.
-- Route 5 edge/source evidence alone is not readiness. Readiness would require
-  Step 3 x86 evidence, Step 4 riscv evidence, and Step 5 duplicate/conflict/
-  mismatch/missing/prepared-only fail-closed rows for this same selected
-  relation.
+- x86 has a prepared edge-publication move/home consumer, but no direct or
+  indirect x86 consumer that joins the same-edge prepared
+  `PreparedEdgePublication` answer to a Route 5/BIR
+  `BirCfgEdgePublicationSourceIdentity` / `Route5CfgEdgePublicationRecord`
+  source-producer identity and rejects disagreement. Until such an x86 query
+  facade or bridge exists, prepared move/home consumption and emitted `mov`
+  rows cannot count as semantic source-producer proof.
 
 ## Suggested Next
 
-Execute Step 3, "Prove or Block x86 Evidence", as an analysis-only packet for
-the selected same-edge CFG publication source-producer identity relation.
-Trace whether x86 directly or indirectly consumes the prepared
-source-producer lookup answer or the Route 5/BIR source-producer identity for
-the same edge, then classify x86 as proven, blocked, or explicitly
-non-applicable with concrete file/function/test evidence.
+Execute Step 4, "Recheck Riscv Evidence Against the Same Relation", as an
+analysis-only packet. Recheck riscv evidence against the same selected
+same-edge CFG publication source-producer identity relation, separating
+Route 5/BIR semantic agreement rows from prepared lookup/status, fallback, and
+target emission policy.
 
 ## Watchouts
 
@@ -107,10 +101,14 @@ non-applicable with concrete file/function/test evidence.
 - Do not implement a BIR producer index or adapter in this blocker-map plan.
 - Do not delete, privatize, wrap, rename, or bypass public prepared
   `edge_publication_source_producers` helpers.
+- Step 3 leaves x86 blocked, not non-applicable: x86 consumes prepared
+  edge-publication move/home status but has no Route 5/BIR source-producer
+  agreement consumer.
+- Do not infer x86 readiness from prepared edge-publication move consumption,
+  `mov` output, operand spelling, module diagnostics, helper names, prepared
+  publication statuses, or value-home checks.
 - Do not infer readiness from Route 5 edge/source evidence alone; it is only
   the selected semantic fact to prove, block, or exclude per target.
-- Treat x86 as having prepared edge-publication consumption but no observed
-  source-producer consumer until Step 3 proves otherwise.
 - Treat RISC-V Route 5/Route 3 agreement rows as diagnostic evidence until
   Step 4 rechecks them against this exact selected relation; prepared output
   and fallback remain authoritative.
