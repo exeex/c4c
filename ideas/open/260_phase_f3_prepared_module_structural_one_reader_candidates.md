@@ -293,6 +293,25 @@ narrows it further:
   approval for broad `PreparedBirModule` deletion, privatization, wrapping,
   aggregate retirement, or migration of unrelated `module`, `names`,
   `control_flow`, or `store_source_publications` rows.
+- `store_source_publications` byval pointer-source classification packet
+  completed in the retired active runbook: byval formal pointer-source
+  classification now requires the prepared memory-access result to agree with
+  the BIR load-local result, while the prepared pointer-value address name
+  remains the authority for the byval formal decision.
+- Focused proof covered the positive prepared agreement path plus fail-closed
+  rows for absent addressing, absent source producer, wrong-kind producer,
+  invalid/conflicting block identity, missing prepared memory access,
+  non-pointer-value addressing, missing pointer name, base-plus-offset
+  rejection, non-byval formal, missing formal, and prepared/BIR name mismatch.
+- Broader close-readiness proof passed with 180/180 default backend tests in
+  the canonical before/after logs, and the regression guard reported no new
+  failures.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed byval packet is not approval for the
+  direct-global select-chain dependency packet, the source-value/source-producer
+  metadata packet, broad `PreparedBirModule` deletion, privatization, wrapping,
+  aggregate retirement, or migration of unrelated `module`, `names`,
+  `control_flow`, or `store_source_publications` rows.
 
 ## Acceptance Criteria
 
