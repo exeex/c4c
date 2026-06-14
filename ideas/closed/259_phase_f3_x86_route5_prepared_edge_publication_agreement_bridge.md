@@ -82,3 +82,20 @@ prepared publication row.
 - Reject an adapter that accepts duplicate, mismatch, absent, unsupported,
   prepared-only, non-agreeing fallback, or dynamic `LoadLocal` Route 3
   source-memory disagreement rows as semantic agreement.
+
+## Closure Note
+
+Closed after the x86 Route 5 prepared edge-publication agreement bridge was
+implemented and proved. The x86 consumer now requires Route 5/prepared
+agreement for selected dynamic `LoadLocal` publication moves, with Route 3
+source-memory agreement required before accepting those moves as agreeing.
+Non-`LoadLocal` non-agreeing rows remain on the preserved prepared
+compatibility path.
+
+Focused proof covered the positive selected `LoadLocal` path plus reachable
+Route 5/Route 3 disagreement rows. Broader closure proof passed the default
+backend suite and the x86 route-debug/handoff tests. Unsupported fixture
+surfaces remain documented in the completed `todo.md`: duplicate Route 5
+records for one natural edge, prepared-only/Route 5-only publication rows, and
+wrong-edge publication rows cannot currently be expressed by supported x86
+fixtures without hand-building stale prepared publication state.
