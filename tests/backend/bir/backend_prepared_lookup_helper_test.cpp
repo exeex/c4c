@@ -6781,6 +6781,85 @@ int verify_direct_global_select_chain_dependency_query() {
           std::size_t{1}) {
     return fail("scalar select-chain materialization query should expose root authority");
   }
+  const auto selected_name = names.value_names.find(selected.name);
+  const auto dependency_available =
+      [&](const prepare::PreparedEdgePublicationSourceProducerLookups& lookups,
+          c4c::BlockLabelId query_block_label,
+          const bir::Block* query_block,
+          const bir::Value& query_value,
+          std::size_t before_instruction_index) {
+        return prepare::find_prepared_direct_global_select_chain_dependency(
+                   names,
+                   &lookups,
+                   query_block_label,
+                   query_block,
+                   query_value,
+                   before_instruction_index)
+            .contains_direct_global_load;
+      };
+  auto missing_selected_source_producers = source_producers;
+  missing_selected_source_producers.producers_by_value_name.erase(selected_name);
+  auto stale_selected_source_producers = source_producers;
+  stale_selected_source_producers.producers_by_value_name[selected_name]
+      .instruction_index = before_end;
+  auto mismatched_block_source_producers = source_producers;
+  mismatched_block_source_producers.producers_by_value_name[selected_name]
+      .block_label = names.block_labels.intern("query.other");
+  auto mismatched_value_source_producers = source_producers;
+  mismatched_value_source_producers.producers_by_value_name[selected_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .load_global = direct_inst,
+      };
+  auto incomplete_selected_source_producers = source_producers;
+  incomplete_selected_source_producers.producers_by_value_name[selected_name]
+      .select = nullptr;
+  if (!dependency_available(
+          source_producers, block_label, &block, selected, before_end) ||
+      dependency_available(
+          missing_selected_source_producers,
+          block_label,
+          &block,
+          selected,
+          before_end) ||
+      dependency_available(
+          stale_selected_source_producers,
+          block_label,
+          &block,
+          selected,
+          before_end) ||
+      dependency_available(
+          mismatched_block_source_producers,
+          block_label,
+          &block,
+          selected,
+          before_end) ||
+      dependency_available(
+          mismatched_value_source_producers,
+          block_label,
+          &block,
+          selected,
+          before_end) ||
+      dependency_available(
+          incomplete_selected_source_producers,
+          block_label,
+          &block,
+          selected,
+          before_end) ||
+      dependency_available(
+          source_producers,
+          c4c::kInvalidBlockLabel,
+          &block,
+          selected,
+          before_end) ||
+      dependency_available(
+          source_producers, block_label, nullptr, selected, before_end) ||
+      dependency_available(
+          source_producers, block_label, &block, selected, 1)) {
+    return fail("prepared direct-global dependency should require complete root producer agreement");
+  }
   const auto bir_select_request = mir::BirSelectChainIdentityRequest{
       .block = &block,
       .block_label = block.label,

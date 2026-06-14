@@ -48,6 +48,34 @@ void publish_source_producer(
   }
 }
 
+[[nodiscard]] PreparedBirValueNameAgreement
+find_prepared_select_chain_source_producer_agreement(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (source_producers == nullptr ||
+      block_label == kInvalidBlockLabel ||
+      block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return {};
+  }
+  const auto value_name = existing_prepared_value_name_id(names, value);
+  if (!value_name.has_value()) {
+    return {};
+  }
+  return prepared_bir_value_name_agreement(names,
+                                           source_producers,
+                                           block_label,
+                                           block,
+                                           value,
+                                           *value_name,
+                                           before_instruction_index);
+}
+
 [[nodiscard]] std::optional<bool>
 prepared_select_chain_contains_direct_global_load(
     const PreparedNameTables& names,
@@ -267,24 +295,8 @@ find_prepared_select_chain_source_producer(
     const bir::Block* block,
     const bir::Value& value,
     std::size_t before_instruction_index) {
-  if (source_producers == nullptr ||
-      block_label == kInvalidBlockLabel ||
-      block == nullptr ||
-      value.kind != bir::Value::Kind::Named ||
-      value.name.empty()) {
-    return nullptr;
-  }
-  const auto value_name = resolve_prepared_value_name_id(names, value.name);
-  if (!value_name.has_value()) {
-    return nullptr;
-  }
-  const auto agreement = prepared_bir_value_name_agreement(names,
-                                                          source_producers,
-                                                          block_label,
-                                                          block,
-                                                          value,
-                                                          *value_name,
-                                                          before_instruction_index);
+  const auto agreement = find_prepared_select_chain_source_producer_agreement(
+      names, source_producers, block_label, block, value, before_instruction_index);
   return agreement.available ? agreement.source_producer : nullptr;
 }
 
@@ -297,9 +309,14 @@ find_prepared_direct_global_select_chain_dependency(
     const bir::Value& value,
     std::size_t before_instruction_index) {
   PreparedDirectGlobalSelectChainDependency dependency;
-  const auto* root = find_prepared_select_chain_source_producer(
+  const auto root_agreement = find_prepared_select_chain_source_producer_agreement(
       names, source_producers, block_label, block, value, before_instruction_index);
-  if (root == nullptr) {
+  const auto* root = root_agreement.source_producer;
+  if (!root_agreement.available ||
+      root == nullptr ||
+      root_agreement.instruction == nullptr ||
+      root_agreement.instruction_index >= before_instruction_index ||
+      root_agreement.instruction_index >= block->insts.size()) {
     return dependency;
   }
   const auto contains_direct_global_load =

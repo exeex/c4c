@@ -1,49 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Locate the Direct-Global Select-Chain Helper Surface
+Current Step ID: 2
+Current Step Title: Implement the Prepared Agreement Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 located the direct-global select-chain dependency surface.
+Step 2 implemented the prepared agreement boundary for the direct-global
+select-chain dependency lookup.
 
-Selected helper surface:
-- `find_prepared_select_chain_source_producer(...)` is the producer agreement
-  gate. It resolves the queried BIR value through prepared names and delegates
-  same-block producer acceptance to `prepared_bir_value_name_agreement(...)`.
-- `prepared_select_chain_contains_direct_global_load(...)` is the recursive
-  chain scan. It re-enters the same producer gate for cast, binary, and select
-  operands and returns `nullopt` for incomplete producer payloads.
-- `find_prepared_direct_global_select_chain_dependency(...)` is the shared
-  dependency classifier. It requires a root producer plus a positive recursive
-  direct-global scan, then publishes `contains_direct_global_load`,
-  `root_is_select`, and `root_instruction_index`.
-- `find_prepared_store_source_direct_global_select_chain_dependency(...)` is a
-  store-source alias of the shared dependency classifier.
-
-Direct consumer boundary:
-- `plan_call_argument_direct_global_select_chain_dependency(...)` in
-  `call_plans.cpp` publishes call-argument dependency metadata only after the
-  shared classifier reports an available dependency and the source value name
-  is valid.
-- `populate_store_source_publication_plans(...)` in `publication_plans.cpp`
-  calls the store-source dependency alias for store-local/store-global source
-  values and copies the three dependency fields through
-  `plan_prepared_store_source_publication(...)`.
-- Existing helper-test coverage for shared producer agreement and select-chain
-  queries lives in `backend_prepared_lookup_helper_test.cpp`, especially the
-  same-block scalar/select-chain agreement rows and the direct-global
-  select-chain query rows.
+Completed work:
+- Added a local `find_prepared_select_chain_source_producer_agreement(...)`
+  helper in `select_chain_lookups.cpp` so the public producer lookup and the
+  shared dependency classifier use the same complete prepared/BIR agreement
+  record.
+- Tightened `find_prepared_direct_global_select_chain_dependency(...)` so it
+  publishes dependency facts only when the root producer agreement has a valid
+  source producer, instruction pointer, same-block instruction index, and
+  before-instruction cutoff.
+- Added focused helper rows proving the positive prepared agreement path and
+  fail-closed behavior for absent root producer, stale cutoff, conflicting
+  block label, prepared/BIR value-name drift, incomplete root payload, invalid
+  query block label, null block, and root-after-consumer cutoff.
 
 ## Suggested Next
 
-Execute Step 2 by adding the prepared agreement boundary inside
-`select_chain_lookups.cpp`, with `select_chain_lookups.hpp` touched only if a
-small test-visible seam is unavoidable, and focused proof rows in
-`tests/backend/bir/backend_prepared_lookup_helper_test.cpp`.
+Execute Step 3 by adding nearby fail-closed rows for the remaining direct-global
+select-chain dependency edge cases without widening into the separate
+source-value/source-producer metadata candidate.
 
 ## Watchouts
 
@@ -56,12 +42,14 @@ small test-visible seam is unavoidable, and focused proof rows in
   prepared aggregate compatibility, and current fail-closed behavior.
 - Do not rewrite output expectations, diagnostics, helper statuses, baselines,
   or target output to claim progress.
-- Step 2 should not move broad publication policy, storage encoding, pending
-  store-global policy, duplicate handling, pointer-base homes, target lowering,
-  call argument lowering, or prepared aggregate compatibility into BIR.
-- The smallest implementation boundary appears to be local agreement in the
-  direct-global dependency path before the helper publishes root facts; do not
-  widen into the separate source-value/source-producer metadata packet.
+- Step 3 should focus on nearby rows not already covered here: wrong producer
+  kind, root not select when select-specific fields are expected, missing
+  producer payload below the root, non-direct-global chains, producer after the
+  consumer cutoff inside the chain, duplicate/conflicting producers, and public
+  prepared compatibility assertions.
+- Keep broad publication policy, storage encoding, pending store-global policy,
+  duplicate handling, pointer-base homes, target lowering, call argument
+  lowering, and prepared aggregate compatibility out of this runbook.
 
 ## Proof
 
