@@ -1,136 +1,94 @@
 Status: Active
 Source Idea Path: ideas/open/251_phase_f3_route45_edge_publication_parity_blocker_map.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Recheck Riscv Evidence Against the Same Fact
+Current Step ID: 5
+Current Step Title: Build the Fail-Closed Proof Matrix
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 4, "Recheck Riscv Evidence Against the Same Fact",
-as an analysis-only evidence packet.
+Completed `plan.md` Step 5, "Build the Fail-Closed Proof Matrix", as an
+analysis-only matrix packet for the selected Route 5 CFG-edge publication
+source identity.
 
-Classification: riscv has diagnostic evidence for the selected Route 5
-CFG-edge publication source identity, but prepared lookup/status and target
-emission remain authoritative. This is evidence for agreement rows, not an
-adapter-ready semantic authority transfer.
+Selected fact held constant:
 
-Concrete riscv evidence found:
+- Route 5 CFG-edge publication source identity checked against prepared
+  `PreparedEdgePublication` lookup agreement for the same predecessor,
+  successor, destination value, source value, and source producer.
+- Route 4 remains publication-availability/value context only for this plan;
+  the selected adapter boundary is Route 5 agreement or rejection.
+- For dynamic `LoadLocal` publication sources, Route 5 agreement also requires
+  the Route 3 source-memory identity to agree with the prepared source-memory
+  publication before it can be treated as an agreeing diagnostic row.
 
-- `src/backend/mir/riscv/codegen/emit.hpp` exposes
-  `EdgePublicationMoveIntent::route5_edge_status`,
-  `route5_edge_source_agrees`, and `route3_source_memory_agrees`, plus an
-  overload of `consume_edge_publication_move_intent(...)` that accepts a
-  `const bir::Route5CfgEdgePublicationRecord*`.
-- `src/backend/mir/riscv/codegen/emit.cpp` routes that overload through
-  `RiscvEdgePublicationMoveAdapter`. The adapter still finds the prepared
-  row with `prepare::find_unique_indexed_prepared_edge_publication(...)`; it
-  then calls `attach_route5_edge_agreement(...)` to copy the Route 5 status
-  and compute `route5_edge_source_agrees`.
-- `route5_edge_source_agrees_with_prepared_publication(...)` compares the
-  Route 5 edge row against the prepared publication's predecessor label,
-  successor label, destination value name/type, source value kind/type, source
-  producer kind, and source value. For `LoadLocal`, it requires
-  `Route5PublicationStatus::MemorySource`, available source-memory identity,
-  and `route3_source_memory_agrees_with_prepared_publication(...)`.
-- `route3_source_memory_agrees_with_prepared_publication(...)` requires a
-  `LoadLocal` prepared source producer, available prepared source-memory
-  access, a Route 3 `LoadLocal` record for the same result value/type/name,
-  matching address-space/volatility/offset/size/align fields, and matching
-  base identity.
-- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`
-  function `check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback`
-  builds a Route 5 edge index with
-  `bir::route5_build_edge_join_source_index(...)`, fetches the same-edge row
-  with `bir::route5_find_cfg_edge_publication(...)`, and checks a scalar
-  available Route 5 row against a prepared publication. The agreeing case
-  records `route5_edge_status == Route5PublicationStatus::Available` and
-  `route5_edge_source_agrees == true`.
-- The same test builds a dynamic `LoadLocal` source-memory row with
-  `bir::route5_cfg_edge_publication_record(...)` and confirms
-  `Route5PublicationStatus::MemorySource`,
-  `source_memory_identity_available`, matching Route 3 `LoadLocal`
-  instruction/offset/size fields, `route5_edge_source_agrees == true`, and
-  `route3_source_memory_agrees == true`.
-- `src/backend/mir/query.cpp`
-  `find_bir_cfg_edge_publication_source_identity(...)` remains the shared MIR
-  query facade for Route 5/BIR edge-publication source identity. It builds a
-  small Route 5 function, calls `bir::route5_build_edge_join_source_index(...)`
-  and `bir::route5_find_cfg_edge_publication(...)`, then maps the edge record
-  into MIR identity/status output. This supports the same semantic fact family
-  but is not the public riscv emission authority.
+Fail-closed matrix:
 
-Rows that prove only diagnostic agreement, not target output authority:
+| Case | Prepared compatibility surface that stays observable | Required Route 4/5 agreement or rejection | Common or target-specific | Existing evidence |
+| --- | --- | --- | --- | --- |
+| Duplicate Route 5 edge row | Prepared lookup remains `prepare::find_unique_indexed_prepared_edge_publication(...)`; target status/output stays prepared-backed. | Route 5 must reject ambiguity by not producing an agreeing semantic row for the same predecessor/successor/destination; duplicates must not be accepted as semantic authority. | Common semantic rejection; target output remains target-specific. | `check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback(...)` constructs a duplicate Route 5 index as a diagnostic fixture, but existing proof is partial because no current adapter consumes a duplicate Route 5 rejection. x86 remains blocked because it has no Route 5 consumer to observe this case. |
+| Route 5 mismatch | Prepared publication lookup/status and old fallback output stay observable. | Route 5 `NoMatch` or equivalent mismatch must set agreement false and must not override prepared output. | Common semantic rejection. | RISC-V test uses a mismatched destination type and expects `Route5PublicationStatus::NoMatch`, `route5_edge_source_agrees == false`, while preserving `mv a1, a0`. x86 has no direct or indirect `Route5CfgEdgePublicationRecord` / `BirCfgEdgePublicationSourceIdentity` consumer. |
+| Absent or wrong-edge source | Prepared missing-publication and prepared fallback rows stay observable. | Route 5 `NoSource`, `MissingPublication`, `MissingPredecessor`, `MissingSuccessor`, or `MissingDestination` must reject agreement and cannot synthesize a source identity. | Common semantic rejection. | RISC-V test uses a wrong predecessor and expects `Route5PublicationStatus::NoSource`; prepared missing rows still produce `EdgePublicationMoveIntentStatus::MissingPublication`. Prepared lookup helper tests cover Route 5 missing-successor/no-source rows. x86 preserves prepared status rows but lacks Route 5 agreement checks. |
+| Unsupported prepared publication | `EdgePublicationMoveIntentStatus::UnsupportedPublication` remains observable; prepared move/op-kind compatibility is unchanged. | Route 5 cannot make unsupported prepared move shapes available; agreement may be diagnostic only after the prepared publication itself is supported. | Target-specific compatibility gate over common identity. | x86 `consume_edge_publication_move_intent(...)` and riscv `consume_prepared_backed_move_intent(...)` both return `UnsupportedPublication` when the prepared lookup row is not an available move. RISC-V tests cover non-move publication rejection. |
+| Prepared-only publication | Public prepared `edge_publications` lookup, helper/oracle names, and missing Route 5 diagnostic fields stay observable. | Without a matching Route 5/BIR row, the adapter must remain compatibility-owned or mark agreement false; no prepared-only row can become semantic authority. | Common adapter gate; target output stays target-specific. | RISC-V overload without a Route 5 pointer still emits prepared-backed output and leaves Route 5 diagnostics non-authoritative; missing shared lookups/publication rows fail closed. x86 currently exists only in this prepared-only class for selected Route 5 agreement. |
+| Prepared fallback on non-agreeing Route 5/Route 3 facts | Prepared-backed instruction/status rows remain observable, including scalar fallback and dynamic source-memory fallback. | Route 5 `NoMatch` and Route 5 `MemorySource` with Route 3 disagreement/incomplete source-memory identity must set agreement false and preserve prepared fallback instead of weakening expectations. | Common rejection for Route 5/Route 3 identity; target-specific fallback text. | RISC-V tests preserve `mv a1, a0` on Route 5 mismatch and `lw a1, 12(s2)` on Route 3 offset mismatch or incomplete Route 3 source-memory identity, with `route5_edge_source_agrees == false` and `route3_source_memory_agrees == false`. |
+| Policy-sensitive output | x86 dispatch/status/module output, riscv status fields, exact instruction text, register choices, helper/oracle names, and formatting stay observable. | Route 5 agreement only owns source identity. It must not own move selection, carrier/helper selection, register choice, stack/source-home support, immediate materialization, scratch policy, offsets, or textual output. | Target-specific policy. | RISC-V rows include `mv`, `lw`, `li`, `addi`, `ld`, `sw`, register names such as `a0`, `a1`, `s2`, `t0`, `t6`, and source/destination-home status rows. x86 rows include `mov` operands, prepared dispatch status, and module output in `module.cpp`; these remain compatibility output, not Route 5 authority. |
 
-- Scalar Route 5 `Available` agreement proves that the same predecessor,
-  successor, destination value, source value, and source producer can be
-  compared against the prepared publication.
-- Dynamic `LoadLocal` Route 5 `MemorySource` agreement proves that Route 5 can
-  carry a Route 3 source-memory identity and that riscv can record agreement
-  against the prepared source-memory publication.
-- Mismatched Route 5 destination type (`NoMatch`), absent/wrong predecessor
-  (`NoSource`), mismatched Route 3 memory offset, and incomplete Route 3 memory
-  identity are diagnostic rows only. The riscv helper records disagreement but
-  still preserves prepared-backed output/fallback behavior.
+Acceptance/rejection rule for a later adapter:
 
-Compatibility-owned or target-policy-owned rows:
+- Accept only when prepared lookup is present and supported, Route 5 identifies
+  the same predecessor/successor/destination/source/source-producer row, and
+  dynamic `LoadLocal` source rows also pass Route 3 source-memory agreement.
+- Reject or remain prepared-backed for duplicate, mismatch, absent, unsupported,
+  prepared-only, non-agreeing fallback, and policy-sensitive rows.
+- Do not weaken existing prepared status/output expectations, rewrite helper
+  names, or add named-case shortcuts to call a row migrated.
 
-- RISC-V `EdgePublicationMoveIntentStatus::{MissingSharedLookups,MissingPublication,UnsupportedPublication,UnsupportedSourceHome,UnsupportedDestinationHome,Available}`
-  remain prepared/riscv compatibility rows.
-- Exact instruction text such as `mv a1, a0`, `lw a1, 12(s2)`, `li`, `addi`,
-  `ld`, and `sw`; register choices such as `a0`, `a1`, `s2`, `t0`, and `t6`;
-  source/destination-home acceptance; stack-source width/offset rules;
-  pointer-base materialization; scratch-register policy; helper/oracle names;
-  fallback strings; and output formatting remain target policy or prepared
-  compatibility, not Route 5 semantic authority.
-- `check_load_local_dynamic_stack_source_exposes_shared_memory_access(...)`
-  proves prepared dynamic source-memory publication and riscv `lw` emission
-  behavior, but its `lw a1, 12(s2)` output is target policy. It is supporting
-  evidence only when paired with the later Route 5/Route 3 agreement rows.
+Preserved classifications:
 
-Blockers:
-
-- No riscv-specific blocker for Step 4. RISC-V has explicit diagnostic fields
-  for the selected Route 5 CFG-edge publication source identity and tests for
-  agreement, mismatch, absent, incomplete, and prepared-fallback rows.
-- The Step 3 x86 classification remains blocked: x86 still lacks a direct or
-  indirect Route 5/BIR agreement consumer that joins the same-edge prepared
-  publication with `Route5CfgEdgePublicationRecord` or
-  `BirCfgEdgePublicationSourceIdentity` and rejects disagreement.
+- Step 3 x86 remains blocked, not non-applicable: x86 consumes prepared
+  edge-publication lookup/status data through
+  `consume_edge_publication_move_intent(...)` and `module.cpp`, but it has no
+  direct or indirect Route 5/BIR agreement consumer that joins the same-edge
+  prepared publication and rejects disagreement.
+- Step 4 riscv remains diagnostic-only: riscv exposes
+  `route5_edge_status`, `route5_edge_source_agrees`, and
+  `route3_source_memory_agrees`, but prepared lookup/status and target
+  emission remain authoritative.
 
 ## Suggested Next
 
-Execute `plan.md` Step 5, "Build the Fail-Closed Proof Matrix", as an
-analysis-only packet for the same selected Route 5 CFG-edge publication source
-identity.
+Execute `plan.md` Step 6, "Decide Adapter Readiness and Close or Split", as an
+analysis-only lifecycle-decision packet.
 
 ## Watchouts
 
 - Keep source idea 251 unchanged unless durable intent truly changes.
 - Do not implement an adapter during this blocker map.
-- Step 5 should turn the x86 blocker plus riscv diagnostic-only evidence into
-  explicit duplicate, mismatch, unsupported, prepared-only, fallback, and
-  policy-sensitive fail-closed rows.
+- The fail-closed matrix is sufficient to reject expectation weakening,
+  helper/status renames, named-case shortcuts, and old-failure retention as
+  proof of migration.
 - Keep the x86 result classified as blocked unless a later implementation
   introduces a Route 5/BIR agreement consumer or MIR query facade for x86.
+- Keep the riscv result diagnostic-only unless a later plan explicitly moves
+  authority behind a fail-closed adapter.
 - Preserve prepared edge-publication lookup/status, helper/oracle names,
   fallback publication rows, x86 dispatch/status/module output, riscv status
-  fields, and riscv/x86 instruction/output strings as compatibility-owned
-  unless direct route/BIR agreement proves otherwise.
+  fields, and riscv/x86 instruction/output strings as compatibility-owned.
 - Treat testcase-shaped shortcuts, expectation weakening, helper renames, and
   output rewrites as route drift.
 
 ## Proof
 
-No build or test proof required; analysis-only packet. AST/focused inspection
-used:
+No build or test proof required; analysis-only packet. Focused inspection used
+`rg` and `sed` over:
 
-- `c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/riscv/codegen/emit.cpp consume_edge_publication_move_intent build/compile_commands.json`
-- `c4c-clang-tool-ccdb function-callers /workspaces/c4c/src/backend/mir/riscv/codegen/emit.cpp consume_edge_publication_move_intent build/compile_commands.json`
-- `c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/riscv/codegen/emit.cpp route5_edge_source_agrees_with_prepared_publication build/compile_commands.json`
-- focused `rg` and code inspection over `src/backend/mir/riscv/codegen/emit.*`,
-  `src/backend/mir/query.cpp`, `src/backend/bir/bir.*`, and
-  `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`
+- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`
+- `src/backend/mir/riscv/codegen/emit.cpp`
+- `src/backend/mir/riscv/codegen/emit.hpp`
+- `src/backend/mir/x86/prepared/dispatch.cpp`
+- `src/backend/mir/x86/prepared/prepared.hpp`
+- `src/backend/mir/x86/module/module.cpp`
 
 Local validation: `git diff --check -- todo.md`.
