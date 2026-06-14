@@ -1,15 +1,13 @@
-# 243 Post-E5 x86/riscv BIR portability convergence backlog
+# 243 Phase F0 x86/riscv BIR portability convergence audit
 
 ## Goal
 
-Capture the work that may remain after Phase E5 before the prepared/BIR
-thinning program can claim that x86 and riscv are portable over the same BIR
-semantic facts.
+Audit what remains after Phase E5 before the prepared/BIR thinning program can
+claim that x86 and riscv are portable over the same BIR semantic facts.
 
-This draft is analysis-only. It should not implement retirement directly. Its
-purpose is to preserve the post-E5 convergence questions so they can be studied
-after `ideas/open/239_phase_e5_prepared_bir_module_demotion_or_retirement_gate.md`
-closes.
+This idea is analysis-only. It must produce follow-up ideas and a durable
+convergence map. It must not implement adapter work, open draft 155, delete
+prepared aggregates, or claim prepared retirement readiness directly.
 
 ## Starting Position
 
@@ -30,7 +28,15 @@ semantics through prepared state.
 
 ## Prerequisite
 
-Do not open this draft until E5 has closed and its closure note has identified:
+This idea is open because E5 and its first narrow successor adapters have
+closed:
+
+- `ideas/closed/239_phase_e5_prepared_bir_module_demotion_or_retirement_gate.md`
+- `ideas/closed/240_phase_e5_route3_memory_source_identity_adapter_follow_up.md`
+- `ideas/closed/241_phase_e5_route45_edge_publication_identity_adapter_follow_up.md`
+- `ideas/closed/242_phase_e5_route6_scalar_call_use_source_identity_row_follow_up.md`
+
+The audit must start from those closure notes and verify:
 
 - whether draft 155 should be rewritten, superseded, opened later, or kept
   blocked;
@@ -40,8 +46,9 @@ Do not open this draft until E5 has closed and its closure note has identified:
 - the fallback, diagnostic/oracle, string-authority, and cross-target
   compatibility surfaces that still prevent retirement.
 
-If E5 concludes that broad demotion is still blocked, this draft should turn
-that blocker map into smaller follow-up analysis or implementation ideas.
+E5 concluded that broad demotion remains blocked. F0 must therefore turn that
+blocker map and the 240-242 adapter evidence into smaller x86/riscv
+portability follow-up ideas.
 
 ## Candidate Work Streams
 
@@ -147,7 +154,7 @@ Expected output:
 
 ## Expected Output
 
-The closure note for this draft, if opened, must produce:
+The closure note must produce:
 
 - a post-E5 convergence map grouped by BIR semantic facts, prepared pass
   context, target policy, diagnostics/oracles, and deletion candidates;
