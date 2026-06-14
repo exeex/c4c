@@ -8,19 +8,19 @@ Current Step Title: Add Nearby Fail-Closed Rows
 
 ## Just Finished
 
-Step 3 added nearby fail-closed proof rows for the recovered narrow-store
-source identity boundary.
+Step 3 fixed the recovered-source compatibility regression while preserving the
+prepared/BIR disagreement boundary.
 
-- Kept the existing positive prepared/BIR agreement path observable.
-- Added direct helper rows proving `std::nullopt` for missing addressing,
-  missing prepared load/store access rows, missing BIR load/store memory
-  access, prepared/BIR frame-slot mismatch, lane offset mismatch, non-byte
-  store width, wrong stored value, after-store ordering, missing BIR identity,
-  and prepared/BIR byte-offset mismatch.
-- Confirmed source-producer kind is not directly reachable in
-  `find_prepared_recovered_narrow_store_source_for_wide_local_load(...)`; the
-  recovered-source helper receives the already-selected load-local producer
-  from its caller.
+- Clarified that absent Route 3 BIR same-block identity is treated as no BIR
+  evidence, so complete prepared frame-slot recovered-source facts remain
+  usable for prepared-only fixtures.
+- Kept present complete BIR identity authoritative as a cross-check: if Route 3
+  returns load/store memory identity that disagrees with complete prepared
+  frame-slot/source facts, the recovered-source helper still returns
+  `std::nullopt`.
+- Updated the nearby helper rows so missing BIR load/store access and fully
+  missing BIR identity prove prepared-only compatibility, while the explicit
+  prepared/BIR byte-offset mismatch row still proves fail-closed behavior.
 
 ## Suggested Next
 
@@ -30,6 +30,9 @@ candidate.
 ## Watchouts
 
 - Keep this packet limited to the recovered-source identity candidate.
+- Missing Route 3 BIR memory identity is compatibility fallback, not
+  disagreement. Only a complete present BIR identity can reject prepared
+  recovered-source facts for prepared/BIR mismatch.
 - Do not absorb the byval pointer-source, direct-global select-chain, or
   source-value/source-producer metadata candidates.
 - The Route 3 stored-value identity only confirms same local-slot range
@@ -53,9 +56,10 @@ candidate.
 
 Ran:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prepared_lookup_helper$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_store_source_publication_plan)$'`
 
-Result: passed. The focused helper test rebuilt and
-`backend_prepared_lookup_helper` passed 1/1. `git diff --check` also passed.
+Result: passed. `backend_prepared_lookup_helper` and
+`backend_store_source_publication_plan` passed 2/2. `git diff --check` also
+passed.
 
 Proof log: `test_after.log`.

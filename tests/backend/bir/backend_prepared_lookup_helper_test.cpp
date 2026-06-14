@@ -9201,13 +9201,13 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
     return fail("missing-store-access recovered fixture should contain store/load locals");
   }
   missing_bir_store_access_store->address.reset();
-  if (find_recovered(stack_layout,
-                     &recovered_addressing,
-                     missing_bir_store_access_block,
-                     *missing_bir_store_access_load,
-                     1)
-          .has_value()) {
-    return fail("recovered narrow-store source should fail closed for missing BIR store access");
+  if (!find_recovered(stack_layout,
+                      &recovered_addressing,
+                      missing_bir_store_access_block,
+                      *missing_bir_store_access_load,
+                      1)
+           .has_value()) {
+    return fail("recovered narrow-store source should keep prepared-only compatibility for missing BIR store access");
   }
 
   bir::Block missing_bir_load_access_block = recovered_block;
@@ -9217,13 +9217,13 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
     return fail("missing-load-access recovered fixture should contain a load-local");
   }
   missing_bir_load_access_load->address.reset();
-  if (find_recovered(stack_layout,
-                     &recovered_addressing,
-                     missing_bir_load_access_block,
-                     *missing_bir_load_access_load,
-                     1)
-          .has_value()) {
-    return fail("recovered narrow-store source should fail closed for missing BIR load access");
+  if (!find_recovered(stack_layout,
+                      &recovered_addressing,
+                      missing_bir_load_access_block,
+                      *missing_bir_load_access_load,
+                      1)
+           .has_value()) {
+    return fail("recovered narrow-store source should keep prepared-only compatibility for missing BIR load access");
   }
 
   bir::Block missing_bir_recovered_block = recovered_block;
@@ -9236,7 +9236,7 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
   }
   missing_bir_store->address.reset();
   missing_bir_load->address.reset();
-  if (prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
+  if (!prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
           names,
           bir_names,
           stack_layout,
@@ -9246,7 +9246,7 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
           *missing_bir_load,
           1)
           .has_value()) {
-    return fail("recovered narrow-store source should fail closed for missing BIR identity");
+    return fail("recovered narrow-store source should keep prepared-only compatibility for missing BIR identity");
   }
 
   bir::Block mismatched_bir_recovered_block = recovered_block;
@@ -9255,10 +9255,12 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
   auto* mismatched_bir_load =
       std::get_if<bir::LoadLocalInst>(&mismatched_bir_recovered_block.insts[1]);
   if (mismatched_bir_store == nullptr || mismatched_bir_load == nullptr ||
-      !mismatched_bir_store->address.has_value()) {
+      !mismatched_bir_store->address.has_value() ||
+      !mismatched_bir_load->address.has_value()) {
     return fail("mismatched-BIR recovered fixture should contain addressed store/load locals");
   }
   mismatched_bir_store->address->byte_offset = 9;
+  mismatched_bir_load->address->byte_offset = 9;
   if (prepare::find_prepared_recovered_narrow_store_source_for_wide_local_load(
           names,
           bir_names,

@@ -336,8 +336,10 @@ prepared_current_block_join_instruction_result_value_ref(const bir::Inst& inst) 
               .root_value = &load.result,
               .before_instruction_index = load_instruction_index + 1U,
           });
-  if (!bir_identity ||
-      bir_identity.load_local != &load ||
+  if (!bir_identity) {
+    return true;
+  }
+  if (bir_identity.load_local != &load ||
       bir_identity.store_local != &store ||
       bir_identity.load_memory_access.instruction_index !=
           load_instruction_index ||
