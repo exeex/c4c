@@ -46,6 +46,30 @@ prepared answers only mirror that fact.
 - Target emission policy remains separate from the semantic identity fact.
 - The result states whether a later one-adapter implementation idea is safe.
 
+## Closure Note
+
+Closed as a completed blocker map. The selected fact is Route 5 CFG-edge
+publication source identity checked against prepared `PreparedEdgePublication`
+lookup agreement for the same predecessor, successor, destination value,
+source value, and source producer. Route 4 remains publication availability and
+value context only for this map.
+
+Adapter readiness is blocked, not proven. RISC-V exposes diagnostic agreement
+fields for the selected fact, including `route5_edge_status`,
+`route5_edge_source_agrees`, and dynamic `LoadLocal` source-memory agreement
+through Route 3 diagnostics, but prepared lookup/status and target emission
+remain authoritative. X86 consumes prepared edge-publication lookup/status data
+through `consume_edge_publication_move_intent(...)` and prepared-backed module
+output, but has no direct or indirect Route 5/BIR agreement consumer that joins
+the same-edge `Route5CfgEdgePublicationRecord` /
+`BirCfgEdgePublicationSourceIdentity` to the prepared publication and rejects
+disagreement.
+
+Follow-up idea
+`ideas/open/259_phase_f3_x86_route5_prepared_edge_publication_agreement_bridge.md`
+captures the missing x86 agreement bridge. This closed map does not implement
+that bridge.
+
 ## Reviewer Reject Signals
 
 - Reject named-case shortcuts that only special-case one edge label,
