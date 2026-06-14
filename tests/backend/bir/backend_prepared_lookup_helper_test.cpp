@@ -9400,6 +9400,206 @@ int verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back(
   return 0;
 }
 
+int verify_byval_pointer_source_classification_requires_prepared_agreement() {
+  enum class ProducerShape {
+    LoadLocal,
+    Binary,
+  };
+  struct Case {
+    std::string_view label;
+    ProducerShape producer_shape = ProducerShape::LoadLocal;
+    bool include_control_flow = true;
+    bool include_load_access = true;
+    prepare::PreparedAddressBaseKind load_base_kind =
+        prepare::PreparedAddressBaseKind::PointerValue;
+    std::optional<std::string_view> pointer_value_name = "%byval.ptr";
+    bool can_use_base_plus_offset = true;
+    bool include_byval_param = true;
+    bool expected_byval = false;
+  };
+
+  const auto run_case = [](const Case& test_case) {
+    prepare::PreparedBirModule prepared;
+    const auto function_name =
+        prepared.names.function_names.intern("byval_source");
+    const auto block_label = prepared.names.block_labels.intern("entry");
+    const auto byval_name = prepared.names.value_names.intern("%byval.ptr");
+    const auto other_byval_name =
+        prepared.names.value_names.intern("%other.byval.ptr");
+    const auto source_name =
+        test_case.producer_shape == ProducerShape::LoadLocal
+            ? byval_name
+            : prepared.names.value_names.intern("%binary.ptr");
+    const auto stored_name = prepared.names.value_names.intern("%stored");
+    const auto slot_id = prepare::PreparedFrameSlotId{33};
+    bir::Value source_value;
+
+    bir::Block block;
+    block.label = "entry";
+    block.label_id = block_label;
+    if (test_case.producer_shape == ProducerShape::LoadLocal) {
+      source_value = bir::Value::named(bir::TypeKind::Ptr, "%byval.ptr");
+      block.insts.push_back(bir::LoadLocalInst{
+          .result = source_value,
+          .slot_name = "byval.addr",
+          .slot_id = c4c::SlotNameId{33},
+      });
+    } else {
+      source_value = bir::Value::named(bir::TypeKind::Ptr, "%binary.ptr");
+      block.insts.push_back(bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = source_value,
+          .operand_type = bir::TypeKind::Ptr,
+          .lhs = bir::Value::named(bir::TypeKind::Ptr, "%byval.ptr"),
+          .rhs = bir::Value::immediate_i64(0),
+      });
+    }
+    block.insts.push_back(bir::StoreLocalInst{
+        .slot_name = "stored",
+        .slot_id = c4c::SlotNameId{44},
+        .value = source_value,
+    });
+
+    bir::Function function;
+    function.name = "byval_source";
+    if (test_case.include_byval_param) {
+      function.params.push_back(bir::Param{
+          .type = bir::TypeKind::Ptr,
+          .name = "%byval.ptr",
+          .is_byval = true,
+      });
+    }
+    function.params.push_back(bir::Param{
+        .type = bir::TypeKind::Ptr,
+        .name = "%other.byval.ptr",
+        .is_byval = true,
+    });
+    function.blocks = {block};
+    prepared.module.functions.push_back(function);
+
+    if (test_case.include_control_flow) {
+      prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+          .function_name = function_name,
+          .blocks = {return_block(block_label)},
+      });
+    }
+    prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+        .slot_id = slot_id,
+        .object_id = prepare::PreparedObjectId{12},
+        .function_name = function_name,
+        .offset_bytes = 96,
+        .size_bytes = 8,
+        .align_bytes = 8,
+    });
+
+    prepare::PreparedAddressingFunction addressing{
+        .function_name = function_name,
+    };
+    if (test_case.include_load_access) {
+      addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 0,
+          .result_value_name = source_name,
+          .address =
+              prepare::PreparedAddress{
+                  .base_kind = test_case.load_base_kind,
+                  .frame_slot_id =
+                      test_case.load_base_kind ==
+                              prepare::PreparedAddressBaseKind::FrameSlot
+                          ? std::optional<prepare::PreparedFrameSlotId>{slot_id}
+                          : std::nullopt,
+                  .pointer_value_name =
+                      test_case.pointer_value_name == "%byval.ptr"
+                          ? std::optional<c4c::ValueNameId>{byval_name}
+                          : test_case.pointer_value_name == "%other.byval.ptr"
+                                ? std::optional<c4c::ValueNameId>{other_byval_name}
+                                : std::nullopt,
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+                  .can_use_base_plus_offset =
+                      test_case.can_use_base_plus_offset,
+              },
+      });
+    }
+    addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+        .function_name = function_name,
+        .block_label = block_label,
+        .inst_index = 1,
+        .stored_value_name = stored_name,
+        .address =
+            prepare::PreparedAddress{
+                .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                .frame_slot_id = slot_id,
+                .size_bytes = 8,
+                .align_bytes = 8,
+                .can_use_base_plus_offset = true,
+            },
+    });
+    prepared.addressing.functions.push_back(std::move(addressing));
+
+    prepare::populate_store_source_publication_plans(prepared);
+    const auto& records = prepared.store_source_publications.records;
+    if (records.size() != 1 || records.front().instruction_index != 1) {
+      std::cerr << test_case.label << "\n";
+      return fail("byval pointer-source fixture should produce one store-source record");
+    }
+    if (records.front().plan.byval_load_local_source !=
+        test_case.expected_byval) {
+      std::cerr << test_case.label << "\n";
+      return fail(
+          "byval pointer-source classification should require complete prepared agreement");
+    }
+    return 0;
+  };
+
+  const std::vector<Case> cases = {
+      Case{
+          .label = "positive agreement",
+          .expected_byval = true,
+      },
+      Case{
+          .label = "absent source producer",
+          .include_control_flow = false,
+      },
+      Case{
+          .label = "wrong source producer kind",
+          .producer_shape = ProducerShape::Binary,
+      },
+      Case{
+          .label = "missing prepared load access",
+          .include_load_access = false,
+      },
+      Case{
+          .label = "non-pointer prepared addressing",
+          .load_base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+      },
+      Case{
+          .label = "missing prepared pointer value name",
+          .pointer_value_name = std::nullopt,
+      },
+      Case{
+          .label = "disallowed base-plus-offset policy",
+          .can_use_base_plus_offset = false,
+      },
+      Case{
+          .label = "prepared pointer value disagrees with BIR load result",
+          .pointer_value_name = "%other.byval.ptr",
+      },
+      Case{
+          .label = "missing byval formal fact",
+          .include_byval_param = false,
+      },
+  };
+
+  for (const auto& test_case : cases) {
+    if (const int result = run_case(test_case); result != 0) {
+      return result;
+    }
+  }
+  return 0;
+}
+
 int verify_bir_block_entry_publication_identity_lookup() {
   prepare::PreparedNameTables names;
   const auto function_name = names.function_names.intern("entry_publication");
@@ -13294,6 +13494,11 @@ int main() {
   }
   if (const int result =
           verify_route3_load_local_stored_value_source_matches_prepared_or_falls_back();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          verify_byval_pointer_source_classification_requires_prepared_agreement();
       result != 0) {
     return result;
   }
