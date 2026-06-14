@@ -72,3 +72,19 @@ metadata agree on the same source value.
   broad Route 6 call-lowering rewrites under this x86-local idea.
 - Reject an abstraction that preserves the old prepared semantic source while
   only renaming it as Route 6 or BIR authority.
+
+## Completion Note
+
+Closed after confirming the selected x86 scalar named-`i32` call argument
+source identity path was already routed through
+`find_consumed_scalar_i32_call_argument_source_authority(...)`. The retained
+adapter boundary requires Route 6 call-use/source evidence and prepared
+`source_value_id` agreement, preserves public prepared call-plan surfaces, and
+fails closed for one-sided, mismatch, unsupported, fallback, and
+policy-sensitive rows.
+
+Default-build compatibility proof passed for the prepared/stdarg handoff
+subset, and the direct x86 proof was run in `build-x86` with
+`C4C_ENABLE_X86_BACKEND_TESTS:BOOL=ON`. The x86-enabled close proof covered
+`backend_x86_route_debug` and `backend_x86_handoff_boundary`, both passing
+2/2, with the canonical regression guard accepting matching before/after logs.
