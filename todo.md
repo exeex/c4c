@@ -1,139 +1,121 @@
 Status: Active
 Source Idea Path: ideas/open/243_phase_f0_x86_riscv_bir_portability_convergence_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Split Target Policy from Semantic Authority
+Current Step ID: Step 5
+Current Step Title: Audit Diagnostic, Oracle, and String Authority
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 4 analysis for splitting target wrapper policy from
-semantic authority without moving target policy into BIR.
+Completed plan.md Step 5 analysis for diagnostic, oracle, and string authority.
+This packet identified the prepared-shape proof points that must remain stable
+while future x86 Route 6 and riscv Route 5/Route 3 follow-ups move semantic
+authority toward BIR facts.
 
-Inspected source/symbol surfaces:
+Inspected source, test, and planning surfaces:
 
-- `src/backend/mir/x86/x86.hpp`: `ConsumedPlans`,
-  `shared_function_lookups()`, `shared_call_plan_lookups()`,
-  `shared_route6_call_use_source_index()`,
-  `find_consumed_call_argument_plan(...)`,
-  `find_consumed_scalar_i32_call_argument_source(...)`, and
-  `consume_plans(...)`.
-- `src/backend/mir/x86/prepared/dispatch.cpp`: x86
-  `consume_edge_publication_move_intent(...)`,
-  `append_edge_publication_move_instruction(...)`, and local
-  `render_edge_publication_source_operand(...)`.
-- `src/backend/mir/x86/module/module.cpp`: compare-join edge move wrapper
-  calls into x86 prepared edge-publication intent, direct extern call argument
-  wrappers consume Route 6 under prepared agreement, and x86 wrapper code keeps
-  call-bundle, frame, register, symbol, and instruction spelling policy local.
-- `src/backend/mir/x86/debug/debug.cpp`: route-debug output for Route 6 scalar
-  call argument source rows.
-- `src/backend/mir/riscv/codegen/emit.cpp` and
-  `src/backend/mir/riscv/codegen/emit.hpp`: riscv
-  `EdgePublicationMoveIntent`, prepared edge-publication iteration in
-  `emit_prepared_module(...)`, source operand rendering, stack/memory source
-  checks, register placement mapping, signed-12-bit offset decisions, and
-  emitted `mv`/`li`/`lw`/`ld`/`sw`/`addi` text.
-- `src/backend/mir/riscv/codegen/calls.cpp` and
-  `src/backend/mir/riscv/codegen/memory.cpp`: target-owned ABI, stack, register,
-  address, load/store, and helper-register policy outside the prepared wrapper
-  audit surface.
+- `docs/bir_prealloc_fusion/prepared_diagnostics_oracle_replacement_plan.md`:
+  existing readiness rule for prepared printer, CLI dump, x86 route-debug,
+  helper-oracle, and wrapper compatibility replacement.
+- `src/backend/mir/x86/debug/debug.cpp` and
+  `tests/backend/bir/backend_x86_route_debug_test.cpp`: x86
+  `summarize_prepared_module_routes(...)`, `trace_prepared_module_routes(...)`,
+  route-debug headers, focus behavior, prepared-dump equivalence, and Route 6
+  scalar argument rows.
+- `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
+  and `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`: x86 Route 6
+  `ConsumedPlans` helper-oracle agreement, absence, source-name mismatch,
+  prepared mismatch, and prepared fallback contracts.
+- `src/backend/mir/riscv/codegen/emit.hpp`,
+  `src/backend/mir/riscv/codegen/emit.cpp`, and
+  `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`: riscv
+  `EdgePublicationMoveIntentStatus`, instruction-text wrapper output, shared
+  prepared lookup authority, missing-publication fallback, unsupported source
+  and destination fail-closed behavior, stack-source, memory-source, and
+  pointer-base cases.
 - `src/backend/prealloc/publication_plans.hpp`,
   `src/backend/prealloc/publication_plans.cpp`,
   `src/backend/prealloc/prepared_lookups.cpp`, and
-  `src/backend/prealloc/call_plans.cpp`: current Route 4/5/6 agreement helpers,
-  prepared publication source facts, source-memory facts, call source
-  publication, and status-string surfaces.
-- `src/backend/bir/bir.cpp`: Route 3 memory access records and the BIR route
-  fact families that can own target-neutral memory/source identity.
-- `tests/backend/bir/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
-  and `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp`:
-  representative externally observed x86 Route 6 agreement and riscv prepared
-  edge-publication wrapper behavior.
+  `src/backend/prealloc/value_locations.hpp`: prepared publication,
+  source-memory, typed-stack-source, aggregate-stack-source, and current-block
+  publication status name surfaces.
+- `src/backend/bir/bir.hpp` and `src/backend/bir/bir.cpp`: Route 4/5/6 status
+  names and the BIR route status families that future diagnostics must expose
+  without weakening prepared compatibility strings.
+- `tests/backend/CMakeLists.txt` and `tests/backend/OWNERSHIP.md`: baseline
+  ownership for backend route, prepared-BIR, x86 route-debug, x86 wrapper, riscv
+  wrapper, CLI dump, and c_testsuite-style supported-path expectations.
 
 AST-backed inspection used:
 
 - `c4c-clang-tool-ccdb function-signatures
-  /workspaces/c4c/src/backend/mir/x86/prepared/dispatch.cpp
+  /workspaces/c4c/src/backend/mir/x86/debug/debug.cpp
   build/compile_commands.json`
 - `c4c-clang-tool-ccdb function-callees
-  /workspaces/c4c/src/backend/mir/x86/prepared/dispatch.cpp
-  consume_edge_publication_move_intent build/compile_commands.json`
-- `c4c-clang-tool function-signatures src/backend/mir/x86/x86.hpp
-  -- --std=c++17 -I/workspaces/c4c/src -I/workspaces/c4c/src/codegen/lir
-  -I/workspaces/c4c/src/frontend/parser`
-- `c4c-clang-tool-ccdb function-signatures
-  /workspaces/c4c/src/backend/mir/riscv/codegen/emit.cpp
-  build/compile_commands.json`
+  /workspaces/c4c/src/backend/mir/x86/debug/debug.cpp
+  trace_prepared_module_routes build/compile_commands.json`
 - `c4c-clang-tool-ccdb function-callees
-  /workspaces/c4c/src/backend/mir/riscv/codegen/emit.cpp
-  consume_edge_publication_move_intent build/compile_commands.json`
+  /workspaces/c4c/src/backend/mir/x86/debug/debug.cpp
+  summarize_prepared_module_routes build/compile_commands.json`
 
-Target-policy split map:
+Diagnostic/oracle replacement candidates:
 
-| Wrapper reader | Prepared-shape semantic derivation | BIR route fact it should eventually consume | Target-owned policy that must stay local | Follow-up disposition |
-| --- | --- | --- | --- | --- |
-| x86 `prepared::consume_edge_publication_move_intent(...)` in `prepared/dispatch.cpp` and compare-join use in `module.cpp` | Looks up `PreparedEdgePublication` by predecessor/successor/destination id, copies `publication->source_value_id`, requires `Available`, checks prepared move authority, and renders a source operand from `PreparedValueHome`. This makes prepared edge-publication shape the source/destination identity authority for wrapper moves. | Route 5 current-block/edge join source records for source/destination edge identity, with Route 4 block-entry publication attribution where the destination fact is the relevant publication fact. Route 3 is needed only when the publication source is a load/memory-derived value. | x86 move emission, `mov` spelling, i32-only operand support, stack/register/immediate operand rendering, error/status strings, compare-join fallback, parallel-copy move authority checks, and x86 wrapper output. | Create an x86-specific wrapper split follow-up that adds a Route 5/Route 4 agreement gate or route-native adapter to the edge-publication move intent path while preserving `EdgePublicationMoveIntentStatus`, compare-join diagnostics, and wrapper text. Do not delete prepared publication lookup or value-home use in the first packet. |
-| x86 direct extern call wrappers in `module.cpp` plus `find_consumed_scalar_i32_call_argument_source(...)` in `x86.hpp` | Uses prepared call argument plans and `PreparedCallArgumentPlan::source_value_id` as the agreement gate before Route 6 is allowed to pick the source value name for scalar i32 call arguments. Prepared call bundles still decide destination registers. | Route 6 call argument source records should own scalar call argument source identity after the agreement gate can be retired or inverted. | Direct extern wrapper classification, fixed/variadic wrapper kind, x86 ABI argument/result registers, stack/frame adjustment, string constant addressing, symbol rendering, emitted `mov`/`call`, zeroing `eax`, result move bundles, and fallback behavior. | Create a narrow x86 Route 6 call-wrapper follow-up that keeps ABI/call-bundle policy target-owned but moves scalar i32 source-name selection toward Route 6 authority. Preserve the current prepared-agreement tests and route-debug rows until an x86/riscv parity proof exists. |
-| riscv `consume_edge_publication_move_intent(...)` and `render_edge_publication_source_operand(...)` in `codegen/emit.cpp` | Reads prepared edge publications, source/destination ids, source producer kind, source memory access status, memory base kind/name/offset/size/align/address-space/volatile flags, value-home ids, pointer-base homes, and move authority to infer the publication source and whether a memory source is legal. | Route 5 should own edge join source identity; Route 3 should own memory access/source identity for load-local/load-global/pointer-derived sources; Route 4 may own destination publication identity where the wrapper consumes block-entry publication facts. | riscv register naming, register bank/placement mapping, stack-slot alias checks, signed-12-bit offset policy, scratch register contracts (`t0`, `t6`), instruction selection and spelling (`li`, `mv`, `lw`, `ld`, `sw`, `addi`, `add`), stack destination policy, and fail-closed unsupported statuses. | Create a riscv-specific edge-publication adapter follow-up that introduces Route 5/Route 3 consumption behind prepared agreement while leaving register/stack/addressing/emission choices in riscv. It must preserve `EdgePublicationMoveIntentStatus`, existing tests in `backend_riscv_prepared_edge_publication_test.cpp`, and current fail-closed behavior for unsupported homes or offsets. |
-| riscv `emit_prepared_module(...)` in `codegen/emit.cpp` | Rebuilds `PreparedFunctionLookups` per control-flow function, iterates prepared edge-publication rows, and emits wrapper moves from prepared publication availability. This makes prepared publication rows the top-level semantic iteration surface for the riscv prepared emitter. | Route 5 edge/source records should eventually drive semantic edge-source iteration, with prepared lookup retained only as target policy/status compatibility until parity is proven. | Module/function symbol emission, `.text`/`.globl` formatting, target wrapper emission order, instruction text, and unsupported publication filtering. | Fold this into the riscv edge-publication adapter follow-up rather than treating it as deletion-ready. The first riscv packet should compare Route 5 records against prepared rows and keep prepared iteration as fallback/status authority. |
+| Surface | Current prepared/string authority | Future BIR replacement candidate | String stability and baseline requirements |
+| --- | --- | --- | --- |
+| x86 route-debug summary/trace | `summarize_prepared_module_routes(...)` and `trace_prepared_module_routes(...)` still own externally tested headers and rows: `x86 route summary`, `x86 route trace`, `target triple: x86_64-unknown-linux-gnu`, `route owner: x86/debug`, `module emitter: x86/module`, `status: contract-first debug surface; structured lane diagnostics still deferred`, focus function/block/value headers, function rows, and the selected Route 6 row `route6 scalar arg call#0 block=entry inst#2 callee=addip0 arg#0 source=%t1 kind=ArgumentValue`. | Add x86 route-native diagnostic rows for Route 6 scalar call argument source identity, sourced from Route 6 facts and labeled separately from compatibility-derived rows until prepared agreement is no longer required. | Preserve all existing x86 route-debug header, focus, dump-equivalence, function-row, and absent-row expectations. For missing Route 6, invalid source id, duplicate Route 6, prepared mismatch, and source-name mismatch, keep the trace header/function row but keep the Route 6 source row absent. Do not relabel or weaken route-debug tests as proof of replacement. |
+| x86 Route 6 direct extern wrapper oracle | `backend_x86_handoff_boundary_direct_extern_call_test.cpp` and `backend_prepared_lookup_helper_test.cpp` prove that `find_consumed_scalar_i32_call_argument_source(...)` only returns an agreed scalar `i32` `ArgumentValue` Route 6 source when Route 6 source name/id and prepared call argument source id agree. Prepared call argument selection remains fallback when Route 6 is absent or mismatched. | A narrow x86 Route 6 call-wrapper replacement can use Route 6 as the source-name authority after it proves the same agreement/fallback matrix and keeps ABI/call-bundle policy target-owned. | Preserve failure strings covering malformed fixtures, threading through `ConsumedPlans`, fail-closed absence, prepared call argument selector preservation, source-name mismatch, Route 6/prepared id mismatch, and prepared fallback asm equality. Baseline must include the wrapper asm from `expected_minimal_direct_extern_call_lane_asm()` and the helper-oracle statuses `available`, `missing_call`, `wrong_call`, `missing_argument`, `missing_source_relationship`, `missing_source_value`, `abi_bound_excluded`, `duplicate_relationship`, and `no_match` where applicable. |
+| riscv prepared edge-publication wrapper | `EdgePublicationMoveIntentStatus` is a public helper contract with statuses `Available`, `MissingSharedLookups`, `MissingPublication`, `UnsupportedPublication`, `UnsupportedSourceHome`, and `UnsupportedDestinationHome`; tests also assert target wrapper text such as `mv a1, a0`, `li a1, 42`, `lw a1, 16(sp)`, `ld a1, 32(sp)`, `li t6, 4096\n    add t6, sp, t6\n    lw a1, 0(t6)`, `addi a1, s2, 12`, `mv a1, s2`, and `li a1, 4096\n    add a1, s2, a1`. | A riscv Route 5/Route 3 adapter can introduce route-fact comparison or route-native lookup behind prepared agreement, but prepared lookup authority remains the compatibility source until Route 5 edge/source identity and Route 3 memory-source identity prove parity. | Preserve `EdgePublicationMoveIntentStatus` enum names, missing-publication behavior after clearing `publications_by_edge_destination`, unsupported publication/source/destination fail-closed behavior, and exact instruction text for available cases. Baseline must keep unsupported subword, unsigned, F32, dynamic stack, aggregate-width, non-move, pointer-base-as-address, and large-offset cases fail-closed with no accidental `lb`/`lbu`/`lh`/`lhu`/`lwu`/`flw`/scalar aggregate-load emission. |
+| Prepared publication/source-memory statuses | Prepared status names are compatibility strings: `PreparedEdgePublicationSourceMemoryAccessStatus` uses `unavailable`, `available`, `missing_prepared_memory_access`, `incomplete_prepared_memory_access`; `PreparedTypedStackSourcePublicationStatus` uses `available`, `missing_publication`, `unsupported_publication`, `unsupported_source_home`, `missing_concrete_stack_source`, `missing_same_width_i32_type`, `unsupported_destination_storage`, `unsupported_move_authority`, `missing_destination_register_placement`, `missing_destination_gpr_bank`, `missing_destination_register_view`; `PreparedAggregateStackSourceAuthorityStatus` includes `missing_aggregate_copy_authority`; `PreparedCurrentBlockEntryPublicationStatus` includes `publication_unavailable`. | Route 5 diagnostics should expose edge/source/publication status separately, and Route 3 diagnostics should expose memory-source identity/status separately, while prepared status names remain compatibility output until the route-native surfaces cover all positive, negative, mismatch, and fallback cases. | Do not rename prepared status strings or claim route ownership from status-string equality. Future route-native diagnostics must preserve prepared status baselines and add explicit Route 5 names such as `available`, `memory_source`, `missing_source_memory_access`, `incomplete_source_memory_access`, `missing_source_value`, and `no_match`, plus Route 3 memory-source statuses for unavailable/incomplete/missing memory identity. |
+| Prepared lookup helper oracle | `backend_prepared_lookup_helper_test.cpp` still aggregates Route 3/4/5/6 helper-oracle behavior, prepared-vs-BIR agreement assertions, fallback semantics, missing/mismatch/duplicate statuses, and x86 `ConsumedPlans` compatibility. | Add route-native helper-oracle families one route fact at a time, starting with x86 Route 6 call source and riscv Route 5/Route 3 edge-source/memory-source candidates. | Existing helper-oracle failure strings and statuses must remain unchanged. Replacement proof must include positive, missing fact, invalid input, duplicate, mismatch, wrong-key, and fallback cases without reading prepared facts as route-native truth unless the row is explicitly labeled compatibility fallback. |
+| Wrapper output and supported-path contracts | x86 direct extern wrapper asm and riscv prepared edge-publication asm are externally asserted output. Supported-path contracts include keeping prepared fallback available, unsupported cases fail-closed, and not downgrading a supported path to unsupported to simplify route migration. | Wrapper-input tests may be added from route-native views only after the underlying Route 6 or Route 5/Route 3 facts are proven by helper/oracle tests. | Preserve wrapper text, fallback behavior, fail-closed unsupported behavior, and baseline tests. Any expectation rewrite, output relabel, supported-path downgrade, or named-fixture shortcut is testcase-overfit and should be rejected. |
 
-Pure target policy boundaries confirmed:
+Step 5 disposition:
 
-- ABI and wrapper classification stay target-owned: x86 direct extern
-  fixed/variadic wrapper kind, riscv call ABI config, argument/result register
-  banks, stack-argument layout, variadic behavior, and helper-call resource
-  choices are not BIR semantic facts.
-- Layout and stack policy stay target-owned: frame size, stack slots, stack
-  offsets, dynamic stack handling, local slot address materialization,
-  over-aligned alloca handling, and stack alias/scratch contracts must not move
-  into BIR.
-- Register policy stays target-owned: prepared homes and placements may still
-  be consumed by wrappers, but choosing x86 register names, riscv `a*`/`s*`/`t*`
-  registers, callee-saved mapping, scratch usage, and grouped-span handling is
-  target policy.
-- Emission and formatting stay target-owned: `.text`, `.globl`, symbol spelling,
-  private data labels, instruction selection, operand text, route-debug strings,
-  handoff error strings, and wrapper output are public compatibility surfaces.
-- BIR should own only portable semantic route/source facts: call argument source
-  identity (Route 6), memory access/source identity (Route 3), block-entry or
-  edge publication identity (Route 4/5), and producer/consumer relationships
-  where the route records are proven across x86 and riscv.
+- x86 Route 6 call-wrapper split is blocked on a route-native diagnostic/oracle
+  that keeps current route-debug rows, helper-oracle agreement checks, prepared
+  fallback, and wrapper asm stable.
+- riscv Route 5/Route 3 edge-publication adapter is blocked on a diagnostic
+  adapter that compares Route 5 edge/source and Route 3 memory-source facts
+  against prepared publication/source-memory authority while preserving
+  `EdgePublicationMoveIntentStatus` and exact target-local instruction text.
+- No prepared diagnostic, helper-oracle, wrapper, status, fallback, supported
+  path, or baseline surface is deletion-ready from this audit packet.
 
 ## Suggested Next
 
-Execute Step 5: audit diagnostic, oracle, and string authority. Focus on the
-public strings and observed rows that would block the x86 Route 6 call-wrapper
-split and the riscv Route 5/Route 3 edge-publication adapter: route-debug rows,
-`EdgePublicationMoveIntentStatus`, prepared publication/source-memory status
-names, helper-oracle expectations, fallback behavior, wrapper output, and
-baseline tests.
+Execute Step 6 as a lifecycle packet: write the convergence map and focused
+follow-up ideas for the x86 Route 6 call-wrapper diagnostic/oracle replacement,
+the riscv Route 5/Route 3 edge-publication adapter, retained prepared
+publication/status compatibility, and any safe final prepared field-group
+demotion/deletion candidates. Do not implement the adapters in this runbook.
 
 ## Watchouts
 
-- Do not move ABI, layout, register, stack, emission, formatting, or wrapper
-  decisions into BIR. BIR route records should replace only target-neutral
-  semantic source/route identity authority.
-- x86 Route 6 evidence remains narrow scalar `i32` call-argument source
-  agreement. It does not justify call-plan, call-bundle, wrapper-kind,
-  value-home, or result-move demotion.
-- x86 edge-publication move intent still consumes prepared publication and
-  value-home shape directly. Any Route 4/5 follow-up must be target-specific
-  and string/fallback preserving.
-- riscv has no direct Route 3/4/5/6 wrapper consumption in the inspected
-  prepared edge-publication path. It currently re-derives source identity and
-  memory-source legality from prepared publication shape.
-- Route 3 can own memory/source identity, but riscv offset legality,
-  volatile/address-space policy, pointer-base register lookup, scratch register
-  use, and emitted load/store spelling remain riscv policy.
-- Prepared statuses, route-debug output, handoff diagnostics, helper-oracle
-  names/statuses, wrapper text, and baseline expectations are blockers for any
-  contraction until Step 5 classifies their string-stability requirements.
+- Step 6 should cite
+  `docs/bir_prealloc_fusion/prepared_diagnostics_oracle_replacement_plan.md`
+  as prior planning evidence, but the active closure map must be specific to
+  F0 x86/riscv convergence.
+- Do not weaken x86 route-debug rows or helper-oracle strings to make Route 6
+  migration look complete. Absence of the Route 6 source row is currently the
+  expected fail-closed signal for absent, invalid, duplicate, mismatched, and
+  source-name-mismatched Route 6 facts.
+- Do not rename or collapse `EdgePublicationMoveIntentStatus` or prepared
+  publication/source-memory status names during riscv adapter work.
+- Route 5 may own edge/source identity and Route 3 may own memory/source
+  identity, but riscv register names, stack offsets, signed-12-bit decisions,
+  scratch registers, load/store/address instruction spelling, and wrapper text
+  remain target policy.
+- A future diagnostic/oracle follow-up must add route-native proof beside
+  prepared compatibility proof. It must not replace prepared expected strings
+  with route-native labels as its only evidence.
+- Any supported-path downgrade, output-only relabel, expectation weakening, or
+  fixture-shaped string shortcut is testcase-overfit.
 
 ## Proof
 
 Analysis-only packet; no build or ctest required by delegated proof. Used
-read-only inspection with `rg`, targeted source reads, and the clang-tool
-queries listed above. No `test_after.log` was generated because this packet has
-no compile/test proof requirement and changed only `todo.md`.
+read-only inspection with `rg`, targeted source/test/doc reads, `git status`,
+and the clang-tool queries listed above. No `test_after.log` was generated
+because this packet has no compile/test proof requirement and changed only
+`todo.md`.
