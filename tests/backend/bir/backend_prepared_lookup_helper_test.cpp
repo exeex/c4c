@@ -6782,6 +6782,8 @@ int verify_direct_global_select_chain_dependency_query() {
     return fail("scalar select-chain materialization query should expose root authority");
   }
   const auto selected_name = names.value_names.find(selected.name);
+  const auto loaded_name = names.value_names.find(loaded.name);
+  const auto direct_name = names.value_names.find(direct.name);
   const auto dependency_available =
       [&](const prepare::PreparedEdgePublicationSourceProducerLookups& lookups,
           c4c::BlockLabelId query_block_label,
@@ -6816,6 +6818,20 @@ int verify_direct_global_select_chain_dependency_query() {
   auto incomplete_selected_source_producers = source_producers;
   incomplete_selected_source_producers.producers_by_value_name[selected_name]
       .select = nullptr;
+  auto wrong_kind_selected_source_producers = source_producers;
+  wrong_kind_selected_source_producers.producers_by_value_name[selected_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .binary = binary_inst,
+      };
+  auto missing_loaded_payload_source_producers = source_producers;
+  missing_loaded_payload_source_producers.producers_by_value_name[loaded_name]
+      .load_global = nullptr;
+  auto conflicted_selected_source_producers = source_producers;
+  conflicted_selected_source_producers.producers_by_value_name[selected_name] =
+      prepare::PreparedEdgePublicationSourceProducer{};
   if (!dependency_available(
           source_producers, block_label, &block, selected, before_end) ||
       dependency_available(
@@ -6844,6 +6860,24 @@ int verify_direct_global_select_chain_dependency_query() {
           before_end) ||
       dependency_available(
           incomplete_selected_source_producers,
+          block_label,
+          &block,
+          selected,
+          before_end) ||
+      dependency_available(
+          wrong_kind_selected_source_producers,
+          block_label,
+          &block,
+          selected,
+          before_end) ||
+      dependency_available(
+          missing_loaded_payload_source_producers,
+          block_label,
+          &block,
+          selected,
+          before_end) ||
+      dependency_available(
+          conflicted_selected_source_producers,
           block_label,
           &block,
           selected,
@@ -6900,9 +6934,15 @@ int verify_direct_global_select_chain_dependency_query() {
   const auto direct_dependency =
       prepare::find_prepared_direct_global_select_chain_dependency(
           names, &source_producers, block_label, &block, direct, before_end);
+  const auto store_source_direct_dependency =
+      prepare::find_prepared_store_source_direct_global_select_chain_dependency(
+          names, &source_producers, block_label, &block, direct, before_end);
   if (!direct_dependency.contains_direct_global_load ||
       direct_dependency.root_is_select ||
-      direct_dependency.root_instruction_index != std::size_t{2}) {
+      direct_dependency.root_instruction_index != std::size_t{2} ||
+      !store_source_direct_dependency.contains_direct_global_load ||
+      store_source_direct_dependency.root_is_select ||
+      store_source_direct_dependency.root_instruction_index != std::size_t{2}) {
     return fail("direct-global select-chain query should expose direct load root facts");
   }
   const auto direct_materialization =
@@ -7121,6 +7161,97 @@ int verify_direct_global_select_chain_dependency_query() {
           route2_end_query,
           bir::Value::named(bir::TypeKind::I32, "%query.mismatched_root"))) {
     return fail("BIR select-chain queries and Route 2 records should match prepared fail-closed boundary and mismatch paths");
+  }
+
+  const bir::Block non_direct_global_block{
+      .label = "query.entry",
+      .insts =
+          {bir::LoadGlobalInst{
+               .result = loaded,
+               .global_name_id = global_name,
+           },
+           bir::SelectInst{
+               .predicate = bir::BinaryOpcode::Eq,
+               .result = selected,
+               .compare_type = bir::TypeKind::I32,
+               .lhs = bir::Value::immediate_i32(1),
+               .rhs = bir::Value::immediate_i32(1),
+               .true_value = bir::Value::immediate_i32(11),
+               .false_value = bir::Value::immediate_i32(0),
+           },
+           bir::LoadGlobalInst{
+               .result = direct,
+               .global_name_id = global_name,
+           }},
+  };
+  const auto* non_global_select_inst =
+      std::get_if<bir::SelectInst>(&non_direct_global_block.insts[1]);
+  auto non_global_source_producers = source_producers;
+  non_global_source_producers.producers_by_value_name[selected_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind =
+              prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .select = non_global_select_inst,
+      };
+  if (dependency_available(
+          non_global_source_producers,
+          block_label,
+          &non_direct_global_block,
+          selected,
+          non_direct_global_block.insts.size())) {
+    return fail("direct-global select-chain query should fail closed for non-direct-global select chains");
+  }
+
+  const bir::Block forward_direct_global_block{
+      .label = "query.entry",
+      .insts =
+          {bir::LoadGlobalInst{
+               .result = loaded,
+               .global_name_id = global_name,
+           },
+           bir::SelectInst{
+               .predicate = bir::BinaryOpcode::Eq,
+               .result = selected,
+               .compare_type = bir::TypeKind::I32,
+               .lhs = bir::Value::immediate_i32(1),
+               .rhs = bir::Value::immediate_i32(1),
+               .true_value = direct,
+               .false_value = bir::Value::immediate_i32(0),
+           },
+           bir::LoadGlobalInst{
+               .result = direct,
+               .global_name_id = global_name,
+           }},
+  };
+  const auto* forward_select_inst =
+      std::get_if<bir::SelectInst>(&forward_direct_global_block.insts[1]);
+  const auto* forward_direct_inst =
+      std::get_if<bir::LoadGlobalInst>(&forward_direct_global_block.insts[2]);
+  auto forward_source_producers = source_producers;
+  forward_source_producers.producers_by_value_name[selected_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind =
+              prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .select = forward_select_inst,
+      };
+  forward_source_producers.producers_by_value_name[direct_name] =
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadGlobal,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .load_global = forward_direct_inst,
+      };
+  if (dependency_available(
+          forward_source_producers,
+          block_label,
+          &forward_direct_global_block,
+          selected,
+          forward_direct_global_block.insts.size())) {
+    return fail("direct-global select-chain query should fail closed when a child producer is after the root cutoff");
   }
   const auto explicit_mismatched_type_request = mir::BirSelectChainIdentityRequest{
       .block = &block,

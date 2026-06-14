@@ -1,35 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/260_phase_f3_prepared_module_structural_one_reader_candidates.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement the Prepared Agreement Boundary
+Current Step ID: 3
+Current Step Title: Add Nearby Fail-Closed Rows
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 implemented the prepared agreement boundary for the direct-global
-select-chain dependency lookup.
+Step 3 added nearby fail-closed rows for the direct-global select-chain
+dependency lookup.
 
 Completed work:
-- Added a local `find_prepared_select_chain_source_producer_agreement(...)`
-  helper in `select_chain_lookups.cpp` so the public producer lookup and the
-  shared dependency classifier use the same complete prepared/BIR agreement
-  record.
-- Tightened `find_prepared_direct_global_select_chain_dependency(...)` so it
-  publishes dependency facts only when the root producer agreement has a valid
-  source producer, instruction pointer, same-block instruction index, and
-  before-instruction cutoff.
-- Added focused helper rows proving the positive prepared agreement path and
-  fail-closed behavior for absent root producer, stale cutoff, conflicting
-  block label, prepared/BIR value-name drift, incomplete root payload, invalid
-  query block label, null block, and root-after-consumer cutoff.
+- Extended `verify_direct_global_select_chain_dependency_query()` with nearby
+  rows for wrong producer kind, missing child producer payload, conflicted
+  producer-map entries, non-direct-global select chains, and a child producer
+  after the root cutoff.
+- Added a public prepared compatibility assertion for the store-source
+  direct-global select-chain dependency alias on a non-select direct-global
+  root.
+- Kept the Step 3 slice to helper-test coverage only; no implementation
+  widening was needed.
 
 ## Suggested Next
 
-Execute Step 3 by adding nearby fail-closed rows for the remaining direct-global
-select-chain dependency edge cases without widening into the separate
-source-value/source-producer metadata candidate.
+Execute Step 4 by running the supervisor-selected broader backend validation
+for this one-candidate runbook and record whether the direct-global
+select-chain dependency packet is ready for plan-owner retirement review.
 
 ## Watchouts
 
@@ -42,11 +39,8 @@ source-value/source-producer metadata candidate.
   prepared aggregate compatibility, and current fail-closed behavior.
 - Do not rewrite output expectations, diagnostics, helper statuses, baselines,
   or target output to claim progress.
-- Step 3 should focus on nearby rows not already covered here: wrong producer
-  kind, root not select when select-specific fields are expected, missing
-  producer payload below the root, non-direct-global chains, producer after the
-  consumer cutoff inside the chain, duplicate/conflicting producers, and public
-  prepared compatibility assertions.
+- Remaining validation should be proof-only unless broader backend validation
+  exposes a local direct-global select-chain dependency failure.
 - Keep broad publication policy, storage encoding, pending store-global policy,
   duplicate handling, pointer-base homes, target lowering, call argument
   lowering, and prepared aggregate compatibility out of this runbook.
