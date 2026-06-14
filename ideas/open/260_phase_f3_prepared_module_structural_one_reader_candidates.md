@@ -146,6 +146,22 @@ narrows it further:
   `PreparedBirModule` deletion, privatization, wrapping, aggregate retirement,
   or migration of unrelated `module`, `names`, `control_flow`, or
   `store_source_publications` rows.
+- `module` top-level printer packet completed in the retired active runbook:
+  prepared-printer BIR body emission now uses a local complete-module-text
+  agreement boundary only when prepared-printer section order, BIR body text,
+  header placement, note output, phase output, and blank-line behavior remain
+  byte-stable.
+- Focused proof covered empty modules, function-only output, multiple-function
+  spacing, global-only and string-constant-only compatibility rows, function
+  plus global/string compatibility spacing, phase headers, note headers,
+  invariant header placement, and post-body spacing.
+- Broader close-readiness proof passed with 180/180 default backend tests and
+  2/2 x86 route-debug/handoff tests in the canonical before/after logs.
+- Remaining candidates in this idea stay open and require their own future
+  one-candidate runbooks; this completed printer packet is not approval for
+  broad `PreparedBirModule` deletion, privatization, wrapping, aggregate
+  retirement, direct global/string text emission, or migration of unrelated
+  `module`, `names`, `control_flow`, or `store_source_publications` rows.
 
 ## Acceptance Criteria
 
