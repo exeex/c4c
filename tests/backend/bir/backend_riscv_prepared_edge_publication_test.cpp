@@ -1841,6 +1841,103 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
   }
 
   {
+    auto prepared_only = make_register_edge_publication_module();
+    const auto prepared_only_ids = FixtureIds{
+        .function = prepared_only.names.function_names.find("join_regs"),
+        .predecessor = prepared_only.names.block_labels.find("left"),
+        .successor = prepared_only.names.block_labels.find("join"),
+        .source_name = prepared_only.names.value_names.find("%src"),
+        .base_name = prepared_only.names.value_names.find("%base"),
+        .destination_name = prepared_only.names.value_names.find("%dst"),
+    };
+    make_load_local_dynamic_stack_source(
+        prepared_only,
+        prepared_only_ids,
+        load_local_source_access(prepared_only_ids));
+    lookups = make_lookups(prepared_only);
+    publication = prepare::find_unique_indexed_prepared_edge_publication(
+        &lookups.edge_publications,
+        prepared_only_ids.predecessor,
+        prepared_only_ids.successor,
+        2);
+    const auto* source_memory_access =
+        prepare::find_unique_indexed_prepared_memory_access_by_result_value_id(
+            &lookups.memory_accesses, 1);
+    auto no_source_function =
+        make_route5_edge_identity_function(prepared_only_ids, true);
+    auto& no_source_predecessor = no_source_function.blocks[0];
+    auto& no_source_successor = no_source_function.blocks[1];
+    auto& no_source_phi =
+        std::get<bir::PhiInst>(no_source_successor.insts.front());
+    no_source_phi.incomings.clear();
+    const auto no_source_route5_edge = bir::route5_cfg_edge_publication_record(
+        &no_source_predecessor,
+        &no_source_successor,
+        bir::Value::named(bir::TypeKind::I32, "%dst"),
+        prepared_only_ids.destination_name,
+        prepared_only_ids.source_name);
+    if (publication == nullptr ||
+        !expect(publication->source_producer_kind ==
+                    prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+                "prepared-only fixture should keep the public LoadLocal edge publication visible") ||
+        !expect(publication->source_value_id == 1 &&
+                    publication->destination_value_id == 2 &&
+                    publication->predecessor_label ==
+                        prepared_only_ids.predecessor &&
+                    publication->successor_label == prepared_only_ids.successor,
+                "prepared-only fixture should preserve the selected left-to-join value ids") ||
+        !expect(publication->source_memory_access == source_memory_access &&
+                    source_memory_access != nullptr &&
+                    source_memory_access->address.pointer_value_name ==
+                        prepared_only_ids.base_name &&
+                    source_memory_access->address.byte_offset == 12 &&
+                    source_memory_access->address.size_bytes == 4,
+                "prepared-only fixture should expose the public %base + 12 source memory row") ||
+        !expect(no_source_route5_edge.status ==
+                    bir::Route5PublicationStatus::NoSource &&
+                    bir::route5_publication_status_name(
+                        no_source_route5_edge.status) == "no_source" &&
+                    no_source_route5_edge.predecessor_label_id ==
+                        prepared_only_ids.predecessor &&
+                    no_source_route5_edge.successor_label_id ==
+                        prepared_only_ids.successor &&
+                    no_source_route5_edge.destination_value_name == "%dst" &&
+                    !no_source_route5_edge.source_memory_identity_available,
+                "Route 5 should expose a same-edge NoSource record without memory authority")) {
+      return 1;
+    }
+    intent = riscv::consume_edge_publication_move_intent(
+        &lookups,
+        prepared_only_ids.predecessor,
+        prepared_only_ids.successor,
+        2,
+        &no_source_route5_edge);
+    if (!expect(intent.status ==
+                        riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
+                    intent.publication == publication &&
+                    intent.instruction_text.empty() &&
+                    !intent.source_memory_byte_offset.has_value() &&
+                    intent.route5_edge_status ==
+                        bir::Route5PublicationStatus::NoSource &&
+                    !intent.route5_edge_source_agrees &&
+                    !intent.route3_source_memory_agrees,
+                "RISC-V dynamic LoadLocal consumer should fail closed when the public edge publication is prepared-only under Route 5 NoSource authority")) {
+      return 1;
+    }
+    intent = riscv::consume_edge_publication_move_intent(
+        &lookups,
+        prepared_only_ids.predecessor,
+        prepared_only_ids.successor,
+        2,
+        &route5_memory_edge);
+    if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
+                    intent.instruction_text == "lw a1, 12(s2)",
+                "RISC-V dynamic LoadLocal positive path should remain available with agreeing Route 5 memory-source authority")) {
+      return 1;
+    }
+  }
+
+  {
     auto stale_public = make_register_edge_publication_module();
     const auto stale_ids = FixtureIds{
         .function = stale_public.names.function_names.find("join_regs"),
