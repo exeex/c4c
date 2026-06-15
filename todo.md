@@ -1,43 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/279_phase_f5_x86_memory_accesses_public_field_parity_gate.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Prove Or Block The x86 Public-Field Row
+Current Step ID: 3
+Current Step Title: Preserve Compatible x86 Output Or Fallback
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 by recording bounded non-applicability for the x86
-`memory_accesses` public-field parity row. No x86 parity proof is claimed:
-Step 1 found no real x86 backend consumer boundary that reads
-`PreparedFunctionLookups::memory_accesses`, so there is no current path through
-which a public-field row can be proven or failed closed.
+Completed Step 3 by recording that compatible x86 source-memory behavior
+remains unchanged under the Step 2 non-applicability outcome. Because no real
+x86 backend consumer boundary reads `PreparedFunctionLookups::memory_accesses`,
+there is no public-field row whose compatible exact output can be asserted in
+this gate.
 
-The absent boundary is specifically an x86 backend consumer of
-`PreparedFunctionLookups::memory_accesses`. Existing x86 source-memory coverage
-is real backend coverage, but it flows through `edge_publications`,
-`PreparedEdgePublication::source_memory_access`, and
-`PreparedAddressingFunction` / `find_prepared_memory_access(addressing, ...)`
-instead of the public `memory_accesses` lookup field.
+The preserved compatibility surface is the existing x86 source-memory behavior
+through `edge_publications`, `PreparedEdgePublication::source_memory_access`,
+and addressing records via `PreparedAddressingFunction` /
+`find_prepared_memory_access(addressing, ...)`. This packet does not weaken any
+exact-output, fallback, prepared-printer, wrapper, route-debug, helper/oracle,
+or baseline contract.
 
 ## Suggested Next
 
-Return to the supervisor for route selection. The smallest prerequisite for any
-future x86 public-field parity proof is to add or expose a real x86 backend
-consumer boundary that reads `PreparedFunctionLookups::memory_accesses`, then
-prove one bounded public row through that path.
+Run the Step 4 x86 focused acceptance proof selected by the supervisor, using
+the examined x86 bucket and preserving `test_after.log` if delegated.
 
 ## Watchouts
 
-Do not claim x86 parity from the existing x86 Route 3 / Route 5 source-memory
-agreement tests: they are real backend consumers, but they consume
+Do not claim x86 public-field parity from the existing x86 Route 3 / Route 5
+source-memory agreement tests: they are real backend consumers, but they consume
 `edge_publications`, `PreparedEdgePublication::source_memory_access`, and
 `PreparedAddressingFunction`, not the public `memory_accesses` lookup field.
 Do not use helper-only lookup tests, prepared-printer output, wrappers,
 copied-publication paths, or renamed helpers as substitutes for the missing
-boundary. This step is a scoped block/non-applicability record, not an x86
-capability repair.
+boundary. The current gate preserves existing fallback/source-memory behavior
+while recording public-field non-applicability; it is not an x86 capability
+repair.
 
 ## Proof
 
