@@ -1,5 +1,20 @@
 # 274 Phase F5 RISC-V memory_accesses stale-publication fail-closed proof
 
+Status: Closed - blocked by fixture support
+
+## Closure Note
+
+Step 1 found that the supported RISC-V dynamic stack-source `LoadLocal`
+fixture can express the compatible `PreparedFunctionLookups::memory_accesses`
+publication row, but cannot express a stale-publication row through normal
+supported construction. The public row is tied to the same Route 3 / Route 5
+memory-source identity; constructing the stale case would require synthetic
+mutation or hand-built stale state, which this idea explicitly rejects.
+
+The runbook is closed as a blocker per its acceptance criteria. Follow-up
+fixture-support work is tracked in
+`ideas/open/275_riscv_memory_accesses_stale_publication_fixture_support.md`.
+
 ## Goal
 
 Prove one bounded RISC-V same-consumer stale-publication
