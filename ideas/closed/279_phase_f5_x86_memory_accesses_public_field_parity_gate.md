@@ -60,3 +60,28 @@ boundary movement.
 ## Source
 
 Extracted from `ideas/draft/274_phase_f5_remaining_prepared_boundary_proof_backlog.md`.
+
+## Completion Notes
+
+Closed on 2026-06-15 after the active runbook recorded explicit
+non-applicability for x86 public-field parity.
+
+Examined surface: existing x86 prepared source-memory behavior through
+`edge_publications`, `PreparedEdgePublication::source_memory_access`, and
+`PreparedAddressingFunction` / `find_prepared_memory_access(addressing, ...)`.
+No real x86 backend consumer of the public
+`PreparedFunctionLookups::memory_accesses` field was found.
+
+Gate outcome: x86 public-field parity is not claimed. The remaining
+prerequisite for any future x86 public-field parity proof is to add or expose a
+real x86 consumer boundary for `PreparedFunctionLookups::memory_accesses`.
+Existing x86 source-memory behavior is preserved through the focused proof
+scope.
+
+Close gate:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: 2/2 passed before, 2/2 passed after, no new failures.
