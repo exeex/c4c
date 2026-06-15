@@ -121,3 +121,36 @@ requires it, and record the exact command used in `todo.md`.
   output, or baselines.
 - The patch claims whole `memory_accesses`, `PreparedFunctionLookups`, or
   `PreparedBirModule` demotion readiness from this one proof row.
+
+## Closure Note
+
+Closed 2026-06-15 as a bounded proof for one RISC-V same-consumer dynamic
+stack-source `LoadLocal` byte-offset drift row. The accepted packet names the
+real RISC-V consumer, preserves the prepared/public `memory_accesses` row at
+byte offset `12`, keeps the agreeing Route 3/Route 5 path byte-stable at
+`lw a1, 12(s2)`, and changes only Route 3 source-memory byte-offset authority
+to `16`. That mismatch reaches the real RISC-V consumer and fails closed as
+not semantically agreed through `UnsupportedSourceHome`, empty instruction
+text, `MemorySource`, `route5_edge_source_agrees=false`, and
+`route3_source_memory_agrees=false`.
+
+This reduces the BO-family byte-offset drift blocker from idea 265 only for
+the selected RISC-V same-consumer dynamic stack-source `LoadLocal` row. It does
+not clear exhaustive BO-family coverage for every synthetic prepared offset
+drift row, public lookup consumer, target operand surface, or wrapper/exact
+output contract. Prepared-only, stale-publication, and cross-publication
+mismatch families remain governed by their separate proof-map status except
+where separately reduced by prior accepted packets such as idea 272. This
+closure does not authorize demotion, deletion, privatization, accessor
+wrapping, public API hiding, expectation weakening, or broad
+`PreparedFunctionLookups` / `PreparedBirModule` retirement.
+
+Accepted proof:
+
+```sh
+cmake --build build-x86 --target backend_riscv_prepared_edge_publication_test backend_prepared_lookup_helper_test && ctest --test-dir build-x86 -R '^(backend_riscv_prepared_edge_publication|backend_prepared_lookup_helper)$' --output-on-failure
+```
+
+Result: passed `2/2` tests. Close-time regression guard reused the
+rolled-forward `test_before.log` in non-decreasing mode for this lifecycle-only
+closure and passed with no new failing tests.
