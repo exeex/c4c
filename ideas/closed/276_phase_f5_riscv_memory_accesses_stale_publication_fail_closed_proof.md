@@ -64,3 +64,19 @@ obligation now that the fixture blocker is gone.
 
 Follow-up to `ideas/closed/274_phase_f5_riscv_memory_accesses_stale_publication_fail_closed_proof.md`
 and `ideas/closed/275_riscv_memory_accesses_stale_publication_fixture_support.md`.
+
+## Closure Notes
+
+Closed after the supported stale-publication fixture was driven through the
+real RISC-V same-consumer backend path. The proof rejects the stale public
+`memory_accesses` row while preserving the compatible dynamic stack-source
+`LoadLocal` output at exactly `lw a1, 12(s2)`.
+
+Close gate used the matching focused acceptance scope:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+That guard passed with 1/1 tests passing before and after, no new failures,
+and no new tests over the 30 second threshold.
