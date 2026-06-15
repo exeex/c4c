@@ -1,104 +1,121 @@
 Status: Active
 Source Idea Path: ideas/open/268_phase_f4_prepared_bir_module_liveness_authority_blocker_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory Liveness Authority
+Current Step ID: Step 2
+Current Step Title: Locate the Identity-Only Reader
 
 # Current Packet
 
 ## Just Finished
 
-Step 1, `Inventory Liveness Authority`, inventoried `PreparedBirModule::liveness`
-authority without implementation changes.
+Step 2, `Locate the Identity-Only Reader`, classified the Step 1 reader set
+without implementation changes. No exact identity-only reader exists today.
 
-Evidence:
-- Definition/storage: `src/backend/prealloc/liveness.hpp:38` defines
-  `PreparedLiveInterval`; `src/backend/prealloc/liveness.hpp:44` defines
-  `PreparedLivenessValue` with prepared value identity, stack object identity,
-  type/kind, def/use points, and optional interval; `src/backend/prealloc/liveness.hpp:59`
-  defines block live-in/live-out rows; `src/backend/prealloc/liveness.hpp:70`
-  defines function rows with intervals, call points, loop depth, blocks, and
-  values; `src/backend/prealloc/liveness.hpp:80` stores all rows in
-  `PreparedLiveness::functions`. `src/backend/prealloc/module.hpp:38` defines
-  `PreparedBirModule`, and `src/backend/prealloc/module.hpp:47` stores public
-  `PreparedLiveness liveness`.
-- Construction/publication: `src/backend/prealloc/module.hpp:377` constructs
-  `BirPreAlloc` around a mutable `PreparedBirModule`; `src/backend/prealloc/prealloc.cpp:29`
-  runs legalize, stack layout, liveness, out-of-SSA, regalloc, then contract
-  publishers. `src/backend/prealloc/liveness.cpp:906` is the sole prepared
-  liveness row producer found: it clears/reserves `prepared_.liveness.functions`,
-  builds dense named values, CFG successors/predecessors, phi predecessor uses,
-  program points, live-in/live-out dataflow, intervals, call points, loop depth,
-  blocks, and values, then pushes each `PreparedLivenessFunction` at
-  `src/backend/prealloc/liveness.cpp:1001`.
-- Producers of prepared liveness rows: only `BirPreAlloc::run_liveness()` in
-  `src/backend/prealloc/liveness.cpp:906`. `PrepareOptions::run_liveness` exists
-  at `src/backend/prealloc/names.hpp:21`, but the active `BirPreAlloc::run()`
-  path calls `run_liveness()` unconditionally at `src/backend/prealloc/prealloc.cpp:33`.
-  Route focus filtering copies and erases rows but does not produce semantic
-  rows: missing function focus clears liveness at `src/backend/backend.cpp:599`;
-  function focus erases non-matching liveness rows at `src/backend/backend.cpp:635`.
-- Direct readers of prepared liveness rows: `BirPreAlloc::run_regalloc()` reads
-  `prepared_.liveness.functions` at `src/backend/prealloc/regalloc.cpp:473` and
-  `src/backend/prealloc/regalloc.cpp:479`, then derives regalloc/value-location
-  rows, allocation constraints, interference, call-crossing policy, spill/reload
-  ops, and regalloc notes from the liveness rows through
-  `src/backend/prealloc/regalloc.cpp:500`, `src/backend/prealloc/regalloc.cpp:520`,
-  `src/backend/prealloc/regalloc.cpp:546`, `src/backend/prealloc/regalloc.cpp:578`,
-  `src/backend/prealloc/regalloc.cpp:647`, and `src/backend/prealloc/regalloc.cpp:779`.
-  The supporting liveness consumers in `src/backend/prealloc/regalloc/intervals.cpp:13`,
-  `src/backend/prealloc/regalloc/intervals.cpp:46`, `src/backend/prealloc/regalloc/intervals.cpp:61`,
-  `src/backend/prealloc/regalloc/spill_reload.cpp:13`, and
-  `src/backend/prealloc/regalloc/classification.cpp:9` consume
-  `PreparedLivenessValue`/`PreparedLivenessFunction` facts.
-- More direct readers: `populate_call_plans()` locates the row with
-  `find_liveness_function(prepared.liveness, ...)` at
-  `src/backend/prealloc/call_plans.cpp:2751`; call preservation uses liveness
-  program points and live intervals in `build_call_preserved_values()` at
-  `src/backend/prealloc/call_plans.cpp:1479` and
-  `src/backend/prealloc/call_plans.cpp:1588`. The f128/i128 runtime helper
-  publishers locate liveness rows at `src/backend/prealloc/f128_runtime_helpers.cpp:1163`
-  and `src/backend/prealloc/i128_runtime_helpers.cpp:1440`, then use call
-  program points and liveness function pointers for helper boundary/carrier
-  facts (`src/backend/prealloc/f128_runtime_helpers.cpp:920`,
-  `src/backend/prealloc/i128_runtime_helpers.cpp:938`,
-  `src/backend/prealloc/i128_runtime_helpers.cpp:1308`).
-- Public prepared compatibility surfaces retained: the public
-  `PreparedBirModule::liveness` field; prepared-printer output from
-  `src/backend/prealloc/prepared_printer.cpp:39`, which does not print raw
-  liveness rows but prints liveness-derived summaries/plans such as regalloc,
-  value locations, call plans, storage plans, helper facts, and notes via
-  `src/backend/prealloc/prepared_printer.cpp:77`; route-debug focus filtering
-  and counts in `src/backend/backend.cpp:287`, `src/backend/backend.cpp:588`,
-  `src/backend/backend.cpp:699`, `src/backend/backend.cpp:934`, and
-  `src/backend/backend.cpp:1056`; target emission paths consume derived
-  prepared surfaces, not raw liveness rows (`src/backend/backend.cpp:1336`,
-  `src/backend/backend.cpp:1343`, `src/backend/backend.cpp:1351`,
-  `src/backend/backend.cpp:1377`, `src/backend/backend.cpp:1390`,
-  `src/backend/backend.cpp:1501`, and `src/backend/backend.cpp:1525`).
-  A search found no direct `.liveness`/`PreparedLiveness` reader under
-  `src/backend/mir`.
-- Candidate semantic liveness fact: the strongest current semantic fact is the
-  prepared liveness dataflow row itself produced by `BirPreAlloc::run_liveness()`:
-  named-value identity, CFG block identity, exact def/use program points,
-  predecessor-edge phi uses, live-in/live-out sets, live intervals, call points,
-  and loop depth. No separate BIR or route-level liveness fact was found that
-  owns this meaning independently; downstream route facts appear derived from
-  prepared liveness plus target/prepared policy rather than authoritative
-  semantic liveness.
-- Test/support readers: backend liveness tests read the public field directly
-  through helper functions at `tests/backend/bir/backend_prepare_liveness_test.cpp:91`
-  and `tests/backend/bir/backend_prepare_liveness_test.cpp:113`, with coverage
-  for phi, loop priority, cross-call, and helper-family call-point behavior.
-  Frame/stack call-contract tests also read public liveness rows at
-  `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp:100`.
+Reader classification:
+- `BirPreAlloc::run_regalloc()` in `src/backend/prealloc/regalloc.cpp:470`
+  is `target-policy`, not identity-only. It sizes derived regalloc/value-location
+  output from `prepared_.liveness.functions` at lines 473 and 475, reads every
+  `PreparedLivenessFunction` at lines 479 and 485, then combines value identity
+  with target and allocation policy: register class and group width at lines
+  500-518, published regalloc value identity plus type/kind/home/call-crossing
+  facts at lines 520-540, allocation constraints and caller/callee-saved policy
+  at lines 546-568, interference from live intervals at lines 578-596, active
+  register assignment and dynamic-stack/call-point policy at lines 635-735,
+  stack-slot fallback allocation at lines 737-775, and spill/reload publication
+  at line 779. The identities consumed include `function_name`, `value_id`,
+  `stack_object_id`, and `value_name`, but they are consumed with live intervals,
+  use points, call points, type/kind, target register profile, stack layout, and
+  spill policy.
+- Regalloc helpers in `src/backend/prealloc/regalloc/intervals.cpp` are
+  `target-policy` support. `value_priority()` at line 13 uses use-point count,
+  live interval span, `crosses_call`, and `requires_home_slot`; `locate_program_point()`
+  at line 46 maps program points to block/instruction locations; and
+  `weighted_use_score()` at line 61 weights uses by loop depth. These helpers
+  consume semantic liveness timing data for allocation priority, not only identity.
+- `classify_register_class()` and override resolution in
+  `src/backend/prealloc/regalloc/classification.cpp:9` are `target-policy`.
+  They classify `PreparedLivenessValue::type` and prepared override annotations
+  into register classes/group widths, so the liveness value identity is only a
+  key into downstream target allocation policy.
+- `append_spill_reload_ops()` in
+  `src/backend/prealloc/regalloc/spill_reload.cpp:13` is `target-policy`/derived
+  output. It maps spill points and value use points back through the liveness
+  function to publish spill/reload ops with register bank, register names,
+  contiguous widths, occupied registers, slot ids, and stack offsets.
+- `populate_call_plans()` in `src/backend/prealloc/call_plans.cpp:2751` and
+  `build_call_preserved_values()` at lines 1479 and 1588 are `target-policy`
+  call-preservation readers. They locate the liveness row by `function_name`,
+  map block/instruction to call program points, and combine live intervals with
+  regalloc candidates, frame plans, value homes, target register placement, stack
+  slots, callee-saved save indices, preservation endpoints, and preservation
+  reasons. The identity consumed is `function_name` plus value ids/names, but
+  the behavior is preservation-route publication rather than identity-only use.
+- `populate_f128_runtime_helper_call_ownership()` in
+  `src/backend/prealloc/f128_runtime_helpers.cpp:917` and
+  `populate_f128_runtime_helper_facts()` at line 1164 are `target-policy`/status
+  helper readers. They find the helper call point in liveness at lines 926-931,
+  build preserved values at lines 932-940, and publish missing-fact status such
+  as `live_preservation_requires_structured_live_across_helper_facts` at lines
+  946-950 when liveness/regalloc/call-point evidence is absent. The identity is
+  `function_name` and helper block/instruction location, consumed to publish
+  helper ownership and status.
+- `populate_i128_runtime_helper_call_ownership()` in
+  `src/backend/prealloc/i128_runtime_helpers.cpp:935` and
+  `populate_i128_runtime_helper_lanes()` at line 1441 are `target-policy`/status
+  helper readers for the same reason: call-point lookup at lines 947-952,
+  preserved-value construction at lines 953-961, and helper policy/status
+  publication. Their identities are function identity and helper call location,
+  not standalone liveness identity.
+- Route-debug focus filtering in `src/backend/backend.cpp:588` is
+  `printer/debug/status` compatibility. Missing function focus clears
+  `filtered.liveness.functions` at line 599, while function focus erases rows
+  outside the selected `FunctionNameId` at lines 635-639. This is a structured
+  debug/filtering compatibility surface, not a semantic identity consumer.
+- Prepared printing in `src/backend/prealloc/prepared_printer.cpp:39` is
+  `printer/debug/status` compatibility. It does not print raw liveness rows;
+  instead `print()` emits completed phases, notes, BIR body, and liveness-derived
+  summaries such as value locations, call plans, regalloc, storage plans, and
+  helper facts via appenders beginning at line 77.
+- Target emission paths identified in Step 1 are `target-policy` derived
+  consumers. They consume regalloc, value locations, call plans, stack layout,
+  storage/helper facts, and exact target output derived after liveness, not raw
+  `PreparedLiveness`.
+- Tests and support helpers in `tests/backend/bir/backend_prepare_liveness_test.cpp:91`,
+  `tests/backend/bir/backend_prepare_liveness_test.cpp:113`, and
+  `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp:100`
+  are `compatibility/test support`. They intentionally read the public prepared
+  field to assert current behavior and cannot authorize private pass context or
+  demotion.
+- No `fallback`, `wrapper`, or `unsupported behavior` reader was found in the
+  Step 1 direct-reader set. Fallback/unsupported behavior remains unmapped until
+  Step 3 fail-closed rows.
+
+Decision:
+- Candidate identity-only readers: none accepted. Every production reader that
+  touches prepared liveness consumes either target allocation policy, call
+  preservation policy, helper ownership/status policy, route-debug/filtering
+  compatibility, or test/support compatibility in addition to identity.
+- Candidate semantic liveness fact: still only the prepared liveness dataflow
+  row produced by `BirPreAlloc::run_liveness()` in
+  `src/backend/prealloc/liveness.cpp:906`, with `PreparedLivenessFunction`
+  publication at line 1001. Step 1 found no separate BIR or route-level
+  liveness fact that owns semantic meaning independently.
+- Therefore one exact identity-only reader and one independent semantic
+  liveness fact do not exist today. The only semantic fact is the public
+  prepared row itself, and the direct readers either derive target-facing
+  behavior from it or preserve public compatibility around it.
+- Because the only semantic authority is also the public prepared field, and no
+  exact identity-only reader proves a narrow private-pass-context boundary,
+  private-pass-context, demotion, wrapper, migration, or deletion work remains
+  unsafe. Any such packet would risk moving or hiding the only current semantic
+  authority while production readers still rely on liveness-derived allocation,
+  preservation, helper status, route-debug, and test compatibility behavior.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: classify each direct reader as identity-only,
-printer/debug/status, fallback, wrapper, target-policy, or unsupported
-behavior. The likely high-risk readers to classify first are regalloc,
-call-preservation planning, and f128/i128 helper fact publication.
+Execute Step 3 from `plan.md`: map fail-closed rows for absent/skipped,
+stale, mismatch, duplicate/conflict, unsupported, fallback, and derived
+printer/target behavior.
 
 ## Watchouts
 
@@ -109,9 +126,10 @@ call-preservation planning, and f128/i128 helper fact publication.
   exact target-output, unsupported, or baseline behavior.
 - Do not claim progress through expectation rewrites, helper renames,
   classification-only notes, or named-fixture proof.
-- Step 1 did not prove an exact identity-only reader. The direct production
-  fact is semantic, but the direct readers observed so far derive target-facing
-  allocation, preservation, spill/reload, helper, and compatibility surfaces.
+- Step 2 did not find an exact identity-only reader. Treat public
+  `PreparedBirModule::liveness` as blocked semantic authority until Step 3
+  fail-closed evidence is mapped and the supervisor/plan-owner decide whether a
+  separate lifecycle idea is needed.
 - `PrepareOptions::run_liveness` appears present but not honored by the active
   `BirPreAlloc::run()` pipeline; treat absent/skipped row behavior as unmapped
   until Step 3.
