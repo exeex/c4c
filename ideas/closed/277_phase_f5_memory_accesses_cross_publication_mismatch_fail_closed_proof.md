@@ -61,3 +61,12 @@ families.
 ## Source
 
 Extracted from `ideas/draft/274_phase_f5_remaining_prepared_boundary_proof_backlog.md`.
+
+## Completion Note
+
+Closed after adding the bounded RISC-V prepared-edge publication proof for a
+normal second public `memory_accesses` row whose publication block label
+mismatches the Route 3 / Route 5 authority while keeping offset `12`. The real
+consumer fails closed, the compatible dynamic stack-source `LoadLocal` path
+still emits exact `lw a1, 12(s2)`, and the matching close guard passed with
+`--allow-non-decreasing-passed`.
