@@ -44,6 +44,31 @@ boundary decisions.
 - Fallback, status/debug, helper/oracle, route-debug, prepared-printer,
   wrapper, exact-output, and baseline contracts are not weakened.
 
+## Completion Notes
+
+Closed after proving the RISC-V same-consumer public lookup path with a
+same-block duplicate `PreparedMemoryAccess` row for the same `%src` value at
+byte offset `16`, while the selected publication, selected position row, and
+Route 3 / Route 5 authority remain at byte offset `12`. The real
+`consume_edge_publication_move_intent(..., &route5_memory_edge)` consumer fails
+closed as `UnsupportedSourceHome`, emits no instruction, records no
+source-memory offset, and keeps Route 5 / Route 3 agreement true for the
+selected offset `12` row. The compatible dynamic stack-source `LoadLocal` path
+still emits exact `lw a1, 12(s2)`.
+
+Remaining unsupported or unexamined byte-offset surfaces are preserved for
+future ideas: shared source-producer planner consumers using
+result-value-name or positional `find_indexed_prepared_memory_access` paths,
+AArch64 target operand / ALU / memory operand consumers of prepared-memory
+lookup data, wrapper-level negative exact output for a same-block duplicate
+public row, and synthetic prepared offset drift between
+`publication.source_memory_byte_offset`, `publication.source_memory_access`,
+and alternate public lookup entries with the same source value.
+
+Close proof used matching `test_before.log` and `test_after.log` for
+`^backend_riscv_prepared_edge_publication$`; the non-decreasing regression
+guard passed with 1/1 tests passing before and after.
+
 ## Reviewer Reject Signals
 
 - Reject claims of exhaustive byte-offset coverage based on one narrow row.
