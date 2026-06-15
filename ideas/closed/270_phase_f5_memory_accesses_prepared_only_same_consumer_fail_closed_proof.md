@@ -1,5 +1,32 @@
 # 270 Phase F5 memory_accesses prepared-only same-consumer fail-closed proof
 
+## Closure
+
+Closed as an explicit blocker-map result from the required first step. The
+current x86 and riscv proof surfaces do not expose a supported same-consumer
+row that directly reads `PreparedFunctionLookups::memory_accesses`; continuing
+inside this idea would require synthetic stale prepared state or scope drift.
+
+Durable blocker map:
+
+- Exact public-field consumers found:
+  `src/backend/mir/aarch64/codegen/alu.cpp`,
+  `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`, and
+  `src/backend/prealloc/prepared_lookups.cpp`.
+- Current x86 adjacent route:
+  `render_agreed_route3_load_local_statement_memory_operand(...)` reaches
+  Route 3/Route 5 source-memory agreement through
+  `PreparedEdgePublication::source_memory_access` and
+  `PreparedAddressingFunction`, not through the public
+  `PreparedFunctionLookups::memory_accesses` field.
+- Current riscv search result:
+  riscv emit paths accept `PreparedFunctionLookups`, but no supported searched
+  route directly reads `lookups->memory_accesses`.
+- Nearest exact public consumer is AArch64 scalar ALU lowering for
+  `f.load_local`, which is outside this idea's x86/riscv target.
+- Follow-up is tracked in
+  `ideas/open/271_phase_f5_x86_riscv_memory_accesses_public_consumer_fixture_support.md`.
+
 ## Goal
 
 Prove one bounded prepared-only fail-closed surface for
