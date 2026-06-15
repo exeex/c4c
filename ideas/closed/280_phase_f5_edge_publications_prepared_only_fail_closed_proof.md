@@ -53,6 +53,32 @@ wrapping, adapter migration, or broad prepared retirement can be considered.
 - Reject a route that leaves prepared-only publication acceptance intact behind
   a renamed helper or wrapper.
 
+## Completion Notes
+
+Closed on 2026-06-15 after proving one bounded prepared-only
+`PreparedFunctionLookups::edge_publications` row fails closed on a real target
+consumer. The proven row is the RISC-V dynamic `LoadLocal` publication for
+`left -> join`, destination value id `2` / `%dst`, source value id `1` /
+`%src`, source memory `%base + 12`, size `4`, and destination register `a1`.
+
+The proof keeps that public prepared row visible, supplies same-edge Route 5
+`NoSource` authority through
+`riscv::consume_edge_publication_move_intent(..., &route5_edge)`, and verifies
+that no instruction is emitted from prepared-only authority. The compatible
+positive path remains the matching Route 5 `MemorySource` dynamic stack-source
+row with `Available` intent status and exact `lw a1, 12(s2)` output.
+
+Close proof used matching `test_before.log` and `test_after.log` for
+`^backend_riscv_prepared_edge_publication$`; the regression guard passed with
+1/1 tests passing before and after, no new failures.
+
+Remaining nearby edge-publication families are later scope: duplicate Route 5
+records, Route 5-only rows, wrong-edge rows, scalar register-source rows that
+can still permit prepared fallback, metadata, liveness,
+`edge_publication_source_producers`, aggregate retirement, and draft 155 work.
+No broad prepared API retirement, migration, privatization, deletion, demotion,
+wrapping, or adapter conversion was performed under this idea.
+
 ## Source
 
 Extracted from `ideas/draft/274_phase_f5_remaining_prepared_boundary_proof_backlog.md`.
