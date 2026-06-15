@@ -58,3 +58,30 @@ blocker.
 ## Source
 
 Extracted from `ideas/draft/274_phase_f5_remaining_prepared_boundary_proof_backlog.md`.
+
+## Completion Notes
+
+Closed on 2026-06-15 as a bounded non-applicability gate. The examined x86
+backend surface consumes `PreparedFunctionLookups::edge_publications` and the
+source-producer facts embedded in each `PreparedEdgePublication`; no direct x86
+backend consumer boundary for
+`PreparedFunctionLookups::edge_publication_source_producers` was found.
+
+The gate therefore did not claim x86 public-field parity. The smallest future
+prerequisite remains adding or exposing a true x86 backend consumer of
+`PreparedFunctionLookups::edge_publication_source_producers` before any later
+parity proof.
+
+Focused close proof used the x86 adjacent-consumer subset:
+
+```sh
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_prepared_handoff_label_authority|backend_x86_prepared_decoded_home_storage)$'; } > test_after.log 2>&1
+```
+
+The close-time regression guard passed with matching `test_before.log` and
+`test_after.log`: 2/2 passed before, 2/2 passed after, and no new failures.
+No broad x86 lowering, Route 5 rewrite, prepared API privatization, aggregate
+retirement, metadata/liveness, draft 155 work, status/debug weakening,
+route-debug weakening, prepared-printer weakening, helper/oracle weakening,
+wrapper weakening, exact-output weakening, fallback weakening, or baseline
+weakening was part of this gate.
