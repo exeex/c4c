@@ -1,39 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/278_phase_f5_memory_accesses_byte_offset_coverage_gate.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Run Acceptance Proof
+Current Step ID: 5
+Current Step Title: Record Coverage Remainder
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 of `plan.md` by running the acceptance proof for the
-byte-offset coverage gate.
+Completed Step 5 of `plan.md` by recording the coverage remainder for the
+byte-offset gate.
 
-The delegated build plus targeted
-`^backend_riscv_prepared_edge_publication$` CTest subset passed 1/1 and
-preserved the fail-closed byte-offset mismatch proof plus the compatible exact
-`lw a1, 12(s2)` output path.
+Proven row: the RISC-V same-consumer public lookup path now has a same-block
+duplicate `PreparedMemoryAccess` row for the same `%src` value at byte offset
+`16`, while the selected publication, selected position row, and Route 3 /
+Route 5 authority remain at byte offset `12`. The real
+`consume_edge_publication_move_intent(..., &route5_memory_edge)` consumer fails
+closed as `UnsupportedSourceHome`, emits no instruction, records no
+source-memory offset, and keeps Route 5 / Route 3 agreement true for the
+selected offset `12` row. The compatible dynamic stack-source `LoadLocal` path
+still emits exact `lw a1, 12(s2)`.
 
 ## Suggested Next
 
-Supervisor should decide the next lifecycle action for the active plan.
+Supervisor should decide the next lifecycle action for this active plan using
+the Step 5 remainder notes.
 
 ## Watchouts
 
-Do not claim exhaustive byte-offset coverage from this one row. This acceptance
-proof did not weaken fallback, status/debug, route-debug, helper/oracle,
-prepared-printer, wrapper, exact-output, or baseline contracts.
+Do not claim exhaustive byte-offset completion from this gate. Remaining
+unsupported or unexamined byte-offset surfaces include:
+
+- Shared source-producer planner consumers using result-value-name or
+  positional `find_indexed_prepared_memory_access` paths.
+- AArch64 target operand, ALU, and memory operand consumers of prepared-memory
+  lookup data by result value id or positional access.
+- Wrapper-level negative exact output for a same-block duplicate public row.
+- Synthetic prepared offset drift between
+  `publication.source_memory_byte_offset`, `publication.source_memory_access`,
+  and alternate public lookup entries with the same source value.
+
+No fixture-support blocker remains for the proven RISC-V same-block public
+lookup row. Separate fixture-support work may be needed only if the supervisor
+opens wrapper-level negative-output or target-operand byte-offset packets.
 
 ## Proof
 
-Ran exactly:
-
-```sh
-{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_prepared_edge_publication$'; } > test_after.log 2>&1
-```
-
-Result: passed. Build was up to date, and targeted CTest passed 1/1.
-
-Proof log: `test_after.log`.
+Todo-only packet per supervisor delegation. No build or tests were run, and
+logs were not touched.
