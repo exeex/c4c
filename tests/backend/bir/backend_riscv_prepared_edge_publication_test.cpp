@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -144,7 +145,7 @@ prepare::PreparedFunctionLookups make_lookups(
 void make_load_local_dynamic_stack_source(
     prepare::PreparedBirModule& prepared,
     const FixtureIds& ids,
-    std::optional<prepare::PreparedMemoryAccess> access) {
+    const std::vector<prepare::PreparedMemoryAccess>& accesses) {
   auto& function = prepared.module.functions.front();
   function.blocks = {bir::Block{
       .label = std::string{"left"},
@@ -171,10 +172,21 @@ void make_load_local_dynamic_stack_source(
   prepare::PreparedAddressingFunction function_addressing{
       .function_name = ids.function,
   };
-  if (access.has_value()) {
-    function_addressing.accesses.push_back(*access);
+  for (const auto& access : accesses) {
+    function_addressing.accesses.push_back(access);
   }
   prepared.addressing.functions.push_back(std::move(function_addressing));
+}
+
+void make_load_local_dynamic_stack_source(
+    prepare::PreparedBirModule& prepared,
+    const FixtureIds& ids,
+    std::optional<prepare::PreparedMemoryAccess> access) {
+  std::vector<prepare::PreparedMemoryAccess> accesses;
+  if (access.has_value()) {
+    accesses.push_back(*access);
+  }
+  make_load_local_dynamic_stack_source(prepared, ids, accesses);
 }
 
 prepare::PreparedMemoryAccess load_local_source_access(const FixtureIds& ids) {
@@ -193,6 +205,14 @@ prepare::PreparedMemoryAccess load_local_source_access(const FixtureIds& ids) {
               .can_use_base_plus_offset = true,
           },
   };
+}
+
+prepare::PreparedMemoryAccess stale_public_load_local_source_access(
+    const FixtureIds& ids) {
+  auto access = load_local_source_access(ids);
+  access.block_label = ids.successor;
+  access.address.byte_offset = 16;
+  return access;
 }
 
 bir::Function make_route5_edge_identity_function(const FixtureIds& ids,
@@ -1458,15 +1478,57 @@ int check_load_local_dynamic_stack_source_exposes_shared_memory_access() {
     return 1;
   }
 
-  lookups = make_lookups(prepared);
-  lookups.memory_accesses.accesses_by_result_value_id.clear();
+  auto stale_public = make_register_edge_publication_module();
+  const auto stale_ids = FixtureIds{
+      .function = stale_public.names.function_names.find("join_regs"),
+      .predecessor = stale_public.names.block_labels.find("left"),
+      .successor = stale_public.names.block_labels.find("join"),
+      .source_name = stale_public.names.value_names.find("%src"),
+      .base_name = stale_public.names.value_names.find("%base"),
+      .destination_name = stale_public.names.value_names.find("%dst"),
+  };
+  make_load_local_dynamic_stack_source(
+      stale_public,
+      stale_ids,
+      std::vector<prepare::PreparedMemoryAccess>{
+          load_local_source_access(stale_ids),
+          stale_public_load_local_source_access(stale_ids),
+      });
+  lookups = make_lookups(stale_public);
+  publication = prepare::find_unique_indexed_prepared_edge_publication(
+      &lookups.edge_publications, stale_ids.predecessor, stale_ids.successor, 2);
+  const auto* current_position_access =
+      prepare::find_indexed_prepared_memory_access(
+          &lookups.memory_accesses, stale_ids.predecessor, 0);
+  const auto* stale_position_access =
+      prepare::find_indexed_prepared_memory_access(
+          &lookups.memory_accesses, stale_ids.successor, 0);
+  const auto* public_source_accesses =
+      prepare::find_indexed_prepared_memory_accesses_by_result_value_id(
+          &lookups.memory_accesses, 1);
+  if (publication == nullptr ||
+      !expect(publication->source_memory_access == current_position_access,
+              "shared publication should keep the current position-selected source memory row") ||
+      !expect(current_position_access != nullptr &&
+                  stale_position_access != nullptr &&
+                  stale_position_access != current_position_access,
+              "normal prepared lookup construction should expose a separately identifiable stale public memory row") ||
+      !expect(stale_position_access->address.byte_offset == 16,
+              "stale public memory row should preserve its stale offset fact") ||
+      !expect(public_source_accesses != nullptr &&
+                  public_source_accesses->size() == 2 &&
+                  public_source_accesses->front() == current_position_access &&
+                  public_source_accesses->back() == stale_position_access,
+              "normal prepared lookup construction should publish current and stale rows by source value id")) {
+    return 1;
+  }
   intent = riscv::consume_edge_publication_move_intent(
-      &lookups, ids.predecessor, ids.successor, 2);
+      &lookups, stale_ids.predecessor, stale_ids.successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
-              "RISC-V dynamic stack-source helper should require the public memory_accesses lookup row") ||
+              "RISC-V dynamic stack-source helper should reject stale public memory_accesses rows") ||
       !expect(intent.instruction_text.empty() &&
                   !intent.source_memory_byte_offset.has_value(),
-              "RISC-V dynamic stack-source helper should not render after the public memory lookup row is removed")) {
+              "RISC-V dynamic stack-source helper should not render when the public memory lookup row is stale")) {
     return 1;
   }
 
