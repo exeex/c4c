@@ -1,172 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/266_phase_f4_edge_publications_unsupported_publication_fail_closed_proof_map.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Gather Edge-Publication Evidence
+Current Step ID: 2
+Current Step Title: Map Duplicate Same-Edge Route 5 Records
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: `Gather Edge-Publication Evidence` completed the inventory for the
-active `edge_publications` proof map.
+Step 2: `Map Duplicate Same-Edge Route 5 Records` completed the duplicate
+same-edge Route 5 row map for the active `edge_publications` proof map.
 
-Evidence inventory:
+Duplicate same-edge row map:
 
-- Source intent: idea 266 keeps this as analysis/proof work only. It explicitly
-  blocks demotion, deletion, privatization, accessor wrapping, adapter
-  migration, public-surface weakening, status/helper/output rewrites, and
-  target-policy migration into BIR.
-- Post-F3 gate evidence from closed idea 264: `edge_publications` is thinner
-  than after idea 247 because x86 now has selected dynamic `LoadLocal`
-  Route 5/prepared edge-publication agreement with Route 3 agreement gating.
-  Public lookup demotion remains blocked by missing fail-closed proof for
-  duplicate Route 5 records on one natural edge, prepared-only publication
-  rows, Route 5-only publication rows, and wrong-edge rows.
-- Phase F3 map evidence from closed idea 251: the selected semantic fact is
-  Route 5 CFG-edge publication source identity checked against prepared
-  `PreparedEdgePublication` for the same predecessor, successor, destination
-  value, source value, and source producer. Route 4 remains publication
-  availability/value-context evidence for this map, not the selected Route 5
-  authority.
-- Phase F3 x86 bridge evidence from closed idea 259: x86 now requires
-  Route 5/prepared agreement for selected dynamic `LoadLocal` publication
-  moves and requires Route 3 source-memory agreement before treating those
-  moves as agreeing. Non-`LoadLocal` non-agreeing rows stay on the preserved
-  prepared compatibility path.
-- Compatibility matrix evidence from closed idea 254: helper/oracle statuses,
-  fallback names, route-debug output, prepared-printer output, wrapper output,
-  exact target output, and baseline behavior are compatibility contracts, not
-  proof that semantic ownership transferred.
+| Row | Consumer boundary | Semantic authority | Retained compatibility surface | Expected fail-closed result | Current evidence | Proof gap / disposition |
+| --- | --- | --- | --- | --- | --- | --- |
+| Route 5 index contains two `Route5CfgEdgePublicationRecord` entries for the same predecessor label/id, successor label/id, and destination value identity. | BIR/MIR Route 5 helper boundary: `bir::route5_build_edge_join_source_index(...)`, `bir::route5_find_cfg_edge_publication(...)`, and `mir::find_bir_cfg_edge_publication_source_identity(...)`. | Route 5/BIR publication identity for the natural edge: predecessor, successor, destination value, source value, source producer kind/instruction/index, and optional Route 3 source-memory identity for `LoadLocal`. | Public prepared lookup remains the compatibility mirror: `PreparedFunctionLookups::edge_publications`, `PreparedEdgePublicationLookups::publications_by_edge_destination`, and `find_unique_indexed_prepared_edge_publication(...)`. | Duplicate Route 5 authority must not be silently accepted as a selected semantic agreement. It should stay diagnostic/fail-closed at the Route 5/BIR index boundary until a target consumer proves the duplicate cannot drive emitted output. | `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` manually duplicates `route5_edge_index.edge_records.front()` and verifies the index exposes the extra duplicate record. The same test proves adjacent non-duplicate Route 5 lookup statuses for available memory-source, missing source producer, destination type mismatch (`no_match`), wrong predecessor (`no_source`), and wrong successor (`missing_successor`). | No target-consumer proof yet. The helper evidence exposes duplicate records but does not prove x86 or riscv rejects a duplicate same-edge Route 5 row at the emission boundary, so this row is not demotion-ready. |
+| Duplicate same-edge Route 5 row is passed near riscv diagnostic/fallback consumption. | riscv edge-publication move adapter: `riscv::consume_edge_publication_move_intent(...)` with optional `Route5CfgEdgePublicationRecord*` diagnostics and prepared-backed output. | Same Route 5/BIR record authority as above, surfaced only through diagnostic fields `route5_edge_status`, `route5_edge_source_agrees`, and `route3_source_memory_agrees`. | Prepared riscv compatibility remains authoritative for move text and fail-closed status: unique prepared publication lookup, `EdgePublicationMoveIntentStatus`, and exact `mv`, `lw`, `li`, `sw`, or large-offset output. | Duplicate Route 5 rows must not become accepted output authority. The expected behavior is either an explicit duplicate diagnostic/fail-closed Route 5 status before consumption or continued prepared-backed output with non-agreeing Route 5 diagnostics clearly separated from authority. | `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp` creates a duplicate Route 5 index and confirms duplicate exposure while separately proving `no_match` and `no_source` Route 5 diagnostics preserve prepared-backed riscv output. | Duplicate exposure is not wired to a concrete riscv consumer rejection. The current riscv test does not pass a duplicate-result record with a duplicate-specific status to the adapter, and Route 5 currently has no duplicate edge status returned by `route5_find_cfg_edge_publication(...)`. Not demotion-ready. |
+| Duplicate same-edge Route 5 row at the x86 selected dynamic `LoadLocal` agreement boundary. | x86 prepared-module selected `LoadLocal` bridge from closed idea 259: selected publication emission requires Route 5/prepared agreement plus Route 3 source-memory agreement before preserving selected output. | Same Route 5/BIR record authority, with Route 3 memory authority required for selected `LoadLocal` source-memory agreement. | x86 retained compatibility surfaces are `x86::ConsumedPlans` shared function lookups, `x86_prepared::consume_edge_publication_move_intent(...)`, prepared-module handoff errors, and exact emitted `mov` output. | A duplicate same-edge Route 5 row should make selected Route 5 agreement unavailable or rejected before x86 treats prepared `LoadLocal` output as agreed. It must not fall through as an accepted selected output solely because one duplicate record happens to match. | Existing x86 proof rejects missing Route 5 source-memory evidence, Route 5/Route 3 source-memory mismatch, and Route 5 source-producer index mismatch for selected dynamic `LoadLocal`. It does not construct duplicate same-edge Route 5 records. | Missing x86 duplicate proof. The selected-path bridge is positive/mismatch evidence, not duplicate same-edge fail-closed evidence; no demotion readiness. |
 
-Authority candidates:
+Boundaries kept out of Step 2:
 
-- Route 5/BIR semantic authority candidates are
-  `bir::Route5CfgEdgePublicationRecord`, `bir::Route5EdgeJoinSourceIndex`,
-  `bir::route5_cfg_edge_publication_record(...)`,
-  `bir::route5_build_edge_join_source_index(...)`, and
-  `bir::route5_find_cfg_edge_publication(...)`.
-- Route 5 records carry predecessor/successor labels, destination value,
-  source value, source producer kind/instruction/index, and for `LoadLocal`
-  sources a Route 3 memory identity (`source_memory_identity_available` plus
-  `Route3MemoryAccessRecord`).
-- Route 5 status vocabulary currently includes `available`, `memory_source`,
-  `no_source`, `missing_predecessor`, `missing_successor`,
-  `missing_destination`, `missing_publication`, `missing_source_value`,
-  `missing_source_producer`, `missing_source_memory_access`,
-  `incomplete_source_memory_access`, and `no_match`.
-- Prepared compatibility authority currently flows through
-  `PreparedFunctionLookups::edge_publications`,
-  `PreparedEdgePublicationLookups::publications`,
-  `publications_by_edge_destination`,
-  `PreparedEdgePublication`, `PreparedEdgePublicationLookupStatus`,
-  `PreparedEdgePublicationSourceProducerKind`,
-  `PreparedEdgePublicationSourceMemoryAccessStatus`,
-  `make_prepared_edge_publication_lookups(...)`, and
-  `find_unique_indexed_prepared_edge_publication(...)`.
+- Prepared-only publication rows are not duplicate same-edge Route 5 rows; they
+  belong to Step 3 even when a prepared lookup or printer surface has duplicate
+  or fallback wording.
+- Route 5-only rows are not duplicate same-edge rows unless the duplicate
+  Route 5 records share the same natural edge and destination; missing prepared
+  mirror behavior belongs to Step 4.
+- Wrong-edge rows are not duplicate same-edge rows; wrong predecessor and wrong
+  successor evidence remains Step 5 boundary evidence.
+- Route 4 duplicate printer fallback rows are compatibility/printer evidence,
+  not Route 5 same-edge target-consumer proof.
 
-Preserved compatibility surfaces:
+Disposition:
 
-- Public prepared lookup construction and indexing must stay stable:
-  predecessor/successor/destination lookup keys, `PreparedEdgePublication`
-  row contents, source/destination value ids, source/destination homes,
-  parallel-copy bundle/step metadata, move identity, source producer facts,
-  source-memory facts, aggregate stack-source authority, and status names.
-- x86 compatibility surfaces include `x86::ConsumedPlans` shared function
-  lookups, `x86_prepared::consume_edge_publication_move_intent(...)`,
-  `append_edge_publication_move_instruction(...)`,
-  `EdgePublicationMoveIntentStatus`, exact emitted `mov` text, and
-  prepared-module handoff error strings.
-- riscv compatibility surfaces include
-  `riscv::consume_edge_publication_move_intent(...)`,
-  `append_edge_publication_move_instruction(...)`,
-  `EdgePublicationMoveIntentStatus`, exact emitted `mv`, `lw`, `li`, `sw`,
-  and large-offset instruction text, plus diagnostic fields
-  `route5_edge_status`, `route5_edge_source_agrees`, and
-  `route3_source_memory_agrees`.
-- Prepared-printer and helper/oracle surfaces remain preservation contracts:
-  block-entry/current-block publication rows, fallback rows for missing or
-  wrong Route 4 evidence, route/prepared agreement helper rows, and edge-copy
-  source fact statuses must not be rewritten to claim progress.
-
-Current proof coverage:
-
-- `tests/backend/bir/backend_prealloc_block_entry_publications_test.cpp`
-  proves prepared `edge_publications` indexing for block-entry destinations
-  and preservation of source/destination ids, source classification/home,
-  parallel-copy ownership, execution site, and step metadata.
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` proves Route 5
-  and MIR/BIR CFG-edge source identity behavior for available memory-source
-  rows, missing destination, missing source producer, destination type
-  mismatch (`no_match`), wrong predecessor (`no_source`), wrong successor
-  (`missing_successor`), multi-predecessor lookup, and prepared/BIR key
-  mismatch rejection. It also exposes duplicate Route 5 records in the index
-  as diagnostics but does not prove target consumer fail-closed behavior for
-  duplicate same-edge rows.
-- `tests/backend/bir/backend_x86_prepared_decoded_home_storage_test.cpp`
-  proves x86 prepared lookup consumption for register, stack-slot, and
-  rematerialized-immediate source homes; `MissingSharedLookups`,
-  `MissingPublication`, unsupported source homes, unsupported destination
-  homes, and exact `mov` output preservation.
-- `tests/backend/bir/backend_x86_handoff_boundary_joined_branch_test.cpp`
-  proves selected x86 dynamic `LoadLocal` agreement/rejection: accepted
-  selected output when Route 5 and Route 3 agree, rejection for incomplete
-  source-memory authority, missing Route 5 source-memory evidence,
-  Route 5/Route 3 source-memory mismatch, and Route 5 source-producer index
-  mismatch. It also proves a drifted prepared publication destination is
-  rejected with the shared edge-publication authority contract.
-- `tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp` proves
-  riscv prepared-backed output preservation for scalar and dynamic memory
-  source rows; diagnostic Route 5 available/no-match/no-source status fields;
-  Route 3 agreement booleans for dynamic `LoadLocal`; missing prepared
-  publication fail-closed status; non-agreeing Route 5/Route 3 facts preserving
-  prepared fallback/output; and a broad set of target-policy unsupported
-  source/destination rows.
-- `tests/backend/bir/backend_prepared_printer_test.cpp` proves public
-  prepared-printer row preservation for block-entry publication rows when
-  Route 4 evidence is prepared-only, agreeing, missing-PHI,
-  wrong-destination, wrong-successor, wrong-instruction, or duplicate.
-
-Missing evidence:
-
-- Duplicate same-edge Route 5 rows currently have index/oracle diagnostics, but
-  no full x86/riscv target consumer proof that duplicate same-edge semantic
-  authority cannot be silently accepted while public prepared output remains
-  stable.
-- Prepared-only publication rows have compatibility evidence and Route 4
-  printer fallback examples, but no complete Route 5 `edge_publications` row
-  map proving expected fail-closed behavior at every public lookup, wrapper,
-  helper/oracle, printer, and target-output surface.
-- Route 5-only publication rows have Route 5/BIR authority candidates, but the
-  missing prepared compatibility mirror behavior and target-consumer outcome
-  are not yet mapped.
-- Wrong-edge rows have Route 5/MIR helper statuses for wrong predecessor and
-  wrong successor plus selected x86 drift rejection, but no complete same-row
-  map across prepared lookup, wrapper output, route diagnostics, and
-  target-output preservation.
-- Existing x86 selected-path coverage is not demotion proof for the whole
-  public lookup because it covers selected dynamic `LoadLocal` rows, not all
-  duplicate/prepared-only/Route 5-only/wrong-edge unsupported rows.
-
-x86/riscv applicability notes:
-
-- x86 is applicable for selected dynamic `LoadLocal` Route 5/prepared agreement
-  with Route 3 source-memory gating. Non-`LoadLocal` non-agreeing rows are
-  explicitly preserved as prepared compatibility, so they are not demotion
-  evidence.
-- riscv is applicable as diagnostic/fallback evidence: it exposes Route 5 and
-  Route 3 agreement fields while keeping prepared-backed output authoritative.
-  Current riscv evidence does not make Route 5 diagnostics the consumer
-  authority for unsupported rows.
-- Neither target currently supplies complete fail-closed proof for duplicate
-  same-edge, prepared-only, Route 5-only, or wrong-edge publication rows.
+- Duplicate same-edge Route 5 records are currently mapped as blocked
+  diagnostic/fail-closed obligations.
+- No row above is demotion-ready because the available evidence stops at
+  Route 5/BIR index exposure plus adjacent riscv/x86 diagnostic or mismatch
+  behavior, not full duplicate same-edge target-consumer fail-closed proof.
 
 ## Suggested Next
 
-Execute Step 2 by mapping duplicate same-edge Route 5 records only. Use the
-inventory above to separate Route 5/BIR index diagnostics from target-consumer
-fail-closed proof, and do not claim demotion readiness from duplicate detection
-alone.
+Execute Step 3 by mapping prepared-only publication rows. Keep duplicate
+same-edge Route 5 records as a closed Step 2 boundary and do not reuse Route 4
+duplicate printer fallback evidence as Route 5 target-consumer proof.
 
 ## Watchouts
 
@@ -177,8 +55,11 @@ alone.
   target output, or baseline behavior.
 - Do not treat selected supported-path x86 Route 5/prepared agreement as public
   lookup retirement proof.
-- Do not map prepared-only, Route 5-only, or wrong-edge rows in Step 2 except
-  as boundaries to avoid mixing them into duplicate same-edge rows.
+- Step 2 did not prove demotion readiness: duplicate same-edge Route 5 rows
+  still lack x86/riscv target-consumer fail-closed proof.
+- Do not map Route 5-only or wrong-edge rows in Step 3 except as boundaries;
+  prepared-only rows should be judged by missing Route 5 authority plus
+  preserved public prepared compatibility behavior.
 - Keep target policy out of Route 5/BIR authority: move selection,
   register/home/storage policy, scratch registers, instruction spelling,
   wrapper formatting, branch/layout behavior, and exact target output remain
