@@ -190,6 +190,13 @@ std::optional<std::string> render_edge_publication_source_operand(
       publication.move->from_value_id == *publication.source_value_id &&
       publication.move->to_value_id == publication.destination_value_id &&
       publication.move->destination_register_placement.has_value()) {
+    const auto* indexed_access =
+        prepare::find_unique_indexed_prepared_memory_access_by_result_value_id(
+            &lookups->memory_accesses, *publication.source_value_id);
+    if (indexed_access == nullptr ||
+        indexed_access != publication.source_memory_access) {
+      return std::nullopt;
+    }
     const auto base_id_it =
         lookups->value_homes.value_ids.find(
             *publication.source_memory_pointer_value_name);

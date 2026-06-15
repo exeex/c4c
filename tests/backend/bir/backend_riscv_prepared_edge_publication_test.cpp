@@ -1404,6 +1404,13 @@ int check_load_local_dynamic_stack_source_exposes_shared_memory_access() {
               "shared publication should not require materialization for base-plus-offset access")) {
     return 1;
   }
+  const auto* indexed_source_memory_access =
+      prepare::find_unique_indexed_prepared_memory_access_by_result_value_id(
+          &lookups.memory_accesses, 1);
+  if (!expect(indexed_source_memory_access == publication->source_memory_access,
+              "normal prepared lookup construction should expose the selected source memory row by source value id")) {
+    return 1;
+  }
 
   const auto asm_text = riscv::emit_prepared_module(prepared);
   if (!expect(asm_text.find("lw a1, 12(s2)") != std::string::npos,
@@ -1448,6 +1455,18 @@ int check_load_local_dynamic_stack_source_exposes_shared_memory_access() {
       &lookups, ids.predecessor, ids.successor, 2);
   if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::MissingPublication,
               "RISC-V dynamic stack-source helper should not rediscover edge moves after shared publication authority is removed")) {
+    return 1;
+  }
+
+  lookups = make_lookups(prepared);
+  lookups.memory_accesses.accesses_by_result_value_id.clear();
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V dynamic stack-source helper should require the public memory_accesses lookup row") ||
+      !expect(intent.instruction_text.empty() &&
+                  !intent.source_memory_byte_offset.has_value(),
+              "RISC-V dynamic stack-source helper should not render after the public memory lookup row is removed")) {
     return 1;
   }
 
