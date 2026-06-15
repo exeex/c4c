@@ -1,168 +1,88 @@
 Status: Active
 Source Idea Path: ideas/open/268_phase_f4_prepared_bir_module_liveness_authority_blocker_follow_up.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Map Fail-Closed Rows
+Current Step ID: Step 4
+Current Step Title: Decide Later Work Eligibility
 
 # Current Packet
 
 ## Just Finished
 
-Step 3, `Map Fail-Closed Rows`, mapped the liveness row-validity blocker
-families without implementation changes. The map preserves the Step 2 decision:
-there is no exact identity-only reader and no independent semantic liveness
-fact today; the only semantic liveness authority is still the public prepared
-row produced by `BirPreAlloc::run_liveness()`.
+Step 4, `Decide Later Work Eligibility`, converted the Step 2 and Step 3
+blocker map into a later-work decision without implementation changes.
 
-Fail-closed row map:
-- Absent/skipped rows. Expected behavior before any authority movement:
-  production preparation must either have one current liveness row for every
-  non-declaration function that downstream liveness-derived phases depend on,
-  or must stop publication of derived allocation, preservation, helper, printer,
-  route-debug, and target-output facts for the affected function with explicit
-  missing-fact/status evidence. Current support is partial only. Production
-  `BirPreAlloc::run()` always calls `run_liveness()` at
-  `src/backend/prealloc/prealloc.cpp:29-36`, even though `PrepareOptions` still
-  exposes `run_liveness` at `src/backend/prealloc/names.hpp:18-23`.
-  `run_liveness()` clears and rebuilds `prepared_.liveness.functions` at
-  `src/backend/prealloc/liveness.cpp:906-909`, skips declarations at lines
-  912-915, and publishes one row per visited function at line 1001. However,
-  `run_regalloc()` sizes and iterates only the rows present at
-  `src/backend/prealloc/regalloc.cpp:470-485`; a missing row silently means no
-  regalloc/value-location row for that function rather than an explicit
-  fail-closed diagnostic. Call plans look up by function name at
-  `src/backend/prealloc/call_plans.cpp:2748-2756`; preservation construction
-  returns empty when `liveness_function == nullptr` at lines 1486-1489 and
-  1596-1603. F128/I128 helper ownership does append
-  `live_preservation_requires_structured_live_across_helper_facts` when
-  liveness/regalloc/call-point evidence is absent
-  (`src/backend/prealloc/f128_runtime_helpers.cpp:920-950`,
-  `src/backend/prealloc/i128_runtime_helpers.cpp:935-1007`). Proof gap/blocker:
-  no central invariant proves row coverage or prevents empty derived output for
-  absent rows. Compatibility surfaces to preserve: production full-route output,
-  helper missing-fact spelling, tests that manually stage liveness then run
-  regalloc with `run_liveness = false`, and public `prepared.liveness` test
-  access.
-- Stale rows. Expected behavior before any authority movement: a liveness row
-  built from an older module, older names table, older stack-layout context, or
-  older BIR body must be rejected before target-policy readers consume it.
-  Current support is missing. `run_liveness()` clears rows when it runs, but
-  manual staged flows can pass an existing `PreparedBirModule` into a new
-  `BirPreAlloc` and call later phases; `run_regalloc()` trusts the existing row
-  contents at `src/backend/prealloc/regalloc.cpp:478-485`, combines them with
-  current target/profile/stack state at lines 500-568, and uses call points for
-  register assignment at lines 635-735. The call-plan and helper paths use
-  first matching `function_name` rows and do not compare generation, module
-  identity, instruction count, block labels, or value universe
-  (`src/backend/prealloc/call_plans.cpp:646-668`,
-  `src/backend/prealloc/f128_runtime_helpers.cpp:190-207`,
-  `src/backend/prealloc/i128_runtime_helpers.cpp:209-225`). Proof gap/blocker:
-  no generation stamp, source-module fingerprint, or row freshness assertion is
-  present. Compatibility surfaces to preserve: staged test helpers that reuse
-  prepared rows across manual phase calls, derived regalloc/value-location
-  output, and exact target output derived from those rows.
-- Mismatch rows. Expected behavior before any authority movement: rows whose
-  `function_name`, block program points, instruction counts, value ids, value
-  names, stack object ids, or intervals disagree with the prepared module must
-  fail closed before publishing target behavior. Current support is partial and
-  local. Call-plan lookup returns the first row whose `function_name` matches
-  (`src/backend/prealloc/call_plans.cpp:646-655`), and missing block mapping
-  makes preservation return empty (`src/backend/prealloc/call_plans.cpp:657-668`
-  and 1588-1609). Regalloc still trusts every row it iterates, derives value
-  identity and allocation state from row values at
-  `src/backend/prealloc/regalloc.cpp:500-540`, builds constraints at lines
-  546-568, publishes interference at lines 578-596, and allocates fallback stack
-  slots at lines 737-775. Helper ownership records missing live-preservation
-  facts when the call point cannot be found, but the generic regalloc and
-  call-plan readers do not emit a liveness-mismatch fact. Proof gap/blocker: no
-  row/module consistency validator checks all mismatch dimensions before
-  derived output is published. Compatibility surfaces to preserve: current empty
-  preservation behavior for missing call points, helper status facts, prepared
-  printer summaries, route-debug filtering, and target-output behavior.
-- Duplicate/conflict rows. Expected behavior before any authority movement:
-  duplicate rows for the same function, or conflicts among duplicate rows, must
-  be rejected or deterministically diagnosed before any reader chooses one row
-  and another reader consumes both. Current support is missing. `run_liveness()`
-  normally publishes one row per non-declaration function, but no reader checks
-  uniqueness. Regalloc iterates all rows at `src/backend/prealloc/regalloc.cpp:485`,
-  so duplicates can publish duplicate regalloc/value-location function records.
-  Call-plan and helper lookup helpers return the first matching row
-  (`src/backend/prealloc/call_plans.cpp:646-655`,
-  `src/backend/prealloc/f128_runtime_helpers.cpp:190-198`,
-  `src/backend/prealloc/i128_runtime_helpers.cpp:209-217`), so first-match
-  behavior can disagree with regalloc's all-rows behavior. Proof gap/blocker:
-  no duplicate detector or conflict diagnostic exists for liveness rows.
-  Compatibility surfaces to preserve: first-match helper/call-plan behavior
-  until replaced by an explicit lifecycle-authorized diagnostic, and existing
-  regalloc publication shape for valid single-row modules.
-- Unsupported rows. Expected behavior before any authority movement:
-  unsupported liveness features should remain represented as missing/unsupported
-  facts on the consuming compatibility surface, not as silently usable semantic
-  authority. Current liveness rows have no unsupported-state field; unsupported
-  and missing-fact behavior lives in downstream carrier/helper systems instead.
-  Examples include helper live-preservation missing facts in F128/I128 helper
-  ownership (`src/backend/prealloc/f128_runtime_helpers.cpp:946-950`,
-  `src/backend/prealloc/i128_runtime_helpers.cpp:999-1003`) and broader
-  prepared-printer fail-closed missing-fact surfaces in tests, but there is no
-  liveness-specific unsupported row contract. Proof gap/blocker: unsupported
-  liveness row semantics are not modeled, so demotion/private-pass-context work
-  cannot rely on an unsupported-row fail-closed protocol. Compatibility surfaces
-  to preserve: downstream `missing_required_facts`, prepared-printer diagnostic
-  spelling, helper/oracle/status behavior, and unsupported target-route
-  behavior.
-- Fallback rows. Expected behavior before any authority movement: fallback from
-  incomplete liveness must not produce target behavior that looks fully
-  authoritative unless the fallback is explicitly marked. Current behavior
-  contains unmarked fallback allocation. `run_regalloc()` sends values without a
-  live interval or without a register class through stack-slot fallback when
-  `normalized_value_size(value) != 0` at
-  `src/backend/prealloc/regalloc.cpp:755-765`, and ordinary unassigned values
-  also fall back to stack slots at lines 768-775. Call preservation returns
-  empty preserved values when liveness is absent or the call point is missing
-  (`src/backend/prealloc/call_plans.cpp:1486-1489` and 1596-1603). Helper paths
-  add explicit missing facts for absent liveness/call point, but regalloc/value
-  locations and call plans do not uniformly mark fallback. Proof gap/blocker:
-  fallback output is not globally distinguishable from complete authority.
-  Compatibility surfaces to preserve: current stack-slot fallback behavior,
-  call-preservation empty-set behavior, helper missing facts, and exact target
-  output generated from fallback allocation.
-- Derived printer and target behavior. Expected behavior before any authority
-  movement: prepared printing, route-debug filtering, helper/status output,
-  regalloc/value-location summaries, call plans, and exact target emission must
-  remain stable unless a separate lifecycle idea proves a semantic authority
-  replacement and compatibility migration. Current support is compatibility
-  only. Prepared printing starts at `src/backend/prealloc/prepared_printer.cpp:39`
-  and emits completed phases, notes, BIR body, then derived summaries via
-  appenders at lines 77-84 and later; it does not print raw liveness rows as an
-  isolated semantic fact. Route-debug focus filtering clears liveness and other
-  prepared rows when the function name is absent at
-  `src/backend/backend.cpp:594-613` and erases rows outside the selected
-  function at lines 635-640. Target emission consumes downstream prepared
-  outputs such as regalloc, value locations, call plans, stack layout,
-  storage/helper facts, and exact instruction/output spelling, all of which can
-  be derived from liveness. Proof gap/blocker: no identity-only reader or
-  compatibility wrapper proves these surfaces can be moved off public
-  `PreparedBirModule::liveness`. Compatibility surfaces to preserve: prepared
-  printer text, route-debug filtered structure, helper/oracle/status text,
-  wrapper and fallback behavior when present, and exact target output.
+Decision:
+- Later private-pass-context, demotion, wrapper, migration, deletion, public
+  field hiding, or implementation work is blocked for this runbook.
+- The blocker is evidentiary, not mechanical: Step 2 found no exact
+  identity-only reader and no independent semantic liveness fact outside the
+  public prepared `PreparedBirModule::liveness` row produced by
+  `BirPreAlloc::run_liveness()`.
+- Step 3 found the fail-closed map blocker-heavy. Absent/skipped rows have only
+  partial helper/status fail-closed behavior; stale rows lack freshness or
+  generation checks; mismatch handling is local and inconsistent across
+  readers; duplicate/conflict rows lack uniqueness or conflict diagnostics;
+  unsupported rows lack a liveness-row contract; fallback rows are not globally
+  distinguishable from complete authority; derived printer, route-debug,
+  helper/status, regalloc/value-location, call-plan, wrapper, fallback, and
+  exact target-output surfaces remain compatibility authority.
 
-Decision from Step 3:
-- The fail-closed map is blocker-heavy. Absent/skipped rows have only partial
-  helper/status fail-closed behavior; stale, duplicate/conflict, unsupported,
-  and fallback rows lack central fail-closed contracts; mismatch handling is
-  local and inconsistent across readers.
-- No private-pass-context, demotion, wrapper, migration, deletion, or public
-  field hiding packet is authorized by this evidence. Such work would move or
-  hide the only current semantic liveness authority while fail-closed behavior
-  remains incomplete.
+Exact blockers tied to evidence:
+- No exact identity-only reader exists. Current readers either publish or derive
+  target-policy, printer/debug/status, fallback, wrapper, helper, regalloc,
+  value-location, call-plan, or exact-output behavior. Moving liveness behind a
+  private pass context, wrapper, or demoted field would hide the only current
+  semantic authority rather than proving an identity-only mirror.
+- No independent semantic liveness fact exists. The current semantic fact is
+  the public prepared liveness row itself. A later packet must not relabel that
+  row as BIR, route, private accessor, or compatibility-helper authority unless
+  it first proves the new fact is semantically independent and the public row is
+  only a compatibility mirror.
+- Fail-closed coverage is incomplete. There is no central row validator proving
+  row coverage, row freshness, row/module consistency, uniqueness,
+  unsupported-state handling, or marked fallback behavior before downstream
+  publication.
+- Compatibility surfaces still depend on current behavior. Prepared printer
+  text, route-debug filtering, helper/oracle/status text, fallback behavior,
+  wrapper behavior when present, regalloc/value-location summaries, call plans,
+  and exact target output must stay stable unless a separate lifecycle idea
+  proves and migrates a replacement authority.
+
+Separate lifecycle initiative decision:
+- A separate lifecycle initiative is not required immediately to complete this
+  blocker-map runbook. Closure of the current map is sufficient because the
+  correct output is a negative eligibility decision: no later implementation
+  packet is authorized from this evidence.
+- If the supervisor wants progress toward eventual implementation, the bounded
+  follow-up initiative should be named `Prepared liveness row validation and
+  semantic authority replacement`. That future idea should be scoped to proving
+  a semantic liveness authority, one identity-only reader, retained
+  compatibility surfaces, and central fail-closed behavior before any demotion
+  or migration.
+
+Minimum conditions for any future implementation idea:
+- Name one exact identity-only reader and the identity it consumes.
+- Name one independent semantic liveness fact that owns meaning, and prove the
+  public prepared liveness row is only a retained compatibility mirror.
+- Add or prove central fail-closed contracts for absent/skipped, stale,
+  mismatch, duplicate/conflict, unsupported, fallback, and derived
+  printer/target behavior.
+- Preserve existing public prepared compatibility surfaces until a separate
+  lifecycle-authorized migration proves their replacement: prepared printer,
+  route-debug, helper/oracle/status, fallback, wrapper, regalloc/value-location,
+  call-plan, and exact target-output behavior.
+- Avoid expectation downgrades, helper/status relabeling, route-debug/printer
+  output rewrites, named-fixture proof, or target-policy movement into BIR as a
+  substitute for semantic proof.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: decide later work eligibility from the blocker
-map. Expected result, based on Step 2 and Step 3 evidence, is that later
-private-pass-context, demotion, wrapper, migration, or deletion work remains
-blocked unless the supervisor/plan-owner creates a separate lifecycle idea for
-row validation or semantic authority replacement.
+Execute Step 5 from `plan.md`: validate that the map-only lifecycle slice did
+not weaken implementation files, expectations, helper/oracle/status output,
+fallback names, route-debug output, prepared-printer output, wrapper output,
+exact target output, unsupported behavior, or baselines. The expected Step 5
+handoff is to let the supervisor decide whether reviewer scrutiny is needed
+before closure or before creating any separate follow-up idea.
 
 ## Watchouts
 
@@ -183,6 +103,9 @@ row validation or semantic authority replacement.
   helper status is the strongest fail-closed evidence, but regalloc,
   value-location, call-plan, route-debug, printer, and target-output surfaces do
   not share a central liveness row validator.
+- The only bounded implementation-enabling follow-up identified here is a
+  separate lifecycle idea for prepared liveness row validation and semantic
+  authority replacement. This runbook does not authorize starting that work.
 
 ## Proof
 
