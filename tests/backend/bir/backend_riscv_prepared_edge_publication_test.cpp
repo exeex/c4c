@@ -1826,6 +1826,91 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
     return 1;
   }
 
+  {
+    auto stale_public = make_register_edge_publication_module();
+    const auto stale_ids = FixtureIds{
+        .function = stale_public.names.function_names.find("join_regs"),
+        .predecessor = stale_public.names.block_labels.find("left"),
+        .successor = stale_public.names.block_labels.find("join"),
+        .source_name = stale_public.names.value_names.find("%src"),
+        .base_name = stale_public.names.value_names.find("%base"),
+        .destination_name = stale_public.names.value_names.find("%dst"),
+    };
+    make_load_local_dynamic_stack_source(
+        stale_public,
+        stale_ids,
+        std::vector<prepare::PreparedMemoryAccess>{
+            load_local_source_access(stale_ids),
+            stale_public_load_local_source_access(stale_ids),
+        });
+    lookups = make_lookups(stale_public);
+    publication = prepare::find_unique_indexed_prepared_edge_publication(
+        &lookups.edge_publications, stale_ids.predecessor, stale_ids.successor, 2);
+    const auto* current_position_access =
+        prepare::find_indexed_prepared_memory_access(
+            &lookups.memory_accesses, stale_ids.predecessor, 0);
+    const auto* stale_position_access =
+        prepare::find_indexed_prepared_memory_access(
+            &lookups.memory_accesses, stale_ids.successor, 0);
+    const auto* public_source_accesses =
+        prepare::find_indexed_prepared_memory_accesses_by_result_value_id(
+            &lookups.memory_accesses, 1);
+    const auto current_route3_function =
+        make_route5_edge_identity_function(stale_ids, true);
+    const auto& current_route3_predecessor = current_route3_function.blocks[0];
+    const auto& current_route3_successor = current_route3_function.blocks[1];
+    const auto current_route3_index =
+        bir::route3_build_memory_access_index(current_route3_predecessor);
+    const auto* current_route3_load = bir::route3_find_memory_access_record(
+        current_route3_index, 0, bir::Route3MemoryAccessNodeKind::LoadLocal);
+    const auto route5_memory_edge = bir::route5_cfg_edge_publication_record(
+        &current_route3_predecessor,
+        &current_route3_successor,
+        bir::Value::named(bir::TypeKind::I32, "%dst"),
+        stale_ids.destination_name,
+        stale_ids.source_name);
+    if (publication == nullptr ||
+        !expect(publication->source_memory_access == current_position_access,
+                "stale prepared publication should still select the current position source memory row") ||
+        !expect(current_position_access != nullptr &&
+                    current_position_access->address.byte_offset == 12 &&
+                    stale_position_access != nullptr &&
+                    stale_position_access->address.byte_offset == 16,
+                "stale fixture should expose current offset 12 and stale public offset 16 rows") ||
+        !expect(public_source_accesses != nullptr &&
+                    public_source_accesses->size() == 2 &&
+                    public_source_accesses->front() == current_position_access &&
+                    public_source_accesses->back() == stale_position_access,
+                "stale fixture should publish both current and stale public rows for the source value") ||
+        !expect(current_route3_load != nullptr && *current_route3_load &&
+                    current_route3_load->byte_offset == 12 &&
+                    route5_memory_edge &&
+                    route5_memory_edge.status ==
+                        bir::Route5PublicationStatus::MemorySource &&
+                    route5_memory_edge.source_memory_identity_available &&
+                    route5_memory_edge.source_memory_access.instruction ==
+                        current_route3_load->instruction &&
+                    route5_memory_edge.source_memory_access.byte_offset ==
+                        publication->source_memory_byte_offset,
+                "Route 5 authority should carry the current Route 3 memory-source row")) {
+      return 1;
+    }
+    intent = riscv::consume_edge_publication_move_intent(
+        &lookups, stale_ids.predecessor, stale_ids.successor, 2, &route5_memory_edge);
+    if (!expect(intent.status ==
+                        riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
+                    intent.instruction_text.empty() &&
+                    !intent.source_memory_byte_offset.has_value() &&
+                    intent.route5_edge_status ==
+                        bir::Route5PublicationStatus::MemorySource &&
+                    intent.route5_edge_source_agrees &&
+                    intent.route3_source_memory_agrees,
+                "RISC-V same-consumer memory-source path should reject stale public rows even when current Route 3 / Route 5 authority agrees")) {
+      return 1;
+    }
+  }
+  lookups = make_lookups(dynamic_prepared);
+
   auto mismatched_route3_memory_edge = route5_memory_edge;
   mismatched_route3_memory_edge.source_memory_access.byte_offset = 16;
   intent = riscv::consume_edge_publication_move_intent(
