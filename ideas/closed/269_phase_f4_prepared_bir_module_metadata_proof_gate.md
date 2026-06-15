@@ -47,6 +47,22 @@ behavior before any later proposal can be safe.
 - The result does not claim that metadata proof implies whole
   `PreparedBirModule` retirement.
 
+## Closure Disposition
+
+Closed as a completed proof-gate lifecycle slice.
+
+The gate covers all three `PreparedBirModule` metadata fields:
+`invariants`, `completed_phases`, and `notes`. It records the required
+printer, status, and debug preservation rows plus invalid, mismatched, missing,
+direct-payload-read, and absent metadata rows for each field.
+
+The gate result is blocked-by-evidence rather than implementation progress.
+Public prepared metadata surfaces remain retained compatibility authority.
+This runbook does not authorize private-pass-context work, metadata demotion,
+accessor wrapping, adapter migration, metadata authority movement, broad
+`PreparedBirModule` retirement, or any implementation/test-proof packet.
+Future work in those areas requires a separate lifecycle idea.
+
 ## Reviewer Reject Signals
 
 - The slice weakens printer, status, debug, helper/oracle, fallback,
