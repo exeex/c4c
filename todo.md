@@ -1,30 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/279_phase_f5_x86_memory_accesses_public_field_parity_gate.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Preserve Compatible x86 Output Or Fallback
+Current Step ID: 4
+Current Step Title: Run Acceptance Proof
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 by recording that compatible x86 source-memory behavior
-remains unchanged under the Step 2 non-applicability outcome. Because no real
-x86 backend consumer boundary reads `PreparedFunctionLookups::memory_accesses`,
-there is no public-field row whose compatible exact output can be asserted in
-this gate.
+Completed Step 4 by running the focused x86 acceptance proof for the
+public-field parity gate non-applicability outcome.
 
-The preserved compatibility surface is the existing x86 source-memory behavior
-through `edge_publications`, `PreparedEdgePublication::source_memory_access`,
-and addressing records via `PreparedAddressingFunction` /
-`find_prepared_memory_access(addressing, ...)`. This packet does not weaken any
-exact-output, fallback, prepared-printer, wrapper, route-debug, helper/oracle,
-or baseline contract.
+The proof passed with both selected x86 backend tests green. This packet did
+not weaken any fallback, status-debug, route-debug, prepared-printer, wrapper,
+helper-oracle, exact-output, or baseline contract.
 
 ## Suggested Next
 
-Run the Step 4 x86 focused acceptance proof selected by the supervisor, using
-the examined x86 bucket and preserving `test_after.log` if delegated.
+Supervisor should decide whether to close, retire, or replace this active
+runbook. The Step 4 acceptance proof is complete.
 
 ## Watchouts
 
@@ -40,5 +34,14 @@ repair.
 
 ## Proof
 
-Todo-only packet. No build or tests were run, and `test_before.log` /
-`test_after.log` were not touched.
+Ran exactly:
+
+```sh
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_prepared_handoff_label_authority|backend_x86_prepared_decoded_home_storage)$'; } > test_after.log 2>&1
+```
+
+Result: passed. Build was up to date, and the focused CTest subset passed 2/2:
+`backend_x86_prepared_handoff_label_authority` and
+`backend_x86_prepared_decoded_home_storage`.
+
+Proof log path: `test_after.log`.
