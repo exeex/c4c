@@ -49,6 +49,44 @@ unsupported publication surfaces need explicit fail-closed proof.
 - No implementation demotion is proposed unless a later idea can point to this
   map as closed evidence.
 
+## Closure Disposition
+
+Closed after the active runbook completed the bounded proof map for all four
+publication families:
+
+- Duplicate same-edge Route 5 rows are mapped as fail-closed/diagnostic
+  obligations. Current helper and diagnostic evidence is not same-consumer
+  target proof, so these rows remain blocked from demotion.
+- Prepared-only rows are mapped as retained compatibility state plus missing
+  Route 5 authority. Current helper/oracle, selected x86, and riscv diagnostic
+  proof does not prove every x86/riscv target consumer rejects absent Route 5
+  authority while preserving public lookup/status/output behavior.
+- Route 5-only rows are mapped as authority-present and mirror-missing. Same
+  consumer proof is still absent for consuming Route 5 authority while the
+  public prepared mirror remains observable and compatible.
+- Wrong-edge rows are mapped as natural-edge identity mismatches. Existing
+  route/helper/oracle, diagnostic, and selected-path evidence does not directly
+  prove target consumers reject wrong-predecessor or wrong-successor rows
+  without emitting from the wrong natural edge.
+
+Final policy:
+
+- `PreparedFunctionLookups::edge_publications` remains public retained
+  compatibility.
+- No `edge_publications` demotion, deletion, privatization, private accessor,
+  wrapper, adapter migration, target-policy migration into BIR, status-output
+  rewrite, expectation rewrite, helper/oracle relabeling, fallback rename, or
+  route-debug/printer/wrapper-output rewrite is safe from this map.
+- No implementation follow-up should be created from this proof map. A later
+  proof-only initiative may be opened separately if the project chooses to
+  pursue same-consumer x86/riscv target proof for one blocked family.
+
+Close-time regression handling used the existing canonical full-suite logs:
+`test_before.log` and `test_after.log` both reported 3428/3428 passing tests
+for the same full-suite CTest scope. The regression guard passed with
+`--allow-non-decreasing-passed`, which is appropriate for this lifecycle-only
+closure with no implementation changes.
+
 ## Reviewer Reject Signals
 
 - The slice weakens unsupported expectations, helper/oracle statuses, fallback
