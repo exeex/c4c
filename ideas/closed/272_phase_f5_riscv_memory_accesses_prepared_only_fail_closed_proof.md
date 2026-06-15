@@ -1,5 +1,34 @@
 # 272 Phase F5 riscv memory_accesses prepared-only fail-closed proof
 
+## Closure Note
+
+Closed after accepted code commit
+`b5783084f4f409cdc05372293a4028350ad98588` proved the bounded RISC-V
+same-consumer prepared-only `LoadLocal` row. The selected backend consumer now
+fails closed with `UnsupportedSourceHome` when an internally coherent
+`PreparedFunctionLookups::memory_accesses` row lacks agreeing Route 3 / Route
+5 memory-source authority, while the positive agreement path remains stable at
+`lw a1, 12(s2)`.
+
+This closes only the source idea's bounded proof packet. It reduces the
+prepared-only PO-family blocker from idea 265 for this one RISC-V same-consumer
+row and does not claim x86 parity, stale-publication coverage, byte-offset
+drift coverage, cross-publication mismatch coverage, or readiness to demote,
+delete, privatize, wrap, hide, or rename `memory_accesses`,
+`PreparedFunctionLookups`, or `PreparedBirModule`.
+
+Closure evidence:
+
+- Focused proof scope recorded in `test_before.log` and `todo.md`: 2/2 green
+  for `backend_prepared_lookup_helper` and
+  `backend_riscv_prepared_edge_publication`.
+- Accepted full-suite baseline recorded in `test_baseline.log`: commit
+  `b5783084f4f409cdc05372293a4028350ad98588`, `<full-suite>`, 3428/3428
+  passing.
+- Close-time regression guard run by plan-owner using the focused log with
+  `--allow-non-decreasing-passed`: passed, 2/2 before and after, no new
+  failures.
+
 ## Goal
 
 Use the supported RISC-V dynamic stack-source `LoadLocal` fixture from idea
