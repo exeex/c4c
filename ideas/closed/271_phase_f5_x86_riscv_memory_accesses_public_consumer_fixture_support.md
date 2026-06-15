@@ -1,5 +1,27 @@
 # 271 Phase F5 x86/riscv memory_accesses public-consumer fixture support
 
+## Closure Note
+
+Closed after the RISC-V dynamic stack-source `LoadLocal` fixture route was
+made to reach a real backend consumer that directly reads
+`PreparedFunctionLookups::memory_accesses` through normal prepared lookup
+construction. The route records the concrete prepared memory row, Route 3/Route
+5 authority facts, preserved `lw a1, 12(s2)` compatibility output, and
+follow-up fail-closed proof entry point in `todo.md` before close.
+
+Validation accepted for close:
+`backend_riscv_prepared_edge_publication` passed (`1/1`) on the accepted
+narrow fixture-support scope, and supervisor-recorded extra RISC-V validation
+passed (`3/3`). The close-time regression guard used the existing accepted
+fixture proof log as both sides of a lifecycle-only non-decreasing comparison
+because no code changed during close and the delegated boundary forbade
+touching root-level logs or build outputs.
+
+Residual risk intentionally carried forward: no direct x86 public-field
+consumer exists yet, so x86 remains adjacent Route 3/Route 5 compatibility
+context. This is compatible with the source criterion of an x86 or RISC-V
+fixture path.
+
 ## Goal
 
 Add or expose supported fixture coverage that lets an x86 or riscv backend
