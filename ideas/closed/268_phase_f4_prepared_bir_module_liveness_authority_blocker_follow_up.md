@@ -69,3 +69,22 @@ proposal can be considered.
   remain unexamined.
 - The slice authorizes broad `PreparedBirModule` retirement or liveness
   demotion.
+
+## Closure Disposition
+
+Closed as complete for the requested blocker map. The runbook mapped prepared
+liveness authority, readers, retained compatibility surfaces, and fail-closed
+coverage for absent/skipped, stale, mismatch, duplicate/conflict, unsupported,
+fallback, and derived printer/target behavior.
+
+The result is intentionally negative for implementation eligibility: no exact
+identity-only reader exists, no independent semantic liveness fact exists
+outside public `PreparedBirModule::liveness`, and fail-closed coverage remains
+incomplete. Public prepared liveness remains retained compatibility authority.
+
+No implementation work is authorized by this closure. Do not start demotion,
+private-pass-context, wrapper, migration, deletion, public field hiding, broad
+`PreparedBirModule` retirement, or liveness implementation work from this map.
+A future implementation-enabling initiative would need to be a separate
+lifecycle idea for prepared liveness row validation and semantic authority
+replacement.
