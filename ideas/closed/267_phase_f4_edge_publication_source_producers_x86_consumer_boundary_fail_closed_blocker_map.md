@@ -1,5 +1,24 @@
 # 267 Phase F4 edge_publication_source_producers x86 consumer boundary fail-closed blocker map
 
+## Closure Disposition
+
+Closed as a completed analysis/blocker-map lifecycle state. The map covers
+duplicate/conflict/mismatch/missing, prepared-only, fallback, `LoadLocal`
+memory-source, immediate-producer, and policy-sensitive rows.
+
+The result is implementation blocked: x86 has no complete concrete consumer
+boundary for the public
+`PreparedFunctionLookups::edge_publication_source_producers` relation. The
+Route 5 edge-publication move gate is only partial copied-publication support
+for `LoadLocal`; non-`LoadLocal` compatibility fallback remains the key
+blocker.
+
+The public prepared lookup is retained. This closure does not authorize
+demotion, hiding, wrapping, migration, broad prepared retirement, or any
+implementation packet. No proof-only follow-up idea was created from this map;
+create a separate implementation idea only if the project later pursues a
+complete x86 fail-closed consumer boundary.
+
 ## Goal
 
 Map the x86 consumer boundary and fail-closed blockers for
