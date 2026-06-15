@@ -1772,13 +1772,14 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
       dynamic_ids.successor,
       2,
       &mismatched_route3_memory_edge);
-  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
-                  intent.instruction_text == "lw a1, 12(s2)" &&
+  if (!expect(intent.status ==
+                      riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
+                  intent.instruction_text.empty() &&
                   intent.route5_edge_status ==
                       bir::Route5PublicationStatus::MemorySource &&
                   !intent.route5_edge_source_agrees &&
                   !intent.route3_source_memory_agrees,
-              "RISC-V dynamic memory-source output should preserve prepared fallback on non-agreeing Route 3 facts")) {
+              "RISC-V dynamic memory-source output should fail closed on non-agreeing Route 3 facts")) {
     return 1;
   }
 
@@ -1791,13 +1792,14 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
       dynamic_ids.successor,
       2,
       &incomplete_route3_memory_edge);
-  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available &&
-                  intent.instruction_text == "lw a1, 12(s2)" &&
+  if (!expect(intent.status ==
+                      riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
+                  intent.instruction_text.empty() &&
                   intent.route5_edge_status ==
                       bir::Route5PublicationStatus::MemorySource &&
                   !intent.route5_edge_source_agrees &&
                   !intent.route3_source_memory_agrees,
-              "RISC-V dynamic memory-source output should preserve prepared fallback on incomplete Route 3 facts")) {
+              "RISC-V dynamic memory-source output should fail closed on incomplete Route 3 facts")) {
     return 1;
   }
 

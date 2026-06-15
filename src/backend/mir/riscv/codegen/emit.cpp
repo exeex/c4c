@@ -537,6 +537,16 @@ RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
       publication->move->op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
     return intent;
   }
+  if (route5_edge != nullptr &&
+      publication->source_producer_kind ==
+          prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal &&
+      publication->source_memory_access_status ==
+          prepare::PreparedEdgePublicationSourceMemoryAccessStatus::Available &&
+      publication->source_memory_access != nullptr &&
+      !intent.route5_edge_source_agrees) {
+    intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
+    return intent;
+  }
   if (publication->source_home == nullptr) {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
     return intent;
