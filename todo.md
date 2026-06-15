@@ -1,28 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/277_phase_f5_memory_accesses_cross_publication_mismatch_fail_closed_proof.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Preserve The Compatible Positive Path
+Current Step ID: 4
+Current Step Title: Run The Targeted Acceptance Proof
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 of `plan.md` by recording that the committed Step 2 proof
-preserves the compatible positive path for the selected dynamic stack-source
-`LoadLocal` RISC-V consumer.
+Completed Step 4 of `plan.md` by running the supervisor-selected targeted
+acceptance proof for the cross-publication mismatch fail-closed behavior and
+the compatible positive path.
 
-The positive control still drives
-`consume_edge_publication_move_intent(..., &route5_memory_edge)` through the
-same selected Route 3 / Route 5 memory-source authority, asserts
-`EdgePublicationMoveIntentStatus::Available`, emits exactly `lw a1, 12(s2)`,
-and keeps both `route5_edge_source_agrees` and
-`route3_source_memory_agrees` true.
+The proof passed for `backend_riscv_prepared_edge_publication`: the mismatch
+case remains fail-closed through the real RISC-V consumer path, and the
+compatible dynamic stack-source `LoadLocal` positive path remains accepted with
+the exact `lw a1, 12(s2)` output.
 
 ## Suggested Next
 
-Execute Step 4 acceptance proof with the supervisor-selected build and targeted
-CTest command for `backend_riscv_prepared_edge_publication`.
+Return to the supervisor for lifecycle review or close-gate handling.
 
 ## Watchouts
 
@@ -31,13 +28,18 @@ CTest command for `backend_riscv_prepared_edge_publication`.
   is the public publication block label (`left` versus `join`).
 - The fail-closed evidence depends on normal lookup construction preserving two
   public rows by source value id, not synthetic map mutation.
-- Step 3 is todo-only status recording; the positive-path assertion already
-  lives in the committed Step 2 test proof.
-- Do not weaken fallback, status/debug, route-debug, prepared-printer, wrapper,
-  helper/oracle, exact-output, or baseline contracts.
+- No fallback, status/debug, route-debug, prepared-printer, wrapper,
+  helper/oracle, exact-output, or baseline contract was weakened.
 - Keep byte-offset, stale-publication, x86 parity, edge-publication, metadata,
   liveness, aggregate retirement, and draft 155 work out of this plan.
 
 ## Proof
 
-Todo-only packet. No build or tests were run, and logs were not touched.
+Ran exactly:
+
+```sh
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_prepared_edge_publication$'; } > test_after.log 2>&1
+```
+
+Result: passed. The build was up to date and targeted CTest passed 1/1.
+Proof log path: `test_after.log`.
