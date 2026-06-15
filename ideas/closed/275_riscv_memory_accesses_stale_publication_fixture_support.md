@@ -82,3 +82,13 @@ preparation APIs.
 
 Split from blocked idea
 `ideas/closed/274_phase_f5_riscv_memory_accesses_stale_publication_fail_closed_proof.md`.
+
+## Completion Note
+
+Closed after supported stale public `memory_accesses` fixture construction was
+added through normal prepared addressing input. The focused RISC-V backend
+fixture test covers the compatible `LoadLocal` path with exact `lw a1, 12(s2)`
+output, publishes distinct current and stale source memory rows, preserves the
+stale offset fact, and rejects the stale public lookup without rendering an
+instruction. Close-time regression guard passed for
+`^backend_riscv_prepared_edge_publication$`.
