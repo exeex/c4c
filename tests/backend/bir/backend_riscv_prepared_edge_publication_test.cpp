@@ -215,6 +215,13 @@ prepare::PreparedMemoryAccess stale_public_load_local_source_access(
   return access;
 }
 
+prepare::PreparedMemoryAccess same_block_byte_offset_drift_load_local_source_access(
+    const FixtureIds& ids) {
+  auto access = load_local_source_access(ids);
+  access.address.byte_offset = 16;
+  return access;
+}
+
 prepare::PreparedMemoryAccess cross_publication_load_local_source_access(
     const FixtureIds& ids) {
   auto access = load_local_source_access(ids);
@@ -1913,6 +1920,88 @@ int check_route5_route3_oracle_rows_preserve_prepared_riscv_fallback() {
                     intent.route5_edge_source_agrees &&
                     intent.route3_source_memory_agrees,
                 "RISC-V same-consumer memory-source path should reject stale public rows even when current Route 3 / Route 5 authority agrees")) {
+      return 1;
+    }
+  }
+
+  {
+    auto same_block_drift = make_register_edge_publication_module();
+    const auto drift_ids = FixtureIds{
+        .function = same_block_drift.names.function_names.find("join_regs"),
+        .predecessor = same_block_drift.names.block_labels.find("left"),
+        .successor = same_block_drift.names.block_labels.find("join"),
+        .source_name = same_block_drift.names.value_names.find("%src"),
+        .base_name = same_block_drift.names.value_names.find("%base"),
+        .destination_name = same_block_drift.names.value_names.find("%dst"),
+    };
+    make_load_local_dynamic_stack_source(
+        same_block_drift,
+        drift_ids,
+        std::vector<prepare::PreparedMemoryAccess>{
+            load_local_source_access(drift_ids),
+            same_block_byte_offset_drift_load_local_source_access(drift_ids),
+        });
+    lookups = make_lookups(same_block_drift);
+    publication = prepare::find_unique_indexed_prepared_edge_publication(
+        &lookups.edge_publications, drift_ids.predecessor, drift_ids.successor, 2);
+    const auto* selected_position_access =
+        prepare::find_indexed_prepared_memory_access(
+            &lookups.memory_accesses, drift_ids.predecessor, 0);
+    const auto* public_source_accesses =
+        prepare::find_indexed_prepared_memory_accesses_by_result_value_id(
+            &lookups.memory_accesses, 1);
+    const auto current_route3_function =
+        make_route5_edge_identity_function(drift_ids, true);
+    const auto& current_route3_predecessor = current_route3_function.blocks[0];
+    const auto& current_route3_successor = current_route3_function.blocks[1];
+    const auto current_route3_index =
+        bir::route3_build_memory_access_index(current_route3_predecessor);
+    const auto* current_route3_load = bir::route3_find_memory_access_record(
+        current_route3_index, 0, bir::Route3MemoryAccessNodeKind::LoadLocal);
+    const auto route5_memory_edge = bir::route5_cfg_edge_publication_record(
+        &current_route3_predecessor,
+        &current_route3_successor,
+        bir::Value::named(bir::TypeKind::I32, "%dst"),
+        drift_ids.destination_name,
+        drift_ids.source_name);
+    if (publication == nullptr ||
+        !expect(publication->source_memory_access == selected_position_access,
+                "same-block byte-offset drift fixture should keep the first position row selected") ||
+        !expect(selected_position_access != nullptr &&
+                    selected_position_access->block_label == drift_ids.predecessor &&
+                    selected_position_access->address.byte_offset == 12,
+                "same-block byte-offset drift fixture should preserve the selected offset 12 row") ||
+        !expect(public_source_accesses != nullptr &&
+                    public_source_accesses->size() == 2 &&
+                    public_source_accesses->front() == selected_position_access &&
+                    public_source_accesses->back()->block_label ==
+                        drift_ids.predecessor &&
+                    public_source_accesses->back()->address.byte_offset == 16,
+                "same-block byte-offset drift fixture should publish duplicate source rows with offset drift") ||
+        !expect(current_route3_load != nullptr && *current_route3_load &&
+                    current_route3_load->byte_offset == 12 &&
+                    route5_memory_edge &&
+                    route5_memory_edge.status ==
+                        bir::Route5PublicationStatus::MemorySource &&
+                    route5_memory_edge.source_memory_identity_available &&
+                    route5_memory_edge.source_memory_access.instruction ==
+                        current_route3_load->instruction &&
+                    route5_memory_edge.source_memory_access.byte_offset ==
+                        publication->source_memory_byte_offset,
+                "Route 5 authority should stay on the selected offset 12 Route 3 memory-source row")) {
+      return 1;
+    }
+    intent = riscv::consume_edge_publication_move_intent(
+        &lookups, drift_ids.predecessor, drift_ids.successor, 2, &route5_memory_edge);
+    if (!expect(intent.status ==
+                        riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome &&
+                    intent.instruction_text.empty() &&
+                    !intent.source_memory_byte_offset.has_value() &&
+                    intent.route5_edge_status ==
+                        bir::Route5PublicationStatus::MemorySource &&
+                    intent.route5_edge_source_agrees &&
+                    intent.route3_source_memory_agrees,
+                "RISC-V same-consumer memory-source path should reject same-block public byte-offset drift rows while selected Route 3 / Route 5 authority agrees")) {
       return 1;
     }
   }
