@@ -1,51 +1,62 @@
 Status: Active
 Source Idea Path: ideas/open/292_reopen_286_288_match_load_local_memory_admission.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add focused proof and restore CLI subset
+Current Step ID: 5
+Current Step Title: Handoff back to idea 291 closure
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 proof packet complete for AArch64 HFA `va_arg` register-save-area
-lane-load admission.
+Step 5 lifecycle handoff packet complete.
 
-Added focused notes-test coverage that constructs the repaired shape without
-depending on `00204.c`, `myprintf`, or CLI expected files:
+Idea 292's reopened 286/288 blocker has been repaired through semantic
+local-memory admission, not through rendered call-argument text recovery or
+named `00204.c` / `myprintf` logic. The repaired route covered both discovered
+failure shapes:
 
-```llvm
-%vr.top.ptr = getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 2
-%vr.top = load ptr, ptr %vr.top.ptr
-%lane.ptr = getelementptr i8, ptr %vr.top, i64 16
-%lane = load float, ptr %lane.ptr
-```
+- formal pointer parameter loads in `match`
+- AArch64 HFA `va_arg` register-save-area lane loads rooted at
+  `__va_list_tag_.vr_top`
 
-The focused assertion verifies the semantic BIR route: `%vr.top` loads from the
-`__va_list_tag_.vr_top` field slot, `%lane.ptr` is materialized as a pointer add
-rooted at `%vr.top`, and the `F32` lane load carries pointer-value address
-metadata with base `%vr.top`, offset `16`, and size `4`.
+The exact 286/288 AArch64 CLI subset is green again, relevant x86 00204
+semantic/prepared coverage is green, and focused notes coverage proves the HFA
+`va_arg` lane-load shape directly. Supervisor context also reports the broad
+`^backend_` guard improved from 175/5 to 177/3 with no new failures.
 
 ## Suggested Next
 
-Supervisor should decide whether idea 292 is ready for closure/review now that
-the focused proof and restored 286/288 plus relevant x86 00204 CLI subset are
-green.
+Supervisor should ask the plan-owner to close or retire idea 292's active
+runbook, then reactivate idea 291 for close-time validation or close idea 291 if
+its remaining acceptance criteria are now satisfied.
 
 ## Watchouts
 
-- The focused test intentionally proves the semantic lane-load shape directly
-  and does not depend on the named `00204.c`/`myprintf` path.
-- No CLI expected files, existing CTest filters, lifecycle files, or production
-  implementation files were changed in this packet.
+- Idea 291's suffix-parser boundary remained intact during the reopened blocker
+  repair: structured call-argument metadata still wins, and rendered
+  `alignstack(...)` parsing remains fenced to the raw/no-ref legacy fallback.
+- This packet is todo-only handoff documentation. It did not touch `plan.md`,
+  `ideas/open/*`, implementation files, or tests.
+- Lifecycle ownership now belongs back with supervisor/plan-owner; executor
+  should not close, switch, or reactivate plans directly.
 
 ## Proof
 
-Delegated proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$'`
+Previously recorded repair proofs:
+
+- Exact 286/288 AArch64 CLI subset:
+  `cmake --build --preset default && ctest --test-dir build -R '^(backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$' --output-on-failure`
+- Focused notes plus exact 286/288 and relevant x86 00204 coverage:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$'`
+- Supervisor context: broad `^backend_` guard improved from 175/5 to 177/3 with
+  no new failures.
+
+Delegated Step 5 handoff proof command:
+`git log --oneline -n 8 && rg -n "Source Idea Path|Current Step ID|Current Step Title|286/288|idea 291|HFA|va_arg" todo.md plan.md ideas/open/291_retire_rendered_call_arg_abi_suffix_fallback.md ideas/open/292_reopen_286_288_match_load_local_memory_admission.md`
 
 Proof log:
 `test_after.log`.
 
-Result: passed. `backend_lir_to_bir_notes`, the exact 286/288 AArch64 CLI
-subset, and the relevant x86 00204 semantic/prepared CLI coverage are green.
+Result: passed. The log contains the recent repair commits, active idea 292
+metadata, Step 5 handoff metadata, proof references for the 286/288 and HFA
+`va_arg` route, and idea 291 follow-up closure references.
