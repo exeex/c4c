@@ -87,3 +87,18 @@ array range facts before the compatibility rule can safely be replaced.
   rejection is weakened to keep a narrow testcase green.
 - Target-specific acceptance is added in prepared/prealloc instead of
   publishing target-independent provenance facts from BIR lowering.
+
+## Completion Note
+
+Closed after Step 7 broader backend validation. The implementation publishes
+structured provenance facts for opaque pointer byte-range accesses, separates
+syntactic base-plus-offset usability from object-range proof, exposes explicit
+layout/range/dynamic-array verdicts to prepared reporting and publication
+paths, and quarantines remaining compatibility behavior as
+`OpaqueCompatibility` / `UnknownCompatible` rather than treating it as proven
+range authority.
+
+Remaining stronger reject/gate behavior for quarantined opaque compatibility
+rows is intentionally split into a follow-up idea because it changes prepared
+consumer policy beyond this idea's compatibility-preserving acceptance
+criteria.
