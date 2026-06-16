@@ -676,17 +676,6 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
                 module_->find_struct_def_tag_by_owner(*owner_key)) {
           return *tag;
         }
-        if (owner.deferred_member_type_owner_key.base_text_id != kInvalidText &&
-            owner.tag_text_id != kInvalidText) {
-          for (const auto& [rendered_tag, def] : module_->struct_defs) {
-            if (def.tag_text_id != owner.tag_text_id) continue;
-            if (owner.namespace_context_id >= 0 &&
-                def.ns_qual.context_id != owner.namespace_context_id) {
-              continue;
-            }
-            return rendered_tag;
-          }
-        }
       }
       return std::nullopt;
     }
