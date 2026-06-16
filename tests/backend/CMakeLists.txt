@@ -337,6 +337,13 @@ c4c_add_backend_rv64_runtime_case(
   LABELS scalar return alu
 )
 c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_local_temp
+  SRC "${BACKEND_CASE_ROOT}/local_temp.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 5
+  LABELS scalar local
+)
+c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_branch_if_eq
   SRC "${BACKEND_CASE_ROOT}/branch_if_eq.c"
   CASE_TIMEOUT_SEC 10

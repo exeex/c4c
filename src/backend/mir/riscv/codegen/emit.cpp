@@ -9,6 +9,7 @@
 #include "../../../backend.hpp"
 #include "../../../../codegen/lir/ir.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <optional>
@@ -34,6 +35,10 @@ bool fits_signed_12_bit_load_offset(std::size_t offset_bytes) {
 
 bool fits_signed_12_bit_immediate(std::int64_t value) {
   return value >= -2048 && value <= 2047;
+}
+
+std::size_t align_riscv_stack_frame(std::size_t size_bytes) {
+  return (size_bytes + 15) & ~std::size_t{15};
 }
 
 void clear_stack_source_intent(EdgePublicationMoveIntent& intent) {
@@ -270,7 +275,8 @@ std::optional<std::string> emit_riscv_simple_return(
     const c4c::backend::bir::Terminator& terminator,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    bool restore_return_address);
+    bool restore_return_address,
+    std::size_t stack_frame_bytes);
 
 std::optional<c4c::backend::prepare::PreparedValueId> prepared_value_id_for(
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -495,11 +501,14 @@ std::optional<std::string> emit_riscv_simple_return(
     const c4c::backend::bir::Terminator& terminator,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    bool restore_return_address) {
-  auto append_epilogue = [restore_return_address](std::string& out) {
+    bool restore_return_address,
+    std::size_t stack_frame_bytes) {
+  auto append_epilogue = [restore_return_address, stack_frame_bytes](std::string& out) {
     if (restore_return_address) {
       out += "    ld ra, 8(sp)\n";
-      out += "    addi sp, sp, 16\n";
+    }
+    if (stack_frame_bytes > 0) {
+      out += "    addi sp, sp, " + std::to_string(stack_frame_bytes) + "\n";
     }
     out += "    ret\n";
   };
@@ -523,6 +532,104 @@ std::optional<std::string> emit_riscv_simple_return(
   return out;
 }
 
+std::optional<c4c::FunctionNameId> prepared_function_id_for(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function& function) {
+  const auto function_name = names.function_names.find(function.name);
+  if (function_name == c4c::kInvalidFunctionName) {
+    return std::nullopt;
+  }
+  return function_name;
+}
+
+std::optional<c4c::BlockLabelId> prepared_block_label_id_for(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Block& block) {
+  if (block.label_id != c4c::kInvalidBlockLabel) {
+    return block.label_id;
+  }
+  const auto block_label = names.block_labels.find(block.label);
+  if (block_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  return block_label;
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    c4c::backend::bir::TypeKind value_type) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr || value_type != bir::TypeKind::I32) {
+    return nullptr;
+  }
+  const auto* access = prepare::find_indexed_prepared_memory_access(
+      &lookups->memory_accesses,
+      block_label,
+      instruction_index);
+  if (access == nullptr ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value() ||
+      access->address.size_bytes != 4 ||
+      access->address.align_bytes < 4 ||
+      !access->address.can_use_base_plus_offset ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return nullptr;
+  }
+  return access;
+}
+
+std::optional<std::string> emit_riscv_simple_store_local(
+    const c4c::backend::bir::StoreLocalInst& store,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  const auto* access = simple_frame_slot_access_for(
+      lookups,
+      block_label,
+      instruction_index,
+      store.value.type);
+  if (access == nullptr) {
+    return std::nullopt;
+  }
+
+  std::string out;
+  if (!emit_move_to_register(out, "t1", names, lookups, store.value)) {
+    return std::nullopt;
+  }
+  out += "    sw t1, " + std::to_string(access->address.byte_offset) + "(sp)\n";
+  return out;
+}
+
+std::optional<std::string> emit_riscv_simple_load_local(
+    const c4c::backend::bir::LoadLocalInst& load,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  const auto* access = simple_frame_slot_access_for(
+      lookups,
+      block_label,
+      instruction_index,
+      load.result.type);
+  if (access == nullptr) {
+    return std::nullopt;
+  }
+  const auto destination_register = prepared_register_for_value(names, lookups, load.result);
+  if (!destination_register.has_value()) {
+    return std::nullopt;
+  }
+
+  return "    lw " + *destination_register + ", " +
+         std::to_string(access->address.byte_offset) + "(sp)\n";
+}
+
 bool append_simple_prepared_bir_function_asm(
     std::string& out,
     const c4c::backend::prepare::PreparedBirModule& prepared,
@@ -534,6 +641,14 @@ bool append_simple_prepared_bir_function_asm(
 
   std::unordered_map<std::string, SimpleCompare> compares;
   const std::string function_name = function.name.empty() ? "anon" : function.name;
+  std::size_t prepared_frame_size = 0;
+  const auto function_name_id = prepared_function_id_for(prepared.names, function);
+  if (function_name_id.has_value()) {
+    if (const auto* frame_plan =
+            c4c::backend::prepare::find_prepared_frame_plan(prepared, *function_name_id)) {
+      prepared_frame_size = frame_plan->frame_size_bytes;
+    }
+  }
   bool saves_return_address = false;
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
@@ -546,13 +661,30 @@ bool append_simple_prepared_bir_function_asm(
       break;
     }
   }
+  if (prepared_frame_size > 0 && saves_return_address) {
+    return false;
+  }
+  const std::size_t stack_frame_bytes =
+      align_riscv_stack_frame(std::max(prepared_frame_size,
+                                       saves_return_address ? std::size_t{16}
+                                                            : std::size_t{0}));
+  if (stack_frame_bytes > 0 &&
+      !fits_signed_12_bit_immediate(-static_cast<std::int64_t>(stack_frame_bytes))) {
+    return false;
+  }
 
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
+    const auto block_label_id = prepared_block_label_id_for(prepared.names, block);
+    if (!block_label_id.has_value()) {
+      return false;
+    }
     const std::string block_label = bir_block_label_spelling(prepared.module, block);
     out += riscv_local_block_label(function_name, block_label) + ":\n";
+    if (block_index == 0 && stack_frame_bytes > 0) {
+      out += "    addi sp, sp, -" + std::to_string(stack_frame_bytes) + "\n";
+    }
     if (block_index == 0 && saves_return_address) {
-      out += "    addi sp, sp, -16\n";
       out += "    sd ra, 8(sp)\n";
     }
 
@@ -593,6 +725,36 @@ bool append_simple_prepared_bir_function_asm(
         continue;
       }
 
+      const auto* store_local = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+      if (store_local != nullptr) {
+        const auto emitted = emit_riscv_simple_store_local(
+            *store_local,
+            *block_label_id,
+            instruction_index,
+            prepared.names,
+            lookups);
+        if (!emitted.has_value()) {
+          return false;
+        }
+        out += *emitted;
+        continue;
+      }
+
+      const auto* load_local = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+      if (load_local != nullptr) {
+        const auto emitted = emit_riscv_simple_load_local(
+            *load_local,
+            *block_label_id,
+            instruction_index,
+            prepared.names,
+            lookups);
+        if (!emitted.has_value()) {
+          return false;
+        }
+        out += *emitted;
+        continue;
+      }
+
       return false;
     }
 
@@ -602,7 +764,8 @@ bool append_simple_prepared_bir_function_asm(
             block.terminator,
             prepared.names,
             lookups,
-            saves_return_address);
+            saves_return_address,
+            stack_frame_bytes);
         if (!returned.has_value()) {
           return false;
         }
