@@ -42,6 +42,15 @@ struct FunctionStackObjectPlan {
   stack_layout::FunctionInlineAsmSummary inline_asm_summary;
 };
 
+struct ProvenanceBaseIdentityFacts {
+  bir::MemoryProvenanceBaseIdentityKind kind =
+      bir::MemoryProvenanceBaseIdentityKind::Unknown;
+  std::string_view spelling;
+  bir::Value value;
+  LinkNameId link_name_id = kInvalidLinkName;
+  SlotNameId slot_name_id = kInvalidSlotName;
+};
+
 [[nodiscard]] bir::AddressSpace prepared_memory_address_space(
     const std::optional<bir::MemoryAddress>& address) {
   return address.has_value() ? address->address_space : bir::AddressSpace::Default;
@@ -55,7 +64,9 @@ struct FunctionStackObjectPlan {
 [[nodiscard]] bir::MemoryAccessProvenance prepared_memory_provenance(
     const std::optional<bir::MemoryAddress>& address,
     std::int64_t byte_offset,
-    std::size_t size_bytes) {
+    std::size_t size_bytes,
+    std::optional<ProvenanceBaseIdentityFacts> fallback_identity = std::nullopt,
+    std::optional<std::size_t> known_complete_extent_size = std::nullopt) {
   bir::MemoryAccessProvenance provenance;
   if (address.has_value()) {
     provenance = address->provenance;
@@ -95,6 +106,26 @@ struct FunctionStackObjectPlan {
           break;
       }
     }
+  }
+  if (provenance.base_identity.kind ==
+          bir::MemoryProvenanceBaseIdentityKind::Unknown &&
+      fallback_identity.has_value() &&
+      fallback_identity->kind != bir::MemoryProvenanceBaseIdentityKind::Unknown) {
+    provenance.base_identity = bir::MemoryProvenanceBaseIdentity{
+        .kind = fallback_identity->kind,
+        .spelling = std::string(fallback_identity->spelling),
+        .value = fallback_identity->value,
+        .link_name_id = fallback_identity->link_name_id,
+        .slot_name_id = fallback_identity->slot_name_id,
+    };
+  }
+  if (known_complete_extent_size.has_value() &&
+      !provenance.object_extent.size_known) {
+    provenance.object_extent = bir::MemoryObjectExtent{
+        .completeness = bir::MemoryObjectExtentCompleteness::Complete,
+        .size_bytes = *known_complete_extent_size,
+        .size_known = true,
+    };
   }
   if (!provenance.requested_range.available) {
     provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
@@ -496,7 +527,16 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
               .align_bytes = stack_layout::normalize_alignment(
                   inst.result.type, inst.align_bytes, size_bytes),
               .can_use_base_plus_offset = true,
-              .provenance = prepared_memory_provenance(inst.address, byte_offset, size_bytes),
+              .provenance = prepared_memory_provenance(
+                  inst.address,
+                  byte_offset,
+                  size_bytes,
+                  ProvenanceBaseIdentityFacts{
+                      .kind = bir::MemoryProvenanceBaseIdentityKind::LocalSlot,
+                      .spelling = inst.slot_name,
+                      .slot_name_id = inst.slot_id,
+                  },
+                  resolved_frame_slot.frame_slot->size_bytes),
           },
   };
 }
@@ -551,7 +591,16 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
               .align_bytes = stack_layout::normalize_alignment(
                   inst.value.type, inst.align_bytes, size_bytes),
               .can_use_base_plus_offset = true,
-              .provenance = prepared_memory_provenance(inst.address, byte_offset, size_bytes),
+              .provenance = prepared_memory_provenance(
+                  inst.address,
+                  byte_offset,
+                  size_bytes,
+                  ProvenanceBaseIdentityFacts{
+                      .kind = bir::MemoryProvenanceBaseIdentityKind::LocalSlot,
+                      .spelling = inst.slot_name,
+                      .slot_name_id = inst.slot_id,
+                  },
+                  resolved_frame_slot.frame_slot->size_bytes),
           },
   };
 }
@@ -591,7 +640,18 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
         .size_bytes = size_bytes,
         .align_bytes = align_bytes,
         .can_use_base_plus_offset = true,
-        .provenance = prepared_memory_provenance(address, fallback_byte_offset, size_bytes),
+        .provenance = prepared_memory_provenance(
+            address,
+            fallback_byte_offset,
+            size_bytes,
+            ProvenanceBaseIdentityFacts{
+                .kind = bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol,
+                .spelling = fallback_symbol_name,
+                .link_name_id = resolved_global->global->link_name_id,
+            },
+            resolved_global->global->size_bytes == 0
+                ? std::nullopt
+                : std::optional<std::size_t>{resolved_global->global->size_bytes}),
     };
   }
 
@@ -617,6 +677,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
           : kInvalidLinkName;
   std::optional<LinkNameId> prepared_symbol_name;
   std::optional<bir::GlobalAddressMaterializationPolicy> global_policy;
+  const bir::Global* resolved_base_global = nullptr;
   if (base_kind == PreparedAddressBaseKind::GlobalSymbol) {
     const auto resolved_global = resolve_prepared_global_symbol_address(
         names,
@@ -633,11 +694,13 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
     if (!global_policy.has_value()) {
       return std::nullopt;
     }
+    resolved_base_global = resolved_global->global;
   } else {
     if (symbol_name.empty()) {
       return std::nullopt;
     }
     prepared_symbol_name = names.link_names.intern(symbol_name);
+    resolved_base_global = find_raw_no_id_global_address_compatibility(module, symbol_name);
   }
 
   return PreparedAddress{
@@ -650,7 +713,21 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       .align_bytes = align_bytes == 0 ? address->align_bytes : align_bytes,
       .can_use_base_plus_offset = true,
       .provenance = prepared_memory_provenance(
-          address, address->byte_offset + fallback_byte_offset, size_bytes),
+          address,
+          address->byte_offset + fallback_byte_offset,
+          size_bytes,
+          ProvenanceBaseIdentityFacts{
+              .kind = base_kind == PreparedAddressBaseKind::StringConstant
+                          ? bir::MemoryProvenanceBaseIdentityKind::StringConstant
+                          : bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol,
+              .spelling = symbol_name,
+              .link_name_id = resolved_base_global != nullptr
+                                  ? resolved_base_global->link_name_id
+                                  : symbol_link_name_id,
+          },
+          resolved_base_global == nullptr || resolved_base_global->size_bytes == 0
+              ? std::nullopt
+              : std::optional<std::size_t>{resolved_base_global->size_bytes}),
   };
 }
 
