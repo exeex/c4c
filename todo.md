@@ -8,31 +8,25 @@ Current Step Title: Repair the Exposed `stdarg` Direct-Call Blocker
 
 ## Just Finished
 
-Step 2 repaired the semantic local-memory admission surface for the captured
-AArch64 aggregate `va_arg` route. The implementation is in
-`src/backend/bir/lir_to_bir/memory/provenance.cpp`: runtime pointer-address
-scalar loads/stores now treat an `i8` pointer-address carrier as opaque
-byte-addressable storage even at nonzero byte offsets. This admits the HFA
-register-save lane shape reached while lowering aggregate `va_arg` scratch
-loads, e.g. `%t111 = load float, ptr %t110` where `%t110` is a fixed-offset
-`i8` GEP from a dynamic variadic register-save pointer.
+Step 3 repaired the exposed `stdarg` direct-call semantic family blocker. The
+first rejected call was an AArch64 variadic direct `myprintf` call whose
+aggregate HFA operands arrived as ABI carrier arrays such as
+`[4 x fp128] alignstack(16) %t43` instead of pointer `byval(...)` operands.
 
-The delegated proof moved both AArch64 target tests past the previous
-`myprintf` load local-memory semantic family rejection. The current public
-failure is later and separate:
-`semantic lir_to_bir function 'stdarg' failed in semantic call family
-'direct-call semantic family'`.
+The implementation is in `src/backend/bir/lir_to_bir/calling.cpp`: direct and
+indirect typed-call lowering now strips trailing `alignstack(...)` from call
+argument type classification, admits matching no-`StructNameId` aggregate
+carrier arrays through the existing aggregate-layout path, and expands
+AArch64 variadic homogeneous-FP aggregate carriers into scalar FP lane
+arguments with lane-count/index ABI metadata. This preserves the prepared
+AArch64 HFA overflow publication contract. `tests/backend/bir/CMakeLists.txt`
+was refreshed only for shifted structural snippet ids/indices after semantic
+admission; the supported-path checks remain equivalent.
 
 ## Suggested Next
 
-Execute the next packet against the newly exposed `stdarg` direct-call semantic
-family failure, starting from the first unsupported call in the AArch64
-semantic route rather than revisiting the now-cleared `myprintf` load
-local-memory family. This remains part of the active runbook because the same
-AArch64 00204 publication tests named by the source idea now fail later in the
-same semantic route; do not split it into a separate idea unless investigation
-shows the direct-call blocker is unrelated to the 00204 stdarg publication
-path.
+Step 4 should add focused capability coverage for AArch64 variadic HFA carrier
+array call lowering that does not depend on the `00204.c` fixture name.
 
 ## Watchouts
 
@@ -40,11 +34,11 @@ path.
   classification.
 - Do not add shortcuts for `00204.c`, `myprintf`, `movi`, or specific HFA
   struct names.
-- The Step 2 change intentionally admits runtime `i8` pointer-address carriers
-  by semantic address shape, not by fixture, function, or struct name.
-- The delegated proof is still red because a later direct-call family blocker
-  is now visible; do not treat that as a regression to the load local-memory
-  repair.
+- The direct-call repair is keyed to AArch64 variadic HFA carrier semantics:
+  homogeneous FP aggregate layout plus existing aggregate aliases and
+  `alignstack(...)` ABI spelling, not a named source file or callee.
+- The test snippet update was required because semantic admission changes BIR
+  instruction/value ids while preserving the HFA overflow publication shape.
 
 ## Proof
 
@@ -54,6 +48,6 @@ Ran:
 cmake --build --preset default && ctest --test-dir build -R '^(backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$' --output-on-failure
 ```
 
-Result: build passed; both delegated AArch64 tests still fail, but the failure
-moved past `myprintf` load local-memory into
-`stdarg` / `direct-call semantic family`. Proof log: `test_after.log`.
+Result: build passed; both delegated AArch64 tests passed. The narrow AArch64
+target tests no longer fail in `stdarg` / `direct-call semantic family`.
+Proof log: `test_after.log`.

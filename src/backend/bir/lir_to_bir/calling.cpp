@@ -540,6 +540,35 @@ std::optional<std::string> parse_byval_pointee_type(std::string_view type_text) 
   return std::nullopt;
 }
 
+std::string_view strip_call_arg_abi_type_suffix(std::string_view type_text) {
+  auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
+  constexpr std::string_view kAlignStack = " alignstack(";
+  const auto suffix_pos = trimmed.rfind(kAlignStack);
+  if (suffix_pos == std::string_view::npos || trimmed.empty() || trimmed.back() != ')') {
+    return trimmed;
+  }
+
+  std::size_t close_pos = trimmed.size() - 1;
+  int paren_depth = 0;
+  for (std::size_t pos = close_pos + 1; pos > suffix_pos; --pos) {
+    const char ch = trimmed[pos - 1];
+    if (ch == ')') {
+      ++paren_depth;
+    } else if (ch == '(') {
+      --paren_depth;
+      if (paren_depth == 0) {
+        const auto open_pos = pos - 1;
+        if (open_pos == suffix_pos + kAlignStack.size() - 1) {
+          return c4c::codegen::lir::trim_lir_arg_text(trimmed.substr(0, suffix_pos));
+        }
+        break;
+      }
+    }
+  }
+
+  return trimmed;
+}
+
 bool is_v16i8_type(std::string_view type_text) {
   return c4c::codegen::lir::trim_lir_arg_text(type_text) == "<16 x i8>";
 }
@@ -1169,6 +1198,56 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
                                         type_decls,
                                         &structured_layouts_);
   };
+  const auto append_aarch64_variadic_hfa_carrier_arg_lanes =
+      [&](const c4c::codegen::lir::LirOperand& operand,
+          const AggregateTypeLayout& aggregate_layout) -> bool {
+    if (context_.target_profile.arch != c4c::TargetArch::Aarch64 || !is_variadic_call ||
+        operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    std::optional<bir::TypeKind> lane_type;
+    std::size_t lane_count = 0;
+    if (!collect_va_arg_hfa_payload_lanes(aggregate_layout,
+                                          type_decls,
+                                          structured_layouts_,
+                                          lane_type,
+                                          lane_count) ||
+        !lane_type.has_value() || lane_count == 0) {
+      return false;
+    }
+
+    const auto aggregate_alias_it = aggregate_value_aliases.find(operand.str());
+    if (aggregate_alias_it == aggregate_value_aliases.end()) {
+      return false;
+    }
+    const auto aggregate_it = local_aggregate_slots.find(aggregate_alias_it->second);
+    if (aggregate_it == local_aggregate_slots.end()) {
+      return false;
+    }
+    const auto leaf_slots = collect_sorted_leaf_slots(aggregate_it->second);
+    if (leaf_slots.size() != lane_count) {
+      return false;
+    }
+
+    for (std::size_t lane_index = 0; lane_index < leaf_slots.size(); ++lane_index) {
+      const auto& slot_name = leaf_slots[lane_index].second;
+      const auto slot_type_it = local_slot_types.find(slot_name);
+      if (slot_type_it == local_slot_types.end() || slot_type_it->second != *lane_type) {
+        return false;
+      }
+      auto lane_abi = compute_call_arg_abi(context_.target_profile, *lane_type);
+      if (!lane_abi.has_value()) {
+        return false;
+      }
+      lane_abi->aarch64_hfa_lane_count = lane_count;
+      lane_abi->aarch64_hfa_lane_index = lane_index;
+      lowered_arg_types.push_back(*lane_type);
+      lowered_args.push_back(bir::Value::named(*lane_type, slot_name));
+      lowered_arg_abi.push_back(*lane_abi);
+    }
+    return true;
+  };
   const auto lower_byval_call_arg_layout =
       [&](std::size_t index, std::string_view legacy_type_text)
           -> std::optional<AggregateTypeLayout> {
@@ -1183,16 +1262,25 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         // path is limited to legacy rendered byval text; metadata-bearing args
         // below must keep failing closed on missing or mismatched StructNameId.
         // Remove it once structured call arguments always carry type refs.
-        return lower_byval_aggregate_layout(legacy_type_text, type_decls, &structured_layouts_);
+        return lower_byval_aggregate_layout(strip_call_arg_abi_type_suffix(legacy_type_text),
+                                            type_decls,
+                                            &structured_layouts_);
       }
       if (!type_ref.has_struct_name_id()) {
+        const auto legacy_carrier_type = strip_call_arg_abi_type_suffix(legacy_type_text);
+        const auto ref_carrier_type = strip_call_arg_abi_type_suffix(type_ref.str());
+        if (legacy_carrier_type == ref_carrier_type) {
+          return lower_byval_aggregate_layout(legacy_carrier_type,
+                                              type_decls,
+                                              &structured_layouts_);
+        }
         return std::nullopt;
       }
       const auto legacy_byval_type = parse_byval_pointee_type(legacy_type_text);
       const std::string_view legacy_struct_type =
           legacy_byval_type.has_value()
               ? std::string_view(*legacy_byval_type)
-              : c4c::codegen::lir::trim_lir_arg_text(legacy_type_text);
+              : strip_call_arg_abi_type_suffix(legacy_type_text);
       const c4c::StructNameId legacy_struct_name_id =
           context_.lir_module.struct_names.find(legacy_struct_type);
       if (legacy_struct_name_id != c4c::kInvalidStructName &&
@@ -1223,7 +1311,9 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       // boundary, so layout is delegated to the aggregate.cpp selected-layout
       // fence. Remove this once all call argument lowering provides structured
       // argument refs or an explicit no-id legacy marker.
-      return lower_byval_aggregate_layout(legacy_type_text, type_decls, &structured_layouts_);
+      return lower_byval_aggregate_layout(strip_call_arg_abi_type_suffix(legacy_type_text),
+                                          type_decls,
+                                          &structured_layouts_);
     }
     if (index >= call.arg_type_refs.size()) {
       return std::nullopt;
@@ -1236,7 +1326,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     const std::string_view legacy_struct_type =
         legacy_byval_type.has_value()
             ? std::string_view(*legacy_byval_type)
-            : c4c::codegen::lir::trim_lir_arg_text(legacy_type_text);
+            : strip_call_arg_abi_type_suffix(legacy_type_text);
     const c4c::StructNameId legacy_struct_name_id =
         context_.lir_module.struct_names.find(legacy_struct_type);
     if (legacy_struct_name_id != c4c::kInvalidStructName &&
@@ -1517,16 +1607,21 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           continue;
         }
         const auto arg_type =
-            lower_scalar_or_function_pointer_type(parsed_call->typed_call.param_types[index]);
+            lower_scalar_or_function_pointer_type(
+                strip_call_arg_abi_type_suffix(parsed_call->typed_call.param_types[index]));
         if (!arg_type.has_value()) {
           const auto aggregate_layout =
               lower_byval_call_arg_layout(index, parsed_call->typed_call.param_types[index]);
           if (!aggregate_layout.has_value()) {
             return fail_call_family(call_family);
           }
+          const auto arg_operand = c4c::codegen::lir::LirOperand(
+              std::string(parsed_call->typed_call.args[index].operand));
+          if (append_aarch64_variadic_hfa_carrier_arg_lanes(arg_operand, *aggregate_layout)) {
+            continue;
+          }
           const auto arg = lower_byval_call_arg_value(
-              c4c::codegen::lir::LirOperand(
-                  std::string(parsed_call->typed_call.args[index].operand)),
+              arg_operand,
               *aggregate_layout);
           if (!arg.has_value()) {
             return fail_call_family(call_family);
@@ -1541,6 +1636,9 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             std::string(parsed_call->typed_call.args[index].operand));
         if (const auto aggregate_layout = aggregate_alias_layout(arg_operand);
             aggregate_layout.has_value()) {
+          if (append_aarch64_variadic_hfa_carrier_arg_lanes(arg_operand, *aggregate_layout)) {
+            continue;
+          }
           const auto arg = lower_byval_call_arg_value(arg_operand, *aggregate_layout);
           if (!arg.has_value()) {
             return fail_call_family(call_family);
@@ -1599,16 +1697,21 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         continue;
       }
       const auto arg_type =
-          lower_scalar_or_function_pointer_type(parsed_call->param_types[index]);
+          lower_scalar_or_function_pointer_type(
+              strip_call_arg_abi_type_suffix(parsed_call->param_types[index]));
       if (!arg_type.has_value()) {
         const auto aggregate_layout =
             lower_byval_call_arg_layout(index, parsed_call->param_types[index]);
         if (!aggregate_layout.has_value()) {
           return fail_call_family(call_family);
         }
+        const auto arg_operand =
+            c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand));
+        if (append_aarch64_variadic_hfa_carrier_arg_lanes(arg_operand, *aggregate_layout)) {
+          continue;
+        }
         const auto arg = lower_byval_call_arg_value(
-            c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)),
-            *aggregate_layout);
+            arg_operand, *aggregate_layout);
         if (!arg.has_value()) {
           return fail_call_family(call_family);
         }
@@ -1626,6 +1729,9 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand));
       if (const auto aggregate_layout = aggregate_alias_layout(arg_operand);
           aggregate_layout.has_value()) {
+        if (append_aarch64_variadic_hfa_carrier_arg_lanes(arg_operand, *aggregate_layout)) {
+          continue;
+        }
         const auto arg = lower_byval_call_arg_value(arg_operand, *aggregate_layout);
         if (!arg.has_value()) {
           return fail_call_family(call_family);
