@@ -116,3 +116,38 @@ being migrated into BIR by string parsing or target-specific side channels.
   policy-sensitive cases.
 - The exact old interface smell remains but is hidden behind a differently
   named helper.
+
+## Closure Notes
+
+Closed after the Step 6 slice `14adcde8 Add structured call argument stack
+alignment metadata`.
+
+Boundary map:
+
+- Call argument ABI suffixes: `alignstack` is now carried as structured
+  per-argument metadata on `OwnedLirTypedCallArg` / `LirCallArg` for the
+  selected AArch64 variadic HFA carrier path. Rendered `alignstack(...)` text
+  remains legacy compatibility for raw/no-ref rendered call arguments and
+  should not be treated as the preferred semantic owner.
+- AArch64 variadic HFA lane expansion: current inline semantic BIR expansion is
+  retained as compatibility for the completed 286 route. Durable ownership
+  should move to a target ABI helper that consumes structured aggregate alias,
+  layout, leaf-slot, and local slot type facts and returns lane values plus
+  `CallArgAbiInfo` records.
+- Opaque pointer byte-offset provenance: the current
+  `allow_opaque_ptr_base && stored_type == I8` rule remains a compatibility
+  bridge. Prepared `memory_accesses` need structured base identity,
+  object-extent, requested byte-range, layout authority, and dynamic range facts
+  before this rule can safely narrow or disappear.
+
+Follow-up ideas generated:
+
+- `ideas/open/288_extract_aapcs64_variadic_hfa_lane_expansion_helper.md`
+- `ideas/open/289_structured_opaque_pointer_byte_range_provenance.md`
+
+Close proof scope:
+
+- Build proof plus the existing 286 subset:
+  `backend_lir_to_bir_notes`,
+  `backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold`, and
+  `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`.
