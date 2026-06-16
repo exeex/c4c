@@ -1,63 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/291_retire_rendered_call_arg_abi_suffix_fallback.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Route structured lowering through metadata
+Current Step ID: 3
+Current Step Title: Quarantine or remove legacy rendered fallback
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 from `plan.md` completed: routed structured call-argument layout and
-scalar pre-classification through structured type metadata when present, leaving
-rendered `alignstack(...)` suffix parsing only in explicit legacy/no-ref
-fallback branches.
+Step 3 from `plan.md` completed: quarantined the remaining
+`strip_call_arg_abi_type_suffix` call behind the explicit
+`legacy_raw_no_ref_call_arg_type_text` helper.
 
 Concrete changes:
 
-- `src/backend/bir/lir_to_bir/calling.cpp`: added local helpers to read
-  structured call-argument type text from `LirCallArg::type_ref` or
-  `arg_type_refs`, to select aggregate layouts through structured type refs,
-  and to use rendered suffix stripping only when no structured type metadata is
-  available.
-- `src/backend/bir/lir_to_bir/calling.cpp`: changed metadata-bearing
-  `lower_byval_call_arg_layout` branches so they no longer compare stripped
-  rendered carrier text. `StructNameId` refs resolve through structured layout
-  lookup; no-ID explicit `ptr byval(...)` refs still fail closed; no-ID
-  non-byval aggregate carriers such as `[2 x float]` lower from clean type-ref
-  text.
-- `src/backend/bir/lir_to_bir/calling.cpp`: changed both scalar
-  pre-classification sites to classify from structured type text when present,
-  with rendered suffix stripping retained only as the no-metadata fallback.
-- `tests/backend/bir/backend_lir_to_bir_notes_test.cpp`: cleaned the AArch64
-  carrier-array fixtures so `arg_type_refs` do not carry rendered
-  `alignstack(...)` suffixes, made `args_str` deliberately stale with
-  `alignstack(16)`, and asserted the lowered ABI uses structured metadata
-  alignment `8`.
+- `src/backend/bir/lir_to_bir/calling.cpp`: added an auditable
+  `legacy_raw_no_ref_call_arg_fallback_allowed` predicate. Rendered suffix
+  stripping is now allowed only when the argument has no structured type-ref
+  carrier and no structured ABI payload such as HFA lane metadata or
+  `aarch64_stack_align_bytes`.
+- `src/backend/bir/lir_to_bir/calling.cpp`: changed scalar call-argument
+  pre-classification to fail closed when neither structured type metadata nor
+  the raw/no-ref legacy predicate is available.
+- `src/backend/bir/lir_to_bir/calling.cpp`: changed the byval layout legacy
+  branches to route through the same predicate, so metadata-bearing or
+  mismatched structured arguments cannot be rescued by rendered text.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: quarantine or remove the remaining
-`strip_call_arg_abi_type_suffix` uses. The remaining production uses are the
-helper definition, `scalar_call_arg_type_text` no-metadata fallback, and the two
-explicit `lower_byval_call_arg_layout` legacy/no-ref layout branches.
+Execute Step 4 from `plan.md`: add focused proof coverage for the structured
+metadata boundary and any retained legacy raw/no-ref compatibility behavior,
+then run the existing 286/288 proof subset named in the plan.
 
 ## Watchouts
 
-`LirCallArg::aarch64_stack_align_bytes` remains the only structured
-`alignstack` authority; `LirTypeRef`/`arg_type_refs` are type identity only.
-No-ID explicit `ptr byval(...)` type refs must continue to fail closed, as
-proved by the existing metadata-rich byval fail-closed notes test. Raw/no-ref
-fallbacks still exist and should be fenced or removed in Step 3 without
-broadening compatibility.
+The remaining rendered suffix parser inventory is now two lines in
+`calling.cpp`: the `strip_call_arg_abi_type_suffix` definition and a single
+call inside `legacy_raw_no_ref_call_arg_type_text`. That remaining call is
+justified only for legacy/raw no-ref compatibility. Existing metadata-rich
+byval mismatch tests still prove structured mismatch fails closed; Step 4
+should add or tighten focused coverage for the new predicate if the supervisor
+wants direct assertions beyond the current notes subset.
+
+Supervisor broader guard context remains unchanged: the previous broader
+`^backend_` before/after guard was non-regressive but had 21 pre-existing
+failures. Do not fix those in the next packet unless explicitly delegated.
 
 ## Proof
 
 Ran:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$' && rg -n "strip_call_arg_abi_type_suffix" src/backend/bir/lir_to_bir/calling.cpp`
 
-Result: build completed and `backend_lir_to_bir_notes` passed. Full output is
+Result: build completed, `backend_lir_to_bir_notes` passed, and `rg` reported
+only the helper definition plus the single legacy helper call. Full output is
 preserved in `test_after.log`.
 
 Supervisor broader guard:
@@ -67,5 +63,5 @@ Supervisor broader guard:
 Result: non-regressive before/after comparison with
 `check_monotonic_regression.py --allow-non-decreasing-passed`; both runs had
 159 passed, 21 failed, 180 total, with no new failures. The 21 failures are
-pre-existing backend CLI/route semantic BIR admission failures and remain a
-closure-time acceptance blocker for the broader 286/288 subset.
+the same pre-existing backend CLI/route semantic BIR admission failures noted
+after Step 2.

@@ -1386,13 +1386,48 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     }
     return std::string_view(call.arg_type_refs[index].str());
   };
+  const auto call_arg_has_structured_abi_payload =
+      [&](std::size_t index) -> bool {
+    if (index >= call.structured_args.size()) {
+      return false;
+    }
+    const auto& arg = call.structured_args[index];
+    return arg.aarch64_hfa_lane_count > 0 ||
+           arg.aarch64_hfa_lane_index > 0 ||
+           arg.aarch64_stack_align_bytes > 0;
+  };
+  const auto legacy_raw_no_ref_call_arg_fallback_allowed =
+      [&](std::size_t index) -> bool {
+    if (!call.structured_args.empty()) {
+      if (index >= call.structured_args.size() ||
+          !call.structured_args[index].type_ref.empty() ||
+          call_arg_has_structured_abi_payload(index)) {
+        return false;
+      }
+      return call.arg_type_refs.empty() ||
+             index >= call.arg_type_refs.size() ||
+             call.arg_type_refs[index].empty();
+    }
+    return call.arg_type_refs.empty() ||
+           index >= call.arg_type_refs.size() ||
+           call.arg_type_refs[index].empty();
+  };
+  const auto legacy_raw_no_ref_call_arg_type_text =
+      [&](std::size_t index,
+          std::string_view legacy_type_text) -> std::optional<std::string_view> {
+    if (!legacy_raw_no_ref_call_arg_fallback_allowed(index)) {
+      return std::nullopt;
+    }
+    return strip_call_arg_abi_type_suffix(legacy_type_text);
+  };
   const auto scalar_call_arg_type_text =
-      [&](std::size_t index, std::string_view legacy_type_text) -> std::string_view {
+      [&](std::size_t index,
+          std::string_view legacy_type_text) -> std::optional<std::string_view> {
     if (const auto structured_text = structured_call_arg_type_text(index);
         structured_text.has_value()) {
       return *structured_text;
     }
-    return strip_call_arg_abi_type_suffix(legacy_type_text);
+    return legacy_raw_no_ref_call_arg_type_text(index, legacy_type_text);
   };
   const auto lower_structured_type_ref_layout =
       [&](const c4c::codegen::lir::LirTypeRef& type_ref)
@@ -1431,14 +1466,14 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       }
       const auto& type_ref = call.structured_args[index].type_ref;
       if (type_ref.empty()) {
-        // Step 4 no-id compatibility bridge: structured call arguments may be
-        // present only as positional mirrors without a LirTypeRef carrier. This
-        // path is limited to legacy rendered byval text; metadata-bearing args
-        // below must keep failing closed on missing or mismatched StructNameId.
-        // Remove it once structured call arguments always carry type refs.
-        return lower_byval_aggregate_layout(strip_call_arg_abi_type_suffix(legacy_type_text),
-                                            type_decls,
-                                            &structured_layouts_);
+        // Legacy/raw no-ref bridge: only positional call args with no type-ref
+        // carrier and no structured ABI payload may consult rendered text.
+        const auto legacy_text =
+            legacy_raw_no_ref_call_arg_type_text(index, legacy_type_text);
+        if (!legacy_text.has_value()) {
+          return std::nullopt;
+        }
+        return lower_byval_aggregate_layout(*legacy_text, type_decls, &structured_layouts_);
       }
       if (!type_ref.has_struct_name_id()) {
         return lower_structured_type_ref_layout(type_ref);
@@ -1455,15 +1490,14 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       return lower_structured_type_ref_layout(type_ref);
     }
     if (call.arg_type_refs.empty()) {
-      // Step 4 no-id compatibility bridge: hand-built LIR calls without
-      // structured argument mirrors still expose only rendered byval text. The
-      // limitation is that no LirTypeRef/StructNameId carrier exists at this
-      // boundary, so layout is delegated to the aggregate.cpp selected-layout
-      // fence. Remove this once all call argument lowering provides structured
-      // argument refs or an explicit no-id legacy marker.
-      return lower_byval_aggregate_layout(strip_call_arg_abi_type_suffix(legacy_type_text),
-                                          type_decls,
-                                          &structured_layouts_);
+      // Legacy/raw no-ref bridge: hand-built LIR calls without argument
+      // mirrors still expose only rendered byval text.
+      const auto legacy_text =
+          legacy_raw_no_ref_call_arg_type_text(index, legacy_type_text);
+      if (!legacy_text.has_value()) {
+        return std::nullopt;
+      }
+      return lower_byval_aggregate_layout(*legacy_text, type_decls, &structured_layouts_);
     }
     if (index >= call.arg_type_refs.size()) {
       return std::nullopt;
@@ -1751,9 +1785,13 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
               index, *compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)));
           continue;
         }
+        const auto scalar_type_text =
+            scalar_call_arg_type_text(index, parsed_call->typed_call.param_types[index]);
+        if (!scalar_type_text.has_value()) {
+          return fail_call_family(call_family);
+        }
         const auto arg_type =
-            lower_scalar_or_function_pointer_type(
-                scalar_call_arg_type_text(index, parsed_call->typed_call.param_types[index]));
+            lower_scalar_or_function_pointer_type(*scalar_type_text);
         if (!arg_type.has_value()) {
           const auto aggregate_layout =
               lower_byval_call_arg_layout(index, parsed_call->typed_call.param_types[index]);
@@ -1853,9 +1891,13 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             index, *compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)));
         continue;
       }
+      const auto scalar_type_text =
+          scalar_call_arg_type_text(index, parsed_call->param_types[index]);
+      if (!scalar_type_text.has_value()) {
+        return fail_call_family(call_family);
+      }
       const auto arg_type =
-          lower_scalar_or_function_pointer_type(
-              scalar_call_arg_type_text(index, parsed_call->param_types[index]));
+          lower_scalar_or_function_pointer_type(*scalar_type_text);
       if (!arg_type.has_value()) {
         const auto aggregate_layout =
             lower_byval_call_arg_layout(index, parsed_call->param_types[index]);
