@@ -237,6 +237,8 @@ int expect_bir_verifier_rejects_local_slot_id_mismatches();
 int expect_string_pool_direct_call_bridge_prefers_function_link_name_id();
 int expect_string_pool_direct_call_bridge_requires_text_id();
 int expect_legacy_byval_call_arg_without_type_refs_still_lowers();
+int expect_legacy_byval_call_arg_with_rendered_alignstack_suffix_still_lowers();
+int expect_structured_abi_payload_blocks_legacy_byval_text_fallback();
 int expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed();
 int expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
 int expect_direct_call_prefers_structured_callee_signature_over_stale_suffix();
@@ -3466,7 +3468,8 @@ LirModule make_bad_direct_call_module() {
 }
 
 LirModule make_byval_call_arg_boundary_module(
-    std::vector<lir::LirTypeRef> arg_type_refs) {
+    std::vector<lir::LirTypeRef> arg_type_refs,
+    std::string args_str = "ptr byval(%struct.Payload) @payload") {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
   module.link_name_texts = std::make_shared<c4c::TextTable>();
@@ -3505,7 +3508,7 @@ LirModule make_byval_call_arg_boundary_module(
       .return_type = "void",
       .callee = LirOperand("@sink"),
       .callee_type_suffix = "(ptr)",
-      .args_str = "ptr byval(%struct.Payload) @payload",
+      .args_str = std::move(args_str),
       .arg_type_refs = std::move(arg_type_refs),
   });
   entry.terminator = LirRet{
@@ -3541,6 +3544,62 @@ int expect_legacy_byval_call_arg_without_type_refs_still_lowers() {
     }
   }
   return fail("legacy byval call-argument lowering should preserve byval ABI metadata");
+}
+
+int expect_legacy_byval_call_arg_with_rendered_alignstack_suffix_still_lowers() {
+  auto result = try_lower_to_bir_with_options(
+      make_byval_call_arg_boundary_module(
+          {}, "ptr byval(%struct.Payload) alignstack(16) @payload"),
+      BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("legacy raw/no-ref byval call argument should keep rendered alignstack suffix compatibility");
+  }
+
+  for (const auto& function : result.module->functions) {
+    if (function.name != "byval_call_arg_boundary" || function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr) {
+        continue;
+      }
+      if (call->arg_abi.size() == 1 && call->arg_abi.front().byval_copy &&
+          call->arg_abi.front().size_bytes == 4 && call->arg_abi.front().align_bytes == 4) {
+        return 0;
+      }
+    }
+  }
+  return fail("legacy rendered alignstack suffix should not become structured alignment authority");
+}
+
+int expect_structured_abi_payload_blocks_legacy_byval_text_fallback() {
+  LirModule module = make_byval_call_arg_boundary_module({});
+  module.functions.front().blocks.front().insts.front() = LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@sink"),
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr byval(%struct.Payload) @payload",
+      .structured_args = {
+          lir::LirCallArg{
+              .type = "ptr byval(%struct.Payload)",
+              .operand = LirOperand("@payload"),
+              .aarch64_stack_align_bytes = 16,
+          },
+      },
+  };
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("structured ABI payload without type_ref must not recover through rendered byval text");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in semantic call family 'direct-call semantic family'")) {
+    return fail("missing direct-call family failure for fenced structured ABI payload fallback");
+  }
+  return 0;
 }
 
 LirModule make_call_argument_source_relationship_module() {
@@ -4406,6 +4465,7 @@ int expect_aarch64_variadic_carrier_array_call_uses_hfa_fp_lanes() {
           call->arg_abi[1].primary_class == c4c::backend::bir::AbiValueClass::Sse &&
           call->arg_abi[2].primary_class == c4c::backend::bir::AbiValueClass::Sse &&
           call->arg_abi[1].align_bytes == 8 &&
+          call->arg_abi[1].align_bytes != 16 &&
           call->arg_abi[1].aarch64_hfa_lane_count == 2 &&
           call->arg_abi[2].aarch64_hfa_lane_count == 2 &&
           call->arg_abi[1].aarch64_hfa_lane_index == 0 &&
@@ -7987,6 +8047,16 @@ int main() {
           expect_legacy_byval_call_arg_without_type_refs_still_lowers();
       legacy_byval_status != 0) {
     return legacy_byval_status;
+  }
+  if (const int legacy_byval_alignstack_status =
+          expect_legacy_byval_call_arg_with_rendered_alignstack_suffix_still_lowers();
+      legacy_byval_alignstack_status != 0) {
+    return legacy_byval_alignstack_status;
+  }
+  if (const int structured_abi_payload_fallback_status =
+          expect_structured_abi_payload_blocks_legacy_byval_text_fallback();
+      structured_abi_payload_fallback_status != 0) {
+    return structured_abi_payload_fallback_status;
   }
 
   if (const int production_arg_source_status =
