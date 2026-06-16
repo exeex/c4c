@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -673,6 +674,110 @@ struct StructuredTypeSpellingContext {
       std::string_view name) const;
 };
 
+enum class MemoryProvenanceBaseIdentityKind : unsigned char {
+  Unknown,
+  UnknownRuntimeBase,
+  LocalSlot,
+  GlobalSymbol,
+  PointerValue,
+  FormalParameter,
+  ByvalParameter,
+  SretParameter,
+  StringConstant,
+};
+
+enum class MemoryObjectExtentCompleteness : unsigned char {
+  Unknown,
+  Complete,
+  Partial,
+};
+
+enum class MemoryLayoutAuthorityKind : unsigned char {
+  Unknown,
+  StructuredLayout,
+  ScalarLayout,
+  ByteStorageAggregate,
+  RenderedTypeFallback,
+  OpaqueCompatibility,
+};
+
+enum class MemoryRangeVerdict : unsigned char {
+  UnknownCompatible,
+  ProvenInBounds,
+  ProvenOutOfBounds,
+};
+
+enum class MemoryDynamicArrayRangeVerdict : unsigned char {
+  Unknown,
+  BoundedByElementCount,
+  Unbounded,
+};
+
+struct MemoryProvenanceBaseIdentity {
+  MemoryProvenanceBaseIdentityKind kind = MemoryProvenanceBaseIdentityKind::Unknown;
+  std::string spelling;
+  Value value;
+  LinkNameId link_name_id = kInvalidLinkName;
+  SlotNameId slot_name_id = kInvalidSlotName;
+};
+
+struct MemoryObjectExtent {
+  MemoryObjectExtentCompleteness completeness = MemoryObjectExtentCompleteness::Unknown;
+  std::size_t size_bytes = 0;
+  bool size_known = false;
+};
+
+struct MemoryByteRange {
+  bool available = false;
+  std::int64_t begin = 0;
+  std::size_t size_bytes = 0;
+  std::int64_t end = 0;
+  bool end_available = false;
+  bool overflowed = false;
+};
+
+[[nodiscard]] inline MemoryByteRange make_memory_byte_range(std::int64_t byte_offset,
+                                                           std::size_t size_bytes) {
+  MemoryByteRange range{
+      .available = true,
+      .begin = byte_offset,
+      .size_bytes = size_bytes,
+  };
+  if (size_bytes >
+      static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
+    range.overflowed = true;
+    return range;
+  }
+
+  const auto delta = static_cast<std::int64_t>(size_bytes);
+  if (byte_offset > std::numeric_limits<std::int64_t>::max() - delta) {
+    range.overflowed = true;
+    return range;
+  }
+
+  range.end = byte_offset + delta;
+  range.end_available = true;
+  return range;
+}
+
+struct MemoryDynamicArrayFacts {
+  bool available = false;
+  std::size_t element_count = 0;
+  std::size_t element_stride_bytes = 0;
+  std::size_t base_byte_offset = 0;
+  Value index;
+  MemoryDynamicArrayRangeVerdict verdict = MemoryDynamicArrayRangeVerdict::Unknown;
+};
+
+struct MemoryAccessProvenance {
+  MemoryProvenanceBaseIdentity base_identity;
+  MemoryObjectExtent object_extent;
+  MemoryByteRange requested_range;
+  MemoryLayoutAuthorityKind layout_authority = MemoryLayoutAuthorityKind::Unknown;
+  MemoryDynamicArrayFacts dynamic_array;
+  MemoryRangeVerdict range_verdict = MemoryRangeVerdict::UnknownCompatible;
+};
+
 struct MemoryAddress {
   enum class BaseKind : unsigned char {
     None,
@@ -696,6 +801,7 @@ struct MemoryAddress {
   LinkNameId base_link_name_id = kInvalidLinkName;
   BlockLabelId base_label_id = kInvalidBlockLabel;
   SlotNameId base_slot_id = kInvalidSlotName;
+  MemoryAccessProvenance provenance;
 };
 
 enum class BinaryOpcode : unsigned char {
@@ -1369,6 +1475,7 @@ struct Route3MemoryAccessRecord {
   std::int64_t byte_offset = 0;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
+  MemoryAccessProvenance provenance;
 
   [[nodiscard]] explicit operator bool() const { return available; }
 };

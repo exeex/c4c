@@ -140,6 +140,7 @@ struct PointerAddress {
   // Compatibility LIR type spellings retained for pointer provenance layout.
   std::string storage_type_text;
   std::string type_text;
+  bir::MemoryAccessProvenance provenance;
 };
 
 struct AggregateArrayExtent {

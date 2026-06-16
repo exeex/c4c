@@ -57,6 +57,7 @@ struct PreparedAddress {
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   bool can_use_base_plus_offset = false;
+  bir::MemoryAccessProvenance provenance;
 };
 
 [[nodiscard]] inline std::optional<bir::GlobalAddressMaterializationPolicy>

@@ -722,6 +722,7 @@ Route3MemoryAccessRecord route3_memory_access_record(
       .byte_offset = address->byte_offset,
       .size_bytes = address->size_bytes,
       .align_bytes = address->align_bytes,
+      .provenance = address->provenance,
   };
   if (const auto* result = route3_result_value(inst); result != nullptr) {
     record.result_value = route1_source_value_identity(*result);

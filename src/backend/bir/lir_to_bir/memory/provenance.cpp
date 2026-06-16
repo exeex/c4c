@@ -100,6 +100,29 @@ static bool can_address_scalar_subobject(std::int64_t byte_offset,
   return access_size <= scalar_facts->remaining_object_bytes;
 }
 
+static bir::MemoryAccessProvenance pointer_value_memory_provenance(
+    const BirFunctionLowerer::PointerAddress& pointer_address,
+    std::int64_t byte_offset,
+    std::size_t size_bytes) {
+  bir::MemoryAccessProvenance provenance = pointer_address.provenance;
+  provenance.base_identity = bir::MemoryProvenanceBaseIdentity{
+      .kind = bir::MemoryProvenanceBaseIdentityKind::PointerValue,
+      .spelling = pointer_address.base_value.name,
+      .value = pointer_address.base_value,
+  };
+  provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
+  if (pointer_address.dynamic_element_count != 0 ||
+      pointer_address.dynamic_element_stride_bytes != 0) {
+    provenance.dynamic_array.available = true;
+    provenance.dynamic_array.element_count = pointer_address.dynamic_element_count;
+    provenance.dynamic_array.element_stride_bytes =
+        pointer_address.dynamic_element_stride_bytes;
+    provenance.dynamic_array.base_byte_offset = pointer_address.byte_offset;
+  }
+  provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+  return provenance;
+}
+
 std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_local_pointer_values(
     const std::vector<std::string>& element_slots,
     const LocalPointerValueAliasMap& local_pointer_value_aliases) {
@@ -793,6 +816,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_store(
               .byte_offset = static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
               .size_bytes = slot_size,
               .align_bytes = slot_size,
+              .provenance = pointer_value_memory_provenance(
+                  addressed_ptr_it->second,
+                  static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
+                  slot_size),
           },
   });
   return true;
@@ -919,6 +946,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
               .byte_offset = static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
               .size_bytes = slot_size,
               .align_bytes = slot_size,
+              .provenance = pointer_value_memory_provenance(
+                  addressed_ptr_it->second,
+                  static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
+                  slot_size),
           },
   });
   if (value_type == bir::TypeKind::Ptr && loaded_pointer_value_addresses != nullptr) {

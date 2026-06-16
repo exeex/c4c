@@ -52,6 +52,56 @@ struct FunctionStackObjectPlan {
   return address.has_value() && address->is_volatile;
 }
 
+[[nodiscard]] bir::MemoryAccessProvenance prepared_memory_provenance(
+    const std::optional<bir::MemoryAddress>& address,
+    std::int64_t byte_offset,
+    std::size_t size_bytes) {
+  bir::MemoryAccessProvenance provenance;
+  if (address.has_value()) {
+    provenance = address->provenance;
+    if (provenance.base_identity.kind ==
+        bir::MemoryProvenanceBaseIdentityKind::Unknown) {
+      switch (address->base_kind) {
+        case bir::MemoryAddress::BaseKind::LocalSlot:
+          provenance.base_identity = bir::MemoryProvenanceBaseIdentity{
+              .kind = bir::MemoryProvenanceBaseIdentityKind::LocalSlot,
+              .spelling = address->base_name,
+              .slot_name_id = address->base_slot_id,
+          };
+          break;
+        case bir::MemoryAddress::BaseKind::GlobalSymbol:
+          provenance.base_identity = bir::MemoryProvenanceBaseIdentity{
+              .kind = bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol,
+              .spelling = address->base_name,
+              .link_name_id = address->base_link_name_id,
+          };
+          break;
+        case bir::MemoryAddress::BaseKind::PointerValue:
+          provenance.base_identity = bir::MemoryProvenanceBaseIdentity{
+              .kind = bir::MemoryProvenanceBaseIdentityKind::PointerValue,
+              .spelling = address->base_value.name,
+              .value = address->base_value,
+          };
+          break;
+        case bir::MemoryAddress::BaseKind::StringConstant:
+          provenance.base_identity = bir::MemoryProvenanceBaseIdentity{
+              .kind = bir::MemoryProvenanceBaseIdentityKind::StringConstant,
+              .spelling = address->base_name,
+              .link_name_id = address->base_link_name_id,
+          };
+          break;
+        case bir::MemoryAddress::BaseKind::Label:
+        case bir::MemoryAddress::BaseKind::None:
+          break;
+      }
+    }
+  }
+  if (!provenance.requested_range.available) {
+    provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
+  }
+  return provenance;
+}
+
 [[nodiscard]] const bir::Global* find_global_by_link_name_id(const bir::Module& module,
                                                              LinkNameId link_name_id) {
   if (link_name_id == kInvalidLinkName) {
@@ -446,6 +496,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
               .align_bytes = stack_layout::normalize_alignment(
                   inst.result.type, inst.align_bytes, size_bytes),
               .can_use_base_plus_offset = true,
+              .provenance = prepared_memory_provenance(inst.address, byte_offset, size_bytes),
           },
   };
 }
@@ -500,6 +551,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
               .align_bytes = stack_layout::normalize_alignment(
                   inst.value.type, inst.align_bytes, size_bytes),
               .can_use_base_plus_offset = true,
+              .provenance = prepared_memory_provenance(inst.address, byte_offset, size_bytes),
           },
   };
 }
@@ -539,6 +591,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
         .size_bytes = size_bytes,
         .align_bytes = align_bytes,
         .can_use_base_plus_offset = true,
+        .provenance = prepared_memory_provenance(address, fallback_byte_offset, size_bytes),
     };
   }
 
@@ -596,6 +649,8 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       .size_bytes = size_bytes,
       .align_bytes = align_bytes == 0 ? address->align_bytes : align_bytes,
       .can_use_base_plus_offset = true,
+      .provenance = prepared_memory_provenance(
+          address, address->byte_offset + fallback_byte_offset, size_bytes),
   };
 }
 
@@ -803,6 +858,8 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
       .size_bytes = size_bytes,
       .align_bytes = align_bytes == 0 ? address->align_bytes : align_bytes,
       .can_use_base_plus_offset = true,
+      .provenance = prepared_memory_provenance(
+          address, address->byte_offset + fallback_byte_offset, size_bytes),
   };
 }
 
