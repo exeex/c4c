@@ -244,27 +244,15 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
     if (llvm_target_is_aarch64(mod_.target_profile) &&
         !llvm_target_is_apple(mod_.target_profile)) {
       if (const auto hfa = classify_aarch64_hfa(mod_, arg_ts)) {
-        const std::string tmp_addr = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_value_ty(mod_, arg_ts), {},
-                                          hfa->aggregate_align});
-        emit_lir_op(ctx, lir::LirStoreOp{llvm_value_ty(mod_, arg_ts), arg, tmp_addr});
+        const std::string hfa_carrier_ty =
+            "[" + std::to_string(hfa->elem_count) + " x " + hfa->elem_ty + "]";
+        const int align_stack = std::max(8, hfa->aggregate_align);
+        const std::string hfa_carrier = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirLoadOp{hfa_carrier, hfa_carrier_ty, obj_ptr});
         PreparedCallArg out;
-        const std::string lane_base = fresh_tmp(ctx);
-        for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
-          const std::string lane_ptr = fresh_tmp(ctx);
-          emit_lir_op(ctx,
-                      lir::LirGepOp{lane_ptr, "i8", tmp_addr, false,
-                                    {"i64 " + std::to_string(lane_index * hfa->elem_size)}});
-          const std::string lane = lane_base + ".hfa" + std::to_string(lane_index);
-          emit_lir_op(ctx, lir::LirLoadOp{lane, hfa->elem_ty, lane_ptr});
-          out.args.push_back({.type = hfa->elem_ty,
-                              .operand = lane,
-                              .type_ref = LirTypeRef(hfa->elem_ty),
-                              .aarch64_hfa_lane_count =
-                                  static_cast<std::size_t>(hfa->elem_count),
-                              .aarch64_hfa_lane_index =
-                                  static_cast<std::size_t>(lane_index)});
-        }
+        out.args.push_back({.type = hfa_carrier_ty + " alignstack(" +
+                                    std::to_string(align_stack) + ")",
+                            .operand = hfa_carrier});
         return out;
       }
     }
