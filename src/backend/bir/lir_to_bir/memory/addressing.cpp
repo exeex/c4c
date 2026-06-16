@@ -341,6 +341,24 @@ bool can_reinterpret_byte_storage_as_type(
       storage_type_text, target_byte_offset, target_type_text, type_decls, &structured_layouts);
 }
 
+[[nodiscard]] bool is_aarch64_va_list_vr_top_gep(
+    const c4c::codegen::lir::LirGepOp& gep,
+    std::string_view base_type_text,
+    const BirFunctionLowerer::LocalAggregateGepTarget& resolved_target) {
+  if (c4c::codegen::lir::trim_lir_arg_text(base_type_text) != "%struct.__va_list_tag_" ||
+      resolved_target.type_text != "ptr" || gep.indices.size() != 2) {
+    return false;
+  }
+  const auto base_index = parse_typed_operand(gep.indices[0]);
+  const auto field_index = parse_typed_operand(gep.indices[1]);
+  if (!base_index.has_value() || !field_index.has_value()) {
+    return false;
+  }
+  const auto base_imm = resolve_index_operand(base_index->operand, {});
+  const auto field_imm = resolve_index_operand(field_index->operand, {});
+  return base_imm.has_value() && *base_imm == 0 && field_imm.has_value() && *field_imm == 2;
+}
+
 std::optional<BirFunctionLowerer::AggregateArrayExtent>
 BirFunctionLowerer::find_repeated_aggregate_extent_at_offset(
     std::string_view type_text,
@@ -1981,6 +1999,13 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
               .byte_offset = static_cast<std::size_t>(resolved_target->byte_offset),
               .storage_type_text = std::move(storage_type_text),
               .type_text = std::move(resolved_target->type_text),
+              .aarch64_variadic_fp_register_save_area =
+                  addressed_ptr_it != pointer_value_addresses.end() &&
+                  addressed_ptr_it->second.aarch64_variadic_fp_register_save_area,
+              .loaded_pointer_aarch64_variadic_fp_register_save_area =
+                  context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+                  is_aarch64_va_list_vr_top_gep(
+                      gep, addressed_base_type_text, *resolved_target),
               .provenance =
                   addressed_ptr_it != pointer_value_addresses.end()
                       ? addressed_ptr_it->second.provenance
@@ -2001,6 +2026,45 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
             value_aliases[gep.result.str()] =
                 bir::Value::named(bir::TypeKind::Ptr, gep.result.str());
           }
+          return true;
+        }
+
+        if (addressed_ptr_it != pointer_value_addresses.end() &&
+            addressed_ptr_it->second.aarch64_variadic_fp_register_save_area &&
+            (gep.indices.size() == 1 || gep.indices.size() == 2) &&
+            c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str()) == "i8") {
+          std::size_t byte_index_pos = 0;
+          if (gep.indices.size() == 2) {
+            const auto base_index = parse_typed_operand(gep.indices.front());
+            if (!base_index.has_value()) {
+              return fail_gep();
+            }
+            const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+            if (!base_imm.has_value() || *base_imm != 0) {
+              return fail_gep();
+            }
+            byte_index_pos = 1;
+          }
+          const auto parsed_index = parse_typed_operand(gep.indices[byte_index_pos]);
+          if (!parsed_index.has_value()) {
+            return fail_gep();
+          }
+          const auto lowered_index = lower_typed_index_value(*parsed_index, value_aliases);
+          if (!lowered_index.has_value() ||
+              !publish_dynamic_pointer_value_address(
+                  gep.result.str(),
+                  addressed_ptr_it->second.base_value,
+                  *lowered_index,
+                  addressed_ptr_it->second.byte_offset,
+                  1,
+                  addressed_ptr_it->second.provenance,
+                  "i8",
+                  addressed_ptr_it->second.storage_type_text.empty()
+                      ? std::string("i8")
+                      : addressed_ptr_it->second.storage_type_text)) {
+            return fail_gep();
+          }
+          pointer_value_addresses[gep.result.str()].aarch64_variadic_fp_register_save_area = true;
           return true;
         }
 
@@ -2187,6 +2251,9 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                     .byte_offset = 0,
                     .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
                         gep.element_type.str())),
+                    .aarch64_variadic_fp_register_save_area =
+                        addressed_ptr_it != pointer_value_addresses.end() &&
+                        addressed_ptr_it->second.aarch64_variadic_fp_register_save_area,
                     .provenance = pointer_value_base_provenance(
                         value_aliases[gep.result.str()]),
                 };

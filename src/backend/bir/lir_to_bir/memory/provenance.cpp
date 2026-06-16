@@ -50,6 +50,24 @@ static bool can_cover_scalar_access_with_byte_storage(
          access_size <= layout.size_bytes - static_cast<std::size_t>(byte_offset);
 }
 
+static bool is_aarch64_va_list_vr_top_pointer_address(
+    const BirFunctionLowerer::PointerAddress& address,
+    const BirFunctionLowerer::TypeDeclMap& type_decls) {
+  if (address.value_type != bir::TypeKind::Ptr ||
+      c4c::codegen::lir::trim_lir_arg_text(address.storage_type_text) !=
+          "%struct.__va_list_tag_" ||
+      c4c::codegen::lir::trim_lir_arg_text(address.type_text) != "ptr") {
+    return false;
+  }
+  const auto layout = compute_aggregate_type_layout(address.storage_type_text, type_decls);
+  if (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct ||
+      layout.fields.size() <= 2) {
+    return false;
+  }
+  return layout.fields[2].byte_offset == address.byte_offset &&
+         c4c::codegen::lir::trim_lir_arg_text(layout.fields[2].type_text) == "ptr";
+}
+
 enum class ScalarSubobjectAddressability : unsigned char {
   Rejected,
   Accepted,
@@ -987,13 +1005,20 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
     return std::nullopt;
   }
 
-  const auto addressability = classify_scalar_subobject_addressability(
-      static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
-      addressed_ptr_it->second.value_type,
-      addressed_ptr_it->second.type_text,
-      value_type,
-      type_decls,
-      true);
+  const bool aarch64_variadic_fp_lane_load =
+      addressed_ptr_it->second.aarch64_variadic_fp_register_save_area &&
+      (value_type == bir::TypeKind::F32 || value_type == bir::TypeKind::F64 ||
+       value_type == bir::TypeKind::F128);
+  const auto addressability =
+      aarch64_variadic_fp_lane_load
+          ? ScalarSubobjectAddressability::Accepted
+          : classify_scalar_subobject_addressability(
+                static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
+                addressed_ptr_it->second.value_type,
+                addressed_ptr_it->second.type_text,
+                value_type,
+                type_decls,
+                true);
   if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility) {
     return false;
   }
@@ -1036,6 +1061,9 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
         .value_type = addressed_ptr_it->second.loaded_pointer_value_type,
         .byte_offset = 0,
         .type_text = addressed_ptr_it->second.loaded_pointer_type_text,
+        .aarch64_variadic_fp_register_save_area =
+            addressed_ptr_it->second.loaded_pointer_aarch64_variadic_fp_register_save_area ||
+            is_aarch64_va_list_vr_top_pointer_address(addressed_ptr_it->second, type_decls),
         .provenance = unknown_runtime_base_provenance(
             bir::Value::named(bir::TypeKind::Ptr, std::string(result_name))),
     };

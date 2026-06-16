@@ -144,6 +144,8 @@ struct PointerAddress {
   std::string type_text;
   bir::TypeKind loaded_pointer_value_type = bir::TypeKind::Void;
   std::string loaded_pointer_type_text;
+  bool aarch64_variadic_fp_register_save_area = false;
+  bool loaded_pointer_aarch64_variadic_fp_register_save_area = false;
   bir::MemoryAccessProvenance provenance;
 };
 

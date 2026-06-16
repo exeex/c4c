@@ -121,6 +121,27 @@ std::optional<HomogeneousFpAggregateFacts> homogeneous_fp_aggregate_facts(
   return facts;
 }
 
+[[nodiscard]] bool is_aarch64_va_list_vr_top_address(
+    const LocalSlotAddress& address,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  if (address.value_type != bir::TypeKind::Ptr ||
+      c4c::codegen::lir::trim_lir_arg_text(address.storage_type_text) !=
+          "%struct.__va_list_tag_" ||
+      c4c::codegen::lir::trim_lir_arg_text(address.type_text) != "ptr" ||
+      address.byte_offset < 0) {
+    return false;
+  }
+  const auto layout =
+      lookup_scalar_byte_offset_layout(address.storage_type_text, type_decls, structured_layouts);
+  if (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct ||
+      layout.fields.size() <= 2) {
+    return false;
+  }
+  return layout.fields[2].byte_offset == static_cast<std::size_t>(address.byte_offset) &&
+         c4c::codegen::lir::trim_lir_arg_text(layout.fields[2].type_text) == "ptr";
+}
+
 [[nodiscard]] bir::MemoryAccessProvenance pointer_address_access_provenance(
     const BirFunctionLowerer::PointerAddress& address,
     std::int64_t byte_offset,
@@ -1161,6 +1182,54 @@ bool BirFunctionLowerer::lower_memory_load_inst(
     return *global_load;
   }
 
+  const auto publish_aarch64_va_list_vr_top_load = [&]() {
+    if (*value_type != bir::TypeKind::Ptr ||
+        context_.target_profile.arch != c4c::TargetArch::Aarch64) {
+      return;
+    }
+    bool is_vr_top = false;
+    if (const auto local_slot_ptr_it = local_slot_pointer_values_.find(load.ptr.str());
+        local_slot_ptr_it != local_slot_pointer_values_.end() &&
+        is_aarch64_va_list_vr_top_address(
+            local_slot_ptr_it->second, type_decls_, &structured_layouts_)) {
+      is_vr_top = true;
+    }
+    if (!is_vr_top) {
+      if (const auto ptr_slot_it = local_pointer_slots_.find(load.ptr.str());
+          ptr_slot_it != local_pointer_slots_.end()) {
+        for (const auto& [_, aggregate_slots] : local_aggregate_slots_) {
+          if (c4c::codegen::lir::trim_lir_arg_text(aggregate_slots.storage_type_text) !=
+              "%struct.__va_list_tag_") {
+            continue;
+          }
+          const auto layout = lookup_scalar_byte_offset_layout(
+              aggregate_slots.storage_type_text, type_decls_, &structured_layouts_);
+          if (layout.kind != AggregateTypeLayout::Kind::Struct || layout.fields.size() <= 2) {
+            continue;
+          }
+          const auto leaf_it = aggregate_slots.leaf_slots.find(layout.fields[2].byte_offset);
+          if (leaf_it != aggregate_slots.leaf_slots.end() &&
+              leaf_it->second == ptr_slot_it->second &&
+              c4c::codegen::lir::trim_lir_arg_text(layout.fields[2].type_text) == "ptr") {
+            is_vr_top = true;
+            break;
+          }
+        }
+      }
+    }
+    if (is_vr_top) {
+      pointer_value_addresses_[load.result.str()] = PointerAddress{
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, load.result.str()),
+          .value_type = bir::TypeKind::Void,
+          .byte_offset = 0,
+          .type_text = "i8",
+          .aarch64_variadic_fp_register_save_area = true,
+          .provenance = unknown_runtime_base_provenance(
+              bir::Value::named(bir::TypeKind::Ptr, load.result.str())),
+      };
+    }
+  };
+
   if (const auto dynamic_ptr_it = dynamic_pointer_value_arrays_.find(load.ptr.str());
       dynamic_ptr_it != dynamic_pointer_value_arrays_.end()) {
     if (dynamic_ptr_it->second.element_type == *value_type) {
@@ -1193,21 +1262,27 @@ bool BirFunctionLowerer::lower_memory_load_inst(
     return true;
   }
 
-  bool handled_dynamic_local_aggregate_load = false;
-  if (!try_lower_dynamic_local_aggregate_load(load.result.str(),
-                                              load.ptr.str(),
-                                              *value_type,
-                                              dynamic_local_aggregate_arrays_,
-                                              type_decls_,
-                                              structured_layouts_,
-                                              local_slot_types_,
-                                              &value_aliases_,
-                                              lowered_insts,
-                                              &handled_dynamic_local_aggregate_load)) {
-    return false;
-  }
-  if (handled_dynamic_local_aggregate_load) {
-    return true;
+  const auto addressed_load_ptr_it = pointer_value_addresses_.find(load.ptr.str());
+  const bool aarch64_variadic_fp_register_save_area_load =
+      addressed_load_ptr_it != pointer_value_addresses_.end() &&
+      addressed_load_ptr_it->second.aarch64_variadic_fp_register_save_area;
+  if (!aarch64_variadic_fp_register_save_area_load) {
+    bool handled_dynamic_local_aggregate_load = false;
+    if (!try_lower_dynamic_local_aggregate_load(load.result.str(),
+                                                load.ptr.str(),
+                                                *value_type,
+                                                dynamic_local_aggregate_arrays_,
+                                                type_decls_,
+                                                structured_layouts_,
+                                                local_slot_types_,
+                                                &value_aliases_,
+                                                lowered_insts,
+                                                &handled_dynamic_local_aggregate_load)) {
+      return false;
+    }
+    if (handled_dynamic_local_aggregate_load) {
+      return true;
+    }
   }
 
   if (const auto pointer_load = try_lower_pointer_provenance_load(load.result.str(),
@@ -1226,6 +1301,9 @@ bool BirFunctionLowerer::lower_memory_load_inst(
                                                                   pointer_value_addresses_,
                                                                   lowered_insts);
       pointer_load.has_value()) {
+    if (*pointer_load) {
+      publish_aarch64_va_list_vr_top_load();
+    }
     return *pointer_load;
   }
 
@@ -1269,6 +1347,9 @@ bool BirFunctionLowerer::lower_memory_load_inst(
       }
     }
     return false;
+  }
+  if (local_slot_load == LocalSlotLoadResult::Lowered) {
+    publish_aarch64_va_list_vr_top_load();
   }
   return local_slot_load == LocalSlotLoadResult::Lowered;
 }
@@ -1857,6 +1938,10 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
           .type_text = pointer_slot_it->second.type_text,
           .loaded_pointer_value_type = pointer_slot_it->second.loaded_pointer_value_type,
           .loaded_pointer_type_text = pointer_slot_it->second.loaded_pointer_type_text,
+          .aarch64_variadic_fp_register_save_area =
+              pointer_slot_it->second.aarch64_variadic_fp_register_save_area,
+          .loaded_pointer_aarch64_variadic_fp_register_save_area =
+              pointer_slot_it->second.loaded_pointer_aarch64_variadic_fp_register_save_area,
           .provenance = unknown_runtime_base_provenance(
               bir::Value::named(bir::TypeKind::Ptr, result)),
       };
@@ -1925,6 +2010,10 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
         .type_text = pointer_slot_it->second.type_text,
         .loaded_pointer_value_type = pointer_slot_it->second.loaded_pointer_value_type,
         .loaded_pointer_type_text = pointer_slot_it->second.loaded_pointer_type_text,
+        .aarch64_variadic_fp_register_save_area =
+            pointer_slot_it->second.aarch64_variadic_fp_register_save_area,
+        .loaded_pointer_aarch64_variadic_fp_register_save_area =
+            pointer_slot_it->second.loaded_pointer_aarch64_variadic_fp_register_save_area,
         .provenance = unknown_runtime_base_provenance(
             bir::Value::named(bir::TypeKind::Ptr, result)),
     };
