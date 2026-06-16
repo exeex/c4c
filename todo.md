@@ -1,25 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/296_rv64_runtime_scalar_local_foundation.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Try One Tiny Local-Slot Case
+Current Step ID: Step 5
+Current Step Title: Focused Backend Validation
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 from `plan.md` completed: `local_temp.c` is registered in the rv64 qemu
-runtime subset with expected exit code 5, and the rv64 prepared-BIR emitter now
-supports the narrow same-width i32 frame-slot path needed by that case.
+Step 5 from `plan.md` completed: fresh focused validation reran the rv64
+runtime subset plus the focused RISC-V/backend route subset.
 
-`backend_rv64_runtime_local_temp` emits RISC-V assembly, assembles and links
-with clang, and passes under qemu without accepting fallback BIR or LLVM text.
+All 14 `backend_rv64_runtime_*` cases pass under qemu, including the new
+scalar and local-slot cases. The focused widened subset remains monotonic
+against the accepted baseline, with only the known pre-existing
+`backend_riscv_prepared_edge_publication` failure.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: run the focused backend validation requested by
-the supervisor, preserving the known `backend_riscv_prepared_edge_publication`
-baseline caveat unless that baseline is separately repaired.
+Supervisor should ask the plan owner to decide whether to close the active
+runbook, preserving the known `backend_riscv_prepared_edge_publication`
+baseline caveat as outside this rv64 runtime slice unless separately repaired.
 
 ## Watchouts
 
@@ -39,11 +40,13 @@ baseline caveat unless that baseline is separately repaired.
 
 ## Proof
 
-Passed for this packet with the expected widened-subset baseline failure:
+Passed:
 `bash -o pipefail -c 'cmake --build --preset default && ctest --test-dir build -R '\''^backend_rv64_runtime|backend_riscv|backend_codegen_route_riscv64'\'' --output-on-failure' 2>&1 | tee test_after.log`
 
-All 14 `backend_rv64_runtime_*` cases passed, including
-`backend_rv64_runtime_local_temp`. The only failing test in the delegated
-widened subset was the known pre-existing
-`backend_riscv_prepared_edge_publication` failure. Proof log:
-`test_after.log`.
+Accepted with baseline caveat:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Fresh rv64 runtime subset:
+`ctest --test-dir build -R '^backend_rv64_runtime' --output-on-failure`
+
+Proof log: `test_after.log`.
