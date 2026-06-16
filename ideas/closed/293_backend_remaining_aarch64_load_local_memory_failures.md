@@ -60,6 +60,29 @@ pointer-value writeback case fails in `main`. All three fail in the
   `ctest --test-dir build -j --output-on-failure -R '^backend_'`
   and records the remaining pass/fail count.
 
+## Closure Note
+
+Closed after all three original AArch64 backend failures were classified as
+one semantic local-memory admission boundary for loads through opaque runtime
+pointer values:
+
+- `backend_codegen_route_aarch64_byval_payload_8_to_13_stack_overflow`
+- `backend_codegen_route_aarch64_byval_payload_9_to_14_stack_overflow`
+- `backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value`
+
+The repair admitted the intended pointer-value local-memory load/store shapes
+without fixture, function, payload-size, or target-specific matching. Focused
+BIR proof was added for runtime pointer-value opaque `i32` access, while the
+existing fail-closed notes coverage for unsupported casted byte-pointer `i32`
+opaque compatibility remained green.
+
+Close proof recorded in `todo.md` before archival:
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed
+`180/180` backend tests with `0` failures, including all three original red
+tests. The supervisor-provided full-suite hook baseline candidate for commit
+`73543a60` was accepted at `3208/3208` passing. The close-time regression guard
+checker reported PASS on canonical `test_before.log` and `test_after.log`.
+
 ## Reviewer Reject Signals
 
 - The patch changes required/forbidden snippets, CTest labels, or expected
