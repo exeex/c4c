@@ -79,6 +79,42 @@ enum class ScalarSubobjectAddressability : unsigned char {
   return addressability != ScalarSubobjectAddressability::Rejected;
 }
 
+[[nodiscard]] static bool is_runtime_pointer_value_opaque_compatibility_access(
+    const BirFunctionLowerer::PointerAddress& address,
+    bir::TypeKind access_type,
+    const BirFunctionLowerer::TypeDeclMap& type_decls) {
+  if (address.byte_offset != 0 ||
+      !(address.type_text.empty() || address.type_text == "ptr" || address.type_text == "i8")) {
+    return false;
+  }
+  if (address.value_type != bir::TypeKind::Void && address.value_type != bir::TypeKind::I8) {
+    return false;
+  }
+  if (address.base_value.type != bir::TypeKind::Ptr || address.base_value.name.empty()) {
+    return false;
+  }
+  if (access_type == bir::TypeKind::I8) {
+    return true;
+  }
+
+  switch (address.provenance.base_identity.kind) {
+    case bir::MemoryProvenanceBaseIdentityKind::UnknownRuntimeBase:
+    case bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol:
+    case bir::MemoryProvenanceBaseIdentityKind::FormalParameter:
+    case bir::MemoryProvenanceBaseIdentityKind::ByvalParameter:
+    case bir::MemoryProvenanceBaseIdentityKind::SretParameter:
+      return true;
+    case bir::MemoryProvenanceBaseIdentityKind::Unknown:
+      return can_cover_scalar_access_with_byte_storage(
+          0, type_size_bytes(access_type), address.storage_type_text, type_decls);
+    case bir::MemoryProvenanceBaseIdentityKind::PointerValue:
+    case bir::MemoryProvenanceBaseIdentityKind::LocalSlot:
+    case bir::MemoryProvenanceBaseIdentityKind::StringConstant:
+      return false;
+  }
+  return false;
+}
+
 static ScalarSubobjectAddressability classify_scalar_subobject_addressability(
     std::int64_t byte_offset,
     bir::TypeKind stored_type,
@@ -872,7 +908,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_store(
       value_type,
       type_decls,
       true);
-  if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility) {
+  if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility &&
+      !is_runtime_pointer_value_opaque_compatibility_access(addressed_ptr_it->second,
+                                                            value_type,
+                                                            type_decls)) {
     return false;
   }
   if (!is_scalar_subobject_addressable(addressability)) {
@@ -1019,7 +1058,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
                 value_type,
                 type_decls,
                 true);
-  if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility) {
+  if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility &&
+      !is_runtime_pointer_value_opaque_compatibility_access(addressed_ptr_it->second,
+                                                            value_type,
+                                                            type_decls)) {
     return false;
   }
   if (!is_scalar_subobject_addressable(addressability)) {
