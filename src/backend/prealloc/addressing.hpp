@@ -59,6 +59,25 @@ enum class PreparedAddressBaseKind {
   return "unknown";
 }
 
+[[nodiscard]] constexpr std::string_view prepared_memory_layout_authority_name(
+    bir::MemoryLayoutAuthorityKind authority) {
+  switch (authority) {
+    case bir::MemoryLayoutAuthorityKind::Unknown:
+      return "unknown";
+    case bir::MemoryLayoutAuthorityKind::StructuredLayout:
+      return "structured_layout";
+    case bir::MemoryLayoutAuthorityKind::ScalarLayout:
+      return "scalar_layout";
+    case bir::MemoryLayoutAuthorityKind::ByteStorageAggregate:
+      return "byte_storage_aggregate";
+    case bir::MemoryLayoutAuthorityKind::RenderedTypeFallback:
+      return "rendered_type_fallback";
+    case bir::MemoryLayoutAuthorityKind::OpaqueCompatibility:
+      return "opaque_compatibility";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] constexpr std::string_view
 prepared_memory_dynamic_array_range_verdict_name(
     bir::MemoryDynamicArrayRangeVerdict verdict) {

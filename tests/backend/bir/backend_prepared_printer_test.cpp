@@ -7528,6 +7528,9 @@ int main() {
                               .can_use_base_plus_offset = true,
                               .provenance =
                                   bir::MemoryAccessProvenance{
+                                      .layout_authority =
+                                          bir::MemoryLayoutAuthorityKind::
+                                              OpaqueCompatibility,
                                       .dynamic_array =
                                           bir::MemoryDynamicArrayFacts{
                                               .verdict =
@@ -7545,7 +7548,8 @@ int main() {
   if (!expect_contains(
           provenance_dump,
           "base=pointer_value result=%loaded pointer=%loaded offset=16 size=4 "
-          "align=4 base_plus_offset=yes range_verdict=proven_out_of_bounds "
+          "align=4 base_plus_offset=yes layout_authority=opaque_compatibility "
+          "range_verdict=proven_out_of_bounds "
           "dynamic_array_verdict=unbounded",
           "prepared addressing provenance verdict dump")) {
     return EXIT_FAILURE;

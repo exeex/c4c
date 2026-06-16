@@ -460,6 +460,8 @@ void copy_source_memory_access_fact(PreparedEdgePublication& publication,
   publication.source_memory_is_volatile = access.is_volatile;
   publication.source_memory_can_use_base_plus_offset =
       access.address.can_use_base_plus_offset;
+  publication.source_memory_layout_authority =
+      access.address.provenance.layout_authority;
   publication.source_memory_range_verdict = access.address.provenance.range_verdict;
   publication.source_memory_dynamic_array_verdict =
       access.address.provenance.dynamic_array.verdict;

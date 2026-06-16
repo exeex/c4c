@@ -8,42 +8,42 @@ Current Step Title: Retire or Quarantine the Compatibility Bridge
 
 ## Just Finished
 
-Step 6: Retire or Quarantine the Compatibility Bridge started by preserving the
-opaque pointer compatibility bridge behavior while making its accepted route
-explicit in structured provenance metadata.
+Step 6: Retire or Quarantine the Compatibility Bridge continued by publishing
+prepared source-memory layout-authority metadata without changing opaque
+compatibility acceptance.
 
-- `can_address_scalar_subobject` now classifies scalar-subobject acceptance as
-  rejected, normal accepted, or opaque compatibility while preserving its old
-  boolean wrapper for existing non-opaque callers.
-- Addressed pointer load/store lowering still accepts the existing
-  `allow_opaque_ptr_base && stored_type == I8` bridge case, but memory
-  addresses produced through that route now carry
-  `layout_authority = OpaqueCompatibility` and keep
-  `range_verdict = UnknownCompatible`.
-- The zero-offset opaque pointer spelling bridge for empty/`ptr`/`i8`
-  pointer-address type text remains accepted and is also marked as
-  `OpaqueCompatibility` with an unknown-compatible range verdict.
-- No prepared/prealloc consumer or target lowering gate was changed to reject
-  these rows.
+- Prepared addressing dumps now print `layout_authority` alongside
+  `range_verdict` and `dynamic_array_verdict`, so `OpaqueCompatibility` rows are
+  externally visible in prepared reporting.
+- Prepared edge-publication source-memory snapshots and edge-copy source facts
+  now carry a flattened `source_memory_layout_authority` field copied from
+  `PreparedMemoryAccess::address.provenance.layout_authority`.
+- Stale-row/source-memory matching now compares the flattened layout-authority
+  fact with the current prepared memory access, matching the existing range and
+  dynamic-array verdict behavior.
+- Focused prepared lookup and prepared printer tests cover the
+  `OpaqueCompatibility` carrier path.
+- This satisfies the reviewer Step 6 precondition for explicit prepared
+  metadata publication. Bridge retirement can remain quarantine-only for this
+  slice; an actual reject/admission policy still requires a separate
+  behavior-changing packet.
 
 ## Suggested Next
 
-Decide the behavior-changing retirement policy for opaque compatibility rows:
-either reject the quarantined addressed pointer cases at lowering time or teach
-the relevant prepared/target consumers a supervisor-approved admission gate.
+Decide whether Step 6 should stop at quarantine-only metadata publication or
+delegate a separate behavior-changing packet to reject/gate
+`OpaqueCompatibility` rows.
 
 ## Watchouts
 
-- Actual bridge retirement is deferred because rejecting either the
-  `allow_opaque_ptr_base && stored_type == I8` case or the zero-offset
-  empty/`ptr`/`i8` opaque spelling case would remove currently accepted
-  addressed pointer load/store behavior.
-- `layout_authority` is structured carrier metadata only in this slice; current
-  prepared publication and target consumers continue to key on the existing
-  range and dynamic-array verdicts, so no accepted rows start failing here.
-- Existing stale-row/fail-closed behavior remains unchanged.
-- The audit used `rg` plus `c4c-clang-tool-ccdb` callers for the key prepared
-  helpers.
+- `source_memory_layout_authority` is carrier and consistency metadata only; no
+  prepared or target consumer accepts or rejects based on it in this packet.
+- Existing opaque pointer compatibility behavior remains accepted, including
+  the earlier structured-provenance marking of those rows as
+  `OpaqueCompatibility`.
+- The only stricter check added here is stale-row/source-memory consistency:
+  a publication whose flattened layout authority no longer matches the current
+  prepared memory access no longer matches that access.
 
 ## Proof
 

@@ -284,6 +284,8 @@ struct PreparedEdgePublication {
   bir::AddressSpace source_memory_address_space = bir::AddressSpace::Default;
   bool source_memory_is_volatile = false;
   bool source_memory_can_use_base_plus_offset = false;
+  bir::MemoryLayoutAuthorityKind source_memory_layout_authority =
+      bir::MemoryLayoutAuthorityKind::Unknown;
   bir::MemoryRangeVerdict source_memory_range_verdict =
       bir::MemoryRangeVerdict::UnknownCompatible;
   bir::MemoryDynamicArrayRangeVerdict source_memory_dynamic_array_verdict =
@@ -390,6 +392,8 @@ struct PreparedEdgeCopySourceFacts {
   bir::AddressSpace source_memory_address_space = bir::AddressSpace::Default;
   bool source_memory_is_volatile = false;
   bool source_memory_can_use_base_plus_offset = false;
+  bir::MemoryLayoutAuthorityKind source_memory_layout_authority =
+      bir::MemoryLayoutAuthorityKind::Unknown;
   bir::MemoryRangeVerdict source_memory_range_verdict =
       bir::MemoryRangeVerdict::UnknownCompatible;
   bir::MemoryDynamicArrayRangeVerdict source_memory_dynamic_array_verdict =

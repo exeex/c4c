@@ -78,6 +78,9 @@ void append_addressing(std::ostringstream& out, const PreparedBirModule& module)
           << " align=" << access.address.align_bytes
           << " base_plus_offset="
           << (access.address.can_use_base_plus_offset ? "yes" : "no")
+          << " layout_authority="
+          << prepared_memory_layout_authority_name(
+                 access.address.provenance.layout_authority)
           << " range_verdict="
           << prepared_memory_range_verdict_name(access.address.provenance.range_verdict)
           << " dynamic_array_verdict="

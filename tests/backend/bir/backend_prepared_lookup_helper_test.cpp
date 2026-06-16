@@ -5379,6 +5379,8 @@ int verify_edge_publication_source_producer_facts() {
                       .can_use_base_plus_offset = true,
                       .provenance =
                           bir::MemoryAccessProvenance{
+                              .layout_authority =
+                                  bir::MemoryLayoutAuthorityKind::OpaqueCompatibility,
                               .dynamic_array =
                                   bir::MemoryDynamicArrayFacts{
                                       .verdict = bir::MemoryDynamicArrayRangeVerdict::
@@ -5427,6 +5429,8 @@ int verify_edge_publication_source_producer_facts() {
       load_publication->source_memory_size_bytes != 4 ||
       load_publication->source_memory_align_bytes != 4 ||
       !load_publication->source_memory_can_use_base_plus_offset ||
+      load_publication->source_memory_layout_authority !=
+          bir::MemoryLayoutAuthorityKind::OpaqueCompatibility ||
       load_publication->source_memory_range_verdict !=
           bir::MemoryRangeVerdict::ProvenInBounds ||
       load_publication->source_memory_dynamic_array_verdict !=
@@ -5465,6 +5469,15 @@ int verify_edge_publication_source_producer_facts() {
           *load_publication->source_memory_access)) {
     return fail(
         "edge publication helper should reject mismatched source memory offset");
+  }
+  mismatched_source_memory_publication = *load_publication;
+  mismatched_source_memory_publication.source_memory_layout_authority =
+      bir::MemoryLayoutAuthorityKind::StructuredLayout;
+  if (prepare::prepared_edge_publication_source_memory_matches_access(
+          mismatched_source_memory_publication,
+          *load_publication->source_memory_access)) {
+    return fail(
+        "edge publication helper should reject mismatched source memory layout authority");
   }
   mismatched_source_memory_publication = *load_publication;
   mismatched_source_memory_publication.source_memory_range_verdict =
