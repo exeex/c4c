@@ -312,6 +312,12 @@ function(c4c_add_backend_rv64_runtime_case test_name)
 endfunction()
 
 c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_return_zero
+  SRC "${BACKEND_CASE_ROOT}/return_zero.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS scalar return
+)
+c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_branch_if_eq
   SRC "${BACKEND_CASE_ROOT}/branch_if_eq.c"
   CASE_TIMEOUT_SEC 10
