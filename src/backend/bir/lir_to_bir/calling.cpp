@@ -343,6 +343,32 @@ call_argument_direct_global_select_chain_dependency(
   return false;
 }
 
+[[nodiscard]] std::vector<std::pair<std::size_t, std::string>>
+collect_sorted_hfa_carrier_leaf_slots(
+    const BirFunctionLowerer::LocalAggregateSlots& aggregate_slots,
+    const BirFunctionLowerer::AggregateTypeLayout& aggregate_layout) {
+  if ((aggregate_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
+       aggregate_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) ||
+      aggregate_layout.size_bytes == 0 || aggregate_layout.align_bytes == 0) {
+    return {};
+  }
+
+  const auto begin_offset = aggregate_slots.base_byte_offset;
+  const auto end_offset = begin_offset + aggregate_layout.size_bytes;
+  std::vector<std::pair<std::size_t, std::string>> leaves;
+  leaves.reserve(aggregate_slots.leaf_slots.size());
+  for (const auto& [byte_offset, slot_name] : aggregate_slots.leaf_slots) {
+    if (byte_offset < begin_offset || byte_offset >= end_offset) {
+      continue;
+    }
+    leaves.push_back({byte_offset - begin_offset, slot_name});
+  }
+  std::sort(leaves.begin(),
+            leaves.end(),
+            [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+  return leaves;
+}
+
 struct Aapcs64VariadicHfaCarrierExpansionLane {
   bir::Value value;
   bir::TypeKind type = bir::TypeKind::Void;
@@ -361,7 +387,6 @@ struct Aapcs64VariadicHfaCarrierExpansionRequest {
   const BirFunctionLowerer::LocalAggregateSlotMap& local_aggregate_slots;
   const BirFunctionLowerer::LocalSlotTypes& local_slot_types;
   const std::vector<c4c::codegen::lir::LirCallArg>& structured_args;
-  std::vector<std::pair<std::size_t, std::string>> ordered_leaf_slots;
 };
 
 struct Aapcs64VariadicHfaCarrierExpansionResult {
@@ -400,21 +425,24 @@ build_aapcs64_variadic_hfa_carrier_expansion(
   if (aggregate_alias_it == request.aggregate_value_aliases.end()) {
     return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
   }
-  if (request.local_aggregate_slots.find(aggregate_alias_it->second) ==
-      request.local_aggregate_slots.end()) {
+  const auto aggregate_it =
+      request.local_aggregate_slots.find(aggregate_alias_it->second);
+  if (aggregate_it == request.local_aggregate_slots.end()) {
     return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
   }
-  if (request.ordered_leaf_slots.size() != lane_count) {
+  const auto ordered_leaf_slots =
+      collect_sorted_hfa_carrier_leaf_slots(aggregate_it->second, request.aggregate_layout);
+  if (ordered_leaf_slots.size() != lane_count) {
     return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
   }
 
   Aapcs64VariadicHfaCarrierExpansionResult result{
       .kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Expanded,
   };
-  result.lanes.reserve(request.ordered_leaf_slots.size());
-  for (std::size_t lane_index = 0; lane_index < request.ordered_leaf_slots.size();
+  result.lanes.reserve(ordered_leaf_slots.size());
+  for (std::size_t lane_index = 0; lane_index < ordered_leaf_slots.size();
        ++lane_index) {
-    const auto& slot_name = request.ordered_leaf_slots[lane_index].second;
+    const auto& slot_name = ordered_leaf_slots[lane_index].second;
     const auto slot_type_it = request.local_slot_types.find(slot_name);
     if (slot_type_it == request.local_slot_types.end() ||
         slot_type_it->second != *lane_type) {
@@ -1306,18 +1334,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   const auto append_aarch64_variadic_hfa_carrier_arg_lanes =
       [&](std::size_t index,
           const c4c::codegen::lir::LirOperand& operand,
-          const AggregateTypeLayout& aggregate_layout) -> bool {
-    std::vector<std::pair<std::size_t, std::string>> ordered_leaf_slots;
-    if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
-      const auto aggregate_alias_it = aggregate_value_aliases.find(operand.str());
-      if (aggregate_alias_it != aggregate_value_aliases.end()) {
-        const auto aggregate_it = local_aggregate_slots.find(aggregate_alias_it->second);
-        if (aggregate_it != local_aggregate_slots.end()) {
-          ordered_leaf_slots = collect_sorted_leaf_slots(aggregate_it->second);
-        }
-      }
-    }
-
+          const AggregateTypeLayout& aggregate_layout)
+          -> Aapcs64VariadicHfaCarrierExpansionResult::Kind {
     const auto expansion = build_aapcs64_variadic_hfa_carrier_expansion(
         Aapcs64VariadicHfaCarrierExpansionRequest{
             .target_profile = context_.target_profile,
@@ -1331,10 +1349,9 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             .local_aggregate_slots = local_aggregate_slots,
             .local_slot_types = local_slot_types,
             .structured_args = call.structured_args,
-            .ordered_leaf_slots = std::move(ordered_leaf_slots),
         });
     if (expansion.kind != Aapcs64VariadicHfaCarrierExpansionResult::Kind::Expanded) {
-      return false;
+      return expansion.kind;
     }
 
     for (const auto& lane : expansion.lanes) {
@@ -1342,7 +1359,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       lowered_args.push_back(lane.value);
       lowered_arg_abi.push_back(lane.abi);
     }
-    return true;
+    return expansion.kind;
   };
   const auto lower_byval_call_arg_layout =
       [&](std::size_t index, std::string_view legacy_type_text)
@@ -1713,9 +1730,16 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           }
           const auto arg_operand = c4c::codegen::lir::LirOperand(
               std::string(parsed_call->typed_call.args[index].operand));
-          if (append_aarch64_variadic_hfa_carrier_arg_lanes(
-                  index, arg_operand, *aggregate_layout)) {
+          const auto hfa_carrier_expansion =
+              append_aarch64_variadic_hfa_carrier_arg_lanes(
+                  index, arg_operand, *aggregate_layout);
+          if (hfa_carrier_expansion ==
+              Aapcs64VariadicHfaCarrierExpansionResult::Kind::Expanded) {
             continue;
+          }
+          if (hfa_carrier_expansion ==
+              Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected) {
+            return fail_call_family(call_family);
           }
           const auto arg = lower_byval_call_arg_value(
               arg_operand,
@@ -1733,9 +1757,16 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             std::string(parsed_call->typed_call.args[index].operand));
         if (const auto aggregate_layout = aggregate_alias_layout(arg_operand);
             aggregate_layout.has_value()) {
-          if (append_aarch64_variadic_hfa_carrier_arg_lanes(
-                  index, arg_operand, *aggregate_layout)) {
+          const auto hfa_carrier_expansion =
+              append_aarch64_variadic_hfa_carrier_arg_lanes(
+                  index, arg_operand, *aggregate_layout);
+          if (hfa_carrier_expansion ==
+              Aapcs64VariadicHfaCarrierExpansionResult::Kind::Expanded) {
             continue;
+          }
+          if (hfa_carrier_expansion ==
+              Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected) {
+            return fail_call_family(call_family);
           }
           const auto arg = lower_byval_call_arg_value(arg_operand, *aggregate_layout);
           if (!arg.has_value()) {
@@ -1801,9 +1832,16 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         const auto arg_operand =
             c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand));
-        if (append_aarch64_variadic_hfa_carrier_arg_lanes(
-                index, arg_operand, *aggregate_layout)) {
+        const auto hfa_carrier_expansion =
+            append_aarch64_variadic_hfa_carrier_arg_lanes(
+                index, arg_operand, *aggregate_layout);
+        if (hfa_carrier_expansion ==
+            Aapcs64VariadicHfaCarrierExpansionResult::Kind::Expanded) {
           continue;
+        }
+        if (hfa_carrier_expansion ==
+            Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected) {
+          return fail_call_family(call_family);
         }
         const auto arg = lower_byval_call_arg_value(
             arg_operand, *aggregate_layout);
@@ -1820,9 +1858,16 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand));
       if (const auto aggregate_layout = aggregate_alias_layout(arg_operand);
           aggregate_layout.has_value()) {
-        if (append_aarch64_variadic_hfa_carrier_arg_lanes(
-                index, arg_operand, *aggregate_layout)) {
+        const auto hfa_carrier_expansion =
+            append_aarch64_variadic_hfa_carrier_arg_lanes(
+                index, arg_operand, *aggregate_layout);
+        if (hfa_carrier_expansion ==
+            Aapcs64VariadicHfaCarrierExpansionResult::Kind::Expanded) {
           continue;
+        }
+        if (hfa_carrier_expansion ==
+            Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected) {
+          return fail_call_family(call_family);
         }
         const auto arg = lower_byval_call_arg_value(arg_operand, *aggregate_layout);
         if (!arg.has_value()) {
