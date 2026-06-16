@@ -95,3 +95,11 @@ work.
 - Treat target-specific case directory cleanup as a separate mechanical idea
   unless the runtime expansion directly exposes a concrete directory ownership
   problem.
+
+## Completion Note
+
+Closed after Step 5 validation. The rv64 runtime subset passes 14/14 with
+`return_zero.c`, `return_add.c`, `return_add_sub_chain.c`, and `local_temp.c`
+registered under qemu. The focused RISC-V/backend route validation is monotonic
+against the accepted baseline: `backend_riscv_prepared_edge_publication`
+remains the single known pre-existing failure, with no new failures.
