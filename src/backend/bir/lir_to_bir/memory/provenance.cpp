@@ -126,6 +126,16 @@ static bir::MemoryAccessProvenance pointer_value_memory_provenance(
   return provenance;
 }
 
+static bir::MemoryAccessProvenance pointer_value_memory_provenance(
+    const bir::Value& base_value,
+    std::int64_t byte_offset,
+    std::size_t size_bytes) {
+  auto provenance = pointer_value_base_provenance(base_value);
+  provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
+  provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+  return provenance;
+}
+
 std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_local_pointer_values(
     const std::vector<std::string>& element_slots,
     const LocalPointerValueAliasMap& local_pointer_value_aliases) {
@@ -764,6 +774,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_store(
                 .byte_offset = 0,
                 .size_bytes = slot_size,
                 .align_bytes = slot_size,
+                .provenance = pointer_value_memory_provenance(
+                    bir::Value::named(bir::TypeKind::Ptr, std::string(ptr_name)),
+                    0,
+                    slot_size),
             },
     });
     return true;
@@ -882,6 +896,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_load(
                 .byte_offset = 0,
                 .size_bytes = slot_size,
                 .align_bytes = slot_size,
+                .provenance = pointer_value_memory_provenance(
+                    bir::Value::named(bir::TypeKind::Ptr, std::string(ptr_name)),
+                    0,
+                    slot_size),
             },
     });
     return true;

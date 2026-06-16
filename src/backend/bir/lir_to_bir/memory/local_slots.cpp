@@ -121,6 +121,26 @@ std::optional<HomogeneousFpAggregateFacts> homogeneous_fp_aggregate_facts(
   return facts;
 }
 
+[[nodiscard]] bir::MemoryAccessProvenance pointer_address_access_provenance(
+    const BirFunctionLowerer::PointerAddress& address,
+    std::int64_t byte_offset,
+    std::size_t size_bytes) {
+  auto provenance = address.provenance;
+  if (provenance.base_identity.kind ==
+      bir::MemoryProvenanceBaseIdentityKind::Unknown) {
+    provenance = pointer_value_base_provenance(address.base_value);
+  }
+  provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
+  if (address.dynamic_element_count != 0 || address.dynamic_element_stride_bytes != 0) {
+    provenance.dynamic_array.available = true;
+    provenance.dynamic_array.element_count = address.dynamic_element_count;
+    provenance.dynamic_array.element_stride_bytes = address.dynamic_element_stride_bytes;
+    provenance.dynamic_array.base_byte_offset = address.byte_offset;
+  }
+  provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+  return provenance;
+}
+
 [[nodiscard]] bool append_local_slot_address_value(std::string_view result_name,
                                                    const LocalSlotAddress& address,
                                                    std::vector<bir::Inst>* lowered_insts) {
@@ -659,6 +679,17 @@ bool BirFunctionLowerer::lower_memory_store_inst(
                     .byte_offset = static_cast<std::int64_t>(byte_offset),
                     .size_bytes = slot_size,
                     .align_bytes = std::max(slot_size, source_param_it->second.layout.align_bytes),
+                    .provenance =
+                        [&]() {
+                          auto provenance = memory_provenance_for_base(
+                              bir::MemoryProvenanceBaseIdentityKind::ByvalParameter,
+                              store.val.str(),
+                              bir::Value::named(bir::TypeKind::Ptr, store.val.str()),
+                              source_param_it->second.layout.size_bytes);
+                          provenance.requested_range = bir::make_memory_byte_range(
+                              static_cast<std::int64_t>(byte_offset), slot_size);
+                          return provenance;
+                        }(),
                 },
         });
         lowered_insts->push_back(bir::StoreLocalInst{
@@ -1020,6 +1051,11 @@ bool BirFunctionLowerer::lower_memory_load_inst(
                           addressed_ptr_it->second.byte_offset + byte_offset),
                       .size_bytes = slot_size,
                       .align_bytes = std::max(slot_size, aggregate_layout->align_bytes),
+                      .provenance = pointer_address_access_provenance(
+                          addressed_ptr_it->second,
+                          static_cast<std::int64_t>(
+                              addressed_ptr_it->second.byte_offset + byte_offset),
+                          slot_size),
                   },
           });
           lowered_insts->push_back(bir::StoreLocalInst{

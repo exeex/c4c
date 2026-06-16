@@ -58,6 +58,16 @@ struct LocalMemsetLeafStore {
   bir::Value value;
 };
 
+[[nodiscard]] bir::MemoryAccessProvenance pointer_value_access_provenance(
+    const bir::Value& base_value,
+    std::int64_t byte_offset,
+    std::size_t size_bytes) {
+  auto provenance = pointer_value_base_provenance(base_value);
+  provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
+  provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+  return provenance;
+}
+
 }  // namespace
 
 std::optional<BirFunctionLowerer::AggregateTypeLayout>
@@ -789,6 +799,10 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
                   .byte_offset = static_cast<std::int64_t>(target_leaf.byte_offset),
                   .size_bytes = leaf_size,
                   .align_bytes = leaf_size,
+                  .provenance = pointer_value_access_provenance(
+                      bir::Value::named(bir::TypeKind::Ptr, std::string(source_pointer)),
+                      static_cast<std::int64_t>(target_leaf.byte_offset),
+                      leaf_size),
               },
       });
       lowered_insts->push_back(bir::StoreLocalInst{
@@ -821,6 +835,10 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
                   .byte_offset = static_cast<std::int64_t>(copied_bytes),
                   .size_bytes = chunk_size,
                   .align_bytes = std::min(target_slot.align_bytes, chunk_size),
+                  .provenance = pointer_value_access_provenance(
+                      bir::Value::named(bir::TypeKind::Ptr, std::string(source_pointer)),
+                      static_cast<std::int64_t>(copied_bytes),
+                      chunk_size),
               },
       });
       lowered_insts->push_back(bir::StoreLocalInst{

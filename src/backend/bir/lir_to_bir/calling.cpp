@@ -76,6 +76,16 @@ std::string extern_decl_name_for_identity(const c4c::LinkNameTable& link_names,
   return value;
 }
 
+[[nodiscard]] bir::MemoryAccessProvenance pointer_value_access_provenance(
+    const bir::Value& base_value,
+    std::int64_t byte_offset,
+    std::size_t size_bytes) {
+  auto provenance = pointer_value_base_provenance(base_value);
+  provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
+  provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+  return provenance;
+}
+
 [[nodiscard]] std::optional<std::string> inline_asm_clobber_name_from_constraint(
     std::string_view token) {
   if (token.size() < 4 || token.substr(0, 2) != "~{" || token.back() != '}') {
@@ -2341,6 +2351,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
                   .align_bytes = 1,
                   .address_space = bir::AddressSpace::Default,
                   .is_volatile = false,
+                  .provenance = pointer_value_access_provenance(*lowered_address, 0, 0),
               },
               .memory_access = bir::IntrinsicMemoryAccessKind::None,
               .has_side_effects = true,
@@ -2484,6 +2495,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
                   .align_bytes = 16,
                   .address_space = bir::AddressSpace::Default,
                   .is_volatile = false,
+                  .provenance = pointer_value_access_provenance(*lowered_pointer, 0, 16),
               },
               .memory_access = bir::IntrinsicMemoryAccessKind::Read,
               .has_side_effects = false,

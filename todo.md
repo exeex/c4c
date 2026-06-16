@@ -8,54 +8,47 @@ Current Step Title: Populate Base Identity and Known Extent Facts
 
 ## Just Finished
 
-Step 3: Populate Base Identity and Known Extent Facts continued for pointer
-SSA/value, formal, byval, sret, and explicit unknown-runtime base routes.
+Step 3: Populate Base Identity and Known Extent Facts finished the remaining
+owned pointer-value `MemoryAddress` producer inventory/population for
+intrinsic, local-slot, provenance fallback, and AArch64 semantic-intrinsic
+paths without changing route admission, address kind, byte offsets, sizes,
+alignments, memory access kind, or prepared/prealloc consumer behavior.
 
-Updated existing pointer-carrier producers without changing route admission,
-address kind, byte offsets, sizes, alignments, or prepared/prealloc consumer
-behavior:
-
-- `PointerAddress` and dynamic pointer-value array side-table records now have
-  reusable provenance helpers for `PointerValue`, `UnknownRuntimeBase`, and
-  complete object extents.
-- pointer-memory access lowering now preserves a non-unknown carrier identity
-  instead of overwriting formal/byval/sret/unknown-runtime provenance with a
-  generic `PointerValue`; fallback remains `PointerValue` when no stronger
-  identity exists.
-- non-byval/non-sret formal pointer params seed `FormalParameter` base identity
-  with unknown extent, keeping existing pointer-address routing unchanged.
-- byval aggregate parameter materialization records `ByvalParameter` identity
-  and complete extent from the already selected aggregate layout on emitted
-  pointer-value loads.
-- sret return-copy stores record `SretParameter` identity and complete extent
-  from the existing return ABI layout.
-- direct `calloc` pointer carriers record `PointerValue` identity and complete
-  extent only when immediate count*stride fits in `size_t`; dynamic alloca,
-  runtime global pointer bases, loaded pointer values, and mutable pointer-slot
-  reloads remain explicit `UnknownRuntimeBase`.
-- GEP-derived pointer-address records and dynamic pointer-value array
-  synthesized load/store addresses carry forward existing base provenance and
-  publish requested byte ranges while leaving `range_verdict` at
-  `UnknownCompatible`.
+- intrinsic memcpy pointer-source leaf/scalar loads now publish `PointerValue`
+  identity plus requested byte range with unknown extent and neutral
+  `UnknownCompatible` verdict.
+- local aggregate stores from byval parameters now mirror existing aggregate
+  parameter materialization by publishing `ByvalParameter` identity, complete
+  extent from the selected byval layout, and requested byte range.
+- local aggregate loads from addressed pointer values now preserve existing
+  `PointerAddress` provenance, dynamic-array facts when present, and requested
+  byte range while leaving the verdict neutral.
+- pointer-provenance fallback load/store paths for pointer-valued local-slot
+  state now publish `PointerValue` identity plus requested byte range with
+  unknown extent.
+- AArch64 cache-maintenance and vector-load intrinsic memory operands are
+  target-specific/non-prepared routes, but now publish passive `PointerValue`
+  identity and requested byte range facts for inventory completeness.
 
 ## Suggested Next
 
-Review whether any remaining Step 3 producers outside the current owned memory
-and call-return routes still emit pointer-value memory addresses with blank
-provenance; otherwise hand Step 3 to the supervisor for review/escalation into
-requested-range proof.
+Step 3 is ready for supervisor review. If accepted, the next coherent packet is
+Step 4 requested-range proof for the already populated carrier facts.
 
 ## Watchouts
 
 - The provenance carrier remains passive. No prepared/prealloc consumer gates
   on the new facts in this slice.
-- Byval/sret complete extents come only from already selected aggregate/return
-  ABI layouts. Formal pointer params and loaded/runtime pointer values keep
-  unknown extent.
-- This slice still does not prove requested ranges, dynamic array bounds, or
-  layout authority; `range_verdict` remains neutral `UnknownCompatible`.
-- Dynamic pointer-value array element offsets use the existing arithmetic and
-  casts; this packet did not add new overflow rejection or range proof there.
+- Complete extents are recorded only where an existing authoritative layout was
+  already selected; intrinsic pointer sources, fallback pointer-value local-slot
+  paths, and AArch64 intrinsic operands keep unknown extent.
+- This slice still does not prove requested ranges, dynamic array bounds,
+  layout authority, negative-offset rejection beyond existing checks, or
+  overflow rejection beyond existing construction behavior; `range_verdict`
+  remains neutral `UnknownCompatible`.
+- No remaining owned Step 3 `PointerValue` `MemoryAddress` producer is known to
+  emit blank provenance after this packet. Any further gaps should be treated as
+  outside the current owned inventory or Step 4+ proof/consumer work.
 
 ## Proof
 
