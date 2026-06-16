@@ -4045,9 +4045,10 @@ LirModule make_aarch64_variadic_carrier_array_call_module() {
               .type_ref = lir::LirTypeRef("ptr"),
           },
           lir::LirCallArg{
-              .type = "[2 x float] alignstack(8)",
+              .type = "[2 x float]",
               .operand = LirOperand("%payload"),
-              .type_ref = lir::LirTypeRef("[2 x float] alignstack(8)"),
+              .type_ref = lir::LirTypeRef("[2 x float]"),
+              .aarch64_stack_align_bytes = 8,
           },
       },
   });

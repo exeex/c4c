@@ -990,6 +990,9 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     if (index < call.structured_args.size()) {
       abi.aarch64_hfa_lane_count = call.structured_args[index].aarch64_hfa_lane_count;
       abi.aarch64_hfa_lane_index = call.structured_args[index].aarch64_hfa_lane_index;
+      if (call.structured_args[index].aarch64_stack_align_bytes > 0) {
+        abi.align_bytes = call.structured_args[index].aarch64_stack_align_bytes;
+      }
     }
     return abi;
   };
@@ -1199,7 +1202,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
                                         &structured_layouts_);
   };
   const auto append_aarch64_variadic_hfa_carrier_arg_lanes =
-      [&](const c4c::codegen::lir::LirOperand& operand,
+      [&](std::size_t index,
+          const c4c::codegen::lir::LirOperand& operand,
           const AggregateTypeLayout& aggregate_layout) -> bool {
     if (context_.target_profile.arch != c4c::TargetArch::Aarch64 || !is_variadic_call ||
         operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
@@ -1242,6 +1246,14 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       }
       lane_abi->aarch64_hfa_lane_count = lane_count;
       lane_abi->aarch64_hfa_lane_index = lane_index;
+      if (lane_index == 0) {
+        if (index < call.structured_args.size() &&
+            call.structured_args[index].aarch64_stack_align_bytes > 0) {
+          lane_abi->align_bytes = call.structured_args[index].aarch64_stack_align_bytes;
+        } else if (aggregate_layout.align_bytes > 0) {
+          lane_abi->align_bytes = aggregate_layout.align_bytes;
+        }
+      }
       lowered_arg_types.push_back(*lane_type);
       lowered_args.push_back(bir::Value::named(*lane_type, slot_name));
       lowered_arg_abi.push_back(*lane_abi);
@@ -1617,7 +1629,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           }
           const auto arg_operand = c4c::codegen::lir::LirOperand(
               std::string(parsed_call->typed_call.args[index].operand));
-          if (append_aarch64_variadic_hfa_carrier_arg_lanes(arg_operand, *aggregate_layout)) {
+          if (append_aarch64_variadic_hfa_carrier_arg_lanes(
+                  index, arg_operand, *aggregate_layout)) {
             continue;
           }
           const auto arg = lower_byval_call_arg_value(
@@ -1636,7 +1649,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             std::string(parsed_call->typed_call.args[index].operand));
         if (const auto aggregate_layout = aggregate_alias_layout(arg_operand);
             aggregate_layout.has_value()) {
-          if (append_aarch64_variadic_hfa_carrier_arg_lanes(arg_operand, *aggregate_layout)) {
+          if (append_aarch64_variadic_hfa_carrier_arg_lanes(
+                  index, arg_operand, *aggregate_layout)) {
             continue;
           }
           const auto arg = lower_byval_call_arg_value(arg_operand, *aggregate_layout);
@@ -1688,12 +1702,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         lowered_arg_types.push_back(bir::TypeKind::Ptr);
         lowered_args.push_back(*arg);
-        auto abi = *compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr);
-        if (index < call.structured_args.size()) {
-          abi.aarch64_hfa_lane_count = call.structured_args[index].aarch64_hfa_lane_count;
-          abi.aarch64_hfa_lane_index = call.structured_args[index].aarch64_hfa_lane_index;
-        }
-        lowered_arg_abi.push_back(abi);
+        lowered_arg_abi.push_back(apply_call_arg_metadata(
+            index, *compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)));
         continue;
       }
       const auto arg_type =
@@ -1707,7 +1717,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         const auto arg_operand =
             c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand));
-        if (append_aarch64_variadic_hfa_carrier_arg_lanes(arg_operand, *aggregate_layout)) {
+        if (append_aarch64_variadic_hfa_carrier_arg_lanes(
+                index, arg_operand, *aggregate_layout)) {
           continue;
         }
         const auto arg = lower_byval_call_arg_value(
@@ -1717,19 +1728,16 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         lowered_arg_types.push_back(bir::TypeKind::Ptr);
         lowered_args.push_back(*arg);
-        auto abi = lower_byval_call_arg_abi(*aggregate_layout);
-        if (index < call.structured_args.size()) {
-          abi.aarch64_hfa_lane_count = call.structured_args[index].aarch64_hfa_lane_count;
-          abi.aarch64_hfa_lane_index = call.structured_args[index].aarch64_hfa_lane_index;
-        }
-        lowered_arg_abi.push_back(abi);
+        lowered_arg_abi.push_back(
+            apply_call_arg_metadata(index, lower_byval_call_arg_abi(*aggregate_layout)));
         continue;
       }
       const auto arg_operand =
           c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand));
       if (const auto aggregate_layout = aggregate_alias_layout(arg_operand);
           aggregate_layout.has_value()) {
-        if (append_aarch64_variadic_hfa_carrier_arg_lanes(arg_operand, *aggregate_layout)) {
+        if (append_aarch64_variadic_hfa_carrier_arg_lanes(
+                index, arg_operand, *aggregate_layout)) {
           continue;
         }
         const auto arg = lower_byval_call_arg_value(arg_operand, *aggregate_layout);
@@ -1738,12 +1746,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         lowered_arg_types.push_back(bir::TypeKind::Ptr);
         lowered_args.push_back(*arg);
-        auto abi = lower_byval_call_arg_abi(*aggregate_layout);
-        if (index < call.structured_args.size()) {
-          abi.aarch64_hfa_lane_count = call.structured_args[index].aarch64_hfa_lane_count;
-          abi.aarch64_hfa_lane_index = call.structured_args[index].aarch64_hfa_lane_index;
-        }
-        lowered_arg_abi.push_back(abi);
+        lowered_arg_abi.push_back(
+            apply_call_arg_metadata(index, lower_byval_call_arg_abi(*aggregate_layout)));
         continue;
       }
       const auto arg = lower_value(arg_operand, *arg_type, value_aliases);
@@ -1752,12 +1756,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       }
       lowered_arg_types.push_back(*arg_type);
       lowered_args.push_back(*arg);
-      auto abi = *compute_call_arg_abi(context_.target_profile, *arg_type);
-      if (index < call.structured_args.size()) {
-        abi.aarch64_hfa_lane_count = call.structured_args[index].aarch64_hfa_lane_count;
-        abi.aarch64_hfa_lane_index = call.structured_args[index].aarch64_hfa_lane_index;
-      }
-      lowered_arg_abi.push_back(abi);
+      lowered_arg_abi.push_back(apply_call_arg_metadata(
+          index, *compute_call_arg_abi(context_.target_profile, *arg_type)));
     }
     is_indirect_call = true;
   }

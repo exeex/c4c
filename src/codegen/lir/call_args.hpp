@@ -42,6 +42,7 @@ struct OwnedLirTypedCallArg {
   LirTypeRef type_ref;
   std::size_t aarch64_hfa_lane_count = 0;
   std::size_t aarch64_hfa_lane_index = 0;
+  std::size_t aarch64_stack_align_bytes = 0;
 };
 
 struct FormattedLirTypedCall {
@@ -300,6 +301,15 @@ inline std::string format_lir_typed_call_arg(std::string_view type,
   return formatted;
 }
 
+inline std::string format_lir_typed_call_arg(const OwnedLirTypedCallArg& arg) {
+  std::string formatted_type(trim_lir_arg_text(arg.type));
+  if (arg.aarch64_stack_align_bytes > 0 &&
+      formatted_type.find(" alignstack(") == std::string::npos) {
+    formatted_type += " alignstack(" + std::to_string(arg.aarch64_stack_align_bytes) + ")";
+  }
+  return format_lir_typed_call_arg(formatted_type, arg.operand);
+}
+
 inline std::string format_lir_typed_call_args(
     const std::vector<OwnedLirTypedCallArg>& args) {
   std::string formatted;
@@ -307,7 +317,7 @@ inline std::string format_lir_typed_call_args(
     if (index != 0) {
       formatted += ", ";
     }
-    formatted += format_lir_typed_call_arg(args[index].type, args[index].operand);
+    formatted += format_lir_typed_call_arg(args[index]);
   }
   return formatted;
 }

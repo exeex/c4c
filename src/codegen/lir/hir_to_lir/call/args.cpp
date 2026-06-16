@@ -250,9 +250,11 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
         const std::string hfa_carrier = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirLoadOp{hfa_carrier, hfa_carrier_ty, obj_ptr});
         PreparedCallArg out;
-        out.args.push_back({.type = hfa_carrier_ty + " alignstack(" +
-                                    std::to_string(align_stack) + ")",
-                            .operand = hfa_carrier});
+        out.args.push_back({.type = hfa_carrier_ty,
+                            .operand = hfa_carrier,
+                            .type_ref = LirTypeRef(hfa_carrier_ty),
+                            .aarch64_stack_align_bytes =
+                                static_cast<std::size_t>(align_stack)});
         return out;
       }
     }

@@ -71,7 +71,8 @@ inline std::vector<LirCallArg> lir_call_structured_args(
          .operand = LirOperand(std::string(trim_lir_arg_text(arg.operand))),
          .type_ref = arg.type_ref,
          .aarch64_hfa_lane_count = arg.aarch64_hfa_lane_count,
-         .aarch64_hfa_lane_index = arg.aarch64_hfa_lane_index});
+         .aarch64_hfa_lane_index = arg.aarch64_hfa_lane_index,
+         .aarch64_stack_align_bytes = arg.aarch64_stack_align_bytes});
   }
   return structured_args;
 }
