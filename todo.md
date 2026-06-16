@@ -1,45 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/283_cpp_dependent_reference_alias_c_style_cast_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Dependent Reference Alias Cast Semantics
+Current Step ID: 3-4
+Current Step Title: Prove The Three Alias Forms And Broaden Reference, Cast, And Template Validation
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Repair Dependent Reference Alias Cast Semantics completed.
+Steps 3-4: Prove The Three Alias Forms And Broaden Reference, Cast, And
+Template Validation completed.
 
-Repaired the HIR type boundary shared by C-style cast targets and local
-reference-alias declarations:
-- `Lowerer::lower_cast_expr()` now sends cast target types through the same
-  structured/TextId-aware callable type preparation chain before materializing
-  the `CastExpr`.
-- Local declarations now use the same structured binding inputs before
-  reference storage materialization, so a declared `AliasL` does not keep the
-  dependent owner aggregate as its storage value type.
-- `resolve_struct_member_typedef_if_ready()` now prefers the last qualified
-  owner segment for nested deferred member typedefs before falling back to the
-  already-realized outer holder tag, preserving reference flags while resolving
-  `Rebind<T>::AliasL` / nested alias owners.
+Focused proof passed for all three source-idea alias forms:
+- direct dependent template-member reference alias:
+  `cpp_positive_sema_c_style_cast_dependent_template_member_ref_alias_basic_cpp`
+- nested dependent template-member reference alias:
+  `cpp_positive_sema_c_style_cast_nested_dependent_template_member_ref_alias_basic_cpp`
+- nested dependent-typename reference alias:
+  `cpp_positive_sema_c_style_cast_nested_dependent_typename_ref_alias_basic_cpp`
 
-Evidence from
-`c_style_cast_dependent_template_member_ref_alias_basic.cpp`:
-- HIR no longer materializes the lvalue alias as `struct Holder_T_int*&` or
-  casts through `struct Holder_T_int&`; it lowers as reference storage
-  `decl l: ?*& = (&((?&)x#L0))`.
-- LLVM now emits scalar/reference operations:
-  `store ptr %lv.x, ptr %lv.l`, `store i32 %t2, ptr %t3`, and
-  `store i32 %t4, ptr %t5`.
-- The rvalue alias still selects `pick__rref_overload`, preserving overload
-  behavior.
+Refreshed HIR/LLVM evidence for the three forms shows scalar/reference-shaped
+lvalue casts and preserved rvalue overload selection:
+- HIR lowers lvalue aliases as reference storage, e.g.
+  `decl l: ?*& = (&((?&)x#L0))`, and rvalue aliases as `decl r: ?*&& = (&x#L0)`.
+- HIR lvalue overload calls stay on `pick((&((?&)x#L0)))`; rvalue overload
+  calls stay on `pick__rref_overload((&x#L0))`.
+- LLVM stores the reference as a pointer (`store ptr %lv.x, ptr %lv.l`) and
+  updates through scalar `i32` stores (`store i32 %t2, ptr %t3`,
+  `store i32 %t4, ptr %t5`).
+- No aggregate `%struct.Holder_T_int` stores remain in the refreshed LLVM for
+  the three repaired source paths; remaining `%struct.Holder_T_int` mentions
+  are type declarations only.
+
+Step 4 broader validation evidence from the supervisor remains green:
+nearby reference, cast, member-typedef, template function/method/deduction,
+template alias member typedef, and template variable member-typedef tests
+passed 284/284.
 
 ## Suggested Next
 
-Execute Step 3 by recording focused evidence across all three source-idea
-alias forms, including direct template-member, nested template-member, and
-nested dependent-typename aliases. Confirm the lvalue path is scalar/reference
-shaped and the rvalue path still selects `pick__rref_overload`.
+Ask the plan owner to evaluate lifecycle closure for idea 283 using the
+completed Step 3 focused proof and the recorded Step 4 broader validation.
 
 ## Watchouts
 
@@ -48,8 +49,8 @@ shaped and the rvalue path still selects `pick__rref_overload`.
   or final spelling gap unless a later proof requires changing semantics.
 - No test expectations, runtime harnesses, backend store lowering, or
   filename-specific paths were changed.
-- This packet ran only the supervisor-selected focused regex; do not claim
-  Step 4 broader validation complete.
+- This packet did not rerun the 284/284 nearby validation; it recorded the
+  already-run supervisor result as requested.
 
 ## Proof
 
@@ -67,9 +68,13 @@ The three source-idea targets now pass:
 The four related passing regex matches also remained green. Proof log path:
 `test_after.log`.
 
-Diagnostic evidence for this packet was written under `/tmp`:
-`/tmp/c4c_283_fixed_direct_member.hir` and
-`/tmp/c4c_283_fixed_direct_member.ll`.
+Refreshed diagnostic evidence for this packet was written under `/tmp`:
+- `/tmp/c4c_283_step3_direct_member.hir`
+- `/tmp/c4c_283_step3_direct_member.ll`
+- `/tmp/c4c_283_step3_nested_member.hir`
+- `/tmp/c4c_283_step3_nested_member.ll`
+- `/tmp/c4c_283_step3_nested_typename.hir`
+- `/tmp/c4c_283_step3_nested_typename.ll`
 
 Supervisor regression guard compared matching focused logs:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`.
