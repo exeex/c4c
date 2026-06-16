@@ -1,44 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/288_extract_aapcs64_variadic_hfa_lane_expansion_helper.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Prove Fail-Closed Carrier Edge Coverage
+Current Step ID: Step 5
+Current Step Title: Broader Validation and Closure Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 added focused `backend_lir_to_bir_notes` coverage for outgoing AAPCS64
-variadic HFA carrier arrays that must fail closed after helper extraction.
+Step 5 validated closure readiness for idea 288 after the AAPCS64 variadic HFA
+carrier helper extraction.
 
-The tests now cover missing aggregate alias facts, carrier leaf-slot count
-mismatch, and carrier slot-type mismatch. Each fixture expects semantic call
-lowering to fail in the direct-call family instead of silently falling back to
-byval pointer lowering or partially expanding lanes. No implementation changes
-were needed.
+The broader backend proof passed for all `backend_` CTest targets. Read-only
+inspection confirmed semantic BIR direct and indirect call lowering both route
+outgoing carrier expansion through
+`build_aapcs64_variadic_hfa_carrier_expansion`; neither path recomputes HFA
+lane shape after the helper classifies the aggregate carrier. The helper derives
+lane kind/count from aggregate layout plus local carrier slot metadata and
+returns fail-closed `Rejected` results for missing aggregate aliases, leaf-slot
+count mismatches, slot-type mismatches, or missing ABI classification.
+
+Prepared/prealloc coverage for AAPCS64 variadic aggregate `va_arg` still consumes
+explicit lane-shape facts (`register_save_lanes` and
+`register_save_lane_size`) from semantic BIR/prepared access-plan metadata, not a
+separate downstream recomputation.
+
+The helper does not consume rendered call-argument text or ABI suffix text as
+primary truth. Rendered text remains only in existing legacy byval layout
+compatibility paths outside the helper boundary.
 
 ## Suggested Next
 
-Execute `Step 5: Broader Validation and Closure Readiness`.
+Ask the plan owner to evaluate whether the active runbook should close idea 288
+or retire/split any remaining adjacent ABI cleanup separately.
 
 ## Watchouts
 
 - Keep idea 289 out of scope for this plan.
-- Do not broaden AArch64 ABI classification or prepared/prealloc call-plan
-  behavior.
-- The helper contract remains intentionally private in `calling.cpp`; no new
-  build target or public header was needed.
-- `Rejected` must keep meaning recognized-but-incomplete carrier facts, not a
-  soft fallback to byval pointer lowering.
-- The Step 4 mismatch fixtures deliberately keep local-memory lowering valid
-  and move the inconsistency to the carrier helper boundary: the count case
-  loads a two-lane float carrier but calls with a three-lane HFA shape, and the
-  type case loads two integer slots but calls with a two-float HFA shape.
-- No fixture blocker remains for the requested fail-closed carrier edges.
+- No closure blocker was found in the helper extraction boundary or focused
+  backend fixtures.
+- Adjacent cleanup remains outside idea 288: existing no-id/legacy byval layout
+  compatibility bridges still use rendered type text where structured
+  `LirTypeRef`/`StructNameId` metadata is unavailable. That should stay a
+  separate ABI cleanup initiative if pursued.
+- No fixture-support follow-up was found for the Step 4 fail-closed carrier
+  edges.
 
 ## Proof
 
 Ran:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
-Result: passed. `test_after.log` contains the delegated focused CTest output.
+Result: passed. `test_after.log` reports 180/180 backend tests passed.
