@@ -284,6 +284,10 @@ struct PreparedEdgePublication {
   bir::AddressSpace source_memory_address_space = bir::AddressSpace::Default;
   bool source_memory_is_volatile = false;
   bool source_memory_can_use_base_plus_offset = false;
+  bir::MemoryRangeVerdict source_memory_range_verdict =
+      bir::MemoryRangeVerdict::UnknownCompatible;
+  bir::MemoryDynamicArrayRangeVerdict source_memory_dynamic_array_verdict =
+      bir::MemoryDynamicArrayRangeVerdict::Unknown;
   bool source_memory_requires_address_materialization = false;
   PreparedAggregateStackSourceAuthority aggregate_stack_source_authority;
   const PreparedValueHome* source_home = nullptr;
@@ -386,6 +390,10 @@ struct PreparedEdgeCopySourceFacts {
   bir::AddressSpace source_memory_address_space = bir::AddressSpace::Default;
   bool source_memory_is_volatile = false;
   bool source_memory_can_use_base_plus_offset = false;
+  bir::MemoryRangeVerdict source_memory_range_verdict =
+      bir::MemoryRangeVerdict::UnknownCompatible;
+  bir::MemoryDynamicArrayRangeVerdict source_memory_dynamic_array_verdict =
+      bir::MemoryDynamicArrayRangeVerdict::Unknown;
   bool source_memory_requires_address_materialization = false;
 };
 

@@ -7500,5 +7500,56 @@ int main() {
     return EXIT_FAILURE;
   }
 
+  auto provenance_prepared = prepared_module_printer_body_fixture();
+  const auto provenance_function =
+      provenance_prepared.names.function_names.intern("provenance_dump_contract");
+  const auto provenance_block =
+      provenance_prepared.names.block_labels.intern("entry");
+  const auto provenance_result =
+      provenance_prepared.names.value_names.intern("%loaded");
+  provenance_prepared.addressing.functions.push_back(
+      prepare::PreparedAddressingFunction{
+          .function_name = provenance_function,
+          .accesses =
+              {
+                  prepare::PreparedMemoryAccess{
+                      .function_name = provenance_function,
+                      .block_label = provenance_block,
+                      .inst_index = 0,
+                      .result_value_name = provenance_result,
+                      .address =
+                          prepare::PreparedAddress{
+                              .base_kind =
+                                  prepare::PreparedAddressBaseKind::PointerValue,
+                              .pointer_value_name = provenance_result,
+                              .byte_offset = 16,
+                              .size_bytes = 4,
+                              .align_bytes = 4,
+                              .can_use_base_plus_offset = true,
+                              .provenance =
+                                  bir::MemoryAccessProvenance{
+                                      .dynamic_array =
+                                          bir::MemoryDynamicArrayFacts{
+                                              .verdict =
+                                                  bir::MemoryDynamicArrayRangeVerdict::
+                                                      Unbounded,
+                                          },
+                                      .range_verdict =
+                                          bir::MemoryRangeVerdict::ProvenOutOfBounds,
+                                  },
+                          },
+                  },
+              },
+      });
+  const std::string provenance_dump = prepare::print(provenance_prepared);
+  if (!expect_contains(
+          provenance_dump,
+          "base=pointer_value result=%loaded pointer=%loaded offset=16 size=4 "
+          "align=4 base_plus_offset=yes range_verdict=proven_out_of_bounds "
+          "dynamic_array_verdict=unbounded",
+          "prepared addressing provenance verdict dump")) {
+    return EXIT_FAILURE;
+  }
+
   return EXIT_SUCCESS;
 }

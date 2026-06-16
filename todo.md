@@ -1,49 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/289_structured_opaque_pointer_byte_range_provenance.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Prove Requested Range and Dynamic Array Bounds
+Current Step ID: Step 5
+Current Step Title: Publish Provenance Verdicts to Prepared Consumers
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: Prove Requested Range and Dynamic Array Bounds finished the passive
-dynamic-array bound verdict subset using existing dynamic-array and requested
-range facts.
+Step 5: Publish Provenance Verdicts to Prepared Consumers published passive
+range and dynamic-array verdict metadata through prepared reporting/copy
+surfaces without changing prepared/prealloc acceptance behavior.
 
-- Added a carrier-level dynamic-array finalizer that resets
-  `MemoryDynamicArrayFacts::verdict` to `Unknown` and only sets
-  `BoundedByElementCount` when available element count, nonzero stride, checked
-  base offset/envelope arithmetic, and a non-overflowed requested byte range
-  prove full containment.
-- Valid requested ranges outside the checked dynamic-array envelope are marked
-  passive `Unbounded`; missing dynamic facts, zero count/stride, overflowing
-  requested ranges, and overflowing dynamic-array envelopes remain `Unknown`.
-- Existing route admission, target policy, prepared/prealloc consumers, address
-  usability fields, and compatibility behavior are unchanged.
-- Focused helper coverage now checks bounded dynamic accesses, before-base and
-  after-element unbounded ranges, unavailable dynamic facts, zero count/stride,
-  overflowing requested ranges, and overflowing dynamic-array envelopes.
+- Added prepared naming helpers for `MemoryRangeVerdict` and
+  `MemoryDynamicArrayRangeVerdict`, and printed both verdicts on prepared
+  `access` rows next to, but separate from, `base_plus_offset`.
+- Copied source memory `range_verdict` and `dynamic_array.verdict` from
+  `PreparedMemoryAccess::address.provenance` into
+  `PreparedEdgePublication` and `PreparedEdgeCopySourceFacts`.
+- Extended the prepared source-memory match helper to compare copied verdict
+  metadata as part of copy-surface agreement, while leaving
+  `source_memory_access_status` and existing completeness checks unchanged.
+- Focused lookup/printer coverage asserts verdict copy and report surfaces and
+  keeps existing stale-row, duplicate-row, and fail-closed behavior unchanged.
 
 ## Suggested Next
 
-Start Step 5 by publishing provenance verdicts to prepared consumers that need
-to distinguish syntactic base-plus-offset usability from proven object-range
-provenance, while preserving the compatibility bridge until each route has a
-structured proof or explicit unknown/fail-closed verdict.
+Continue Step 5 or move to Step 6 only under supervisor direction: decide which
+consumer, if any, should start gating on explicit provenance verdicts, or begin
+quarantining the opaque pointer compatibility bridge once route coverage is
+complete.
 
 ## Watchouts
 
-- `range_verdict` is still passive metadata; no current consumer gates route
-  admission or prepared/prealloc behavior on it.
-- `dynamic_array.verdict` is also passive metadata; prepared/prealloc consumers
-  were intentionally left unchanged in this slice.
-- Dynamic-array `Unbounded` is produced only when the requested byte range and
-  checked envelope are concrete enough to compare; malformed, zero, missing, or
-  overflowing facts remain `Unknown`.
-- Layout-authority-specific proof and compatibility bridge removal remain later
-  work.
+- `range_verdict` and `dynamic_array.verdict` are still passive metadata; no
+  current consumer gates route admission, target lowering, or prepared/prealloc
+  acceptance on them.
+- `can_use_base_plus_offset` remains the syntactic address-usability field and
+  was not reinterpreted as object-range proof.
+- Source-memory availability still depends on existing prepared row identity,
+  complete-base, size/alignment, stale-row, duplicate-row, and producer checks.
+- Target-specific acceptance policy, layout-authority-specific gating, and
+  compatibility bridge retirement remain deferred.
 
 ## Proof
 

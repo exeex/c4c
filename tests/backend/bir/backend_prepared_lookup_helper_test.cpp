@@ -5377,6 +5377,16 @@ int verify_edge_publication_source_producer_facts() {
                       .size_bytes = 4,
                       .align_bytes = 4,
                       .can_use_base_plus_offset = true,
+                      .provenance =
+                          bir::MemoryAccessProvenance{
+                              .dynamic_array =
+                                  bir::MemoryDynamicArrayFacts{
+                                      .verdict = bir::MemoryDynamicArrayRangeVerdict::
+                                          BoundedByElementCount,
+                                  },
+                              .range_verdict =
+                                  bir::MemoryRangeVerdict::ProvenInBounds,
+                          },
                   },
           }},
   });
@@ -5417,6 +5427,10 @@ int verify_edge_publication_source_producer_facts() {
       load_publication->source_memory_size_bytes != 4 ||
       load_publication->source_memory_align_bytes != 4 ||
       !load_publication->source_memory_can_use_base_plus_offset ||
+      load_publication->source_memory_range_verdict !=
+          bir::MemoryRangeVerdict::ProvenInBounds ||
+      load_publication->source_memory_dynamic_array_verdict !=
+          bir::MemoryDynamicArrayRangeVerdict::BoundedByElementCount ||
       load_publication->source_memory_access->result_value_name != loaded_name) {
     return fail("edge publication should expose prepared source-memory facts");
   }
@@ -5451,6 +5465,15 @@ int verify_edge_publication_source_producer_facts() {
           *load_publication->source_memory_access)) {
     return fail(
         "edge publication helper should reject mismatched source memory offset");
+  }
+  mismatched_source_memory_publication = *load_publication;
+  mismatched_source_memory_publication.source_memory_range_verdict =
+      bir::MemoryRangeVerdict::UnknownCompatible;
+  if (prepare::prepared_edge_publication_source_memory_matches_access(
+          mismatched_source_memory_publication,
+          *load_publication->source_memory_access)) {
+    return fail(
+        "edge publication helper should reject mismatched source memory verdict");
   }
   auto unnamed_source_memory_access = *load_publication->source_memory_access;
   unnamed_source_memory_access.result_value_name.reset();

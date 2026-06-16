@@ -46,6 +46,33 @@ enum class PreparedAddressBaseKind {
   return "unknown";
 }
 
+[[nodiscard]] constexpr std::string_view prepared_memory_range_verdict_name(
+    bir::MemoryRangeVerdict verdict) {
+  switch (verdict) {
+    case bir::MemoryRangeVerdict::UnknownCompatible:
+      return "unknown_compatible";
+    case bir::MemoryRangeVerdict::ProvenInBounds:
+      return "proven_in_bounds";
+    case bir::MemoryRangeVerdict::ProvenOutOfBounds:
+      return "proven_out_of_bounds";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] constexpr std::string_view
+prepared_memory_dynamic_array_range_verdict_name(
+    bir::MemoryDynamicArrayRangeVerdict verdict) {
+  switch (verdict) {
+    case bir::MemoryDynamicArrayRangeVerdict::Unknown:
+      return "unknown";
+    case bir::MemoryDynamicArrayRangeVerdict::BoundedByElementCount:
+      return "bounded_by_element_count";
+    case bir::MemoryDynamicArrayRangeVerdict::Unbounded:
+      return "unbounded";
+  }
+  return "unknown";
+}
+
 struct PreparedAddress {
   PreparedAddressBaseKind base_kind = PreparedAddressBaseKind::None;
   std::optional<PreparedFrameSlotId> frame_slot_id;

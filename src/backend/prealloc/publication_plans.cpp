@@ -932,6 +932,9 @@ void copy_prepared_edge_copy_source_fact_fields(
   facts.source_memory_is_volatile = publication.source_memory_is_volatile;
   facts.source_memory_can_use_base_plus_offset =
       publication.source_memory_can_use_base_plus_offset;
+  facts.source_memory_range_verdict = publication.source_memory_range_verdict;
+  facts.source_memory_dynamic_array_verdict =
+      publication.source_memory_dynamic_array_verdict;
   facts.source_memory_requires_address_materialization =
       publication.source_memory_requires_address_materialization;
 }
@@ -1012,7 +1015,11 @@ validate_prepared_edge_copy_publication_source_facts(
          publication.source_memory_address_space == access.address_space &&
          publication.source_memory_is_volatile == access.is_volatile &&
          publication.source_memory_can_use_base_plus_offset ==
-             access.address.can_use_base_plus_offset;
+             access.address.can_use_base_plus_offset &&
+         publication.source_memory_range_verdict ==
+             access.address.provenance.range_verdict &&
+         publication.source_memory_dynamic_array_verdict ==
+             access.address.provenance.dynamic_array.verdict;
 }
 
 [[nodiscard]] bool prepared_value_homes_share_register_name(
