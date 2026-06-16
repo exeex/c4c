@@ -1,48 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/293_backend_remaining_aarch64_load_local_memory_failures.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Reproduce and classify the three failures
+Current Step ID: Step 2
+Current Step Title: Locate the semantic BIR admission boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: reproduced the delegated three-test AArch64 backend subset and classified the first rejected local-memory load shapes without implementation edits.
+Step 2: located the semantic BIR admission boundary for the classified opaque runtime pointer local-memory loads without implementation edits.
 
-The two byval stack-overflow tests fail in the same `same_bytes` helper shape. LLVM/LIR reaches:
+The rejecting rule is in `src/backend/bir/lir_to_bir/memory/provenance.cpp`:
 
-```llvm
-%t8 = getelementptr i8, ptr %p.lhs, i64 %t7
-%t9 = load i8, ptr %t8
-...
-%t12 = getelementptr i8, ptr %p.rhs, i64 %t11
-%t13 = load i8, ptr %t12
-```
+- `try_lower_addressed_pointer_load` calls `classify_scalar_subobject_addressability(..., allow_opaque_ptr_base=true)`.
+- `classify_scalar_subobject_addressability` returns `ScalarSubobjectAddressability::OpaqueCompatibility` for a non-negative offset, non-zero access size, `stored_type == Void`, `byte_offset == 0`, and empty/`ptr`/`i8` `type_text`.
+- `try_lower_addressed_pointer_load` then immediately rejects that verdict with `if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility) return false;`.
+- `try_lower_addressed_pointer_store` has the same explicit `OpaqueCompatibility` rejection before emitting `StoreLocalInst`.
 
-The semantic GEP path can publish `%t8`/`%t12` as runtime pointer values, but the following `load i8` is rejected because the addressed pointer has `stored_type=Void` and `type_text=i8`, which classifies as opaque compatibility at the addressed-pointer load boundary.
+Nearby accepted local-memory load/store shapes already include exact typed scalar access (`stored_type == access_type`), byte-wise `i8` inspection/update of a known scalar object representation, scalar access covered by byte-storage aggregate layout, scalar-subobject access resolved through layout facts, pointer-value loads from `local_slot_pointer_values` when the pointer slot itself carries `Ptr` and the access is non-pointer, dynamic pointer-value array loads when the dynamic element type matches the requested value type, and the special AArch64 variadic FP lane load path.
 
-The pointer-value writeback test fails in `main` on:
-
-```llvm
-%t8 = load ptr, ptr %lv.data
-%t9 = load i32, ptr %t8
-...
-store i32 %t12, ptr %t8
-```
-
-Here `%lv.data` stores `writeback_data + 4`; the pointer-slot reload preserves a runtime pointer value with `type_text=i8`, then the `load i32` through that opaque byte pointer is rejected at the same addressed-pointer load boundary. The three failures therefore share one semantic local-memory admission boundary around loads through opaque runtime pointer values, with two access-width subcases: exact byte inspection for `same_bytes`, and typed wider read/write through a char-derived pointer for writeback.
+The smallest intended generalization is not to make all `OpaqueCompatibility` addressable. It should admit only runtime pointer-value local-memory access where the pointer-value side table proves an addressed runtime base and the access is represented as a BIR `LoadLocalInst`/`StoreLocalInst` with `MemoryAddress::BaseKind::PointerValue`, preserving provenance via `pointer_value_memory_provenance_with_layout_authority` and marking layout authority/range verdict as opaque compatibility. The byval subcase needs `load i8` through a dynamic `i8*` byte pointer. The writeback subcase needs `load i32` and later `store i32` through a reloaded `char *` pointer value. Both should remain shape/provenance rules, not fixture-name rules.
 
 ## Suggested Next
 
-Proceed to Step 2: locate the smallest semantic BIR admission rule in the addressed-pointer load/store provenance path that can admit opaque runtime pointer-value local-memory access without weakening existing fail-closed compatibility gates.
+Proceed to Step 3 with a narrow implementation packet in `src/backend/bir/lir_to_bir/memory/provenance.cpp`: add a helper around the addressed-pointer load/store `OpaqueCompatibility` gate that admits only the intended runtime pointer-value local-memory shapes, then run the delegated three-test AArch64 subset.
 
 ## Watchouts
 
 - Do not weaken expectations, labels, snippets, or semantic BIR fail-closed behavior to make the named failures pass.
 - Do not add named-case shortcuts for `same_bytes`, `main`, `byval_helper_payload_*`, or `aarch64_pointer_value_named_scalar_writeback`.
 - Preserve the 286/288/291/292 prepared/interface cleanup behavior called out in the source idea.
-- The byval family needs `load i8` through a dynamic `i8*` parameter/index pointer; the writeback family needs `load i32` and later `store i32` through a reloaded `char *` pointer value. Treat this as a shape/provenance rule, not as approval to admit arbitrary opaque pointer loads.
+- Existing note tests `expect_casted_byte_pointer_i32_update_fails_closed` and `expect_casted_byte_pointer_i32_store_fails_closed` currently assert that casted byte-pointer `i32` opaque compatibility load/store fail closed before BIR publication. If the Step 3 repair intentionally admits the writeback `i32` load/store shape, update or split that proof deliberately; do not accidentally erase this guardrail.
+- If byval `i8` dynamic byte loads and writeback `i32` char-derived loads/stores cannot share one precise provenance predicate, split the writeback family into a follow-up rather than broadening the opaque compatibility gate.
 
 ## Proof
 
@@ -52,4 +41,4 @@ Command:
 cmake --build --preset default; ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_aarch64_(byval_payload_(8_to_13|9_to_14)_stack_overflow|pointer_value_named_scalar_writeback_uses_computed_store_value)' > test_after.log 2>&1
 ```
 
-Outcome: build was up to date; CTest failed 0/3 as expected for classification. `test_after.log` is the proof log. The supervisor-selected proof was sufficient for reproduction/classification but is intentionally still red because this packet made no implementation edits.
+Outcome: build was up to date; CTest failed 0/3 as expected for this no-implementation boundary-location packet. The two byval tests still fail in `same_bytes` with `load local-memory semantic family`, and the writeback test still fails in `main` with `load local-memory semantic family`. `test_after.log` is the proof log.
