@@ -1372,6 +1372,56 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     }
     return expansion.kind;
   };
+  const auto structured_call_arg_type_text =
+      [&](std::size_t index) -> std::optional<std::string_view> {
+    if (!call.structured_args.empty()) {
+      if (index >= call.structured_args.size() ||
+          call.structured_args[index].type_ref.empty()) {
+        return std::nullopt;
+      }
+      return std::string_view(call.structured_args[index].type_ref.str());
+    }
+    if (index >= call.arg_type_refs.size() || call.arg_type_refs[index].empty()) {
+      return std::nullopt;
+    }
+    return std::string_view(call.arg_type_refs[index].str());
+  };
+  const auto scalar_call_arg_type_text =
+      [&](std::size_t index, std::string_view legacy_type_text) -> std::string_view {
+    if (const auto structured_text = structured_call_arg_type_text(index);
+        structured_text.has_value()) {
+      return *structured_text;
+    }
+    return strip_call_arg_abi_type_suffix(legacy_type_text);
+  };
+  const auto lower_structured_type_ref_layout =
+      [&](const c4c::codegen::lir::LirTypeRef& type_ref)
+          -> std::optional<AggregateTypeLayout> {
+    if (type_ref.empty()) {
+      return std::nullopt;
+    }
+    if (!type_ref.has_struct_name_id()) {
+      if (parse_byval_pointee_type(type_ref.str()).has_value()) {
+        return std::nullopt;
+      }
+      return lower_byval_aggregate_layout(type_ref.str(), type_decls, &structured_layouts_);
+    }
+    const auto structured_text =
+        parse_byval_pointee_type(type_ref.str()).value_or(type_ref.str());
+    const auto normalized_ref = c4c::codegen::lir::LirTypeRef::struct_type(
+        structured_text, type_ref.struct_name_id());
+    const auto lookup =
+        lir_to_bir_detail::lookup_backend_aggregate_type_ref_layout_result(
+            normalized_ref, type_decls, structured_layouts_);
+    const auto& layout = lookup.layout;
+    if (!lookup.used_structured_layout ||
+        (layout.kind != AggregateTypeLayout::Kind::Struct &&
+         layout.kind != AggregateTypeLayout::Kind::Array) ||
+        layout.size_bytes == 0 || layout.align_bytes == 0) {
+      return std::nullopt;
+    }
+    return layout;
+  };
   const auto lower_byval_call_arg_layout =
       [&](std::size_t index, std::string_view legacy_type_text)
           -> std::optional<AggregateTypeLayout> {
@@ -1391,42 +1441,18 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
                                             &structured_layouts_);
       }
       if (!type_ref.has_struct_name_id()) {
-        const auto legacy_carrier_type = strip_call_arg_abi_type_suffix(legacy_type_text);
-        const auto ref_carrier_type = strip_call_arg_abi_type_suffix(type_ref.str());
-        if (legacy_carrier_type == ref_carrier_type) {
-          return lower_byval_aggregate_layout(legacy_carrier_type,
-                                              type_decls,
-                                              &structured_layouts_);
-        }
-        return std::nullopt;
+        return lower_structured_type_ref_layout(type_ref);
       }
       const auto legacy_byval_type = parse_byval_pointee_type(legacy_type_text);
-      const std::string_view legacy_struct_type =
-          legacy_byval_type.has_value()
-              ? std::string_view(*legacy_byval_type)
-              : strip_call_arg_abi_type_suffix(legacy_type_text);
-      const c4c::StructNameId legacy_struct_name_id =
-          context_.lir_module.struct_names.find(legacy_struct_type);
-      if (legacy_struct_name_id != c4c::kInvalidStructName &&
-          legacy_struct_name_id != type_ref.struct_name_id()) {
-        return std::nullopt;
+      if (legacy_byval_type.has_value()) {
+        const c4c::StructNameId legacy_struct_name_id =
+            context_.lir_module.struct_names.find(*legacy_byval_type);
+        if (legacy_struct_name_id != c4c::kInvalidStructName &&
+            legacy_struct_name_id != type_ref.struct_name_id()) {
+          return std::nullopt;
+        }
       }
-      const std::string_view structured_name =
-          context_.lir_module.struct_names.spelling(type_ref.struct_name_id());
-      if (structured_name.empty()) {
-        return std::nullopt;
-      }
-      const auto layout_it = structured_layouts_.find(std::string(structured_name));
-      if (layout_it == structured_layouts_.end()) {
-        return std::nullopt;
-      }
-      const auto& layout = layout_it->second.structured_layout;
-      if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
-           layout.kind != AggregateTypeLayout::Kind::Array) ||
-          layout.size_bytes == 0 || layout.align_bytes == 0) {
-        return std::nullopt;
-      }
-      return layout;
+      return lower_structured_type_ref_layout(type_ref);
     }
     if (call.arg_type_refs.empty()) {
       // Step 4 no-id compatibility bridge: hand-built LIR calls without
@@ -1444,35 +1470,18 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     }
     const auto& type_ref = call.arg_type_refs[index];
     if (!type_ref.has_struct_name_id()) {
-      return std::nullopt;
+      return lower_structured_type_ref_layout(type_ref);
     }
     const auto legacy_byval_type = parse_byval_pointee_type(legacy_type_text);
-    const std::string_view legacy_struct_type =
-        legacy_byval_type.has_value()
-            ? std::string_view(*legacy_byval_type)
-            : strip_call_arg_abi_type_suffix(legacy_type_text);
-    const c4c::StructNameId legacy_struct_name_id =
-        context_.lir_module.struct_names.find(legacy_struct_type);
-    if (legacy_struct_name_id != c4c::kInvalidStructName &&
-        legacy_struct_name_id != type_ref.struct_name_id()) {
-      return std::nullopt;
+    if (legacy_byval_type.has_value()) {
+      const c4c::StructNameId legacy_struct_name_id =
+          context_.lir_module.struct_names.find(*legacy_byval_type);
+      if (legacy_struct_name_id != c4c::kInvalidStructName &&
+          legacy_struct_name_id != type_ref.struct_name_id()) {
+        return std::nullopt;
+      }
     }
-    const std::string_view structured_name =
-        context_.lir_module.struct_names.spelling(type_ref.struct_name_id());
-    if (structured_name.empty()) {
-      return std::nullopt;
-    }
-    const auto layout_it = structured_layouts_.find(std::string(structured_name));
-    if (layout_it == structured_layouts_.end()) {
-      return std::nullopt;
-    }
-    const auto& layout = layout_it->second.structured_layout;
-    if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
-         layout.kind != AggregateTypeLayout::Kind::Array) ||
-        layout.size_bytes == 0 || layout.align_bytes == 0) {
-      return std::nullopt;
-    }
-    return layout;
+    return lower_structured_type_ref_layout(type_ref);
   };
 
   const auto lower_byval_call_arg_abi =
@@ -1744,7 +1753,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         const auto arg_type =
             lower_scalar_or_function_pointer_type(
-                strip_call_arg_abi_type_suffix(parsed_call->typed_call.param_types[index]));
+                scalar_call_arg_type_text(index, parsed_call->typed_call.param_types[index]));
         if (!arg_type.has_value()) {
           const auto aggregate_layout =
               lower_byval_call_arg_layout(index, parsed_call->typed_call.param_types[index]);
@@ -1846,7 +1855,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       }
       const auto arg_type =
           lower_scalar_or_function_pointer_type(
-              strip_call_arg_abi_type_suffix(parsed_call->param_types[index]));
+              scalar_call_arg_type_text(index, parsed_call->param_types[index]));
       if (!arg_type.has_value()) {
         const auto aggregate_layout =
             lower_byval_call_arg_layout(index, parsed_call->param_types[index]);

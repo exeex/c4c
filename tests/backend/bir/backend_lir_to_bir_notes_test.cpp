@@ -4245,9 +4245,9 @@ LirModule make_aarch64_variadic_carrier_array_call_module() {
       .callee = LirOperand("@stale_carrier_array_sink"),
       .direct_callee_link_name_id = callee_id,
       .callee_type_suffix = "(ptr, ...)",
-      .args_str = "ptr %tag, [2 x float] alignstack(8) %payload",
+      .args_str = "ptr %tag, [2 x float] alignstack(16) %payload",
       .arg_type_refs = {lir::LirTypeRef("ptr"),
-                        lir::LirTypeRef("[2 x float] alignstack(8)")},
+                        lir::LirTypeRef("[2 x float]")},
       .callee_signature = signature,
       .structured_args = {
           lir::LirCallArg{
@@ -4340,9 +4340,9 @@ LirModule make_aarch64_variadic_carrier_array_fail_closed_module(
       .callee = LirOperand("@stale_carrier_array_sink"),
       .direct_callee_link_name_id = callee_id,
       .callee_type_suffix = "(ptr, ...)",
-      .args_str = "ptr %tag, " + call_type.str() + " alignstack(8) %payload",
+      .args_str = "ptr %tag, " + call_type.str() + " alignstack(16) %payload",
       .arg_type_refs = {lir::LirTypeRef("ptr"),
-                        lir::LirTypeRef(call_type.str() + " alignstack(8)")},
+                        call_type},
       .callee_signature = signature,
       .structured_args = {
           lir::LirCallArg{
@@ -4405,6 +4405,7 @@ int expect_aarch64_variadic_carrier_array_call_uses_hfa_fp_lanes() {
           !call->arg_abi[2].byval_copy &&
           call->arg_abi[1].primary_class == c4c::backend::bir::AbiValueClass::Sse &&
           call->arg_abi[2].primary_class == c4c::backend::bir::AbiValueClass::Sse &&
+          call->arg_abi[1].align_bytes == 8 &&
           call->arg_abi[1].aarch64_hfa_lane_count == 2 &&
           call->arg_abi[2].aarch64_hfa_lane_count == 2 &&
           call->arg_abi[1].aarch64_hfa_lane_index == 0 &&
