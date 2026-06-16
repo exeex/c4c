@@ -112,6 +112,83 @@ int expect_memory_access_requested_range_verdicts_use_complete_extent() {
   return 0;
 }
 
+int expect_memory_access_dynamic_array_verdicts_use_existing_facts() {
+  using c4c::backend::bir::MemoryAccessProvenance;
+  using c4c::backend::bir::MemoryDynamicArrayRangeVerdict;
+
+  auto dynamic_provenance = [](std::size_t element_count,
+                               std::size_t element_stride_bytes,
+                               std::size_t base_byte_offset) {
+    MemoryAccessProvenance provenance;
+    provenance.dynamic_array.available = true;
+    provenance.dynamic_array.element_count = element_count;
+    provenance.dynamic_array.element_stride_bytes = element_stride_bytes;
+    provenance.dynamic_array.base_byte_offset = base_byte_offset;
+    return provenance;
+  };
+
+  auto bounded = dynamic_provenance(4, 8, 16);
+  bounded.requested_range = c4c::backend::bir::make_memory_byte_range(24, 8);
+  c4c::backend::bir::prove_memory_access_requested_range(bounded);
+  if (bounded.dynamic_array.verdict !=
+      MemoryDynamicArrayRangeVerdict::BoundedByElementCount) {
+    return fail("dynamic array facts should prove contained requested range bounded");
+  }
+
+  auto before_base = dynamic_provenance(4, 8, 16);
+  before_base.requested_range = c4c::backend::bir::make_memory_byte_range(8, 4);
+  c4c::backend::bir::prove_memory_access_requested_range(before_base);
+  if (before_base.dynamic_array.verdict != MemoryDynamicArrayRangeVerdict::Unbounded) {
+    return fail("dynamic array facts should passively mark ranges before the base unbounded");
+  }
+
+  auto after_elements = dynamic_provenance(4, 8, 16);
+  after_elements.requested_range = c4c::backend::bir::make_memory_byte_range(44, 8);
+  c4c::backend::bir::prove_memory_access_requested_range(after_elements);
+  if (after_elements.dynamic_array.verdict != MemoryDynamicArrayRangeVerdict::Unbounded) {
+    return fail("dynamic array facts should passively mark ranges beyond element count unbounded");
+  }
+
+  MemoryAccessProvenance unavailable;
+  unavailable.requested_range = c4c::backend::bir::make_memory_byte_range(0, 1);
+  c4c::backend::bir::prove_memory_access_requested_range(unavailable);
+  if (unavailable.dynamic_array.verdict != MemoryDynamicArrayRangeVerdict::Unknown) {
+    return fail("missing dynamic array facts should keep the verdict unknown");
+  }
+
+  auto zero_count = dynamic_provenance(0, 8, 16);
+  zero_count.requested_range = c4c::backend::bir::make_memory_byte_range(16, 1);
+  c4c::backend::bir::prove_memory_access_requested_range(zero_count);
+  if (zero_count.dynamic_array.verdict != MemoryDynamicArrayRangeVerdict::Unknown) {
+    return fail("zero dynamic element count should keep the verdict unknown");
+  }
+
+  auto zero_stride = dynamic_provenance(4, 0, 16);
+  zero_stride.requested_range = c4c::backend::bir::make_memory_byte_range(16, 1);
+  c4c::backend::bir::prove_memory_access_requested_range(zero_stride);
+  if (zero_stride.dynamic_array.verdict != MemoryDynamicArrayRangeVerdict::Unknown) {
+    return fail("zero dynamic element stride should keep the verdict unknown");
+  }
+
+  auto overflowing_request = dynamic_provenance(4, 8, 16);
+  overflowing_request.requested_range = c4c::backend::bir::make_memory_byte_range(
+      std::numeric_limits<std::int64_t>::max() - 1, 4);
+  c4c::backend::bir::prove_memory_access_requested_range(overflowing_request);
+  if (overflowing_request.dynamic_array.verdict != MemoryDynamicArrayRangeVerdict::Unknown) {
+    return fail("overflowing requested range should keep dynamic array verdict unknown");
+  }
+
+  auto overflowing_envelope = dynamic_provenance(
+      std::numeric_limits<std::size_t>::max(), 2, 0);
+  overflowing_envelope.requested_range = c4c::backend::bir::make_memory_byte_range(0, 1);
+  c4c::backend::bir::prove_memory_access_requested_range(overflowing_envelope);
+  if (overflowing_envelope.dynamic_array.verdict != MemoryDynamicArrayRangeVerdict::Unknown) {
+    return fail("overflowing dynamic array envelope should keep the verdict unknown");
+  }
+
+  return 0;
+}
+
 lir::LirCallSignature void_call_signature(
     std::vector<std::string> fixed_param_types,
     std::vector<lir::LirTypeRef> fixed_param_type_refs = {}) {
@@ -7767,6 +7844,11 @@ int main() {
           expect_memory_access_requested_range_verdicts_use_complete_extent();
       requested_range_status != 0) {
     return requested_range_status;
+  }
+  if (const int dynamic_array_status =
+          expect_memory_access_dynamic_array_verdicts_use_existing_facts();
+      dynamic_array_status != 0) {
+    return dynamic_array_status;
   }
 
   if (const int inline_asm_status = expect_failure_notes(

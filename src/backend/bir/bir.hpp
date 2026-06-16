@@ -778,8 +778,41 @@ struct MemoryAccessProvenance {
   MemoryRangeVerdict range_verdict = MemoryRangeVerdict::UnknownCompatible;
 };
 
+inline void prove_memory_dynamic_array_range(MemoryAccessProvenance& provenance) {
+  provenance.dynamic_array.verdict = MemoryDynamicArrayRangeVerdict::Unknown;
+  const auto& requested = provenance.requested_range;
+  const auto& dynamic_array = provenance.dynamic_array;
+  if (!dynamic_array.available || dynamic_array.element_count == 0 ||
+      dynamic_array.element_stride_bytes == 0 || !requested.available ||
+      requested.overflowed || !requested.end_available || requested.begin < 0 ||
+      requested.end < requested.begin) {
+    return;
+  }
+
+  if (dynamic_array.element_count >
+      std::numeric_limits<std::size_t>::max() / dynamic_array.element_stride_bytes) {
+    return;
+  }
+  const auto array_size_bytes =
+      dynamic_array.element_count * dynamic_array.element_stride_bytes;
+  if (dynamic_array.base_byte_offset >
+      std::numeric_limits<std::size_t>::max() - array_size_bytes) {
+    return;
+  }
+
+  const auto begin = static_cast<std::size_t>(requested.begin);
+  const auto end = static_cast<std::size_t>(requested.end);
+  const auto array_begin = dynamic_array.base_byte_offset;
+  const auto array_end = dynamic_array.base_byte_offset + array_size_bytes;
+  provenance.dynamic_array.verdict =
+      begin >= array_begin && end <= array_end
+          ? MemoryDynamicArrayRangeVerdict::BoundedByElementCount
+          : MemoryDynamicArrayRangeVerdict::Unbounded;
+}
+
 inline void prove_memory_access_requested_range(MemoryAccessProvenance& provenance) {
   provenance.range_verdict = MemoryRangeVerdict::UnknownCompatible;
+  prove_memory_dynamic_array_range(provenance);
   if (!provenance.requested_range.available ||
       !provenance.object_extent.size_known ||
       provenance.object_extent.completeness != MemoryObjectExtentCompleteness::Complete) {

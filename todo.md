@@ -8,37 +8,40 @@ Current Step Title: Prove Requested Range and Dynamic Array Bounds
 
 ## Just Finished
 
-Step 4: Prove Requested Range and Dynamic Array Bounds started the passive
-requested-range proof route for already-known complete extents.
+Step 4: Prove Requested Range and Dynamic Array Bounds finished the passive
+dynamic-array bound verdict subset using existing dynamic-array and requested
+range facts.
 
-- Added a carrier-level requested-range finalizer that keeps
-  `UnknownCompatible` unless `MemoryByteRange` is available, non-overflowed,
-  has an available end, and a known complete object extent can prove the full
-  range.
-- Known complete extents now passively mark contained requested ranges
-  `ProvenInBounds` and negative, overflowing, or trailing requested ranges
-  `ProvenOutOfBounds`.
-- Unknown or incomplete extents remain `UnknownCompatible`.
+- Added a carrier-level dynamic-array finalizer that resets
+  `MemoryDynamicArrayFacts::verdict` to `Unknown` and only sets
+  `BoundedByElementCount` when available element count, nonzero stride, checked
+  base offset/envelope arithmetic, and a non-overflowed requested byte range
+  prove full containment.
+- Valid requested ranges outside the checked dynamic-array envelope are marked
+  passive `Unbounded`; missing dynamic facts, zero count/stride, overflowing
+  requested ranges, and overflowing dynamic-array envelopes remain `Unknown`.
 - Existing route admission, target policy, prepared/prealloc consumers, address
   usability fields, and compatibility behavior are unchanged.
-- Focused helper coverage now checks in-bounds, unknown-extent, negative,
-  overflowing, and trailing requested-range verdicts.
+- Focused helper coverage now checks bounded dynamic accesses, before-base and
+  after-element unbounded ranges, unavailable dynamic facts, zero count/stride,
+  overflowing requested ranges, and overflowing dynamic-array envelopes.
 
 ## Suggested Next
 
-Finish the Step 4 dynamic-array bound subset by computing passive
-`MemoryDynamicArrayFacts::verdict` when element count, stride, base offset, and
-requested range prove the dynamic access stays inside the array; keep unproven
-dynamic ranges unknown and avoid changing prepared/prealloc consumers.
+Start Step 5 by publishing provenance verdicts to prepared consumers that need
+to distinguish syntactic base-plus-offset usability from proven object-range
+provenance, while preserving the compatibility bridge until each route has a
+structured proof or explicit unknown/fail-closed verdict.
 
 ## Watchouts
 
 - `range_verdict` is still passive metadata; no current consumer gates route
   admission or prepared/prealloc behavior on it.
-- Out-of-bounds verdicts are recorded only when a known complete extent exists;
-  unknown extents intentionally remain `UnknownCompatible`.
-- Dynamic-array facts are preserved but their bound verdict is not computed in
-  this slice.
+- `dynamic_array.verdict` is also passive metadata; prepared/prealloc consumers
+  were intentionally left unchanged in this slice.
+- Dynamic-array `Unbounded` is produced only when the requested byte range and
+  checked envelope are concrete enough to compare; malformed, zero, missing, or
+  overflowing facts remain `Unknown`.
 - Layout-authority-specific proof and compatibility bridge removal remain later
   work.
 
