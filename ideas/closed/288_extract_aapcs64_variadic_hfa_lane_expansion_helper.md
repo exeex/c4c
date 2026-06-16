@@ -62,6 +62,15 @@ semantic call lowering.
 - Focused tests prove mismatched leaf-slot count/type and missing aggregate
   alias still fail closed.
 
+## Closure Note
+
+Closed after Step 5 validation. The AAPCS64 variadic HFA carrier expansion now
+uses a structured helper request/result boundary, returns lane values together
+with matching `CallArgAbiInfo` records, and preserves fail-closed behavior for
+missing aggregate aliases, leaf-slot count mismatches, slot-type mismatches, and
+missing ABI classification. Backend regression proof passed for the `^backend_`
+CTest scope with 180/180 tests passing before and after.
+
 ## Reviewer Reject Signals
 
 - The patch only moves the current lambda/body into a new file without defining
