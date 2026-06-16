@@ -118,6 +118,7 @@ int expect_indirect_call_prefers_structured_callee_signature_over_stale_suffix()
 int expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match();
 int expect_aarch64_direct_hfa_call_uses_fp_lanes_not_byval();
 int expect_aarch64_variadic_hfa_call_uses_fp_lanes();
+int expect_aarch64_variadic_carrier_array_call_uses_hfa_fp_lanes();
 int expect_aarch64_hfa_local_aggregate_copy_uses_explicit_lanes();
 int expect_aarch64_hfa_return_uses_fp_lanes_not_sret();
 int expect_aarch64_hfa_call_result_uses_fp_lanes_not_sret();
@@ -3989,6 +3990,126 @@ int expect_aarch64_variadic_hfa_call_uses_fp_lanes() {
   return fail("AArch64 variadic HFA call should be represented as FP lanes");
 }
 
+LirModule make_aarch64_variadic_carrier_array_call_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::LinkNameId callee_id = module.link_names.intern("semantic_carrier_array_sink");
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "stale_carrier_array_sink";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "void";
+  callee.return_type = lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
+  LirFunction function;
+  function.name = "aarch64_variadic_carrier_array_call";
+  function.signature_text = "define void @aarch64_variadic_carrier_array_call(ptr %tag)";
+  function.params.emplace_back("%tag", c4c::TypeSpec{.base = c4c::TB_VOID, .ptr_level = 1});
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%carrier"),
+      .type_str = lir::LirTypeRef("[2 x float]"),
+      .align = 8,
+  });
+
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef("void");
+  signature.fixed_param_types = {"ptr"};
+  signature.fixed_param_type_refs = {lir::LirTypeRef("ptr")};
+  signature.is_variadic = true;
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%payload"),
+      .type_str = lir::LirTypeRef("[2 x float]"),
+      .ptr = LirOperand("%carrier"),
+  });
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@stale_carrier_array_sink"),
+      .direct_callee_link_name_id = callee_id,
+      .callee_type_suffix = "(ptr, ...)",
+      .args_str = "ptr %tag, [2 x float] alignstack(8) %payload",
+      .arg_type_refs = {lir::LirTypeRef("ptr"),
+                        lir::LirTypeRef("[2 x float] alignstack(8)")},
+      .callee_signature = signature,
+      .structured_args = {
+          lir::LirCallArg{
+              .type = "ptr",
+              .operand = LirOperand("%tag"),
+              .type_ref = lir::LirTypeRef("ptr"),
+          },
+          lir::LirCallArg{
+              .type = "[2 x float] alignstack(8)",
+              .operand = LirOperand("%payload"),
+              .type_ref = lir::LirTypeRef("[2 x float] alignstack(8)"),
+          },
+      },
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_aarch64_variadic_carrier_array_call_uses_hfa_fp_lanes() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_variadic_carrier_array_call_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("AArch64 variadic carrier-array call should lower semantically");
+  }
+
+  bool saw_byval_carrier = false;
+  for (const auto& function : result.module->functions) {
+    if (function.name != "aarch64_variadic_carrier_array_call" ||
+        function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr || call->is_indirect ||
+          call->callee != "semantic_carrier_array_sink") {
+        continue;
+      }
+      for (const auto& abi : call->arg_abi) {
+        if (abi.byval_copy) {
+          saw_byval_carrier = true;
+        }
+      }
+      if (call->is_variadic &&
+          call->arg_types.size() == 3 &&
+          call->args.size() == 3 &&
+          call->arg_abi.size() == 3 &&
+          call->arg_types[0] == TypeKind::Ptr &&
+          call->arg_types[1] == TypeKind::F32 &&
+          call->arg_types[2] == TypeKind::F32 &&
+          call->args[1].name == "%payload.0" &&
+          call->args[2].name == "%payload.4" &&
+          !call->arg_abi[1].byval_copy &&
+          !call->arg_abi[2].byval_copy &&
+          call->arg_abi[1].primary_class == c4c::backend::bir::AbiValueClass::Sse &&
+          call->arg_abi[2].primary_class == c4c::backend::bir::AbiValueClass::Sse &&
+          call->arg_abi[1].aarch64_hfa_lane_count == 2 &&
+          call->arg_abi[2].aarch64_hfa_lane_count == 2 &&
+          call->arg_abi[1].aarch64_hfa_lane_index == 0 &&
+          call->arg_abi[2].aarch64_hfa_lane_index == 1 &&
+          !saw_byval_carrier) {
+        return 0;
+      }
+    }
+  }
+  return fail("AArch64 variadic carrier-array call should expand into FP HFA lanes");
+}
+
 LirModule make_aarch64_hfa_local_aggregate_copy_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
@@ -7548,6 +7669,11 @@ int main() {
           expect_aarch64_variadic_hfa_call_uses_fp_lanes();
       aarch64_variadic_hfa_call_status != 0) {
     return aarch64_variadic_hfa_call_status;
+  }
+  if (const int aarch64_variadic_carrier_array_call_status =
+          expect_aarch64_variadic_carrier_array_call_uses_hfa_fp_lanes();
+      aarch64_variadic_carrier_array_call_status != 0) {
+    return aarch64_variadic_carrier_array_call_status;
   }
   if (const int aarch64_hfa_local_copy_status =
           expect_aarch64_hfa_local_aggregate_copy_uses_explicit_lanes();
