@@ -640,16 +640,6 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   fn.link_name_id = module_->link_names.intern(fn.name);
   fn.ns_qual = make_ns_qual(
       method_node, module_ ? module_->link_name_texts.get() : nullptr);
-  {
-    TypeSpec ret_ts = prepare_callable_return_type(
-        method_node->type, tpl_bindings, nttp_bindings, method_node,
-        std::string("method-return:") + mangled_name, true);
-    fn.return_type = qtype_from(ret_ts);
-  }
-  fn.linkage = {true, false, false, false, Visibility::Default};
-  fn.attrs.variadic = method_node->variadic;
-  fn.span = make_span(method_node);
-
   FunctionCtx ctx{};
   ctx.fn = &fn;
   if (tpl_bindings) ctx.tpl_bindings = *tpl_bindings;
@@ -684,6 +674,16 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   }
   ctx.method_struct_tag = struct_tag;
   if (owner_key && *owner_key) ctx.method_struct_owner_key = **owner_key;
+  {
+    TypeSpec ret_ts = prepare_callable_return_type(
+        method_node->type, tpl_bindings, nttp_bindings,
+        &ctx.structured_tpl_bindings, &ctx.tpl_bindings_by_text, method_node,
+        std::string("method-return:") + mangled_name, true);
+    fn.return_type = qtype_from(ret_ts);
+  }
+  fn.linkage = {true, false, false, false, Visibility::Default};
+  fn.attrs.variadic = method_node->variadic;
+  fn.span = make_span(method_node);
 
   {
     Param this_param{};

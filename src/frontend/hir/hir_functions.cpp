@@ -514,6 +514,21 @@ void Lowerer::lower_function(const Node* fn_node,
       fn_node, module_ ? module_->link_name_texts.get() : nullptr);
   fn.link_name_id = module_->link_names.intern(fn.name);
   fn.ns_qual = make_ns_qual(fn_node, module_ ? module_->link_name_texts.get() : nullptr);
+  FunctionCtx ctx{};
+  ctx.fn = &fn;
+  if (tpl_override) {
+    ctx.tpl_bindings = *tpl_override;
+  }
+  populate_template_type_text_bindings(ctx, fn_node, tpl_override);
+  if (nttp_override) {
+    ctx.nttp_bindings = *nttp_override;
+  }
+  if (nttp_text_override) {
+    ctx.nttp_bindings_by_text = *nttp_text_override;
+  }
+  ctx.template_binding_owner_node = fn_node;
+  populate_structured_template_binding_mirrors(
+      ctx, fn_node, tpl_override, nttp_override);
   {
     TypeSpec ret_ts = fn_node->type;
     if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&
@@ -522,7 +537,8 @@ void Lowerer::lower_function(const Node* fn_node,
       ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
     }
     ret_ts = prepare_callable_return_type(
-        ret_ts, tpl_override, nttp_override, fn_node,
+        ret_ts, tpl_override, nttp_override, &ctx.structured_tpl_bindings,
+        &ctx.tpl_bindings_by_text, fn_node,
         std::string("function-return:") + fn.name, false);
     fn.return_type = qtype_from(ret_ts);
   }
@@ -608,22 +624,6 @@ void Lowerer::lower_function(const Node* fn_node,
     }
   }
   fn.span = make_span(fn_node);
-
-  FunctionCtx ctx{};
-  ctx.fn = &fn;
-  if (tpl_override) {
-    ctx.tpl_bindings = *tpl_override;
-  }
-  populate_template_type_text_bindings(ctx, fn_node, tpl_override);
-  if (nttp_override) {
-    ctx.nttp_bindings = *nttp_override;
-  }
-  if (nttp_text_override) {
-    ctx.nttp_bindings_by_text = *nttp_text_override;
-  }
-  ctx.template_binding_owner_node = fn_node;
-  populate_structured_template_binding_mirrors(
-      ctx, fn_node, tpl_override, nttp_override);
   append_callable_params(
       fn, ctx, fn_node, tpl_override, nttp_override, "function-param:", false,
       true);
@@ -650,7 +650,10 @@ void Lowerer::lower_function(const Node* fn_node,
 }
 
 TypeSpec Lowerer::substitute_signature_template_type(
-    TypeSpec ts, const TypeBindings* tpl_bindings) {
+    TypeSpec ts,
+    const TypeBindings* tpl_bindings,
+    const HirTemplateTypeBindings* structured_tpl_bindings,
+    const std::unordered_map<TextId, TypeSpec>* tpl_bindings_by_text) {
   auto refresh_template_origin_from_structured_key = [&](TypeSpec& target) {
     if (target.tpl_struct_origin_key.base_text_id == kInvalidText) return;
     const Node* primary = canonical_template_struct_primary(target, nullptr);
@@ -716,9 +719,9 @@ TypeSpec Lowerer::substitute_signature_template_type(
     if (target.base == TB_TYPEDEF) {
       bool applied = false;
       if (target.template_param_text_id != kInvalidText) {
-        applied = apply_signature_template_binding_by_text_spelling(
-            target, tpl_bindings,
-            module_ ? module_->link_name_texts.get() : nullptr);
+        applied = apply_signature_template_binding_by_text(
+            target, tpl_bindings, structured_tpl_bindings,
+            tpl_bindings_by_text, module_);
       }
       if (!applied) {
         apply_legacy_template_binding_without_usable_text_spelling(
@@ -815,13 +818,17 @@ TypeSpec Lowerer::substitute_signature_template_type(
     substitute_template_owner_params(resolved, owner_tpl,
                                      substitute_template_owner_params);
     if (resolved.base == TB_TYPEDEF) {
-      resolved = substitute_signature_template_type(resolved, tpl_bindings);
+      resolved = substitute_signature_template_type(
+          resolved, tpl_bindings, structured_tpl_bindings,
+          tpl_bindings_by_text);
     }
     while (resolve_struct_member_typedef_if_ready(&resolved)) {
       substitute_template_owner_params(resolved, owner_tpl,
                                        substitute_template_owner_params);
       if (resolved.base == TB_TYPEDEF) {
-        resolved = substitute_signature_template_type(resolved, tpl_bindings);
+        resolved = substitute_signature_template_type(
+            resolved, tpl_bindings, structured_tpl_bindings,
+            tpl_bindings_by_text);
       }
     }
     return resolved;
@@ -879,14 +886,16 @@ TypeSpec Lowerer::substitute_signature_template_type(
     }
     apply_signature_template_concrete(ts, resolved);
     if (tpl_bindings && ts.base == TB_TYPEDEF) {
-      return substitute_signature_template_type(ts, tpl_bindings);
+      return substitute_signature_template_type(
+          ts, tpl_bindings, structured_tpl_bindings, tpl_bindings_by_text);
     }
     return ts;
   };
 
   if (ts.template_param_text_id != kInvalidText) {
-    if (apply_signature_template_binding_by_text_spelling(
-            ts, tpl_bindings, module_ ? module_->link_name_texts.get() : nullptr)) {
+    if (apply_signature_template_binding_by_text(
+            ts, tpl_bindings, structured_tpl_bindings,
+            tpl_bindings_by_text, module_)) {
       return ts;
     }
   }
@@ -921,7 +930,8 @@ TypeSpec Lowerer::substitute_signature_template_type(
 
   apply_signature_template_concrete(ts, resolved);
   if (tpl_bindings && ts.base == TB_TYPEDEF)
-    return substitute_signature_template_type(ts, tpl_bindings);
+    return substitute_signature_template_type(
+        ts, tpl_bindings, structured_tpl_bindings, tpl_bindings_by_text);
   return ts;
 }
 
@@ -959,7 +969,22 @@ TypeSpec Lowerer::prepare_callable_return_type(
     const Node* span_node,
     const std::string& context_name,
     bool resolve_typedef_struct) {
-  ret_ts = substitute_signature_template_type(ret_ts, tpl_bindings);
+  return prepare_callable_return_type(
+      ret_ts, tpl_bindings, nttp_bindings, nullptr, nullptr, span_node,
+      context_name, resolve_typedef_struct);
+}
+
+TypeSpec Lowerer::prepare_callable_return_type(
+    TypeSpec ret_ts,
+    const TypeBindings* tpl_bindings,
+    const NttpBindings* nttp_bindings,
+    const HirTemplateTypeBindings* structured_tpl_bindings,
+    const std::unordered_map<TextId, TypeSpec>* tpl_bindings_by_text,
+    const Node* span_node,
+    const std::string& context_name,
+    bool resolve_typedef_struct) {
+  ret_ts = substitute_signature_template_type(
+      ret_ts, tpl_bindings, structured_tpl_bindings, tpl_bindings_by_text);
   resolve_signature_template_type_if_needed(
       ret_ts, tpl_bindings, nttp_bindings, nullptr, span_node, context_name);
   while (resolve_struct_member_typedef_if_ready(&ret_ts)) {

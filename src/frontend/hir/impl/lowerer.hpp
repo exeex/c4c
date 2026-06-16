@@ -697,7 +697,11 @@ class Lowerer {
 
   // ── callable and global lowering helpers ─────────────────────────────────
   TypeSpec substitute_signature_template_type(
-      TypeSpec ts, const TypeBindings* tpl_bindings);
+      TypeSpec ts,
+      const TypeBindings* tpl_bindings,
+      const HirTemplateTypeBindings* structured_tpl_bindings = nullptr,
+      const std::unordered_map<TextId, TypeSpec>* tpl_bindings_by_text =
+          nullptr);
 
   void resolve_signature_template_type_if_needed(
       TypeSpec& ts,
@@ -707,6 +711,15 @@ class Lowerer {
       const Node* span_node,
       const std::string& context_name);
 
+  TypeSpec prepare_callable_return_type(
+      TypeSpec ret_ts,
+      const TypeBindings* tpl_bindings,
+      const NttpBindings* nttp_bindings,
+      const HirTemplateTypeBindings* structured_tpl_bindings,
+      const std::unordered_map<TextId, TypeSpec>* tpl_bindings_by_text,
+      const Node* span_node,
+      const std::string& context_name,
+      bool resolve_typedef_struct);
   TypeSpec prepare_callable_return_type(
       TypeSpec ret_ts,
       const TypeBindings* tpl_bindings,
