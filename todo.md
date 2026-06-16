@@ -1,109 +1,130 @@
 Status: Active
 Source Idea Path: ideas/open/287_post_286_prepared_boundary_interface_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Decide Call Argument ABI Suffix Ownership
+Current Step ID: Step 4
+Current Step Title: Decide AArch64 Variadic HFA Lane Expansion Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 call-argument ABI suffix ownership decision. No
+Completed Step 4 AArch64 variadic HFA lane expansion boundary decision. No
 implementation files were changed.
 
 Decision:
 
-- `alignstack` ownership:
-  - Preferred structured owner: an adjacent call-argument ABI annotation carried
-    from `OwnedLirTypedCallArg` into `LirCallArg`, then consumed by BIR call
-    lowering when building `CallArgAbiInfo`.
-  - Reason: `alignstack(...)` is not type identity. It is a source-side ABI
-    alignment annotation for a concrete call argument, so it should not live in
-    `LirTypeRef::str()` or be parsed by semantic BIR from rendered type text.
-    Existing `LirCallArg` already carries AArch64 HFA lane metadata, making it
-    the smallest compatible carrier for another per-argument ABI fact.
-  - Legacy compatibility: `strip_call_arg_abi_type_suffix` may remain only for
-    raw/no-ref or positional-mirror calls that lack the structured ABI
-    annotation. The structured path should be considered non-owner if it still
-    needs to parse `alignstack(...)`.
+- Current owner:
+  - `src/backend/bir/lir_to_bir/calling.cpp` owns the inline expansion today.
+    `append_aarch64_variadic_hfa_carrier_arg_lanes` verifies an AArch64
+    variadic call, classifies aggregate layout with
+    `collect_va_arg_hfa_payload_lanes`, resolves the source aggregate alias and
+    local aggregate leaf slots, then appends one BIR argument per lane with
+    per-lane `CallArgAbiInfo::aarch64_hfa_lane_count` and
+    `aarch64_hfa_lane_index`.
+  - The same target policy is also visible in `aapcs64_va_arg_hfa_payload_shape`
+    for aggregate `va_arg` lowering, which publishes
+    `CallInst::va_arg_payload_abi`, `va_arg_hfa_lane_count`, and
+    `va_arg_hfa_lane_size_bytes` for prepared variadic-entry planning.
+  - Downstream prepared/prealloc code already consumes those fields as lowered
+    ABI facts. It should not rediscover HFA shape from rendered type text or
+    local aggregate slot structure.
 
-- Byval/carrier shape ownership:
-  - Preferred structured owner: `CallArgAbiInfo` owns lowered ABI layout facts
-    such as `size_bytes`, `align_bytes`, register/stack placement,
-    `byval_copy`, and AArch64 HFA lane index/count after semantic lowering.
-    `LirCallArg` may carry source-side ABI annotations needed to compute those
-    facts, but it should not replace `CallArgAbiInfo` as the lowered ABI
-    contract.
-  - Carrier aggregate shape should be derived from `LirTypeRef` plus structured
-    layout tables when present, not from a rendered type suffix. The existing
-    rendered fallback can stay as a named legacy bridge for hand-built/no-ref
-    LIR only.
+- Boundary decision:
+  - Keep the existing inline semantic BIR expansion temporarily. It is the
+    behavior-preserving compatibility owner for the completed 286 route until
+    a helper extraction can preserve every fail-closed check.
+  - The desired owner is a target ABI helper, not general semantic call
+    lowering. Semantic BIR should provide structured input facts and attach the
+    returned lowered arguments/ABI records to `CallInst`; it should not embed
+    AAPCS64 lane-count, lane-size, register-bank, leaf-slot, or HFA eligibility
+    policy inline.
+  - `CallArgAbiInfo` remains the lowered ABI-record contract for call
+    arguments. A helper may produce those records, but it should not introduce a
+    parallel ABI metadata shape that downstream prepared/prealloc must merge
+    with `CallArgAbiInfo`.
+  - `CallInst::va_arg_payload_abi`, `va_arg_hfa_lane_count`, and
+    `va_arg_hfa_lane_size_bytes` remain the aggregate `va_arg` output contract
+    for prepared variadic-entry planning unless a later helper deliberately
+    replaces them with an equivalent structured payload plan.
 
-- Struct identity ownership:
-  - Preferred structured owner: `LirTypeRef::struct_name_id` owns source type
-    identity across the LIR/BIR boundary.
-  - BIR call lowering should fail closed on missing or mismatched structured
-    identity for metadata-bearing aggregate/byval arguments, while retaining
-    the existing selected-layout fallback only for explicit legacy/no-ref
-    compatibility.
+Structured helper contract for a future extraction:
 
-Smallest safe implementation packet:
+- Input:
+  - `TargetProfile`, with AArch64 and floating-register availability checked by
+    the helper.
+  - A variadic-call marker and the original aggregate source operand.
+  - Structured aggregate layout from `LirTypeRef`/`StructNameId` plus the
+    backend structured layout table, not rendered suffix parsing.
+  - Local aggregate alias and leaf-slot facts sufficient to map each payload
+    lane to a BIR source value.
+  - Local scalar slot types used to fail closed when a leaf slot does not match
+    the classified HFA lane type.
+- Output:
+  - For outgoing calls, either `std::nullopt` for "not an AAPCS64 HFA carrier"
+    or an ordered lane expansion containing `bir::Value` lane sources,
+    lane `bir::TypeKind`s, and one `bir::CallArgAbiInfo` per lane with
+    `aarch64_hfa_lane_count` and `aarch64_hfa_lane_index` populated.
+  - For aggregate `va_arg`, either no HFA payload shape or a structured payload
+    shape containing lane type, lane count, lane size, and payload ABI facts
+    that map directly onto the current `CallInst` fields.
+  - Failure should be explicit and fail closed for incomplete structured
+    layout, missing aggregate alias, leaf-slot count mismatch, missing local
+    slot type, or lane type mismatch. It must not silently fall back to a
+    non-HFA byval pointer path after partially recognizing an HFA carrier.
 
-- Owned files:
-  - `src/codegen/lir/call_args.hpp`
-  - `src/codegen/lir/ir.hpp`
-  - `src/codegen/lir/call_args_ops.hpp`
-  - `src/codegen/lir/hir_to_lir/call/args.cpp`
-  - `src/backend/bir/lir_to_bir/calling.cpp`
-  - focused backend/LIR tests covering the existing `alignstack` HFA carrier
-    path
-- Change:
-  - Add a structured optional per-call-argument ABI metadata field for stack
-    alignment, e.g. `stack_align_bytes` or a small `LirCallArgAbiMetadata`
-    field, to `OwnedLirTypedCallArg` and `LirCallArg`.
-  - Populate it in the AArch64 variadic HFA carrier-array path instead of
-    appending ` alignstack(...)` to the carrier type string. Keep the rendered
-    `args_str` compatible only if the printer/parser contract still needs the
-    suffix for raw text output.
-  - In `BirFunctionLowerer::lower_call_inst`, prefer the structured metadata
-    when computing aggregate layout and `CallArgAbiInfo::align_bytes`; use
-    `strip_call_arg_abi_type_suffix` only in explicitly legacy branches where
-    neither `structured_args` nor `arg_type_refs` provide a structured owner.
-  - Preserve all current mismatch/fail-closed behavior for missing
-    `StructNameId`, mismatched legacy type spelling, lane-count mismatch, and
-    local slot shape mismatch.
-- Proof:
-  - Build proof plus focused subset:
-    `backend_lir_to_bir_notes`,
-    `backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold`, and
-    `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`.
-  - Add or update a focused note/unit test proving the structured carrier path
-    no longer requires parsing `alignstack(...)` from `LirTypeRef::str()`, and
-    a legacy/no-ref test proving the compatibility strip path still works.
-- Reject signals:
-  - The patch only renames `strip_call_arg_abi_type_suffix` or moves it without
-    introducing a structured owner.
-  - Metadata-bearing structured calls still require `alignstack(...)` in
-    `LirTypeRef::str()` to pass.
-  - `alignstack` is stored on `LirTypeRef` as type identity.
-  - `CallArgAbiInfo` placement or byval shape is recomputed from rendered text
-    when structured `LirCallArg`/`LirTypeRef` data is present.
-  - Legacy rendered compatibility is deleted before raw/no-ref LIR has an
-    equivalent structured owner.
+Follow-up idea text if this route is too large for Step 6:
+
+```text
+Title: Extract AAPCS64 variadic HFA lane expansion into a target ABI helper
+
+Intent:
+Move the AArch64 variadic HFA carrier-array expansion policy out of semantic
+call lowering into a target ABI helper that accepts structured aggregate layout,
+aggregate alias, leaf-slot, and local slot type facts, then returns lowered BIR
+lane values plus `CallArgAbiInfo` records. Preserve current aggregate `va_arg`
+payload metadata behavior and all 286 fail-closed checks.
+
+Owned files:
+- `src/backend/bir/lir_to_bir/calling.cpp`
+- a new or existing target ABI helper module under `src/backend/bir/lir_to_bir/`
+  or an adjacent target ABI policy location
+- focused backend tests around AAPCS64 variadic HFA outgoing calls and
+  aggregate `va_arg` metadata
+
+Proof:
+- build proof
+- `backend_lir_to_bir_notes`
+- `backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold`
+- `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`
+- focused unit proof that mismatched leaf-slot count/type and missing aggregate
+  alias still fail closed
+
+Reject signals:
+- extraction only moves the lambda body without defining structured input and
+  output contracts
+- helper consumes rendered call-argument/type suffix text as its primary owner
+- helper emits lane values without matching `CallArgAbiInfo` records
+- semantic BIR or prepared/prealloc recomputes HFA lane shape after the helper
+  has already classified it
+- a recognized-but-incomplete HFA carrier silently degrades to byval pointer
+  lowering instead of failing closed
+```
 
 ## Suggested Next
 
-Proceed to Step 4. Decide the AArch64 variadic HFA lane expansion boundary:
-whether semantic BIR should keep assembling lane values and `CallArgAbiInfo`
-records inline or whether a target ABI helper should own that expansion behind
-a structured input/output contract.
+Proceed to Step 5. Decide the opaque pointer byte-offset provenance boundary:
+whether prepared `memory_accesses` can keep the current
+`allow_opaque_ptr_base && stored_type == I8` compatibility rule or need an
+explicit base-object extent / byte-range carrier first.
 
 ## Watchouts
 
-The Step 3 code packet is safe only as a structured-owner quarantine. Do not
-delete rendered compatibility outright, and do not attach `alignstack` to
-`LirTypeRef` as if it were type identity. Keep Step 4 separate: HFA lane
-expansion has broader target-policy ownership than the suffix carrier cleanup.
+Do not use Step 4 as a license for broad AArch64 ABI rewrite. A safe helper
+extraction must be behavior-preserving and must keep the current lane metadata
+contract with prepared/prealloc intact. If Step 6 chooses only one cleanup, the
+Step 3 structured `alignstack` carrier is likely narrower than extracting the
+HFA helper because the HFA path crosses semantic BIR, local aggregate slots,
+`CallArgAbiInfo`, and variadic-entry planning.
 
 ## Proof
 
