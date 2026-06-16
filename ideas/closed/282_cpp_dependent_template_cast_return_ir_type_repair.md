@@ -1,5 +1,9 @@
 # 282 C++ dependent template cast return IR type repair
 
+## Status
+
+Closed. The dependent-template cast/return substitution repair is complete.
+
 ## Goal
 
 Repair C++ template materialization / HIR-to-LIR lowering so dependent
@@ -51,6 +55,21 @@ return type is not fully resolved before LIR return coercion.
 - Nearby dependent template cast/default argument tests still pass.
 - No expectation downgrade, skipped runtime mode, or harness weakening is used
   as progress.
+
+## Completion Notes
+
+- The repaired boundary is the shared dependent-template signature/cast
+  substitution path, not backend return lowering or an IR-printer workaround.
+- The target specialization now materializes in HIR as
+  `fn convert_l_s(val: short) -> long` with `return ((long)val#P0)`.
+- LLVM now emits `define i64 @convert_l_s(i16 %p.val)`, extends with
+  `sext i16 %p.val to i64`, and returns the converted `i64` value.
+- The focused target CTest passes in current `test_after.log`.
+- Close-time regression guard compared matching target CTest logs and passed:
+  before `0/1`, after `1/1`, resolved
+  `cpp_positive_sema_template_default_args_cpp`, no new failures.
+- No test expectation, runtime harness, or backend return-lowering weakening was
+  used as completion evidence.
 
 ## Reviewer Reject Signals
 
