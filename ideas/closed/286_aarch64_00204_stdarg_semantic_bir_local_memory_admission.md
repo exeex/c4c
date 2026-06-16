@@ -62,3 +62,18 @@ snapshot wording drift.
   route look monotonic.
 - The exact old failure remains but is hidden behind a different diagnostic,
   bucket name, or skipped test.
+
+## Completion Notes
+
+Closed on 2026-06-16 after the active runbook repaired the AArch64 aggregate
+`va_arg` local-memory admission path, admitted the exposed AArch64 variadic HFA
+carrier-array direct-call shape, and added fixture-independent focused backend
+coverage.
+
+Supervisor Step 5 validation passed:
+
+- `cmake --build --preset default && ctest --test-dir build -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$' --output-on-failure`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'`
+
+Close-time regression guard also passed on the canonical `test_before.log` /
+`test_after.log` pair with no new failing tests.
