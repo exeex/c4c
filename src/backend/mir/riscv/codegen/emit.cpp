@@ -311,12 +311,43 @@ std::optional<std::string> prepared_register_for_value(
   return home.register_name;
 }
 
+std::optional<std::int64_t> prepared_immediate_i32_for_value(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  const auto value_id = prepared_value_id_for(names, lookups, value);
+  if (!value_id.has_value()) {
+    return std::nullopt;
+  }
+  const auto home_it = lookups->value_homes.homes_by_id.find(*value_id);
+  if (home_it == lookups->value_homes.homes_by_id.end() || home_it->second == nullptr) {
+    return std::nullopt;
+  }
+  const auto& home = *home_it->second;
+  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate ||
+      !home.immediate_i32.has_value()) {
+    return std::nullopt;
+  }
+  return home.immediate_i32;
+}
+
+std::optional<std::int64_t> simple_or_prepared_integer_immediate(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  const auto immediate = simple_integer_immediate(value);
+  if (immediate.has_value()) {
+    return immediate;
+  }
+  return prepared_immediate_i32_for_value(names, lookups, value);
+}
+
 bool emit_move_to_register(std::string& out,
                            std::string_view destination_register,
                            const c4c::backend::prepare::PreparedNameTables& names,
                            const c4c::backend::prepare::PreparedFunctionLookups* lookups,
                            const c4c::backend::bir::Value& value) {
-  const auto immediate = simple_integer_immediate(value);
+  const auto immediate = simple_or_prepared_integer_immediate(names, lookups, value);
   if (immediate.has_value()) {
     out += "    li ";
     out += destination_register;
@@ -344,40 +375,61 @@ std::optional<std::string> emit_riscv_simple_binary(
     const c4c::backend::bir::BinaryInst& binary,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
-  if (binary.opcode != c4c::backend::bir::BinaryOpcode::Add ||
+  if ((binary.opcode != c4c::backend::bir::BinaryOpcode::Add &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Sub) ||
       binary.result.kind != c4c::backend::bir::Value::Kind::Named) {
     return std::nullopt;
   }
   const auto destination_register = prepared_register_for_value(names, lookups, binary.result);
   if (!destination_register.has_value()) {
-    return std::nullopt;
+    const auto result_immediate = prepared_immediate_i32_for_value(names, lookups, binary.result);
+    return result_immediate.has_value() ? std::optional<std::string>{std::string{}} : std::nullopt;
   }
 
-  const auto lhs_imm = simple_integer_immediate(binary.lhs);
-  const auto rhs_imm = simple_integer_immediate(binary.rhs);
+  const auto lhs_imm = simple_or_prepared_integer_immediate(names, lookups, binary.lhs);
+  const auto rhs_imm = simple_or_prepared_integer_immediate(names, lookups, binary.rhs);
   const auto lhs_register = prepared_register_for_value(names, lookups, binary.lhs);
   const auto rhs_register = prepared_register_for_value(names, lookups, binary.rhs);
 
   std::string out;
   if (lhs_imm.has_value() && rhs_imm.has_value()) {
+    const auto result = binary.opcode == c4c::backend::bir::BinaryOpcode::Add
+                            ? *lhs_imm + *rhs_imm
+                            : *lhs_imm - *rhs_imm;
     out += "    li " + *destination_register + ", " +
-           std::to_string(*lhs_imm + *rhs_imm) + "\n";
+           std::to_string(result) + "\n";
     return out;
   }
-  if (lhs_register.has_value() && rhs_imm.has_value() &&
-      fits_signed_12_bit_immediate(*rhs_imm)) {
-    out += "    addi " + *destination_register + ", " + *lhs_register + ", " +
-           std::to_string(*rhs_imm) + "\n";
-    return out;
+  if (lhs_register.has_value() && rhs_imm.has_value()) {
+    const auto immediate = binary.opcode == c4c::backend::bir::BinaryOpcode::Add
+                               ? *rhs_imm
+                               : -*rhs_imm;
+    if (fits_signed_12_bit_immediate(immediate)) {
+      out += "    addi " + *destination_register + ", " + *lhs_register + ", " +
+             std::to_string(immediate) + "\n";
+      return out;
+    }
   }
-  if (rhs_register.has_value() && lhs_imm.has_value() &&
+  if (binary.opcode == c4c::backend::bir::BinaryOpcode::Add &&
+      rhs_register.has_value() && lhs_imm.has_value() &&
       fits_signed_12_bit_immediate(*lhs_imm)) {
     out += "    addi " + *destination_register + ", " + *rhs_register + ", " +
            std::to_string(*lhs_imm) + "\n";
     return out;
   }
+  if (binary.opcode == c4c::backend::bir::BinaryOpcode::Sub &&
+      rhs_register.has_value() && lhs_imm.has_value()) {
+    const std::string lhs_register_name =
+        *destination_register == *rhs_register ? "t0" : *destination_register;
+    out += "    li " + lhs_register_name + ", " + std::to_string(*lhs_imm) + "\n";
+    out += "    sub " + *destination_register + ", " + lhs_register_name + ", " +
+           *rhs_register + "\n";
+    return out;
+  }
   if (lhs_register.has_value() && rhs_register.has_value()) {
-    out += "    add " + *destination_register + ", " + *lhs_register + ", " +
+    out += std::string{"    "} +
+           (binary.opcode == c4c::backend::bir::BinaryOpcode::Add ? "add " : "sub ") +
+           *destination_register + ", " + *lhs_register + ", " +
            *rhs_register + "\n";
     return out;
   }
