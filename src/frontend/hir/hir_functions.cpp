@@ -1002,10 +1002,13 @@ TypeSpec Lowerer::prepare_callable_return_type(
     }
   }
   if (!ret_ts.deferred_member_type_name && ret_ts.ptr_level == 0 &&
-      ret_ts.array_rank == 0 && !ret_ts.is_lvalue_ref &&
-      !ret_ts.is_rvalue_ref && ret_ts.base == TB_STRUCT) {
+      ret_ts.array_rank == 0 && ret_ts.base == TB_STRUCT) {
+    const bool preserve_lvalue_ref = ret_ts.is_lvalue_ref;
+    const bool preserve_rvalue_ref = ret_ts.is_rvalue_ref;
     TypeSpec resolved_member{};
     TypeSpec owner_ts = ret_ts;
+    owner_ts.is_lvalue_ref = false;
+    owner_ts.is_rvalue_ref = false;
     owner_ts.deferred_member_type_name = "type";
     owner_ts.deferred_member_type_text_id = make_text_id(
         "type", module_ ? module_->link_name_texts.get() : nullptr);
@@ -1042,6 +1045,8 @@ TypeSpec Lowerer::prepare_callable_return_type(
       while (resolve_struct_member_typedef_if_ready(&resolved_member)) {
       }
       resolve_typedef_to_struct(resolved_member);
+      resolved_member.is_lvalue_ref = preserve_lvalue_ref;
+      resolved_member.is_rvalue_ref = preserve_rvalue_ref;
       ret_ts = resolved_member;
     }
   }
@@ -1090,10 +1095,13 @@ void Lowerer::append_explicit_callable_param(
     }
   }
   if (!param_ts.deferred_member_type_name && param_ts.ptr_level == 0 &&
-      param_ts.array_rank == 0 && !param_ts.is_lvalue_ref &&
-      !param_ts.is_rvalue_ref && param_ts.base == TB_STRUCT) {
+      param_ts.array_rank == 0 && param_ts.base == TB_STRUCT) {
+    const bool preserve_lvalue_ref = param_ts.is_lvalue_ref;
+    const bool preserve_rvalue_ref = param_ts.is_rvalue_ref;
     TypeSpec resolved_member{};
     TypeSpec owner_ts = param_ts;
+    owner_ts.is_lvalue_ref = false;
+    owner_ts.is_rvalue_ref = false;
     owner_ts.deferred_member_type_name = "type";
     owner_ts.deferred_member_type_text_id = make_text_id(
         "type", module_ ? module_->link_name_texts.get() : nullptr);
@@ -1130,6 +1138,8 @@ void Lowerer::append_explicit_callable_param(
       while (resolve_struct_member_typedef_if_ready(&resolved_member)) {
       }
       resolve_typedef_to_struct(resolved_member);
+      resolved_member.is_lvalue_ref = preserve_lvalue_ref;
+      resolved_member.is_rvalue_ref = preserve_rvalue_ref;
       param_ts = resolved_member;
     }
   }

@@ -650,6 +650,15 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   };
   auto owner_tag_from_type_metadata =
       [&](const TypeSpec& owner) -> std::optional<std::string> {
+    if (module_ && owner.deferred_member_type_name &&
+        owner.n_qualifier_segments > 1 && owner.qualifier_segments) {
+      const char* nested_owner =
+          owner.qualifier_segments[owner.n_qualifier_segments - 1];
+      if (nested_owner && nested_owner[0] &&
+          struct_def_nodes_.count(nested_owner)) {
+        return std::string(nested_owner);
+      }
+    }
     if (owner.record_def && owner.record_def->kind == NK_STRUCT_DEF) {
       if (const std::optional<HirRecordOwnerKey> owner_key =
               make_struct_def_node_owner_key(owner.record_def)) {
@@ -666,6 +675,17 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
         if (const SymbolName* tag =
                 module_->find_struct_def_tag_by_owner(*owner_key)) {
           return *tag;
+        }
+        if (owner.deferred_member_type_owner_key.base_text_id != kInvalidText &&
+            owner.tag_text_id != kInvalidText) {
+          for (const auto& [rendered_tag, def] : module_->struct_defs) {
+            if (def.tag_text_id != owner.tag_text_id) continue;
+            if (owner.namespace_context_id >= 0 &&
+                def.ns_qual.context_id != owner.namespace_context_id) {
+              continue;
+            }
+            return rendered_tag;
+          }
         }
       }
       return std::nullopt;
@@ -835,6 +855,27 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
         }
         *ts = resolved_member;
         return true;
+      }
+    }
+    if (ts->n_qualifier_segments > 1 && ts->qualifier_segments) {
+      const char* nested_origin =
+          ts->qualifier_segments[ts->n_qualifier_segments - 1];
+      if (nested_origin && nested_origin[0] &&
+          (!ts->tpl_struct_origin ||
+           std::string(nested_origin) != ts->tpl_struct_origin) &&
+          (find_template_struct_primary(nested_origin) ||
+           struct_def_nodes_.count(nested_origin))) {
+        TypeSpec nested_ts = *ts;
+        nested_ts.tpl_struct_origin = nested_origin;
+        if (nested_ts.qualifier_text_ids &&
+            ts->n_qualifier_segments > 0) {
+          nested_ts.tpl_struct_origin_key.base_text_id =
+              nested_ts.qualifier_text_ids[ts->n_qualifier_segments - 1];
+        }
+        if (resolve_struct_member_typedef_if_ready(&nested_ts)) {
+          *ts = nested_ts;
+          return true;
+        }
       }
     }
 

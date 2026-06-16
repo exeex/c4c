@@ -914,6 +914,11 @@ ExprId Lowerer::lower_cast_expr(FunctionCtx* ctx, const Node* n) {
       n->type, ctx ? &ctx->tpl_bindings : nullptr,
       ctx ? &ctx->structured_tpl_bindings : nullptr,
       ctx ? &ctx->tpl_bindings_by_text : nullptr);
+  cast_ts = prepare_callable_return_type(
+      cast_ts, ctx ? &ctx->tpl_bindings : nullptr,
+      ctx ? &ctx->nttp_bindings : nullptr,
+      ctx ? &ctx->structured_tpl_bindings : nullptr,
+      ctx ? &ctx->tpl_bindings_by_text : nullptr, n, "cast-target", false);
   if (ctx && !ctx->tpl_bindings.empty() && cast_ts.tpl_struct_origin) {
     seed_and_resolve_pending_template_type_if_needed(
         cast_ts, ctx->tpl_bindings, ctx->nttp_bindings, n,

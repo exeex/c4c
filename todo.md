@@ -1,90 +1,81 @@
 Status: Active
 Source Idea Path: ideas/open/283_cpp_dependent_reference_alias_c_style_cast_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Locate The Reference Alias Cast Boundary
+Current Step ID: 2
+Current Step Title: Repair Dependent Reference Alias Cast Semantics
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Locate The Reference Alias Cast Boundary completed.
+Step 2: Repair Dependent Reference Alias Cast Semantics completed.
 
-First bad boundary: HIR cast target materialization in
-`Lowerer::lower_cast_expr()` after dependent substitution. The C-style cast
-target is resolved far enough for overload selection, but the lvalue reference
-alias target keeps the dependent owner aggregate as its value type before LIR
-emission.
+Repaired the HIR type boundary shared by C-style cast targets and local
+reference-alias declarations:
+- `Lowerer::lower_cast_expr()` now sends cast target types through the same
+  structured/TextId-aware callable type preparation chain before materializing
+  the `CastExpr`.
+- Local declarations now use the same structured binding inputs before
+  reference storage materialization, so a declared `AliasL` does not keep the
+  dependent owner aggregate as its storage value type.
+- `resolve_struct_member_typedef_if_ready()` now prefers the last qualified
+  owner segment for nested deferred member typedefs before falling back to the
+  already-realized outer holder tag, preserving reference flags while resolving
+  `Rebind<T>::AliasL` / nested alias owners.
 
-Concrete failing evidence:
-- Direct template-member alias
-  `c_style_cast_dependent_template_member_ref_alias_basic.cpp`:
-  HIR lowers `AliasL` as
-  `decl l: struct Holder_T_int*& = (&((struct Holder_T_int&)x#L0))`.
-  LLVM then emits `store %struct.Holder_T_int %t2, ptr %t3` where `%t2` is
-  produced by `add i32 %p.value, 4`.
-- Nested template-member alias
-  `c_style_cast_nested_dependent_template_member_ref_alias_basic.cpp`:
-  HIR lowers the lvalue alias the same way,
-  `decl l: struct Holder_T_int*& = (&((struct Holder_T_int&)x#L0))`, and LLVM
-  emits the same invalid `%struct.Holder_T_int` store from an `i32`.
-- Nested dependent-typename alias
-  `c_style_cast_nested_dependent_typename_ref_alias_basic.cpp`:
-  HIR lowers the lvalue alias as
-  `decl l: struct Holder_T_int*& = (&((struct Holder_T_int&)x#L0))`; LLVM
-  emits `store %struct.Holder_T_int %t2, ptr %t3` with
-  `%struct.Holder_T_int = type { %struct.Inner }`.
-
-Comparison notes:
-- In all three failing forms, the rvalue alias path still lowers through
-  `(&x#L0)` and selects `pick__rref_overload`, so the failure is concentrated
-  on lvalue reference alias target/value-type resolution.
-- A passing direct dependent-typename comparison lowers as
-  `decl l: int*& = (&((int&)x#L0))`, which is the expected scalar/reference
-  shape.
-- `--dump-bir` cannot provide a BIR boundary in this build because it reports
-  `backend support is disabled in this build`; the LLVM-path invalid IR is a
-  downstream symptom of the bad HIR type.
+Evidence from
+`c_style_cast_dependent_template_member_ref_alias_basic.cpp`:
+- HIR no longer materializes the lvalue alias as `struct Holder_T_int*&` or
+  casts through `struct Holder_T_int&`; it lowers as reference storage
+  `decl l: ?*& = (&((?&)x#L0))`.
+- LLVM now emits scalar/reference operations:
+  `store ptr %lv.x, ptr %lv.l`, `store i32 %t2, ptr %t3`, and
+  `store i32 %t4, ptr %t5`.
+- The rvalue alias still selects `pick__rref_overload`, preserving overload
+  behavior.
 
 ## Suggested Next
 
-Execute Step 2 by repairing `Lowerer::lower_cast_expr()` in
-`src/frontend/hir/impl/expr/scalar_control.cpp` to run the same structured
-member-typedef/reference resolution used by callable return/parameter
-preparation after `substitute_signature_template_type()`.
-
-Narrow target: after seeding a dependent cast target, call the
-`resolve_signature_template_type_if_needed()` /
-`resolve_struct_member_typedef_if_ready()` chain, preserving structured
-TextId/owner-key metadata and reference flags, so `AliasL` materializes as
-`int&` storage (`int*&`) rather than `struct Holder_T_int&` storage.
+Execute Step 3 by recording focused evidence across all three source-idea
+alias forms, including direct template-member, nested template-member, and
+nested dependent-typename aliases. Confirm the lvalue path is scalar/reference
+shaped and the rvalue path still selects `pick__rref_overload`.
 
 ## Watchouts
 
-- Do not weaken or skip the three positive runtime tests.
-- Do not special-case the filenames or `Holder<T>::Rebind`.
-- Preserve lvalue/rvalue reference overload behavior.
-- Avoid a late LIR/LLVM store-type workaround; the first bad fact already
-  exists in HIR before LIR emission.
-- Do not collapse all dependent owner structs to their `type` member blindly;
-  the repair should apply to C-style cast target typedef/member-alias
-  resolution and preserve aggregate casts that are genuinely aggregate casts.
+- HIR prints the resolved nested template-member alias value type as `?` even
+  though LLVM lowering is now scalar/reference shaped. Treat that as a printer
+  or final spelling gap unless a later proof requires changing semantics.
+- No test expectations, runtime harnesses, backend store lowering, or
+  filename-specific paths were changed.
+- This packet ran only the supervisor-selected focused regex; do not claim
+  Step 4 broader validation complete.
 
 ## Proof
 
 Ran delegated proof:
 
-`cmake --build --preset default && ctest --test-dir build_debug -R '^cpp_positive_sema_c_style_cast_.*dependent.*alias.*_cpp$' --output-on-failure 2>&1 | tee test_after.log`
+`( set -o pipefail; cmake --build build_debug && ctest --test-dir build_debug -R '^cpp_positive_sema_c_style_cast_.*dependent.*alias.*_cpp$' --output-on-failure ) 2>&1 | tee test_after.log`
 
-Build passed with no work to do. CTest reproduced the current failures:
+Result: passed, 7/7 tests.
+
+The three source-idea targets now pass:
 - `cpp_positive_sema_c_style_cast_dependent_template_member_ref_alias_basic_cpp`
 - `cpp_positive_sema_c_style_cast_nested_dependent_template_member_ref_alias_basic_cpp`
 - `cpp_positive_sema_c_style_cast_nested_dependent_typename_ref_alias_basic_cpp`
 
-Four related regex matches passed. The shell pipeline exited successfully
-because output was piped through `tee` without `pipefail`, but CTest reported
-`3 tests failed out of 7`. Proof log path: `test_after.log`.
+The four related passing regex matches also remained green. Proof log path:
+`test_after.log`.
 
-Diagnostic dumps used for investigation only were written under `/tmp`:
-`/tmp/c4c_283_direct.hir`, `/tmp/c4c_283_nested_member.hir`,
-`/tmp/c4c_283_nested_typename.hir`, and matching `.ll` files.
+Diagnostic evidence for this packet was written under `/tmp`:
+`/tmp/c4c_283_fixed_direct_member.hir` and
+`/tmp/c4c_283_fixed_direct_member.ll`.
+
+Supervisor regression guard compared matching focused logs:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`.
+Result: PASS, before 4/7 passed and after 7/7 passed, resolving the three
+source-idea target failures with no new failures.
+
+Supervisor also ran nearby reference/cast/template validation:
+`ctest --test-dir build_debug -R '^(cpp_hir_member_typedef_.*|cpp_hir_template_member_owner_.*|cpp_hir_template_(function|method|function_deduction|function_pack|function_recursive).*|cpp_positive_sema_c_style_cast_.*|cpp_positive_sema_.*ref.*|cpp_positive_sema_template_alias_member_typedef_.*|cpp_positive_sema_template_variable_.*member_typedef.*)$' --output-on-failure`.
+Result: passed, 284/284 tests.

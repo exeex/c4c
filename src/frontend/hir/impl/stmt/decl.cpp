@@ -141,8 +141,13 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   TypeSpec effective_decl_ts{};
   // Substitute template type parameters in local variable types.
   {
-    TypeSpec decl_ts =
-        substitute_signature_template_type(n->type, &ctx.tpl_bindings);
+    TypeSpec decl_ts = substitute_signature_template_type(
+        n->type, &ctx.tpl_bindings, &ctx.structured_tpl_bindings,
+        &ctx.tpl_bindings_by_text);
+    decl_ts = prepare_callable_return_type(
+        decl_ts, &ctx.tpl_bindings, &ctx.nttp_bindings,
+        &ctx.structured_tpl_bindings, &ctx.tpl_bindings_by_text, n,
+        std::string("local-decl:") + d.name, false);
     if (decl_ts.base == TB_AUTO && n->init) {
       TypeSpec deduced_ts = infer_generic_ctrl_type(&ctx, n->init);
       deduced_ts.is_const = deduced_ts.is_const || decl_ts.is_const;
