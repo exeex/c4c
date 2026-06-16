@@ -16,6 +16,9 @@ endif()
 if(NOT DEFINED SYSROOT OR "${SYSROOT}" STREQUAL "")
   set(SYSROOT "/usr/riscv64-linux-gnu")
 endif()
+if(NOT DEFINED EXPECTED_RUN_CODE OR "${EXPECTED_RUN_CODE}" STREQUAL "")
+  set(EXPECTED_RUN_CODE 0)
+endif()
 
 get_filename_component(out_asm_dir "${OUT_ASM}" DIRECTORY)
 get_filename_component(out_bin_dir "${OUT_BIN}" DIRECTORY)
@@ -73,9 +76,9 @@ execute_process(
 if(qemu_rc MATCHES "timeout")
   message(FATAL_ERROR "[BACKEND_RV64_QEMU_TIMEOUT] ${SRC} exceeded ${CASE_TIMEOUT_SEC}s")
 endif()
-if(NOT qemu_rc EQUAL 0)
+if(NOT qemu_rc EQUAL EXPECTED_RUN_CODE)
   message(FATAL_ERROR
-    "[BACKEND_RV64_QEMU_UNEXPECTED_RETURN] ${SRC} exit=${qemu_rc}\n"
+    "[BACKEND_RV64_QEMU_UNEXPECTED_RETURN] ${SRC} exit=${qemu_rc} expected=${EXPECTED_RUN_CODE}\n"
     "${qemu_out}${qemu_err}")
 endif()
 

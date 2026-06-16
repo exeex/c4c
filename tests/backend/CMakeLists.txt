@@ -265,7 +265,7 @@ endfunction()
 
 function(c4c_add_backend_rv64_runtime_case test_name)
   set(options)
-  set(one_value_args SRC CASE_TIMEOUT_SEC)
+  set(one_value_args SRC CASE_TIMEOUT_SEC EXPECTED_RUN_CODE)
   set(multi_value_args LABELS)
   cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
@@ -293,6 +293,10 @@ function(c4c_add_backend_rv64_runtime_case test_name)
   if("${case_timeout}" STREQUAL "")
     set(case_timeout 30)
   endif()
+  set(expected_run_code "${ARG_EXPECTED_RUN_CODE}")
+  if("${expected_run_code}" STREQUAL "")
+    set(expected_run_code 0)
+  endif()
 
   add_test(
     NAME "${test_name}"
@@ -306,6 +310,7 @@ function(c4c_add_backend_rv64_runtime_case test_name)
             -DOUT_BIN=${CMAKE_BINARY_DIR}/backend_rv64_runtime/${case_stem}.bin
             -DSYSROOT=/usr/riscv64-linux-gnu
             -DCASE_TIMEOUT_SEC=${case_timeout}
+            -DEXPECTED_RUN_CODE=${expected_run_code}
             -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_rv64_runtime_case.cmake"
   )
   c4c_set_backend_test_labels("${test_name}" backend_runtime rv64 qemu case ${ARG_LABELS})
@@ -316,6 +321,13 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/return_zero.c"
   CASE_TIMEOUT_SEC 10
   LABELS scalar return
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_return_add
+  SRC "${BACKEND_CASE_ROOT}/return_add.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 5
+  LABELS scalar return call alu
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_branch_if_eq
