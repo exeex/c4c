@@ -61,3 +61,23 @@ aliases and then use ref-overload selection plus reference assignment.
   alias/reference lowering.
 - Reject broad template rewrites that do not directly address dependent
   reference alias substitution.
+
+## Closure Notes
+
+Closed after repairing dependent reference alias C-style cast lowering at the
+shared alias/reference boundary.
+
+Acceptance evidence:
+- The focused alias CTest regex passes 7/7.
+- The three original failing targets now pass.
+- Generated LLVM uses scalar/reference-shaped stores instead of attempting to
+  store `i32` values as `%struct.Holder_T_int`.
+- Rvalue alias casts still select `pick__rref_overload`.
+- Nearby reference, cast, member-typedef, and template validation passed
+  284/284.
+- Close-time regression guard passed with matching canonical logs: before 4/7,
+  after 7/7, resolving the three source-idea failures with no new failures.
+
+Remaining note: HIR can still print some resolved nested template-member alias
+value types as `?`, but the accepted semantic evidence is scalar/reference
+shaped in LLVM and CTest.
