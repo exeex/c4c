@@ -157,6 +157,105 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(FnCtx& ctx, const std::st
   return src_ptr;
 }
 
+std::string StmtEmitter::emit_aarch64_vaarg_hfa(
+    FnCtx& ctx, const std::string& ap_ptr, const TypeSpec& res_ts,
+    const std::string& res_ty, const Aarch64HomogeneousFpAggregateInfo& hfa) {
+  const LirTypeRef va_list_tag_ty = lir_va_list_tag_type_ref(module_);
+  const std::string tmp_addr = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_value_ty(mod_, res_ts), {},
+                                    hfa.aggregate_align});
+
+  const std::string offs_ptr = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirGepOp{offs_ptr, va_list_tag_ty, ap_ptr, false,
+                                 {"i32 0", "i32 4"}});
+  const std::string offs = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirLoadOp{offs, std::string("i32"), offs_ptr});
+
+  const std::string stack_lbl = fresh_lbl(ctx, "vaarg.hfa.stack.");
+  const std::string reg_try_lbl = fresh_lbl(ctx, "vaarg.hfa.regtry.");
+  const std::string reg_lbl = fresh_lbl(ctx, "vaarg.hfa.reg.");
+  const std::string join_lbl = fresh_lbl(ctx, "vaarg.hfa.join.");
+
+  const std::string is_stack0 = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
+  emit_condbr_and_open_lbl(ctx, is_stack0, stack_lbl, reg_try_lbl, reg_try_lbl);
+
+  const int reg_slot_bytes = hfa.elem_count * 16;
+  const std::string next_offs = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirBinOp{next_offs, "add", "i32", offs,
+                                 std::to_string(reg_slot_bytes)});
+  emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
+  const std::string use_reg = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, "sle", "i32", next_offs, "0"});
+  emit_condbr_and_open_lbl(ctx, use_reg, reg_lbl, stack_lbl, reg_lbl);
+
+  const std::string vr_top_ptr = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirGepOp{vr_top_ptr, va_list_tag_ty, ap_ptr, false,
+                                 {"i32 0", "i32 2"}});
+  const std::string vr_top = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirLoadOp{vr_top, std::string("ptr"), vr_top_ptr});
+  const std::string reg_base = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirGepOp{reg_base, "i8", vr_top, false, {"i32 " + offs}});
+  for (int lane_index = 0; lane_index < hfa.elem_count; ++lane_index) {
+    const std::string lane_src = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirGepOp{lane_src, "i8", reg_base, false,
+                                   {"i64 " + std::to_string(lane_index * 16)}});
+    const std::string lane = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirLoadOp{lane, hfa.elem_ty, lane_src});
+    const std::string lane_dst = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirGepOp{lane_dst, "i8", tmp_addr, false,
+                                   {"i64 " + std::to_string(lane_index * hfa.elem_size)}});
+    emit_lir_op(ctx, lir::LirStoreOp{hfa.elem_ty, lane, lane_dst});
+  }
+  emit_br_and_open_lbl(ctx, join_lbl, stack_lbl);
+
+  const std::string stack_ptr_ptr = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirGepOp{stack_ptr_ptr, va_list_tag_ty, ap_ptr, false,
+                                 {"i32 0", "i32 0"}});
+  const std::string stack_ptr = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), stack_ptr_ptr});
+  std::string aligned_stack_ptr = stack_ptr;
+  const int stack_align_bytes = std::min(std::max(hfa.elem_size, 8), 16);
+  if (stack_align_bytes > 1) {
+    if (stack_align_bytes > 8) {
+      const std::string stack_plus = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirGepOp{stack_plus, "i8", stack_ptr, false,
+                                     {"i64 " + std::to_string(stack_align_bytes - 1)}});
+      aligned_stack_ptr = fresh_tmp(ctx);
+      emit_lir_op(ctx, make_lir_call_op(aligned_stack_ptr, "ptr", "@llvm.ptrmask.p0.i64", "",
+                                        {{"ptr", stack_plus},
+                                         {"i64", std::to_string(-stack_align_bytes)}}));
+      module_->need_ptrmask = true;
+    } else {
+      const std::string stack_i = fresh_tmp(ctx);
+      emit_lir_op(ctx,
+                  lir::LirCastOp{stack_i, lir::LirCastKind::PtrToInt, "ptr", stack_ptr, "i64"});
+      const std::string plus_mask = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirBinOp{plus_mask, "add", "i64", stack_i,
+                                     std::to_string(stack_align_bytes - 1)});
+      const std::string masked = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirBinOp{masked, "and", "i64", plus_mask,
+                                     std::to_string(-stack_align_bytes)});
+      aligned_stack_ptr = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirCastOp{aligned_stack_ptr, lir::LirCastKind::IntToPtr, "i64",
+                                      masked, "ptr"});
+    }
+  }
+  module_->need_memcpy = true;
+  emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, aligned_stack_ptr,
+                                    std::to_string(hfa.aggregate_size), false});
+  const int stack_slot_bytes = round_up_to(hfa.aggregate_size, stack_align_bytes);
+  const std::string stack_next = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirGepOp{stack_next, "i8", aligned_stack_ptr, false,
+                                 {"i64 " + std::to_string(stack_slot_bytes)}});
+  emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
+
+  emit_fallthrough_lbl(ctx, join_lbl);
+  const std::string out = fresh_tmp(ctx);
+  emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr});
+  return out;
+}
+
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const Expr& e) {
   TypeSpec ap_ts{};
   const std::string ap_ptr = emit_va_list_obj_ptr(ctx, v.ap, ap_ts);
@@ -203,7 +302,10 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
   if (llvm_target_is_amd64_sysv(mod_.target_profile)) {
     return emit_amd64_va_arg(ctx, res_ts, res_ty, ap_ptr);
   }
-  if (classify_aarch64_hfa(mod_, res_ts)) {
+  if (const auto hfa = classify_aarch64_hfa(mod_, res_ts)) {
+    if (hfa->elem_ty != "fp128") {
+      return emit_aarch64_vaarg_hfa(ctx, ap_ptr, res_ts, res_ty, *hfa);
+    }
     const std::string out = fresh_tmp(ctx);
     const StructNameId structured_name_id =
         vaarg_aggregate_structured_name_id(mod_, module_, res_ts);

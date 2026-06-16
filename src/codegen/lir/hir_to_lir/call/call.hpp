@@ -129,6 +129,10 @@ std::string emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::string& ap_ptr,
 std::string emit_aarch64_vaarg_fp_src_ptr(FnCtx& ctx, const std::string& ap_ptr,
                                           int reg_slot_bytes, int stack_slot_bytes,
                                           int stack_align_bytes);
+std::string emit_aarch64_vaarg_hfa(FnCtx& ctx, const std::string& ap_ptr,
+                                   const TypeSpec& res_ts, const std::string& res_ty,
+                                   const stmt_emitter_detail::
+                                       Aarch64HomogeneousFpAggregateInfo& hfa);
 std::string emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
                               const std::string& res_ty, const std::string& ap_ptr);
 std::string emit_amd64_va_arg_from_registers(
