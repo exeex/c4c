@@ -1,44 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/284_c_aggregate_function_pointer_call_ir_type_repair.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Locate The Aggregate Function-Pointer Boundary
+Current Step ID: Step 2
+Current Step Title: Repair ABI Argument Adaptation For Function-Pointer Calls
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: reproduced `llvm_gcc_c_torture_src_struct_ret_1_c` and located the
-first aggregate/function-pointer call ABI divergence. `build_debug/c4cll
---codegen llvm tests/c/external/gcc_torture/src/struct-ret-1.c` emits the direct
-call as aggregate-shaped, but the indirect `(*fp)(B1, c2, d3, B2)` call as:
+Step 2: repaired the indirect function-pointer call ABI boundary in
+`src/codegen/lir/hir_to_lir/expr/coordinator.cpp`. The earlier scalar byte-copy
+adaptation was removed because it passed the wrong logical `B` value. Global
+function pointers initialized from a concrete function now recover that
+function's HIR signature for indirect-call ABI metadata while still calling
+through the loaded function pointer. That recovered signature supplies both the
+aggregate fixed parameter shape and aggregate return type to the existing call
+target and argument preparation paths.
 
-`%t18 = call i32 (i32, i8, double, i32) %t13(i32 %t14, i8 %t15, double %t16, i32 %t17)`
+For `llvm_gcc_c_torture_src_struct_ret_1_c`, the indirect
+`(*fp)(B1, c2, d3, B2)` call no longer passes `%struct._anon_3` operands where
+LLVM expects `i32`; it now uses the same aggregate parameter shape as the direct
+call. The indirect call result also no longer has the scalar/aggregate return
+mismatch. The generated call now emits:
 
-The first bad boundary is the LIR/LLVM call construction boundary where
-`resolve_call_target_info`/`llvm_fn_type_suffix_str(FnPtrSig)` render the
-function-pointer callee suffix as scalar ABI params, while
-`prepare_call_arg` leaves the actual first and fourth argument operands as whole
-aggregate loads. The value feeding the bad first `i32` is `%t14 = load
-%struct._anon_3, ptr @B1`; the fourth argument has the same shape via `%t17 =
-load %struct._anon_3, ptr @B2`. Canonical source typing still shows `fp` as
-`ptr(fn(struct _anon_4)(struct _anon_3, char, double, struct _anon_3))`, so the
-loss/mismatch is in call ABI rendering/preparation, not parse-time declaration
-recognition.
+`%t18 = call %struct._anon_4 (%struct._anon_3, i8, double, %struct._anon_3) %t13(%struct._anon_3 %t14, i8 %t15, double %t16, %struct._anon_3 %t17)`
 
 ## Suggested Next
 
-Execute Step 2 in `src/codegen/lir/hir_to_lir/call/args.cpp`: make
-`StmtEmitter::prepare_call_arg` adapt fixed function-pointer aggregate arguments
-to the same ABI shape used by the callee suffix, instead of returning one
-`OwnedLirTypedCallArg` with `llvm_value_ty(out_arg_ts)` and the whole aggregate
-operand. Candidate helpers to reuse or generalize are
-`prepare_amd64_variadic_aggregate_arg`, `amd64_account_type_if_needed`, and the
-AMD64 aggregate classifier in `src/codegen/llvm/calling_convention.cpp`.
-Also inspect `sig_param_type`/`llvm_fn_type_suffix_str(FnPtrSig)` in
-`src/codegen/lir/hir_to_lir/core.cpp`, because `FnPtrSig` accessors prefer
-`canonical_sig` over stored HIR params and the observed suffix uses `i32` for
-the `B` aggregate slots.
+The focused Step 2 proof is green. Suggested next packet: supervisor decides
+whether this completed slice should be committed or whether to run broader
+aggregate/function-pointer coverage first.
 
 ## Watchouts
 
@@ -51,10 +42,10 @@ the `B` aggregate slots.
   `%struct._anon_3` parameters consistently. The bad case is only the indirect
   function-pointer call where the callee suffix and actual operands are built
   from different ABI authorities.
-- `c4c-clang-tool-ccdb` confirmed `sig_param_type` callers in `core.cpp`, but
-  did not resolve the split `StmtEmitter::prepare_call_arg` member in
-  `call/args.cpp`; use targeted text/compile proof for that file if the AST
-  query remains blind there.
+- This repair recovers signatures for global function-pointer initializers
+  such as `X (*fp)(...) = &f`; local or parameter function pointers whose HIR
+  `FnPtrSig` metadata is already scalarized may still need a separate metadata
+  repair if similar cases appear.
 
 ## Proof
 
@@ -62,7 +53,17 @@ Ran delegated proof and preserved output in `test_after.log`:
 
 `cmake --build build_debug && ctest --test-dir build_debug -R '^llvm_gcc_c_torture_src_struct_ret_1_c$' --output-on-failure`
 
-Result: build succeeded (`ninja: no work to do`); focused CTest failed with the
-expected LLVM verifier/backend failure:
+Result: build succeeded and focused CTest passed.
 
-`<stdin>:417:51: error: '%t14' defined with type '%struct._anon_3 = type { double, [3 x i32], [4 x i8] }' but expected 'i32'`
+`100% tests passed, 0 tests failed out of 1`
+
+Supervisor-side broader validation also passed:
+
+`ctest --test-dir build_debug -R '^(frontend_lir_global_type_ref|frontend_lir_function_signature_type_ref|frontend_lir_call_type_ref|llvm_gcc_c_torture_src_struct_ret_[12]_c)$' --output-on-failure`
+
+Result: 5/5 passed:
+`frontend_lir_global_type_ref`,
+`frontend_lir_function_signature_type_ref`,
+`frontend_lir_call_type_ref`,
+`llvm_gcc_c_torture_src_struct_ret_1_c`,
+`llvm_gcc_c_torture_src_struct_ret_2_c`.

@@ -42,6 +42,37 @@ TypeSpec StmtEmitter::resolve_expr_type(FnCtx& ctx, const Expr& e) {
 }
 
 const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& callee_e) {
+  auto find_function = [&](LinkNameId link_name_id, std::string_view fallback_name)
+      -> const Function* {
+    return find_local_target_function(link_name_id, fallback_name);
+  };
+  auto build_fn_sig = [&](const Function& fn) -> const FnPtrSig* {
+    auto [it, _] = inferred_direct_fn_sigs_.try_emplace(fn.id.value);
+    FnPtrSig& sig = it->second;
+    if (sig.params.empty() && !sig.variadic && sig.return_type.spec.base == TB_VOID &&
+        sig.return_type.spec.ptr_level == 0 && sig.return_type.spec.array_rank == 0) {
+      sig.return_type = fn.return_type;
+      sig.variadic = fn.attrs.variadic;
+      sig.unspecified_params = false;
+      for (const auto& param : fn.params) sig.params.push_back(param.type);
+    }
+    return &sig;
+  };
+  auto initialized_function_sig = [&](const GlobalVar& global) -> const FnPtrSig* {
+    const auto* scalar = std::get_if<InitScalar>(&global.init);
+    if (!scalar) return nullptr;
+    const Expr& init_expr = get_expr(scalar->expr);
+    const Expr* fn_expr = &init_expr;
+    if (const auto* u = std::get_if<UnaryExpr>(&init_expr.payload)) {
+      if (u->op != UnaryOp::AddrOf) return nullptr;
+      fn_expr = &get_expr(u->operand);
+    }
+    const auto* fn_ref = std::get_if<DeclRef>(&fn_expr->payload);
+    if (!fn_ref) return nullptr;
+    const Function* fn = find_function(fn_ref->link_name_id, fn_ref->name);
+    return fn ? build_fn_sig(*fn) : nullptr;
+  };
+
   if (const auto* u = std::get_if<UnaryExpr>(&callee_e.payload)) {
     if (u->op == UnaryOp::Deref) {
       const Expr& inner_e = get_expr(u->operand);
@@ -58,6 +89,11 @@ const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& c
       if (it != ctx.param_fn_ptr_sigs.end()) return &it->second;
     }
     if (dr->global) {
+      if (const GlobalVar* global = mod_.find_global(*dr->global)) {
+        if (const FnPtrSig* initialized_sig = initialized_function_sig(*global)) {
+          return initialized_sig;
+        }
+      }
       const auto it = ctx.global_fn_ptr_sigs.find(dr->global->value);
       if (it != ctx.global_fn_ptr_sigs.end()) return &it->second;
     }
@@ -86,22 +122,6 @@ const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& c
     return resolve_callee_fn_ptr_sig(ctx, get_expr(idx->base));
   }
   if (const auto* call = std::get_if<CallExpr>(&callee_e.payload)) {
-    auto find_function = [&](LinkNameId link_name_id, std::string_view fallback_name)
-        -> const Function* {
-      return find_local_target_function(link_name_id, fallback_name);
-    };
-    auto build_fn_sig = [&](const Function& fn) -> const FnPtrSig* {
-      auto [it, _] = inferred_direct_fn_sigs_.try_emplace(fn.id.value);
-      FnPtrSig& sig = it->second;
-      if (sig.params.empty() && !sig.variadic && sig.return_type.spec.base == TB_VOID &&
-          sig.return_type.spec.ptr_level == 0 && sig.return_type.spec.array_rank == 0) {
-        sig.return_type = fn.return_type;
-        sig.variadic = fn.attrs.variadic;
-        sig.unspecified_params = false;
-        for (const auto& param : fn.params) sig.params.push_back(param.type);
-      }
-      return &sig;
-    };
     auto infer_returned_function = [&](auto&& self, const Function& fn) -> const Function* {
       for (const Block& bb : fn.blocks) {
         for (const Stmt& stmt : bb.stmts) {
