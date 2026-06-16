@@ -70,7 +70,7 @@ static bool can_address_scalar_subobject(std::int64_t byte_offset,
     const auto stored_size = type_size_bytes(stored_type);
     if (stored_size == 0 ||
         static_cast<std::size_t>(byte_offset) + access_size > stored_size) {
-      return allow_opaque_ptr_base && byte_offset == 0 && stored_type == bir::TypeKind::I8;
+      return allow_opaque_ptr_base && stored_type == bir::TypeKind::I8;
     }
     // Preserve byte-wise inspection/update of scalar object representations
     // after pointer reinterpretation through unsigned char* style views.
