@@ -142,6 +142,8 @@ struct PointerAddress {
   // Compatibility LIR type spellings retained for pointer provenance layout.
   std::string storage_type_text;
   std::string type_text;
+  bir::TypeKind loaded_pointer_value_type = bir::TypeKind::Void;
+  std::string loaded_pointer_type_text;
   bir::MemoryAccessProvenance provenance;
 };
 

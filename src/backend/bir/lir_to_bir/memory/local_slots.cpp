@@ -1855,6 +1855,8 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
           .dynamic_element_stride_bytes = pointer_slot_it->second.dynamic_element_stride_bytes,
           .storage_type_text = pointer_slot_it->second.storage_type_text,
           .type_text = pointer_slot_it->second.type_text,
+          .loaded_pointer_value_type = pointer_slot_it->second.loaded_pointer_value_type,
+          .loaded_pointer_type_text = pointer_slot_it->second.loaded_pointer_type_text,
           .provenance = unknown_runtime_base_provenance(
               bir::Value::named(bir::TypeKind::Ptr, result)),
       };
@@ -1921,6 +1923,8 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
         .dynamic_element_stride_bytes = pointer_slot_it->second.dynamic_element_stride_bytes,
         .storage_type_text = pointer_slot_it->second.storage_type_text,
         .type_text = pointer_slot_it->second.type_text,
+        .loaded_pointer_value_type = pointer_slot_it->second.loaded_pointer_value_type,
+        .loaded_pointer_type_text = pointer_slot_it->second.loaded_pointer_type_text,
         .provenance = unknown_runtime_base_provenance(
             bir::Value::named(bir::TypeKind::Ptr, result)),
     };

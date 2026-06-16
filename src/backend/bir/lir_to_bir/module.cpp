@@ -750,9 +750,67 @@ bool BirFunctionLowerer::lower_alloca_insts() {
 }
 
 void BirFunctionLowerer::seed_pointer_param_addresses() {
+  const bool structured_params_available =
+      function_.signature_params.size() == function_.signature_param_type_refs.size();
+  std::unordered_map<std::string, PointerAddress> structured_pointer_params;
+  if (structured_params_available) {
+    structured_pointer_params.reserve(function_.signature_params.size());
+    for (const auto& signature_param : function_.signature_params) {
+      const auto lowered_param_type = lower_param_type(signature_param.type);
+      if (!lowered_param_type.has_value() || *lowered_param_type != bir::TypeKind::Ptr ||
+          signature_param.name.empty() || signature_param.is_byval ||
+          signature_param.type.ptr_level <= 0) {
+        continue;
+      }
+
+      c4c::TypeSpec pointee_type = signature_param.type;
+      --pointee_type.ptr_level;
+      if (pointee_type.ptr_level == 0) {
+        pointee_type.is_ptr_to_array = false;
+      }
+      const auto pointee_bir_type = lower_param_type(pointee_type);
+      if (!pointee_bir_type.has_value()) {
+        continue;
+      }
+      bir::TypeKind loaded_pointer_value_type = bir::TypeKind::Void;
+      std::string loaded_pointer_type_text;
+      if (*pointee_bir_type == bir::TypeKind::Ptr && pointee_type.ptr_level > 0) {
+        c4c::TypeSpec loaded_pointer_pointee_type = pointee_type;
+        --loaded_pointer_pointee_type.ptr_level;
+        if (loaded_pointer_pointee_type.ptr_level == 0) {
+          loaded_pointer_pointee_type.is_ptr_to_array = false;
+        }
+        if (const auto loaded_pointee_bir_type =
+                lower_param_type(loaded_pointer_pointee_type);
+            loaded_pointee_bir_type.has_value()) {
+          loaded_pointer_value_type = *loaded_pointee_bir_type;
+          loaded_pointer_type_text = render_type(*loaded_pointee_bir_type);
+        }
+      }
+      structured_pointer_params[signature_param.name] = PointerAddress{
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, signature_param.name),
+          .value_type = *pointee_bir_type,
+          .byte_offset = 0,
+          .type_text = render_type(*pointee_bir_type),
+          .loaded_pointer_value_type = loaded_pointer_value_type,
+          .loaded_pointer_type_text = std::move(loaded_pointer_type_text),
+          .provenance =
+              memory_provenance_for_base(
+                  bir::MemoryProvenanceBaseIdentityKind::FormalParameter,
+                  signature_param.name,
+                  bir::Value::named(bir::TypeKind::Ptr, signature_param.name)),
+      };
+    }
+  }
+
   for (const auto& param : lowered_function_.params) {
     if (param.type != bir::TypeKind::Ptr || param.is_sret || param.is_byval ||
         param.name.empty()) {
+      continue;
+    }
+    if (const auto structured_it = structured_pointer_params.find(param.name);
+        structured_it != structured_pointer_params.end()) {
+      pointer_value_addresses_[param.name] = structured_it->second;
       continue;
     }
     pointer_value_addresses_[param.name] = PointerAddress{

@@ -1,84 +1,72 @@
 Status: Active
 Source Idea Path: ideas/open/292_reopen_286_288_match_load_local_memory_admission.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Trace the semantic local-memory admission route
+Current Step ID: 3
+Current Step Title: Repair the admitted local-memory shape
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 complete: traced the `match` semantic local-memory load admission route.
+Step 3 complete for the original `match` formal pointer-parameter blocker:
+formal pointer parameters now seed `PointerAddress` from structured
+`LirFunction::signature_params` metadata instead of always using an opaque
+`Void` pointee. Pointer-valued loads now carry the next-level structured
+pointee facts through `PointerAddress`, and local pointer-slot reloads preserve
+those facts after store/reload cycles.
 
-Route:
-- `coordinator.cpp::lower_scalar_or_local_memory_inst` dispatches
-  `LirLoadOp` to `local_slots.cpp::lower_memory_load_inst`; failure records
-  `load local-memory semantic family`.
-- `lower_memory_load_inst` handles scalar/pointer loads by trying, in order:
-  global provenance, dynamic pointer/global arrays, dynamic local aggregates,
-  `try_lower_pointer_provenance_load`, then `try_lower_local_slot_load`.
-- `try_lower_pointer_provenance_load` first uses
-  `try_lower_addressed_pointer_load` when `pointer_value_addresses_` has the
-  pointer SSA. That helper requires scalar-subobject addressability from the
-  pointer address' `value_type` and `type_text`.
-- `module.cpp::seed_pointer_param_addresses` currently seeds every ordinary
-  formal pointer parameter as a runtime `PointerAddress` with
-  `value_type = Void` and no type text.
+Concrete repaired shape:
+- `const char **s` seeds `%p.s` as a pointer to a pointer object and records
+  that a loaded pointer from `%p.s` points at `i8`.
+- `const char *f` seeds `%p.f` as a pointer to `i8`.
+- The delegated 286/288 CLI subset no longer reports latest failing function
+  `match`; after this slice it advances to latest failing function `myprintf`.
 
-Rejected shape:
-- Source function `match(const char **s, const char *f)` repeatedly loads
-  through formal pointer parameters: `const char *p = *s`, `*f`, and `*p`.
-- Focused `--dump-bir --target aarch64-linux-gnu --mir-focus-function match`
-  still fails before any BIR is emitted with latest function `match` in
-  `load local-memory semantic family`.
-- The rejected local-memory shape is a scalar/pointer load through a formal
-  runtime pointer whose structured pointee fact is absent from
-  `PointerAddress`, not an aggregate load, prepared-BIR publication issue, or
-  rendered call-argument ABI suffix issue.
-
-Missing/ignored fact:
-- Missing fact class: `pointer` plus its `type`/pointee shape.
-- Not implicated: local slot allocation, aggregate layout, prepared metadata,
-  CLI expected text, or rendered `alignstack(...)` suffix parsing.
-
-First semantic repair target:
-- Teach `seed_pointer_param_addresses` to seed pointer formal parameters with
-  structured pointee/load authority from signature metadata where available,
-  so `try_lower_addressed_pointer_load` can admit loads like `*s` and `*f`
-  semantically instead of treating formal pointers as opaque `Void` addresses.
+Files expanded beyond the packet's initial owned list because the existing
+formal-param seed alone could not preserve loaded pointer facts through the
+route-local memory carrier:
+- `src/backend/bir/lir_to_bir/memory/memory_types.hpp`
+- `src/backend/bir/lir_to_bir/memory/provenance.cpp`
+- `src/backend/bir/lir_to_bir/memory/local_slots.cpp`
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: implement the smallest general semantic repair
-for formal pointer parameter load admission. Start at
-`module.cpp::seed_pointer_param_addresses`, use structured signature parameter
-metadata as the owner of pointee/load facts, and keep the repair independent of
-the `00204.c` or `match` names.
+Execute the next packet against the downstream `myprintf` load local-memory
+failure. Start by tracing the first rejected load in `myprintf`, especially
+loads through local pointer slots and AArch64 `va_list` field/cursor state, and
+decide whether it is the same metadata-propagation family or a separate
+va_list-local-memory admission rule.
 
 ## Watchouts
 
-- Closed idea 286 originally failed in `myprintf`; the reopened failure now
-  reports latest function `match`. Avoid replaying a named `myprintf` fix.
-- Do not use named-case logic for `00204.c`, `match`, `myprintf`, `movi`, or
-  HFA struct spellings.
-- Do not reintroduce rendered call-argument `alignstack(...)` parsing as
-  semantic authority; idea 291's structured metadata precedence must remain
-  fenced.
-- A debugger probe was attempted, but the available `build/c4cll` binary does
-  not expose usable source symbols for this trace. The classification above is
-  from clang-tool symbol lookup, focused source ranges, HIR for `match`, and
-  focused dump failure output.
-- Do not close idea 291 until this blocker is resolved and its close-time proof
-  can pass.
+- This slice intentionally does not add named `00204.c`, `match`, or
+  `myprintf` logic and does not weaken CLI expectations.
+- The rendered call-argument suffix fallback boundary from idea 291 was not
+  touched.
+- The remaining red proof is downstream of the original `match` blocker but is
+  still in `load local-memory semantic family`; do not treat the 286/288 subset
+  as restored yet.
+- `PointerAddress::loaded_pointer_value_type` and
+  `loaded_pointer_type_text` are route-local facts for publishing pointer facts
+  after a pointer-valued load. Legacy/no-metadata routes still default to
+  `Void`.
 
 ## Proof
 
 Delegated proof command:
-`rg -n "lower_scalar_or_local_memory_inst|lower_memory_load_inst|load local-memory semantic family|LirLoadOp" src/backend/bir/lir_to_bir tests/backend -S`
+`cmake --build --preset default && ctest --test-dir build -R '^(backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$' --output-on-failure`
 
 Proof log:
 `test_after.log`.
 
-Result: passed; output records the coordinator dispatch/failure site, the
-`lower_memory_load_inst` definition and uses, and relevant backend test
-references.
+Result: build passed; the two delegated CLI tests still fail, but the old
+latest function `match` failure is repaired. The current latest failure is
+semantic lir_to_bir function `myprintf` in `load local-memory semantic family`.
+
+Supervisor acceptance checks:
+
+- `check_monotonic_regression.py --allow-non-decreasing-passed` on the exact
+  delegated before/after CLI logs reported no new failing test names.
+- `git diff --check` passed.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$'`
+  passed after the patch.

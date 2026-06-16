@@ -1033,8 +1033,9 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
     // addressable for a follow-on `load` without forcing an intervening GEP.
     (*loaded_pointer_value_addresses)[std::string(result_name)] = PointerAddress{
         .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(result_name)),
-        .value_type = bir::TypeKind::Void,
+        .value_type = addressed_ptr_it->second.loaded_pointer_value_type,
         .byte_offset = 0,
+        .type_text = addressed_ptr_it->second.loaded_pointer_type_text,
         .provenance = unknown_runtime_base_provenance(
             bir::Value::named(bir::TypeKind::Ptr, std::string(result_name))),
     };
