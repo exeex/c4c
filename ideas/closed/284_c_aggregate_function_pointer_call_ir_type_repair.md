@@ -58,3 +58,25 @@ adapted to the function pointer ABI signature before call emission.
   mismatch intact.
 - Reject broad ABI rewrites without focused proof on the failing aggregate
   function-pointer boundary.
+
+## Closure Note
+
+Closed after the active runbook completed Step 4 and the source idea acceptance
+criteria were satisfied.
+
+The implemented repair recovers initialized function-pointer signatures from
+the canonical referenced callee/declaration type path, so aggregate return and
+fixed aggregate parameter types are lowered consistently for the global
+function pointer, concrete function definition, and indirect call. The closure
+review found no expectation downgrade, testcase skip, unsupported
+classification, harness weakening, or named-case-specific shortcut.
+
+Close-time regression guard used the same five-test subset before and after
+the slice:
+
+`ctest --test-dir build_debug -R '^(frontend_lir_global_type_ref|frontend_lir_function_signature_type_ref|frontend_lir_call_type_ref|llvm_gcc_c_torture_src_struct_ret_[12]_c)$' --output-on-failure`
+
+Baseline at activation commit `0cda20445` passed 4/5 with
+`llvm_gcc_c_torture_src_struct_ret_1_c` failing. Current `main` at
+`4f5786084` passed 5/5. `c4c-regression-guard` reported PASS with the focused
+torture failure resolved and no new failing tests.
