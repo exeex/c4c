@@ -50,38 +50,53 @@ static bool can_cover_scalar_access_with_byte_storage(
          access_size <= layout.size_bytes - static_cast<std::size_t>(byte_offset);
 }
 
-static bool can_address_scalar_subobject(std::int64_t byte_offset,
-                                         bir::TypeKind stored_type,
-                                         std::string_view type_text,
-                                         bir::TypeKind access_type,
-                                         const BirFunctionLowerer::TypeDeclMap& type_decls,
-                                         bool allow_opaque_ptr_base) {
+enum class ScalarSubobjectAddressability : unsigned char {
+  Rejected,
+  Accepted,
+  OpaqueCompatibility,
+};
+
+[[nodiscard]] static bool is_scalar_subobject_addressable(
+    ScalarSubobjectAddressability addressability) {
+  return addressability != ScalarSubobjectAddressability::Rejected;
+}
+
+static ScalarSubobjectAddressability classify_scalar_subobject_addressability(
+    std::int64_t byte_offset,
+    bir::TypeKind stored_type,
+    std::string_view type_text,
+    bir::TypeKind access_type,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    bool allow_opaque_ptr_base) {
   if (byte_offset < 0) {
-    return false;
+    return ScalarSubobjectAddressability::Rejected;
   }
   const auto access_size = type_size_bytes(access_type);
   if (access_size == 0) {
-    return false;
+    return ScalarSubobjectAddressability::Rejected;
   }
   if (stored_type == access_type) {
-    return true;
+    return ScalarSubobjectAddressability::Accepted;
   }
   if (stored_type != bir::TypeKind::Void) {
     const auto stored_size = type_size_bytes(stored_type);
     if (stored_size == 0 ||
         static_cast<std::size_t>(byte_offset) + access_size > stored_size) {
-      return allow_opaque_ptr_base && stored_type == bir::TypeKind::I8;
+      return allow_opaque_ptr_base && stored_type == bir::TypeKind::I8
+                 ? ScalarSubobjectAddressability::OpaqueCompatibility
+                 : ScalarSubobjectAddressability::Rejected;
     }
     // Preserve byte-wise inspection/update of scalar object representations
     // after pointer reinterpretation through unsigned char* style views.
-    return access_type == bir::TypeKind::I8;
+    return access_type == bir::TypeKind::I8 ? ScalarSubobjectAddressability::Accepted
+                                            : ScalarSubobjectAddressability::Rejected;
   }
   if (allow_opaque_ptr_base && byte_offset == 0 &&
       (type_text.empty() || type_text == "ptr" || type_text == "i8")) {
-    return true;
+    return ScalarSubobjectAddressability::OpaqueCompatibility;
   }
   if (can_cover_scalar_access_with_byte_storage(byte_offset, access_size, type_text, type_decls)) {
-    return true;
+    return ScalarSubobjectAddressability::Accepted;
   }
 
   // Step 4 no-id compatibility bridge: provenance scalar-subobject checks
@@ -95,9 +110,21 @@ static bool can_address_scalar_subobject(std::int64_t byte_offset,
       type_text, static_cast<std::size_t>(byte_offset), type_decls);
   if (!scalar_facts.has_value() || scalar_facts->object_size_bytes == 0 ||
       scalar_facts->target_byte_offset != static_cast<std::size_t>(byte_offset)) {
-    return false;
+    return ScalarSubobjectAddressability::Rejected;
   }
-  return access_size <= scalar_facts->remaining_object_bytes;
+  return access_size <= scalar_facts->remaining_object_bytes
+             ? ScalarSubobjectAddressability::Accepted
+             : ScalarSubobjectAddressability::Rejected;
+}
+
+static bool can_address_scalar_subobject(std::int64_t byte_offset,
+                                         bir::TypeKind stored_type,
+                                         std::string_view type_text,
+                                         bir::TypeKind access_type,
+                                         const BirFunctionLowerer::TypeDeclMap& type_decls,
+                                         bool allow_opaque_ptr_base) {
+  return is_scalar_subobject_addressable(classify_scalar_subobject_addressability(
+      byte_offset, stored_type, type_text, access_type, type_decls, allow_opaque_ptr_base));
 }
 
 static bir::MemoryAccessProvenance pointer_value_memory_provenance(
@@ -133,6 +160,20 @@ static bir::MemoryAccessProvenance pointer_value_memory_provenance(
   auto provenance = pointer_value_base_provenance(base_value);
   provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
   bir::prove_memory_access_requested_range(provenance);
+  return provenance;
+}
+
+static bir::MemoryAccessProvenance pointer_value_memory_provenance_with_layout_authority(
+    const BirFunctionLowerer::PointerAddress& pointer_address,
+    std::int64_t byte_offset,
+    std::size_t size_bytes,
+    ScalarSubobjectAddressability addressability) {
+  bir::MemoryAccessProvenance provenance =
+      pointer_value_memory_provenance(pointer_address, byte_offset, size_bytes);
+  if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility) {
+    provenance.layout_authority = bir::MemoryLayoutAuthorityKind::OpaqueCompatibility;
+    provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+  }
   return provenance;
 }
 
@@ -806,12 +847,14 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_store(
     return std::nullopt;
   }
 
-  if (!can_address_scalar_subobject(static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
-                                    addressed_ptr_it->second.value_type,
-                                    addressed_ptr_it->second.type_text,
-                                    value_type,
-                                    type_decls,
-                                    true)) {
+  const auto addressability = classify_scalar_subobject_addressability(
+      static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
+      addressed_ptr_it->second.value_type,
+      addressed_ptr_it->second.type_text,
+      value_type,
+      type_decls,
+      true);
+  if (!is_scalar_subobject_addressable(addressability)) {
     return false;
   }
 
@@ -835,10 +878,11 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_store(
               .byte_offset = static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
               .size_bytes = slot_size,
               .align_bytes = slot_size,
-              .provenance = pointer_value_memory_provenance(
+              .provenance = pointer_value_memory_provenance_with_layout_authority(
                   addressed_ptr_it->second,
                   static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
-                  slot_size),
+                  slot_size,
+                  addressability),
           },
   });
   return true;
@@ -940,12 +984,14 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
     return std::nullopt;
   }
 
-  if (!can_address_scalar_subobject(static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
-                                    addressed_ptr_it->second.value_type,
-                                    addressed_ptr_it->second.type_text,
-                                    value_type,
-                                    type_decls,
-                                    true)) {
+  const auto addressability = classify_scalar_subobject_addressability(
+      static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
+      addressed_ptr_it->second.value_type,
+      addressed_ptr_it->second.type_text,
+      value_type,
+      type_decls,
+      true);
+  if (!is_scalar_subobject_addressable(addressability)) {
     return false;
   }
 
@@ -969,10 +1015,11 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
               .byte_offset = static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
               .size_bytes = slot_size,
               .align_bytes = slot_size,
-              .provenance = pointer_value_memory_provenance(
+              .provenance = pointer_value_memory_provenance_with_layout_authority(
                   addressed_ptr_it->second,
                   static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
-                  slot_size),
+                  slot_size,
+                  addressability),
           },
   });
   if (value_type == bir::TypeKind::Ptr && loaded_pointer_value_addresses != nullptr) {

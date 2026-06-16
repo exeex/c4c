@@ -1,61 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/289_structured_opaque_pointer_byte_range_provenance.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Publish Provenance Verdicts to Prepared Consumers
+Current Step ID: Step 6
+Current Step Title: Retire or Quarantine the Compatibility Bridge
 
 # Current Packet
 
 ## Just Finished
 
-Step 5: Publish Provenance Verdicts to Prepared Consumers audited current
-prepared/prealloc `can_use_base_plus_offset` consumers for object-range-safety
-inference risk. No narrowly safe code change was made in this packet: the safe
-copy/reporting surfaces already carry explicit provenance verdict metadata, and
-the remaining gates are behavior-changing optimization or target-lowering
-decisions.
+Step 6: Retire or Quarantine the Compatibility Bridge started by preserving the
+opaque pointer compatibility bridge behavior while making its accepted route
+explicit in structured provenance metadata.
 
-- `PreparedAddress::can_use_base_plus_offset` in
-  `src/backend/prealloc/addressing.hpp` is the source syntactic address form
-  bit; it is not an object-range verdict.
-- `prepared_printer/addressing.cpp` is copy-surface reporting only: it prints
-  `base_plus_offset` alongside `range_verdict` and `dynamic_array_verdict`.
-- `prepared_lookups.cpp::copy_source_memory_access_fact` copies the syntactic
-  bit into `PreparedEdgePublication` and derives
-  `source_memory_requires_address_materialization`; verdicts are copied next to
-  it and availability still does not gate on them.
-- `prepared_lookups.cpp::find_prepared_global_load_access` uses the bit as a
-  same-block global-load addressing-form gate. Treating out-of-bounds verdicts
-  as rejection here would change prepared lookup behavior, so it is deferred.
-- `publication_plans.cpp::copy_prepared_edge_copy_source_facts` and
-  `prepared_edge_publication_source_memory_matches_access` are copy-surface and
-  stale-row/identity checks; they compare explicit verdict metadata without
-  weakening existing fail-closed behavior.
-- `publication_plans.cpp::make_prepared_store_source_publication_plan` copies
-  the destination syntactic bit into store-source plans. Downstream users in
-  target lowering still own acceptance policy, so verdict gating is deferred.
-- `publication_plans.cpp::prepared_store_source_load_local_is_byval_formal_pointer_source`
-  uses the bit for a byval formal pointer-source optimization gate. Adding
-  range-verdict rejection here would be a behavior change and belongs with the
-  Step 6 bridge/acceptance decision.
-- Downstream prepared consumers of copied bits were identified in RISC-V edge
-  publication, AArch64 dispatch edge copies/store-source lowering, and x86
-  module lowering. These are target-specific gates and were not changed.
+- `can_address_scalar_subobject` now classifies scalar-subobject acceptance as
+  rejected, normal accepted, or opaque compatibility while preserving its old
+  boolean wrapper for existing non-opaque callers.
+- Addressed pointer load/store lowering still accepts the existing
+  `allow_opaque_ptr_base && stored_type == I8` bridge case, but memory
+  addresses produced through that route now carry
+  `layout_authority = OpaqueCompatibility` and keep
+  `range_verdict = UnknownCompatible`.
+- The zero-offset opaque pointer spelling bridge for empty/`ptr`/`i8`
+  pointer-address type text remains accepted and is also marked as
+  `OpaqueCompatibility` with an unknown-compatible range verdict.
+- No prepared/prealloc consumer or target lowering gate was changed to reject
+  these rows.
 
 ## Suggested Next
 
-Move to Step 6 under supervisor direction: decide how target-specific gates and
-the opaque pointer compatibility bridge should treat explicit provenance
-verdicts before any consumer starts rejecting currently accepted prepared rows.
+Decide the behavior-changing retirement policy for opaque compatibility rows:
+either reject the quarantined addressed pointer cases at lowering time or teach
+the relevant prepared/target consumers a supervisor-approved admission gate.
 
 ## Watchouts
 
-- `range_verdict` and `dynamic_array.verdict` remain passive metadata; no
-  prepared/prealloc consumer currently uses them as an admission gate.
-- Changing `find_prepared_global_load_access`,
-  `prepared_store_source_load_local_is_byval_formal_pointer_source`, or target
-  lowering to reject `ProvenOutOfBounds` would alter current behavior and needs
-  explicit Step 6 policy.
+- Actual bridge retirement is deferred because rejecting either the
+  `allow_opaque_ptr_base && stored_type == I8` case or the zero-offset
+  empty/`ptr`/`i8` opaque spelling case would remove currently accepted
+  addressed pointer load/store behavior.
+- `layout_authority` is structured carrier metadata only in this slice; current
+  prepared publication and target consumers continue to key on the existing
+  range and dynamic-array verdicts, so no accepted rows start failing here.
 - Existing stale-row/fail-closed behavior remains unchanged.
 - The audit used `rg` plus `c4c-clang-tool-ccdb` callers for the key prepared
   helpers.
