@@ -18,7 +18,7 @@ execute_process(
   COMMAND "${BASH_EXECUTABLE}" "-lc"
           "front_err=$(mktemp); back_err=$(mktemp); \
            \"${COMPILER}\" \"${SRC}\" 2>\"\${front_err}\" | \"${CLANG}\" -x ir - -o \"${OUT_BIN}\" 2>\"\${back_err}\"; \
-           st_front=\${PIPESTATUS[0]}; st_back=\${PIPESTATUS[1]}; \
+           pipe_status=(\"\${PIPESTATUS[@]}\"); st_front=\${pipe_status[0]}; st_back=\${pipe_status[1]}; \
            if [ \${st_front} -ne 0 ]; then cat \"\${front_err}\"; rm -f \"\${front_err}\" \"\${back_err}\"; exit 101; fi; \
            if [ \${st_back} -ne 0 ]; then cat \"\${back_err}\"; rm -f \"\${front_err}\" \"\${back_err}\"; exit 102; fi; \
            rm -f \"\${front_err}\" \"\${back_err}\""
@@ -34,6 +34,9 @@ if(pipe_rc EQUAL 102)
 endif()
 if(NOT pipe_rc EQUAL 0)
   message(FATAL_ERROR "[COMPILE_PIPE_FAIL] ${SRC}\n${pipe_out}${pipe_err}")
+endif()
+if(NOT EXISTS "${OUT_BIN}")
+  message(FATAL_ERROR "[BACKEND_OUTPUT_MISSING] ${SRC}\nexpected binary at ${OUT_BIN}")
 endif()
 
 execute_process(
