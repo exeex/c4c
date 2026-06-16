@@ -8,48 +8,53 @@ Current Step Title: Repair the admitted local-memory shape
 
 ## Just Finished
 
-Step 3 complete for the original `match` formal pointer-parameter blocker:
-formal pointer parameters now seed `PointerAddress` from structured
-`LirFunction::signature_params` metadata instead of always using an opaque
-`Void` pointee. Pointer-valued loads now carry the next-level structured
-pointee facts through `PointerAddress`, and local pointer-slot reloads preserve
-those facts after store/reload cycles.
+Step 3 trace-only packet complete for the downstream `myprintf` blocker after
+the formal pointer-parameter repair.
 
-Concrete repaired shape:
-- `const char **s` seeds `%p.s` as a pointer to a pointer object and records
-  that a loaded pointer from `%p.s` points at `i8`.
-- `const char *f` seeds `%p.f` as a pointer to `i8`.
-- The delegated 286/288 CLI subset no longer reports latest failing function
-  `match`; after this slice it advances to latest failing function `myprintf`.
+Current delegated CLI subset still fails, and both failing tests now report:
+semantic lir_to_bir function `myprintf` failed in `load local-memory semantic
+family`.
 
-Files expanded beyond the packet's initial owned list because the existing
-formal-param seed alone could not preserve loaded pointer facts through the
-route-local memory carrier:
-- `src/backend/bir/lir_to_bir/memory/memory_types.hpp`
-- `src/backend/bir/lir_to_bir/memory/provenance.cpp`
-- `src/backend/bir/lir_to_bir/memory/local_slots.cpp`
+The first rejected shape is not the earlier `match` formal pointer-param load
+family. A minimized AArch64 non-HFA aggregate `va_arg` (`struct s7`) lowers
+through semantic BIR, including the local aggregate `memcpy` and reload. A
+minimized AArch64 HFA `va_arg` (`struct hfa11 { float a; }`) reproduces the
+same `load local-memory semantic family` failure.
+
+First rejected generated HFA load shape:
+
+```llvm
+%t10 = getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 2
+%t11 = load ptr, ptr %t10
+%t12 = getelementptr i8, ptr %t11, i32 %t2
+%t13 = getelementptr i8, ptr %t12, i64 0
+%t14 = load float, ptr %t13
+```
+
+In full `myprintf`, this is the `%hfa11` branch equivalent after the `%7s` and
+`%9s` aggregate va_arg paths. The pointer comes from the AArch64 `va_list`
+`vr_top` register-save-area field, is advanced through `i8` GEPs, and reaches
+`try_lower_addressed_pointer_load` without typed HFA lane/load authority.
 
 ## Suggested Next
 
-Execute the next packet against the downstream `myprintf` load local-memory
-failure. Start by tracing the first rejected load in `myprintf`, especially
-loads through local pointer slots and AArch64 `va_list` field/cursor state, and
-decide whether it is the same metadata-propagation family or a separate
-va_list-local-memory admission rule.
+Implement the smallest semantic repair for AArch64 HFA `va_arg` register-save
+loads. First target: the AArch64 va_arg/register-save-area pointer publication
+path around `emit_aarch64_vaarg_hfa` and the semantic local-memory
+`PointerAddress`/addressed-load admission route, so byte-GEP-derived HFA lane
+loads carry structured lane type authority instead of looking like opaque
+`i8`/`Void` pointer loads.
 
 ## Watchouts
 
-- This slice intentionally does not add named `00204.c`, `match`, or
-  `myprintf` logic and does not weaken CLI expectations.
-- The rendered call-argument suffix fallback boundary from idea 291 was not
-  touched.
-- The remaining red proof is downstream of the original `match` blocker but is
-  still in `load local-memory semantic family`; do not treat the 286/288 subset
-  as restored yet.
-- `PointerAddress::loaded_pointer_value_type` and
-  `loaded_pointer_type_text` are route-local facts for publishing pointer facts
-  after a pointer-valued load. Legacy/no-metadata routes still default to
-  `Void`.
+- This is a separate AArch64 `va_list`/HFA register-save-area rule, not another
+  formal pointer parameter metadata-propagation fix.
+- Do not add named `00204.c`, `myprintf`, or format-string matching logic.
+- The non-HFA aggregate `va_arg` path already lowers in a minimized probe; avoid
+  disturbing its raw pointer `memcpy`/aggregate-reload behavior.
+- `llvm.va_start.p0` is currently accepted as a compatibility call; the failing
+  HFA register lane load needs typed source-address authority before or during
+  the `load float`, not expectation weakening.
 
 ## Proof
 
@@ -59,14 +64,13 @@ Delegated proof command:
 Proof log:
 `test_after.log`.
 
-Result: build passed; the two delegated CLI tests still fail, but the old
-latest function `match` failure is repaired. The current latest failure is
-semantic lir_to_bir function `myprintf` in `load local-memory semantic family`.
+Result: build passed; both delegated CLI tests still fail with latest function
+`myprintf` in `load local-memory semantic family`.
 
-Supervisor acceptance checks:
+Additional trace-only probes, both outside the repo root:
 
-- `check_monotonic_regression.py --allow-non-decreasing-passed` on the exact
-  delegated before/after CLI logs reported no new failing test names.
-- `git diff --check` passed.
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$'`
-  passed after the patch.
+- Minimal AArch64 `struct s7` aggregate `va_arg`: `./build/c4cll --dump-bir --target aarch64-linux-gnu /tmp/c4c-vaarg-s7-*.c` passed.
+- Minimal AArch64 `struct hfa11 { float a; }` `va_arg`: `./build/c4cll --dump-bir --target aarch64-linux-gnu /tmp/c4c-vaarg-hfa-*.c` failed with `load local-memory semantic family`.
+
+The delegated proof is sufficient for this trace-only packet because it
+reproduces the current red subset and preserves the canonical log path.
