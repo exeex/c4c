@@ -83,3 +83,14 @@ the supported semantic route once structured carriers cover the needed cases.
   output instead of fixing the interface boundary.
 - The route expands into prepared call-plan retirement, AArch64 ABI policy
   rewrites, or unrelated rendered-text cleanup.
+
+## Lifecycle Hold
+
+Parked on 2026-06-16 after the active runbook completed the suffix-parser
+cleanup inventory, structured-metadata routing, legacy/raw-no-ref fence, and
+focused boundary tests.
+
+The source idea is not closed because its close-time 286/288 CLI proof subset
+is currently blocked by a separate reopened semantic BIR admission failure in
+the `match` load local-memory route. That blocker is tracked separately in
+`ideas/open/292_reopen_286_288_match_load_local_memory_admission.md`.
