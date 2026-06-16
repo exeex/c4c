@@ -1,140 +1,69 @@
 Status: Active
 Source Idea Path: ideas/open/290_gate_quarantined_opaque_compatibility_memory_accesses.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Choose and Specify One Policy Surface
+Current Step ID: Step 3
+Current Step Title: Implement the Quarantine Gate
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Choose and Specify One Policy Surface completed as a policy-spec
-packet.
+Step 3: Implement the Quarantine Gate proof tightened with direct store-side
+opaque compatibility coverage.
 
-Chosen Step 3 policy surface:
+Implemented behavior:
 
-- Implement lowerer-time rejection in the target-independent addressed pointer
-  paths:
-  `BirFunctionLowerer::try_lower_addressed_pointer_load` and
-  `BirFunctionLowerer::try_lower_addressed_pointer_store` in
-  `src/backend/bir/lir_to_bir/memory/provenance.cpp`.
-- The gate is intentionally before prepared `memory_accesses` publication.
-  Quarantined addressed pointer rows should fail closed instead of being
-  emitted as source-memory rows that later prepared/prealloc consumers must
-  diagnose.
-- Do not use the prepared/publication consumer gate as the first
-  behavior-changing surface in Step 3. The existing flattened
-  `source_memory_layout_authority` field and strict prepared matcher remain
-  relevant proof coverage, but no new flattened fact is required for this
-  chosen lowerer-time route.
+- `BirFunctionLowerer::try_lower_addressed_pointer_store` now rejects
+  `ScalarSubobjectAddressability::OpaqueCompatibility` immediately after the
+  existing scalar-subobject classification.
+- `BirFunctionLowerer::try_lower_addressed_pointer_load` now rejects
+  `ScalarSubobjectAddressability::OpaqueCompatibility` at the same point.
+- The pre-existing
+  `!is_scalar_subobject_addressable(addressability)` rejection remains intact
+  in both helpers.
+- The gate does not inspect or gate on `MemoryRangeVerdict::UnknownCompatible`,
+  `can_use_base_plus_offset`, unknown extent, or prepared flattened fields.
 
-Exact predicate:
+Focused test coverage:
 
-- Compute the existing `addressability` with
-  `classify_scalar_subobject_addressability(...)` exactly as the load/store
-  helpers do today.
-- Reject only when
-  `addressability == ScalarSubobjectAddressability::OpaqueCompatibility`.
-- Keep the existing rejection for
-  `!is_scalar_subobject_addressable(addressability)`, but do not broaden it
-  into a policy gate for `UnknownCompatible`,
-  `can_use_base_plus_offset`, unknown extent, or any prepared flattened field.
-- This predicate is the explicit opaque-compatibility metadata surface because
-  it is the enum that currently causes
-  `pointer_value_memory_provenance_with_layout_authority` to publish
-  `layout_authority = MemoryLayoutAuthorityKind::OpaqueCompatibility` and
-  `range_verdict = MemoryRangeVerdict::UnknownCompatible`.
-
-Expected outcomes:
-
-- Structured proven rows:
-  `ScalarSubobjectAddressability::Accepted` addressed pointer load/store rows
-  continue to lower, continue to publish non-opaque provenance, and remain
-  eligible for prepared source-memory publication. Examples include same-type
-  scalar access, byte-wise scalar object representation access, and aggregate
-  byte-storage access that proves the requested range in bounds.
-- Quarantined rows:
-  any addressed pointer load/store row whose scalar-subobject classification is
-  `OpaqueCompatibility` fails closed at lowering time. Step 3 should cover both
-  the loaded-pointer store route and the casted-byte-pointer load/store route
-  if both are affected by the chosen fixture shape.
-- Stale rows:
-  no new stale-row matching field is required for the chosen lowerer gate.
-  Existing prepared strict matching must remain unchanged, including comparison
-  of `source_memory_layout_authority`, `source_memory_range_verdict`,
-  dynamic-array verdict, byte range, base identity, address space, volatility,
-  and `source_memory_can_use_base_plus_offset`.
-- Duplicate rows:
-  prepared duplicate-row handling must not be weakened. Since quarantined rows
-  are rejected before publication, Step 3 must not add a fallback that accepts
-  a duplicate prepared row after an addressed pointer opaque-compatibility
-  lowering failure.
-- Cross-block rows:
-  cross-block prepared lookup rejection must remain position/block scoped.
-  Step 3 must not add any cross-block search or target-specific prepared
-  bypass to recover quarantined rows after the lowerer gate rejects them.
-
-Focused tests to edit/add:
-
-- Edit `tests/backend/bir/backend_lir_to_bir_notes_test.cpp`.
-- Update the current opaque-compatibility acceptance fixture
-  `expect_casted_byte_pointer_i32_update_uses_pointer_base` so the same
-  semantic route now expects fail-closed lowering for the casted `i8*` to
-  wider `i32` addressed load/store path. The failure check should assert a
-  lowering failure note for the function rather than silently accepting
-  pointer-base memory accesses.
-- Keep or add a paired structured accepted-row test in the same file. The
-  existing `expect_loaded_pointer_addressed_store_uses_pointer_base` should
-  continue to prove a structured non-opaque addressed pointer store lowers
-  through `MemoryAddress::BaseKind::PointerValue`; if Step 3 changes the
-  fixture set, preserve an equivalent accepted structured row check.
-- Keep the generic requested-range verdict test
-  `expect_memory_access_requested_range_verdicts_use_complete_extent` unchanged
-  so `UnknownCompatible` from unknown extent remains distinct from the
-  explicit opaque-compatibility gate.
-- Do not edit prepared/prealloc tests unless the code-changing packet
-  unexpectedly touches prepared publication/matching. If it does, the minimum
-  focused prepared coverage is `backend_prepared_lookup_helper` for strict
-  `source_memory_layout_authority` stale-row mismatch behavior.
+- `tests/backend/bir/backend_lir_to_bir_notes_test.cpp` keeps
+  `expect_loaded_pointer_addressed_store_uses_pointer_base` as the structured
+  accepted addressed pointer store check.
+- The former casted-byte-pointer acceptance fixture is now
+  `expect_casted_byte_pointer_i32_update_fails_closed`; it asserts that the
+  casted `i8*` to wider `i32` addressed load route fails before BIR
+  publication and reports the load local-memory semantic failure.
+- Added `expect_casted_byte_pointer_i32_store_fails_closed`, a store-only
+  opaque compatibility fixture using a dynamic byte offset, so
+  `try_lower_addressed_pointer_store` is directly covered by a fail-closed
+  store local-memory semantic failure instead of being inferred from the
+  load-side fixture.
 
 ## Suggested Next
 
-Step 3 implementation packet: edit
-`src/backend/bir/lir_to_bir/memory/provenance.cpp` and
-`tests/backend/bir/backend_lir_to_bir_notes_test.cpp` to reject
-`ScalarSubobjectAddressability::OpaqueCompatibility` in
-`try_lower_addressed_pointer_load` and
-`try_lower_addressed_pointer_store`, while preserving the structured accepted
-addressed pointer store test.
+Step 4 packet: run the supervisor-selected broader prepared/backend validation
+for the behavior-changing acceptance policy, including prepared lookup and
+prepared edge-publication coverage if the supervisor wants confidence beyond
+the focused lowerer proof.
 
 ## Watchouts
 
-- The behavior predicate is the explicit
-  `ScalarSubobjectAddressability::OpaqueCompatibility` result, not
-  `MemoryRangeVerdict::UnknownCompatible` by itself.
-- Do not delete or weaken `pointer_value_memory_provenance_with_layout_authority`;
-  non-rejected non-opaque addressed pointer rows still need provenance
-  publication, and prepared tests still cover flattened source-memory fields.
-- Expect existing acceptance tests around casted byte-pointer updates to change
-  behavior. That should be a fail-closed test update, not an unsupported-path
-  downgrade or a target-specific exception.
-- If the implementation chooses to emit a more specific diagnostic message,
-  keep it tied to the opaque-compatibility lowerer gate and avoid implying that
-  every `UnknownCompatible` range is rejected.
-- Leave prepared stale-row, duplicate-row, and cross-block rejection untouched
-  unless a failing test proves the lowerer gate accidentally affected them.
+- The selected behavior predicate is deliberately only
+  `ScalarSubobjectAddressability::OpaqueCompatibility`.
+- Prepared stale-row, duplicate-row, and cross-block matching code was not
+  touched in this packet.
+- `pointer_value_memory_provenance_with_layout_authority` remains available for
+  non-rejected non-opaque rows and existing prepared provenance coverage.
+- A constant-zero byte-store fixture is not sufficient for this proof because
+  it can still lower through structured byte-storage coverage; the direct
+  store-side opaque compatibility proof uses a dynamic byte offset.
 
 ## Proof
 
-No build or test run; proof was explicitly not required for this
-policy-spec `todo.md` update. No root-level logs were created.
+Exact delegated proof command passed:
 
-Required Step 3 proof ladder after code/test edits:
+`cmake --build --preset default --target backend_lir_to_bir_notes_test && ctest --test-dir build -R '^backend_lir_to_bir_notes$' --output-on-failure > test_after.log`
 
-- Build: `cmake --build build --target backend_lir_to_bir_notes_test`
-- Focused test: `ctest --test-dir build -R '^backend_lir_to_bir_notes$' --output-on-failure`
-- Broader prepared safety, if Step 3 touches prepared publication/matching or
-  the supervisor wants acceptance-policy confidence:
-  `cmake --build build --target backend_prepared_lookup_helper_test backend_riscv_prepared_edge_publication_test backend_prepared_printer_test`
-  followed by
-  `ctest --test-dir build -R '^(backend_prepared_lookup_helper|backend_riscv_prepared_edge_publication|backend_prepared_printer)$' --output-on-failure`
+Proof log path: `test_after.log`
+
+Result: build succeeded and `backend_lir_to_bir_notes` passed.

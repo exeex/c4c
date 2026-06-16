@@ -854,6 +854,9 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_store(
       value_type,
       type_decls,
       true);
+  if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility) {
+    return false;
+  }
   if (!is_scalar_subobject_addressable(addressability)) {
     return false;
   }
@@ -991,6 +994,9 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
       value_type,
       type_decls,
       true);
+  if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility) {
+    return false;
+  }
   if (!is_scalar_subobject_addressable(addressability)) {
     return false;
   }
