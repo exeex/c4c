@@ -70,3 +70,22 @@ the suffix-parser cleanup route.
   authority than structured call-argument metadata.
 - The exact old failure remains but is hidden behind a different diagnostic,
   bucket name, or skipped assertion.
+
+## Completion Notes
+
+Closed on 2026-06-16 after the active runbook repaired the reopened semantic
+BIR local-memory admission blocker without named `00204.c`, `match`, or
+`myprintf` shortcuts.
+
+The repair restored the exact 286/288 AArch64 CLI subset and added focused
+backend proof for the AArch64 HFA `va_arg` register-save-area lane-load shape.
+The structured call-argument suffix boundary from idea 291 remained intact:
+structured metadata wins, and rendered `alignstack(...)` parsing remains fenced
+to the raw/no-ref legacy fallback.
+
+Close-time proof for the lifecycle closure used:
+
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$'`
+
+Supervisor context also reported the broader `^backend_` guard improved from
+175/5 to 177/3 with no new failures.

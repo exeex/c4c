@@ -84,13 +84,33 @@ the supported semantic route once structured carriers cover the needed cases.
 - The route expands into prepared call-plan retirement, AArch64 ABI policy
   rewrites, or unrelated rendered-text cleanup.
 
-## Lifecycle Hold
+## Prior Lifecycle Hold
 
 Parked on 2026-06-16 after the active runbook completed the suffix-parser
 cleanup inventory, structured-metadata routing, legacy/raw-no-ref fence, and
 focused boundary tests.
 
-The source idea is not closed because its close-time 286/288 CLI proof subset
-is currently blocked by a separate reopened semantic BIR admission failure in
-the `match` load local-memory route. That blocker is tracked separately in
-`ideas/open/292_reopen_286_288_match_load_local_memory_admission.md`.
+The source idea remained open at that checkpoint because its close-time 286/288
+CLI proof subset was blocked by a separate reopened semantic BIR admission
+failure in the `match` load local-memory route. That blocker was tracked
+separately in `ideas/open/292_reopen_286_288_match_load_local_memory_admission.md`
+before it was repaired and archived.
+
+## Completion Notes
+
+Closed on 2026-06-16 after the separate reopened 286/288 semantic BIR admission
+blocker was repaired and archived under
+`ideas/closed/292_reopen_286_288_match_load_local_memory_admission.md`.
+
+The completed runbook retired the structured-route dependency on rendered
+call-argument ABI suffix text, kept rendered `alignstack(...)` parsing fenced to
+the raw/no-ref legacy fallback, and added focused fail-closed coverage proving
+structured metadata wins over stale rendered suffix text.
+
+Close-time proof confirmed the required 286/288 subset and adjacent focused
+coverage are green:
+
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$'`
+
+Supervisor context also reported the broader `^backend_` guard improved from
+175/5 to 177/3 with no new failures.
