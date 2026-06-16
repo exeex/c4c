@@ -119,6 +119,9 @@ int expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match();
 int expect_aarch64_direct_hfa_call_uses_fp_lanes_not_byval();
 int expect_aarch64_variadic_hfa_call_uses_fp_lanes();
 int expect_aarch64_variadic_carrier_array_call_uses_hfa_fp_lanes();
+int expect_aarch64_variadic_carrier_array_missing_alias_fails_closed();
+int expect_aarch64_variadic_carrier_array_leaf_count_mismatch_fails_closed();
+int expect_aarch64_variadic_carrier_array_slot_type_mismatch_fails_closed();
 int expect_aarch64_hfa_local_aggregate_copy_uses_explicit_lanes();
 int expect_aarch64_hfa_return_uses_fp_lanes_not_sret();
 int expect_aarch64_hfa_call_result_uses_fp_lanes_not_sret();
@@ -4062,6 +4065,101 @@ LirModule make_aarch64_variadic_carrier_array_call_module() {
   return module;
 }
 
+enum class Aarch64CarrierArrayFailureKind {
+  MissingAlias,
+  LeafCountMismatch,
+  SlotTypeMismatch,
+};
+
+LirModule make_aarch64_variadic_carrier_array_fail_closed_module(
+    Aarch64CarrierArrayFailureKind failure_kind) {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::LinkNameId callee_id = module.link_names.intern("semantic_carrier_array_sink");
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "stale_carrier_array_sink";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "void";
+  callee.return_type = lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
+  LirFunction function;
+  function.name = "aarch64_variadic_carrier_array_fail_closed";
+  function.signature_text =
+      "define void @aarch64_variadic_carrier_array_fail_closed(ptr %tag)";
+  function.params.emplace_back("%tag", c4c::TypeSpec{.base = c4c::TB_VOID, .ptr_level = 1});
+
+  lir::LirTypeRef load_type("[2 x float]");
+  lir::LirTypeRef call_type("[2 x float]");
+  if (failure_kind == Aarch64CarrierArrayFailureKind::LeafCountMismatch) {
+    call_type = lir::LirTypeRef("[3 x float]");
+    function.alloca_insts.push_back(LirAllocaOp{
+        .result = LirOperand("%carrier"),
+        .type_str = load_type,
+        .align = 4,
+    });
+  } else if (failure_kind == Aarch64CarrierArrayFailureKind::SlotTypeMismatch) {
+    load_type = lir::LirTypeRef("[2 x i32]");
+    function.alloca_insts.push_back(LirAllocaOp{
+        .result = LirOperand("%carrier"),
+        .type_str = load_type,
+        .align = 4,
+    });
+  }
+
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef("void");
+  signature.fixed_param_types = {"ptr"};
+  signature.fixed_param_type_refs = {lir::LirTypeRef("ptr")};
+  signature.is_variadic = true;
+
+  LirBlock entry;
+  entry.label = "entry";
+  if (failure_kind != Aarch64CarrierArrayFailureKind::MissingAlias) {
+    entry.insts.push_back(LirLoadOp{
+        .result = LirOperand("%payload"),
+        .type_str = load_type,
+        .ptr = LirOperand("%carrier"),
+    });
+  }
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@stale_carrier_array_sink"),
+      .direct_callee_link_name_id = callee_id,
+      .callee_type_suffix = "(ptr, ...)",
+      .args_str = "ptr %tag, " + call_type.str() + " alignstack(8) %payload",
+      .arg_type_refs = {lir::LirTypeRef("ptr"),
+                        lir::LirTypeRef(call_type.str() + " alignstack(8)")},
+      .callee_signature = signature,
+      .structured_args = {
+          lir::LirCallArg{
+              .type = "ptr",
+              .operand = LirOperand("%tag"),
+              .type_ref = lir::LirTypeRef("ptr"),
+          },
+          lir::LirCallArg{
+              .type = call_type.str(),
+              .operand = LirOperand("%payload"),
+              .type_ref = call_type,
+              .aarch64_stack_align_bytes = 8,
+          },
+      },
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int expect_aarch64_variadic_carrier_array_call_uses_hfa_fp_lanes() {
   auto result = try_lower_to_bir_with_options(
       make_aarch64_variadic_carrier_array_call_module(), BirLoweringOptions{});
@@ -4109,6 +4207,54 @@ int expect_aarch64_variadic_carrier_array_call_uses_hfa_fp_lanes() {
     }
   }
   return fail("AArch64 variadic carrier-array call should expand into FP HFA lanes");
+}
+
+int expect_aarch64_variadic_carrier_array_missing_alias_fails_closed() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_variadic_carrier_array_fail_closed_module(
+          Aarch64CarrierArrayFailureKind::MissingAlias),
+      BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("AArch64 variadic HFA carrier with missing aggregate alias should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in semantic call family 'direct-call semantic family'")) {
+    return fail("missing direct-call failure for missing AArch64 HFA carrier aggregate alias");
+  }
+  return 0;
+}
+
+int expect_aarch64_variadic_carrier_array_leaf_count_mismatch_fails_closed() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_variadic_carrier_array_fail_closed_module(
+          Aarch64CarrierArrayFailureKind::LeafCountMismatch),
+      BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("AArch64 variadic HFA carrier with mismatched leaf-slot count should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in semantic call family 'direct-call semantic family'")) {
+    return fail("missing direct-call failure for AArch64 HFA carrier leaf-slot count mismatch");
+  }
+  return 0;
+}
+
+int expect_aarch64_variadic_carrier_array_slot_type_mismatch_fails_closed() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_variadic_carrier_array_fail_closed_module(
+          Aarch64CarrierArrayFailureKind::SlotTypeMismatch),
+      BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("AArch64 variadic HFA carrier with mismatched slot types should fail closed");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "failed in semantic call family 'direct-call semantic family'")) {
+    return fail("missing direct-call failure for AArch64 HFA carrier slot-type mismatch");
+  }
+  return 0;
 }
 
 LirModule make_aarch64_hfa_local_aggregate_copy_module() {
@@ -7675,6 +7821,21 @@ int main() {
           expect_aarch64_variadic_carrier_array_call_uses_hfa_fp_lanes();
       aarch64_variadic_carrier_array_call_status != 0) {
     return aarch64_variadic_carrier_array_call_status;
+  }
+  if (const int aarch64_variadic_carrier_missing_alias_status =
+          expect_aarch64_variadic_carrier_array_missing_alias_fails_closed();
+      aarch64_variadic_carrier_missing_alias_status != 0) {
+    return aarch64_variadic_carrier_missing_alias_status;
+  }
+  if (const int aarch64_variadic_carrier_leaf_count_status =
+          expect_aarch64_variadic_carrier_array_leaf_count_mismatch_fails_closed();
+      aarch64_variadic_carrier_leaf_count_status != 0) {
+    return aarch64_variadic_carrier_leaf_count_status;
+  }
+  if (const int aarch64_variadic_carrier_slot_type_status =
+          expect_aarch64_variadic_carrier_array_slot_type_mismatch_fails_closed();
+      aarch64_variadic_carrier_slot_type_status != 0) {
+    return aarch64_variadic_carrier_slot_type_status;
   }
   if (const int aarch64_hfa_local_copy_status =
           expect_aarch64_hfa_local_aggregate_copy_uses_explicit_lanes();
