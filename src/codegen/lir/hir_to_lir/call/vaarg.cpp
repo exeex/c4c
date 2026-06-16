@@ -303,17 +303,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
     return emit_amd64_va_arg(ctx, res_ts, res_ty, ap_ptr);
   }
   if (const auto hfa = classify_aarch64_hfa(mod_, res_ts)) {
-    if (hfa->elem_ty != "fp128") {
-      return emit_aarch64_vaarg_hfa(ctx, ap_ptr, res_ts, res_ty, *hfa);
-    }
-    const std::string out = fresh_tmp(ctx);
-    const StructNameId structured_name_id =
-        vaarg_aggregate_structured_name_id(mod_, module_, res_ts);
-    const LirTypeRef out_ty = structured_name_id == kInvalidStructName
-                                  ? LirTypeRef(res_ty)
-                                  : LirTypeRef::struct_type(res_ty, structured_name_id);
-    emit_lir_op(ctx, lir::LirVaArgOp{out, ap_ptr, out_ty});
-    return out;
+    return emit_aarch64_vaarg_hfa(ctx, ap_ptr, res_ts, res_ty, *hfa);
   }
   if (is_named_aggregate) {
     if (aggregate_payload_sz) {

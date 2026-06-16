@@ -8,61 +8,56 @@ Current Step Title: Repair Avoidable Or Invalid IR Shapes
 
 ## Just Finished
 
-Step 3 repaired the direct LLVM-output `va_arg` path for non-fp128 AArch64
-HFA-like aggregates. `src/codegen/lir/hir_to_lir/call/vaarg.cpp` now
-materializes classified non-fp128 HFAs from the AAPCS64 `__va_list` fp cursor:
-it checks `fp_offset`, advances by one 16-byte fp register-save slot per lane,
-loads register-save lanes into a temporary aggregate when registers are
-available, otherwise copies the overflow-area payload using the HFA overflow
-stride. The callee then loads the aggregate from that temporary instead of
-emitting raw LLVM aggregate `va_arg`.
+Step 3 extended the explicit AAPCS64 HFA `va_arg` materialization in
+`src/codegen/lir/hir_to_lir/call/vaarg.cpp` to fp128 long-double HFA payloads.
+Classified AArch64 HFAs now all route through `emit_aarch64_vaarg_hfa`; the
+fp128-only fallback that emitted raw LLVM aggregate `va_arg` was removed.
 
-The repaired semantic surface covers:
+The delegated three-target proof shows `c_testsuite_src_00204_c` now advances
+past the former AArch64 instruction-selection crash and reaches execution. It
+still fails as `[RUNTIME_MISMATCH]`, with HFA stdarg output corruption visible
+across long double, double, and float cases. The two previously repaired
+non-fp128 targets still pass.
 
-- `llvm_gcc_c_torture_src_920625_1_c`: `{ double, double }` no longer routes
-  through `LirVaArgOp` for the HFA callee extraction and the focused test now
-  passes.
-- `llvm_gcc_c_torture_src_pr44575_c`: `{ [3 x float] }` no longer routes
-  through `LirVaArgOp` for the HFA callee extraction and the focused test now
-  passes.
-
-`src/codegen/lir/hir_to_lir/call/call.hpp` only gained the private helper
-declaration. No expectation files, unsupported classifications, `plan.md`, or
-source ideas were touched.
+A temporary IR check of `/tmp/c4c_00204.ll` for 00204 found no remaining
+`= va_arg` or raw LLVM `va_arg` instruction; `myprintf` contains explicit
+`vaarg.hfa.*` materialization blocks instead. No expectation files, unsupported
+classifications, `plan.md`, or source ideas were touched.
 
 ## Suggested Next
 
-Have the supervisor decide whether to extend this explicit AAPCS64 HFA
-materialization to fp128 long-double HFA `va_arg` payloads in a separate packet
-or keep fp128 as the residual backend-boundary investigation.
+Investigate the residual AArch64 HFA stdarg runtime mismatch in 00204, starting
+from the semantic boundary between variadic HFA argument save-area layout and
+`emit_aarch64_vaarg_hfa` lane extraction/overflow accounting. The next packet
+should avoid narrowing to 00204 by name and should compare the generated
+register-save offsets/overflow transitions against Clang for mixed HFA arities.
 
 ## Watchouts
 
-- This packet deliberately leaves fp128 HFA aggregate `va_arg` on the old raw
-  aggregate path because the delegated repair was for the non-fp128 family and
-  fp128 had a distinct SelectionDAG crash signature in Step 2.
-- The direct harness does not retain `.ll` artifacts for these tests, but the
-  repaired branch no longer constructs `LirVaArgOp` for non-fp128 HFAs; it
-  emits explicit fp-offset/register-save/overflow LIR instead.
-- The helper assumes the existing HFA classifier's lane order and byte offsets,
-  matching the already-working variadic call flattening path.
+- The crash blocker is gone for fp128 HFA `va_arg`; the remaining issue is
+  runtime semantics, not backend instruction selection.
+- The mismatch is not fp128-only after execution starts: the 00204 output shows
+  corrupted HFA long-double, double, and float stdarg lines under mixed arity
+  pressure.
+- The helper assumes each lane occupies a 16-byte FP register-save slot and
+  copies stack payloads using aggregate size rounded by element alignment; the
+  next repair should validate that against the caller-side variadic HFA
+  save-area layout.
 
 ## Proof
 
 Ran:
 
-`(cmake --build build_debug && ctest --test-dir build_debug -R '^(llvm_gcc_c_torture_src_920625_1_c|llvm_gcc_c_torture_src_pr44575_c)$' --output-on-failure) 2>&1 | tee test_after.log`
+`(cmake --build build_debug && ctest --test-dir build_debug -R '^(c_testsuite_src_00204_c|llvm_gcc_c_torture_src_920625_1_c|llvm_gcc_c_torture_src_pr44575_c)$' --output-on-failure) 2>&1 | tee test_after.log`
 
-Result: build succeeded and the focused CTest subset passed 2/2:
-`llvm_gcc_c_torture_src_920625_1_c` and
-`llvm_gcc_c_torture_src_pr44575_c`. Proof log: `test_after.log`.
-
-Supervisor-side validation after the 2-target proof:
-
-`ctest --test-dir build_debug -R '^(c_testsuite_src_00204_c|llvm_gcc_c_torture_src_920625_1_c|llvm_gcc_c_torture_src_pr44575_c)$' --output-on-failure`
-
-Result: `llvm_gcc_c_torture_src_920625_1_c` passed,
+Result: build succeeded. The focused CTest subset reported 2/3 passing:
+`llvm_gcc_c_torture_src_920625_1_c` passed,
 `llvm_gcc_c_torture_src_pr44575_c` passed, and
-`c_testsuite_src_00204_c` still failed with `[BACKEND_FAIL]` in AArch64
-instruction selection on `@myprintf`. This confirms fp128 remains the only
-residual target after the non-fp128 repair.
+`c_testsuite_src_00204_c` failed with `[RUNTIME_MISMATCH]` after producing an
+executable and runtime output. Proof log: `test_after.log`.
+
+Additional non-canonical inspection:
+
+`build_debug/c4cll --target aarch64-linux-gnu --codegen llvm -o /tmp/c4c_00204.ll tests/c/external/c-testsuite/src/00204.c && rg -n "= va_arg| va_arg " /tmp/c4c_00204.ll || true`
+
+Result: no raw LLVM `va_arg` instruction remained in the temporary 00204 IR.
