@@ -1,74 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/292_reopen_286_288_match_load_local_memory_admission.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair the admitted local-memory shape
+Current Step ID: 4
+Current Step Title: Add focused proof and restore CLI subset
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 implementation packet complete for AArch64 HFA `va_arg`
-register-save-area lane-load admission.
+Step 4 proof packet complete for AArch64 HFA `va_arg` register-save-area
+lane-load admission.
 
-The semantic memory route now publishes AArch64 `__va_list_tag_.vr_top` loads
-as FP register-save-area runtime pointers, preserves that authority through
-`i8` byte GEPs, skips conflicting dynamic-local-aggregate handling for that
-marked pointer family, and admits `F32`/`F64`/`F128` lane loads through the
-addressed pointer-load path.
-
-The repaired generated shape is the HFA register path:
+Added focused notes-test coverage that constructs the repaired shape without
+depending on `00204.c`, `myprintf`, or CLI expected files:
 
 ```llvm
-%vr_top_ptr = getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 2
-%vr_top = load ptr, ptr %vr_top_ptr
-%reg_base = getelementptr i8, ptr %vr_top, i32 %offs
-%lane_src = getelementptr i8, ptr %reg_base, i64 <lane-offset>
-%lane = load <fp-lane-type>, ptr %lane_src
+%vr.top.ptr = getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 2
+%vr.top = load ptr, ptr %vr.top.ptr
+%lane.ptr = getelementptr i8, ptr %vr.top, i64 16
+%lane = load float, ptr %lane.ptr
 ```
 
-No named `00204.c`, `myprintf`, or format-string logic was introduced, and no
-expected outputs were weakened.
+The focused assertion verifies the semantic BIR route: `%vr.top` loads from the
+`__va_list_tag_.vr_top` field slot, `%lane.ptr` is materialized as a pointer add
+rooted at `%vr.top`, and the `F32` lane load carries pointer-value address
+metadata with base `%vr.top`, offset `16`, and size `4`.
 
 ## Suggested Next
 
-Supervisor should decide whether Step 3 is complete enough to move to the next
-plan step or request a focused review of the AArch64 `va_list` pointer-fact
-publication route before commit.
+Supervisor should decide whether idea 292 is ready for closure/review now that
+the focused proof and restored 286/288 plus relevant x86 00204 CLI subset are
+green.
 
 ## Watchouts
 
-- The repair is intentionally scoped to AArch64 `__va_list_tag_.vr_top` FP
-  register-save-area pointers and HFA lane scalar loads.
-- The full delegated 286/288 CLI subset is now green; this removes the known
-  downstream blocker that kept idea 291 on lifecycle hold.
-- `PointerAddress` now carries route-local AArch64 FP register-save-area facts;
-  any future pointer-phi propagation for this fact should be reviewed before
-  widening beyond the current direct load/GEP path.
+- The focused test intentionally proves the semantic lane-load shape directly
+  and does not depend on the named `00204.c`/`myprintf` path.
+- No CLI expected files, existing CTest filters, lifecycle files, or production
+  implementation files were changed in this packet.
 
 ## Proof
 
 Delegated proof command:
-`cmake --build --preset default && ctest --test-dir build -R '^(backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$' --output-on-failure`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$'`
 
 Proof log:
 `test_after.log`.
 
-Result: passed. Both delegated CLI tests are green.
-
-Additional temporary probes outside the repo root:
-
-- Minimal AArch64 `struct hfa11 { float a; }` aggregate `va_arg` now lowers
-  through semantic BIR.
-- Minimal AArch64 `struct hfa12 { float a; float b; }` aggregate `va_arg` now
-  lowers through semantic BIR, including the 16-byte register-save lane stride.
-
-Supervisor broader guard:
-
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-
-Result: regression guard passed. Before/after comparison moved from 175
-passed, 5 failed to 177 passed, 3 failed, resolving the two target 286/288 CLI
-tests with no new failures. The remaining failures are the pre-existing
-AArch64 byval stack-overflow route cases and pointer-value named scalar
-writeback route case.
+Result: passed. `backend_lir_to_bir_notes`, the exact 286/288 AArch64 CLI
+subset, and the relevant x86 00204 semantic/prepared CLI coverage are green.

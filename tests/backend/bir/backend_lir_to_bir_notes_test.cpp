@@ -275,6 +275,7 @@ int expect_non_aarch64_metadata_rich_incoming_byval_param_without_struct_id_uses
 int expect_legacy_incoming_byval_param_without_signature_type_ref_uses_legacy_layout();
 int expect_mixed_scalar_and_aggregate_params_materialize_late_aggregate_param();
 int expect_aarch64_hfa_va_arg_uses_aggregate_helper_handoff();
+int expect_aarch64_hfa_va_arg_register_save_lane_load_lowers_semantically();
 int expect_structured_signature_return_materializes_sret_from_type_ref();
 int expect_metadata_rich_signature_return_without_struct_id_fails_closed();
 int expect_signature_return_with_mismatched_struct_id_fails_closed();
@@ -6024,6 +6025,122 @@ int expect_aarch64_hfa_va_arg_uses_aggregate_helper_handoff() {
   return 0;
 }
 
+LirModule make_aarch64_hfa_va_arg_register_save_lane_load_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+
+  const c4c::StructNameId va_list_id = module.struct_names.intern("%struct.__va_list_tag_");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = va_list_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("ptr")},
+                 lir::LirStructField{lir::LirTypeRef("ptr")},
+                 lir::LirStructField{lir::LirTypeRef("ptr")},
+                 lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+
+  LirFunction function;
+  function.name = "aarch64_hfa_va_arg_register_save_lane_load";
+  function.signature_text = "define float @aarch64_hfa_va_arg_register_save_lane_load()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_FLOAT};
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.ap"),
+      .type_str = "%struct.__va_list_tag_",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%vr.top.ptr"),
+      .element_type = "%struct.__va_list_tag_",
+      .ptr = LirOperand("%lv.ap"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 2")},
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%vr.top"),
+      .type_str = "ptr",
+      .ptr = LirOperand("%vr.top.ptr"),
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%lane.ptr"),
+      .element_type = "i8",
+      .ptr = LirOperand("%vr.top"),
+      .indices = {LirOperand("i64 16")},
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%lane"),
+      .type_str = "float",
+      .ptr = LirOperand("%lane.ptr"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%lane"),
+      .type_str = "float",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_aarch64_hfa_va_arg_register_save_lane_load_lowers_semantically() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_hfa_va_arg_register_save_lane_load_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("AArch64 HFA va_arg register-save lane load should lower semantically");
+  }
+  if (result.module->functions.empty()) {
+    return fail("AArch64 HFA va_arg register-save lane-load fixture should lower one function");
+  }
+
+  bool saw_vr_top_pointer_load = false;
+  bool saw_lane_pointer_add = false;
+  bool saw_fp_lane_load = false;
+  const auto& function = result.module->functions.front();
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+      if (binary != nullptr &&
+          binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
+          binary->result.type == TypeKind::Ptr &&
+          binary->result.name == "%lane.ptr" &&
+          binary->operand_type == TypeKind::Ptr &&
+          binary->lhs.type == TypeKind::Ptr &&
+          binary->lhs.name == "%vr.top" &&
+          binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          binary->rhs.immediate == 16) {
+        saw_lane_pointer_add = true;
+      }
+      const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+      if (load == nullptr) {
+        continue;
+      }
+      if (load->result.type == TypeKind::Ptr && load->result.name == "%vr.top" &&
+          load->slot_name == "%lv.ap.16") {
+        saw_vr_top_pointer_load = true;
+      }
+      if (load->result.type == TypeKind::F32 && load->result.name == "%lane" &&
+          load->address.has_value() &&
+          load->address->base_kind ==
+              c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
+          load->address->base_value.type == TypeKind::Ptr &&
+          load->address->base_value.name == "%vr.top" &&
+          load->address->byte_offset == 16 &&
+          load->address->size_bytes == 4) {
+        saw_fp_lane_load = true;
+      }
+    }
+  }
+  if (!saw_vr_top_pointer_load || !saw_lane_pointer_add || !saw_fp_lane_load) {
+    return fail("AArch64 HFA va_arg register-save byte-GEP lane load should use pointer-value FP lane semantics");
+  }
+  return 0;
+}
+
 LirModule make_signature_return_boundary_module(lir::LirTypeRef signature_return_type_ref) {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
@@ -8277,6 +8394,11 @@ int main() {
           expect_aarch64_hfa_va_arg_uses_aggregate_helper_handoff();
       hfa_va_arg_status != 0) {
     return hfa_va_arg_status;
+  }
+  if (const int hfa_va_arg_lane_load_status =
+          expect_aarch64_hfa_va_arg_register_save_lane_load_lowers_semantically();
+      hfa_va_arg_lane_load_status != 0) {
+    return hfa_va_arg_lane_load_status;
   }
 
   if (const int structured_signature_return_status =
