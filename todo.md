@@ -1,42 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/285_aarch64_llvm_path_fp128_vararg_codegen_crash_triage.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Add Or Confirm A Narrow External-Backend Boundary
+Current Step ID: Step 5
+Current Step Title: Prove Focused And Harness Behavior
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 confirmed that no new narrow external-backend support boundary,
-unsupported classification, or harness stderr weakening is needed for the three
-AArch64 fp128/vararg crash targets. The prior raw aggregate `va_arg` clang
-crashes for `c_testsuite_src_00204_c`,
-`llvm_gcc_c_torture_src_920625_1_c`, and
-`llvm_gcc_c_torture_src_pr44575_c` have been repaired by the earlier code
-slices, so the acceptance boundary remains supported execution rather than an
-external-backend exclusion.
+Step 5 completed the final focused and nearby harness behavior proof for the
+AArch64 fp128/vararg crash triage runbook. The three original source targets
+all passed without requiring unsupported classifications, expectation
+downgrades, or harness stderr weakening:
+`c_testsuite_src_00204_c`, `llvm_gcc_c_torture_src_920625_1_c`, and
+`llvm_gcc_c_torture_src_pr44575_c`. The nearby LIR type-reference coverage also
+passed: `frontend_lir_call_type_ref`,
+`frontend_lir_function_signature_type_ref`, and
+`frontend_lir_global_type_ref`.
 
 ## Suggested Next
 
-Supervisor should review the completed Step 4 documentation slice and decide
-whether the active runbook is ready for lifecycle review or closure handling.
+Supervisor should perform lifecycle review or closure handling for the active
+runbook; no further executor packet is suggested from this Step 5 proof.
 
 ## Watchouts
 
 - No implementation files, expectation files, unsupported classifications,
   `plan.md`, or source ideas were touched in this packet.
-- The Step 4 decision depends on the three named crash targets staying green
-  under the focused proof. If that proof regresses, the boundary decision should
-  be revisited before lifecycle closure.
+- Residual risk is limited to broader AArch64 fp128/vararg coverage outside
+  this focused source-target and nearby LIR type-ref subset; this packet did
+  not run a full suite.
 
 ## Proof
 
 Ran:
 
-`git diff --name-only dd9d1d78..HEAD && ctest --test-dir build_debug -R '^(c_testsuite_src_00204_c|llvm_gcc_c_torture_src_920625_1_c|llvm_gcc_c_torture_src_pr44575_c)$' --output-on-failure`
+`cmake --build build_debug && ctest --test-dir build_debug -R '^(frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref|frontend_lir_global_type_ref|c_testsuite_src_00204_c|llvm_gcc_c_torture_src_920625_1_c|llvm_gcc_c_torture_src_pr44575_c)$' --output-on-failure`
 
-Result: `git diff --name-only dd9d1d78..HEAD` listed the repaired call/vaarg
-files plus `todo.md`, and all three focused targets passed:
+Result: build completed with `ninja: no work to do`, and all six selected tests
+passed: `frontend_lir_global_type_ref`,
+`frontend_lir_function_signature_type_ref`, `frontend_lir_call_type_ref`,
 `c_testsuite_src_00204_c`, `llvm_gcc_c_torture_src_920625_1_c`, and
 `llvm_gcc_c_torture_src_pr44575_c`. Proof log: `test_after.log`.
