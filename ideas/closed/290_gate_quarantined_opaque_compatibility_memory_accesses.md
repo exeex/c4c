@@ -52,6 +52,21 @@ that route coverage is complete enough to fail closed safely.
 - Focused tests prove the chosen policy surface, and broader backend/prepared
   validation shows no regression in supported structured-provenance routes.
 
+## Completion Notes
+
+- Closed after selecting and implementing the lowerer-time rejection policy for
+  quarantined addressed pointer load/store rows.
+- The gate uses explicit `OpaqueCompatibility` metadata rather than
+  `UnknownCompatible` or `can_use_base_plus_offset` alone.
+- Structured proven in-range rows remain accepted, and focused regression
+  coverage includes load-side and store-side opaque compatibility fail-closed
+  fixtures.
+- Close validation reused the supervisor-selected backend/prepared scope:
+  `backend_lir_to_bir_notes`, `backend_prepared_lookup_helper`,
+  `backend_riscv_prepared_edge_publication`, and `backend_prepared_printer`.
+  The canonical close comparison passed 4/4 before and 4/4 after with no new
+  failures.
+
 ## Reviewer Reject Signals
 
 - The patch gates on `UnknownCompatible` or `can_use_base_plus_offset` without
