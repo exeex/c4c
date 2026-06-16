@@ -458,6 +458,7 @@ bool BirFunctionLowerer::append_local_aggregate_copy_to_pointer(
                     provenance.requested_range = bir::make_memory_byte_range(
                         static_cast<std::int64_t>(byte_offset), slot_size);
                   }
+                  bir::prove_memory_access_requested_range(provenance);
                   return provenance;
                 }(),
         },
@@ -516,6 +517,7 @@ bool BirFunctionLowerer::materialize_aggregate_param_aliases(std::vector<bir::In
                             info.layout.size_bytes);
                         provenance.requested_range = bir::make_memory_byte_range(
                             static_cast<std::int64_t>(byte_offset), slot_size);
+                        bir::prove_memory_access_requested_range(provenance);
                         return provenance;
                       }(),
               },

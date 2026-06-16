@@ -137,7 +137,7 @@ std::optional<HomogeneousFpAggregateFacts> homogeneous_fp_aggregate_facts(
     provenance.dynamic_array.element_stride_bytes = address.dynamic_element_stride_bytes;
     provenance.dynamic_array.base_byte_offset = address.byte_offset;
   }
-  provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+  bir::prove_memory_access_requested_range(provenance);
   return provenance;
 }
 
@@ -688,6 +688,7 @@ bool BirFunctionLowerer::lower_memory_store_inst(
                               source_param_it->second.layout.size_bytes);
                           provenance.requested_range = bir::make_memory_byte_range(
                               static_cast<std::int64_t>(byte_offset), slot_size);
+                          bir::prove_memory_access_requested_range(provenance);
                           return provenance;
                         }(),
                 },

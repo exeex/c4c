@@ -1,54 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/289_structured_opaque_pointer_byte_range_provenance.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Populate Base Identity and Known Extent Facts
+Current Step ID: Step 4
+Current Step Title: Prove Requested Range and Dynamic Array Bounds
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Populate Base Identity and Known Extent Facts finished the remaining
-owned pointer-value `MemoryAddress` producer inventory/population for
-intrinsic, local-slot, provenance fallback, and AArch64 semantic-intrinsic
-paths without changing route admission, address kind, byte offsets, sizes,
-alignments, memory access kind, or prepared/prealloc consumer behavior.
+Step 4: Prove Requested Range and Dynamic Array Bounds started the passive
+requested-range proof route for already-known complete extents.
 
-- intrinsic memcpy pointer-source leaf/scalar loads now publish `PointerValue`
-  identity plus requested byte range with unknown extent and neutral
-  `UnknownCompatible` verdict.
-- local aggregate stores from byval parameters now mirror existing aggregate
-  parameter materialization by publishing `ByvalParameter` identity, complete
-  extent from the selected byval layout, and requested byte range.
-- local aggregate loads from addressed pointer values now preserve existing
-  `PointerAddress` provenance, dynamic-array facts when present, and requested
-  byte range while leaving the verdict neutral.
-- pointer-provenance fallback load/store paths for pointer-valued local-slot
-  state now publish `PointerValue` identity plus requested byte range with
-  unknown extent.
-- AArch64 cache-maintenance and vector-load intrinsic memory operands are
-  target-specific/non-prepared routes, but now publish passive `PointerValue`
-  identity and requested byte range facts for inventory completeness.
+- Added a carrier-level requested-range finalizer that keeps
+  `UnknownCompatible` unless `MemoryByteRange` is available, non-overflowed,
+  has an available end, and a known complete object extent can prove the full
+  range.
+- Known complete extents now passively mark contained requested ranges
+  `ProvenInBounds` and negative, overflowing, or trailing requested ranges
+  `ProvenOutOfBounds`.
+- Unknown or incomplete extents remain `UnknownCompatible`.
+- Existing route admission, target policy, prepared/prealloc consumers, address
+  usability fields, and compatibility behavior are unchanged.
+- Focused helper coverage now checks in-bounds, unknown-extent, negative,
+  overflowing, and trailing requested-range verdicts.
 
 ## Suggested Next
 
-Step 3 is ready for supervisor review. If accepted, the next coherent packet is
-Step 4 requested-range proof for the already populated carrier facts.
+Finish the Step 4 dynamic-array bound subset by computing passive
+`MemoryDynamicArrayFacts::verdict` when element count, stride, base offset, and
+requested range prove the dynamic access stays inside the array; keep unproven
+dynamic ranges unknown and avoid changing prepared/prealloc consumers.
 
 ## Watchouts
 
-- The provenance carrier remains passive. No prepared/prealloc consumer gates
-  on the new facts in this slice.
-- Complete extents are recorded only where an existing authoritative layout was
-  already selected; intrinsic pointer sources, fallback pointer-value local-slot
-  paths, and AArch64 intrinsic operands keep unknown extent.
-- This slice still does not prove requested ranges, dynamic array bounds,
-  layout authority, negative-offset rejection beyond existing checks, or
-  overflow rejection beyond existing construction behavior; `range_verdict`
-  remains neutral `UnknownCompatible`.
-- No remaining owned Step 3 `PointerValue` `MemoryAddress` producer is known to
-  emit blank provenance after this packet. Any further gaps should be treated as
-  outside the current owned inventory or Step 4+ proof/consumer work.
+- `range_verdict` is still passive metadata; no current consumer gates route
+  admission or prepared/prealloc behavior on it.
+- Out-of-bounds verdicts are recorded only when a known complete extent exists;
+  unknown extents intentionally remain `UnknownCompatible`.
+- Dynamic-array facts are preserved but their bound verdict is not computed in
+  this slice.
+- Layout-authority-specific proof and compatibility bridge removal remain later
+  work.
 
 ## Proof
 

@@ -130,6 +130,7 @@ struct ProvenanceBaseIdentityFacts {
   if (!provenance.requested_range.available) {
     provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
   }
+  bir::prove_memory_access_requested_range(provenance);
   return provenance;
 }
 

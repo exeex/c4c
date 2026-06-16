@@ -64,7 +64,7 @@ struct LocalMemsetLeafStore {
     std::size_t size_bytes) {
   auto provenance = pointer_value_base_provenance(base_value);
   provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
-  provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+  bir::prove_memory_access_requested_range(provenance);
   return provenance;
 }
 

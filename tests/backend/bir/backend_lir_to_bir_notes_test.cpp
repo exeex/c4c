@@ -2,7 +2,9 @@
 #include "src/backend/bir/lir_to_bir/lowering.hpp"
 
 #include <array>
+#include <cstdint>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -56,6 +58,58 @@ bool contains_note(const std::vector<BirLoweringNote>& notes,
     }
   }
   return false;
+}
+
+int expect_memory_access_requested_range_verdicts_use_complete_extent() {
+  using c4c::backend::bir::MemoryAccessProvenance;
+  using c4c::backend::bir::MemoryObjectExtentCompleteness;
+  using c4c::backend::bir::MemoryRangeVerdict;
+
+  auto complete_provenance = [](std::size_t extent_size) {
+    MemoryAccessProvenance provenance;
+    provenance.object_extent.completeness = MemoryObjectExtentCompleteness::Complete;
+    provenance.object_extent.size_bytes = extent_size;
+    provenance.object_extent.size_known = true;
+    return provenance;
+  };
+
+  auto in_bounds = complete_provenance(16);
+  in_bounds.requested_range = c4c::backend::bir::make_memory_byte_range(4, 8);
+  c4c::backend::bir::prove_memory_access_requested_range(in_bounds);
+  if (in_bounds.range_verdict != MemoryRangeVerdict::ProvenInBounds) {
+    return fail("complete extent should prove a non-overflowed contained requested range");
+  }
+
+  MemoryAccessProvenance unknown_extent;
+  unknown_extent.requested_range = c4c::backend::bir::make_memory_byte_range(4, 8);
+  c4c::backend::bir::prove_memory_access_requested_range(unknown_extent);
+  if (unknown_extent.range_verdict != MemoryRangeVerdict::UnknownCompatible) {
+    return fail("unknown extent should keep requested range verdict compatible/unknown");
+  }
+
+  auto negative_range = complete_provenance(16);
+  negative_range.requested_range = c4c::backend::bir::make_memory_byte_range(-1, 1);
+  c4c::backend::bir::prove_memory_access_requested_range(negative_range);
+  if (negative_range.range_verdict != MemoryRangeVerdict::ProvenOutOfBounds) {
+    return fail("complete extent should passively prove negative requested ranges out of bounds");
+  }
+
+  auto overflowing_range = complete_provenance(16);
+  overflowing_range.requested_range = c4c::backend::bir::make_memory_byte_range(
+      std::numeric_limits<std::int64_t>::max() - 1, 4);
+  c4c::backend::bir::prove_memory_access_requested_range(overflowing_range);
+  if (overflowing_range.range_verdict != MemoryRangeVerdict::ProvenOutOfBounds) {
+    return fail("complete extent should passively prove overflowing requested ranges out of bounds");
+  }
+
+  auto trailing_range = complete_provenance(16);
+  trailing_range.requested_range = c4c::backend::bir::make_memory_byte_range(12, 8);
+  c4c::backend::bir::prove_memory_access_requested_range(trailing_range);
+  if (trailing_range.range_verdict != MemoryRangeVerdict::ProvenOutOfBounds) {
+    return fail("complete extent should passively prove trailing requested ranges out of bounds");
+  }
+
+  return 0;
 }
 
 lir::LirCallSignature void_call_signature(
@@ -7709,6 +7763,12 @@ LirModule make_structured_block_label_id_module() {
 int main() {
   constexpr std::string_view kModuleSummary =
       "currently admitted capability buckets covering function-signature, scalar-control-flow, scalar/local-memory (including scalar-cast/scalar-binop and alloca/gep/load/store local-memory), and local/global memory semantics, plus semantic call families (direct-call, indirect-call, and call-return) and explicit runtime or intrinsic families such as variadic, stack-state, absolute-value, memcpy, memset, and inline-asm placeholders";
+  if (const int requested_range_status =
+          expect_memory_access_requested_range_verdicts_use_complete_extent();
+      requested_range_status != 0) {
+    return requested_range_status;
+  }
+
   if (const int inline_asm_status = expect_failure_notes(
           "bad_inline_asm",
           make_unsupported_inline_asm_module(),

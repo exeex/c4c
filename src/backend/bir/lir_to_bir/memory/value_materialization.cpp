@@ -370,7 +370,7 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_pointer_value_array_v
                       }
                       provenance.requested_range = bir::make_memory_byte_range(
                           static_cast<std::int64_t>(byte_offset), slot_size);
-                      provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+                      bir::prove_memory_access_requested_range(provenance);
                       return provenance;
                     }(),
             },
@@ -476,7 +476,7 @@ bool BirFunctionLowerer::append_dynamic_pointer_value_array_store(
                       }
                       provenance.requested_range = bir::make_memory_byte_range(
                           static_cast<std::int64_t>(byte_offset), slot_size);
-                      provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+                      bir::prove_memory_access_requested_range(provenance);
                       return provenance;
                     }(),
             },
@@ -525,7 +525,7 @@ bool BirFunctionLowerer::append_dynamic_pointer_value_array_store(
                       }
                       provenance.requested_range = bir::make_memory_byte_range(
                           static_cast<std::int64_t>(byte_offset), slot_size);
-                      provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+                      bir::prove_memory_access_requested_range(provenance);
                       return provenance;
                     }(),
             },

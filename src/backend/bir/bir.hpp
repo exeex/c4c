@@ -778,6 +778,30 @@ struct MemoryAccessProvenance {
   MemoryRangeVerdict range_verdict = MemoryRangeVerdict::UnknownCompatible;
 };
 
+inline void prove_memory_access_requested_range(MemoryAccessProvenance& provenance) {
+  provenance.range_verdict = MemoryRangeVerdict::UnknownCompatible;
+  if (!provenance.requested_range.available ||
+      !provenance.object_extent.size_known ||
+      provenance.object_extent.completeness != MemoryObjectExtentCompleteness::Complete) {
+    return;
+  }
+  if (provenance.requested_range.overflowed ||
+      !provenance.requested_range.end_available ||
+      provenance.requested_range.begin < 0 ||
+      provenance.requested_range.end < provenance.requested_range.begin) {
+    provenance.range_verdict = MemoryRangeVerdict::ProvenOutOfBounds;
+    return;
+  }
+
+  const auto begin = static_cast<std::size_t>(provenance.requested_range.begin);
+  const auto end = static_cast<std::size_t>(provenance.requested_range.end);
+  provenance.range_verdict =
+      begin <= provenance.object_extent.size_bytes &&
+              end <= provenance.object_extent.size_bytes
+          ? MemoryRangeVerdict::ProvenInBounds
+          : MemoryRangeVerdict::ProvenOutOfBounds;
+}
+
 struct MemoryAddress {
   enum class BaseKind : unsigned char {
     None,
