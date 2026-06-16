@@ -75,3 +75,27 @@ retained prepared-policy surfaces without a concrete need.
   candidate state.
 - The route generates broad follow-ups with vague proof commands or generic
   reject signals.
+
+## Closure Note
+
+Closed after the post-green audit found no new follow-up work that should be
+opened immediately.
+
+Direction matrix:
+
+- Ideas 286 through 293: complete. The generated follow-ups from 287 were 288
+  and 289; 289's quarantine-policy follow-up became 290; 291's close blocker
+  became 292; 293 restored the remaining backend route failures.
+- Prepared/prealloc public surfaces: stop/defer. The closure notes continue to
+  require concrete route/BIR agreement and fail-closed proof before retiring
+  retained policy surfaces.
+- AArch64 HFA / rendered suffix / opaque provenance cleanup: monitor. The
+  known interface smells were addressed by 288, 289, 290, and 291, and no
+  closure note leaves an unclosed implementation follow-up.
+- Backend health: monitor. Idea 293 recorded `^backend_` at 180/180.
+- Full-suite baseline: accepted. `test_baseline.log` records 3208/3208 passing
+  at commit `73543a60537a69f56db3502cef9362eb6edec870`; no
+  `test_baseline.new.log` candidate was pending during the audit.
+
+No new ideas were generated. The correct next state is an empty open queue
+until a concrete defect, design smell, or user-selected direction appears.
