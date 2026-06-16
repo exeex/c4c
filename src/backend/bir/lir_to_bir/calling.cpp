@@ -343,6 +343,108 @@ call_argument_direct_global_select_chain_dependency(
   return false;
 }
 
+struct Aapcs64VariadicHfaCarrierExpansionLane {
+  bir::Value value;
+  bir::TypeKind type = bir::TypeKind::Void;
+  bir::CallArgAbiInfo abi;
+};
+
+struct Aapcs64VariadicHfaCarrierExpansionRequest {
+  const c4c::TargetProfile& target_profile;
+  bool is_variadic_call = false;
+  std::size_t argument_index = 0;
+  const c4c::codegen::lir::LirOperand& source_operand;
+  const BirFunctionLowerer::AggregateTypeLayout& aggregate_layout;
+  const BirFunctionLowerer::TypeDeclMap& type_decls;
+  const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts;
+  const BirFunctionLowerer::AggregateValueAliasMap& aggregate_value_aliases;
+  const BirFunctionLowerer::LocalAggregateSlotMap& local_aggregate_slots;
+  const BirFunctionLowerer::LocalSlotTypes& local_slot_types;
+  const std::vector<c4c::codegen::lir::LirCallArg>& structured_args;
+  std::vector<std::pair<std::size_t, std::string>> ordered_leaf_slots;
+};
+
+struct Aapcs64VariadicHfaCarrierExpansionResult {
+  enum class Kind : unsigned char {
+    NoExpansion,
+    Rejected,
+    Expanded,
+  };
+
+  Kind kind = Kind::NoExpansion;
+  std::vector<Aapcs64VariadicHfaCarrierExpansionLane> lanes;
+};
+
+[[nodiscard]] Aapcs64VariadicHfaCarrierExpansionResult
+build_aapcs64_variadic_hfa_carrier_expansion(
+    const Aapcs64VariadicHfaCarrierExpansionRequest& request) {
+  if (request.target_profile.arch != c4c::TargetArch::Aarch64 ||
+      !request.is_variadic_call ||
+      request.source_operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+    return {};
+  }
+
+  std::optional<bir::TypeKind> lane_type;
+  std::size_t lane_count = 0;
+  if (!collect_va_arg_hfa_payload_lanes(request.aggregate_layout,
+                                        request.type_decls,
+                                        request.structured_layouts,
+                                        lane_type,
+                                        lane_count) ||
+      !lane_type.has_value() || lane_count == 0) {
+    return {};
+  }
+
+  const auto aggregate_alias_it =
+      request.aggregate_value_aliases.find(request.source_operand.str());
+  if (aggregate_alias_it == request.aggregate_value_aliases.end()) {
+    return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
+  }
+  if (request.local_aggregate_slots.find(aggregate_alias_it->second) ==
+      request.local_aggregate_slots.end()) {
+    return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
+  }
+  if (request.ordered_leaf_slots.size() != lane_count) {
+    return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
+  }
+
+  Aapcs64VariadicHfaCarrierExpansionResult result{
+      .kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Expanded,
+  };
+  result.lanes.reserve(request.ordered_leaf_slots.size());
+  for (std::size_t lane_index = 0; lane_index < request.ordered_leaf_slots.size();
+       ++lane_index) {
+    const auto& slot_name = request.ordered_leaf_slots[lane_index].second;
+    const auto slot_type_it = request.local_slot_types.find(slot_name);
+    if (slot_type_it == request.local_slot_types.end() ||
+        slot_type_it->second != *lane_type) {
+      return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
+    }
+    auto lane_abi =
+        lir_to_bir_detail::compute_call_arg_abi(request.target_profile, *lane_type);
+    if (!lane_abi.has_value()) {
+      return {.kind = Aapcs64VariadicHfaCarrierExpansionResult::Kind::Rejected};
+    }
+    lane_abi->aarch64_hfa_lane_count = lane_count;
+    lane_abi->aarch64_hfa_lane_index = lane_index;
+    if (lane_index == 0) {
+      if (request.argument_index < request.structured_args.size() &&
+          request.structured_args[request.argument_index].aarch64_stack_align_bytes > 0) {
+        lane_abi->align_bytes =
+            request.structured_args[request.argument_index].aarch64_stack_align_bytes;
+      } else if (request.aggregate_layout.align_bytes > 0) {
+        lane_abi->align_bytes = request.aggregate_layout.align_bytes;
+      }
+    }
+    result.lanes.push_back(Aapcs64VariadicHfaCarrierExpansionLane{
+        .value = bir::Value::named(*lane_type, slot_name),
+        .type = *lane_type,
+        .abi = *lane_abi,
+    });
+  }
+  return result;
+}
+
 [[nodiscard]] std::optional<Aapcs64VaArgHfaPayloadShape>
 aapcs64_va_arg_hfa_payload_shape(
     const c4c::TargetProfile& target_profile,
@@ -1205,58 +1307,40 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       [&](std::size_t index,
           const c4c::codegen::lir::LirOperand& operand,
           const AggregateTypeLayout& aggregate_layout) -> bool {
-    if (context_.target_profile.arch != c4c::TargetArch::Aarch64 || !is_variadic_call ||
-        operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-      return false;
-    }
-
-    std::optional<bir::TypeKind> lane_type;
-    std::size_t lane_count = 0;
-    if (!collect_va_arg_hfa_payload_lanes(aggregate_layout,
-                                          type_decls,
-                                          structured_layouts_,
-                                          lane_type,
-                                          lane_count) ||
-        !lane_type.has_value() || lane_count == 0) {
-      return false;
-    }
-
-    const auto aggregate_alias_it = aggregate_value_aliases.find(operand.str());
-    if (aggregate_alias_it == aggregate_value_aliases.end()) {
-      return false;
-    }
-    const auto aggregate_it = local_aggregate_slots.find(aggregate_alias_it->second);
-    if (aggregate_it == local_aggregate_slots.end()) {
-      return false;
-    }
-    const auto leaf_slots = collect_sorted_leaf_slots(aggregate_it->second);
-    if (leaf_slots.size() != lane_count) {
-      return false;
-    }
-
-    for (std::size_t lane_index = 0; lane_index < leaf_slots.size(); ++lane_index) {
-      const auto& slot_name = leaf_slots[lane_index].second;
-      const auto slot_type_it = local_slot_types.find(slot_name);
-      if (slot_type_it == local_slot_types.end() || slot_type_it->second != *lane_type) {
-        return false;
-      }
-      auto lane_abi = compute_call_arg_abi(context_.target_profile, *lane_type);
-      if (!lane_abi.has_value()) {
-        return false;
-      }
-      lane_abi->aarch64_hfa_lane_count = lane_count;
-      lane_abi->aarch64_hfa_lane_index = lane_index;
-      if (lane_index == 0) {
-        if (index < call.structured_args.size() &&
-            call.structured_args[index].aarch64_stack_align_bytes > 0) {
-          lane_abi->align_bytes = call.structured_args[index].aarch64_stack_align_bytes;
-        } else if (aggregate_layout.align_bytes > 0) {
-          lane_abi->align_bytes = aggregate_layout.align_bytes;
+    std::vector<std::pair<std::size_t, std::string>> ordered_leaf_slots;
+    if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      const auto aggregate_alias_it = aggregate_value_aliases.find(operand.str());
+      if (aggregate_alias_it != aggregate_value_aliases.end()) {
+        const auto aggregate_it = local_aggregate_slots.find(aggregate_alias_it->second);
+        if (aggregate_it != local_aggregate_slots.end()) {
+          ordered_leaf_slots = collect_sorted_leaf_slots(aggregate_it->second);
         }
       }
-      lowered_arg_types.push_back(*lane_type);
-      lowered_args.push_back(bir::Value::named(*lane_type, slot_name));
-      lowered_arg_abi.push_back(*lane_abi);
+    }
+
+    const auto expansion = build_aapcs64_variadic_hfa_carrier_expansion(
+        Aapcs64VariadicHfaCarrierExpansionRequest{
+            .target_profile = context_.target_profile,
+            .is_variadic_call = is_variadic_call,
+            .argument_index = index,
+            .source_operand = operand,
+            .aggregate_layout = aggregate_layout,
+            .type_decls = type_decls,
+            .structured_layouts = structured_layouts_,
+            .aggregate_value_aliases = aggregate_value_aliases,
+            .local_aggregate_slots = local_aggregate_slots,
+            .local_slot_types = local_slot_types,
+            .structured_args = call.structured_args,
+            .ordered_leaf_slots = std::move(ordered_leaf_slots),
+        });
+    if (expansion.kind != Aapcs64VariadicHfaCarrierExpansionResult::Kind::Expanded) {
+      return false;
+    }
+
+    for (const auto& lane : expansion.lanes) {
+      lowered_arg_types.push_back(lane.type);
+      lowered_args.push_back(lane.value);
+      lowered_arg_abi.push_back(lane.abi);
     }
     return true;
   };
