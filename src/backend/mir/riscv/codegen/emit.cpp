@@ -9,11 +9,13 @@
 #include "../../../backend.hpp"
 #include "../../../../codegen/lir/ir.hpp"
 
+#include <cctype>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace c4c::backend::riscv::codegen {
 
@@ -129,6 +131,237 @@ bool is_tiny_add_prepared_lir_slice(const c4c::codegen::lir::LirModule& module) 
 
   const auto* ret = std::get_if<LirRet>(&block.terminator);
   return ret != nullptr && ret->type_str == "i32" && ret->value_str == std::optional<std::string>{"%t0"};
+}
+
+std::string sanitize_riscv_label_component(std::string_view text) {
+  std::string result;
+  result.reserve(text.size());
+  for (const char ch : text) {
+    const auto uch = static_cast<unsigned char>(ch);
+    if (std::isalnum(uch) || ch == '_') {
+      result.push_back(ch);
+    } else {
+      result.push_back('_');
+    }
+  }
+  if (result.empty()) {
+    return "anon";
+  }
+  if (std::isdigit(static_cast<unsigned char>(result.front()))) {
+    result.insert(result.begin(), '_');
+  }
+  return result;
+}
+
+std::string riscv_local_block_label(std::string_view function_name,
+                                    std::string_view block_label) {
+  return ".L" + sanitize_riscv_label_component(function_name) + "_" +
+         sanitize_riscv_label_component(block_label);
+}
+
+std::string bir_block_label_spelling(const c4c::backend::bir::Module& module,
+                                     const c4c::backend::bir::Block& block) {
+  if (block.label_id != c4c::kInvalidBlockLabel) {
+    const std::string_view spelling = module.names.block_labels.spelling(block.label_id);
+    if (!spelling.empty()) {
+      return std::string(spelling);
+    }
+  }
+  return block.label;
+}
+
+std::string bir_target_label_spelling(const c4c::backend::bir::Module& module,
+                                      c4c::BlockLabelId label_id,
+                                      std::string_view fallback) {
+  if (label_id != c4c::kInvalidBlockLabel) {
+    const std::string_view spelling = module.names.block_labels.spelling(label_id);
+    if (!spelling.empty()) {
+      return std::string(spelling);
+    }
+  }
+  return std::string(fallback);
+}
+
+struct SimpleCompare {
+  c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Eq;
+  c4c::backend::bir::Value lhs;
+  c4c::backend::bir::Value rhs;
+};
+
+std::optional<std::int64_t> simple_integer_immediate(
+    const c4c::backend::bir::Value& value) {
+  if (value.kind != c4c::backend::bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  switch (value.type) {
+    case c4c::backend::bir::TypeKind::I1:
+    case c4c::backend::bir::TypeKind::I8:
+    case c4c::backend::bir::TypeKind::I16:
+    case c4c::backend::bir::TypeKind::I32:
+    case c4c::backend::bir::TypeKind::I64:
+      return value.immediate;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<std::string> riscv_branch_mnemonic(
+    c4c::backend::bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case c4c::backend::bir::BinaryOpcode::Eq: return std::string{"beq"};
+    case c4c::backend::bir::BinaryOpcode::Ne: return std::string{"bne"};
+    case c4c::backend::bir::BinaryOpcode::Slt: return std::string{"blt"};
+    case c4c::backend::bir::BinaryOpcode::Sge: return std::string{"bge"};
+    case c4c::backend::bir::BinaryOpcode::Ult: return std::string{"bltu"};
+    case c4c::backend::bir::BinaryOpcode::Uge: return std::string{"bgeu"};
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<std::string> emit_riscv_simple_compare_branch(
+    const SimpleCompare& compare,
+    std::string_view true_label,
+    std::string_view false_label) {
+  const auto lhs_imm = simple_integer_immediate(compare.lhs);
+  const auto rhs_imm = simple_integer_immediate(compare.rhs);
+  if (!lhs_imm.has_value() || !rhs_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  c4c::backend::bir::BinaryOpcode opcode = compare.opcode;
+  std::int64_t lhs = *lhs_imm;
+  std::int64_t rhs = *rhs_imm;
+  switch (opcode) {
+    case c4c::backend::bir::BinaryOpcode::Sle:
+      opcode = c4c::backend::bir::BinaryOpcode::Sge;
+      std::swap(lhs, rhs);
+      break;
+    case c4c::backend::bir::BinaryOpcode::Ule:
+      opcode = c4c::backend::bir::BinaryOpcode::Uge;
+      std::swap(lhs, rhs);
+      break;
+    case c4c::backend::bir::BinaryOpcode::Sgt:
+      opcode = c4c::backend::bir::BinaryOpcode::Slt;
+      std::swap(lhs, rhs);
+      break;
+    case c4c::backend::bir::BinaryOpcode::Ugt:
+      opcode = c4c::backend::bir::BinaryOpcode::Ult;
+      std::swap(lhs, rhs);
+      break;
+    default:
+      break;
+  }
+
+  const auto mnemonic = riscv_branch_mnemonic(opcode);
+  if (!mnemonic.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string out;
+  out += "    li t0, " + std::to_string(lhs) + "\n";
+  out += "    li t1, " + std::to_string(rhs) + "\n";
+  out += "    " + *mnemonic + " t0, t1, " + std::string(true_label) + "\n";
+  out += "    j " + std::string(false_label) + "\n";
+  return out;
+}
+
+std::optional<std::string> emit_riscv_simple_return(
+    const c4c::backend::bir::Terminator& terminator) {
+  if (!terminator.value.has_value()) {
+    return std::string{"    ret\n"};
+  }
+  const auto immediate = simple_integer_immediate(*terminator.value);
+  if (!immediate.has_value()) {
+    return std::nullopt;
+  }
+  return std::string{"    li a0, "} + std::to_string(*immediate) + "\n    ret\n";
+}
+
+bool append_simple_prepared_bir_function_asm(
+    std::string& out,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::Function& function) {
+  if (function.is_declaration) {
+    return true;
+  }
+
+  std::unordered_map<std::string, SimpleCompare> compares;
+  const std::string function_name = function.name.empty() ? "anon" : function.name;
+  for (const auto& block : function.blocks) {
+    const std::string block_label = bir_block_label_spelling(prepared.module, block);
+    out += riscv_local_block_label(function_name, block_label) + ":\n";
+
+    for (const auto& inst : block.insts) {
+      const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+      if (binary == nullptr ||
+          !c4c::backend::bir::is_compare_opcode(binary->opcode) ||
+          binary->result.kind != c4c::backend::bir::Value::Kind::Named) {
+        continue;
+      }
+      compares[binary->result.name] = SimpleCompare{
+          .opcode = binary->opcode,
+          .lhs = binary->lhs,
+          .rhs = binary->rhs,
+      };
+    }
+
+    switch (block.terminator.kind) {
+      case c4c::backend::bir::TerminatorKind::Return: {
+        const auto returned = emit_riscv_simple_return(block.terminator);
+        if (!returned.has_value()) {
+          return false;
+        }
+        out += *returned;
+        break;
+      }
+      case c4c::backend::bir::TerminatorKind::Branch: {
+        const std::string target = bir_target_label_spelling(
+            prepared.module,
+            block.terminator.target_label_id,
+            block.terminator.target_label);
+        out += "    j " + riscv_local_block_label(function_name, target) + "\n";
+        break;
+      }
+      case c4c::backend::bir::TerminatorKind::CondBranch: {
+        const std::string true_label = bir_target_label_spelling(
+            prepared.module,
+            block.terminator.true_label_id,
+            block.terminator.true_label);
+        const std::string false_label = bir_target_label_spelling(
+            prepared.module,
+            block.terminator.false_label_id,
+            block.terminator.false_label);
+        const std::string true_asm_label = riscv_local_block_label(function_name, true_label);
+        const std::string false_asm_label = riscv_local_block_label(function_name, false_label);
+
+        if (const auto condition_imm = simple_integer_immediate(block.terminator.condition)) {
+          out += "    j ";
+          out += *condition_imm != 0 ? true_asm_label : false_asm_label;
+          out += "\n";
+          break;
+        }
+
+        if (block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named) {
+          return false;
+        }
+        const auto compare_it = compares.find(block.terminator.condition.name);
+        if (compare_it == compares.end()) {
+          return false;
+        }
+        const auto branch = emit_riscv_simple_compare_branch(
+            compare_it->second,
+            true_asm_label,
+            false_asm_label);
+        if (!branch.has_value()) {
+          return false;
+        }
+        out += *branch;
+        break;
+      }
+    }
+  }
+  return true;
 }
 
 std::optional<std::string> render_edge_publication_source_operand(
@@ -776,6 +1009,17 @@ std::string emit_prepared_module(
       out += "\n";
       out += function_name;
       out += ":\n";
+    }
+
+    const auto function_it = std::find_if(
+        module.module.functions.begin(),
+        module.module.functions.end(),
+        [&](const c4c::backend::bir::Function& candidate) {
+          return candidate.name == function_name;
+        });
+    if (function_it != module.module.functions.end() &&
+        append_simple_prepared_bir_function_asm(out, module, *function_it)) {
+      continue;
     }
 
     for (const auto& publication : lookups.edge_publications.publications) {

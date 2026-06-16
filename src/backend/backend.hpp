@@ -107,6 +107,10 @@ std::string emit_x86_lir_module_entry(const c4c::codegen::lir::LirModule& module
 std::string emit_aarch64_lir_module_entry(const c4c::codegen::lir::LirModule& module,
                                           const c4c::TargetProfile& target_profile);
 
+// Explicit RISC-V-owned LIR module-entry handoff for `--codegen asm`.
+std::string emit_riscv_lir_module_entry(const c4c::codegen::lir::LirModule& module,
+                                        const c4c::TargetProfile& target_profile);
+
 // Explicit x86-owned module-entry staging surface. The returned result still
 // preserves the existing bootstrap assemble contract around the x86 handoff.
 BackendAssembleResult stage_x86_lir_module_entry(

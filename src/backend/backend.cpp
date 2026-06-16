@@ -130,6 +130,20 @@ std::string make_aarch64_lir_handoff_failure_message(
   return message;
 }
 
+std::string make_riscv_lir_handoff_failure_message(
+    const c4c::backend::BirLoweringResult& lowering) {
+  std::string message =
+      "RISC-V backend assembly route requires semantic lir_to_bir lowering before the prepared-module handoff";
+  for (auto it = lowering.notes.rbegin(); it != lowering.notes.rend(); ++it) {
+    if (it->phase == "module" || it->phase == "function") {
+      message += ": ";
+      message += it->message;
+      break;
+    }
+  }
+  return message;
+}
+
 std::string make_backend_dump_failure_message(
     const c4c::backend::BirLoweringResult& lowering) {
   std::string message =
@@ -1394,6 +1408,19 @@ std::string emit_aarch64_lir_module_entry(const c4c::codegen::lir::LirModule& mo
   throw std::invalid_argument(make_aarch64_lir_handoff_failure_message(lowering));
 }
 
+std::string emit_riscv_lir_module_entry(const c4c::codegen::lir::LirModule& module,
+                                        const c4c::TargetProfile& target_profile) {
+  require_riscv_module_entry_target(target_profile, "emit_riscv_lir_module_entry");
+  c4c::backend::BirLoweringOptions lowering_options{};
+  lowering_options.preserve_dynamic_alloca = true;
+  auto lowering = c4c::backend::try_lower_to_bir_with_options(module, lowering_options);
+  if (lowering.module.has_value()) {
+    const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
+    return c4c::backend::riscv::codegen::emit_prepared_module(prepared_bir);
+  }
+  throw std::invalid_argument(make_riscv_lir_handoff_failure_message(lowering));
+}
+
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
                                    const c4c::TargetProfile& target_profile) {
   if (is_x86_target(target_profile)) {
@@ -1401,6 +1428,9 @@ std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
   }
   if (is_aarch64_target(target_profile)) {
     return emit_aarch64_lir_module_entry(module, target_profile);
+  }
+  if (is_riscv_target(target_profile)) {
+    return emit_riscv_lir_module_entry(module, target_profile);
   }
 
   c4c::backend::BirLoweringOptions lowering_options{};
@@ -1474,6 +1504,9 @@ std::string emit_module(const BackendModuleInput& input,
   }
   if (!options.emit_semantic_bir && is_aarch64_target(target_profile)) {
     return emit_aarch64_lir_module_entry(lir_module, target_profile);
+  }
+  if (!options.emit_semantic_bir && is_riscv_target(target_profile)) {
+    return emit_riscv_lir_module_entry(lir_module, target_profile);
   }
 
   c4c::backend::BirLoweringOptions lowering_options{};

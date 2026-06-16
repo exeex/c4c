@@ -3,6 +3,7 @@ set(BACKEND_TEST_BINARY_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
 set(BACKEND_TEST_CMAKE_ROOT "${BACKEND_TEST_ROOT}/cmake")
 set(BACKEND_CASE_ROOT "${BACKEND_TEST_ROOT}/case")
 find_program(AARCH64_AS_EXECUTABLE NAMES aarch64-linux-gnu-as)
+find_program(QEMU_RISCV64_EXECUTABLE NAMES qemu-riscv64)
 
 option(C4C_ENABLE_X86_BACKEND_TESTS
        "Enable x86 emitter and x86 handoff boundary backend tests"
@@ -261,6 +262,115 @@ function(c4c_add_backend_runtime_case test_name)
   )
   c4c_set_backend_test_labels("${test_name}" backend_runtime case ${ARG_LABELS})
 endfunction()
+
+function(c4c_add_backend_rv64_runtime_case test_name)
+  set(options)
+  set(one_value_args SRC CASE_TIMEOUT_SEC)
+  set(multi_value_args LABELS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "c4c_add_backend_rv64_runtime_case(${test_name}) got unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  if(NOT DEFINED ARG_SRC OR "${ARG_SRC}" STREQUAL "")
+    message(FATAL_ERROR
+      "c4c_add_backend_rv64_runtime_case(${test_name}) missing SRC")
+  endif()
+
+  if(NOT CLANG_EXECUTABLE)
+    message(FATAL_ERROR
+      "c4c_add_backend_rv64_runtime_case(${test_name}) requires CLANG_EXECUTABLE")
+  endif()
+  if(NOT QEMU_RISCV64_EXECUTABLE)
+    message(FATAL_ERROR
+      "c4c_add_backend_rv64_runtime_case(${test_name}) requires qemu-riscv64")
+  endif()
+
+  get_filename_component(case_stem "${ARG_SRC}" NAME_WE)
+  set(case_timeout "${ARG_CASE_TIMEOUT_SEC}")
+  if("${case_timeout}" STREQUAL "")
+    set(case_timeout 30)
+  endif()
+
+  add_test(
+    NAME "${test_name}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DCLANG=${CLANG_EXECUTABLE}
+            -DQEMU_RISCV64=${QEMU_RISCV64_EXECUTABLE}
+            -DSRC=${ARG_SRC}
+            -DTARGET_TRIPLE=riscv64-linux-gnu
+            -DOUT_ASM=${CMAKE_BINARY_DIR}/backend_rv64_runtime/${case_stem}.s
+            -DOUT_BIN=${CMAKE_BINARY_DIR}/backend_rv64_runtime/${case_stem}.bin
+            -DSYSROOT=/usr/riscv64-linux-gnu
+            -DCASE_TIMEOUT_SEC=${case_timeout}
+            -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_rv64_runtime_case.cmake"
+  )
+  c4c_set_backend_test_labels("${test_name}" backend_runtime rv64 qemu case ${ARG_LABELS})
+endfunction()
+
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_branch_if_eq
+  SRC "${BACKEND_CASE_ROOT}/branch_if_eq.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS branch basic_control_flow
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_branch_if_ne
+  SRC "${BACKEND_CASE_ROOT}/branch_if_ne.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS branch basic_control_flow
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_branch_if_lt
+  SRC "${BACKEND_CASE_ROOT}/branch_if_lt.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS branch basic_control_flow signed_compare
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_branch_if_le
+  SRC "${BACKEND_CASE_ROOT}/branch_if_le.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS branch basic_control_flow signed_compare
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_branch_if_gt
+  SRC "${BACKEND_CASE_ROOT}/branch_if_gt.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS branch basic_control_flow signed_compare
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_branch_if_ge
+  SRC "${BACKEND_CASE_ROOT}/branch_if_ge.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS branch basic_control_flow signed_compare
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_branch_if_ule
+  SRC "${BACKEND_CASE_ROOT}/branch_if_ule.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS branch basic_control_flow unsigned_compare
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_branch_if_ult
+  SRC "${BACKEND_CASE_ROOT}/branch_if_ult.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS branch basic_control_flow unsigned_compare
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_branch_if_ugt
+  SRC "${BACKEND_CASE_ROOT}/branch_if_ugt.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS branch basic_control_flow unsigned_compare
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_branch_if_uge
+  SRC "${BACKEND_CASE_ROOT}/branch_if_uge.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS branch basic_control_flow unsigned_compare
+)
 
 add_test(
   NAME backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call
