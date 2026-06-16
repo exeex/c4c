@@ -226,6 +226,7 @@ int expect_dynamic_global_selected_call_argument_publishes_dependency();
 int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
 int expect_string_literal_pointer_store_publishes_string_address_value();
 int expect_loaded_pointer_addressed_store_uses_pointer_base();
+int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base();
 int expect_casted_byte_pointer_i32_update_fails_closed();
 int expect_casted_byte_pointer_i32_store_fails_closed();
 int expect_indirect_local_memory_lvalue_contracts();
@@ -1302,6 +1303,99 @@ int expect_loaded_pointer_addressed_store_uses_pointer_base() {
   return 0;
 }
 
+int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  c4c::TypeSpec char_pointer_type{};
+  char_pointer_type.base = c4c::TB_CHAR;
+  char_pointer_type.ptr_level = 1;
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+
+  LirFunction function;
+  function.name = "runtime_pointer_value_opaque_i32_access";
+  function.signature_text =
+      "define i32 @runtime_pointer_value_opaque_i32_access(ptr %p.buf, i32 %p.v)";
+  function.return_type = int_type;
+  function.signature_params.push_back(
+      lir::LirSignatureParam{.name = "%p.buf", .type = char_pointer_type});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("ptr"));
+  function.signature_params.push_back(lir::LirSignatureParam{.name = "%p.v", .type = int_type});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("i32"));
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%old.word"),
+      .type_str = "i32",
+      .ptr = LirOperand("%p.buf"),
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%new.word"),
+      .opcode = "add",
+      .type_str = "i32",
+      .lhs = LirOperand("%old.word"),
+      .rhs = LirOperand("%p.v"),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i32",
+      .val = LirOperand("%new.word"),
+      .ptr = LirOperand("%p.buf"),
+  });
+  entry.terminator = LirRet{
+      .value_str = "%new.word",
+      .type_str = "i32",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("runtime pointer-value opaque i32 access should lower to semantic BIR");
+  }
+
+  bool saw_opaque_pointer_base_load = false;
+  bool saw_opaque_pointer_base_store = false;
+  const auto& lowered_function = result.module->functions.back();
+  for (const auto& block : lowered_function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+          load != nullptr && load->result.name == "%old.word" &&
+          load->address.has_value() &&
+          load->address->base_kind ==
+              c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
+          load->address->base_value.name == "%p.buf" &&
+          load->address->size_bytes == 4 &&
+          load->address->provenance.base_identity.kind ==
+              c4c::backend::bir::MemoryProvenanceBaseIdentityKind::FormalParameter &&
+          load->address->provenance.layout_authority ==
+              c4c::backend::bir::MemoryLayoutAuthorityKind::OpaqueCompatibility) {
+        saw_opaque_pointer_base_load = true;
+      }
+      if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+          store != nullptr && store->value.name == "%new.word" &&
+          store->address.has_value() &&
+          store->address->base_kind ==
+              c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
+          store->address->base_value.name == "%p.buf" &&
+          store->address->size_bytes == 4 &&
+          store->address->provenance.base_identity.kind ==
+              c4c::backend::bir::MemoryProvenanceBaseIdentityKind::FormalParameter &&
+          store->address->provenance.layout_authority ==
+              c4c::backend::bir::MemoryLayoutAuthorityKind::OpaqueCompatibility) {
+        saw_opaque_pointer_base_store = true;
+      }
+    }
+  }
+
+  if (!saw_opaque_pointer_base_load || !saw_opaque_pointer_base_store) {
+    return fail("runtime pointer-value opaque i32 access should use pointer-base local memory");
+  }
+  return 0;
+}
+
 int expect_casted_byte_pointer_i32_update_fails_closed() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1506,6 +1600,9 @@ int expect_casted_byte_pointer_i32_store_fails_closed() {
 int expect_indirect_local_memory_lvalue_contracts() {
   int status = 0;
   if (expect_loaded_pointer_addressed_store_uses_pointer_base() != 0) {
+    status = 1;
+  }
+  if (expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base() != 0) {
     status = 1;
   }
   if (expect_casted_byte_pointer_i32_update_fails_closed() != 0) {

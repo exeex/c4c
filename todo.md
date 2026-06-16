@@ -1,41 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/293_backend_remaining_aarch64_load_local_memory_failures.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Implement one coherent semantic admission repair
+Current Step ID: Step 4
+Current Step Title: Add focused backend proof for the admitted shape
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: implemented the semantic admission repair in `src/backend/bir/lir_to_bir/memory/provenance.cpp`.
+Step 4: added a focused shape-level proof in `tests/backend/bir/backend_lir_to_bir_notes_test.cpp` for the newly admitted opaque runtime pointer-value local-memory access path.
 
-The new rule keeps `OpaqueCompatibility` rejected by default, but admits addressed pointer-value `LoadLocalInst`/`StoreLocalInst` shapes when the side-table `PointerAddress` proves a narrow runtime-compatible local-memory access: base is a named pointer value, pointer offset is zero, the pointed shape is opaque/byte-like (`Void` or `I8` with empty/`ptr`/`i8` type text), and the access is either an `i8` byte load/store, a wider access over runtime-capable provenance (`UnknownRuntimeBase`, global/formal/byval/sret), or an unknown-provenance byte-storage aggregate that covers the scalar access. Emitted memory operations still use `MemoryAddress::BaseKind::PointerValue` and `pointer_value_memory_provenance_with_layout_authority`, so opaque-compatible admissions carry `OpaqueCompatibility` layout authority and `UnknownCompatible` range verdict.
+The new `runtime_pointer_value_opaque_i32_access` fixture uses a synthetic runtime `char*` formal parameter and proves both an `i32` load and store lower as `LoadLocalInst`/`StoreLocalInst` with `MemoryAddress::BaseKind::PointerValue`, formal-parameter provenance, and `MemoryLayoutAuthorityKind::OpaqueCompatibility`. The existing casted byte-pointer `i32` fail-closed note guards remain in the same `expect_indirect_local_memory_lvalue_contracts` coverage path.
 
 ## Suggested Next
 
-Proceed to Step 4 with supervisor-selected broader validation or review for the now-green three-test family. Include the existing note guard if the supervisor wants explicit proof that casted byte-pointer `i32` local cases still fail closed.
+Supervisor should decide whether this completed proof slice is enough to accept Step 4 or whether to run broader route validation/reviewer scrutiny before choosing the next lifecycle step.
 
 ## Watchouts
 
-- The repair intentionally admits unknown-provenance wider accesses only through byte-storage aggregate coverage, not through a blanket `OpaqueCompatibility` gate.
-- The focused `backend_lir_to_bir_notes_test` binary passed after the change, preserving `expect_casted_byte_pointer_i32_update_fails_closed` and `expect_casted_byte_pointer_i32_store_fails_closed`.
-- No tests, expected snippets, labels, `plan.md`, or source idea files were changed.
+- The focused proof is independent of the three named AArch64 route fixtures and observes the BIR shape directly.
+- The test intentionally keeps the broad casted byte-pointer `i32` local update/store cases fail-closed through the existing note checks.
+- No implementation files, route fixture expectations, labels, `plan.md`, or source idea files were changed in this packet.
 
 ## Proof
 
 Command:
 
 ```bash
-cmake --build --preset default; ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_aarch64_(byval_payload_(8_to_13|9_to_14)_stack_overflow|pointer_value_named_scalar_writeback_uses_computed_store_value)' > test_after.log 2>&1
+cmake --build --preset default; ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$' > test_after.log 2>&1
 ```
 
-Outcome: build completed and the delegated subset passed 3/3. `test_after.log` is the proof log.
-
-Additional focused guard:
-
-```bash
-./build/tests/backend/bir/backend_lir_to_bir_notes_test
-```
-
-Outcome: passed.
+Outcome: build completed and the delegated `backend_lir_to_bir_notes` CTest passed. `test_after.log` is the proof log.
