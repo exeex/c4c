@@ -1,33 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/293_backend_remaining_aarch64_load_local_memory_failures.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Add focused backend proof for the admitted shape
+Current Step ID: Step 5
+Current Step Title: Run backend milestone proof and record remaining scope
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: added a focused shape-level proof in `tests/backend/bir/backend_lir_to_bir_notes_test.cpp` for the newly admitted opaque runtime pointer-value local-memory access path.
+Step 5: ran the backend milestone proof for the repaired AArch64 load-local memory failure family and recorded remaining source-idea scope.
 
-The new `runtime_pointer_value_opaque_i32_access` fixture uses a synthetic runtime `char*` formal parameter and proves both an `i32` load and store lower as `LoadLocalInst`/`StoreLocalInst` with `MemoryAddress::BaseKind::PointerValue`, formal-parameter provenance, and `MemoryLayoutAuthorityKind::OpaqueCompatibility`. The existing casted byte-pointer `i32` fail-closed note guards remain in the same `expect_indirect_local_memory_lvalue_contracts` coverage path.
+The delegated `^backend_` bucket is now green: CTest passed `180/180` backend tests with `0` failures. All three original source-idea failures passed in this milestone run:
+
+- `backend_codegen_route_aarch64_byval_payload_8_to_13_stack_overflow`
+- `backend_codegen_route_aarch64_byval_payload_9_to_14_stack_overflow`
+- `backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value`
+
+The prior packet classification still stands: all three failures were part of the same semantic local-memory admission boundary for loads through opaque runtime pointer values, with byval dynamic byte loads and pointer-value `i32` writeback covered by the same repaired capability family.
 
 ## Suggested Next
 
-Supervisor should decide whether this completed proof slice is enough to accept Step 4 or whether to run broader route validation/reviewer scrutiny before choosing the next lifecycle step.
+Supervisor should decide whether to route lifecycle closure to the plan owner, with any reviewer/regression-guard scrutiny the supervisor wants before final acceptance.
 
 ## Watchouts
 
-- The focused proof is independent of the three named AArch64 route fixtures and observes the BIR shape directly.
-- The test intentionally keeps the broad casted byte-pointer `i32` local update/store cases fail-closed through the existing note checks.
-- No implementation files, route fixture expectations, labels, `plan.md`, or source idea files were changed in this packet.
+- No implementation files, tests, route expectations, CTest labels, `plan.md`, or source idea files were changed in this packet.
+- The milestone proof did not expose a remaining split-family failure from the source idea; no separate follow-up idea appears necessary before lifecycle closure based on this proof.
+- Closure remains a supervisor/plan-owner decision; this packet only records proof and status.
 
 ## Proof
 
 Command:
 
 ```bash
-cmake --build --preset default; ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_notes$' > test_after.log 2>&1
+cmake --build --preset default; ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1
 ```
 
-Outcome: build completed and the delegated `backend_lir_to_bir_notes` CTest passed. `test_after.log` is the proof log.
+Outcome: build was up to date and the delegated backend milestone CTest passed `180/180` with `0` failures. `test_after.log` is the proof log.
