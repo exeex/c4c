@@ -56,3 +56,16 @@ These are not runtime mismatches; the c2ll binary is never produced.
 - Reject named-case-only IR rewriting for the three filenames.
 - Reject claims that runtime behavior is fixed when no c2ll binary is produced.
 - Reject broad AArch64/vararg/HFA rewrites without focused reductions.
+
+## Closure
+
+Closed 2026-06-16. The three source crash targets were repaired through
+semantic AArch64 fp128/HFA vararg lowering changes, without unsupported
+classification, expectation weakening, or harness stderr suppression.
+
+Final close proof used:
+
+`cmake --build build_debug && ctest --test-dir build_debug -R '^(frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref|frontend_lir_global_type_ref|c_testsuite_src_00204_c|llvm_gcc_c_torture_src_920625_1_c|llvm_gcc_c_torture_src_pr44575_c)$' --output-on-failure`
+
+The six selected tests passed, covering the three repaired crash targets and
+nearby LIR type-reference checks.
