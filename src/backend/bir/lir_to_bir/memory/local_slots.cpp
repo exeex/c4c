@@ -548,6 +548,8 @@ bool BirFunctionLowerer::lower_local_memory_alloca_inst(
         .byte_offset = 0,
         .storage_type_text = type_text,
         .type_text = type_text,
+        .provenance = unknown_runtime_base_provenance(
+            bir::Value::named(bir::TypeKind::Ptr, slot_name)),
     };
     return true;
   }
@@ -1816,6 +1818,8 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
           .dynamic_element_stride_bytes = pointer_slot_it->second.dynamic_element_stride_bytes,
           .storage_type_text = pointer_slot_it->second.storage_type_text,
           .type_text = pointer_slot_it->second.type_text,
+          .provenance = unknown_runtime_base_provenance(
+              bir::Value::named(bir::TypeKind::Ptr, result)),
       };
       lowered_insts->push_back(bir::LoadLocalInst{
           .result = bir::Value::named(bir::TypeKind::Ptr, result),
@@ -1880,6 +1884,8 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
         .dynamic_element_stride_bytes = pointer_slot_it->second.dynamic_element_stride_bytes,
         .storage_type_text = pointer_slot_it->second.storage_type_text,
         .type_text = pointer_slot_it->second.type_text,
+        .provenance = unknown_runtime_base_provenance(
+            bir::Value::named(bir::TypeKind::Ptr, result)),
     };
   }
 

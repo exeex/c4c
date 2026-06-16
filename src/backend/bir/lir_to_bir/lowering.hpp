@@ -660,6 +660,7 @@ class BirFunctionLowerer {
                                               const bir::Value& target_pointer,
                                               std::size_t target_align_bytes,
                                               std::string_view temp_prefix,
+                                              bir::MemoryAccessProvenance target_provenance,
                                               std::vector<bir::Inst>* lowered_insts) const;
   bool materialize_aggregate_param_aliases(std::vector<bir::Inst>* lowered_insts);
   void seed_pointer_param_addresses();

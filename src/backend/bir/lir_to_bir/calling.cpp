@@ -1,6 +1,7 @@
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <type_traits>
 
 namespace c4c::backend {
@@ -1592,10 +1593,22 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         count_value->immediate <= 0 || size_value->immediate <= 0) {
       return std::nullopt;
     }
+    const auto element_count = static_cast<std::size_t>(count_value->immediate);
+    const auto element_stride_bytes = static_cast<std::size_t>(size_value->immediate);
+    const std::optional<std::size_t> complete_extent =
+        element_count <= std::numeric_limits<std::size_t>::max() / element_stride_bytes
+            ? std::optional<std::size_t>{element_count * element_stride_bytes}
+            : std::nullopt;
     return PointerAddress{
         .base_value = bir::Value::named(bir::TypeKind::Ptr, call.result.str()),
-        .dynamic_element_count = static_cast<std::size_t>(count_value->immediate),
-        .dynamic_element_stride_bytes = static_cast<std::size_t>(size_value->immediate),
+        .dynamic_element_count = element_count,
+        .dynamic_element_stride_bytes = element_stride_bytes,
+        .provenance =
+            memory_provenance_for_base(
+                bir::MemoryProvenanceBaseIdentityKind::PointerValue,
+                call.result.str(),
+                bir::Value::named(bir::TypeKind::Ptr, call.result.str()),
+                complete_extent),
     };
   };
 

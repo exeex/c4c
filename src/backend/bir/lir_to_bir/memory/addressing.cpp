@@ -1168,6 +1168,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           const bir::Value& element_index,
           std::size_t static_byte_offset,
           std::size_t element_stride_bytes,
+          bir::MemoryAccessProvenance base_provenance,
           std::string type_text,
           std::string storage_type_text) -> bool {
         if (element_stride_bytes == 0) {
@@ -1232,6 +1233,15 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
             .byte_offset = 0,
             .storage_type_text = std::move(storage_type_text),
             .type_text = std::move(type_text),
+            .provenance =
+                [&]() {
+                  if (base_provenance.base_identity.kind !=
+                      bir::MemoryProvenanceBaseIdentityKind::Unknown) {
+                    return base_provenance;
+                  }
+                  return pointer_value_base_provenance(
+                      value_aliases[std::string(result_name)]);
+                }(),
         };
         return true;
       };
@@ -1567,6 +1577,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                   dynamic_aggregate_it->second.index,
                   dynamic_aggregate_it->second.byte_offset,
                   dynamic_aggregate_it->second.element_stride_bytes,
+                  bir::MemoryAccessProvenance{},
                   dynamic_aggregate_it->second.element_type_text,
                   dynamic_aggregate_it->second.element_type_text)) {
             return fail_gep();
@@ -1602,6 +1613,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                   dynamic_aggregate_it->second.index,
                   dynamic_aggregate_it->second.byte_offset,
                   dynamic_aggregate_it->second.element_stride_bytes,
+                  bir::MemoryAccessProvenance{},
                   dynamic_aggregate_it->second.element_type_text,
                   dynamic_aggregate_it->second.element_type_text)) {
             return fail_gep();
@@ -1969,6 +1981,10 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
               .byte_offset = static_cast<std::size_t>(resolved_target->byte_offset),
               .storage_type_text = std::move(storage_type_text),
               .type_text = std::move(resolved_target->type_text),
+              .provenance =
+                  addressed_ptr_it != pointer_value_addresses.end()
+                      ? addressed_ptr_it->second.provenance
+                      : pointer_value_base_provenance(*base_pointer),
           };
           if (resolved_target->byte_offset == base_byte_offset) {
             value_aliases[gep.result.str()] = *base_pointer;
@@ -2026,6 +2042,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                         *lowered_index,
                         addressed_ptr_it->second.byte_offset,
                         addressed_ptr_it->second.dynamic_element_stride_bytes,
+                        addressed_ptr_it->second.provenance,
                         dynamic_type_text,
                         addressed_ptr_it->second.storage_type_text)) {
                   return fail_gep();
@@ -2038,6 +2055,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                     .element_stride_bytes =
                         addressed_ptr_it->second.dynamic_element_stride_bytes,
                     .index = *lowered_index,
+                    .provenance = addressed_ptr_it->second.provenance,
                 };
                 return true;
               }
@@ -2055,6 +2073,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                           *lowered_index,
                           addressed_ptr_it->second.byte_offset,
                           array_element_layout.size_bytes,
+                          addressed_ptr_it->second.provenance,
                           element_layout.element_type_text,
                           addressed_ptr_it->second.storage_type_text)) {
                     return fail_gep();
@@ -2066,6 +2085,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                       .element_count = element_layout.array_count,
                       .element_stride_bytes = array_element_layout.size_bytes,
                       .index = *lowered_index,
+                      .provenance = addressed_ptr_it->second.provenance,
                   };
                   return true;
                 }
@@ -2086,6 +2106,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                         *lowered_index,
                         addressed_ptr_it->second.byte_offset,
                         extent->element_stride_bytes,
+                        addressed_ptr_it->second.provenance,
                         addressed_ptr_it->second.type_text,
                         addressed_ptr_it->second.storage_type_text)) {
                   return fail_gep();
@@ -2097,6 +2118,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                     .element_count = extent->element_count,
                     .element_stride_bytes = extent->element_stride_bytes,
                     .index = *lowered_index,
+                    .provenance = addressed_ptr_it->second.provenance,
                 };
                 return true;
               }
@@ -2165,6 +2187,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                     .byte_offset = 0,
                     .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
                         gep.element_type.str())),
+                    .provenance = pointer_value_base_provenance(
+                        value_aliases[gep.result.str()]),
                 };
                 return true;
               }
@@ -2217,6 +2241,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
               .value_type = bir::TypeKind::Void,
               .byte_offset = 0,
               .type_text = "i8",
+              .provenance = pointer_value_base_provenance(value_aliases[gep.result.str()]),
           };
           return true;
         }

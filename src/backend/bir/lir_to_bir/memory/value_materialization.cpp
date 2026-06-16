@@ -346,6 +346,8 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_pointer_value_array_v
   for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
     const std::string element_name = std::string(result_name) + ".elt" + std::to_string(element_index);
     const std::string scratch_slot = element_name + ".addr";
+    const auto byte_offset =
+        access.byte_offset + element_index * access.element_stride_bytes;
     if (!ensure_local_scratch_slot(scratch_slot, value_type, slot_size)) {
       return std::nullopt;
     }
@@ -356,10 +358,21 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_pointer_value_array_v
             bir::MemoryAddress{
                 .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
                 .base_value = access.base_value,
-                .byte_offset = static_cast<std::int64_t>(
-                    access.byte_offset + element_index * access.element_stride_bytes),
+                .byte_offset = static_cast<std::int64_t>(byte_offset),
                 .size_bytes = slot_size,
                 .align_bytes = slot_size,
+                .provenance =
+                    [&]() {
+                      auto provenance = access.provenance;
+                      if (provenance.base_identity.kind ==
+                          bir::MemoryProvenanceBaseIdentityKind::Unknown) {
+                        provenance = pointer_value_base_provenance(access.base_value);
+                      }
+                      provenance.requested_range = bir::make_memory_byte_range(
+                          static_cast<std::int64_t>(byte_offset), slot_size);
+                      provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+                      return provenance;
+                    }(),
             },
     });
     element_values.push_back(bir::Value::named(value_type, element_name));
@@ -438,6 +451,8 @@ bool BirFunctionLowerer::append_dynamic_pointer_value_array_store(
   for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
     const std::string element_name =
         std::string(scratch_prefix) + ".elt" + std::to_string(element_index);
+    const auto byte_offset =
+        access.byte_offset + element_index * access.element_stride_bytes;
     const std::string load_slot = element_name + ".load.addr";
     if (!ensure_local_scratch_slot(load_slot, value_type, slot_size)) {
       return false;
@@ -449,10 +464,21 @@ bool BirFunctionLowerer::append_dynamic_pointer_value_array_store(
             bir::MemoryAddress{
                 .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
                 .base_value = access.base_value,
-                .byte_offset = static_cast<std::int64_t>(
-                    access.byte_offset + element_index * access.element_stride_bytes),
+                .byte_offset = static_cast<std::int64_t>(byte_offset),
                 .size_bytes = slot_size,
                 .align_bytes = slot_size,
+                .provenance =
+                    [&]() {
+                      auto provenance = access.provenance;
+                      if (provenance.base_identity.kind ==
+                          bir::MemoryProvenanceBaseIdentityKind::Unknown) {
+                        provenance = pointer_value_base_provenance(access.base_value);
+                      }
+                      provenance.requested_range = bir::make_memory_byte_range(
+                          static_cast<std::int64_t>(byte_offset), slot_size);
+                      provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+                      return provenance;
+                    }(),
             },
     });
 
@@ -487,10 +513,21 @@ bool BirFunctionLowerer::append_dynamic_pointer_value_array_store(
             bir::MemoryAddress{
                 .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
                 .base_value = access.base_value,
-                .byte_offset = static_cast<std::int64_t>(
-                    access.byte_offset + element_index * access.element_stride_bytes),
+                .byte_offset = static_cast<std::int64_t>(byte_offset),
                 .size_bytes = slot_size,
                 .align_bytes = slot_size,
+                .provenance =
+                    [&]() {
+                      auto provenance = access.provenance;
+                      if (provenance.base_identity.kind ==
+                          bir::MemoryProvenanceBaseIdentityKind::Unknown) {
+                        provenance = pointer_value_base_provenance(access.base_value);
+                      }
+                      provenance.requested_range = bir::make_memory_byte_range(
+                          static_cast<std::int64_t>(byte_offset), slot_size);
+                      provenance.range_verdict = bir::MemoryRangeVerdict::UnknownCompatible;
+                      return provenance;
+                    }(),
             },
     });
   }

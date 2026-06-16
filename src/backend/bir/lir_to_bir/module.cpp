@@ -759,6 +759,11 @@ void BirFunctionLowerer::seed_pointer_param_addresses() {
         .base_value = bir::Value::named(bir::TypeKind::Ptr, param.name),
         .value_type = bir::TypeKind::Void,
         .byte_offset = 0,
+        .provenance =
+            memory_provenance_for_base(
+                bir::MemoryProvenanceBaseIdentityKind::FormalParameter,
+                param.name,
+                bir::Value::named(bir::TypeKind::Ptr, param.name)),
     };
   }
 }
@@ -909,6 +914,13 @@ bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBloc
                                                                       "%ret.sret"),
                                                     return_info_->align_bytes,
                                                     function_.name + ".ret.sret.copy",
+                                                    memory_provenance_for_base(
+                                                        bir::MemoryProvenanceBaseIdentityKind::
+                                                            SretParameter,
+                                                        "%ret.sret",
+                                                        bir::Value::named(bir::TypeKind::Ptr,
+                                                                          "%ret.sret"),
+                                                        return_info_->size_bytes),
                                                     &lowered_block->insts)) {
           note_function_lowering_family_failure("scalar-control-flow semantic family");
           return false;

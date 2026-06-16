@@ -105,11 +105,14 @@ static bir::MemoryAccessProvenance pointer_value_memory_provenance(
     std::int64_t byte_offset,
     std::size_t size_bytes) {
   bir::MemoryAccessProvenance provenance = pointer_address.provenance;
-  provenance.base_identity = bir::MemoryProvenanceBaseIdentity{
-      .kind = bir::MemoryProvenanceBaseIdentityKind::PointerValue,
-      .spelling = pointer_address.base_value.name,
-      .value = pointer_address.base_value,
-  };
+  if (provenance.base_identity.kind ==
+      bir::MemoryProvenanceBaseIdentityKind::Unknown) {
+    provenance.base_identity = bir::MemoryProvenanceBaseIdentity{
+        .kind = bir::MemoryProvenanceBaseIdentityKind::PointerValue,
+        .spelling = pointer_address.base_value.name,
+        .value = pointer_address.base_value,
+    };
+  }
   provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
   if (pointer_address.dynamic_element_count != 0 ||
       pointer_address.dynamic_element_stride_bytes != 0) {
@@ -208,6 +211,8 @@ static std::optional<BirFunctionLowerer::PointerAddress> make_runtime_global_poi
       .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(result_name)),
       .dynamic_element_count = global_info.runtime_element_count,
       .dynamic_element_stride_bytes = global_info.runtime_element_stride_bytes,
+      .provenance = unknown_runtime_base_provenance(
+          bir::Value::named(bir::TypeKind::Ptr, std::string(result_name))),
   };
 }
 
@@ -959,6 +964,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
         .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(result_name)),
         .value_type = bir::TypeKind::Void,
         .byte_offset = 0,
+        .provenance = unknown_runtime_base_provenance(
+            bir::Value::named(bir::TypeKind::Ptr, std::string(result_name))),
     };
   }
   return true;

@@ -424,6 +424,7 @@ bool BirFunctionLowerer::append_local_aggregate_copy_to_pointer(
     const bir::Value& target_pointer,
     std::size_t target_align_bytes,
     std::string_view temp_prefix,
+    bir::MemoryAccessProvenance target_provenance,
     std::vector<bir::Inst>* lowered_insts) const {
   const auto source_leaves = collect_sorted_leaf_slots(source_slots);
   for (const auto& [byte_offset, source_slot_name] : source_leaves) {
@@ -450,6 +451,15 @@ bool BirFunctionLowerer::append_local_aggregate_copy_to_pointer(
             .byte_offset = static_cast<std::int64_t>(byte_offset),
             .size_bytes = slot_size,
             .align_bytes = std::max(slot_size, target_align_bytes),
+            .provenance =
+                [&]() {
+                  auto provenance = target_provenance;
+                  if (!provenance.requested_range.available) {
+                    provenance.requested_range = bir::make_memory_byte_range(
+                        static_cast<std::int64_t>(byte_offset), slot_size);
+                  }
+                  return provenance;
+                }(),
         },
     });
   }
@@ -497,6 +507,17 @@ bool BirFunctionLowerer::materialize_aggregate_param_aliases(std::vector<bir::In
                   .byte_offset = static_cast<std::int64_t>(byte_offset),
                   .size_bytes = slot_size,
                   .align_bytes = std::max(slot_size, info.layout.align_bytes),
+                  .provenance =
+                      [&]() {
+                        auto provenance = memory_provenance_for_base(
+                            bir::MemoryProvenanceBaseIdentityKind::ByvalParameter,
+                            param_name,
+                            bir::Value::named(bir::TypeKind::Ptr, param_name),
+                            info.layout.size_bytes);
+                        provenance.requested_range = bir::make_memory_byte_range(
+                            static_cast<std::int64_t>(byte_offset), slot_size);
+                        return provenance;
+                      }(),
               },
       });
       lowered_insts->push_back(bir::StoreLocalInst{

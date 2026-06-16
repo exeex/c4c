@@ -9,6 +9,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace c4c::backend::lir_to_bir_detail {
@@ -80,6 +81,7 @@ struct DynamicPointerValueArrayAccess {
   std::size_t element_count = 0;
   std::size_t element_stride_bytes = 0;
   bir::Value index;
+  bir::MemoryAccessProvenance provenance;
 };
 
 struct LocalPointerArrayBase {
@@ -142,6 +144,50 @@ struct PointerAddress {
   std::string type_text;
   bir::MemoryAccessProvenance provenance;
 };
+
+[[nodiscard]] inline bir::MemoryObjectExtent complete_memory_object_extent(
+    std::size_t size_bytes) {
+  return bir::MemoryObjectExtent{
+      .completeness = bir::MemoryObjectExtentCompleteness::Complete,
+      .size_bytes = size_bytes,
+      .size_known = true,
+  };
+}
+
+[[nodiscard]] inline bir::MemoryAccessProvenance memory_provenance_for_base(
+    bir::MemoryProvenanceBaseIdentityKind kind,
+    std::string spelling,
+    bir::Value value = {},
+    std::optional<std::size_t> complete_extent_size = std::nullopt) {
+  bir::MemoryAccessProvenance provenance;
+  provenance.base_identity = bir::MemoryProvenanceBaseIdentity{
+      .kind = kind,
+      .spelling = std::move(spelling),
+      .value = std::move(value),
+  };
+  if (complete_extent_size.has_value()) {
+    provenance.object_extent = complete_memory_object_extent(*complete_extent_size);
+  }
+  return provenance;
+}
+
+[[nodiscard]] inline bir::MemoryAccessProvenance pointer_value_base_provenance(
+    const bir::Value& value,
+    std::optional<std::size_t> complete_extent_size = std::nullopt) {
+  return memory_provenance_for_base(
+      bir::MemoryProvenanceBaseIdentityKind::PointerValue,
+      value.name,
+      value,
+      complete_extent_size);
+}
+
+[[nodiscard]] inline bir::MemoryAccessProvenance unknown_runtime_base_provenance(
+    const bir::Value& value) {
+  return memory_provenance_for_base(
+      bir::MemoryProvenanceBaseIdentityKind::UnknownRuntimeBase,
+      value.name,
+      value);
+}
 
 struct AggregateArrayExtent {
   std::size_t element_count = 0;

@@ -8,46 +8,54 @@ Current Step Title: Populate Base Identity and Known Extent Facts
 
 ## Just Finished
 
-Step 3: Populate Base Identity and Known Extent Facts completed for the
-prepared local/global/string route subset.
+Step 3: Populate Base Identity and Known Extent Facts continued for pointer
+SSA/value, formal, byval, sret, and explicit unknown-runtime base routes.
 
-Updated prepared stack-layout memory-address publication so already accepted
-direct local-slot, direct global-symbol, and direct string-constant routes keep
-their existing behavior while the passive provenance carrier records facts
-that were already authoritative on those paths:
+Updated existing pointer-carrier producers without changing route admission,
+address kind, byte offsets, sizes, alignments, or prepared/prealloc consumer
+behavior:
 
-- direct frame-slot accesses now populate fallback `LocalSlot` base identity
-  from the BIR load/store slot and known complete object extent from the
-  resolved `PreparedFrameSlot::size_bytes`
-- direct global accesses without a structured BIR address now populate
-  `GlobalSymbol` base identity and known complete object extent from the
-  resolved `bir::Global`
-- direct global and string-constant accesses with a structured BIR address now
-  preserve any existing address provenance, fill only missing base identity,
-  and populate known complete extent from the resolved `bir::Global` when its
-  size is nonzero
-- requested ranges still use the existing defensive
-  `bir::make_memory_byte_range` construction and `range_verdict` remains the
-  neutral `UnknownCompatible`
-
-No prepared/prealloc consumer gates on the new extent facts in this slice.
+- `PointerAddress` and dynamic pointer-value array side-table records now have
+  reusable provenance helpers for `PointerValue`, `UnknownRuntimeBase`, and
+  complete object extents.
+- pointer-memory access lowering now preserves a non-unknown carrier identity
+  instead of overwriting formal/byval/sret/unknown-runtime provenance with a
+  generic `PointerValue`; fallback remains `PointerValue` when no stronger
+  identity exists.
+- non-byval/non-sret formal pointer params seed `FormalParameter` base identity
+  with unknown extent, keeping existing pointer-address routing unchanged.
+- byval aggregate parameter materialization records `ByvalParameter` identity
+  and complete extent from the already selected aggregate layout on emitted
+  pointer-value loads.
+- sret return-copy stores record `SretParameter` identity and complete extent
+  from the existing return ABI layout.
+- direct `calloc` pointer carriers record `PointerValue` identity and complete
+  extent only when immediate count*stride fits in `size_t`; dynamic alloca,
+  runtime global pointer bases, loaded pointer values, and mutable pointer-slot
+  reloads remain explicit `UnknownRuntimeBase`.
+- GEP-derived pointer-address records and dynamic pointer-value array
+  synthesized load/store addresses carry forward existing base provenance and
+  publish requested byte ranges while leaving `range_verdict` at
+  `UnknownCompatible`.
 
 ## Suggested Next
 
-Populate the remaining Step 3 identity/extent routes for pointer SSA/value,
-formal, byval, sret, and explicit unknown-runtime bases, still keeping range
-proof and consumer behavior unchanged.
+Review whether any remaining Step 3 producers outside the current owned memory
+and call-return routes still emit pointer-value memory addresses with blank
+provenance; otherwise hand Step 3 to the supervisor for review/escalation into
+requested-range proof.
 
 ## Watchouts
 
-- This packet deliberately treats zero-sized global extents as unknown instead
-  of publishing a complete zero-byte object extent.
-- The provenance carrier remains passive. Do not route prepared lookup,
-  publication, or target-specific acceptance on these facts until the
-  supervisor selects the consumer-verdict step.
-- This slice uses resolved prepared stack/global facts only; it does not try to
-  infer layout authority or prove in-bounds ranges from
-  `can_use_base_plus_offset`.
+- The provenance carrier remains passive. No prepared/prealloc consumer gates
+  on the new facts in this slice.
+- Byval/sret complete extents come only from already selected aggregate/return
+  ABI layouts. Formal pointer params and loaded/runtime pointer values keep
+  unknown extent.
+- This slice still does not prove requested ranges, dynamic array bounds, or
+  layout authority; `range_verdict` remains neutral `UnknownCompatible`.
+- Dynamic pointer-value array element offsets use the existing arithmetic and
+  casts; this packet did not add new overflow rejection or range proof there.
 
 ## Proof
 
