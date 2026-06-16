@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/286_aarch64_00204_stdarg_semantic_bir_local_memory_admission.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Repair Semantic Admission for the Aggregate `va_arg` Load Shape
+Current Step ID: Step 3
+Current Step Title: Repair the Exposed `stdarg` Direct-Call Blocker
 
 # Current Packet
 
@@ -28,7 +28,11 @@ failure is later and separate:
 Execute the next packet against the newly exposed `stdarg` direct-call semantic
 family failure, starting from the first unsupported call in the AArch64
 semantic route rather than revisiting the now-cleared `myprintf` load
-local-memory family.
+local-memory family. This remains part of the active runbook because the same
+AArch64 00204 publication tests named by the source idea now fail later in the
+same semantic route; do not split it into a separate idea unless investigation
+shows the direct-call blocker is unrelated to the 00204 stdarg publication
+path.
 
 ## Watchouts
 

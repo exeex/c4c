@@ -52,13 +52,14 @@ or CTest labels.
 
 ## Working Model
 
-- The current failure is before BIR production for AArch64 `myprintf`:
-  `semantic lir_to_bir function 'myprintf' failed in load local-memory semantic family`.
-- The likely failing surface is a `LoadLocalInst` or address-derived load for
-  an aggregate `va_arg` payload that existing local-slot, pointer, or aggregate
-  layout carriers do not yet admit.
-- The repair should reuse structured type/layout, local-slot, pointer, and
-  prepared variadic carriers already present in the semantic path.
+- Step 2 moved the AArch64 target tests past the earlier `myprintf` load
+  local-memory failure.
+- The current exposed failure is later in the same semantic route:
+  `semantic lir_to_bir function 'stdarg' failed in semantic call family
+  'direct-call semantic family'`.
+- The remaining repair should reuse structured call, type/layout, local-slot,
+  pointer, aggregate, and prepared variadic carriers already present in the
+  semantic path.
 
 ## Execution Rules
 
@@ -125,7 +126,36 @@ Completion check:
 - The diff contains no named-case shortcut for `00204.c`, `myprintf`, `movi`,
   or HFA fixture names.
 
-### Step 3: Add Focused Capability Coverage
+### Step 3: Repair the Exposed `stdarg` Direct-Call Blocker
+
+Goal: continue the same AArch64 00204 semantic route after the local-memory
+repair by admitting the newly exposed `stdarg` direct-call semantic family
+shape.
+
+Primary target: the smallest semantic BIR call-lowering surface that owns the
+first unsupported direct call in `stdarg`.
+
+Actions:
+
+- Reproduce the current AArch64 target failures and capture the first rejected
+  call inside `stdarg`, including callee, argument value shapes, aggregate or
+  variadic carriers, and target ABI facts needed by the call family.
+- Compare the rejected AArch64 call shape with the corresponding x86 00204
+  semantic route before choosing an implementation surface.
+- Implement only a general semantic call-lowering admission rule needed for the
+  exposed shape; do not broaden into unrelated AArch64 ABI rewrites.
+- Preserve the Step 2 local-memory repair and keep the same narrow AArch64
+  publication tests as the proof command unless the supervisor delegates a
+  stricter subset.
+
+Completion check:
+
+- The narrow AArch64 target tests no longer fail in `stdarg` /
+  `direct-call semantic family`.
+- The diff contains no named-case shortcut for `00204.c`, `stdarg`,
+  `myprintf`, `movi`, or HFA fixture names.
+
+### Step 4: Add Focused Capability Coverage
 
 Goal: prove the semantic capability independently of the named `00204.c`
 fixture.
@@ -146,7 +176,7 @@ Completion check:
 - The focused test fails before the semantic repair and passes after it.
 - The test would reject a fixture-name-only or expectation-only fix.
 
-### Step 4: Validate AArch64 and x86 Publication Behavior
+### Step 5: Validate AArch64 and x86 Publication Behavior
 
 Goal: prove the fix satisfies the source idea without regressing existing 00204
 behavior.
@@ -159,7 +189,7 @@ Actions:
 - Run:
   `ctest --test-dir build -R '^(backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication)$' --output-on-failure`
 - Run the corresponding x86 00204 semantic/prepared dump tests.
-- Run the focused capability test from Step 3.
+- Run the focused capability test from Step 4.
 - If multiple semantic local-memory owners changed, ask the supervisor to
   choose a broader backend or full regression command.
 
