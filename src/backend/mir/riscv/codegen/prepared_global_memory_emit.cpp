@@ -1,0 +1,169 @@
+#include "prepared_global_memory_emit.hpp"
+
+#include "prepared_emit_context.hpp"
+
+#include "../../../prealloc/addressing.hpp"
+#include "../../../prealloc/names.hpp"
+
+#include <algorithm>
+
+namespace c4c::backend::riscv::codegen {
+namespace {
+
+const c4c::backend::bir::Global* find_prepared_global(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::LinkNameId link_name,
+    const std::string& fallback_name) {
+  if (link_name != c4c::kInvalidLinkName) {
+    const auto it = std::find_if(
+        prepared.module.globals.begin(),
+        prepared.module.globals.end(),
+        [&](const c4c::backend::bir::Global& global) {
+          return global.link_name_id == link_name;
+        });
+    if (it != prepared.module.globals.end()) {
+      return &*it;
+    }
+  }
+  if (fallback_name.empty()) {
+    return nullptr;
+  }
+  const auto it = std::find_if(
+      prepared.module.globals.begin(),
+      prepared.module.globals.end(),
+      [&](const c4c::backend::bir::Global& global) {
+        return global.name == fallback_name;
+      });
+  return it == prepared.module.globals.end() ? nullptr : &*it;
+}
+
+bool is_simple_defined_i32_global(const c4c::backend::bir::Global& global) {
+  namespace bir = c4c::backend::bir;
+
+  return !global.is_extern &&
+         !global.is_thread_local &&
+         global.type == bir::TypeKind::I32 &&
+         global.size_bytes == 4 &&
+         global.align_bytes >= 4 &&
+         global.initializer_elements.empty() &&
+         !global.initializer_symbol_name.has_value() &&
+         global.initializer_symbol_name_id == c4c::kInvalidLinkName;
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess* simple_i32_global_access_for(
+    const PreparedCurrentInstructionContext& context,
+    std::optional<c4c::ValueNameId> result_value_name,
+    std::optional<c4c::ValueNameId> stored_value_name,
+    c4c::LinkNameId global_name_id) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (context.lookups == nullptr) {
+    return nullptr;
+  }
+  const auto* access = prepare::find_indexed_prepared_memory_access(
+      &context.lookups->memory_accesses,
+      context.block_label,
+      context.instruction_index);
+  if (access == nullptr ||
+      access->result_value_name != result_value_name ||
+      access->stored_value_name != stored_value_name ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      access->address.symbol_name != std::optional<c4c::LinkNameId>{global_name_id} ||
+      access->address.byte_offset != 0 ||
+      access->address.size_bytes != 4 ||
+      access->address.align_bytes < 4 ||
+      !access->address.can_use_base_plus_offset) {
+    return nullptr;
+  }
+  return access;
+}
+
+}  // namespace
+
+bool append_prepared_global_storage_asm(
+    std::string& out,
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  (void)out;
+  return prepared.module.globals.empty();
+}
+
+std::optional<std::string> emit_riscv_simple_load_global(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::LoadGlobalInst& load,
+    const PreparedCurrentInstructionContext& context) {
+  namespace bir = c4c::backend::bir;
+
+  if (load.result.kind != bir::Value::Kind::Named ||
+      load.result.type != bir::TypeKind::I32 ||
+      load.result.name.empty() ||
+      load.global_name_id == c4c::kInvalidLinkName ||
+      load.byte_offset != 0 ||
+      load.align_bytes < 4) {
+    return std::nullopt;
+  }
+  const auto result_name = context.names.value_names.find(load.result.name);
+  if (result_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto* global = find_prepared_global(
+      prepared,
+      load.global_name_id,
+      load.global_name);
+  const auto* access = simple_i32_global_access_for(
+      context,
+      result_name,
+      std::nullopt,
+      load.global_name_id);
+  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global)) {
+    return std::nullopt;
+  }
+
+  return std::nullopt;
+}
+
+std::optional<std::string> emit_riscv_simple_store_global(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::StoreGlobalInst& store,
+    const PreparedCurrentInstructionContext& context) {
+  namespace bir = c4c::backend::bir;
+
+  if (store.value.type != bir::TypeKind::I32 ||
+      store.global_name_id == c4c::kInvalidLinkName ||
+      store.byte_offset != 0 ||
+      store.align_bytes < 4) {
+    return std::nullopt;
+  }
+
+  std::optional<c4c::ValueNameId> stored_name;
+  if (store.value.kind == bir::Value::Kind::Named) {
+    if (store.value.name.empty()) {
+      return std::nullopt;
+    }
+    stored_name = context.names.value_names.find(store.value.name);
+    if (*stored_name == c4c::kInvalidValueName) {
+      return std::nullopt;
+    }
+  } else if (store.value.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+
+  const auto* global = find_prepared_global(
+      prepared,
+      store.global_name_id,
+      store.global_name);
+  const auto* access = simple_i32_global_access_for(
+      context,
+      std::nullopt,
+      stored_name,
+      store.global_name_id);
+  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global)) {
+    return std::nullopt;
+  }
+
+  return std::nullopt;
+}
+
+}  // namespace c4c::backend::riscv::codegen

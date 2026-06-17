@@ -2,6 +2,7 @@
 
 #include "emit.hpp"
 #include "prepared_function_emit.hpp"
+#include "prepared_global_memory_emit.hpp"
 
 #include <algorithm>
 #include <string>
@@ -12,7 +13,11 @@ std::string emit_prepared_module_text(
     const c4c::backend::prepare::PreparedBirModule& module) {
   namespace prepare = c4c::backend::prepare;
 
-  std::string out = "    .text\n";
+  std::string out;
+  if (!append_prepared_global_storage_asm(out, module)) {
+    return "    .text\n";
+  }
+  out += "    .text\n";
   for (const auto& function : module.control_flow.functions) {
     const auto lookups = prepare::make_prepared_function_lookups(module, function);
     const auto function_name = prepare::prepared_function_name(module.names,

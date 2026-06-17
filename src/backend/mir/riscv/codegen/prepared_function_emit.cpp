@@ -3,6 +3,7 @@
 #include "prepared_call_emit.hpp"
 #include "prepared_emit_context.hpp"
 #include "prepared_frame_emit.hpp"
+#include "prepared_global_memory_emit.hpp"
 #include "prepared_local_memory_emit.hpp"
 #include "prepared_scalar_emit.hpp"
 
@@ -226,6 +227,32 @@ bool append_simple_prepared_bir_function_asm(
             prepared,
             *function_name_id,
             *load_local,
+            context);
+        if (!emitted.has_value()) {
+          return false;
+        }
+        out += *emitted;
+        continue;
+      }
+
+      const auto* store_global = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst);
+      if (store_global != nullptr) {
+        const auto emitted = emit_riscv_simple_store_global(
+            prepared,
+            *store_global,
+            context);
+        if (!emitted.has_value()) {
+          return false;
+        }
+        out += *emitted;
+        continue;
+      }
+
+      const auto* load_global = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst);
+      if (load_global != nullptr) {
+        const auto emitted = emit_riscv_simple_load_global(
+            prepared,
+            *load_global,
             context);
         if (!emitted.has_value()) {
           return false;

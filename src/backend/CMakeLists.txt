@@ -52,6 +52,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_emit_context.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_frame_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_function_emit.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_global_memory_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_local_memory_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_module_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_scalar_emit.cpp"
