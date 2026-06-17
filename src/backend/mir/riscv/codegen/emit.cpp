@@ -387,6 +387,28 @@ std::optional<std::string> prepared_pointer_register_for_value(
   return home.register_name;
 }
 
+std::optional<std::string> prepared_register_for_value_name_id(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::ValueNameId value_name) {
+  if (lookups == nullptr || value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto value_id_it = lookups->value_homes.value_ids.find(value_name);
+  if (value_id_it == lookups->value_homes.value_ids.end()) {
+    return std::nullopt;
+  }
+  const auto home_it = lookups->value_homes.homes_by_id.find(value_id_it->second);
+  if (home_it == lookups->value_homes.homes_by_id.end() || home_it->second == nullptr) {
+    return std::nullopt;
+  }
+  const auto& home = *home_it->second;
+  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+      !home.register_name.has_value() || home.register_name->empty()) {
+    return std::nullopt;
+  }
+  return home.register_name;
+}
+
 std::optional<std::int64_t> prepared_immediate_i32_for_value(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -593,19 +615,65 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
   if (binary.opcode != c4c::backend::bir::BinaryOpcode::Add ||
       binary.result.kind != c4c::backend::bir::Value::Kind::Named ||
       binary.result.type != c4c::backend::bir::TypeKind::Ptr ||
-      prepared_pointer_register_for_value(names, lookups, binary.result).has_value() ||
-      !has_frame_slot_address_materialization_at(lookups, block_label, instruction_index)) {
+      prepared_pointer_register_for_value(names, lookups, binary.result).has_value()) {
     return std::nullopt;
   }
   const auto* home = prepared_value_home_for(names, lookups, binary.result);
   if (home == nullptr ||
-      home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
+      home->kind != prepare::PreparedValueHomeKind::StackSlot) {
     return std::nullopt;
   }
-  return std::string{};
+  if (has_frame_slot_address_materialization_at(lookups, block_label, instruction_index)) {
+    return std::string{};
+  }
+  if (!home->offset_bytes.has_value() ||
+      home->size_bytes != std::optional<std::size_t>{8} ||
+      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(*home->offset_bytes))) {
+    return std::nullopt;
+  }
+
+  const bir::Value* base = nullptr;
+  const bir::Value* offset = nullptr;
+  if (binary.lhs.type == bir::TypeKind::Ptr &&
+      binary.rhs.type != bir::TypeKind::Ptr) {
+    base = &binary.lhs;
+    offset = &binary.rhs;
+  } else if (binary.rhs.type == bir::TypeKind::Ptr &&
+             binary.lhs.type != bir::TypeKind::Ptr) {
+    base = &binary.rhs;
+    offset = &binary.lhs;
+  } else {
+    return std::nullopt;
+  }
+
+  const auto base_register = prepared_pointer_register_for_value(names, lookups, *base);
+  if (!base_register.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string out;
+  const auto offset_immediate = simple_or_prepared_integer_immediate(names, lookups, *offset);
+  if (offset_immediate.has_value()) {
+    if (!fits_signed_12_bit_immediate(*offset_immediate)) {
+      return std::nullopt;
+    }
+    out += "    addi t3, " + *base_register + ", " +
+           std::to_string(*offset_immediate) + "\n";
+  } else {
+    const auto offset_register = prepared_register_for_value(names, lookups, *offset);
+    if (!offset_register.has_value()) {
+      return std::nullopt;
+    }
+    out += "    add t3, " + *base_register + ", " + *offset_register + "\n";
+  }
+  out += "    sd t3, " + std::to_string(*home->offset_bytes) + "(sp)\n";
+  return out;
 }
 
 std::optional<std::string> emit_riscv_simple_binary(
@@ -765,7 +833,22 @@ std::optional<std::string> emit_riscv_simple_call(
         plan->aggregate_transport.has_value()) {
       return std::nullopt;
     }
-    if (plan->source_encoding ==
+    const auto* source_selection =
+        plan->source_selection.has_value() ? &*plan->source_selection : nullptr;
+    if (source_selection != nullptr &&
+        source_selection->kind ==
+            prepare::PreparedCallArgumentSourceSelectionKind::
+                LocalFrameAddressMaterialization) {
+      if (!source_selection->source_stack_offset_bytes.has_value() ||
+          *source_selection->source_stack_offset_bytes >
+              static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
+          !fits_signed_12_bit_immediate(static_cast<std::int64_t>(
+              *source_selection->source_stack_offset_bytes))) {
+        return std::nullopt;
+      }
+      out += "    addi " + *plan->destination_register_name + ", sp, " +
+             std::to_string(*source_selection->source_stack_offset_bytes) + "\n";
+    } else if (plan->source_encoding ==
             prepare::PreparedStorageEncodingKind::Register &&
         plan->source_register_bank ==
             std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} &&
@@ -927,6 +1010,46 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_frame_slot_acc
       !access->address.frame_slot_id.has_value() ||
       access->address.size_bytes != 8 ||
       access->address.align_bytes < 8 ||
+      !access->address.can_use_base_plus_offset ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return nullptr;
+  }
+  return access;
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i32_access_for(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadLocalInst& load) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr ||
+      load.result.kind != bir::Value::Kind::Named ||
+      load.result.type != bir::TypeKind::I32 ||
+      load.result.name.empty()) {
+    return nullptr;
+  }
+  const auto result_value_name = names.value_names.find(load.result.name);
+  if (result_value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  const auto* access = prepare::find_indexed_prepared_memory_access(
+      &lookups->memory_accesses,
+      block_label,
+      instruction_index);
+  if (access == nullptr ||
+      access->result_value_name != std::optional<c4c::ValueNameId>{result_value_name} ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !access->address.pointer_value_name.has_value() ||
+      access->address.size_bytes != 4 ||
+      access->address.align_bytes < 4 ||
+      access->address.byte_offset < 0 ||
+      access->address.byte_offset % 4 != 0 ||
       !access->address.can_use_base_plus_offset ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return nullptr;
@@ -1205,6 +1328,48 @@ std::optional<std::string> emit_riscv_simple_load_local(
   if (load.result.type != c4c::backend::bir::TypeKind::I32) {
     return std::nullopt;
   }
+
+  if (const auto* pointer_access = simple_pointer_value_i32_access_for(
+          names,
+          lookups,
+          block_label,
+          instruction_index,
+          load);
+      pointer_access != nullptr) {
+    const auto base_register = prepared_register_for_value_name_id(
+        lookups,
+        *pointer_access->address.pointer_value_name);
+    if (!base_register.has_value()) {
+      return std::nullopt;
+    }
+    const auto destination_register =
+        prepared_register_for_value(names, lookups, load.result);
+    if (destination_register.has_value()) {
+      return "    lw " + *destination_register + ", " +
+             std::to_string(pointer_access->address.byte_offset) + "(" +
+             *base_register + ")\n";
+    }
+
+    const auto* destination_home = prepared_value_home_for(names, lookups, load.result);
+    if (destination_home == nullptr ||
+        destination_home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+        !destination_home->offset_bytes.has_value() ||
+        destination_home->size_bytes != std::optional<std::size_t>{4}) {
+      return std::nullopt;
+    }
+    std::string out = "    lw t3, " +
+                      std::to_string(pointer_access->address.byte_offset) + "(" +
+                      *base_register + ")\n";
+    const auto stored = emit_i32_store_to_stack_offset(
+        "t3",
+        static_cast<std::int64_t>(*destination_home->offset_bytes));
+    if (!stored.has_value()) {
+      return std::nullopt;
+    }
+    out += *stored;
+    return out;
+  }
+
   const auto* access = simple_frame_slot_access_for(
       lookups,
       block_label,

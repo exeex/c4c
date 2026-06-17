@@ -372,6 +372,13 @@ c4c_add_backend_rv64_runtime_case(
   LABELS local memory pointer
 )
 c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_local_dynamic_member_array
+  SRC "${BACKEND_CASE_ROOT}/local_dynamic_member_array.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 11
+  LABELS local memory pointer call
+)
+c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_packed_local_member_offsets
   SRC "${BACKEND_CASE_ROOT}/packed_local_member_offsets.c"
   CASE_TIMEOUT_SEC 10
