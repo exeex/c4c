@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -584,7 +585,41 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for(
   return access;
 }
 
+std::optional<std::int64_t> simple_frame_slot_sp_offset_for(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedMemoryAccess& access) {
+  if (!access.address.frame_slot_id.has_value()) {
+    return std::nullopt;
+  }
+  const auto* frame_slot = c4c::backend::prepare::find_frame_slot_by_id(
+      prepared.stack_layout,
+      *access.address.frame_slot_id);
+  if (frame_slot == nullptr || frame_slot->function_name != function_name ||
+      access.address.byte_offset < 0) {
+    return std::nullopt;
+  }
+  const auto access_offset = static_cast<std::size_t>(access.address.byte_offset);
+  if (access_offset > frame_slot->size_bytes ||
+      access.address.size_bytes > frame_slot->size_bytes - access_offset) {
+    return std::nullopt;
+  }
+  if (frame_slot->offset_bytes >
+      static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) -
+          access_offset) {
+    return std::nullopt;
+  }
+  const auto stack_offset =
+      static_cast<std::int64_t>(frame_slot->offset_bytes + access_offset);
+  if (!fits_signed_12_bit_immediate(stack_offset)) {
+    return std::nullopt;
+  }
+  return stack_offset;
+}
+
 std::optional<std::string> emit_riscv_simple_store_local(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
     const c4c::backend::bir::StoreLocalInst& store,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
@@ -598,16 +633,23 @@ std::optional<std::string> emit_riscv_simple_store_local(
   if (access == nullptr) {
     return std::nullopt;
   }
+  const auto stack_offset =
+      simple_frame_slot_sp_offset_for(prepared, function_name, *access);
+  if (!stack_offset.has_value()) {
+    return std::nullopt;
+  }
 
   std::string out;
   if (!emit_move_to_register(out, "t1", names, lookups, store.value)) {
     return std::nullopt;
   }
-  out += "    sw t1, " + std::to_string(access->address.byte_offset) + "(sp)\n";
+  out += "    sw t1, " + std::to_string(*stack_offset) + "(sp)\n";
   return out;
 }
 
 std::optional<std::string> emit_riscv_simple_load_local(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
     const c4c::backend::bir::LoadLocalInst& load,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
@@ -621,13 +663,18 @@ std::optional<std::string> emit_riscv_simple_load_local(
   if (access == nullptr) {
     return std::nullopt;
   }
+  const auto stack_offset =
+      simple_frame_slot_sp_offset_for(prepared, function_name, *access);
+  if (!stack_offset.has_value()) {
+    return std::nullopt;
+  }
   const auto destination_register = prepared_register_for_value(names, lookups, load.result);
   if (!destination_register.has_value()) {
     return std::nullopt;
   }
 
   return "    lw " + *destination_register + ", " +
-         std::to_string(access->address.byte_offset) + "(sp)\n";
+         std::to_string(*stack_offset) + "(sp)\n";
 }
 
 bool append_simple_prepared_bir_function_asm(
@@ -728,6 +775,8 @@ bool append_simple_prepared_bir_function_asm(
       const auto* store_local = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
       if (store_local != nullptr) {
         const auto emitted = emit_riscv_simple_store_local(
+            prepared,
+            *function_name_id,
             *store_local,
             *block_label_id,
             instruction_index,
@@ -743,6 +792,8 @@ bool append_simple_prepared_bir_function_asm(
       const auto* load_local = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
       if (load_local != nullptr) {
         const auto emitted = emit_riscv_simple_load_local(
+            prepared,
+            *function_name_id,
             *load_local,
             *block_label_id,
             instruction_index,
