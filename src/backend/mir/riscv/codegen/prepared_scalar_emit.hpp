@@ -88,8 +88,4 @@ struct SimpleCompare {
     std::optional<std::size_t> return_address_stack_offset,
     std::size_t stack_frame_bytes);
 
-[[nodiscard]] std::optional<std::string> emit_i32_load_from_stack_offset(
-    std::string_view destination_register,
-    std::int64_t stack_offset);
-
 }  // namespace c4c::backend::riscv::codegen

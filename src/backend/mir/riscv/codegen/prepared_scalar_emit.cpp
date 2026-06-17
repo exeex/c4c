@@ -1,6 +1,7 @@
 #include "prepared_scalar_emit.hpp"
 
 #include "prepared_frame_emit.hpp"
+#include "prepared_local_memory_emit.hpp"
 
 #include "../../../prealloc/addressing.hpp"
 
