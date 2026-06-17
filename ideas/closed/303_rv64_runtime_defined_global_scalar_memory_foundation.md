@@ -122,6 +122,32 @@ idea instead of widening this one.
 - `emit.cpp` starts growing prepared global lowering logic.
 - Tests or expectations are weakened to claim support.
 
+## Closure Note
+
+Closed after implementing the full scalar defined-global foundation: initialized
+global `i32` storage and loads, zero-initialized global `i32` storage and loads,
+and global `i32` stores followed by reloads through the prepared RV64
+global-memory owner. The accepted runtime cases
+`backend_rv64_runtime_global_load`, `backend_rv64_runtime_global_load_zero_init`,
+and `backend_rv64_runtime_global_store` all execute through qemu-backed real
+RV64 assembly with the expected exit codes.
+
+Closure validation:
+
+- `ctest --test-dir build -R '^backend_rv64_runtime' --output-on-failure`
+  passed with all 26 RV64 runtime cases, including the three global scalar
+  cases.
+- Focused RISC-V/backend-route validation preserved only the documented
+  `backend_riscv_prepared_edge_publication` baseline failure.
+- Backend-wide validation preserved only the same documented baseline failure.
+- Full-suite close guard compared `test_baseline.log` against regenerated
+  `test_after.log` with no pass/fail regression: 3233/3234 passed before and
+  after, with only `backend_riscv_prepared_edge_publication` failing.
+
+Remaining boundary: arrays, aggregates, pointer-valued globals, extern/TLS/GOT
+work, function-pointer globals, and broader object-emission behavior remain out
+of scope for separate future ideas.
+
 ## Notes For The Agent
 
 - Use the post-302 owner layout as the starting point. Add a small prepared
