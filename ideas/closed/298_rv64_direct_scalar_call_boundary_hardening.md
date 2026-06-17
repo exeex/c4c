@@ -74,6 +74,41 @@ those surfaces.
   call lowering touches shared backend routing, prepared call plans, or
   non-rv64 code.
 
+## Completion Notes
+
+Closed after the active runbook completed Step 5 validation.
+
+Implemented and registered qemu-backed rv64 runtime support for:
+
+- `two_arg_helper.c`
+- `local_arg_call.c`
+
+The accepted support is metadata-backed and limited to direct scalar register
+calls: prepared call plans are required, unsupported indirect/variadic/stack
+argument/memory return/aggregate/multi-lane forms reject before runnable
+assembly, GPR argument moves and scalar result publication use prepared
+call-plan/value-home facts, and call-containing prepared stack frames place the
+`ra` spill without overlapping prepared local or saved-register ranges.
+
+`two_arg_local_arg.c` remains an unregistered neighboring candidate. It is not
+required for this idea's closure because `local_arg_call.c` already proves a
+neighboring direct scalar local-argument path through the same semantic call
+lowering path.
+
+Validation recorded at close:
+
+- Regression guard over canonical rv64 runtime logs passed:
+  `test_before.log` had 18 passing tests and `test_after.log` had 19 passing
+  tests, with no new failures.
+- Step 5 rv64 runtime acceptance passed all 19
+  `backend_rv64_runtime_*` cases.
+- Step 5 RISC-V focused acceptance passed the two
+  `backend_codegen_route_riscv64_*` tests and preserved the pre-existing
+  `backend_riscv_prepared_edge_publication` failure.
+- Reviewer report `review/rv64_call_step1_hook_review.md` judged the route
+  aligned with this idea and not testcase-overfit after the first registered
+  call case.
+
 ## Reviewer Reject Signals
 
 - The route expands into indirect calls, varargs, stack args, or aggregate ABI
