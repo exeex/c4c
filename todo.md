@@ -1,62 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/302_rv64_prepared_emitter_context_interface_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Shared Prepared Lookup Surfaces
+Current Step ID: 2
+Current Step Title: Introduce A Narrow Prepared Emit Context
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 completed the prepared RV64 owner-header inventory without implementation
-edits.
+Step 2 introduced the first narrow prepared lookup support surface without
+behavior changes.
 
-Header surface classification:
-- `prepared_scalar_emit.hpp`: mixes owner emission APIs with shared lookup
-  utilities. Owner APIs are `SimpleCompare`,
-  `emit_riscv_simple_compare_branch`, `emit_riscv_simple_cast`,
-  `emit_riscv_simple_select`, `emit_riscv_simple_prepared_pointer_add`,
-  `emit_riscv_simple_binary`, and `emit_riscv_simple_return`. Shared lookup
-  utilities are `prepared_value_home_for`, `prepared_register_for_value`,
-  `prepared_pointer_register_for_value`,
-  `prepared_register_for_value_name_id`, `emit_move_to_register`, and
-  `has_frame_slot_address_materialization_at`.
-- `prepared_local_memory_emit.hpp`: owner APIs are
-  `emit_riscv_simple_store_local` and `emit_riscv_simple_load_local`; frame-ish
-  support utilities are `emit_i32_load_from_stack_offset` and
-  `emit_i32_store_to_stack_offset`.
-- `prepared_frame_emit.hpp`: frame/support utilities only:
-  immediate/offset fit checks, stack alignment helpers, saved-register frame
-  lookup, label spelling, target spelling, and `simple_frame_slot_sp_offset_for`
-  overloads.
-- `prepared_call_emit.hpp`: owner API only,
-  `emit_riscv_simple_call`, but it consumes scalar's shared move helper.
-- `prepared_function_emit.hpp`: owner orchestration API only,
-  `append_simple_prepared_bir_function_asm`.
-- `prepared_edge_publication_emit.hpp`: no exported helpers; compatibility API
-  remains in `emit.hpp`.
-- `prepared_module_emit.hpp`: owner API only, `emit_prepared_module_text`.
+Changed files:
+- `src/backend/mir/riscv/codegen/prepared_emit_context.hpp`
+- `src/backend/mir/riscv/codegen/prepared_emit_context.cpp`
+- `src/backend/mir/riscv/codegen/prepared_scalar_emit.hpp`
+- `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp`
+- `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp`
+- `src/backend/mir/riscv/codegen/prepared_function_emit.cpp`
+- `src/backend/CMakeLists.txt`
 
-Repeated bundles found:
-- `PreparedNameTables&` plus `PreparedFunctionLookups*` appears in scalar
-  value-home/register helpers, scalar emission APIs, call emission,
-  local-memory emission, and function orchestration call sites.
-- `PreparedFunctionLookups*` plus `BlockLabelId` plus instruction index appears
-  in frame-slot address-materialization checks and local-memory access helpers.
-- The wider tuple `PreparedNameTables&`, `PreparedFunctionLookups*`,
-  `BlockLabelId`, and instruction index appears in
-  `emit_riscv_simple_prepared_pointer_add`, both local-memory owner entry
-  points, and function-owner dispatch.
+Moved lookup/support declarations and definitions out of scalar's public helper
+surface into `prepared_emit_context.{hpp,cpp}`:
+`prepared_value_home_for`, `prepared_register_for_value`,
+`prepared_pointer_register_for_value`,
+`prepared_register_for_value_name_id`, and
+`has_frame_slot_address_materialization_at`.
+
+`prepared_scalar_emit.hpp` now keeps scalar owner/emission declarations and the
+still-scalar `emit_move_to_register`; local-memory and function owners include
+the new context header for direct lookup helper use. The scalar private
+rematerializable-immediate query now reuses `prepared_value_home_for` instead of
+owning a duplicate prepared value-id lookup.
 
 ## Suggested Next
 
-Delegate the first implementation packet for Step 2: introduce a narrow
-`prepared_emit_context.{hpp,cpp}` support surface and move the scalar-exported
-prepared value/register lookup declarations and definitions there first:
-`prepared_value_home_for`, `prepared_register_for_value`,
-`prepared_pointer_register_for_value`, `prepared_register_for_value_name_id`,
-and `has_frame_slot_address_materialization_at`. Keep behavior unchanged and
-update includes/build metadata only as needed for that extraction.
+Delegate the next context cleanup packet only if the supervisor wants to
+continue reducing Step 4 raw current-location parameter bundles: introduce an
+explicit owner-constructed lookup/context handle around
+`PreparedNameTables`, `PreparedFunctionLookups*`, `BlockLabelId`, and
+instruction index at the scalar/local-memory/function call sites, keeping block
+and instruction ownership visible.
 
 ## Watchouts
 
@@ -76,6 +60,8 @@ update includes/build metadata only as needed for that extraction.
 
 ## Proof
 
-No build or test command was run for this inventory-only packet. Use this proof
-command for the next implementation packet:
-`cmake --build --preset default && ctest --test-dir build -R '^backend_rv64_runtime' --output-on-failure`.
+Ran exactly:
+`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -R '\''^backend_rv64_runtime'\'' --output-on-failure; } > test_after.log 2>&1'`
+
+Result: passed. `test_after.log` contains a successful build and 23/23 passing
+`backend_rv64_runtime` tests.

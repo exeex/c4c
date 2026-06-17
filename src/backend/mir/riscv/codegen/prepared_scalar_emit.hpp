@@ -21,36 +21,12 @@ struct SimpleCompare {
 [[nodiscard]] std::optional<std::int64_t> simple_integer_immediate(
     const c4c::backend::bir::Value& value);
 
-[[nodiscard]] const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::bir::Value& value);
-
-[[nodiscard]] std::optional<std::string> prepared_register_for_value(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::bir::Value& value);
-
-[[nodiscard]] std::optional<std::string> prepared_pointer_register_for_value(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::bir::Value& value);
-
-[[nodiscard]] std::optional<std::string> prepared_register_for_value_name_id(
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    c4c::ValueNameId value_name);
-
 [[nodiscard]] bool emit_move_to_register(
     std::string& out,
     std::string_view destination_register,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Value& value);
-
-[[nodiscard]] bool has_frame_slot_address_materialization_at(
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    c4c::BlockLabelId block_label,
-    std::size_t instruction_index);
 
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_compare_branch(
     const SimpleCompare& compare,
