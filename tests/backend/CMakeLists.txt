@@ -400,6 +400,13 @@ c4c_add_backend_rv64_runtime_case(
   LABELS local memory pointer call
 )
 c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_global_load
+  SRC "${BACKEND_CASE_ROOT}/global_load.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 11
+  LABELS global memory load
+)
+c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_packed_local_member_offsets
   SRC "${BACKEND_CASE_ROOT}/packed_local_member_offsets.c"
   CASE_TIMEOUT_SEC 10

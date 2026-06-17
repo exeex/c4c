@@ -77,11 +77,20 @@ std::int32_t simple_i32_global_initializer(
   return static_cast<std::int32_t>(global.initializer->immediate);
 }
 
+std::string prepared_link_name_spelling(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::LinkNameId link_name) {
+  if (link_name == c4c::kInvalidLinkName) {
+    return {};
+  }
+  const std::string_view spelling = prepared.names.link_names.spelling(link_name);
+  return std::string{spelling};
+}
+
 const c4c::backend::prepare::PreparedMemoryAccess* simple_i32_global_access_for(
     const PreparedCurrentInstructionContext& context,
     std::optional<c4c::ValueNameId> result_value_name,
-    std::optional<c4c::ValueNameId> stored_value_name,
-    c4c::LinkNameId global_name_id) {
+    std::optional<c4c::ValueNameId> stored_value_name) {
   namespace bir = c4c::backend::bir;
   namespace prepare = c4c::backend::prepare;
 
@@ -98,7 +107,6 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_i32_global_access_for(
       access->address_space != bir::AddressSpace::Default ||
       access->is_volatile ||
       access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
-      access->address.symbol_name != std::optional<c4c::LinkNameId>{global_name_id} ||
       access->address.byte_offset != 0 ||
       access->address.size_bytes != 4 ||
       access->address.align_bytes < 4 ||
@@ -171,29 +179,46 @@ std::optional<std::string> emit_riscv_simple_load_global(
   if (load.result.kind != bir::Value::Kind::Named ||
       load.result.type != bir::TypeKind::I32 ||
       load.result.name.empty() ||
-      load.global_name_id == c4c::kInvalidLinkName ||
-      load.byte_offset != 0 ||
-      load.align_bytes < 4) {
+      (load.global_name_id == c4c::kInvalidLinkName && load.global_name.empty()) ||
+      load.byte_offset != 0) {
     return std::nullopt;
   }
   const auto result_name = context.names.value_names.find(load.result.name);
   if (result_name == c4c::kInvalidValueName) {
     return std::nullopt;
   }
-  const auto* global = find_prepared_global(
-      prepared,
-      load.global_name_id,
-      load.global_name);
   const auto* access = simple_i32_global_access_for(
       context,
       result_name,
-      std::nullopt,
-      load.global_name_id);
-  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global)) {
+      std::nullopt);
+  std::string fallback_global_name = load.global_name;
+  if (fallback_global_name.empty() &&
+      access != nullptr &&
+      access->address.symbol_name.has_value()) {
+    fallback_global_name = prepared_link_name_spelling(
+        prepared,
+        *access->address.symbol_name);
+  }
+  const auto* global = find_prepared_global(
+      prepared,
+      load.global_name_id,
+      fallback_global_name);
+  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global) ||
+      !global->initializer.has_value()) {
+    return std::nullopt;
+  }
+  const auto label = global_label(prepared.module, *global);
+  const auto destination_register = prepared_register_for_value_name_id(
+      context,
+      result_name);
+  if (label.empty() || !destination_register.has_value()) {
     return std::nullopt;
   }
 
-  return std::nullopt;
+  std::string out;
+  out += "    lla " + *destination_register + ", " + label + "\n";
+  out += "    lw " + *destination_register + ", 0(" + *destination_register + ")\n";
+  return out;
 }
 
 std::optional<std::string> emit_riscv_simple_store_global(
@@ -229,8 +254,7 @@ std::optional<std::string> emit_riscv_simple_store_global(
   const auto* access = simple_i32_global_access_for(
       context,
       std::nullopt,
-      stored_name,
-      store.global_name_id);
+      stored_name);
   if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global)) {
     return std::nullopt;
   }
