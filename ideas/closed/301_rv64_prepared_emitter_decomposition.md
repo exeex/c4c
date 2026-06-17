@@ -145,6 +145,21 @@ changing behavior inside this decomposition.
 - The route weakens qemu runtime tests or accepts BIR/LLVM fallback.
 - The route uses AArch64 as a copy-paste source rather than as a layout model.
 
+## Closure Note
+
+Closed on 2026-06-17 after the active runbook completed all extraction and
+validation steps. The prepared RV64 emitter now has functional owner files for
+frame support, scalar lowering, local memory, calls, edge publication,
+function traversal, and module orchestration, with `emit.cpp` left as public
+compatibility glue plus legacy assembler helpers.
+
+Validation preserved behavior: `backend_rv64_runtime` passed after each
+extraction, RISC-V-focused validation preserved only the known accepted
+`backend_riscv_prepared_edge_publication` baseline failure, and backend-wide
+validation was 202/203 with only that same known failure. No tests or
+expectations were weakened, and no new RV64 capability was added under this
+idea.
+
 ## Notes For The Agent
 
 - Read `src/backend/mir/aarch64/codegen/README.md` before planning the split.
