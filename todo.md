@@ -1,35 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/301_rv64_prepared_emitter_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Extract Direct Scalar Calls
+Current Step ID: 6
+Current Step Title: Extract Edge Publication If Clean
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5: Extract Direct Scalar Calls. Moved RV64 direct prepared
-scalar call-plan validation, GPR argument/result register movement,
-local-frame-address argument materialization, and direct call emission from
-`emit.cpp` into `src/backend/mir/riscv/codegen/prepared_call_emit.{hpp,cpp}`.
-Added the new owner `.cpp` to `src/backend/CMakeLists.txt`; edge publication,
-traversal dispatch, and public module glue remain outside the call owner.
+Completed Step 6: Extract Edge Publication If Clean. Used `c4c-clang-tools`
+to confirm the edge-publication caller/callee boundary before moving the RV64
+prepared edge-publication source rendering, route-agreement checks, move
+adapter, and public consume/append entrypoint definitions from `emit.cpp` into
+`src/backend/mir/riscv/codegen/prepared_edge_publication_emit.{hpp,cpp}`.
+Added the new owner `.cpp` to `src/backend/CMakeLists.txt`; traversal dispatch
+and public module glue remain in `emit.cpp`.
 
 ## Suggested Next
 
-Next coherent packet: inspect edge-publication move adaptation and extract it
-into a dedicated owner only if the dependency boundary is mechanical and
-behavior-preserving.
+Next coherent packet: Step 7, trim module/function orchestration by extracting
+prepared function/block traversal or prepared module orchestration into a
+dedicated owner while keeping `emit.cpp` as public compatibility glue.
 
 ## Watchouts
 
 - This idea is behavior-preserving. Do not add rv64 capabilities, weaken tests,
   accept BIR/LLVM fallback, or split by testcase/idea number.
-- `prepared_call_emit.cpp` depends on the scalar move helper for fallback
-  argument materialization and on the frame helper for local-frame-address
-  immediate range checks; keep the call owner limited to direct scalar calls.
-- Unsupported indirect, vararg/FPR, stack-argument, memory-return, and aggregate
-  call forms still fail closed through the moved validation checks.
+- `prepared_edge_publication_emit.cpp` now depends on frame immediate/load-offset
+  helpers and prepared memory-address lookup helpers, but it does not require
+  scalar, call, traversal, or module ownership to move with it.
+- The public edge-publication declarations remain in `emit.hpp` for existing
+  tests and callers; the definitions now live in the edge-publication owner.
 - `PhysReg` and callee-saved constraint helpers still sit in public namespace
   near the bottom as compatibility glue.
 
