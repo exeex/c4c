@@ -8,14 +8,25 @@ Current Step Title: Register and classify the first direct scalar call case
 
 ## Just Finished
 
-Lifecycle activation created this executor-compatible scratchpad for Step 1 of
-`plan.md`. No implementation packet has run for this plan yet.
+Step 1 of `plan.md`: selected `tests/backend/case/two_arg_helper.c` as the
+first in-scope direct scalar helper-call runtime case and registered it as
+`backend_rv64_runtime_two_arg_helper`.
+
+Classification: in scope. The case is a direct non-indirect call to
+`add_pair(int, int)`, passes two scalar integer register arguments, returns a
+scalar integer, and has no varargs, stack-passed arguments, aggregate ABI,
+globals, function pointer tables, or pointer-heavy memory. The C `main` return
+value is `12`, so the rv64 runtime registration uses `EXPECTED_RUN_CODE 12`.
+
+Observed behavior: the delegated rv64 runtime proof passed. The runner emitted
+native RISC-V assembly rather than BIR/LLVM fallback text, clang linked it, and
+`qemu-riscv64` returned the expected status `12`.
 
 ## Suggested Next
 
-Execute Step 1: inspect the first direct scalar helper-call candidates,
-register the smallest in-scope rv64 runtime case, and capture the initial
-rv64 runtime proof result.
+Execute Step 2: inspect prepared call metadata/value homes and harden the
+direct scalar argument/result lowering path used by
+`backend_rv64_runtime_two_arg_helper`.
 
 ## Watchouts
 
@@ -27,7 +38,15 @@ rv64 runtime proof result.
   filenames, or exact source shapes.
 - Keep review artifacts under `review/` untouched unless a supervisor-provided
   lifecycle task explicitly requires reading or rewriting around one.
+- Step 1 did not need `local_arg_call.c`; it remains a possible neighboring
+  direct scalar call candidate for a later packet.
 
 ## Proof
 
-Lifecycle-only activation. No build or test command was required.
+Command:
+`bash -o pipefail -c "{ cmake --build --preset default && ctest --test-dir build -R '^backend_rv64_runtime' --output-on-failure; } 2>&1 | tee test_after.log"`
+
+Result: passed. Build succeeded and all 18 `backend_rv64_runtime` tests passed,
+including `backend_rv64_runtime_two_arg_helper`.
+
+Proof log: `test_after.log`.
