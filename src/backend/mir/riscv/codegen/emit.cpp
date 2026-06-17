@@ -279,6 +279,9 @@ std::optional<std::string> emit_riscv_simple_return(
     bool restore_return_address,
     std::size_t stack_frame_bytes);
 
+std::optional<std::string> emit_i32_load_from_stack_offset(std::string_view destination_register,
+                                                           std::int64_t stack_offset);
+
 std::optional<c4c::backend::prepare::PreparedValueId> prepared_value_id_for(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -296,6 +299,21 @@ std::optional<c4c::backend::prepare::PreparedValueId> prepared_value_id_for(
     return std::nullopt;
   }
   return value_id_it->second;
+}
+
+const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  const auto value_id = prepared_value_id_for(names, lookups, value);
+  if (!value_id.has_value()) {
+    return nullptr;
+  }
+  const auto home_it = lookups->value_homes.homes_by_id.find(*value_id);
+  if (home_it == lookups->value_homes.homes_by_id.end()) {
+    return nullptr;
+  }
+  return home_it->second;
 }
 
 std::optional<std::string> prepared_register_for_value(
@@ -387,17 +405,178 @@ bool emit_move_to_register(std::string& out,
   }
 
   const auto source_register = prepared_register_for_value(names, lookups, value);
-  if (!source_register.has_value()) {
+  if (source_register.has_value()) {
+    if (*source_register != destination_register) {
+      out += "    mv ";
+      out += destination_register;
+      out += ", ";
+      out += *source_register;
+      out += "\n";
+    }
+    return true;
+  }
+
+  const auto* home = prepared_value_home_for(names, lookups, value);
+  if (home != nullptr &&
+      value.type == c4c::backend::bir::TypeKind::I32 &&
+      home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      home->offset_bytes.has_value() &&
+      home->size_bytes == std::optional<std::size_t>{4} &&
+      fits_signed_12_bit_load_offset(*home->offset_bytes)) {
+    const auto loaded =
+        emit_i32_load_from_stack_offset(destination_register,
+                                        static_cast<std::int64_t>(*home->offset_bytes));
+    if (!loaded.has_value()) {
+      return false;
+    }
+    out += *loaded;
+    return true;
+  }
+
+  return false;
+}
+
+bool emit_move_to_i32_location(
+    std::string& out,
+    const c4c::backend::prepare::PreparedValueHome& destination_home,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  if (destination_home.kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+      destination_home.register_name.has_value()) {
+    return emit_move_to_register(out, *destination_home.register_name, names, lookups, value);
+  }
+  if (destination_home.kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      destination_home.offset_bytes.has_value() &&
+      destination_home.size_bytes == std::optional<std::size_t>{4} &&
+      fits_signed_12_bit_load_offset(*destination_home.offset_bytes)) {
+    if (!emit_move_to_register(out, "t3", names, lookups, value)) {
+      return false;
+    }
+    out += "    sw t3, ";
+    out += std::to_string(*destination_home.offset_bytes);
+    out += "(sp)\n";
+    return true;
+  }
+  return false;
+}
+
+std::optional<std::string> emit_riscv_simple_cast(
+    const c4c::backend::bir::CastInst& cast,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  if ((cast.opcode != c4c::backend::bir::CastOpcode::SExt &&
+       cast.opcode != c4c::backend::bir::CastOpcode::ZExt) ||
+      cast.result.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto destination_register = prepared_register_for_value(names, lookups, cast.result);
+  if (!destination_register.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string out;
+  if (!emit_move_to_register(out, *destination_register, names, lookups, cast.operand)) {
+    return std::nullopt;
+  }
+  if (cast.opcode == c4c::backend::bir::CastOpcode::ZExt &&
+      cast.operand.type == c4c::backend::bir::TypeKind::I32 &&
+      cast.result.type == c4c::backend::bir::TypeKind::I64) {
+    out += "    slli " + *destination_register + ", " + *destination_register + ", 32\n";
+    out += "    srli " + *destination_register + ", " + *destination_register + ", 32\n";
+  }
+  return out;
+}
+
+std::optional<std::string> emit_riscv_simple_select(
+    const c4c::backend::bir::SelectInst& select,
+    std::string_view function_name,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  if (select.result.kind != c4c::backend::bir::Value::Kind::Named ||
+      select.result.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  const auto* destination_home = prepared_value_home_for(names, lookups, select.result);
+  if (destination_home == nullptr) {
+    return std::nullopt;
+  }
+  const auto mnemonic = riscv_branch_mnemonic(select.predicate);
+  if (!mnemonic.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string out;
+  if (!emit_move_to_register(out, "t3", names, lookups, select.lhs) ||
+      !emit_move_to_register(out, "t4", names, lookups, select.rhs)) {
+    return std::nullopt;
+  }
+
+  const std::string label_base = ".L" + std::string(function_name) + "_select_" +
+                                 std::to_string(instruction_index);
+  const std::string true_label = label_base + "_true";
+  const std::string done_label = label_base + "_done";
+  out += "    " + *mnemonic + " t3, t4, " + true_label + "\n";
+  if (!emit_move_to_i32_location(out, *destination_home, names, lookups, select.false_value)) {
+    return std::nullopt;
+  }
+  out += "    j " + done_label + "\n";
+  out += true_label + ":\n";
+  if (!emit_move_to_i32_location(out, *destination_home, names, lookups, select.true_value)) {
+    return std::nullopt;
+  }
+  out += done_label + ":\n";
+  return out;
+}
+
+bool has_frame_slot_address_materialization_at(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr) {
     return false;
   }
-  if (*source_register != destination_register) {
-    out += "    mv ";
-    out += destination_register;
-    out += ", ";
-    out += *source_register;
-    out += "\n";
+  const auto* materializations =
+      prepare::find_indexed_prepared_address_materializations(
+          &lookups->address_materializations,
+          block_label);
+  if (materializations == nullptr) {
+    return false;
   }
-  return true;
+  for (const auto* materialization : *materializations) {
+    if (materialization != nullptr &&
+        materialization->inst_index == instruction_index &&
+        materialization->kind == prepare::PreparedAddressMaterializationKind::FrameSlot &&
+        materialization->address_space == c4c::backend::bir::AddressSpace::Default &&
+        materialization->frame_slot_id.has_value()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
+    const c4c::backend::bir::BinaryInst& binary,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  if (binary.opcode != c4c::backend::bir::BinaryOpcode::Add ||
+      binary.result.kind != c4c::backend::bir::Value::Kind::Named ||
+      binary.result.type != c4c::backend::bir::TypeKind::Ptr ||
+      prepared_pointer_register_for_value(names, lookups, binary.result).has_value() ||
+      !has_frame_slot_address_materialization_at(lookups, block_label, instruction_index)) {
+    return std::nullopt;
+  }
+  const auto* home = prepared_value_home_for(names, lookups, binary.result);
+  if (home == nullptr ||
+      home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+  return std::string{};
 }
 
 std::optional<std::string> emit_riscv_simple_binary(
@@ -405,7 +584,8 @@ std::optional<std::string> emit_riscv_simple_binary(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
   if ((binary.opcode != c4c::backend::bir::BinaryOpcode::Add &&
-       binary.opcode != c4c::backend::bir::BinaryOpcode::Sub) ||
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Sub &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Mul) ||
       binary.result.kind != c4c::backend::bir::Value::Kind::Named) {
     return std::nullopt;
   }
@@ -422,11 +602,47 @@ std::optional<std::string> emit_riscv_simple_binary(
 
   std::string out;
   if (lhs_imm.has_value() && rhs_imm.has_value()) {
-    const auto result = binary.opcode == c4c::backend::bir::BinaryOpcode::Add
-                            ? *lhs_imm + *rhs_imm
-                            : *lhs_imm - *rhs_imm;
+    std::int64_t result = 0;
+    switch (binary.opcode) {
+      case c4c::backend::bir::BinaryOpcode::Add:
+        result = *lhs_imm + *rhs_imm;
+        break;
+      case c4c::backend::bir::BinaryOpcode::Sub:
+        result = *lhs_imm - *rhs_imm;
+        break;
+      case c4c::backend::bir::BinaryOpcode::Mul:
+        result = *lhs_imm * *rhs_imm;
+        break;
+      default:
+        return std::nullopt;
+    }
     out += "    li " + *destination_register + ", " +
            std::to_string(result) + "\n";
+    return out;
+  }
+  if (binary.opcode == c4c::backend::bir::BinaryOpcode::Mul) {
+    std::string lhs_register_name;
+    if (lhs_register.has_value()) {
+      lhs_register_name = *lhs_register;
+    } else if (lhs_imm.has_value()) {
+      lhs_register_name = "t3";
+      out += "    li " + lhs_register_name + ", " + std::to_string(*lhs_imm) + "\n";
+    } else {
+      return std::nullopt;
+    }
+
+    std::string rhs_register_name;
+    if (rhs_register.has_value()) {
+      rhs_register_name = *rhs_register;
+    } else if (rhs_imm.has_value()) {
+      rhs_register_name = "t4";
+      out += "    li " + rhs_register_name + ", " + std::to_string(*rhs_imm) + "\n";
+    } else {
+      return std::nullopt;
+    }
+
+    out += "    mul " + *destination_register + ", " + lhs_register_name + ", " +
+           rhs_register_name + "\n";
     return out;
   }
   if (lhs_register.has_value() && rhs_imm.has_value()) {
@@ -586,9 +802,12 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for(
   namespace bir = c4c::backend::bir;
   namespace prepare = c4c::backend::prepare;
 
-  if (lookups == nullptr || value_type != bir::TypeKind::I32) {
+  if (lookups == nullptr ||
+      (value_type != bir::TypeKind::I8 && value_type != bir::TypeKind::I32)) {
     return nullptr;
   }
+  const std::size_t size_bytes = value_type == bir::TypeKind::I8 ? 1 : 4;
+  const std::size_t align_bytes = value_type == bir::TypeKind::I8 ? 1 : 4;
   const auto* access = prepare::find_indexed_prepared_memory_access(
       &lookups->memory_accesses,
       block_label,
@@ -598,8 +817,8 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for(
       access->is_volatile ||
       access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
       !access->address.frame_slot_id.has_value() ||
-      access->address.size_bytes != 4 ||
-      access->address.align_bytes < 4 ||
+      access->address.size_bytes != size_bytes ||
+      access->address.align_bytes < align_bytes ||
       !access->address.can_use_base_plus_offset ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return nullptr;
@@ -746,6 +965,65 @@ std::optional<std::int64_t> simple_frame_slot_sp_offset_for(
   return stack_offset;
 }
 
+bool fits_i32_bytewise_stack_offsets(std::int64_t stack_offset) {
+  return fits_signed_12_bit_immediate(stack_offset) &&
+         fits_signed_12_bit_immediate(stack_offset + 1) &&
+         fits_signed_12_bit_immediate(stack_offset + 2) &&
+         fits_signed_12_bit_immediate(stack_offset + 3);
+}
+
+std::optional<std::string> emit_i32_store_to_stack_offset(std::string_view source_register,
+                                                          std::int64_t stack_offset) {
+  if (stack_offset % 4 == 0) {
+    return "    sw " + std::string(source_register) + ", " +
+           std::to_string(stack_offset) + "(sp)\n";
+  }
+  if (!fits_i32_bytewise_stack_offsets(stack_offset)) {
+    return std::nullopt;
+  }
+  std::string out;
+  out += "    sb " + std::string(source_register) + ", " +
+         std::to_string(stack_offset) + "(sp)\n";
+  out += "    srli t2, " + std::string(source_register) + ", 8\n";
+  out += "    sb t2, " + std::to_string(stack_offset + 1) + "(sp)\n";
+  out += "    srli t2, " + std::string(source_register) + ", 16\n";
+  out += "    sb t2, " + std::to_string(stack_offset + 2) + "(sp)\n";
+  out += "    srli t2, " + std::string(source_register) + ", 24\n";
+  out += "    sb t2, " + std::to_string(stack_offset + 3) + "(sp)\n";
+  return out;
+}
+
+std::optional<std::string> emit_i32_load_from_stack_offset(std::string_view destination_register,
+                                                           std::int64_t stack_offset) {
+  if (stack_offset % 4 == 0) {
+    return "    lw " + std::string(destination_register) + ", " +
+           std::to_string(stack_offset) + "(sp)\n";
+  }
+  if (!fits_i32_bytewise_stack_offsets(stack_offset)) {
+    return std::nullopt;
+  }
+  std::string out;
+  out += "    lbu " + std::string(destination_register) + ", " +
+         std::to_string(stack_offset) + "(sp)\n";
+  out += "    lbu t2, " + std::to_string(stack_offset + 1) + "(sp)\n";
+  out += "    slli t2, t2, 8\n";
+  out += "    or " + std::string(destination_register) + ", " +
+         std::string(destination_register) + ", t2\n";
+  out += "    lbu t2, " + std::to_string(stack_offset + 2) + "(sp)\n";
+  out += "    slli t2, t2, 16\n";
+  out += "    or " + std::string(destination_register) + ", " +
+         std::string(destination_register) + ", t2\n";
+  out += "    lbu t2, " + std::to_string(stack_offset + 3) + "(sp)\n";
+  out += "    slli t2, t2, 24\n";
+  out += "    or " + std::string(destination_register) + ", " +
+         std::string(destination_register) + ", t2\n";
+  out += "    slli " + std::string(destination_register) + ", " +
+         std::string(destination_register) + ", 32\n";
+  out += "    srai " + std::string(destination_register) + ", " +
+         std::string(destination_register) + ", 32\n";
+  return out;
+}
+
 std::optional<std::string> emit_riscv_simple_store_local(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
@@ -801,7 +1079,15 @@ std::optional<std::string> emit_riscv_simple_store_local(
   if (!emit_move_to_register(out, "t1", names, lookups, store.value)) {
     return std::nullopt;
   }
-  out += "    sw t1, " + std::to_string(*stack_offset) + "(sp)\n";
+  if (store.value.type == c4c::backend::bir::TypeKind::I8) {
+    out += "    sb t1, " + std::to_string(*stack_offset) + "(sp)\n";
+    return out;
+  }
+  const auto stored = emit_i32_store_to_stack_offset("t1", *stack_offset);
+  if (!stored.has_value()) {
+    return std::nullopt;
+  }
+  out += *stored;
   return out;
 }
 
@@ -837,6 +1123,9 @@ std::optional<std::string> emit_riscv_simple_load_local(
            std::to_string(*stack_offset) + "(sp)\n";
   }
 
+  if (load.result.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
   const auto* access = simple_frame_slot_access_for(
       lookups,
       block_label,
@@ -851,12 +1140,29 @@ std::optional<std::string> emit_riscv_simple_load_local(
     return std::nullopt;
   }
   const auto destination_register = prepared_register_for_value(names, lookups, load.result);
-  if (!destination_register.has_value()) {
-    return std::nullopt;
+  if (destination_register.has_value()) {
+    return emit_i32_load_from_stack_offset(*destination_register, *stack_offset);
   }
 
-  return "    lw " + *destination_register + ", " +
-         std::to_string(*stack_offset) + "(sp)\n";
+  const auto* destination_home = prepared_value_home_for(names, lookups, load.result);
+  if (destination_home == nullptr ||
+      destination_home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+      !destination_home->offset_bytes.has_value() ||
+      destination_home->size_bytes != std::optional<std::size_t>{4}) {
+    return std::nullopt;
+  }
+  auto out = emit_i32_load_from_stack_offset("t3", *stack_offset);
+  if (!out.has_value()) {
+    return std::nullopt;
+  }
+  const auto stored = emit_i32_store_to_stack_offset(
+      "t3",
+      static_cast<std::int64_t>(*destination_home->offset_bytes));
+  if (!stored.has_value()) {
+    return std::nullopt;
+  }
+  *out += *stored;
+  return out;
 }
 
 bool append_simple_prepared_bir_function_asm(
@@ -922,6 +1228,25 @@ bool append_simple_prepared_bir_function_asm(
       const auto& inst = block.insts[instruction_index];
       const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
       if (binary != nullptr) {
+        if (binary->opcode == c4c::backend::bir::BinaryOpcode::Mul &&
+            binary->result.kind == c4c::backend::bir::Value::Kind::Named &&
+            instruction_index + 1 < block.insts.size()) {
+          const auto* next_binary =
+              std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[instruction_index + 1]);
+          if (next_binary != nullptr &&
+              next_binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
+              next_binary->result.type == c4c::backend::bir::TypeKind::Ptr &&
+              has_frame_slot_address_materialization_at(
+                  lookups,
+                  *block_label_id,
+                  instruction_index + 1) &&
+              ((next_binary->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+                next_binary->lhs.name == binary->result.name) ||
+               (next_binary->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+                next_binary->rhs.name == binary->result.name))) {
+            continue;
+          }
+        }
         if (c4c::backend::bir::is_compare_opcode(binary->opcode) &&
             binary->result.kind == c4c::backend::bir::Value::Kind::Named) {
           compares[binary->result.name] = SimpleCompare{
@@ -931,7 +1256,40 @@ bool append_simple_prepared_bir_function_asm(
           };
           continue;
         }
-        const auto emitted = emit_riscv_simple_binary(*binary, prepared.names, lookups);
+        auto emitted = emit_riscv_simple_prepared_pointer_add(
+            *binary,
+            prepared.names,
+            lookups,
+            *block_label_id,
+            instruction_index);
+        if (!emitted.has_value()) {
+          emitted = emit_riscv_simple_binary(*binary, prepared.names, lookups);
+        }
+        if (!emitted.has_value()) {
+          return false;
+        }
+        out += *emitted;
+        continue;
+      }
+
+      const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst);
+      if (cast != nullptr) {
+        const auto emitted = emit_riscv_simple_cast(*cast, prepared.names, lookups);
+        if (!emitted.has_value()) {
+          return false;
+        }
+        out += *emitted;
+        continue;
+      }
+
+      const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&inst);
+      if (select != nullptr) {
+        const auto emitted = emit_riscv_simple_select(
+            *select,
+            function_name,
+            instruction_index,
+            prepared.names,
+            lookups);
         if (!emitted.has_value()) {
           return false;
         }
