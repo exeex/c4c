@@ -43,4 +43,12 @@ namespace c4c::backend::riscv::codegen {
     c4c::FunctionNameId function_name,
     const c4c::backend::prepare::PreparedAddressMaterialization& materialization);
 
+[[nodiscard]] std::optional<std::string> emit_i32_load_from_stack_offset(
+    std::string_view destination_register,
+    std::int64_t stack_offset);
+
+[[nodiscard]] std::optional<std::string> emit_i32_store_to_stack_offset(
+    std::string_view source_register,
+    std::int64_t stack_offset);
+
 }  // namespace c4c::backend::riscv::codegen

@@ -69,6 +69,13 @@ std::string sanitize_riscv_label_component(std::string_view text) {
   return result;
 }
 
+bool fits_i32_bytewise_stack_offsets(std::int64_t stack_offset) {
+  return fits_signed_12_bit_immediate(stack_offset) &&
+         fits_signed_12_bit_immediate(stack_offset + 1) &&
+         fits_signed_12_bit_immediate(stack_offset + 2) &&
+         fits_signed_12_bit_immediate(stack_offset + 3);
+}
+
 }  // namespace
 
 std::string riscv_local_block_label(std::string_view function_name,
@@ -161,6 +168,58 @@ std::optional<std::int64_t> simple_frame_slot_sp_offset_for(
     return std::nullopt;
   }
   return stack_offset;
+}
+
+std::optional<std::string> emit_i32_store_to_stack_offset(std::string_view source_register,
+                                                          std::int64_t stack_offset) {
+  if (stack_offset % 4 == 0) {
+    return "    sw " + std::string(source_register) + ", " +
+           std::to_string(stack_offset) + "(sp)\n";
+  }
+  if (!fits_i32_bytewise_stack_offsets(stack_offset)) {
+    return std::nullopt;
+  }
+  std::string out;
+  out += "    sb " + std::string(source_register) + ", " +
+         std::to_string(stack_offset) + "(sp)\n";
+  out += "    srli t2, " + std::string(source_register) + ", 8\n";
+  out += "    sb t2, " + std::to_string(stack_offset + 1) + "(sp)\n";
+  out += "    srli t2, " + std::string(source_register) + ", 16\n";
+  out += "    sb t2, " + std::to_string(stack_offset + 2) + "(sp)\n";
+  out += "    srli t2, " + std::string(source_register) + ", 24\n";
+  out += "    sb t2, " + std::to_string(stack_offset + 3) + "(sp)\n";
+  return out;
+}
+
+std::optional<std::string> emit_i32_load_from_stack_offset(std::string_view destination_register,
+                                                           std::int64_t stack_offset) {
+  if (stack_offset % 4 == 0) {
+    return "    lw " + std::string(destination_register) + ", " +
+           std::to_string(stack_offset) + "(sp)\n";
+  }
+  if (!fits_i32_bytewise_stack_offsets(stack_offset)) {
+    return std::nullopt;
+  }
+  std::string out;
+  out += "    lbu " + std::string(destination_register) + ", " +
+         std::to_string(stack_offset) + "(sp)\n";
+  out += "    lbu t2, " + std::to_string(stack_offset + 1) + "(sp)\n";
+  out += "    slli t2, t2, 8\n";
+  out += "    or " + std::string(destination_register) + ", " +
+         std::string(destination_register) + ", t2\n";
+  out += "    lbu t2, " + std::to_string(stack_offset + 2) + "(sp)\n";
+  out += "    slli t2, t2, 16\n";
+  out += "    or " + std::string(destination_register) + ", " +
+         std::string(destination_register) + ", t2\n";
+  out += "    lbu t2, " + std::to_string(stack_offset + 3) + "(sp)\n";
+  out += "    slli t2, t2, 24\n";
+  out += "    or " + std::string(destination_register) + ", " +
+         std::string(destination_register) + ", t2\n";
+  out += "    slli " + std::string(destination_register) + ", " +
+         std::string(destination_register) + ", 32\n";
+  out += "    srai " + std::string(destination_register) + ", " +
+         std::string(destination_register) + ", 32\n";
+  return out;
 }
 
 }  // namespace c4c::backend::riscv::codegen

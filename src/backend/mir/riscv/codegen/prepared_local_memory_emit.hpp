@@ -15,14 +15,6 @@ namespace c4c::backend::riscv::codegen {
 
 struct PreparedCurrentInstructionContext;
 
-[[nodiscard]] std::optional<std::string> emit_i32_load_from_stack_offset(
-    std::string_view destination_register,
-    std::int64_t stack_offset);
-
-[[nodiscard]] std::optional<std::string> emit_i32_store_to_stack_offset(
-    std::string_view source_register,
-    std::int64_t stack_offset);
-
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_store_local(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
