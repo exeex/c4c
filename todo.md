@@ -1,34 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/302_rv64_prepared_emitter_context_interface_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Clean Frame And Local-Memory Support Boundaries
+Current Step ID: 6
+Current Step Title: Final Interface Review And Closure Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 cleaned the frame/local-memory support boundary without behavior
-changes.
+Step 6 completed final interface review and closure proof.
 
-Changed files:
-- `src/backend/mir/riscv/codegen/prepared_frame_emit.hpp`
-- `src/backend/mir/riscv/codegen/prepared_frame_emit.cpp`
-- `src/backend/mir/riscv/codegen/prepared_local_memory_emit.hpp`
-- `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp`
-- `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp`
+Reviewer result:
+- `review/rv64_prepared_context_cleanup_review.md` found no blocking issues,
+  no testcase overfit, and route alignment with the source idea.
+- Step 3 being folded into the Step 2 extraction was judged packet-boundary
+  bookkeeping, not a `plan.md` repair issue.
+- Recommendation: continue to closure handling after broader validation.
 
-Moved `emit_i32_load_from_stack_offset` and
-`emit_i32_store_to_stack_offset` declarations/definitions from
-`prepared_local_memory_emit` to `prepared_frame_emit`. The helper bodies were
-moved unchanged, including unaligned bytewise load/store emission. Local-memory
-continues to call the helpers through frame/support ownership, and scalar no
-longer includes local-memory solely for stack helper access.
+Interface result:
+- `prepared_scalar_emit.hpp` no longer exports shared prepared value/register
+  lookup helpers.
+- `prepared_emit_context.{hpp,cpp}` is a narrow prepared lookup/current
+  instruction support surface, not a new feature owner.
+- Scalar, call, local-memory, and function call sites use
+  `PreparedCurrentInstructionContext` where it removes repeated
+  `PreparedNameTables`, `PreparedFunctionLookups*`, `BlockLabelId`, and
+  instruction-index bundles.
+- Shared stack-offset load/store helpers now live under frame support, and
+  local-memory no longer exports them.
 
 ## Suggested Next
 
-Review whether Step 5 has any remaining support-boundary cleanup or move to
-the next plan step selected by the supervisor.
+Call the plan owner to close or otherwise retire the active lifecycle state.
 
 ## Watchouts
 
@@ -36,25 +39,23 @@ the next plan step selected by the supervisor.
   backend capability.
 - Do not weaken tests, expectations, unsupported handling, or qemu runtime
   coverage.
-- The new context is intentionally current-instruction scoped; do not turn it
-  into a catch-all function or module emission context without plan review.
-- `emit_move_to_register` still takes `names` and `lookups` because it is also
-  used by non-current terminator/cast paths. Moving it would require a separate
-  ownership decision.
-- `simple_frame_slot_sp_offset_for` remains in frame support; this packet only
-  moved the shared stack-offset load/store helpers to the same ownership area.
+- The known `backend_riscv_prepared_edge_publication` failure remains the only
+  accepted backend validation failure observed during closure proof.
+- No new RV64 runtime cases or backend capability were added.
 
 ## Proof
 
-Ran exactly:
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -R '\''^backend_rv64_runtime'\'' --output-on-failure; } > test_after.log 2>&1'`
+Ran:
+- `cmake --build --preset default`
+- `ctest --test-dir build -R '^backend_rv64_runtime' --output-on-failure`
+- `ctest --test-dir build -R 'backend_riscv|backend_codegen_route_riscv64' --output-on-failure`
+- `ctest --test-dir build -R '^backend_' --output-on-failure`
 
-Result: passed. `test_after.log` contains a successful build and 23/23 passing
-`backend_rv64_runtime` tests.
-
-Supervisor validation:
-`ctest --test-dir build -R 'backend_riscv|backend_codegen_route_riscv64' --output-on-failure`
-
-Result: preserved the documented baseline failure
-`backend_riscv_prepared_edge_publication`; both
-`backend_codegen_route_riscv64` tests passed.
+Results:
+- Build passed.
+- `backend_rv64_runtime`: passed 23/23.
+- Focused RISC-V/backend-route: preserved only the documented
+  `backend_riscv_prepared_edge_publication` failure; both
+  `backend_codegen_route_riscv64` tests passed.
+- `^backend_`: 202/203 passed; the only failure was the documented
+  `backend_riscv_prepared_edge_publication` baseline.
