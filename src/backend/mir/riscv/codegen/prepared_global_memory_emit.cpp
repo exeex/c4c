@@ -203,8 +203,7 @@ std::optional<std::string> emit_riscv_simple_load_global(
       prepared,
       load.global_name_id,
       fallback_global_name);
-  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global) ||
-      !global->initializer.has_value()) {
+  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global)) {
     return std::nullopt;
   }
   const auto label = global_label(prepared.module, *global);
