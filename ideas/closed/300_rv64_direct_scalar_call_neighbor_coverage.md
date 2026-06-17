@@ -1,5 +1,14 @@
 # RV64 Direct Scalar Call Neighbor Coverage
 
+## Completion Note
+
+Closed after registering and proving the neighboring direct scalar
+local-argument runtime cases `two_arg_local_arg.c`,
+`two_arg_both_local_arg.c`, and `two_arg_second_local_arg.c`. The rv64 runtime
+subset passed with all three cases included, and the focused RISC-V boundary
+preserved only the documented baseline failure
+`backend_riscv_prepared_edge_publication`.
+
 ## Goal
 
 Broaden the qemu-backed rv64 direct scalar call coverage from the initial
