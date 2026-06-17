@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/298_rv64_direct_scalar_call_boundary_hardening.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Register and classify the first direct scalar call case
+Current Step ID: Step 2
+Current Step Title: Harden direct scalar argument and return lowering
 
 # Current Packet
 
