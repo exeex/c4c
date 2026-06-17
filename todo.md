@@ -1,42 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/300_rv64_direct_scalar_call_neighbor_coverage.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Harden direct scalar local-argument materialization
+Current Step ID: 3
+Current Step Title: Add adjacent direct scalar local-argument coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` inspected the rv64 prepared-call/value-home path in
-`src/backend/mir/riscv/codegen/emit.cpp` and found no additional compiler
-hardening was needed for the registered direct scalar local-argument case.
-`emit_riscv_simple_call` already routes prepared GPR call arguments through
-the prepared call plan, and `emit_move_to_register` materializes a named `I32`
-argument from a prepared 4-byte stack-slot value home with an `lw` before
-placing it in the destination call register.
+Step 3 of `plan.md` inspected `tests/backend/case/two_arg_both_local_arg.c`
+and `tests/backend/case/two_arg_second_local_arg.c`. Both candidates stay
+inside the bounded direct scalar register-call contract: they call
+`add_pair(int, int)` directly, source only local `int` scalar values and
+integer literals, and do not involve stack-passed arguments, aggregate ABI,
+pointers, members, globals, indirect calls, or varargs.
 
-Generated assembly for `backend_rv64_runtime_two_arg_local_arg` stores local
-`x`, reloads it with `lw`, moves it into `a0`, materializes `7` into `a1`,
-calls `add_pair`, and saves/restores `ra` in `main`. No helper-name,
-filename, or exact-source-shape shortcut was introduced.
+Registered both in-scope candidates with
+`c4c_add_backend_rv64_runtime_case(...)` in `tests/backend/CMakeLists.txt`
+using expected qemu status `12`. No compiler change was needed, and no
+helper-name, filename, or exact-source-shape shortcut was introduced.
 
 ## Suggested Next
 
-Execute Step 3: inspect `tests/backend/case/two_arg_both_local_arg.c` and
-`tests/backend/case/two_arg_second_local_arg.c`, registering only the adjacent
-direct scalar local-argument cases that remain inside the prepared GPR
-register-call contract.
+Execute Step 4: run the broader acceptance validation for the broadened rv64
+direct scalar call surface and document the final in-scope/out-of-scope
+boundaries.
 
 ## Watchouts
 
-- Keep the route limited to direct scalar register calls with local scalar
-  argument sources.
-- Step 2 found the local scalar argument path already supported by prepared
-  value-home metadata; no compiler code changed in this packet.
-- Adjacent candidates should reuse the same prepared call/value-home route and
-  stop if they expose stack arguments, aggregate ABI, pointer/member behavior,
-  globals, indirect calls, or varargs.
+- Keep any Step 4 validation focused on the broadened direct scalar register
+  call surface unless the supervisor explicitly broadens the proof.
+- Step 3 found both adjacent candidates in scope; there were no rejected
+  candidate boundaries in this packet.
+- The local scalar argument path remained supported by prepared value-home
+  metadata; no compiler code changed in this packet.
 - Do not absorb pointer parameters, member indexing, indirect calls, varargs,
   stack-passed arguments, aggregate ABI, globals, or function pointer tables
   into this plan.
@@ -51,6 +48,6 @@ Ran exactly:
 
 `{ cmake --build --preset default; ctest --test-dir build -j --output-on-failure -R '^backend_rv64_runtime'; } > test_after.log 2>&1`
 
-Result: pass. `backend_rv64_runtime_two_arg_local_arg` passed, and the full
-rv64 runtime subset passed: 21 tests, 0 failures. Proof log:
-`test_after.log`.
+Result: pass. `backend_rv64_runtime_two_arg_both_local_arg` and
+`backend_rv64_runtime_two_arg_second_local_arg` both passed, and the full rv64
+runtime subset passed: 23 tests, 0 failures. Proof log: `test_after.log`.

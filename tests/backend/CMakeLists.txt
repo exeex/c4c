@@ -344,6 +344,20 @@ c4c_add_backend_rv64_runtime_case(
   LABELS scalar return call local
 )
 c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_two_arg_both_local_arg
+  SRC "${BACKEND_CASE_ROOT}/two_arg_both_local_arg.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 12
+  LABELS scalar return call local
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_two_arg_second_local_arg
+  SRC "${BACKEND_CASE_ROOT}/two_arg_second_local_arg.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 12
+  LABELS scalar return call local
+)
+c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_local_arg_call
   SRC "${BACKEND_CASE_ROOT}/local_arg_call.c"
   CASE_TIMEOUT_SEC 10
