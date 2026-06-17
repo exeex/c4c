@@ -42,6 +42,35 @@ std::size_t align_riscv_stack_frame(std::size_t size_bytes) {
   return (size_bytes + 15) & ~std::size_t{15};
 }
 
+std::size_t align_riscv_stack_slot(std::size_t offset_bytes, std::size_t align_bytes) {
+  if (align_bytes <= 1) {
+    return offset_bytes;
+  }
+  return (offset_bytes + align_bytes - 1) / align_bytes * align_bytes;
+}
+
+std::optional<std::size_t> prepared_saved_register_stack_end(
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan) {
+  if (frame_plan == nullptr) {
+    return std::size_t{0};
+  }
+  std::size_t end_offset = 0;
+  for (const auto& saved : frame_plan->saved_callee_registers) {
+    if (!saved.slot_placement.has_value() ||
+        !saved.slot_placement->stack_offset_bytes.has_value() ||
+        !saved.slot_placement->size_bytes.has_value()) {
+      return std::nullopt;
+    }
+    const std::size_t offset = *saved.slot_placement->stack_offset_bytes;
+    const std::size_t size = *saved.slot_placement->size_bytes;
+    if (size == 0 || offset > std::numeric_limits<std::size_t>::max() - size) {
+      return std::nullopt;
+    }
+    end_offset = std::max(end_offset, offset + size);
+  }
+  return end_offset;
+}
+
 void clear_stack_source_intent(EdgePublicationMoveIntent& intent) {
   intent.source_stack_slot_id.reset();
   intent.source_stack_offset_bytes.reset();
@@ -276,7 +305,7 @@ std::optional<std::string> emit_riscv_simple_return(
     const c4c::backend::bir::Terminator& terminator,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    bool restore_return_address,
+    std::optional<std::size_t> return_address_stack_offset,
     std::size_t stack_frame_bytes);
 
 std::optional<std::string> emit_i32_load_from_stack_offset(std::string_view destination_register,
@@ -777,11 +806,11 @@ std::optional<std::string> emit_riscv_simple_return(
     const c4c::backend::bir::Terminator& terminator,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    bool restore_return_address,
+    std::optional<std::size_t> return_address_stack_offset,
     std::size_t stack_frame_bytes) {
-  auto append_epilogue = [restore_return_address, stack_frame_bytes](std::string& out) {
-    if (restore_return_address) {
-      out += "    ld ra, 8(sp)\n";
+  auto append_epilogue = [return_address_stack_offset, stack_frame_bytes](std::string& out) {
+    if (return_address_stack_offset.has_value()) {
+      out += "    ld ra, " + std::to_string(*return_address_stack_offset) + "(sp)\n";
     }
     if (stack_frame_bytes > 0) {
       out += "    addi sp, sp, " + std::to_string(stack_frame_bytes) + "\n";
@@ -1214,10 +1243,13 @@ bool append_simple_prepared_bir_function_asm(
   std::unordered_map<std::string, SimpleCompare> compares;
   const std::string function_name = function.name.empty() ? "anon" : function.name;
   std::size_t prepared_frame_size = 0;
+  const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan = nullptr;
   const auto function_name_id = prepared_function_id_for(prepared.names, function);
   if (function_name_id.has_value()) {
-    if (const auto* frame_plan =
-            c4c::backend::prepare::find_prepared_frame_plan(prepared, *function_name_id)) {
+    frame_plan = c4c::backend::prepare::find_prepared_frame_plan(
+        prepared,
+        *function_name_id);
+    if (frame_plan != nullptr) {
       prepared_frame_size = frame_plan->frame_size_bytes;
     }
   }
@@ -1233,13 +1265,27 @@ bool append_simple_prepared_bir_function_asm(
       break;
     }
   }
-  if (prepared_frame_size > 0 && saves_return_address) {
-    return false;
+
+  std::optional<std::size_t> return_address_stack_offset;
+  std::size_t required_frame_size = prepared_frame_size;
+  if (saves_return_address) {
+    const auto saved_register_end = prepared_saved_register_stack_end(frame_plan);
+    if (!saved_register_end.has_value()) {
+      return false;
+    }
+    required_frame_size =
+        std::max({required_frame_size, *saved_register_end, std::size_t{8}});
+    return_address_stack_offset = align_riscv_stack_slot(required_frame_size, 8);
+    if (*return_address_stack_offset >
+        std::numeric_limits<std::size_t>::max() - std::size_t{8}) {
+      return false;
+    }
+    if (!fits_signed_12_bit_load_offset(*return_address_stack_offset)) {
+      return false;
+    }
+    required_frame_size = std::max(required_frame_size, *return_address_stack_offset + 8);
   }
-  const std::size_t stack_frame_bytes =
-      align_riscv_stack_frame(std::max(prepared_frame_size,
-                                       saves_return_address ? std::size_t{16}
-                                                            : std::size_t{0}));
+  const std::size_t stack_frame_bytes = align_riscv_stack_frame(required_frame_size);
   if (stack_frame_bytes > 0 &&
       !fits_signed_12_bit_immediate(-static_cast<std::int64_t>(stack_frame_bytes))) {
     return false;
@@ -1256,8 +1302,8 @@ bool append_simple_prepared_bir_function_asm(
     if (block_index == 0 && stack_frame_bytes > 0) {
       out += "    addi sp, sp, -" + std::to_string(stack_frame_bytes) + "\n";
     }
-    if (block_index == 0 && saves_return_address) {
-      out += "    sd ra, 8(sp)\n";
+    if (block_index == 0 && return_address_stack_offset.has_value()) {
+      out += "    sd ra, " + std::to_string(*return_address_stack_offset) + "(sp)\n";
     }
 
     for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
@@ -1392,7 +1438,7 @@ bool append_simple_prepared_bir_function_asm(
             block.terminator,
             prepared.names,
             lookups,
-            saves_return_address,
+            return_address_stack_offset,
             stack_frame_bytes);
         if (!returned.has_value()) {
           return false;
