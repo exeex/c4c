@@ -337,6 +337,13 @@ c4c_add_backend_rv64_runtime_case(
   LABELS scalar return call
 )
 c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_local_arg_call
+  SRC "${BACKEND_CASE_ROOT}/local_arg_call.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 6
+  LABELS scalar return call local
+)
+c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_return_add_sub_chain
   SRC "${BACKEND_CASE_ROOT}/return_add_sub_chain.c"
   CASE_TIMEOUT_SEC 10

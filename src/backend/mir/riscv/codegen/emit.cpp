@@ -749,8 +749,10 @@ std::optional<std::string> emit_riscv_simple_call(
         block_index,
         instruction_index,
         arg_index);
+    if (plan == nullptr && arg_index < call_plan->arguments.size()) {
+      plan = &call_plan->arguments[arg_index];
+    }
     if (plan == nullptr ||
-        plan->instruction_index != instruction_index ||
         plan->arg_index != arg_index ||
         plan->value_bank != prepare::PreparedRegisterBank::Gpr ||
         plan->destination_register_bank !=
@@ -763,9 +765,21 @@ std::optional<std::string> emit_riscv_simple_call(
         plan->aggregate_transport.has_value()) {
       return std::nullopt;
     }
-    if (!emit_move_to_register(out, *plan->destination_register_name, names, lookups,
-                               call.args[arg_index])) {
-      return std::nullopt;
+    if (plan->source_encoding ==
+            prepare::PreparedStorageEncodingKind::Register &&
+        plan->source_register_bank ==
+            std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} &&
+        plan->source_register_name.has_value() &&
+        !plan->source_register_name->empty()) {
+      if (*plan->source_register_name != *plan->destination_register_name) {
+        out += "    mv " + *plan->destination_register_name + ", " +
+               *plan->source_register_name + "\n";
+      }
+    } else {
+      if (!emit_move_to_register(out, *plan->destination_register_name, names, lookups,
+                                 call.args[arg_index])) {
+        return std::nullopt;
+      }
     }
   }
 
@@ -783,19 +797,18 @@ std::optional<std::string> emit_riscv_simple_call(
             std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
         !call_plan->result->source_register_name.has_value() ||
         call_plan->result->source_register_name->empty() ||
+        !call_plan->result->destination_register_name.has_value() ||
+        call_plan->result->destination_register_name->empty() ||
         call_plan->result->source_contiguous_width != 1 ||
         call_plan->result->destination_contiguous_width != 1 ||
         call_plan->result->source_stack_offset_bytes.has_value() ||
         call_plan->result->destination_stack_offset_bytes.has_value()) {
       return std::nullopt;
     }
-    const auto destination_register = prepared_register_for_value(names, lookups, *call.result);
-    if (!destination_register.has_value()) {
-      return std::nullopt;
-    }
+    const std::string& destination_register = *call_plan->result->destination_register_name;
     const std::string& source_register = *call_plan->result->source_register_name;
-    if (*destination_register != source_register) {
-      out += "    mv " + *destination_register + ", " + source_register + "\n";
+    if (destination_register != source_register) {
+      out += "    mv " + destination_register + ", " + source_register + "\n";
     }
   }
 
