@@ -1,5 +1,22 @@
 # RV64 Runtime Pointer Parameter Member Index Foundation
 
+## Completion
+
+Closed after commit `690558be`.
+
+The rv64 runtime route now registers and executes
+`backend_rv64_runtime_local_dynamic_member_array` under qemu with expected
+exit code `11`. The implementation lowers the bounded prepared-metadata path
+for passing a caller local aggregate address as a scalar pointer argument,
+computing a callee pointer-parameter member-array address, loading an I32
+element, and returning it as a scalar result while preserving fail-closed
+behavior for unsupported pointer/member forms.
+
+Close proof used the exact pre/post narrow regression pair for
+`backend_rv64_runtime_local_dynamic_member_array`; the broader recorded
+acceptance validation kept rv64 runtime coverage green and preserved the known
+`backend_riscv_prepared_edge_publication` baseline failure.
+
 ## Goal
 
 Extend the qemu-backed rv64 runtime route to cover the next local-memory
