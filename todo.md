@@ -1,36 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/300_rv64_direct_scalar_call_neighbor_coverage.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect candidate cases and register the first in-scope target
+Current Step ID: 2
+Current Step Title: Harden direct scalar local-argument materialization
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 of `plan.md` inspected `tests/backend/case/two_arg_local_arg.c` and
-confirmed it is in scope: a direct scalar two-argument call where the first
-argument is sourced from a local `int` and the second is an immediate. The case
-was registered as `backend_rv64_runtime_two_arg_local_arg` with expected qemu
-process status `12`.
+Step 2 of `plan.md` inspected the rv64 prepared-call/value-home path in
+`src/backend/mir/riscv/codegen/emit.cpp` and found no additional compiler
+hardening was needed for the registered direct scalar local-argument case.
+`emit_riscv_simple_call` already routes prepared GPR call arguments through
+the prepared call plan, and `emit_move_to_register` materializes a named `I32`
+argument from a prepared 4-byte stack-slot value home with an `lw` before
+placing it in the destination call register.
 
-Observed rv64 lowering stores the local scalar, reloads it, moves it into
-`a0`, materializes `7` into `a1`, calls `add_pair`, and saves/restores `ra` in
-`main`. The runtime runner passed the case under qemu and therefore did not
-accept BIR or LLVM fallback text as success.
+Generated assembly for `backend_rv64_runtime_two_arg_local_arg` stores local
+`x`, reloads it with `lw`, moves it into `a0`, materializes `7` into `a1`,
+calls `add_pair`, and saves/restores `ra` in `main`. No helper-name,
+filename, or exact-source-shape shortcut was introduced.
 
 ## Suggested Next
 
-Execute Step 2: keep `backend_rv64_runtime_two_arg_local_arg` green while
-inspecting the prepared-call/value-home path for direct scalar local argument
-materialization in `src/backend/mir/riscv/codegen/emit.cpp`.
+Execute Step 3: inspect `tests/backend/case/two_arg_both_local_arg.c` and
+`tests/backend/case/two_arg_second_local_arg.c`, registering only the adjacent
+direct scalar local-argument cases that remain inside the prepared GPR
+register-call contract.
 
 ## Watchouts
 
 - Keep the route limited to direct scalar register calls with local scalar
   argument sources.
-- `two_arg_local_arg.c` passed by registration only; no compiler change was
-  needed in this packet.
+- Step 2 found the local scalar argument path already supported by prepared
+  value-home metadata; no compiler code changed in this packet.
+- Adjacent candidates should reuse the same prepared call/value-home route and
+  stop if they expose stack arguments, aggregate ABI, pointer/member behavior,
+  globals, indirect calls, or varargs.
 - Do not absorb pointer parameters, member indexing, indirect calls, varargs,
   stack-passed arguments, aggregate ABI, globals, or function pointer tables
   into this plan.
