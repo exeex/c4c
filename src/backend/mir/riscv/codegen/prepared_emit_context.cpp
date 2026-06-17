@@ -41,6 +41,12 @@ const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for(
   return home_it->second;
 }
 
+const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value) {
+  return prepared_value_home_for(context.names, context.lookups, value);
+}
+
 std::optional<std::string> prepared_register_for_value(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -59,6 +65,12 @@ std::optional<std::string> prepared_register_for_value(
     return std::nullopt;
   }
   return home.register_name;
+}
+
+std::optional<std::string> prepared_register_for_value(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value) {
+  return prepared_register_for_value(context.names, context.lookups, value);
 }
 
 std::optional<std::string> prepared_pointer_register_for_value(
@@ -83,6 +95,12 @@ std::optional<std::string> prepared_pointer_register_for_value(
   return home.register_name;
 }
 
+std::optional<std::string> prepared_pointer_register_for_value(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value) {
+  return prepared_pointer_register_for_value(context.names, context.lookups, value);
+}
+
 std::optional<std::string> prepared_register_for_value_name_id(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     c4c::ValueNameId value_name) {
@@ -103,6 +121,12 @@ std::optional<std::string> prepared_register_for_value_name_id(
     return std::nullopt;
   }
   return home.register_name;
+}
+
+std::optional<std::string> prepared_register_for_value_name_id(
+    const PreparedCurrentInstructionContext& context,
+    c4c::ValueNameId value_name) {
+  return prepared_register_for_value_name_id(context.lookups, value_name);
 }
 
 bool has_frame_slot_address_materialization_at(
@@ -131,6 +155,14 @@ bool has_frame_slot_address_materialization_at(
     }
   }
   return false;
+}
+
+bool has_frame_slot_address_materialization_at(
+    const PreparedCurrentInstructionContext& context) {
+  return has_frame_slot_address_materialization_at(
+      context.lookups,
+      context.block_label,
+      context.instruction_index);
 }
 
 }  // namespace c4c::backend::riscv::codegen

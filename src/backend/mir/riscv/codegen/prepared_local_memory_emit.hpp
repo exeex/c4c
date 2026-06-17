@@ -13,6 +13,8 @@
 
 namespace c4c::backend::riscv::codegen {
 
+struct PreparedCurrentInstructionContext;
+
 [[nodiscard]] std::optional<std::string> emit_i32_load_from_stack_offset(
     std::string_view destination_register,
     std::int64_t stack_offset);
@@ -25,18 +27,12 @@ namespace c4c::backend::riscv::codegen {
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
     const c4c::backend::bir::StoreLocalInst& store,
-    c4c::BlockLabelId block_label,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups);
+    const PreparedCurrentInstructionContext& context);
 
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_load_local(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
     const c4c::backend::bir::LoadLocalInst& load,
-    c4c::BlockLabelId block_label,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups);
+    const PreparedCurrentInstructionContext& context);
 
 }  // namespace c4c::backend::riscv::codegen

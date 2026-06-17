@@ -119,6 +119,12 @@ bool append_simple_prepared_bir_function_asm(
     for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
          ++instruction_index) {
       const auto& inst = block.insts[instruction_index];
+      const PreparedCurrentInstructionContext context{
+          .names = prepared.names,
+          .lookups = lookups,
+          .block_label = *block_label_id,
+          .instruction_index = instruction_index,
+      };
       const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
       if (binary != nullptr) {
         if (binary->opcode == c4c::backend::bir::BinaryOpcode::Mul &&
@@ -129,10 +135,12 @@ bool append_simple_prepared_bir_function_asm(
           if (next_binary != nullptr &&
               next_binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
               next_binary->result.type == c4c::backend::bir::TypeKind::Ptr &&
-              has_frame_slot_address_materialization_at(
-                  lookups,
-                  *block_label_id,
-                  instruction_index + 1) &&
+              has_frame_slot_address_materialization_at(PreparedCurrentInstructionContext{
+                  .names = prepared.names,
+                  .lookups = lookups,
+                  .block_label = *block_label_id,
+                  .instruction_index = instruction_index + 1,
+              }) &&
               ((next_binary->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
                 next_binary->lhs.name == binary->result.name) ||
                (next_binary->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
@@ -151,10 +159,7 @@ bool append_simple_prepared_bir_function_asm(
         }
         auto emitted = emit_riscv_simple_prepared_pointer_add(
             *binary,
-            prepared.names,
-            lookups,
-            *block_label_id,
-            instruction_index);
+            context);
         if (!emitted.has_value()) {
           emitted = emit_riscv_simple_binary(*binary, prepared.names, lookups);
         }
@@ -180,9 +185,7 @@ bool append_simple_prepared_bir_function_asm(
         const auto emitted = emit_riscv_simple_select(
             *select,
             function_name,
-            instruction_index,
-            prepared.names,
-            lookups);
+            context);
         if (!emitted.has_value()) {
           return false;
         }
@@ -195,9 +198,7 @@ bool append_simple_prepared_bir_function_asm(
         const auto emitted = emit_riscv_simple_call(
             *call,
             block_index,
-            instruction_index,
-            prepared.names,
-            lookups);
+            context);
         if (!emitted.has_value()) {
           return false;
         }
@@ -211,10 +212,7 @@ bool append_simple_prepared_bir_function_asm(
             prepared,
             *function_name_id,
             *store_local,
-            *block_label_id,
-            instruction_index,
-            prepared.names,
-            lookups);
+            context);
         if (!emitted.has_value()) {
           return false;
         }
@@ -228,10 +226,7 @@ bool append_simple_prepared_bir_function_asm(
             prepared,
             *function_name_id,
             *load_local,
-            *block_label_id,
-            instruction_index,
-            prepared.names,
-            lookups);
+            context);
         if (!emitted.has_value()) {
           return false;
         }

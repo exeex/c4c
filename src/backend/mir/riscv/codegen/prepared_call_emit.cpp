@@ -1,5 +1,6 @@
 #include "prepared_call_emit.hpp"
 
+#include "prepared_emit_context.hpp"
 #include "prepared_frame_emit.hpp"
 #include "prepared_scalar_emit.hpp"
 
@@ -13,21 +14,19 @@ namespace c4c::backend::riscv::codegen {
 std::optional<std::string> emit_riscv_simple_call(
     const c4c::backend::bir::CallInst& call,
     std::size_t block_index,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+    const PreparedCurrentInstructionContext& context) {
   namespace prepare = c4c::backend::prepare;
 
   if (call.is_indirect || call.callee.empty() || call.args.size() > 8 ||
-      lookups == nullptr) {
+      context.lookups == nullptr) {
     return std::nullopt;
   }
 
   const auto* call_plan = prepare::find_indexed_prepared_call_plan(
-      &lookups->call_plans,
+      &context.lookups->call_plans,
       nullptr,
       block_index,
-      instruction_index);
+      context.instruction_index);
   if (call_plan == nullptr ||
       call_plan->is_indirect ||
       call_plan->indirect_callee.has_value() ||
@@ -45,9 +44,9 @@ std::optional<std::string> emit_riscv_simple_call(
   std::string out;
   for (std::size_t arg_index = 0; arg_index < call.args.size(); ++arg_index) {
     const auto* plan = prepare::find_indexed_prepared_immediate_call_argument(
-        &lookups->call_plans,
+        &context.lookups->call_plans,
         block_index,
-        instruction_index,
+        context.instruction_index,
         arg_index);
     if (plan == nullptr && arg_index < call_plan->arguments.size()) {
       plan = &call_plan->arguments[arg_index];
@@ -91,7 +90,10 @@ std::optional<std::string> emit_riscv_simple_call(
                *plan->source_register_name + "\n";
       }
     } else {
-      if (!emit_move_to_register(out, *plan->destination_register_name, names, lookups,
+      if (!emit_move_to_register(out,
+                                 *plan->destination_register_name,
+                                 context.names,
+                                 context.lookups,
                                  call.args[arg_index])) {
         return std::nullopt;
       }

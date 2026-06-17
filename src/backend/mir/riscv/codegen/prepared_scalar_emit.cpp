@@ -72,18 +72,22 @@ std::optional<std::int64_t> simple_or_prepared_integer_immediate(
 bool emit_move_to_i32_location(
     std::string& out,
     const c4c::backend::prepare::PreparedValueHome& destination_home,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const PreparedCurrentInstructionContext& context,
     const c4c::backend::bir::Value& value) {
   if (destination_home.kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
       destination_home.register_name.has_value()) {
-    return emit_move_to_register(out, *destination_home.register_name, names, lookups, value);
+    return emit_move_to_register(
+        out,
+        *destination_home.register_name,
+        context.names,
+        context.lookups,
+        value);
   }
   if (destination_home.kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
       destination_home.offset_bytes.has_value() &&
       destination_home.size_bytes == std::optional<std::size_t>{4} &&
       fits_signed_12_bit_load_offset(*destination_home.offset_bytes)) {
-    if (!emit_move_to_register(out, "t3", names, lookups, value)) {
+    if (!emit_move_to_register(out, "t3", context.names, context.lookups, value)) {
       return false;
     }
     out += "    sw t3, ";
@@ -220,14 +224,12 @@ std::optional<std::string> emit_riscv_simple_cast(
 std::optional<std::string> emit_riscv_simple_select(
     const c4c::backend::bir::SelectInst& select,
     std::string_view function_name,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+    const PreparedCurrentInstructionContext& context) {
   if (select.result.kind != c4c::backend::bir::Value::Kind::Named ||
       select.result.type != c4c::backend::bir::TypeKind::I32) {
     return std::nullopt;
   }
-  const auto* destination_home = prepared_value_home_for(names, lookups, select.result);
+  const auto* destination_home = prepared_value_home_for(context, select.result);
   if (destination_home == nullptr) {
     return std::nullopt;
   }
@@ -237,22 +239,22 @@ std::optional<std::string> emit_riscv_simple_select(
   }
 
   std::string out;
-  if (!emit_move_to_register(out, "t3", names, lookups, select.lhs) ||
-      !emit_move_to_register(out, "t4", names, lookups, select.rhs)) {
+  if (!emit_move_to_register(out, "t3", context.names, context.lookups, select.lhs) ||
+      !emit_move_to_register(out, "t4", context.names, context.lookups, select.rhs)) {
     return std::nullopt;
   }
 
   const std::string label_base = ".L" + std::string(function_name) + "_select_" +
-                                 std::to_string(instruction_index);
+                                 std::to_string(context.instruction_index);
   const std::string true_label = label_base + "_true";
   const std::string done_label = label_base + "_done";
   out += "    " + *mnemonic + " t3, t4, " + true_label + "\n";
-  if (!emit_move_to_i32_location(out, *destination_home, names, lookups, select.false_value)) {
+  if (!emit_move_to_i32_location(out, *destination_home, context, select.false_value)) {
     return std::nullopt;
   }
   out += "    j " + done_label + "\n";
   out += true_label + ":\n";
-  if (!emit_move_to_i32_location(out, *destination_home, names, lookups, select.true_value)) {
+  if (!emit_move_to_i32_location(out, *destination_home, context, select.true_value)) {
     return std::nullopt;
   }
   out += done_label + ":\n";
@@ -261,25 +263,22 @@ std::optional<std::string> emit_riscv_simple_select(
 
 std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     const c4c::backend::bir::BinaryInst& binary,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    c4c::BlockLabelId block_label,
-    std::size_t instruction_index) {
+    const PreparedCurrentInstructionContext& context) {
   namespace bir = c4c::backend::bir;
   namespace prepare = c4c::backend::prepare;
 
   if (binary.opcode != c4c::backend::bir::BinaryOpcode::Add ||
       binary.result.kind != c4c::backend::bir::Value::Kind::Named ||
       binary.result.type != c4c::backend::bir::TypeKind::Ptr ||
-      prepared_pointer_register_for_value(names, lookups, binary.result).has_value()) {
+      prepared_pointer_register_for_value(context, binary.result).has_value()) {
     return std::nullopt;
   }
-  const auto* home = prepared_value_home_for(names, lookups, binary.result);
+  const auto* home = prepared_value_home_for(context, binary.result);
   if (home == nullptr ||
       home->kind != prepare::PreparedValueHomeKind::StackSlot) {
     return std::nullopt;
   }
-  if (has_frame_slot_address_materialization_at(lookups, block_label, instruction_index)) {
+  if (has_frame_slot_address_materialization_at(context)) {
     return std::string{};
   }
   if (!home->offset_bytes.has_value() ||
@@ -302,13 +301,14 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     return std::nullopt;
   }
 
-  const auto base_register = prepared_pointer_register_for_value(names, lookups, *base);
+  const auto base_register = prepared_pointer_register_for_value(context, *base);
   if (!base_register.has_value()) {
     return std::nullopt;
   }
 
   std::string out;
-  const auto offset_immediate = simple_or_prepared_integer_immediate(names, lookups, *offset);
+  const auto offset_immediate =
+      simple_or_prepared_integer_immediate(context.names, context.lookups, *offset);
   if (offset_immediate.has_value()) {
     if (!fits_signed_12_bit_immediate(*offset_immediate)) {
       return std::nullopt;
@@ -316,7 +316,7 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     out += "    addi t3, " + *base_register + ", " +
            std::to_string(*offset_immediate) + "\n";
   } else {
-    const auto offset_register = prepared_register_for_value(names, lookups, *offset);
+    const auto offset_register = prepared_register_for_value(context, *offset);
     if (!offset_register.has_value()) {
       return std::nullopt;
     }

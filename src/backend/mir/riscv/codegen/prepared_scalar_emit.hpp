@@ -12,6 +12,8 @@
 
 namespace c4c::backend::riscv::codegen {
 
+struct PreparedCurrentInstructionContext;
+
 struct SimpleCompare {
   c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Eq;
   c4c::backend::bir::Value lhs;
@@ -41,16 +43,11 @@ struct SimpleCompare {
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_select(
     const c4c::backend::bir::SelectInst& select,
     std::string_view function_name,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups);
+    const PreparedCurrentInstructionContext& context);
 
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     const c4c::backend::bir::BinaryInst& binary,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    c4c::BlockLabelId block_label,
-    std::size_t instruction_index);
+    const PreparedCurrentInstructionContext& context);
 
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_binary(
     const c4c::backend::bir::BinaryInst& binary,
