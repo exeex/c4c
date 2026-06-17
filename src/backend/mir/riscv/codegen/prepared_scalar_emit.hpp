@@ -1,0 +1,95 @@
+#pragma once
+
+#include "../../../bir/bir.hpp"
+#include "../../../prealloc/names.hpp"
+#include "../../../prealloc/prepared_lookups.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+
+namespace c4c::backend::riscv::codegen {
+
+struct SimpleCompare {
+  c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Eq;
+  c4c::backend::bir::Value lhs;
+  c4c::backend::bir::Value rhs;
+};
+
+[[nodiscard]] std::optional<std::int64_t> simple_integer_immediate(
+    const c4c::backend::bir::Value& value);
+
+[[nodiscard]] const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value);
+
+[[nodiscard]] std::optional<std::string> prepared_register_for_value(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value);
+
+[[nodiscard]] std::optional<std::string> prepared_pointer_register_for_value(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value);
+
+[[nodiscard]] std::optional<std::string> prepared_register_for_value_name_id(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::ValueNameId value_name);
+
+[[nodiscard]] bool emit_move_to_register(
+    std::string& out,
+    std::string_view destination_register,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value);
+
+[[nodiscard]] bool has_frame_slot_address_materialization_at(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index);
+
+[[nodiscard]] std::optional<std::string> emit_riscv_simple_compare_branch(
+    const SimpleCompare& compare,
+    std::string_view true_label,
+    std::string_view false_label);
+
+[[nodiscard]] std::optional<std::string> emit_riscv_simple_cast(
+    const c4c::backend::bir::CastInst& cast,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups);
+
+[[nodiscard]] std::optional<std::string> emit_riscv_simple_select(
+    const c4c::backend::bir::SelectInst& select,
+    std::string_view function_name,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups);
+
+[[nodiscard]] std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
+    const c4c::backend::bir::BinaryInst& binary,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index);
+
+[[nodiscard]] std::optional<std::string> emit_riscv_simple_binary(
+    const c4c::backend::bir::BinaryInst& binary,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups);
+
+[[nodiscard]] std::optional<std::string> emit_riscv_simple_return(
+    const c4c::backend::bir::Terminator& terminator,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::optional<std::size_t> return_address_stack_offset,
+    std::size_t stack_frame_bytes);
+
+[[nodiscard]] std::optional<std::string> emit_i32_load_from_stack_offset(
+    std::string_view destination_register,
+    std::int64_t stack_offset);
+
+}  // namespace c4c::backend::riscv::codegen
