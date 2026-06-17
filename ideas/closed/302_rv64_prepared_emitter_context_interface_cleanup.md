@@ -127,3 +127,11 @@ instead of changing behavior under this cleanup.
 - Prefer small mechanical moves with green runtime proof over a single large
   reshuffle.
 - Keep helper names boring and ownership-oriented.
+
+## Closure Note
+
+Closed after the prepared lookup/context support surface, current-instruction
+context cleanup, and frame-owned stack helper boundary cleanup satisfied the
+acceptance criteria. Final backend-scope regression guard preserved the accepted
+`backend_riscv_prepared_edge_publication` baseline failure with no new backend
+failures.
