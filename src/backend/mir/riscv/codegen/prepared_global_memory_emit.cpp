@@ -6,6 +6,7 @@
 #include "../../../prealloc/names.hpp"
 
 #include <algorithm>
+#include <cstdint>
 
 namespace c4c::backend::riscv::codegen {
 namespace {
@@ -40,14 +41,40 @@ const c4c::backend::bir::Global* find_prepared_global(
 bool is_simple_defined_i32_global(const c4c::backend::bir::Global& global) {
   namespace bir = c4c::backend::bir;
 
-  return !global.is_extern &&
-         !global.is_thread_local &&
-         global.type == bir::TypeKind::I32 &&
-         global.size_bytes == 4 &&
-         global.align_bytes >= 4 &&
-         global.initializer_elements.empty() &&
-         !global.initializer_symbol_name.has_value() &&
-         global.initializer_symbol_name_id == c4c::kInvalidLinkName;
+  if (global.is_extern ||
+      global.is_thread_local ||
+      global.type != bir::TypeKind::I32 ||
+      global.size_bytes != 4 ||
+      global.align_bytes < 4 ||
+      !global.initializer_elements.empty() ||
+      global.initializer_symbol_name.has_value() ||
+      global.initializer_symbol_name_id != c4c::kInvalidLinkName) {
+    return false;
+  }
+  if (!global.initializer.has_value()) {
+    return true;
+  }
+  return global.initializer->kind == bir::Value::Kind::Immediate &&
+         global.initializer->type == bir::TypeKind::I32;
+}
+
+std::string global_label(const c4c::backend::bir::Module& module,
+                         const c4c::backend::bir::Global& global) {
+  if (global.link_name_id != c4c::kInvalidLinkName) {
+    const std::string_view spelling = module.names.link_names.spelling(global.link_name_id);
+    if (!spelling.empty()) {
+      return std::string{spelling};
+    }
+  }
+  return global.name;
+}
+
+std::int32_t simple_i32_global_initializer(
+    const c4c::backend::bir::Global& global) {
+  if (!global.initializer.has_value()) {
+    return 0;
+  }
+  return static_cast<std::int32_t>(global.initializer->immediate);
 }
 
 const c4c::backend::prepare::PreparedMemoryAccess* simple_i32_global_access_for(
@@ -86,8 +113,53 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_i32_global_access_for(
 bool append_prepared_global_storage_asm(
     std::string& out,
     const c4c::backend::prepare::PreparedBirModule& prepared) {
-  (void)out;
-  return prepared.module.globals.empty();
+  if (prepared.module.globals.empty()) {
+    return true;
+  }
+
+  for (const auto& global : prepared.module.globals) {
+    if (!is_simple_defined_i32_global(global) ||
+        global_label(prepared.module, global).empty()) {
+      return false;
+    }
+  }
+
+  bool wrote_data = false;
+  for (const auto& global : prepared.module.globals) {
+    const auto label = global_label(prepared.module, global);
+    const std::int32_t initializer = simple_i32_global_initializer(global);
+    if (initializer == 0) {
+      continue;
+    }
+    if (!wrote_data) {
+      out += "    .data\n";
+      wrote_data = true;
+    }
+    out += "    .balign 4\n";
+    out += label;
+    out += ":\n";
+    out += "    .word ";
+    out += std::to_string(initializer);
+    out += "\n";
+  }
+
+  bool wrote_bss = false;
+  for (const auto& global : prepared.module.globals) {
+    const auto label = global_label(prepared.module, global);
+    const std::int32_t initializer = simple_i32_global_initializer(global);
+    if (initializer != 0) {
+      continue;
+    }
+    if (!wrote_bss) {
+      out += "    .bss\n";
+      wrote_bss = true;
+    }
+    out += "    .balign 4\n";
+    out += label;
+    out += ":\n";
+    out += "    .zero 4\n";
+  }
+  return true;
 }
 
 std::optional<std::string> emit_riscv_simple_load_global(
