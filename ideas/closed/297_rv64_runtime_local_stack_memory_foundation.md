@@ -69,6 +69,43 @@ this idea.
 - Escalate to `ctest --test-dir build -R '^backend_' --output-on-failure` if
   shared prepared-memory or backend routing behavior changes materially.
 
+## Completion Notes
+
+Closed after the active runbook completed Step 5 validation.
+
+Implemented and registered qemu-backed rv64 runtime support for:
+
+- `local_array.c`
+- `local_pointer_deref.c`
+- `packed_local_member_offsets.c`
+
+The accepted support is based on prepared local frame-slot and
+base-plus-constant-offset metadata, including local I32 load/store offsets,
+direct local pointer dereference, pointer-width local slot load/store,
+frame-slot address materialization, I8 stores, unaligned I32 bytewise
+loads/stores, stack-home load results, and simple prepared cast/select
+materialization.
+
+`local_dynamic_member_array.c` remains outside this idea's scope because it
+crosses a helper call and pointer-parameter member indexing, which belongs to
+call/argument handling and non-local pointer provenance work rather than this
+local stack memory foundation.
+
+Validation recorded at close:
+
+- Regression guard over canonical rv64 runtime logs passed:
+  `test_before.log` had 16 passing tests and `test_after.log` had 17 passing
+  tests, with no new failures.
+- Step 5 rv64 runtime acceptance passed all 17
+  `backend_rv64_runtime_*` cases.
+- Step 5 RISC-V focused acceptance preserved the pre-existing
+  `backend_riscv_prepared_edge_publication` failure while both
+  `backend_codegen_route_riscv64_*` tests passed; the same failure was
+  reproduced with this slice stashed.
+- Reviewer report `review/rv64_step4_route_review.md` judged the route aligned
+  with this idea and not testcase-overfit, with a watch note to keep the
+  pointer-index skip limited to prepared frame-slot address materialization.
+
 ## Reviewer Reject Signals
 
 - The implementation accepts fallback BIR/LLVM as runtime success.
