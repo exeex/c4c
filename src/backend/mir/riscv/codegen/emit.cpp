@@ -687,24 +687,55 @@ std::optional<std::string> emit_riscv_simple_call(
     std::size_t instruction_index,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
-  if (call.is_indirect || call.callee.empty() || call.args.size() > 8) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (call.is_indirect || call.callee.empty() || call.args.size() > 8 ||
+      lookups == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* call_plan = prepare::find_indexed_prepared_call_plan(
+      &lookups->call_plans,
+      nullptr,
+      block_index,
+      instruction_index);
+  if (call_plan == nullptr ||
+      call_plan->is_indirect ||
+      call_plan->indirect_callee.has_value() ||
+      call_plan->direct_callee_name != std::optional<std::string>{call.callee} ||
+      (call_plan->wrapper_kind != prepare::PreparedCallWrapperKind::SameModule &&
+       call_plan->wrapper_kind != prepare::PreparedCallWrapperKind::DirectExternFixedArity) ||
+      call_plan->variadic_fpr_arg_register_count != 0 ||
+      call_plan->memory_return.has_value() ||
+      call_plan->outgoing_stack_argument_area.has_value() ||
+      call_plan->arguments.size() != call.args.size() ||
+      call_plan->result.has_value() != call.result.has_value()) {
     return std::nullopt;
   }
 
   std::string out;
   for (std::size_t arg_index = 0; arg_index < call.args.size(); ++arg_index) {
-    std::string destination_register = "a" + std::to_string(arg_index);
-    if (lookups != nullptr) {
-      const auto* plan = c4c::backend::prepare::find_indexed_prepared_immediate_call_argument(
-          &lookups->call_plans,
-          block_index,
-          instruction_index,
-          arg_index);
-      if (plan != nullptr && plan->destination_register_name.has_value()) {
-        destination_register = *plan->destination_register_name;
-      }
+    const auto* plan = prepare::find_indexed_prepared_immediate_call_argument(
+        &lookups->call_plans,
+        block_index,
+        instruction_index,
+        arg_index);
+    if (plan == nullptr ||
+        plan->instruction_index != instruction_index ||
+        plan->arg_index != arg_index ||
+        plan->value_bank != prepare::PreparedRegisterBank::Gpr ||
+        plan->destination_register_bank !=
+            std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
+        !plan->destination_register_name.has_value() ||
+        plan->destination_register_name->empty() ||
+        plan->destination_contiguous_width != 1 ||
+        plan->destination_stack_offset_bytes.has_value() ||
+        plan->destination_stack_size_bytes.has_value() ||
+        plan->aggregate_transport.has_value()) {
+      return std::nullopt;
     }
-    if (!emit_move_to_register(out, destination_register, names, lookups, call.args[arg_index])) {
+    if (!emit_move_to_register(out, *plan->destination_register_name, names, lookups,
+                               call.args[arg_index])) {
       return std::nullopt;
     }
   }
@@ -712,22 +743,28 @@ std::optional<std::string> emit_riscv_simple_call(
   out += "    call " + call.callee + "\n";
 
   if (call.result.has_value()) {
+    if (!call_plan->result.has_value() ||
+        call_plan->result->value_bank != prepare::PreparedRegisterBank::Gpr ||
+        call_plan->result->source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+        call_plan->result->destination_storage_kind !=
+            prepare::PreparedMoveStorageKind::Register ||
+        call_plan->result->source_register_bank !=
+            std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
+        call_plan->result->destination_register_bank !=
+            std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
+        !call_plan->result->source_register_name.has_value() ||
+        call_plan->result->source_register_name->empty() ||
+        call_plan->result->source_contiguous_width != 1 ||
+        call_plan->result->destination_contiguous_width != 1 ||
+        call_plan->result->source_stack_offset_bytes.has_value() ||
+        call_plan->result->destination_stack_offset_bytes.has_value()) {
+      return std::nullopt;
+    }
     const auto destination_register = prepared_register_for_value(names, lookups, *call.result);
     if (!destination_register.has_value()) {
       return std::nullopt;
     }
-    std::string source_register = "a0";
-    if (lookups != nullptr) {
-      const auto* call_plan = c4c::backend::prepare::find_indexed_prepared_call_plan(
-          &lookups->call_plans,
-          nullptr,
-          block_index,
-          instruction_index);
-      if (call_plan != nullptr && call_plan->result.has_value() &&
-          call_plan->result->source_register_name.has_value()) {
-        source_register = *call_plan->result->source_register_name;
-      }
-    }
+    const std::string& source_register = *call_plan->result->source_register_name;
     if (*destination_register != source_register) {
       out += "    mv " + *destination_register + ", " + source_register + "\n";
     }
