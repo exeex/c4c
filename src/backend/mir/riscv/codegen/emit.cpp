@@ -318,6 +318,28 @@ std::optional<std::string> prepared_register_for_value(
   return home.register_name;
 }
 
+std::optional<std::string> prepared_pointer_register_for_value(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  const auto value_id = prepared_value_id_for(names, lookups, value);
+  if (!value_id.has_value()) {
+    return std::nullopt;
+  }
+  const auto home_it = lookups->value_homes.homes_by_id.find(*value_id);
+  if (home_it == lookups->value_homes.homes_by_id.end() || home_it->second == nullptr) {
+    return std::nullopt;
+  }
+  const auto& home = *home_it->second;
+  if ((home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register &&
+       home.kind != c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset) ||
+      !home.register_name.has_value() ||
+      home.register_name->empty()) {
+    return std::nullopt;
+  }
+  return home.register_name;
+}
+
 std::optional<std::int64_t> prepared_immediate_i32_for_value(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -585,6 +607,35 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for(
   return access;
 }
 
+const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_frame_slot_access_for(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    c4c::backend::bir::TypeKind value_type) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr || value_type != bir::TypeKind::Ptr) {
+    return nullptr;
+  }
+  const auto* access = prepare::find_indexed_prepared_memory_access(
+      &lookups->memory_accesses,
+      block_label,
+      instruction_index);
+  if (access == nullptr ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value() ||
+      access->address.size_bytes != 8 ||
+      access->address.align_bytes < 8 ||
+      !access->address.can_use_base_plus_offset ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return nullptr;
+  }
+  return access;
+}
+
 std::optional<std::int64_t> simple_frame_slot_sp_offset_for(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
@@ -617,6 +668,84 @@ std::optional<std::int64_t> simple_frame_slot_sp_offset_for(
   return stack_offset;
 }
 
+const c4c::backend::prepare::PreparedAddressMaterialization*
+simple_frame_slot_address_materialization_for(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::Value& value) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.type != bir::TypeKind::Ptr ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  const auto* materializations =
+      prepare::find_indexed_prepared_address_materializations(
+          &lookups->address_materializations,
+          block_label);
+  if (materializations == nullptr) {
+    return nullptr;
+  }
+
+  const prepare::PreparedAddressMaterialization* selected = nullptr;
+  for (const auto* materialization : *materializations) {
+    if (materialization == nullptr ||
+        materialization->inst_index != instruction_index ||
+        materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
+        materialization->address_space != bir::AddressSpace::Default ||
+        materialization->result_value_name != std::optional<c4c::ValueNameId>{value_name} ||
+        !materialization->frame_slot_id.has_value() ||
+        !fits_signed_12_bit_immediate(materialization->byte_offset)) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = materialization;
+  }
+  return selected;
+}
+
+std::optional<std::int64_t> simple_frame_slot_sp_offset_for(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedAddressMaterialization& materialization) {
+  if (!materialization.frame_slot_id.has_value() || materialization.byte_offset < 0) {
+    return std::nullopt;
+  }
+  const auto* frame_slot = c4c::backend::prepare::find_frame_slot_by_id(
+      prepared.stack_layout,
+      *materialization.frame_slot_id);
+  if (frame_slot == nullptr || frame_slot->function_name != function_name) {
+    return std::nullopt;
+  }
+  const auto materialization_offset =
+      static_cast<std::size_t>(materialization.byte_offset);
+  if (materialization_offset > frame_slot->size_bytes) {
+    return std::nullopt;
+  }
+  if (frame_slot->offset_bytes >
+      static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) -
+          materialization_offset) {
+    return std::nullopt;
+  }
+  const auto stack_offset =
+      static_cast<std::int64_t>(frame_slot->offset_bytes + materialization_offset);
+  if (!fits_signed_12_bit_immediate(stack_offset)) {
+    return std::nullopt;
+  }
+  return stack_offset;
+}
+
 std::optional<std::string> emit_riscv_simple_store_local(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
@@ -625,6 +754,35 @@ std::optional<std::string> emit_riscv_simple_store_local(
     std::size_t instruction_index,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  if (store.value.type == c4c::backend::bir::TypeKind::Ptr) {
+    const auto* access = simple_pointer_frame_slot_access_for(
+        lookups,
+        block_label,
+        instruction_index,
+        store.value.type);
+    const auto* materialization = simple_frame_slot_address_materialization_for(
+        names,
+        lookups,
+        block_label,
+        instruction_index,
+        store.value);
+    if (access == nullptr || materialization == nullptr) {
+      return std::nullopt;
+    }
+    const auto destination_stack_offset =
+        simple_frame_slot_sp_offset_for(prepared, function_name, *access);
+    const auto source_stack_offset =
+        simple_frame_slot_sp_offset_for(prepared, function_name, *materialization);
+    if (!destination_stack_offset.has_value() || !source_stack_offset.has_value()) {
+      return std::nullopt;
+    }
+
+    std::string out;
+    out += "    addi t1, sp, " + std::to_string(*source_stack_offset) + "\n";
+    out += "    sd t1, " + std::to_string(*destination_stack_offset) + "(sp)\n";
+    return out;
+  }
+
   const auto* access = simple_frame_slot_access_for(
       lookups,
       block_label,
@@ -655,6 +813,30 @@ std::optional<std::string> emit_riscv_simple_load_local(
     std::size_t instruction_index,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  if (load.result.type == c4c::backend::bir::TypeKind::Ptr) {
+    const auto* access = simple_pointer_frame_slot_access_for(
+        lookups,
+        block_label,
+        instruction_index,
+        load.result.type);
+    if (access == nullptr) {
+      return std::nullopt;
+    }
+    const auto stack_offset =
+        simple_frame_slot_sp_offset_for(prepared, function_name, *access);
+    if (!stack_offset.has_value()) {
+      return std::nullopt;
+    }
+    const auto destination_register =
+        prepared_pointer_register_for_value(names, lookups, load.result);
+    if (!destination_register.has_value()) {
+      return std::nullopt;
+    }
+
+    return "    ld " + *destination_register + ", " +
+           std::to_string(*stack_offset) + "(sp)\n";
+  }
+
   const auto* access = simple_frame_slot_access_for(
       lookups,
       block_label,

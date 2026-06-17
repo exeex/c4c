@@ -351,6 +351,13 @@ c4c_add_backend_rv64_runtime_case(
   LABELS local memory array
 )
 c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_local_pointer_deref
+  SRC "${BACKEND_CASE_ROOT}/local_pointer_deref.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 7
+  LABELS local memory pointer
+)
+c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_branch_if_eq
   SRC "${BACKEND_CASE_ROOT}/branch_if_eq.c"
   CASE_TIMEOUT_SEC 10
