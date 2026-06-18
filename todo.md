@@ -1,37 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/304_rv64_runtime_defined_global_i32_array_subobject_foundation.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Focused RISC-V Validation
+Current Step ID: 7
+Current Step Title: Backend-Wide Closure Validation
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 6 focused RISC-V validation. The delegated build plus
-focused CTest command completed the build and ran three matching tests. The two
-`backend_codegen_route_riscv64` tests passed, and the only failing test was the
-documented accepted baseline failure:
-`backend_riscv_prepared_edge_publication`.
+Completed plan.md Step 7 backend-wide closure validation. The delegated build
+plus backend-wide CTest command completed the build and ran 208 matching
+`^backend_` tests. Both required RV64 defined-global-array runtime cases were
+included and accepted:
+`backend_rv64_runtime_defined_global_array` and
+`backend_rv64_runtime_defined_global_array_store`.
 
 ## Suggested Next
 
-Proceed to Step 7 backend-wide closure validation:
-`ctest --test-dir build -R '^backend_' --output-on-failure`.
+Supervisor/plan-owner closure review. The source idea's backend-wide closure
+criteria appear satisfied modulo the documented accepted baseline failure.
 
 ## Watchouts
 
-The focused Step 6 proof did not expose any new RISC-V/backend-route failures.
-The nonzero CTest exit status is attributable only to the plan-documented
-`backend_riscv_prepared_edge_publication` baseline failure.
+The backend-wide proof did not expose new backend failures. The nonzero CTest
+exit status is attributable only to the plan-documented
+`backend_riscv_prepared_edge_publication` baseline failure, so only documented
+baseline failures remain.
 
 ## Proof
 
 Proof command run exactly as delegated, with combined output preserved in
 `test_after.log`:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_riscv|backend_codegen_route_riscv64'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
-Result: blocked only by the documented accepted baseline failure. `ctest`
-reported 2/3 tests passed, with the sole failure
-`backend_riscv_prepared_edge_publication`.
+Result: backend-wide validation completed with 207/208 tests passed. The sole
+failure was the documented accepted baseline failure
+`backend_riscv_prepared_edge_publication`; the two RV64 defined-global-array
+runtime cases passed.
