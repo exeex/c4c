@@ -1,6 +1,7 @@
 #include "prepared_global_memory_emit.hpp"
 
 #include "prepared_emit_context.hpp"
+#include "prepared_frame_emit.hpp"
 #include "prepared_scalar_emit.hpp"
 
 #include "../../../prealloc/addressing.hpp"
@@ -8,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace c4c::backend::riscv::codegen {
@@ -122,7 +124,8 @@ std::string prepared_link_name_spelling(
 const c4c::backend::prepare::PreparedMemoryAccess* simple_i32_global_access_for(
     const PreparedCurrentInstructionContext& context,
     std::optional<c4c::ValueNameId> result_value_name,
-    std::optional<c4c::ValueNameId> stored_value_name) {
+    std::optional<c4c::ValueNameId> stored_value_name,
+    std::int64_t expected_byte_offset) {
   namespace bir = c4c::backend::bir;
   namespace prepare = c4c::backend::prepare;
 
@@ -139,7 +142,7 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_i32_global_access_for(
       access->address_space != bir::AddressSpace::Default ||
       access->is_volatile ||
       access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
-      access->address.byte_offset != 0 ||
+      access->address.byte_offset != expected_byte_offset ||
       access->address.size_bytes != 4 ||
       access->address.align_bytes < 4 ||
       !access->address.can_use_base_plus_offset) {
@@ -216,7 +219,12 @@ std::optional<std::string> emit_riscv_simple_load_global(
       load.result.type != bir::TypeKind::I32 ||
       load.result.name.empty() ||
       (load.global_name_id == c4c::kInvalidLinkName && load.global_name.empty()) ||
-      load.byte_offset != 0) {
+      load.byte_offset % 4 != 0 ||
+      load.byte_offset > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
+    return std::nullopt;
+  }
+  const auto byte_offset = static_cast<std::int64_t>(load.byte_offset);
+  if (!fits_signed_12_bit_immediate(byte_offset)) {
     return std::nullopt;
   }
   const auto result_name = context.names.value_names.find(load.result.name);
@@ -226,7 +234,8 @@ std::optional<std::string> emit_riscv_simple_load_global(
   const auto* access = simple_i32_global_access_for(
       context,
       result_name,
-      std::nullopt);
+      std::nullopt,
+      byte_offset);
   std::string fallback_global_name = load.global_name;
   if (fallback_global_name.empty() &&
       access != nullptr &&
@@ -239,7 +248,9 @@ std::optional<std::string> emit_riscv_simple_load_global(
       prepared,
       load.global_name_id,
       fallback_global_name);
-  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global)) {
+  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global) ||
+      load.byte_offset > global->size_bytes ||
+      4 > global->size_bytes - load.byte_offset) {
     return std::nullopt;
   }
   const auto label = global_label(prepared.module, *global);
@@ -252,7 +263,8 @@ std::optional<std::string> emit_riscv_simple_load_global(
 
   std::string out;
   out += "    lla " + *destination_register + ", " + label + "\n";
-  out += "    lw " + *destination_register + ", 0(" + *destination_register + ")\n";
+  out += "    lw " + *destination_register + ", " + std::to_string(byte_offset) + "(" +
+         *destination_register + ")\n";
   return out;
 }
 
@@ -284,7 +296,8 @@ std::optional<std::string> emit_riscv_simple_store_global(
   const auto* access = simple_i32_global_access_for(
       context,
       std::nullopt,
-      stored_name);
+      stored_name,
+      0);
   std::string fallback_global_name = store.global_name;
   if (fallback_global_name.empty() &&
       access != nullptr &&
