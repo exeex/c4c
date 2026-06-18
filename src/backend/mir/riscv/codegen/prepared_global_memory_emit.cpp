@@ -276,7 +276,12 @@ std::optional<std::string> emit_riscv_simple_store_global(
 
   if (store.value.type != bir::TypeKind::I32 ||
       (store.global_name_id == c4c::kInvalidLinkName && store.global_name.empty()) ||
-      store.byte_offset != 0) {
+      store.byte_offset % 4 != 0 ||
+      store.byte_offset > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
+    return std::nullopt;
+  }
+  const auto byte_offset = static_cast<std::int64_t>(store.byte_offset);
+  if (!fits_signed_12_bit_immediate(byte_offset)) {
     return std::nullopt;
   }
 
@@ -297,7 +302,7 @@ std::optional<std::string> emit_riscv_simple_store_global(
       context,
       std::nullopt,
       stored_name,
-      0);
+      byte_offset);
   std::string fallback_global_name = store.global_name;
   if (fallback_global_name.empty() &&
       access != nullptr &&
@@ -310,7 +315,9 @@ std::optional<std::string> emit_riscv_simple_store_global(
       prepared,
       store.global_name_id,
       fallback_global_name);
-  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global)) {
+  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global) ||
+      store.byte_offset > global->size_bytes ||
+      4 > global->size_bytes - store.byte_offset) {
     return std::nullopt;
   }
   const auto label = global_label(prepared.module, *global);
@@ -328,7 +335,7 @@ std::optional<std::string> emit_riscv_simple_store_global(
     return std::nullopt;
   }
   out += "    lla t0, " + label + "\n";
-  out += "    sw t1, 0(t0)\n";
+  out += "    sw t1, " + std::to_string(byte_offset) + "(t0)\n";
   return out;
 }
 

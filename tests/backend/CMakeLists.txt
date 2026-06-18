@@ -420,6 +420,13 @@ c4c_add_backend_rv64_runtime_case(
   LABELS global memory array load
 )
 c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_defined_global_array_store
+  SRC "${BACKEND_CASE_ROOT}/defined_global_array_store.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 9
+  LABELS global memory array store
+)
+c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_global_store
   SRC "${BACKEND_CASE_ROOT}/global_store.c"
   CASE_TIMEOUT_SEC 10
