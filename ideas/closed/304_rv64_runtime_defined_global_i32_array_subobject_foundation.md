@@ -141,3 +141,17 @@ semantics, or testcase-specific matching, stop and split a new idea.
 - Prefer one accepted runtime case plus a clearly documented boundary over a
   wide, fragile implementation.
 - Keep every accepted runtime case backed by qemu execution.
+
+## Closure Note
+
+Closed after completing active runbook Steps 1-7. The source idea's required
+runtime cases were accepted under qemu-backed RV64 execution:
+`backend_rv64_runtime_defined_global_array` and
+`backend_rv64_runtime_defined_global_array_store`.
+
+Backend-wide before/after validation used the same command in
+`test_before.log` and `test_after.log`:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+Both logs report 207/208 passed, with the sole failure being the documented
+baseline `backend_riscv_prepared_edge_publication`. The regression guard
+reported no pass-count decrease and no new failing tests.
