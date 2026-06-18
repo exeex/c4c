@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <vector>
 
 namespace c4c::backend::riscv::codegen {
 namespace {
@@ -39,24 +40,56 @@ const c4c::backend::bir::Global* find_prepared_global(
   return it == prepared.module.globals.end() ? nullptr : &*it;
 }
 
-bool is_simple_defined_i32_global(const c4c::backend::bir::Global& global) {
+std::optional<std::vector<std::int32_t>> simple_defined_i32_global_words(
+    const c4c::backend::bir::Global& global) {
   namespace bir = c4c::backend::bir;
 
   if (global.is_extern ||
       global.is_thread_local ||
       global.type != bir::TypeKind::I32 ||
-      global.size_bytes != 4 ||
+      global.size_bytes == 0 ||
+      global.size_bytes % 4 != 0 ||
       global.align_bytes < 4 ||
-      !global.initializer_elements.empty() ||
       global.initializer_symbol_name.has_value() ||
       global.initializer_symbol_name_id != c4c::kInvalidLinkName) {
-    return false;
+    return std::nullopt;
+  }
+
+  const std::size_t word_count = global.size_bytes / 4;
+  std::vector<std::int32_t> words(word_count, 0);
+
+  if (!global.initializer_elements.empty()) {
+    if (global.initializer.has_value() ||
+        global.initializer_elements.size() > word_count) {
+      return std::nullopt;
+    }
+    for (std::size_t index = 0; index < global.initializer_elements.size(); ++index) {
+      const auto& element = global.initializer_elements[index];
+      if (element.kind != bir::Value::Kind::Immediate ||
+          element.type != bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      words[index] = static_cast<std::int32_t>(element.immediate);
+    }
+    return words;
+  }
+
+  if (global.size_bytes != 4) {
+    return std::nullopt;
   }
   if (!global.initializer.has_value()) {
-    return true;
+    return words;
   }
-  return global.initializer->kind == bir::Value::Kind::Immediate &&
-         global.initializer->type == bir::TypeKind::I32;
+  if (global.initializer->kind != bir::Value::Kind::Immediate ||
+      global.initializer->type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  words[0] = static_cast<std::int32_t>(global.initializer->immediate);
+  return words;
+}
+
+bool is_simple_defined_i32_global(const c4c::backend::bir::Global& global) {
+  return simple_defined_i32_global_words(global).has_value();
 }
 
 std::string global_label(const c4c::backend::bir::Module& module,
@@ -70,12 +103,10 @@ std::string global_label(const c4c::backend::bir::Module& module,
   return global.name;
 }
 
-std::int32_t simple_i32_global_initializer(
-    const c4c::backend::bir::Global& global) {
-  if (!global.initializer.has_value()) {
-    return 0;
-  }
-  return static_cast<std::int32_t>(global.initializer->immediate);
+bool all_zero_words(const std::vector<std::int32_t>& words) {
+  return std::all_of(words.begin(), words.end(), [](std::int32_t word) {
+    return word == 0;
+  });
 }
 
 std::string prepared_link_name_spelling(
@@ -136,8 +167,8 @@ bool append_prepared_global_storage_asm(
   bool wrote_data = false;
   for (const auto& global : prepared.module.globals) {
     const auto label = global_label(prepared.module, global);
-    const std::int32_t initializer = simple_i32_global_initializer(global);
-    if (initializer == 0) {
+    const auto words = simple_defined_i32_global_words(global);
+    if (!words.has_value() || all_zero_words(*words)) {
       continue;
     }
     if (!wrote_data) {
@@ -147,16 +178,18 @@ bool append_prepared_global_storage_asm(
     out += "    .balign 4\n";
     out += label;
     out += ":\n";
-    out += "    .word ";
-    out += std::to_string(initializer);
-    out += "\n";
+    for (const std::int32_t word : *words) {
+      out += "    .word ";
+      out += std::to_string(word);
+      out += "\n";
+    }
   }
 
   bool wrote_bss = false;
   for (const auto& global : prepared.module.globals) {
     const auto label = global_label(prepared.module, global);
-    const std::int32_t initializer = simple_i32_global_initializer(global);
-    if (initializer != 0) {
+    const auto words = simple_defined_i32_global_words(global);
+    if (!words.has_value() || !all_zero_words(*words)) {
       continue;
     }
     if (!wrote_bss) {
@@ -166,7 +199,9 @@ bool append_prepared_global_storage_asm(
     out += "    .balign 4\n";
     out += label;
     out += ":\n";
-    out += "    .zero 4\n";
+    out += "    .zero ";
+    out += std::to_string(global.size_bytes);
+    out += "\n";
   }
   return true;
 }
