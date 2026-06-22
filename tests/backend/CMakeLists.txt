@@ -236,6 +236,16 @@ c4c_add_backend_codegen_route_test(
   LABELS riscv64 extern_global no_storage output_contract
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_external_string_literal_strlen_direct_call
+  SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00025.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_external_00025_string_literal_strlen.s"
+  REQUIRED_SNIPPETS ".section .rodata|.str0:|.byte 104, 101, 108, 108, 111, 0|lla t0, .str0|sd t0, 0(sp)|ld t0, 0(sp)|mv a0, t0|call strlen|mv s2, a0|addi t0, s2, -5|mv a0, t0"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 extern_call string_literal direct_call output_contract
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)
@@ -558,3 +568,15 @@ c4c_set_backend_test_labels(
 )
 
 add_subdirectory(bir)
+
+get_property(C4C_BACKEND_MIR_TARGETS
+  DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/mir"
+  PROPERTY BUILDSYSTEM_TARGETS
+)
+get_property(C4C_BACKEND_BIR_TARGETS
+  DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bir"
+  PROPERTY BUILDSYSTEM_TARGETS
+)
+add_custom_target(c4c_backend_tests
+  DEPENDS ${C4C_BACKEND_MIR_TARGETS} ${C4C_BACKEND_BIR_TARGETS}
+)

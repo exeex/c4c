@@ -1,32 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/308_rv64_string_literals_and_extern_calls.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Materialize String Constant Addresses
+Current Step ID: 4
+Current Step Title: Lower Direct Fixed-Arity Extern Calls
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3, "Materialize String Constant Addresses": taught
-RV64 prepared local memory emission to materialize prepared string-constant
-pointer addresses from prepared metadata and to publish prepared pointer
-register sources into local frame slots.
+Completed `plan.md` Step 4, "Lower Direct Fixed-Arity Extern Calls": added a
+focused RV64 backend route test for `tests/c/external/c-testsuite/src/00025.c`.
+The existing implementation already emits string bytes, materializes `.str0`
+through the local pointer slot, passes the reloaded pointer to `strlen`, and
+uses the integer return value in the `strlen(p) - 5` expression.
 
 ## Suggested Next
 
-Implement the next narrow direct extern-call packet. `src/00025.c` now reaches
-the direct extern-call path with `.str0` materialized and stored; the next
-packet should own any remaining extern-call/declaration behavior without
-folding it into local-memory emission.
+Supervisor should decide whether Step 4 is complete enough to advance to the
+next plan step or whether the route now needs review against the source idea.
 
 ## Watchouts
 
 - Do not special-case `"hello"`, `strlen`, `.str0`, c-testsuite filenames, or
   exact source text.
-- The prepared call plan for `strlen` is already `direct_extern_fixed_arity`.
-  String storage and local string-address materialization now emit; keep any
-  further call/declaration work in the direct extern-call packet.
+- No call-lowering implementation change was needed for this packet; the
+  focused test passed as coverage-only.
+- The delegated proof target `c4c_backend_tests` was missing from the configured
+  build; `tests/backend/CMakeLists.txt` now defines it as an aggregate over the
+  existing backend MIR/BIR test targets so the delegated proof command can run.
 - Do not make string globals look like no-storage externs; the bytes need
   emitted addressable storage.
 - Do not broaden into aggregate, pointer, floating, scalar global storage,
@@ -37,30 +38,24 @@ folding it into local-memory emission.
 - The delegated RV64 CTest subset still has one failing test,
   `backend_riscv_prepared_edge_publication`, reporting that the prepared module
   should emit a register edge move. That appears outside this storage packet.
-- Supervisor-side matching RV64/RISC-V regression guard accepted that failure
-  as pre-existing: before and after both report `33 passed, 1 failed, 34
-  total`, with no new failing tests.
+- The matching before run had `33 passed, 1 failed, 34 total`; after adding this
+  route test the delegated subset reports `34 passed, 1 failed, 35 total`, with
+  the same `backend_riscv_prepared_edge_publication` failure.
 
 ## Proof
 
-Ran the supervisor-selected proof exactly; `test_after.log` is preserved. The
-build succeeded and `src/00025.c` no longer hits the string-address/local
-pointer store blocker. `/tmp/rv64_00025_string_address.s` contains `.str0:`,
-`lla t0, .str0`, `sd t0, 0(sp)`, `ld t0, 0(sp)`, and `call strlen`.
+Ran the supervisor-selected proof exactly; `test_after.log` is preserved.
 
 The proof exits nonzero because the delegated
 `ctest -R 'backend_.*(rv64|riscv).*'` subset reports the existing
 `backend_riscv_prepared_edge_publication` failure.
 
-The RV64/RISC-V subset reports `33 passed, 1 failed, 34 total`, matching the
-known `backend_riscv_prepared_edge_publication` failure noted above. Proof log:
-`test_after.log`.
-
-Supervisor regression guard:
-
 ```sh
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+cmake --build build --target c4c_backend_tests c4cll -j 2 > /tmp/c4c_step4_build.log 2>&1 && ctest --test-dir build -j --output-on-failure -R 'backend_.*(rv64|riscv).*' > test_after.log 2>&1
 ```
 
-Result: passed. Matching RV64/RISC-V logs both report `33 passed, 1 failed, 34
-total`, with no new failing tests.
+Result: build succeeded; CTest exited nonzero with the known
+`backend_riscv_prepared_edge_publication` failure. The new
+`backend_codegen_route_riscv64_external_string_literal_strlen_direct_call` test
+passed. RV64/RISC-V subset summary: `34 passed, 1 failed, 35 total`. Proof log:
+`test_after.log`.
