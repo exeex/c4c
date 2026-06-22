@@ -170,6 +170,17 @@ required CTest pass/fail tests under this idea.
 - Worktree state remains clean or contains only committed lifecycle/idea
   artifacts when the triage closes.
 
+## Closure
+
+Closed on 2026-06-22 after the triage artifacts under
+`build/rv64_c_testsuite_probe_v2/` recorded the 93-case undefined-main bucket,
+representative prepared-BIR/asm evidence, per-case classification, and repair
+ordering. Follow-up repair work was split into focused open ideas for
+`rv64_text_only_fail_closed`, `string_literals_and_extern_calls`, and
+`aggregate_global_storage`; smaller pointer, floating, scalar, and
+control-shape buckets remain deliberately deferred by the repair-order
+artifact rather than folded into this triage plan.
+
 ## Reviewer Reject Signals
 
 - The result says "undefined main" without explaining why RV64 emitted only
