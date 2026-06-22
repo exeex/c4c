@@ -105,6 +105,47 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i32_acce
   return access;
 }
 
+const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i32_access_for(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::StoreLocalInst& store) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (context.lookups == nullptr ||
+      store.value.type != bir::TypeKind::I32 ||
+      (store.value.kind == bir::Value::Kind::Named && store.value.name.empty())) {
+    return nullptr;
+  }
+  std::optional<c4c::ValueNameId> stored_value_name;
+  if (store.value.kind == bir::Value::Kind::Named) {
+    const auto value_name = context.names.value_names.find(store.value.name);
+    if (value_name == c4c::kInvalidValueName) {
+      return nullptr;
+    }
+    stored_value_name = value_name;
+  }
+  const auto* access = prepare::find_indexed_prepared_memory_access(
+      &context.lookups->memory_accesses,
+      context.block_label,
+      context.instruction_index);
+  if (access == nullptr ||
+      access->result_value_name.has_value() ||
+      access->stored_value_name != stored_value_name ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !access->address.pointer_value_name.has_value() ||
+      access->address.size_bytes != 4 ||
+      access->address.align_bytes < 4 ||
+      access->address.byte_offset < 0 ||
+      access->address.byte_offset % 4 != 0 ||
+      !access->address.can_use_base_plus_offset ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return nullptr;
+  }
+  return access;
+}
+
 const c4c::backend::prepare::PreparedAddressMaterialization*
 simple_pointer_address_materialization_for(
     const PreparedCurrentInstructionContext& context,
@@ -206,6 +247,32 @@ std::optional<std::string> emit_riscv_simple_store_local(
       return std::nullopt;
     }
     out += "    sd t1, " + std::to_string(*destination_stack_offset) + "(sp)\n";
+    return out;
+  }
+
+  if (const auto* pointer_access = simple_pointer_value_i32_access_for(
+          context,
+          store);
+      pointer_access != nullptr) {
+    const auto base_register = prepared_register_for_value_name_id(
+        context,
+        *pointer_access->address.pointer_value_name);
+    if (!base_register.has_value()) {
+      return std::nullopt;
+    }
+    const std::string source_register = *base_register == "t1" ? "t3" : "t1";
+    std::string out;
+    if (!emit_move_to_register(
+            out,
+            source_register,
+            context.names,
+            context.lookups,
+            store.value)) {
+      return std::nullopt;
+    }
+    out += "    sw " + source_register + ", " +
+           std::to_string(pointer_access->address.byte_offset) + "(" +
+           *base_register + ")\n";
     return out;
   }
 
