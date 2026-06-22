@@ -87,6 +87,29 @@ Evidence to reuse:
 - Proof uses a narrow representative subset and keeps the full c-testsuite
   sweep as non-blocking triage evidence.
 
+## Closure Notes
+
+Closed after Steps 1-5 satisfied the focused source acceptance criteria.
+Focused backend coverage landed for zero aggregate/array global storage and
+prepared global-symbol field offset loads/stores. The representative recheck at
+`build/rv64_aggregate_global_recheck/summary.md` shows `src/00024.c` now emits
+`.bss`, `.zero 8`, `lla`, `sw`, and `lw` for global `v` instead of stopping at
+missing aggregate storage or offset access support; `src/00163.c` and
+`src/00176.c` also emit assembly.
+
+Nearby cases remain mixed triage evidence, not a full-bucket acceptance claim:
+`src/00047.c`, `src/00048.c`, `src/00050.c`, `src/00091.c`, `src/00115.c`,
+`src/00146.c`, and `src/00148.c` still fail with
+`riscv prepared module emitter does not support this prepared global storage
+layout`, which stays outside this idea's focused zero aggregate/array storage
+and integer field-offset access claim.
+
+Close proof used matching canonical RV64/RISC-V backend subset logs in
+`test_before.log` and `test_after.log`: 36 passed, 1 failed, 37 total in both
+runs, with only the known pre-existing
+`backend_riscv_prepared_edge_publication` failure. Close-time regression guard
+passed with `--allow-non-decreasing-passed` and reported no new failures.
+
 ## Reviewer Reject Signals
 
 - The patch special-cases symbol `v`, offsets `0` and `4`, or c-testsuite
