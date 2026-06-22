@@ -1,27 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/307_rv64_text_only_fail_closed_output_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect the Text-Only Emission Path
+Current Step ID: 2
+Current Step Title: Repair No-Storage Prepared Function Emission
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1, "Inspect the Text-Only Emission Path": captured
-the current prepared-BIR and RV64 asm facts for `src/00094.c`, identified the
-global-storage pre-function gate that turns a no-storage extern declaration
-into successful `.text`-only output, and recorded the Step 2 owner surface in
-`build/rv64_text_only_contract_inspection.md`.
+Implemented `plan.md` Step 2, "Repair No-Storage Prepared Function Emission":
+`append_prepared_global_storage_asm` now lets non-thread-local, non-constant
+extern globals with no initializer payload pass the RV64 prepared global
+storage gate without emitting data. The target `src/00094.c` asm now reaches
+prepared function emission and contains `.globl main`, `main:`, `li a0, 0`,
+and `ret` instead of successful `.text`-only output.
 
 ## Suggested Next
 
-Execute Step 2 as a bounded implementation packet in
-`src/backend/mir/riscv/codegen/prepared_global_memory_emit.cpp`, with
-`src/backend/mir/riscv/codegen/prepared_module_emit.cpp` in review scope:
-allow extern/no-storage global declarations to pass the RV64 prepared global
-storage gate without emitting data, then verify `main` is emitted for
-`src/00094.c`.
+Begin Step 3 by adding focused output-contract coverage for the no-storage
+prepared `main` case so the old `.text`-only success cannot return unnoticed.
 
 ## Watchouts
 
@@ -32,19 +29,34 @@ storage gate without emitting data, then verify `main` is emitted for
   full 93-case completion.
 - Do not weaken expectations, mark the control unsupported, or accept empty
   `.text` as a supported result.
-- The current prepared-module emitter still has no diagnostic/status channel:
-  `emit_prepared_module_text` returns literal `.text` when
-  `append_prepared_global_storage_asm` fails before function emission.
-- Keep the Step 2 change to no-storage extern declarations only; unsupported
-  storage definitions should still remain unsupported until separately owned.
-- Keep scratch logs out of the repository root.
+- The fix intentionally treats extern declaration storage as "no owned data" by
+  requiring `is_extern`, no TLS, no constant/string-pool marker, and no scalar,
+  symbol, or element initializer payload. It does not add data emission for
+  storage definitions.
+- The delegated proof's `ctest -R '^backend_'` run is blocked by
+  `backend_riscv_prepared_edge_publication`, which constructs a prepared module
+  directly and is outside the owned extern/global-storage surface.
+- Supervisor-side matching backend regression guard accepted that failure as
+  pre-existing: before and after both report `209 passed, 1 failed, 210 total`
+  with no new failing tests.
 
 ## Proof
 
 Proof command delegated by the supervisor:
 
 ```sh
-{ cmake --build --preset default && ./build/c4cll --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/c-testsuite/src/00094.c > /tmp/rv64_00094_prepared.txt && ./build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/c-testsuite/src/00094.c -o /tmp/rv64_00094.s && test -f build/rv64_text_only_contract_inspection.md && rg -n 'prepared.func @main|\.text|owner surface|emit_prepared|RV64|00094' /tmp/rv64_00094_prepared.txt /tmp/rv64_00094.s build/rv64_text_only_contract_inspection.md; } > test_after.log 2>&1
+{ cmake --build --preset default && ./build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/c-testsuite/src/00094.c -o /tmp/rv64_00094_fixed.s && rg -n '^\s*\.globl\s+main|^main:|\bret\b|\ba0\b' /tmp/rv64_00094_fixed.s && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1
 ```
 
-Result: passed. Proof log: `test_after.log`.
+Result: build passed and the `src/00094.c` asm check passed. The delegated
+`backend_` CTest subset still has the known
+`backend_riscv_prepared_edge_publication` failure.
+
+Supervisor regression guard:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: passed. Matching backend logs both report `209 passed, 1 failed, 210
+total`, with no new failing tests. Proof log: `test_after.log`.

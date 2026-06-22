@@ -94,6 +94,16 @@ bool is_simple_defined_i32_global(const c4c::backend::bir::Global& global) {
   return simple_defined_i32_global_words(global).has_value();
 }
 
+bool is_no_storage_extern_global(const c4c::backend::bir::Global& global) {
+  return global.is_extern &&
+         !global.is_thread_local &&
+         !global.is_constant &&
+         !global.initializer.has_value() &&
+         !global.initializer_symbol_name.has_value() &&
+         global.initializer_symbol_name_id == c4c::kInvalidLinkName &&
+         global.initializer_elements.empty();
+}
+
 std::string global_label(const c4c::backend::bir::Module& module,
                          const c4c::backend::bir::Global& global) {
   if (global.link_name_id != c4c::kInvalidLinkName) {
@@ -161,6 +171,9 @@ bool append_prepared_global_storage_asm(
   }
 
   for (const auto& global : prepared.module.globals) {
+    if (is_no_storage_extern_global(global)) {
+      continue;
+    }
     if (!is_simple_defined_i32_global(global) ||
         global_label(prepared.module, global).empty()) {
       return false;
@@ -169,6 +182,9 @@ bool append_prepared_global_storage_asm(
 
   bool wrote_data = false;
   for (const auto& global : prepared.module.globals) {
+    if (is_no_storage_extern_global(global)) {
+      continue;
+    }
     const auto label = global_label(prepared.module, global);
     const auto words = simple_defined_i32_global_words(global);
     if (!words.has_value() || all_zero_words(*words)) {
@@ -190,6 +206,9 @@ bool append_prepared_global_storage_asm(
 
   bool wrote_bss = false;
   for (const auto& global : prepared.module.globals) {
+    if (is_no_storage_extern_global(global)) {
+      continue;
+    }
     const auto label = global_label(prepared.module, global);
     const auto words = simple_defined_i32_global_words(global);
     if (!words.has_value() || !all_zero_words(*words)) {
