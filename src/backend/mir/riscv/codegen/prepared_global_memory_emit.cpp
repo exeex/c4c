@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <string_view>
 #include <vector>
 
 namespace c4c::backend::riscv::codegen {
@@ -104,6 +105,69 @@ bool is_no_storage_extern_global(const c4c::backend::bir::Global& global) {
          global.initializer_elements.empty();
 }
 
+std::size_t string_constant_storage_size(
+    const c4c::backend::bir::StringConstant& constant) {
+  return constant.bytes.empty() || constant.bytes.back() != '\0'
+             ? constant.bytes.size() + 1
+             : constant.bytes.size();
+}
+
+const c4c::backend::bir::StringConstant* find_string_constant(
+    const c4c::backend::bir::Module& module,
+    std::string_view name) {
+  const auto it = std::find_if(
+      module.string_constants.begin(),
+      module.string_constants.end(),
+      [&](const c4c::backend::bir::StringConstant& constant) {
+        return constant.name == name;
+      });
+  return it == module.string_constants.end() ? nullptr : &*it;
+}
+
+const c4c::backend::bir::StringConstant* string_constant_for_global(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::bir::Global& global) {
+  namespace bir = c4c::backend::bir;
+
+  if (!global.is_extern ||
+      global.is_thread_local ||
+      !global.is_constant ||
+      global.type != bir::TypeKind::I8 ||
+      global.size_bytes == 0 ||
+      global.initializer.has_value() ||
+      global.initializer_symbol_name.has_value() ||
+      global.initializer_symbol_name_id != c4c::kInvalidLinkName ||
+      !global.initializer_elements.empty()) {
+    return nullptr;
+  }
+
+  const auto* constant = find_string_constant(module, global.name);
+  if (constant == nullptr ||
+      constant->align_bytes > std::max<std::size_t>(global.align_bytes, 1) ||
+      string_constant_storage_size(*constant) != global.size_bytes) {
+    return nullptr;
+  }
+  return constant;
+}
+
+std::string byte_directive(std::string_view bytes) {
+  std::string out = "    .byte ";
+  for (std::size_t index = 0; index < bytes.size(); ++index) {
+    if (index != 0) {
+      out += ", ";
+    }
+    out += std::to_string(static_cast<unsigned int>(
+        static_cast<unsigned char>(bytes[index])));
+  }
+  if (bytes.empty()) {
+    out += "0";
+  } else if (bytes.back() != '\0') {
+    out += ", 0";
+  }
+  out += "\n";
+  return out;
+}
+
 std::string global_label(const c4c::backend::bir::Module& module,
                          const c4c::backend::bir::Global& global) {
   if (global.link_name_id != c4c::kInvalidLinkName) {
@@ -174,15 +238,40 @@ bool append_prepared_global_storage_asm(
     if (is_no_storage_extern_global(global)) {
       continue;
     }
-    if (!is_simple_defined_i32_global(global) ||
-        global_label(prepared.module, global).empty()) {
+    if (global_label(prepared.module, global).empty()) {
+      return false;
+    }
+    if (!is_simple_defined_i32_global(global) &&
+        string_constant_for_global(prepared.module, global) == nullptr) {
       return false;
     }
   }
 
+  bool wrote_rodata = false;
+  for (const auto& global : prepared.module.globals) {
+    const auto* constant = string_constant_for_global(prepared.module, global);
+    if (constant == nullptr) {
+      continue;
+    }
+    if (!wrote_rodata) {
+      out += "    .section .rodata\n";
+      wrote_rodata = true;
+    }
+    const auto align_bytes = std::max<std::size_t>(global.align_bytes, constant->align_bytes);
+    if (align_bytes > 1) {
+      out += "    .balign ";
+      out += std::to_string(align_bytes);
+      out += "\n";
+    }
+    out += global_label(prepared.module, global);
+    out += ":\n";
+    out += byte_directive(constant->bytes);
+  }
+
   bool wrote_data = false;
   for (const auto& global : prepared.module.globals) {
-    if (is_no_storage_extern_global(global)) {
+    if (is_no_storage_extern_global(global) ||
+        string_constant_for_global(prepared.module, global) != nullptr) {
       continue;
     }
     const auto label = global_label(prepared.module, global);
@@ -206,7 +295,8 @@ bool append_prepared_global_storage_asm(
 
   bool wrote_bss = false;
   for (const auto& global : prepared.module.globals) {
-    if (is_no_storage_extern_global(global)) {
+    if (is_no_storage_extern_global(global) ||
+        string_constant_for_global(prepared.module, global) != nullptr) {
       continue;
     }
     const auto label = global_label(prepared.module, global);
