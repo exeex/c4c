@@ -100,3 +100,16 @@ Evidence to reuse:
   works independently.
 - The exact old failure mode remains, but is hidden behind a new abstraction
   name or a later linker failure.
+
+## Closure Notes
+
+Closed 2026-06-22. The no-storage RV64 control `src/00094.c` now emits
+`.globl main`, `main:`, `li a0, 0`, and `ret`, with focused backend coverage
+for the output contract. The secondary representatives `src/00024.c`,
+`src/00025.c`, `src/00045.c`, and `src/00119.c` now fail closed with the
+explicit unsupported prepared global storage diagnostic instead of succeeding
+with `.text`-only output.
+
+The remaining unsupported aggregate, string, pointer, floating, scalar-global,
+libc-call, and full 93-case c-testsuite feature work stays out of scope for
+this idea.
