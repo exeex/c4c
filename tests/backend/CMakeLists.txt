@@ -226,6 +226,16 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 dispatch_value_materialization stack_publication probe
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_external_no_storage_main_emits_return_path
+  SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00094.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_external_00094_no_storage_main.s"
+  REQUIRED_SNIPPETS ".globl main|main:|li a0, 0|ret"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 extern_global no_storage output_contract
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)
