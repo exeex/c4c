@@ -1,0 +1,13 @@
+bir.func @strlen(ptr %p._anon_param_) -> i32
+
+bir.func @main() -> i32 {
+entry:
+  bir.store_local %lv.p, ptr %t0
+  @.str0 = bir.load_local ptr %lv.p, addr .str0
+  bir.store_local %lv.p, ptr @.str0
+  %t1 = bir.load_local ptr %lv.p
+  %t2 = bir.call i32 strlen(ptr %t1)
+  ; call_arg_source index=0 encoding=computed_address source_value=%t1 source_base=%t1 source_delta=0
+  %t3 = bir.sub i32 %t2, 5
+  bir.ret i32 %t3
+}
