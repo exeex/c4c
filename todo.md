@@ -8,14 +8,16 @@ Current Step Title: Normalize the Probe Result
 
 ## Just Finished
 
-Lifecycle activation created the active runbook and execution-state skeleton
-from `ideas/open/306_rv64_c_testsuite_undefined_main_triage_and_followups.md`.
+Step 1, Normalize the Probe Result, recorded the existing
+`build/rv64_c_testsuite_probe_v2/summary.tsv` result in
+`build/rv64_c_testsuite_probe_v2/normalized_summary.md` and wrote the exact
+93-case undefined-main bucket to
+`build/rv64_c_testsuite_probe_v2/undefined_main_cases.txt`.
 
 ## Suggested Next
 
-Begin Step 1 by inspecting or regenerating `build/rv64_c_testsuite_probe_v2/`
-probe artifacts, then record reproducible total/pass/failure counts and the
-current undefined-main case list.
+Begin the next packet by triaging the normalized undefined-main list into
+semantic follow-up buckets without regenerating the broad probe.
 
 ## Watchouts
 
@@ -23,7 +25,16 @@ current undefined-main case list.
 - Do not register the full 220-case sweep as required CTest coverage.
 - Do not treat empty `.text` output as a valid successful unsupported path.
 - Keep root-level scratch logs clean.
+- `CLANG_FAIL=95` contains 93 undefined-main linker failures plus two separate
+  undefined temporary-symbol failures (`src/00034.c`, `src/00127.c`).
 
 ## Proof
 
-Lifecycle-only activation. No build or code validation was required.
+Ran the delegated proof command:
+
+```sh
+{ cmake --build --preset default && test -f build/rv64_c_testsuite_probe_v2/summary.tsv && awk -F '\t' 'NR>1 {status[$2]++; total++} END {print "total=" total; for (k in status) print k "=" status[k]}' build/rv64_c_testsuite_probe_v2/summary.tsv | sort; } > test_after.log 2>&1
+```
+
+Result: passed. The proof log is `test_after.log` and records `total=220`,
+`PASS=62`, `QEMU_NONZERO=60`, `CLANG_FAIL=95`, and `EMIT_FAIL=3`.
