@@ -256,6 +256,16 @@ c4c_add_backend_codegen_route_test(
   LABELS riscv64 global aggregate array storage bss output_contract
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_aggregate_global_field_access
+  SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_global_field_access.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_aggregate_global_field_access.s"
+  REQUIRED_SNIPPETS ".bss|rv64_step4_pair_global:|.zero 8|.text|.globl main|main:|li t1, 13|lla t0, rv64_step4_pair_global|sw t1, 0(t0)|li t1, 29|sw t1, 4(t0)|lw t0, 4(t0)|lw s1, 0(s1)"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 global aggregate load_global store_global output_contract
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)

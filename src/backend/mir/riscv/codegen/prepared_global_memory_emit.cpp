@@ -128,6 +128,12 @@ bool is_simple_zero_initialized_global_storage(
                      is_simple_zero_storage_element);
 }
 
+bool supports_simple_i32_global_field_access(
+    const c4c::backend::bir::Global& global) {
+  return is_simple_defined_i32_global(global) ||
+         is_simple_zero_initialized_global_storage(global);
+}
+
 bool is_no_storage_extern_global(const c4c::backend::bir::Global& global) {
   return global.is_extern &&
          !global.is_thread_local &&
@@ -439,7 +445,8 @@ std::optional<std::string> emit_riscv_simple_load_global(
       prepared,
       load.global_name_id,
       fallback_global_name);
-  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global) ||
+  if (global == nullptr || access == nullptr ||
+      !supports_simple_i32_global_field_access(*global) ||
       load.byte_offset > global->size_bytes ||
       4 > global->size_bytes - load.byte_offset) {
     return std::nullopt;
@@ -506,7 +513,8 @@ std::optional<std::string> emit_riscv_simple_store_global(
       prepared,
       store.global_name_id,
       fallback_global_name);
-  if (global == nullptr || access == nullptr || !is_simple_defined_i32_global(*global) ||
+  if (global == nullptr || access == nullptr ||
+      !supports_simple_i32_global_field_access(*global) ||
       store.byte_offset > global->size_bytes ||
       4 > global->size_bytes - store.byte_offset) {
     return std::nullopt;
