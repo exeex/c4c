@@ -209,6 +209,40 @@ bool append_prepared_global_storage_asm(
   return true;
 }
 
+std::optional<std::string> emit_riscv_direct_global_address_materialization(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedAddressMaterialization& materialization,
+    std::string_view destination_register) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (destination_register.empty() ||
+      materialization.kind != prepare::PreparedAddressMaterializationKind::DirectGlobal ||
+      materialization.address_space != bir::AddressSpace::Default ||
+      materialization.is_thread_local ||
+      materialization.has_tls_address_space ||
+      materialization.address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::Direct ||
+      !materialization.symbol_name.has_value() ||
+      materialization.byte_offset != 0) {
+    return std::nullopt;
+  }
+
+  const auto* global = find_prepared_global(
+      prepared,
+      *materialization.symbol_name,
+      prepared_link_name_spelling(prepared, *materialization.symbol_name));
+  if (global == nullptr || !is_simple_defined_i32_global(*global)) {
+    return std::nullopt;
+  }
+  const auto label = global_label(prepared.module, *global);
+  if (label.empty()) {
+    return std::nullopt;
+  }
+
+  return "    lla " + std::string{destination_register} + ", " + label + "\n";
+}
+
 std::optional<std::string> emit_riscv_simple_load_global(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::bir::LoadGlobalInst& load,

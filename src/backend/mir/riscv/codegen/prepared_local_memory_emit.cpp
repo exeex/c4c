@@ -2,6 +2,7 @@
 
 #include "prepared_emit_context.hpp"
 #include "prepared_frame_emit.hpp"
+#include "prepared_global_memory_emit.hpp"
 #include "prepared_scalar_emit.hpp"
 
 #include "../../../prealloc/addressing.hpp"
@@ -105,7 +106,7 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i32_acce
 }
 
 const c4c::backend::prepare::PreparedAddressMaterialization*
-simple_frame_slot_address_materialization_for(
+simple_pointer_address_materialization_for(
     const PreparedCurrentInstructionContext& context,
     const c4c::backend::bir::Value& value) {
   namespace bir = c4c::backend::bir;
@@ -133,11 +134,24 @@ simple_frame_slot_address_materialization_for(
   for (const auto* materialization : *materializations) {
     if (materialization == nullptr ||
         materialization->inst_index != context.instruction_index ||
-        materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
+        (materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot &&
+         materialization->kind != prepare::PreparedAddressMaterializationKind::DirectGlobal) ||
         materialization->address_space != bir::AddressSpace::Default ||
-        materialization->result_value_name != std::optional<c4c::ValueNameId>{value_name} ||
-        !materialization->frame_slot_id.has_value() ||
-        !fits_signed_12_bit_immediate(materialization->byte_offset)) {
+        materialization->result_value_name != std::optional<c4c::ValueNameId>{value_name}) {
+      continue;
+    }
+    if (materialization->kind == prepare::PreparedAddressMaterializationKind::FrameSlot &&
+        (!materialization->frame_slot_id.has_value() ||
+         !fits_signed_12_bit_immediate(materialization->byte_offset))) {
+      continue;
+    }
+    if (materialization->kind == prepare::PreparedAddressMaterializationKind::DirectGlobal &&
+        (!materialization->symbol_name.has_value() ||
+         materialization->address_materialization_policy !=
+             bir::GlobalAddressMaterializationPolicy::Direct ||
+         materialization->byte_offset != 0 ||
+         materialization->is_thread_local ||
+         materialization->has_tls_address_space)) {
       continue;
     }
     if (selected != nullptr) {
@@ -159,7 +173,7 @@ std::optional<std::string> emit_riscv_simple_store_local(
     const auto* access = simple_pointer_frame_slot_access_for(
         context,
         store.value.type);
-    const auto* materialization = simple_frame_slot_address_materialization_for(
+    const auto* materialization = simple_pointer_address_materialization_for(
         context,
         store.value);
     if (access == nullptr || materialization == nullptr) {
@@ -167,14 +181,30 @@ std::optional<std::string> emit_riscv_simple_store_local(
     }
     const auto destination_stack_offset =
         simple_frame_slot_sp_offset_for(prepared, function_name, *access);
-    const auto source_stack_offset =
-        simple_frame_slot_sp_offset_for(prepared, function_name, *materialization);
-    if (!destination_stack_offset.has_value() || !source_stack_offset.has_value()) {
+    if (!destination_stack_offset.has_value()) {
       return std::nullopt;
     }
 
     std::string out;
-    out += "    addi t1, sp, " + std::to_string(*source_stack_offset) + "\n";
+    if (materialization->kind ==
+        c4c::backend::prepare::PreparedAddressMaterializationKind::FrameSlot) {
+      const auto source_stack_offset =
+          simple_frame_slot_sp_offset_for(prepared, function_name, *materialization);
+      if (!source_stack_offset.has_value()) {
+        return std::nullopt;
+      }
+      out += "    addi t1, sp, " + std::to_string(*source_stack_offset) + "\n";
+    } else if (materialization->kind ==
+               c4c::backend::prepare::PreparedAddressMaterializationKind::DirectGlobal) {
+      const auto materialized =
+          emit_riscv_direct_global_address_materialization(prepared, *materialization, "t1");
+      if (!materialized.has_value()) {
+        return std::nullopt;
+      }
+      out += *materialized;
+    } else {
+      return std::nullopt;
+    }
     out += "    sd t1, " + std::to_string(*destination_stack_offset) + "(sp)\n";
     return out;
   }

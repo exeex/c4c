@@ -8,36 +8,36 @@ Current Step Title: Add Direct Global Address Materialization Helper
 
 ## Just Finished
 
-Completed plan.md Step 2 producer-side unblock for zero-offset global-array
-pointer values stored into local pointer slots.
+Completed plan.md Step 2 consumer-side direct-global materialization for RV64
+prepared local pointer stores.
 
 Implementation:
 
-- `lower_memory_gep_inst(...)` now publishes resolved zero-offset global GEP
-  results as `bir::Value::named_symbol_pointer(...)` whenever the resolved
-  address carries a valid `LinkNameId`, independent of target architecture.
-- Relative global GEPs from an existing global-pointer SSA now preserve the
-  same symbol-pointer identity for zero-offset results.
-- Local pointer-slot stores of global-pointer SSA values now use the shared
-  symbol-pointer value helper for all targets instead of only AArch64, while
-  still requiring zero byte offset and a valid `LinkNameId`.
+- Added `emit_riscv_direct_global_address_materialization(...)` in the prepared
+  RV64 global-memory owner. It accepts only `DirectGlobal` materializations
+  with default address space, direct policy, non-TLS state, a structured symbol
+  identity, zero byte offset, and an existing simple defined `i32` global.
+- Extended the RV64 prepared local pointer `store_local` consumer to select the
+  same-instruction pointer materialization for the stored value and route
+  `FrameSlot` through the existing `sp + offset` sequence or `DirectGlobal`
+  through the new global helper.
+- Candidate RV64 asm now emits `lla t1, arr` followed by `sd t1, 0(sp)` for
+  the local pointer slot initialization instead of stopping after the prologue.
 
-Observed proof facts:
+Observed boundary:
 
-- `defined_global_array_pointer.c` now dumps semantic BIR as
-  `bir.store_local %lv.p, ptr @arr`.
-- The prepared dump now includes
-  `address_materialization block=entry inst_index=0 kind=direct_global
-  result=@arr symbol=arr policy=direct offset=0`.
-- `defined_global_array_pointer_store.c` shows the same `ptr @arr` source and
-  direct-global address materialization fact for the local pointer store.
+- `defined_global_array_pointer.c` continues through the pointer reload and
+  prepared pointer-value `i32` load, producing `lw s2, 12(s1)`.
+- `defined_global_array_pointer_store.c` now gets past the local pointer
+  initialization and reload, then stops at the later pointer-value store path
+  that belongs to Step 5.
 
 ## Suggested Next
 
-Continue plan.md Step 2 on the RV64 prepared consumer side: use the now-present
-direct-global address materialization fact for `store_local %lv.p, ptr @arr`
-to emit the supported RV64 address sequence into the local pointer frame slot,
-then fail closed for unsupported nonzero or unresolved global-pointer forms.
+Continue with plan.md Step 4: lower prepared pointer-value `i32` loads when the
+pointer value was reloaded from the supported local pointer slot initialized by
+a direct global array address, then register the load runtime case only after
+qemu proves exit code `7`.
 
 ## Watchouts
 
@@ -46,20 +46,16 @@ then fail closed for unsupported nonzero or unresolved global-pointer forms.
   matching.
 - Do not register runtime cases until the real RV64 asm route executes them
   under qemu with expected exit codes.
-- Preserve fail-closed behavior for unsupported pointer/global forms instead
-  of accepting incomplete assembly that later segfaults under qemu.
-- The pointer-value load/store metadata is already present for `%t4` with
-  constant offsets `12` and `8`; this packet only repairs the local pointer
-  store source identity and direct-global address-materialization authority.
-- The semantic BIR no longer prints `%t3` for the zero-offset global pointer
-  source because the value alias collapses it to `@arr`; consumers should rely
-  on the `LinkNameId`-backed symbol identity, not the old temporary spelling.
+- Nonzero direct-global materialization offsets intentionally remain
+  fail-closed in this packet.
+- The later store candidate still stops after `ld s1, 0(sp)` because
+  pointer-value store lowering is not part of Step 2.
 
 ## Proof
 
 Delegated proof command passed and wrote `test_after.log`:
 
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ./build/c4cll --dump-bir --target riscv64-unknown-linux-gnu tests/backend/case/defined_global_array_pointer.c >/tmp/defined_global_array_pointer.bir && ./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu tests/backend/case/defined_global_array_pointer.c >/tmp/defined_global_array_pointer.prepared && ./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu tests/backend/case/defined_global_array_pointer_store.c >/tmp/defined_global_array_pointer_store.prepared && ctest --test-dir build -R "backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_rv64_runtime_defined_global_array|backend_rv64_runtime_defined_global_array_store" --output-on-failure; } 2>&1 | tee test_after.log'`
+`bash -lc 'set -o pipefail; { cmake --build --preset default && ./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu tests/backend/case/defined_global_array_pointer.c -o /tmp/defined_global_array_pointer.s && ./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu tests/backend/case/defined_global_array_pointer_store.c -o /tmp/defined_global_array_pointer_store.s && ctest --test-dir build -R "backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_rv64_runtime_defined_global_array|backend_rv64_runtime_defined_global_array_store" --output-on-failure; } 2>&1 | tee test_after.log'`
 
-Result: build succeeded; BIR/prepared dumps were refreshed under `/tmp`; all
-4 selected CTest tests passed.
+Result: build succeeded; both candidate asm files were refreshed under `/tmp`;
+all 4 selected CTest tests passed.
