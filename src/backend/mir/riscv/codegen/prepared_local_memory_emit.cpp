@@ -147,9 +147,10 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i32_acce
 }
 
 const c4c::backend::prepare::PreparedAddressMaterialization*
-simple_pointer_address_materialization_for(
+simple_pointer_address_materialization_at(
     const PreparedCurrentInstructionContext& context,
-    const c4c::backend::bir::Value& value) {
+    const c4c::backend::bir::Value& value,
+    std::size_t materialization_instruction_index) {
   namespace bir = c4c::backend::bir;
   namespace prepare = c4c::backend::prepare;
 
@@ -174,9 +175,10 @@ simple_pointer_address_materialization_for(
   const prepare::PreparedAddressMaterialization* selected = nullptr;
   for (const auto* materialization : *materializations) {
     if (materialization == nullptr ||
-        materialization->inst_index != context.instruction_index ||
+        materialization->inst_index != materialization_instruction_index ||
         (materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot &&
-         materialization->kind != prepare::PreparedAddressMaterializationKind::DirectGlobal) ||
+         materialization->kind != prepare::PreparedAddressMaterializationKind::DirectGlobal &&
+         materialization->kind != prepare::PreparedAddressMaterializationKind::StringConstant) ||
         materialization->address_space != bir::AddressSpace::Default ||
         materialization->result_value_name != std::optional<c4c::ValueNameId>{value_name}) {
       continue;
@@ -195,12 +197,131 @@ simple_pointer_address_materialization_for(
          materialization->has_tls_address_space)) {
       continue;
     }
+    if (materialization->kind == prepare::PreparedAddressMaterializationKind::StringConstant &&
+        (!materialization->text_name.has_value() ||
+         materialization->is_thread_local ||
+         materialization->has_tls_address_space ||
+         !fits_signed_12_bit_immediate(materialization->byte_offset))) {
+      continue;
+    }
     if (selected != nullptr) {
       return nullptr;
     }
     selected = materialization;
   }
   return selected;
+}
+
+const c4c::backend::prepare::PreparedAddressMaterialization*
+simple_pointer_address_materialization_for(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value) {
+  return simple_pointer_address_materialization_at(
+      context,
+      value,
+      context.instruction_index);
+}
+
+const c4c::backend::prepare::PreparedStoreSourcePublicationPlan*
+simple_store_source_publication_for(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::StoreLocalInst& store) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (store.value.kind != bir::Value::Kind::Named ||
+      store.value.name.empty()) {
+    return nullptr;
+  }
+  const auto source_value_name = context.names.value_names.find(store.value.name);
+  if (source_value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+
+  const prepare::PreparedStoreSourcePublicationPlan* selected = nullptr;
+  for (const auto& record : prepared.store_source_publications.records) {
+    if (record.function_name != function_name ||
+        record.block_label != context.block_label ||
+        record.instruction_index != context.instruction_index ||
+        record.plan.status != prepare::PreparedStoreSourcePublicationStatus::Available ||
+        record.plan.intent !=
+            prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication ||
+        record.plan.source_value_name != source_value_name) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = &record.plan;
+  }
+  return selected;
+}
+
+std::optional<std::string> emit_riscv_string_constant_address_materialization(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedAddressMaterialization& materialization,
+    std::string_view destination_register) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (destination_register.empty() ||
+      materialization.kind != prepare::PreparedAddressMaterializationKind::StringConstant ||
+      materialization.address_space != bir::AddressSpace::Default ||
+      materialization.is_thread_local ||
+      materialization.has_tls_address_space ||
+      !materialization.text_name.has_value() ||
+      !fits_signed_12_bit_immediate(materialization.byte_offset)) {
+    return std::nullopt;
+  }
+
+  const std::string_view label = prepared.names.texts.lookup(*materialization.text_name);
+  if (label.empty()) {
+    return std::nullopt;
+  }
+
+  std::string out = "    lla " + std::string{destination_register} + ", " +
+                    std::string{label} + "\n";
+  if (materialization.byte_offset != 0) {
+    out += "    addi " + std::string{destination_register} + ", " +
+           std::string{destination_register} + ", " +
+           std::to_string(materialization.byte_offset) + "\n";
+  }
+  return out;
+}
+
+std::optional<std::string> emit_riscv_string_constant_access_address_materialization(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedMemoryAccess& access,
+    std::string_view destination_register) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (destination_register.empty() ||
+      access.address_space != bir::AddressSpace::Default ||
+      access.is_volatile ||
+      access.address.base_kind != prepare::PreparedAddressBaseKind::StringConstant ||
+      !access.address.symbol_name.has_value() ||
+      !access.address.can_use_base_plus_offset ||
+      !fits_signed_12_bit_immediate(access.address.byte_offset)) {
+    return std::nullopt;
+  }
+
+  const std::string_view label =
+      prepared.names.link_names.spelling(*access.address.symbol_name);
+  if (label.empty()) {
+    return std::nullopt;
+  }
+
+  std::string out = "    lla " + std::string{destination_register} + ", " +
+                    std::string{label} + "\n";
+  if (access.address.byte_offset != 0) {
+    out += "    addi " + std::string{destination_register} + ", " +
+           std::string{destination_register} + ", " +
+           std::to_string(access.address.byte_offset) + "\n";
+  }
+  return out;
 }
 
 }  // namespace
@@ -217,7 +338,7 @@ std::optional<std::string> emit_riscv_simple_store_local(
     const auto* materialization = simple_pointer_address_materialization_for(
         context,
         store.value);
-    if (access == nullptr || materialization == nullptr) {
+    if (access == nullptr) {
       return std::nullopt;
     }
     const auto destination_stack_offset =
@@ -227,6 +348,24 @@ std::optional<std::string> emit_riscv_simple_store_local(
     }
 
     std::string out;
+    if (materialization == nullptr) {
+      const auto* store_source = simple_store_source_publication_for(
+          prepared,
+          function_name,
+          context,
+          store);
+      if (store_source == nullptr) {
+        return std::nullopt;
+      }
+      const auto source_register = prepared_pointer_register_for_value(context, store.value);
+      if (!source_register.has_value()) {
+        return std::nullopt;
+      }
+      out += "    sd " + *source_register + ", " +
+             std::to_string(*destination_stack_offset) + "(sp)\n";
+      return out;
+    }
+
     if (materialization->kind ==
         c4c::backend::prepare::PreparedAddressMaterializationKind::FrameSlot) {
       const auto source_stack_offset =
@@ -239,6 +378,17 @@ std::optional<std::string> emit_riscv_simple_store_local(
                c4c::backend::prepare::PreparedAddressMaterializationKind::DirectGlobal) {
       const auto materialized =
           emit_riscv_direct_global_address_materialization(prepared, *materialization, "t1");
+      if (!materialized.has_value()) {
+        return std::nullopt;
+      }
+      out += *materialized;
+    } else if (materialization->kind ==
+               c4c::backend::prepare::PreparedAddressMaterializationKind::StringConstant) {
+      const auto materialized =
+          emit_riscv_string_constant_address_materialization(
+              prepared,
+              *materialization,
+              "t1");
       if (!materialized.has_value()) {
         return std::nullopt;
       }
@@ -310,6 +460,53 @@ std::optional<std::string> emit_riscv_simple_load_local(
     const c4c::backend::bir::LoadLocalInst& load,
     const PreparedCurrentInstructionContext& context) {
   if (load.result.type == c4c::backend::bir::TypeKind::Ptr) {
+    const auto* materialization = simple_pointer_address_materialization_for(
+        context,
+        load.result);
+    if (materialization != nullptr &&
+        materialization->kind ==
+            c4c::backend::prepare::PreparedAddressMaterializationKind::StringConstant) {
+      const auto destination_register =
+          prepared_pointer_register_for_value(context, load.result);
+      if (!destination_register.has_value()) {
+        return std::nullopt;
+      }
+      return emit_riscv_string_constant_address_materialization(
+          prepared,
+          *materialization,
+          *destination_register);
+    }
+
+    const auto* string_access =
+        context.lookups == nullptr
+            ? nullptr
+            : c4c::backend::prepare::find_indexed_prepared_memory_access(
+                  &context.lookups->memory_accesses,
+                  context.block_label,
+                  context.instruction_index);
+    const auto string_result_value_name =
+        load.result.kind == c4c::backend::bir::Value::Kind::Named
+            ? context.names.value_names.find(load.result.name)
+            : c4c::kInvalidValueName;
+    if (string_access != nullptr &&
+        string_access->result_value_name ==
+            std::optional<c4c::ValueNameId>{string_result_value_name} &&
+        string_result_value_name != c4c::kInvalidValueName &&
+        string_access->address.size_bytes == 8 &&
+        string_access->address.align_bytes >= 8 &&
+        string_access->address.base_kind ==
+            c4c::backend::prepare::PreparedAddressBaseKind::StringConstant) {
+      const auto destination_register =
+          prepared_pointer_register_for_value(context, load.result);
+      if (!destination_register.has_value()) {
+        return std::nullopt;
+      }
+      return emit_riscv_string_constant_access_address_materialization(
+          prepared,
+          *string_access,
+          *destination_register);
+    }
+
     const auto* access = simple_pointer_frame_slot_access_for(
         context,
         load.result.type);
