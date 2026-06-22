@@ -1,63 +1,76 @@
 Status: Active
 Source Idea Path: ideas/open/305_rv64_runtime_global_array_address_materialization_local_pointer.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Lower Pointer-Value I32 Stores
+Current Step ID: 6
+Current Step Title: Probe Global-Pointer Data Initializer Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 5 by lowering, proving, and registering the RV64
-runtime case for prepared pointer-value `i32` stores through a local pointer
-slot initialized with a direct global `i32` array address.
+Completed plan.md Step 6 by probing the three pointer-valued global
+initializer boundary cases without adding support or runtime registrations.
 
-Changed files:
+Observed boundary:
 
-- `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp`
-- `tests/backend/CMakeLists.txt`
-- `todo.md`
+- `defined_pointer_global_array.c`: remains unsupported. The source has a
+  global pointer data initializer, `int *gp = arr`, and runtime probing emits
+  only a 10-byte assembly file containing `.text`. Linking fails before qemu
+  with `undefined reference to main`, so the case does not execute through real
+  RV64 assembly.
+- `defined_pointer_global_array_offset.c`: remains unsupported. The source has
+  a global pointer data initializer with an offset, `int *gp = &arr[1]`, and
+  runtime probing emits only `.text`. Linking fails before qemu with
+  `undefined reference to main`.
+- `defined_pointer_global_array_store.c`: remains unsupported. The source has
+  a global pointer data initializer, `int *gp = arr`, followed by a store
+  through that global pointer slot; runtime probing emits only `.text`. Linking
+  fails before qemu with `undefined reference to main`.
 
-Semantic basis: prepared RV64 store lowering now accepts `StoreLocalInst`
-pointer-value `i32` stores whose prepared memory access is default-address-space
-`PointerValue`, has no load result, matches the named stored value when present
-or no prepared stored name for immediate values, has a prepared base pointer
-register, and uses a nonnegative aligned signed-12-bit base-plus-offset byte
-offset. The direct runtime probe emitted `lla t1, arr`, `sd t1, 0(sp)`,
-`ld s1, 0(sp)`, `li t1, 9`, `sw t1, 8(s1)`, and a later direct reload from
-`arr+8`, then qemu proved expected exit code `9`; only after that proof was
-`backend_rv64_runtime_defined_global_array_pointer_store` registered.
+Why: all three require pointer-valued global initializer/data-slot lowering
+and relocation semantics for global pointer values. The active plan only owns
+local pointer values initialized inside a function from a direct global `i32`
+array address.
 
 ## Suggested Next
 
-Continue with plan.md Step 6 only if delegated: probe the pointer-valued global
-initializer boundary cases and record whether they remain unsupported because
-they require global pointer data slots or relocation semantics outside this
-local-pointer idea.
+Continue with plan.md Step 7 only if delegated: run focused RISC-V validation
+for the accepted local-pointer global-array load/store capability.
 
 ## Watchouts
 
-- Do not broaden into pointer-valued global initializers, global pointer data
-  slots, GOT/object semantics, dynamic global indexing, or testcase-specific
-  matching.
-- Do not register additional runtime cases until the real RV64 asm route
-  executes them under qemu with expected exit codes.
-- Nonzero direct-global materialization offsets intentionally remain
-  fail-closed in this local-pointer route.
-- Step 5 covers local pointer values initialized from direct global array
-  addresses; the Step 6 boundary probes should not silently add pointer-valued
-  global initializer support under this idea.
+- The Step 6 probes do not produce fallback BIR/LLVM text, but they also do not
+  produce a runnable `main`; the runtime harness therefore fails closed at the
+  clang link step before qemu.
+- Do not treat the three pointer-valued global initializer cases as accepted
+  runtime cases under this local-pointer idea without a separate source-intent
+  change.
+- If a future idea owns these cases, the smallest missing surface is explicit
+  global pointer data initializer lowering, including data-slot emission and
+  relocation/address semantics for initialized global pointer values.
 
 ## Proof
 
-Manual pre-registration qemu gate passed with expected exit code `9`:
+Build proof passed:
 
-`cmake -DCOMPILER=$PWD/build/c4cll -DCLANG=$(command -v clang) -DQEMU_RISCV64=$(command -v qemu-riscv64) -DSRC=$PWD/tests/backend/case/defined_global_array_pointer_store.c -DTARGET_TRIPLE=riscv64-linux-gnu -DOUT_ASM=$PWD/build/backend_rv64_runtime/defined_global_array_pointer_store.manual.s -DOUT_BIN=$PWD/build/backend_rv64_runtime/defined_global_array_pointer_store.manual.bin -DSYSROOT=/usr/riscv64-linux-gnu -DCASE_TIMEOUT_SEC=10 -DEXPECTED_RUN_CODE=9 -P tests/backend/cmake/run_backend_rv64_runtime_case.cmake`
+`cmake --build --preset default`
 
-Delegated Step 5 proof command passed and wrote `test_after.log`:
+Result: build succeeded; ninja reported no work to do.
 
-`bash -lc 'set -o pipefail; { cmake --build --preset default && ctest --test-dir build -R "^backend_rv64_runtime" --output-on-failure; } 2>&1 | tee test_after.log'`
+Manual runtime-harness probes, no `test_after.log` written because no CTest
+subset was run:
 
-Result: build succeeded; all 30 selected RV64 runtime CTest tests passed,
-including `backend_rv64_runtime_defined_global_array_pointer_store` under qemu.
-Proof log: `test_after.log`.
+`cmake -DCOMPILER=$PWD/build/c4cll -DCLANG=$(command -v clang) -DQEMU_RISCV64=$(command -v qemu-riscv64) -DSRC=$PWD/tests/backend/case/defined_pointer_global_array.c -DTARGET_TRIPLE=riscv64-linux-gnu -DOUT_ASM=$PWD/build/backend_rv64_runtime/defined_pointer_global_array.manual.s -DOUT_BIN=$PWD/build/backend_rv64_runtime/defined_pointer_global_array.manual.bin -DSYSROOT=/usr/riscv64-linux-gnu -DCASE_TIMEOUT_SEC=10 -DEXPECTED_RUN_CODE=7 -P tests/backend/cmake/run_backend_rv64_runtime_case.cmake`
+
+Result: failed closed at `[BACKEND_RV64_CLANG_FAIL]` with `undefined reference
+to main`; emitted assembly was only `.text`.
+
+`cmake -DCOMPILER=$PWD/build/c4cll -DCLANG=$(command -v clang) -DQEMU_RISCV64=$(command -v qemu-riscv64) -DSRC=$PWD/tests/backend/case/defined_pointer_global_array_offset.c -DTARGET_TRIPLE=riscv64-linux-gnu -DOUT_ASM=$PWD/build/backend_rv64_runtime/defined_pointer_global_array_offset.manual.s -DOUT_BIN=$PWD/build/backend_rv64_runtime/defined_pointer_global_array_offset.manual.bin -DSYSROOT=/usr/riscv64-linux-gnu -DCASE_TIMEOUT_SEC=10 -DEXPECTED_RUN_CODE=9 -P tests/backend/cmake/run_backend_rv64_runtime_case.cmake`
+
+Result: failed closed at `[BACKEND_RV64_CLANG_FAIL]` with `undefined reference
+to main`; emitted assembly was only `.text`.
+
+`cmake -DCOMPILER=$PWD/build/c4cll -DCLANG=$(command -v clang) -DQEMU_RISCV64=$(command -v qemu-riscv64) -DSRC=$PWD/tests/backend/case/defined_pointer_global_array_store.c -DTARGET_TRIPLE=riscv64-linux-gnu -DOUT_ASM=$PWD/build/backend_rv64_runtime/defined_pointer_global_array_store.manual.s -DOUT_BIN=$PWD/build/backend_rv64_runtime/defined_pointer_global_array_store.manual.bin -DSYSROOT=/usr/riscv64-linux-gnu -DCASE_TIMEOUT_SEC=10 -DEXPECTED_RUN_CODE=9 -P tests/backend/cmake/run_backend_rv64_runtime_case.cmake`
+
+Result: failed closed at `[BACKEND_RV64_CLANG_FAIL]` with `undefined reference
+to main`; emitted assembly was only `.text`.
