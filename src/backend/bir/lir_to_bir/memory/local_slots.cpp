@@ -232,7 +232,7 @@ void publish_runtime_local_pointer_slot_address(std::string_view slot_name,
 
 std::optional<bir::Value> symbol_pointer_value_for_global_address(
     const lir_to_bir_detail::GlobalAddress& address) {
-  if (address.byte_offset != 0) {
+  if (address.byte_offset != 0 || address.link_name_id == c4c::kInvalidLinkName) {
     return std::nullopt;
   }
   return bir::Value::named_symbol_pointer("@" + address.global_name, address.link_name_id);
@@ -1743,10 +1743,7 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         local_slot_address_slots->erase(ptr_it->second);
         (*local_address_slots)[ptr_it->second] = global_ptr_it->second;
         local_indirect_pointer_slots->insert(ptr_it->second);
-        const auto published_value =
-            context_.target_profile.arch == c4c::TargetArch::Aarch64
-                ? symbol_pointer_value_for_global_address(global_ptr_it->second)
-                : std::nullopt;
+        const auto published_value = symbol_pointer_value_for_global_address(global_ptr_it->second);
         const auto stored_value = published_value.value_or(value);
         append_string_pointer_value_materialization(ptr_it->second,
                                                     stored_value,

@@ -1291,8 +1291,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     if (resolved_address.has_value()) {
       auto linked_address = *resolved_address;
       linked_address.link_name_id = global_it->second.link_name_id;
-      if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
-          linked_address.byte_offset == 0 &&
+      if (linked_address.byte_offset == 0 &&
           linked_address.link_name_id != c4c::kInvalidLinkName) {
         value_aliases[gep.result.str()] =
             bir::Value::named_symbol_pointer("@" + linked_address.global_name,
@@ -1658,7 +1657,12 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         structured_layouts_);
     if (resolved_address.has_value()) {
       global_pointer_slots[gep.result.str()] = *resolved_address;
-      if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+      if (resolved_address->byte_offset == 0 &&
+          resolved_address->link_name_id != c4c::kInvalidLinkName) {
+        value_aliases[gep.result.str()] =
+            bir::Value::named_symbol_pointer("@" + resolved_address->global_name,
+                                             resolved_address->link_name_id);
+      } else if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
           append_global_pointer_offset_value(gep.result.str(),
                                              *resolved_address,
                                              lowered_insts)) {
