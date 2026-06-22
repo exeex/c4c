@@ -82,6 +82,25 @@ Evidence to reuse:
 - The proof records the exact subset run and does not require registering the
   full 220-case c-testsuite sweep as mandatory coverage.
 
+## Closure Notes
+
+Closed after the active runbook completed Steps 1-6. Focused RV64 backend
+coverage includes `backend_codegen_route_riscv64_external_string_literal_strlen_direct_call`,
+which requires string bytes, label address materialization, local pointer
+store/reload, `mv a0`, `call strlen`, return capture, subtraction, and final
+`mv a0`.
+
+Representative recheck evidence in `build/rv64_string_extern_recheck/summary.md`
+showed all ten selected `string_literals_and_extern_calls` cases emitted
+assembly. The minimal representative `src/00025.c` showed `.str0`, the
+`hello` byte sequence, `.text`, `main:`, `lla t0, .str0`, and `call strlen`,
+so it progressed past the old missing string-address/direct-call failure mode.
+
+Close-gate proof used the matching RV64/RISC-V backend subset in
+`test_before.log` and `test_after.log`: `34 passed, 1 failed, 35 total` before
+and after, with no new failures. The only failing test remained the known
+pre-existing `backend_riscv_prepared_edge_publication`.
+
 ## Reviewer Reject Signals
 
 - The patch matches `"hello"`, `strlen`, `.str0`, or specific c-testsuite
