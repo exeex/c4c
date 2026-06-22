@@ -8,25 +8,22 @@ Current Step Title: Recheck Secondary Representatives and Fail-Closed Behavior
 
 ## Just Finished
 
-Completed `plan.md` Step 4, "Recheck Secondary Representatives and Fail-Closed
-Behavior": regenerated RV64 asm/link scratch artifacts for secondary
-representatives `src/00024.c`, `src/00025.c`, `src/00045.c`, and `src/00119.c`
-under `build/rv64_text_only_secondary_recheck/`, and recorded the results in
-`build/rv64_text_only_secondary_recheck.md`.
+Completed the `plan.md` Step 4 fail-closed repair in
+`src/backend/mir/riscv/codegen/prepared_module_emit.cpp`: when
+`append_prepared_global_storage_asm` rejects unsupported prepared global
+storage, `emit_prepared_module_text` now throws a RISC-V prepared global
+storage unsupported error instead of returning successful `.text`-only output.
 
-All four cases still emit `.text` only with no `.globl main` or `main:` label,
-then fail at the RISC-V link step with undefined reference to `main`. No case
-has advanced to a feature-specific assembler, linker, or runtime failure yet;
-each still silently succeeds from `c4cll` with a text-only output file.
+The four secondary representatives `src/00024.c`, `src/00025.c`, `src/00045.c`,
+and `src/00119.c` now fail during `c4cll` emission with the explicit
+unsupported prepared global storage diagnostic. The no-storage control
+`src/00094.c` still emits `.globl main`, `main:`, `li a0, 0`, and `ret`.
 
 ## Suggested Next
 
-Continue Step 4 with a bounded fail-closed output-contract repair: unsupported
-prepared global storage/addressing cases must not return successful `.text`
-only before function emission. Keep the repair to reporting or rejecting
-unsupported prepared-module input honestly; do not implement aggregate, string,
-pointer, floating, scalar-global, libc-call, or full c-testsuite feature
-support in this slice.
+Begin Step 5 closure readiness: verify the no-storage control, focused
+regression, and secondary representative fail-closed behavior satisfy the
+source idea acceptance criteria without claiming secondary feature completion.
 
 ## Watchouts
 
@@ -36,19 +33,36 @@ support in this slice.
   initialization, and pointer dereference.
 - `src/00119.c` represents floating global storage and double comparison.
 - Do not implement secondary feature repairs as part of this recheck packet.
-- Do not treat the four text-only successes as supported outputs; they remain
-  fail-open output-contract cases.
+- The fail-closed change does not add aggregate, string, pointer, floating,
+  scalar-global, libc-call, or full c-testsuite feature support.
+- The delegated `ctest -R 'backend_.*(rv64|riscv).*'` subset currently fails
+  `backend_riscv_prepared_edge_publication`; that fixture has no globals and
+  fails its register edge-move expectation, not the new global-storage
+  diagnostic.
+- Supervisor-side matching RV64/RISC-V regression guard accepted that failure
+  as pre-existing: before and after both report `33 passed, 1 failed, 34
+  total`, with no new failing tests.
 
 ## Proof
 
 Proof command delegated by the supervisor:
 
 ```sh
-{ cmake --build --preset default && mkdir -p build/rv64_text_only_secondary_recheck && for n in 00024 00025 00045 00119; do src="tests/c/external/c-testsuite/src/${n}.c"; asm="build/rv64_text_only_secondary_recheck/src_${n}.s"; bin="build/rv64_text_only_secondary_recheck/src_${n}.bin"; ./build/c4cll --codegen asm --target riscv64-linux-gnu "$src" -o "$asm" > "build/rv64_text_only_secondary_recheck/src_${n}.emit.out" 2>&1 || true; sed -n '1,20p' "$asm" > "build/rv64_text_only_secondary_recheck/src_${n}.asm.head" 2>/dev/null || true; /usr/bin/clang --target=riscv64-linux-gnu --gcc-toolchain=/usr -x assembler "$asm" -o "$bin" -lm > "build/rv64_text_only_secondary_recheck/src_${n}.clang.out" 2>&1 || true; done; test -f build/rv64_text_only_secondary_recheck.md && rg -n '00024|00025|00045|00119|\.globl main|main:|next failure|unsupported|link|assembler|runtime|feature' build/rv64_text_only_secondary_recheck.md build/rv64_text_only_secondary_recheck/*.asm.head build/rv64_text_only_secondary_recheck/*.clang.out; } > test_after.log 2>&1
+{ cmake --build --preset default && ./build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/c-testsuite/src/00094.c -o /tmp/rv64_00094_still_ok.s && rg -n '^\s*\.globl\s+main|^main:|\bret\b|\ba0\b' /tmp/rv64_00094_still_ok.s && for n in 00024 00025 00045 00119; do src="tests/c/external/c-testsuite/src/${n}.c"; out="/tmp/rv64_${n}_unsupported.s"; log="/tmp/rv64_${n}_unsupported.log"; if ./build/c4cll --codegen asm --target riscv64-linux-gnu "$src" -o "$out" > "$log" 2>&1; then echo "unexpected success for ${n}"; sed -n '1,20p' "$out"; exit 1; fi; rg -n 'unsupported|global|storage|riscv|prepared' "$log"; done && ctest --test-dir build -j --output-on-failure -R 'backend_.*(rv64|riscv).*'; } > test_after.log 2>&1
 ```
 
-Result: passed with exit code 0. Build was up to date, all four c4cll emits
-returned successfully, all four asm heads remained `.text` only, all four
-clang link attempts reported undefined reference to `main`, and the final `rg`
-check found the recorded representatives and failure classifications. Proof
-log: `test_after.log`.
+Result: failed with exit code 8 because the final CTest subset reported
+`backend_riscv_prepared_edge_publication` failed its existing register
+edge-move expectation. Earlier portions of the same proof command passed:
+the build succeeded, `src/00094.c` emitted `main`, and all four secondary
+representatives failed closed with the unsupported prepared global storage
+diagnostic.
+
+Supervisor regression guard:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: passed. Matching RV64/RISC-V logs both report `33 passed, 1 failed, 34
+total`, with no new failing tests. Proof log: `test_after.log`.

@@ -5,6 +5,7 @@
 #include "prepared_global_memory_emit.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 #include <string>
 
 namespace c4c::backend::riscv::codegen {
@@ -15,7 +16,8 @@ std::string emit_prepared_module_text(
 
   std::string out;
   if (!append_prepared_global_storage_asm(out, module)) {
-    return "    .text\n";
+    throw std::invalid_argument(
+        "riscv prepared module emitter does not support this prepared global storage layout");
   }
   out += "    .text\n";
   for (const auto& function : module.control_flow.functions) {
