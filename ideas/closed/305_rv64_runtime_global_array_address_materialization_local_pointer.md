@@ -149,6 +149,11 @@ this one.
 
 ## Notes For The Agent
 
+- Closed after Step 8: both local-pointer global-array RV64 runtime cases execute
+  under qemu with the expected exit codes, pointer-valued global initializer
+  probes remain unsupported and documented out of scope, and backend-wide
+  validation preserves only the accepted `backend_riscv_prepared_edge_publication`
+  baseline failure.
 - Use AArch64 global/address-materialization ownership only as a layout model;
   do not attempt to port its full machine-node architecture under this idea.
 - The important boundary is local pointer materialization from a direct global
