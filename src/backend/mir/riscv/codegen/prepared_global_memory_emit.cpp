@@ -95,6 +95,39 @@ bool is_simple_defined_i32_global(const c4c::backend::bir::Global& global) {
   return simple_defined_i32_global_words(global).has_value();
 }
 
+bool is_simple_zero_storage_element(const c4c::backend::bir::Value& element) {
+  namespace bir = c4c::backend::bir;
+
+  if (element.kind != bir::Value::Kind::Immediate || element.immediate != 0) {
+    return false;
+  }
+  switch (element.type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::I128:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool is_simple_zero_initialized_global_storage(
+    const c4c::backend::bir::Global& global) {
+  return !global.is_extern &&
+         !global.is_thread_local &&
+         global.size_bytes != 0 &&
+         !global.initializer.has_value() &&
+         !global.initializer_symbol_name.has_value() &&
+         global.initializer_symbol_name_id == c4c::kInvalidLinkName &&
+         !global.initializer_elements.empty() &&
+         std::all_of(global.initializer_elements.begin(),
+                     global.initializer_elements.end(),
+                     is_simple_zero_storage_element);
+}
+
 bool is_no_storage_extern_global(const c4c::backend::bir::Global& global) {
   return global.is_extern &&
          !global.is_thread_local &&
@@ -148,6 +181,15 @@ const c4c::backend::bir::StringConstant* string_constant_for_global(
     return nullptr;
   }
   return constant;
+}
+
+bool is_supported_prepared_global_storage(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::bir::Global& global) {
+  return is_no_storage_extern_global(global) ||
+         is_simple_defined_i32_global(global) ||
+         is_simple_zero_initialized_global_storage(global) ||
+         string_constant_for_global(module, global) != nullptr;
 }
 
 std::string byte_directive(std::string_view bytes) {
@@ -241,8 +283,7 @@ bool append_prepared_global_storage_asm(
     if (global_label(prepared.module, global).empty()) {
       return false;
     }
-    if (!is_simple_defined_i32_global(global) &&
-        string_constant_for_global(prepared.module, global) == nullptr) {
+    if (!is_supported_prepared_global_storage(prepared.module, global)) {
       return false;
     }
   }
@@ -301,14 +342,21 @@ bool append_prepared_global_storage_asm(
     }
     const auto label = global_label(prepared.module, global);
     const auto words = simple_defined_i32_global_words(global);
-    if (!words.has_value() || !all_zero_words(*words)) {
+    if ((!words.has_value() || !all_zero_words(*words)) &&
+        !is_simple_zero_initialized_global_storage(global)) {
       continue;
     }
     if (!wrote_bss) {
       out += "    .bss\n";
       wrote_bss = true;
     }
-    out += "    .balign 4\n";
+    const std::size_t align_bytes =
+        std::max<std::size_t>(global.align_bytes, words.has_value() ? 4 : 1);
+    if (align_bytes > 1) {
+      out += "    .balign ";
+      out += std::to_string(align_bytes);
+      out += "\n";
+    }
     out += label;
     out += ":\n";
     out += "    .zero ";
