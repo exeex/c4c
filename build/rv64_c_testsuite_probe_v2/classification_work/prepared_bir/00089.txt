@@ -1,0 +1,203 @@
+prepared.module target=riscv64-linux-gnu route=semantic_bir_shared
+completed_phases: legalize stack_layout liveness out_of_ssa regalloc
+invariants:
+  - no_target_facing_i1
+  - no_phi_nodes
+notes:
+  - [prealloc] prealloc owns the shared semantic-BIR to prealloc-BIR route before MIR lowering
+  - [legalize] bootstrap BIR legalize kept semantic CFG and phi form intact while promoting i1 values plus function signature/storage bookkeeping, memory-address/load-store bookkeeping, and call ABI metadata
+  - [stack_layout] stack layout prepared function 'zero' with 0 home slot(s) and 0 bytes of frame space
+  - [stack_layout] stack layout prepared function 'anon' with 0 home slot(s) and 0 bytes of frame space
+  - [stack_layout] stack layout prepared function 'go' with 0 home slot(s) and 0 bytes of frame space
+  - [stack_layout] stack layout prepared function 'main' with 1 home slot(s) and 8 bytes of frame space
+  - [stack_layout] stack layout now emits provisional stack objects, elides dead and copy-coalesced home slots, and only allocates frame storage for objects that still require dedicated homes
+  - [liveness] liveness now computes BIR named-value intervals, exact def/use program points, predecessor-edge phi uses, call points, CFG-aware live-through extension, and loop depth independently of stack-layout object identity
+  - [out_of_ssa] out_of_ssa removed phi nodes from live prepared BIR and published authoritative join-transfer plus parallel-copy obligations
+  - [regalloc] regalloc seeded function 'zero' with 0 allocation constraint(s) and 0 interference edge(s) from active liveness; assigned 0 register(s) and 0 stack slot(s)
+  - [regalloc] regalloc seeded function 'anon' with 1 allocation constraint(s) and 0 interference edge(s) from active liveness; assigned 1 register(s) and 0 stack slot(s)
+  - [regalloc] regalloc seeded function 'go' with 1 allocation constraint(s) and 0 interference edge(s) from active liveness; assigned 1 register(s) and 0 stack slot(s)
+  - [regalloc] regalloc seeded function 'main' with 4 allocation constraint(s) and 3 interference edge(s) from active liveness; assigned 4 register(s) and 0 stack slot(s)
+--- prepared-bir ---
+bir.func @zero() -> i32 {
+entry:
+  bir.ret i32 0
+}
+
+bir.func @anon() -> ptr {
+entry:
+  bir.ret ptr @s
+}
+
+bir.func @go() -> ptr {
+entry:
+  bir.ret ptr @anon
+}
+
+bir.func @main() -> i32 {
+entry:
+  %t0 = bir.call ptr go()
+  %t1 = bir.call ptr %t0()
+  %t3 = bir.load_local ptr %t3.addr, addr %t1
+  %t4 = bir.call i32 %t3()
+  bir.ret i32 %t4
+}
+
+--- prepared-function-summaries ---
+prepared.summary @zero stable_base=rsp frame_size=0 frame_alignment=1 has_dynamic_stack=no saved_regs=0 calls=0 dynamic_stack_ops=0 variadic_entry=no storage_values=0
+prepared.summary @anon stable_base=rsp frame_size=0 frame_alignment=1 has_dynamic_stack=no saved_regs=0 calls=0 dynamic_stack_ops=0 variadic_entry=no storage_values=1
+  storage @s register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+prepared.summary @go stable_base=rsp frame_size=0 frame_alignment=1 has_dynamic_stack=no saved_regs=0 calls=0 dynamic_stack_ops=0 variadic_entry=no storage_values=1
+  storage @anon register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+prepared.summary @main stable_base=rsp frame_size=8 frame_alignment=8 has_dynamic_stack=no saved_regs=1 calls=3 dynamic_stack_ops=0 variadic_entry=no storage_values=4
+  saved gpr:s1 order=0 placement=gpr:callee_saved#0/w1 width=1 units=s1 slot_placement=slot#1+stack8 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+  callsite block=0 inst=0 wrapper=same_module callee=go variadic_fpr_args=0 args=0 result_bank=gpr clobbers=gpr:t0/w1[t0],fpr:ft0/w1[ft0],vreg:v0/w1[v0],vreg:v1/w1[v1],vreg:v2/w1[v2],vreg:v3/w1[v3],vreg:v4/w1[v4],vreg:v5/w1[v5],vreg:v6/w1[v6],vreg:v7/w1[v7],vreg:v8/w1[v8],vreg:v9/w1[v9],vreg:v10/w1[v10],vreg:v11/w1[v11],vreg:v12/w1[v12],vreg:v13/w1[v13],vreg:v14/w1[v14],vreg:v15/w1[v15]
+    result bank=gpr from=register:a0 to=register:t0
+  callsite block=0 inst=1 wrapper=indirect variadic_fpr_args=0 args=0 indirect_callee=%t0 indirect_home=register indirect_bank=gpr indirect_value_id=2 indirect_reg=t0 result_bank=gpr clobbers=gpr:t0/w1[t0],fpr:ft0/w1[ft0],vreg:v0/w1[v0],vreg:v1/w1[v1],vreg:v2/w1[v2],vreg:v3/w1[v3],vreg:v4/w1[v4],vreg:v5/w1[v5],vreg:v6/w1[v6],vreg:v7/w1[v7],vreg:v8/w1[v8],vreg:v9/w1[v9],vreg:v10/w1[v10],vreg:v11/w1[v11],vreg:v12/w1[v12],vreg:v13/w1[v13],vreg:v14/w1[v14],vreg:v15/w1[v15]
+    result bank=gpr from=register:a0 to=register:s1
+  callsite block=0 inst=3 wrapper=indirect variadic_fpr_args=0 args=0 indirect_callee=%t3 indirect_home=register indirect_bank=gpr indirect_value_id=4 indirect_reg=t0 result_bank=gpr clobbers=gpr:t0/w1[t0],fpr:ft0/w1[ft0],vreg:v0/w1[v0],vreg:v1/w1[v1],vreg:v2/w1[v2],vreg:v3/w1[v3],vreg:v4/w1[v4],vreg:v5/w1[v5],vreg:v6/w1[v6],vreg:v7/w1[v7],vreg:v8/w1[v8],vreg:v9/w1[v9],vreg:v10/w1[v10],vreg:v11/w1[v11],vreg:v12/w1[v12],vreg:v13/w1[v13],vreg:v14/w1[v14],vreg:v15/w1[v15]
+    result bank=gpr from=register:a0 to=register:s1
+  storage %t0 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t1 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t3 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t4 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+--- prepared-control-flow ---
+prepared.func @zero
+  block entry terminator=return
+prepared.func @anon
+  block entry terminator=return
+prepared.func @go
+  block entry terminator=return
+prepared.func @main
+  block entry terminator=return
+--- prepared-value-locations ---
+prepared.func @zero
+prepared.func @anon
+  home @s value_id=0 kind=register reg=t0
+  move_bundle phase=before_return authority=none block_index=0 instruction_index=0
+    move from_value_id=0 to_value_id=0 destination_kind=function_return_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=return_register_to_register
+prepared.func @go
+  home @anon value_id=1 kind=register reg=t0
+  move_bundle phase=before_return authority=none block_index=0 instruction_index=0
+    move from_value_id=1 to_value_id=1 destination_kind=function_return_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=return_register_to_register
+prepared.func @main
+  home %t0 value_id=2 kind=register reg=t0
+  home %t1 value_id=3 kind=register reg=s1
+  home %t3 value_id=4 kind=register reg=t0
+  home %t4 value_id=5 kind=register reg=s1
+  move_bundle phase=after_call authority=none block_index=0 instruction_index=0
+    move from_value_id=2 to_value_id=2 destination_kind=call_result_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=call_result_register_to_register
+    abi_binding destination_kind=call_result_abi destination_storage=register placement=gpr:call_result#0/w1 reg=a0
+  move_bundle phase=after_call authority=none block_index=0 instruction_index=1
+    move from_value_id=3 to_value_id=3 destination_kind=call_result_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=call_result_register_to_register
+    abi_binding destination_kind=call_result_abi destination_storage=register placement=gpr:call_result#0/w1 reg=a0
+  move_bundle phase=after_call authority=none block_index=0 instruction_index=3
+    move from_value_id=5 to_value_id=5 destination_kind=call_result_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=call_result_register_to_register
+    abi_binding destination_kind=call_result_abi destination_storage=register placement=gpr:call_result#0/w1 reg=a0
+  move_bundle phase=before_return authority=none block_index=0 instruction_index=4
+    move from_value_id=5 to_value_id=5 destination_kind=function_return_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=return_register_to_register
+--- prepared-block-entry-publications ---
+--- prepared-stack-layout ---
+frame_size=8 frame_alignment=8
+object #0 func=main name=%t3.addr source_kind=lowering_scratch type=ptr size=8 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=no
+slot #0 object_id=0 func=main offset=0 size=8 align=8 fixed_location=no
+--- prepared-frame-plan ---
+prepared.func @zero frame_size=0 frame_alignment=1 has_dynamic_stack=no fixed_slots_use_fp=no
+prepared.func @anon frame_size=0 frame_alignment=1 has_dynamic_stack=no fixed_slots_use_fp=no
+prepared.func @go frame_size=0 frame_alignment=1 has_dynamic_stack=no fixed_slots_use_fp=no
+prepared.func @main frame_size=8 frame_alignment=8 has_dynamic_stack=no fixed_slots_use_fp=no
+  saved_register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 save_index=0 width=1 units=s1 slot_placement=slot#1+stack8 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+  frame_slot_order slot_id=#0 offset=0 size=8 align=8
+--- prepared-dynamic-stack-plan ---
+--- prepared-call-plans ---
+prepared.func @main
+  call block_index=0 inst_index=0 wrapper_kind=same_module variadic_fpr_arg_register_count=0 indirect=no callee=go
+    result value_bank=gpr source_storage=register destination_storage=register destination_value_id=2 source_placement=gpr:call_result#0/w1 source_reg=a0 source_bank=gpr dest_placement=gpr:caller_saved#0/w1 dest_reg=t0 dest_bank=gpr late_publication=yes late_source_register=yes late_source_in_destination_alias=yes late_fpr_vreg_store_value_retarget=no late_current_block_publication=no
+    clobber bank=gpr placement=gpr:reserved_scratch#0/w1 reg=t0 width=1 units=t0
+    clobber bank=fpr placement=fpr:reserved_scratch#0/w1 reg=ft0 width=1 units=ft0
+    clobber bank=vreg placement=vreg:reserved_scratch#0/w1 reg=v0 width=1 units=v0
+    clobber bank=vreg placement=vreg:reserved_scratch#1/w1 reg=v1 width=1 units=v1
+    clobber bank=vreg placement=vreg:reserved_scratch#2/w1 reg=v2 width=1 units=v2
+    clobber bank=vreg placement=vreg:reserved_scratch#3/w1 reg=v3 width=1 units=v3
+    clobber bank=vreg placement=vreg:reserved_scratch#4/w1 reg=v4 width=1 units=v4
+    clobber bank=vreg placement=vreg:reserved_scratch#5/w1 reg=v5 width=1 units=v5
+    clobber bank=vreg placement=vreg:reserved_scratch#6/w1 reg=v6 width=1 units=v6
+    clobber bank=vreg placement=vreg:reserved_scratch#7/w1 reg=v7 width=1 units=v7
+    clobber bank=vreg placement=vreg:reserved_scratch#8/w1 reg=v8 width=1 units=v8
+    clobber bank=vreg placement=vreg:reserved_scratch#9/w1 reg=v9 width=1 units=v9
+    clobber bank=vreg placement=vreg:reserved_scratch#10/w1 reg=v10 width=1 units=v10
+    clobber bank=vreg placement=vreg:reserved_scratch#11/w1 reg=v11 width=1 units=v11
+    clobber bank=vreg placement=vreg:reserved_scratch#12/w1 reg=v12 width=1 units=v12
+    clobber bank=vreg placement=vreg:reserved_scratch#13/w1 reg=v13 width=1 units=v13
+    clobber bank=vreg placement=vreg:reserved_scratch#14/w1 reg=v14 width=1 units=v14
+    clobber bank=vreg placement=vreg:reserved_scratch#15/w1 reg=v15 width=1 units=v15
+  call block_index=0 inst_index=1 wrapper_kind=indirect variadic_fpr_arg_register_count=0 indirect=yes indirect_callee=%t0 indirect_encoding=register indirect_bank=gpr indirect_value_id=2 indirect_reg=t0
+    result value_bank=gpr source_storage=register destination_storage=register destination_value_id=3 source_placement=gpr:call_result#0/w1 source_reg=a0 source_bank=gpr dest_placement=gpr:callee_saved#0/w1 dest_reg=s1 dest_bank=gpr late_publication=yes late_source_register=yes late_source_in_destination_alias=yes late_fpr_vreg_store_value_retarget=no late_current_block_publication=no
+    clobber bank=gpr placement=gpr:reserved_scratch#0/w1 reg=t0 width=1 units=t0
+    clobber bank=fpr placement=fpr:reserved_scratch#0/w1 reg=ft0 width=1 units=ft0
+    clobber bank=vreg placement=vreg:reserved_scratch#0/w1 reg=v0 width=1 units=v0
+    clobber bank=vreg placement=vreg:reserved_scratch#1/w1 reg=v1 width=1 units=v1
+    clobber bank=vreg placement=vreg:reserved_scratch#2/w1 reg=v2 width=1 units=v2
+    clobber bank=vreg placement=vreg:reserved_scratch#3/w1 reg=v3 width=1 units=v3
+    clobber bank=vreg placement=vreg:reserved_scratch#4/w1 reg=v4 width=1 units=v4
+    clobber bank=vreg placement=vreg:reserved_scratch#5/w1 reg=v5 width=1 units=v5
+    clobber bank=vreg placement=vreg:reserved_scratch#6/w1 reg=v6 width=1 units=v6
+    clobber bank=vreg placement=vreg:reserved_scratch#7/w1 reg=v7 width=1 units=v7
+    clobber bank=vreg placement=vreg:reserved_scratch#8/w1 reg=v8 width=1 units=v8
+    clobber bank=vreg placement=vreg:reserved_scratch#9/w1 reg=v9 width=1 units=v9
+    clobber bank=vreg placement=vreg:reserved_scratch#10/w1 reg=v10 width=1 units=v10
+    clobber bank=vreg placement=vreg:reserved_scratch#11/w1 reg=v11 width=1 units=v11
+    clobber bank=vreg placement=vreg:reserved_scratch#12/w1 reg=v12 width=1 units=v12
+    clobber bank=vreg placement=vreg:reserved_scratch#13/w1 reg=v13 width=1 units=v13
+    clobber bank=vreg placement=vreg:reserved_scratch#14/w1 reg=v14 width=1 units=v14
+    clobber bank=vreg placement=vreg:reserved_scratch#15/w1 reg=v15 width=1 units=v15
+  call block_index=0 inst_index=3 wrapper_kind=indirect variadic_fpr_arg_register_count=0 indirect=yes indirect_callee=%t3 indirect_encoding=register indirect_bank=gpr indirect_value_id=4 indirect_reg=t0
+    result value_bank=gpr source_storage=register destination_storage=register destination_value_id=5 source_placement=gpr:call_result#0/w1 source_reg=a0 source_bank=gpr dest_placement=gpr:callee_saved#0/w1 dest_reg=s1 dest_bank=gpr late_publication=yes late_source_register=yes late_source_in_destination_alias=yes late_fpr_vreg_store_value_retarget=no late_current_block_publication=no
+    clobber bank=gpr placement=gpr:reserved_scratch#0/w1 reg=t0 width=1 units=t0
+    clobber bank=fpr placement=fpr:reserved_scratch#0/w1 reg=ft0 width=1 units=ft0
+    clobber bank=vreg placement=vreg:reserved_scratch#0/w1 reg=v0 width=1 units=v0
+    clobber bank=vreg placement=vreg:reserved_scratch#1/w1 reg=v1 width=1 units=v1
+    clobber bank=vreg placement=vreg:reserved_scratch#2/w1 reg=v2 width=1 units=v2
+    clobber bank=vreg placement=vreg:reserved_scratch#3/w1 reg=v3 width=1 units=v3
+    clobber bank=vreg placement=vreg:reserved_scratch#4/w1 reg=v4 width=1 units=v4
+    clobber bank=vreg placement=vreg:reserved_scratch#5/w1 reg=v5 width=1 units=v5
+    clobber bank=vreg placement=vreg:reserved_scratch#6/w1 reg=v6 width=1 units=v6
+    clobber bank=vreg placement=vreg:reserved_scratch#7/w1 reg=v7 width=1 units=v7
+    clobber bank=vreg placement=vreg:reserved_scratch#8/w1 reg=v8 width=1 units=v8
+    clobber bank=vreg placement=vreg:reserved_scratch#9/w1 reg=v9 width=1 units=v9
+    clobber bank=vreg placement=vreg:reserved_scratch#10/w1 reg=v10 width=1 units=v10
+    clobber bank=vreg placement=vreg:reserved_scratch#11/w1 reg=v11 width=1 units=v11
+    clobber bank=vreg placement=vreg:reserved_scratch#12/w1 reg=v12 width=1 units=v12
+    clobber bank=vreg placement=vreg:reserved_scratch#13/w1 reg=v13 width=1 units=v13
+    clobber bank=vreg placement=vreg:reserved_scratch#14/w1 reg=v14 width=1 units=v14
+    clobber bank=vreg placement=vreg:reserved_scratch#15/w1 reg=v15 width=1 units=v15
+--- prepared-store-source-publications ---
+--- prepared-select-chain-materializations ---
+--- prepared-variadic-entry-plans ---
+--- prepared-regalloc ---
+prepared.func @zero
+prepared.func @anon
+prepared.func @go
+prepared.func @main
+--- prepared-storage-plans ---
+prepared.func @anon
+  storage @s value_id=0 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+prepared.func @go
+  storage @anon value_id=1 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+prepared.func @main
+  storage %t0 value_id=2 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t1 value_id=3 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t3 value_id=4 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t4 value_id=5 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+--- prepared-i128-carriers ---
+--- prepared-f128-carriers ---
+--- prepared-atomic-operations ---
+--- prepared-intrinsic-carriers ---
+--- prepared-inline-asm-carriers ---
+--- prepared-f128-runtime-helpers ---
+--- prepared-i128-runtime-helpers ---
+--- prepared-addressing ---
+prepared.func @zero frame_size=0 frame_alignment=1
+prepared.func @anon frame_size=0 frame_alignment=1
+prepared.func @go frame_size=0 frame_alignment=1
+prepared.func @main frame_size=8 frame_alignment=8
+  access block=entry inst_index=2 base=pointer_value result=%t3 pointer=%t1 offset=0 size=8 align=8 base_plus_offset=yes layout_authority=unknown range_verdict=unknown_compatible dynamic_array_verdict=unknown

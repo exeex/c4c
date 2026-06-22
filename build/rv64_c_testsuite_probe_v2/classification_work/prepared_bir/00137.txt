@@ -1,0 +1,141 @@
+prepared.module target=riscv64-linux-gnu route=semantic_bir_shared
+completed_phases: legalize stack_layout liveness out_of_ssa regalloc
+invariants:
+  - no_target_facing_i1
+  - no_phi_nodes
+notes:
+  - [prealloc] prealloc owns the shared semantic-BIR to prealloc-BIR route before MIR lowering
+  - [legalize] bootstrap BIR legalize kept semantic CFG and phi form intact while promoting i1 values plus function signature/storage bookkeeping, memory-address/load-store bookkeeping, and call ABI metadata
+  - [stack_layout] prepared address materialization for '@.str0' is missing a structured symbol LinkNameId
+  - [stack_layout] prepared address materialization for '@.str0' is missing a structured symbol LinkNameId
+  - [stack_layout] stack layout prepared function 'main' with 2 home slot(s) and 16 bytes of frame space
+  - [stack_layout] stack layout now emits provisional stack objects, elides dead and copy-coalesced home slots, and only allocates frame storage for objects that still require dedicated homes
+  - [liveness] liveness now computes BIR named-value intervals, exact def/use program points, predecessor-edge phi uses, call points, CFG-aware live-through extension, and loop depth independently of stack-layout object identity
+  - [out_of_ssa] out_of_ssa removed phi nodes from live prepared BIR and published authoritative join-transfer plus parallel-copy obligations
+  - [regalloc] regalloc seeded function 'main' with 7 allocation constraint(s) and 8 interference edge(s) from active liveness; assigned 7 register(s) and 0 stack slot(s)
+--- prepared-bir ---
+bir.func @main() -> i32 {
+entry:
+  bir.store_local %lv.p, ptr %t0
+  @.str0 = bir.load_local ptr %lv.p, addr .str0
+  bir.store_local %lv.p, ptr @.str0
+  %t1 = bir.load_local ptr %lv.p
+  %t2 = bir.load_local i8 %t2.addr, addr %t1
+  %t3 = bir.sext i8 %t2 to i32
+  %t4 = bir.eq i32 %t3, 104
+  bir.cond_br i32 %t4, tern.then.7, tern.else.9
+tern.then.7:
+  bir.br tern.then.end.8
+tern.then.end.8:
+  bir.br tern.end.11
+tern.else.9:
+  bir.br tern.else.end.10
+tern.else.end.10:
+  bir.br tern.end.11
+tern.end.11:
+  %t12 = bir.select eq i32 %t3, 104, i32 0, 1
+  bir.ret i32 %t12
+}
+
+--- prepared-function-summaries ---
+prepared.summary @main stable_base=rsp frame_size=16 frame_alignment=8 has_dynamic_stack=no saved_regs=2 calls=0 dynamic_stack_ops=0 variadic_entry=no storage_values=7
+  saved gpr:s1 order=0 placement=gpr:callee_saved#0/w1 width=1 units=s1 slot_placement=slot#2+stack16 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+  saved gpr:s2 order=1 placement=gpr:callee_saved#1/w1 width=1 units=s2 slot_placement=slot#3+stack24 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s2 slot_save_index=1 slot_width=1 slot_units=s2 slot_register_placement=gpr:callee_saved#1/w1
+  storage %t0 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage @.str0 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t1 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t2 register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2
+  storage %t3 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t4 register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2
+  storage %t12 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+--- prepared-control-flow ---
+prepared.func @main
+  block entry terminator=cond_branch true=tern.then.7 false=tern.else.9
+  block tern.then.7 terminator=branch target=tern.then.end.8
+  block tern.then.end.8 terminator=branch target=tern.end.11
+  block tern.else.9 terminator=branch target=tern.else.end.10
+  block tern.else.end.10 terminator=branch target=tern.end.11
+  block tern.end.11 terminator=return
+  branch_condition entry kind=fused_compare condition=%t4 compare=eq i32 %t3, 104 can_fuse_with_branch=yes true=tern.then.7 false=tern.else.9
+  join_transfer tern.end.11 result=%t12 kind=phi_edge carrier=select_materialization ownership=authoritative_branch_pair incomings=2 edge_transfers=2 source_branch=entry source_incomings=(tern.then.end.8, tern.else.end.10) source_transfer_indexes=(0, 1)
+    incoming [tern.then.end.8] -> 0
+    incoming [tern.else.end.10] -> 1
+    edge_transfer tern.then.end.8 -> tern.end.11 incoming=0 destination=%t12
+    edge_transfer tern.else.end.10 -> tern.end.11 incoming=1 destination=%t12
+  parallel_copy tern.then.end.8 -> tern.end.11 execution_site=predecessor_terminator execution_block=tern.then.end.8 has_cycle=no resolution=acyclic moves=1 steps=1
+    authority execution_site=predecessor_terminator execution_block=tern.then.end.8
+    move[0] 0 -> %t12 join_transfer_index=0 edge_transfer_index=0 carrier=select_materialization
+    step[0] move move_index=0 source=0 destination=%t12 carrier=select_materialization uses_cycle_temp_source=no
+  parallel_copy tern.else.end.10 -> tern.end.11 execution_site=predecessor_terminator execution_block=tern.else.end.10 has_cycle=no resolution=acyclic moves=1 steps=1
+    authority execution_site=predecessor_terminator execution_block=tern.else.end.10
+    move[0] 1 -> %t12 join_transfer_index=0 edge_transfer_index=1 carrier=select_materialization
+    step[0] move move_index=0 source=1 destination=%t12 carrier=select_materialization uses_cycle_temp_source=no
+--- prepared-value-locations ---
+prepared.func @main
+  home %t0 value_id=0 kind=register reg=t0
+  home @.str0 value_id=1 kind=register reg=s1
+  home %t1 value_id=2 kind=register reg=s1
+  home %t2 value_id=3 kind=register reg=s2
+  home %t3 value_id=4 kind=register reg=s1
+  home %t4 value_id=5 kind=register reg=s2
+  home %t12 value_id=6 kind=register reg=t0
+  move_bundle phase=block_entry authority=out_of_ssa_parallel_copy block_index=2 instruction_index=0 source_parallel_copy=tern.then.end.8 -> tern.end.11
+    move from_value_id=6 to_value_id=6 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no parallel_copy_step_index=0 source_imm_i32=0 reason=phi_join_immediate_materialization
+  move_bundle phase=block_entry authority=out_of_ssa_parallel_copy block_index=4 instruction_index=0 source_parallel_copy=tern.else.end.10 -> tern.end.11
+    move from_value_id=6 to_value_id=6 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no parallel_copy_step_index=0 source_imm_i32=1 reason=phi_join_immediate_materialization
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=5
+    move from_value_id=3 to_value_id=4 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=6
+    move from_value_id=4 to_value_id=5 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_return authority=none block_index=5 instruction_index=1
+    move from_value_id=6 to_value_id=6 destination_kind=function_return_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=return_register_to_register
+--- prepared-block-entry-publications ---
+prepared.func @main
+  block_entry_publication successor=tern.end.11 status=available to_value_id=6 to=%t12 home_kind=register destination_kind=value destination_storage=register reg=t0 block_index=2 instruction_index=0
+  block_entry_publication successor=tern.end.11 status=available to_value_id=6 to=%t12 home_kind=register destination_kind=value destination_storage=register reg=t0 block_index=4 instruction_index=0
+--- prepared-stack-layout ---
+frame_size=16 frame_alignment=8
+object #0 func=main name=%lv.p source_kind=local_slot type=ptr size=8 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=no
+object #1 func=main name=%t2.addr source_kind=lowering_scratch type=i8 size=1 align=1 address_exposed=no requires_home_slot=yes permanent_home_slot=no
+slot #0 object_id=0 func=main offset=0 size=8 align=8 fixed_location=no
+slot #1 object_id=1 func=main offset=8 size=1 align=1 fixed_location=no
+--- prepared-frame-plan ---
+prepared.func @main frame_size=16 frame_alignment=8 has_dynamic_stack=no fixed_slots_use_fp=no
+  saved_register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 save_index=0 width=1 units=s1 slot_placement=slot#2+stack16 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+  saved_register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2 save_index=1 width=1 units=s2 slot_placement=slot#3+stack24 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s2 slot_save_index=1 slot_width=1 slot_units=s2 slot_register_placement=gpr:callee_saved#1/w1
+  frame_slot_order slot_id=#0 offset=0 size=8 align=8
+  frame_slot_order slot_id=#1 offset=8 size=1 align=1
+--- prepared-dynamic-stack-plan ---
+--- prepared-call-plans ---
+--- prepared-store-source-publications ---
+  store_source function=main block=entry inst=0 source=%t0 status=available intent=store_local_publication source_producer=unknown source_load_local=no source_load_global=no source_cast=no source_binary=no source_select=no direct_global_select_chain=no direct_global_root_is_select=no
+  store_source function=main block=entry inst=2 source=@.str0 status=available intent=store_local_publication source_producer=load_local source_producer_block=entry source_producer_inst=1 source_load_local=yes source_load_global=no source_cast=no source_binary=no source_select=no direct_global_select_chain=no direct_global_root_is_select=no
+--- prepared-select-chain-materializations ---
+  select_chain function=main block=tern.end.11 value=%t12 root_is_select=yes root_inst=0 source_producer=select_materialization source_producer_block=tern.end.11 source_producer_inst=0
+--- prepared-variadic-entry-plans ---
+--- prepared-regalloc ---
+prepared.func @main
+--- prepared-storage-plans ---
+prepared.func @main
+  storage %t0 value_id=0 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage @.str0 value_id=1 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t1 value_id=2 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t2 value_id=3 encoding=register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2 width=1 units=s2
+  storage %t3 value_id=4 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t4 value_id=5 encoding=register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2 width=1 units=s2
+  storage %t12 value_id=6 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+--- prepared-i128-carriers ---
+--- prepared-f128-carriers ---
+--- prepared-atomic-operations ---
+--- prepared-intrinsic-carriers ---
+--- prepared-inline-asm-carriers ---
+--- prepared-f128-runtime-helpers ---
+--- prepared-i128-runtime-helpers ---
+--- prepared-addressing ---
+prepared.func @main frame_size=16 frame_alignment=8
+  access block=entry inst_index=0 base=frame_slot stored=%t0 frame_slot=#0 offset=0 size=8 align=8 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=entry inst_index=1 base=string_constant result=@.str0 symbol=.str0 offset=0 size=8 align=8 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=entry inst_index=2 base=frame_slot stored=@.str0 frame_slot=#0 offset=0 size=8 align=8 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=entry inst_index=3 base=frame_slot result=%t1 frame_slot=#0 offset=0 size=8 align=8 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=entry inst_index=4 base=pointer_value result=%t2 pointer=%t1 offset=0 size=1 align=1 base_plus_offset=yes layout_authority=unknown range_verdict=unknown_compatible dynamic_array_verdict=unknown
+  address_materialization block=entry inst_index=1 kind=string_constant result=@.str0 text=.str0 policy=unspecified offset=0 address_space=default tls_global=no tls_address_space=no

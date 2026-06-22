@@ -1,0 +1,371 @@
+prepared.module target=riscv64-linux-gnu route=semantic_bir_shared
+completed_phases: legalize stack_layout liveness out_of_ssa regalloc
+invariants:
+  - no_target_facing_i1
+  - no_phi_nodes
+notes:
+  - [prealloc] prealloc owns the shared semantic-BIR to prealloc-BIR route before MIR lowering
+  - [legalize] bootstrap BIR legalize kept semantic CFG and phi form intact while promoting i1 values plus function signature/storage bookkeeping, memory-address/load-store bookkeeping, and call ABI metadata
+  - [stack_layout] stack layout prepared function 'blah' with 0 home slot(s) and 0 bytes of frame space
+  - [stack_layout] stack layout prepared function 'convert_like_real' with 1 home slot(s) and 4 bytes of frame space
+  - [stack_layout] stack layout prepared function 'main' with 26 home slot(s) and 32 bytes of frame space
+  - [stack_layout] stack layout now emits provisional stack objects, elides dead and copy-coalesced home slots, and only allocates frame storage for objects that still require dedicated homes
+  - [liveness] liveness now computes BIR named-value intervals, exact def/use program points, predecessor-edge phi uses, call points, CFG-aware live-through extension, and loop depth independently of stack-layout object identity
+  - [out_of_ssa] out_of_ssa removed phi nodes from live prepared BIR and published authoritative join-transfer plus parallel-copy obligations
+  - [regalloc] regalloc seeded function 'blah' with 0 allocation constraint(s) and 0 interference edge(s) from active liveness; assigned 0 register(s) and 0 stack slot(s)
+  - [regalloc] regalloc seeded function 'convert_like_real' with 8 allocation constraint(s) and 11 interference edge(s) from active liveness; assigned 8 register(s) and 0 stack slot(s)
+  - [regalloc] regalloc seeded function 'main' with 9 allocation constraint(s) and 14 interference edge(s) from active liveness; assigned 8 register(s) and 1 stack slot(s)
+--- prepared-bir ---
+bir.func @printf(ptr %p._anon_param_) -> i32
+
+bir.func @blah() -> i32 {
+entry:
+  bir.ret i32 0
+}
+
+bir.func @convert_like_real(ptr %p.convs) -> i32 {
+entry:
+  %t2.bf.unit = bir.load_local i32 %t2.bf.unit.addr, addr %p.convs+16
+  %t2.bf.mask = bir.and i32 %t2.bf.unit, 255
+  %t2 = bir.add i32 %t2.bf.mask, 0
+  %entry.switch.case.0.match = bir.eq i32 %t2, 152
+  bir.cond_br i32 %entry.switch.case.0.match, block_4, block_5
+block_2:
+  bir.br block_4
+block_3:
+  %t4 = bir.call i32 printf(ptr @.str0)
+  ; call_arg_source index=0 encoding=computed_address source_value=%t3 source_base=@.str0 source_delta=0
+  bir.ret i32 0
+block_4:
+  %t5 = bir.call i32 blah()
+  bir.ret i32 %t5
+block_5:
+  bir.br block_3
+}
+
+bir.func @main() -> i32 {
+entry:
+  %t2.bf.old = bir.load_local i32 %t2.bf.old.addr, addr %lv.convs.0+16
+  %t2.bf.clr = bir.and i32 %t2.bf.old, -256
+  %t2.bf.vm = bir.and i32 152, 255
+  %t2.bf.comb = bir.or i32 %t2.bf.clr, %t2.bf.vm
+  bir.store_local %lv.convs.0, i32 %t2.bf.comb, addr %lv.convs.0+16
+  %t3.bf.unit = bir.load_local i32 %t3.bf.unit.addr, addr %lv.convs.0+16
+  %t3.bf.mask = bir.and i32 %t3.bf.unit, 255
+  %t3 = bir.add i32 %t3.bf.mask, 0
+  %t4 = bir.call i32 convert_like_real(ptr %lv.convs)
+  ; call_arg_source index=0 encoding=frame_slot source_value=%lv.convs selection=frame_slot_address selection_value=%lv.convs
+  bir.ret i32 0
+}
+
+--- prepared-function-summaries ---
+prepared.summary @blah stable_base=rsp frame_size=0 frame_alignment=1 has_dynamic_stack=no saved_regs=0 calls=0 dynamic_stack_ops=0 variadic_entry=no storage_values=0
+prepared.summary @convert_like_real stable_base=rsp frame_size=4 frame_alignment=4 has_dynamic_stack=no saved_regs=2 calls=2 dynamic_stack_ops=0 variadic_entry=no storage_values=8
+  saved gpr:s1 order=0 placement=gpr:callee_saved#0/w1 width=1 units=s1 slot_placement=slot#28+stack8 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+  saved gpr:s2 order=1 placement=gpr:callee_saved#1/w1 width=1 units=s2 slot_placement=slot#29+stack16 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s2 slot_save_index=1 slot_width=1 slot_units=s2 slot_register_placement=gpr:callee_saved#1/w1
+  callsite block=2 inst=0 wrapper=direct_extern_variadic callee=printf variadic_fpr_args=0 args=1 result_bank=gpr preserves=@.str0#6:callee_saved_register:s1[s1]:save0 clobbers=gpr:t0/w1[t0],fpr:ft0/w1[ft0],vreg:v0/w1[v0],vreg:v1/w1[v1],vreg:v2/w1[v2],vreg:v3/w1[v3],vreg:v4/w1[v4],vreg:v5/w1[v5],vreg:v6/w1[v6],vreg:v7/w1[v7],vreg:v8/w1[v8],vreg:v9/w1[v9],vreg:v10/w1[v10],vreg:v11/w1[v11],vreg:v12/w1[v12],vreg:v13/w1[v13],vreg:v14/w1[v14],vreg:v15/w1[v15]
+    arg0 bank=gpr from=symbol_address:@.str0 to=a0
+    result bank=gpr from=register:a0 to=register:t0
+    preserve value=@.str0 value_id=6 route=callee_saved_register save_index=0 placement=gpr:callee_saved#0/w1 reg=s1 bank=gpr units=s1 preservation_source=register:s1:value#6 preservation_destination=register:s1:value#6 preservation_reason=callee_saved_register_preservation
+  callsite block=3 inst=0 wrapper=same_module callee=blah variadic_fpr_args=0 args=0 result_bank=gpr preserves=@.str0#6:callee_saved_register:s1[s1]:save0 clobbers=gpr:t0/w1[t0],fpr:ft0/w1[ft0],vreg:v0/w1[v0],vreg:v1/w1[v1],vreg:v2/w1[v2],vreg:v3/w1[v3],vreg:v4/w1[v4],vreg:v5/w1[v5],vreg:v6/w1[v6],vreg:v7/w1[v7],vreg:v8/w1[v8],vreg:v9/w1[v9],vreg:v10/w1[v10],vreg:v11/w1[v11],vreg:v12/w1[v12],vreg:v13/w1[v13],vreg:v14/w1[v14],vreg:v15/w1[v15]
+    result bank=gpr from=register:a0 to=register:t0
+    preserve value=@.str0 value_id=6 route=callee_saved_register save_index=0 placement=gpr:callee_saved#0/w1 reg=s1 bank=gpr units=s1 preservation_source=register:s1:value#6 preservation_destination=register:s1:value#6 preservation_reason=callee_saved_register_preservation
+  storage %p.convs register bank=gpr reg=a0
+  storage %t2.bf.unit register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t2.bf.mask register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2
+  storage %t2 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %entry.switch.case.0.match register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2
+  storage %t4 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage @.str0 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t5 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+prepared.summary @main stable_base=rsp frame_size=36 frame_alignment=8 has_dynamic_stack=no saved_regs=2 calls=1 dynamic_stack_ops=0 variadic_entry=no storage_values=9
+  saved gpr:s1 order=0 placement=gpr:callee_saved#0/w1 width=1 units=s1 slot_placement=slot#28+stack40 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+  saved gpr:s2 order=1 placement=gpr:callee_saved#1/w1 width=1 units=s2 slot_placement=slot#29+stack48 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s2 slot_save_index=1 slot_width=1 slot_units=s2 slot_register_placement=gpr:callee_saved#1/w1
+  callsite block=0 inst=8 wrapper=same_module callee=convert_like_real variadic_fpr_args=0 args=1 result_bank=gpr preserves=%lv.convs#16:callee_saved_register:s1[s1]:save0 clobbers=gpr:t0/w1[t0],fpr:ft0/w1[ft0],vreg:v0/w1[v0],vreg:v1/w1[v1],vreg:v2/w1[v2],vreg:v3/w1[v3],vreg:v4/w1[v4],vreg:v5/w1[v5],vreg:v6/w1[v6],vreg:v7/w1[v7],vreg:v8/w1[v8],vreg:v9/w1[v9],vreg:v10/w1[v10],vreg:v11/w1[v11],vreg:v12/w1[v12],vreg:v13/w1[v13],vreg:v14/w1[v14],vreg:v15/w1[v15]
+    arg0 bank=gpr from=register:s1 to=a0
+    result bank=gpr from=register:a0 to=register:t0
+    preserve value=%lv.convs value_id=16 route=callee_saved_register save_index=0 placement=gpr:callee_saved#0/w1 reg=s1 bank=gpr units=s1 preservation_source=register:s1:value#16 preservation_destination=register:s1:value#16 preservation_reason=callee_saved_register_preservation
+  storage %t2.bf.old register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2
+  storage %t2.bf.clr register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t2.bf.vm immediate bank=gpr imm=152
+  storage %t2.bf.comb frame_slot bank=gpr spill_slot=slot#27+stack32 offset=32
+  storage %t3.bf.unit register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t3.bf.mask register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2
+  storage %t3 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t4 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %lv.convs register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+--- prepared-control-flow ---
+prepared.func @blah
+  block entry terminator=return
+prepared.func @convert_like_real
+  block entry terminator=cond_branch true=block_4 false=block_5
+  block block_2 terminator=branch target=block_4
+  block block_3 terminator=return
+  block block_4 terminator=return
+  block block_5 terminator=branch target=block_3
+  branch_condition entry kind=fused_compare condition=%entry.switch.case.0.match compare=eq i32 %t2, 152 can_fuse_with_branch=yes true=block_4 false=block_5
+prepared.func @main
+  block entry terminator=return
+prepared.func @printf
+--- prepared-value-locations ---
+prepared.func @blah
+prepared.func @convert_like_real
+  home %p.convs value_id=0 kind=register reg=a0
+  home %t2.bf.unit value_id=1 kind=register reg=t0
+  home %t2.bf.mask value_id=2 kind=register reg=s2
+  home %t2 value_id=3 kind=register reg=t0
+  home %entry.switch.case.0.match value_id=4 kind=register reg=s2
+  home %t4 value_id=5 kind=register reg=t0
+  home @.str0 value_id=6 kind=register reg=s1
+  home %t5 value_id=7 kind=register reg=t0
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=1
+    move from_value_id=1 to_value_id=2 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=2
+    move from_value_id=2 to_value_id=3 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=3
+    move from_value_id=3 to_value_id=4 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_call authority=none block_index=2 instruction_index=0
+    move from_value_id=6 to_value_id=6 destination_kind=call_argument_abi destination_storage=register op_kind=move uses_cycle_temp_source=no abi_index=0 placement=gpr:call_argument#0/w1 reg=a0 reason=call_arg_register_to_register
+    abi_binding destination_kind=call_argument_abi destination_storage=register abi_index=0 placement=gpr:call_argument#0/w1 reg=a0
+  move_bundle phase=after_call authority=none block_index=2 instruction_index=0
+    move from_value_id=5 to_value_id=5 destination_kind=call_result_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=call_result_register_to_register
+    abi_binding destination_kind=call_result_abi destination_storage=register placement=gpr:call_result#0/w1 reg=a0
+  move_bundle phase=after_call authority=none block_index=3 instruction_index=0
+    move from_value_id=7 to_value_id=7 destination_kind=call_result_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=call_result_register_to_register
+    abi_binding destination_kind=call_result_abi destination_storage=register placement=gpr:call_result#0/w1 reg=a0
+  move_bundle phase=before_return authority=none block_index=3 instruction_index=1
+    move from_value_id=7 to_value_id=7 destination_kind=function_return_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=return_register_to_register
+prepared.func @main
+  home %t2.bf.old value_id=8 kind=register reg=s2
+  home %t2.bf.clr value_id=9 kind=register reg=t0
+  home %t2.bf.vm value_id=10 kind=rematerializable_immediate imm_i32=152
+  home %t2.bf.comb value_id=11 kind=stack_slot slot_id=27 offset=32
+  home %t3.bf.unit value_id=12 kind=register reg=t0
+  home %t3.bf.mask value_id=13 kind=register reg=s2
+  home %t3 value_id=14 kind=register reg=t0
+  home %t4 value_id=15 kind=register reg=t0
+  home %lv.convs value_id=16 kind=register reg=s1
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=1
+    move from_value_id=8 to_value_id=9 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=3
+    move from_value_id=9 to_value_id=11 destination_kind=value destination_storage=stack_slot op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_stack
+    move from_value_id=10 to_value_id=11 destination_kind=value destination_storage=stack_slot op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_stack
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=6
+    move from_value_id=12 to_value_id=13 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=7
+    move from_value_id=13 to_value_id=14 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_call authority=none block_index=0 instruction_index=8
+    move from_value_id=16 to_value_id=16 destination_kind=call_argument_abi destination_storage=register op_kind=move uses_cycle_temp_source=no abi_index=0 placement=gpr:call_argument#0/w1 reg=a0 reason=call_arg_register_to_register
+    abi_binding destination_kind=call_argument_abi destination_storage=register abi_index=0 placement=gpr:call_argument#0/w1 reg=a0
+  move_bundle phase=after_call authority=none block_index=0 instruction_index=8
+    move from_value_id=15 to_value_id=15 destination_kind=call_result_abi destination_storage=register op_kind=move uses_cycle_temp_source=no placement=gpr:call_result#0/w1 reg=a0 reason=call_result_register_to_register
+    abi_binding destination_kind=call_result_abi destination_storage=register placement=gpr:call_result#0/w1 reg=a0
+--- prepared-block-entry-publications ---
+--- prepared-stack-layout ---
+frame_size=40 frame_alignment=8
+object #0 func=convert_like_real name=%t2.bf.unit.addr source_kind=lowering_scratch type=i32 size=4 align=4 address_exposed=no requires_home_slot=yes permanent_home_slot=no
+object #1 func=main name=%lv.convs.0 source_kind=local_slot type=i8 size=1 align=8 address_exposed=yes requires_home_slot=yes permanent_home_slot=yes
+object #2 func=main name=%lv.convs.1 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #3 func=main name=%lv.convs.2 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #4 func=main name=%lv.convs.3 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #5 func=main name=%lv.convs.4 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #6 func=main name=%lv.convs.5 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #7 func=main name=%lv.convs.6 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #8 func=main name=%lv.convs.7 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #9 func=main name=%lv.convs.8 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #10 func=main name=%lv.convs.9 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #11 func=main name=%lv.convs.10 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #12 func=main name=%lv.convs.11 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #13 func=main name=%lv.convs.12 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #14 func=main name=%lv.convs.13 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #15 func=main name=%lv.convs.14 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #16 func=main name=%lv.convs.15 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #17 func=main name=%lv.convs.16 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #18 func=main name=%lv.convs.17 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #19 func=main name=%lv.convs.18 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #20 func=main name=%lv.convs.19 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #21 func=main name=%lv.convs.20 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #22 func=main name=%lv.convs.21 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #23 func=main name=%lv.convs.22 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #24 func=main name=%lv.convs.23 source_kind=local_slot type=i8 size=1 align=8 address_exposed=no requires_home_slot=yes permanent_home_slot=yes
+object #25 func=main name=%t2.bf.old.addr source_kind=lowering_scratch type=i32 size=4 align=4 address_exposed=no requires_home_slot=yes permanent_home_slot=no
+object #26 func=main name=%t3.bf.unit.addr source_kind=lowering_scratch type=i32 size=4 align=4 address_exposed=no requires_home_slot=yes permanent_home_slot=no
+object #27 func=main name=%t2.bf.comb source_kind=regalloc.spill_slot type=i32 size=4 align=4 address_exposed=no requires_home_slot=no permanent_home_slot=no
+slot #0 object_id=0 func=convert_like_real offset=0 size=4 align=4 fixed_location=no
+slot #1 object_id=1 func=main offset=0 size=1 align=8 fixed_location=yes
+slot #2 object_id=2 func=main offset=1 size=1 align=8 fixed_location=yes
+slot #3 object_id=3 func=main offset=2 size=1 align=8 fixed_location=yes
+slot #4 object_id=4 func=main offset=3 size=1 align=8 fixed_location=yes
+slot #5 object_id=5 func=main offset=4 size=1 align=8 fixed_location=yes
+slot #6 object_id=6 func=main offset=5 size=1 align=8 fixed_location=yes
+slot #7 object_id=7 func=main offset=6 size=1 align=8 fixed_location=yes
+slot #8 object_id=8 func=main offset=7 size=1 align=8 fixed_location=yes
+slot #9 object_id=9 func=main offset=8 size=1 align=8 fixed_location=yes
+slot #10 object_id=10 func=main offset=9 size=1 align=8 fixed_location=yes
+slot #11 object_id=11 func=main offset=10 size=1 align=8 fixed_location=yes
+slot #12 object_id=12 func=main offset=11 size=1 align=8 fixed_location=yes
+slot #13 object_id=13 func=main offset=12 size=1 align=8 fixed_location=yes
+slot #14 object_id=14 func=main offset=13 size=1 align=8 fixed_location=yes
+slot #15 object_id=15 func=main offset=14 size=1 align=8 fixed_location=yes
+slot #16 object_id=16 func=main offset=15 size=1 align=8 fixed_location=yes
+slot #17 object_id=17 func=main offset=16 size=1 align=8 fixed_location=yes
+slot #18 object_id=18 func=main offset=17 size=1 align=8 fixed_location=yes
+slot #19 object_id=19 func=main offset=18 size=1 align=8 fixed_location=yes
+slot #20 object_id=20 func=main offset=19 size=1 align=8 fixed_location=yes
+slot #21 object_id=21 func=main offset=20 size=1 align=8 fixed_location=yes
+slot #22 object_id=22 func=main offset=21 size=1 align=8 fixed_location=yes
+slot #23 object_id=23 func=main offset=22 size=1 align=8 fixed_location=yes
+slot #24 object_id=24 func=main offset=23 size=1 align=8 fixed_location=yes
+slot #25 object_id=25 func=main offset=24 size=4 align=4 fixed_location=no
+slot #26 object_id=26 func=main offset=28 size=4 align=4 fixed_location=no
+slot #27 object_id=27 func=main offset=32 size=4 align=4 fixed_location=no
+--- prepared-frame-plan ---
+prepared.func @blah frame_size=0 frame_alignment=1 has_dynamic_stack=no fixed_slots_use_fp=no
+prepared.func @convert_like_real frame_size=4 frame_alignment=4 has_dynamic_stack=no fixed_slots_use_fp=no
+  saved_register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 save_index=0 width=1 units=s1 slot_placement=slot#28+stack8 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+  saved_register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2 save_index=1 width=1 units=s2 slot_placement=slot#29+stack16 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s2 slot_save_index=1 slot_width=1 slot_units=s2 slot_register_placement=gpr:callee_saved#1/w1
+  frame_slot_order slot_id=#0 offset=0 size=4 align=4
+prepared.func @main frame_size=36 frame_alignment=8 has_dynamic_stack=no fixed_slots_use_fp=no
+  saved_register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 save_index=0 width=1 units=s1 slot_placement=slot#28+stack40 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+  saved_register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2 save_index=1 width=1 units=s2 slot_placement=slot#29+stack48 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s2 slot_save_index=1 slot_width=1 slot_units=s2 slot_register_placement=gpr:callee_saved#1/w1
+  frame_slot_order slot_id=#1 offset=0 size=1 align=8
+  frame_slot_order slot_id=#2 offset=1 size=1 align=8
+  frame_slot_order slot_id=#3 offset=2 size=1 align=8
+  frame_slot_order slot_id=#4 offset=3 size=1 align=8
+  frame_slot_order slot_id=#5 offset=4 size=1 align=8
+  frame_slot_order slot_id=#6 offset=5 size=1 align=8
+  frame_slot_order slot_id=#7 offset=6 size=1 align=8
+  frame_slot_order slot_id=#8 offset=7 size=1 align=8
+  frame_slot_order slot_id=#9 offset=8 size=1 align=8
+  frame_slot_order slot_id=#10 offset=9 size=1 align=8
+  frame_slot_order slot_id=#11 offset=10 size=1 align=8
+  frame_slot_order slot_id=#12 offset=11 size=1 align=8
+  frame_slot_order slot_id=#13 offset=12 size=1 align=8
+  frame_slot_order slot_id=#14 offset=13 size=1 align=8
+  frame_slot_order slot_id=#15 offset=14 size=1 align=8
+  frame_slot_order slot_id=#16 offset=15 size=1 align=8
+  frame_slot_order slot_id=#17 offset=16 size=1 align=8
+  frame_slot_order slot_id=#18 offset=17 size=1 align=8
+  frame_slot_order slot_id=#19 offset=18 size=1 align=8
+  frame_slot_order slot_id=#20 offset=19 size=1 align=8
+  frame_slot_order slot_id=#21 offset=20 size=1 align=8
+  frame_slot_order slot_id=#22 offset=21 size=1 align=8
+  frame_slot_order slot_id=#23 offset=22 size=1 align=8
+  frame_slot_order slot_id=#24 offset=23 size=1 align=8
+  frame_slot_order slot_id=#25 offset=24 size=4 align=4
+  frame_slot_order slot_id=#26 offset=28 size=4 align=4
+  frame_slot_order slot_id=#27 offset=32 size=4 align=4
+--- prepared-dynamic-stack-plan ---
+--- prepared-call-plans ---
+prepared.func @convert_like_real
+  call block_index=2 inst_index=0 wrapper_kind=direct_extern_variadic variadic_fpr_arg_register_count=0 indirect=no callee=printf
+    arg index=0 value_bank=gpr source_encoding=symbol_address source_value_id=6 source_symbol=@.str0 source_placement=gpr:callee_saved#0/w1 source_reg=s1 source_bank=gpr dest_placement=gpr:call_argument#0/w1 dest_reg=a0 dest_bank=gpr
+    result value_bank=gpr source_storage=register destination_storage=register destination_value_id=5 source_placement=gpr:call_result#0/w1 source_reg=a0 source_bank=gpr dest_placement=gpr:caller_saved#0/w1 dest_reg=t0 dest_bank=gpr late_publication=yes late_source_register=yes late_source_in_destination_alias=yes late_fpr_vreg_store_value_retarget=no late_current_block_publication=no
+    preserve value=@.str0 value_id=6 route=callee_saved_register save_index=0 placement=gpr:callee_saved#0/w1 reg=s1 bank=gpr
+    clobber bank=gpr placement=gpr:reserved_scratch#0/w1 reg=t0 width=1 units=t0
+    clobber bank=fpr placement=fpr:reserved_scratch#0/w1 reg=ft0 width=1 units=ft0
+    clobber bank=vreg placement=vreg:reserved_scratch#0/w1 reg=v0 width=1 units=v0
+    clobber bank=vreg placement=vreg:reserved_scratch#1/w1 reg=v1 width=1 units=v1
+    clobber bank=vreg placement=vreg:reserved_scratch#2/w1 reg=v2 width=1 units=v2
+    clobber bank=vreg placement=vreg:reserved_scratch#3/w1 reg=v3 width=1 units=v3
+    clobber bank=vreg placement=vreg:reserved_scratch#4/w1 reg=v4 width=1 units=v4
+    clobber bank=vreg placement=vreg:reserved_scratch#5/w1 reg=v5 width=1 units=v5
+    clobber bank=vreg placement=vreg:reserved_scratch#6/w1 reg=v6 width=1 units=v6
+    clobber bank=vreg placement=vreg:reserved_scratch#7/w1 reg=v7 width=1 units=v7
+    clobber bank=vreg placement=vreg:reserved_scratch#8/w1 reg=v8 width=1 units=v8
+    clobber bank=vreg placement=vreg:reserved_scratch#9/w1 reg=v9 width=1 units=v9
+    clobber bank=vreg placement=vreg:reserved_scratch#10/w1 reg=v10 width=1 units=v10
+    clobber bank=vreg placement=vreg:reserved_scratch#11/w1 reg=v11 width=1 units=v11
+    clobber bank=vreg placement=vreg:reserved_scratch#12/w1 reg=v12 width=1 units=v12
+    clobber bank=vreg placement=vreg:reserved_scratch#13/w1 reg=v13 width=1 units=v13
+    clobber bank=vreg placement=vreg:reserved_scratch#14/w1 reg=v14 width=1 units=v14
+    clobber bank=vreg placement=vreg:reserved_scratch#15/w1 reg=v15 width=1 units=v15
+  call block_index=3 inst_index=0 wrapper_kind=same_module variadic_fpr_arg_register_count=0 indirect=no callee=blah
+    result value_bank=gpr source_storage=register destination_storage=register destination_value_id=7 source_placement=gpr:call_result#0/w1 source_reg=a0 source_bank=gpr dest_placement=gpr:caller_saved#0/w1 dest_reg=t0 dest_bank=gpr late_publication=yes late_source_register=yes late_source_in_destination_alias=yes late_fpr_vreg_store_value_retarget=no late_current_block_publication=no
+    preserve value=@.str0 value_id=6 route=callee_saved_register save_index=0 placement=gpr:callee_saved#0/w1 reg=s1 bank=gpr
+    clobber bank=gpr placement=gpr:reserved_scratch#0/w1 reg=t0 width=1 units=t0
+    clobber bank=fpr placement=fpr:reserved_scratch#0/w1 reg=ft0 width=1 units=ft0
+    clobber bank=vreg placement=vreg:reserved_scratch#0/w1 reg=v0 width=1 units=v0
+    clobber bank=vreg placement=vreg:reserved_scratch#1/w1 reg=v1 width=1 units=v1
+    clobber bank=vreg placement=vreg:reserved_scratch#2/w1 reg=v2 width=1 units=v2
+    clobber bank=vreg placement=vreg:reserved_scratch#3/w1 reg=v3 width=1 units=v3
+    clobber bank=vreg placement=vreg:reserved_scratch#4/w1 reg=v4 width=1 units=v4
+    clobber bank=vreg placement=vreg:reserved_scratch#5/w1 reg=v5 width=1 units=v5
+    clobber bank=vreg placement=vreg:reserved_scratch#6/w1 reg=v6 width=1 units=v6
+    clobber bank=vreg placement=vreg:reserved_scratch#7/w1 reg=v7 width=1 units=v7
+    clobber bank=vreg placement=vreg:reserved_scratch#8/w1 reg=v8 width=1 units=v8
+    clobber bank=vreg placement=vreg:reserved_scratch#9/w1 reg=v9 width=1 units=v9
+    clobber bank=vreg placement=vreg:reserved_scratch#10/w1 reg=v10 width=1 units=v10
+    clobber bank=vreg placement=vreg:reserved_scratch#11/w1 reg=v11 width=1 units=v11
+    clobber bank=vreg placement=vreg:reserved_scratch#12/w1 reg=v12 width=1 units=v12
+    clobber bank=vreg placement=vreg:reserved_scratch#13/w1 reg=v13 width=1 units=v13
+    clobber bank=vreg placement=vreg:reserved_scratch#14/w1 reg=v14 width=1 units=v14
+    clobber bank=vreg placement=vreg:reserved_scratch#15/w1 reg=v15 width=1 units=v15
+prepared.func @main
+  call block_index=0 inst_index=8 wrapper_kind=same_module variadic_fpr_arg_register_count=0 indirect=no callee=convert_like_real
+    arg index=0 value_bank=gpr source_encoding=register source_value_id=16 source_placement=gpr:callee_saved#0/w1 source_reg=s1 source_bank=gpr dest_placement=gpr:call_argument#0/w1 dest_reg=a0 dest_bank=gpr arg.source_selection=local_frame_address_materialization selection_source_value_id=16 selection_source_value=%lv.convs selection_source_home=register selection_source_slot=#1 selection_source_stack_offset=0 selection_source_size=8 selection_source_align=8 selection_source_delta=0 selection_materialization_block=entry selection_materialization_inst=8 selection_materialization_slot=#1 selection_materialization_offset=0 selection_preserved_bank=none
+    result value_bank=gpr source_storage=register destination_storage=register destination_value_id=15 source_placement=gpr:call_result#0/w1 source_reg=a0 source_bank=gpr dest_placement=gpr:caller_saved#0/w1 dest_reg=t0 dest_bank=gpr late_publication=yes late_source_register=yes late_source_in_destination_alias=yes late_fpr_vreg_store_value_retarget=no late_current_block_publication=no
+    preserve value=%lv.convs value_id=16 route=callee_saved_register save_index=0 placement=gpr:callee_saved#0/w1 reg=s1 bank=gpr
+    clobber bank=gpr placement=gpr:reserved_scratch#0/w1 reg=t0 width=1 units=t0
+    clobber bank=fpr placement=fpr:reserved_scratch#0/w1 reg=ft0 width=1 units=ft0
+    clobber bank=vreg placement=vreg:reserved_scratch#0/w1 reg=v0 width=1 units=v0
+    clobber bank=vreg placement=vreg:reserved_scratch#1/w1 reg=v1 width=1 units=v1
+    clobber bank=vreg placement=vreg:reserved_scratch#2/w1 reg=v2 width=1 units=v2
+    clobber bank=vreg placement=vreg:reserved_scratch#3/w1 reg=v3 width=1 units=v3
+    clobber bank=vreg placement=vreg:reserved_scratch#4/w1 reg=v4 width=1 units=v4
+    clobber bank=vreg placement=vreg:reserved_scratch#5/w1 reg=v5 width=1 units=v5
+    clobber bank=vreg placement=vreg:reserved_scratch#6/w1 reg=v6 width=1 units=v6
+    clobber bank=vreg placement=vreg:reserved_scratch#7/w1 reg=v7 width=1 units=v7
+    clobber bank=vreg placement=vreg:reserved_scratch#8/w1 reg=v8 width=1 units=v8
+    clobber bank=vreg placement=vreg:reserved_scratch#9/w1 reg=v9 width=1 units=v9
+    clobber bank=vreg placement=vreg:reserved_scratch#10/w1 reg=v10 width=1 units=v10
+    clobber bank=vreg placement=vreg:reserved_scratch#11/w1 reg=v11 width=1 units=v11
+    clobber bank=vreg placement=vreg:reserved_scratch#12/w1 reg=v12 width=1 units=v12
+    clobber bank=vreg placement=vreg:reserved_scratch#13/w1 reg=v13 width=1 units=v13
+    clobber bank=vreg placement=vreg:reserved_scratch#14/w1 reg=v14 width=1 units=v14
+    clobber bank=vreg placement=vreg:reserved_scratch#15/w1 reg=v15 width=1 units=v15
+--- prepared-store-source-publications ---
+  store_source function=main block=entry inst=4 source=%t2.bf.comb status=available intent=store_local_publication source_producer=binary source_producer_block=entry source_producer_inst=3 source_load_local=no source_load_global=no source_cast=no source_binary=yes source_select=no direct_global_select_chain=no direct_global_root_is_select=no
+--- prepared-select-chain-materializations ---
+--- prepared-variadic-entry-plans ---
+--- prepared-regalloc ---
+prepared.func @blah
+prepared.func @convert_like_real
+prepared.func @main
+--- prepared-storage-plans ---
+prepared.func @convert_like_real
+  storage %p.convs value_id=0 encoding=register bank=gpr reg=a0 width=1 units=a0
+  storage %t2.bf.unit value_id=1 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t2.bf.mask value_id=2 encoding=register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2 width=1 units=s2
+  storage %t2 value_id=3 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %entry.switch.case.0.match value_id=4 encoding=register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2 width=1 units=s2
+  storage %t4 value_id=5 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage @.str0 value_id=6 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t5 value_id=7 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+prepared.func @main
+  storage %t2.bf.old value_id=8 encoding=register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2 width=1 units=s2
+  storage %t2.bf.clr value_id=9 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t2.bf.vm value_id=10 encoding=immediate bank=gpr width=1 imm_i32=152
+  storage %t2.bf.comb value_id=11 encoding=frame_slot bank=gpr spill_slot=slot#27+stack32 width=1 slot_id=#27 stack_offset=32
+  storage %t3.bf.unit value_id=12 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t3.bf.mask value_id=13 encoding=register bank=gpr placement=gpr:callee_saved#1/w1 reg=s2 width=1 units=s2
+  storage %t3 value_id=14 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t4 value_id=15 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %lv.convs value_id=16 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+--- prepared-i128-carriers ---
+--- prepared-f128-carriers ---
+--- prepared-atomic-operations ---
+--- prepared-intrinsic-carriers ---
+--- prepared-inline-asm-carriers ---
+--- prepared-f128-runtime-helpers ---
+--- prepared-i128-runtime-helpers ---
+--- prepared-addressing ---
+prepared.func @blah frame_size=0 frame_alignment=1
+prepared.func @convert_like_real frame_size=4 frame_alignment=4
+  access block=entry inst_index=0 base=pointer_value result=%t2.bf.unit pointer=%p.convs offset=16 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=unknown_compatible dynamic_array_verdict=unknown
+  address_materialization block=block_3 inst_index=0 kind=string_constant result=@.str0 text=.str0 policy=unspecified offset=0 address_space=default tls_global=no tls_address_space=no
+prepared.func @main frame_size=32 frame_alignment=8
+  access block=entry inst_index=0 base=frame_slot result=%t2.bf.old frame_slot=#1 offset=16 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=proven_out_of_bounds dynamic_array_verdict=unknown
+  access block=entry inst_index=4 base=frame_slot stored=%t2.bf.comb frame_slot=#1 offset=16 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=proven_out_of_bounds dynamic_array_verdict=unknown
+  access block=entry inst_index=5 base=frame_slot result=%t3.bf.unit frame_slot=#1 offset=16 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=proven_out_of_bounds dynamic_array_verdict=unknown
+  address_materialization block=entry inst_index=8 kind=frame_slot result=%lv.convs policy=unspecified offset=0 address_space=default tls_global=no tls_address_space=no

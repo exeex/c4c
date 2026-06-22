@@ -1,0 +1,207 @@
+prepared.module target=riscv64-linux-gnu route=semantic_bir_shared
+completed_phases: legalize stack_layout liveness out_of_ssa regalloc
+invariants:
+  - no_target_facing_i1
+  - no_phi_nodes
+notes:
+  - [prealloc] prealloc owns the shared semantic-BIR to prealloc-BIR route before MIR lowering
+  - [legalize] bootstrap BIR legalize kept semantic CFG and phi form intact while promoting i1 values plus function signature/storage bookkeeping, memory-address/load-store bookkeeping, and call ABI metadata
+  - [stack_layout] stack layout prepared function 'main' with 0 home slot(s) and 0 bytes of frame space
+  - [stack_layout] stack layout now emits provisional stack objects, elides dead and copy-coalesced home slots, and only allocates frame storage for objects that still require dedicated homes
+  - [liveness] liveness now computes BIR named-value intervals, exact def/use program points, predecessor-edge phi uses, call points, CFG-aware live-through extension, and loop depth independently of stack-layout object identity
+  - [out_of_ssa] out_of_ssa removed phi nodes from live prepared BIR and published authoritative join-transfer plus parallel-copy obligations
+  - [regalloc] regalloc seeded function 'main' with 14 allocation constraint(s) and 7 interference edge(s) from active liveness; assigned 14 register(s) and 0 stack slot(s)
+--- prepared-bir ---
+bir.func @main() -> i32 {
+entry:
+  %t1 = bir.load_global i32 @v
+  %t2 = bir.ne i32 %t1, 1
+  bir.cond_br i32 %t2, block_1, block_2
+block_1:
+  bir.ret i32 1
+block_2:
+  %t6 = bir.load_global i32 @v, offset 4
+  %t7 = bir.ne i32 %t6, 2
+  bir.cond_br i32 %t7, block_3, block_4
+block_3:
+  bir.ret i32 2
+block_4:
+  %t12 = bir.load_global i32 @v, offset 8
+  %t13 = bir.ne i32 %t12, 3
+  bir.cond_br i32 %t13, logic.skip.17, logic.rhs.16
+logic.rhs.16:
+  %t22 = bir.load_global i32 @v, offset 8
+  bir.br logic.rhs.end.18
+logic.rhs.end.18:
+  bir.br logic.end.19
+logic.skip.17:
+  bir.br logic.end.19
+logic.end.19:
+  %t23 = bir.ne i32 %t22, 3
+  %t27 = bir.select ne i32 %t12, 3, i32 1, %t23
+  %t28 = bir.ne i32 %t27, 0
+  bir.cond_br i32 %t28, block_5, block_6
+block_5:
+  bir.ret i32 3
+block_6:
+  %t31 = bir.load_global i32 @v, offset 12
+  %t32 = bir.ne i32 %t31, 4
+  bir.cond_br i32 %t32, block_7, block_8
+block_7:
+  bir.ret i32 4
+block_8:
+  %t37 = bir.load_global i32 @v, offset 16
+  %t38 = bir.ne i32 %t37, 5
+  bir.cond_br i32 %t38, block_9, block_10
+block_9:
+  bir.ret i32 5
+block_10:
+  bir.ret i32 0
+}
+
+--- prepared-function-summaries ---
+prepared.summary @main stable_base=rsp frame_size=0 frame_alignment=1 has_dynamic_stack=no saved_regs=1 calls=0 dynamic_stack_ops=0 variadic_entry=no storage_values=14
+  saved gpr:s1 order=0 placement=gpr:callee_saved#0/w1 width=1 units=s1 slot_placement=slot#0+stack0 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+  storage %t1 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t2 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t6 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t7 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t12 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t13 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t22 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t23 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t27 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t28 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t31 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t32 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t37 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t38 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+--- prepared-control-flow ---
+prepared.func @main
+  block entry terminator=cond_branch true=block_1 false=block_2
+  block block_1 terminator=return
+  block block_2 terminator=cond_branch true=block_3 false=block_4
+  block block_3 terminator=return
+  block block_4 terminator=cond_branch true=logic.skip.17 false=logic.rhs.16
+  block logic.rhs.16 terminator=branch target=logic.rhs.end.18
+  block logic.rhs.end.18 terminator=branch target=logic.end.19
+  block logic.skip.17 terminator=branch target=logic.end.19
+  block logic.end.19 terminator=cond_branch true=block_5 false=block_6
+  block block_5 terminator=return
+  block block_6 terminator=cond_branch true=block_7 false=block_8
+  block block_7 terminator=return
+  block block_8 terminator=cond_branch true=block_9 false=block_10
+  block block_9 terminator=return
+  block block_10 terminator=return
+  branch_condition entry kind=fused_compare condition=%t2 compare=ne i32 %t1, 1 can_fuse_with_branch=yes true=block_1 false=block_2
+  branch_condition block_2 kind=fused_compare condition=%t7 compare=ne i32 %t6, 2 can_fuse_with_branch=yes true=block_3 false=block_4
+  branch_condition block_4 kind=fused_compare condition=%t13 compare=ne i32 %t12, 3 can_fuse_with_branch=yes true=logic.skip.17 false=logic.rhs.16
+  branch_condition logic.end.19 kind=fused_compare condition=%t28 compare=ne i32 %t27, 0 can_fuse_with_branch=yes true=block_5 false=block_6
+  branch_condition block_6 kind=fused_compare condition=%t32 compare=ne i32 %t31, 4 can_fuse_with_branch=yes true=block_7 false=block_8
+  branch_condition block_8 kind=fused_compare condition=%t38 compare=ne i32 %t37, 5 can_fuse_with_branch=yes true=block_9 false=block_10
+  join_transfer logic.end.19 result=%t27 kind=phi_edge carrier=select_materialization ownership=authoritative_branch_pair incomings=2 edge_transfers=2 source_branch=block_4 source_incomings=(logic.skip.17, logic.rhs.end.18) source_transfer_indexes=(1, 0) continuation_targets=(block_5, block_6)
+    incoming [logic.rhs.end.18] -> %t23
+    incoming [logic.skip.17] -> 1
+    edge_transfer logic.rhs.end.18 -> logic.end.19 incoming=%t23 destination=%t27
+    edge_transfer logic.skip.17 -> logic.end.19 incoming=1 destination=%t27
+  parallel_copy logic.skip.17 -> logic.end.19 execution_site=predecessor_terminator execution_block=logic.skip.17 has_cycle=no resolution=acyclic moves=1 steps=1
+    authority execution_site=predecessor_terminator execution_block=logic.skip.17
+    move[0] 1 -> %t27 join_transfer_index=0 edge_transfer_index=1 carrier=select_materialization
+    step[0] move move_index=0 source=1 destination=%t27 carrier=select_materialization uses_cycle_temp_source=no
+  parallel_copy logic.rhs.end.18 -> logic.end.19 execution_site=predecessor_terminator execution_block=logic.rhs.end.18 has_cycle=no resolution=acyclic moves=1 steps=1
+    authority execution_site=predecessor_terminator execution_block=logic.rhs.end.18
+    move[0] %t23 -> %t27 join_transfer_index=0 edge_transfer_index=0 carrier=select_materialization
+    step[0] move move_index=0 source=%t23 destination=%t27 carrier=select_materialization uses_cycle_temp_source=no
+--- prepared-value-locations ---
+prepared.func @main
+  home %t1 value_id=0 kind=register reg=t0
+  home %t2 value_id=1 kind=register reg=s1
+  home %t6 value_id=2 kind=register reg=t0
+  home %t7 value_id=3 kind=register reg=s1
+  home %t12 value_id=4 kind=register reg=t0
+  home %t13 value_id=5 kind=register reg=s1
+  home %t22 value_id=6 kind=register reg=s1
+  home %t23 value_id=7 kind=register reg=t0
+  home %t27 value_id=8 kind=register reg=t0
+  home %t28 value_id=9 kind=register reg=s1
+  home %t31 value_id=10 kind=register reg=t0
+  home %t32 value_id=11 kind=register reg=s1
+  home %t37 value_id=12 kind=register reg=t0
+  home %t38 value_id=13 kind=register reg=s1
+  move_bundle phase=block_entry authority=out_of_ssa_parallel_copy block_index=7 instruction_index=0 source_parallel_copy=logic.skip.17 -> logic.end.19
+    move from_value_id=8 to_value_id=8 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no parallel_copy_step_index=0 source_imm_i32=1 reason=phi_join_immediate_materialization
+  move_bundle phase=block_entry authority=out_of_ssa_parallel_copy block_index=6 instruction_index=0 source_parallel_copy=logic.rhs.end.18 -> logic.end.19
+    move from_value_id=7 to_value_id=8 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no parallel_copy_step_index=0 reason=phi_join_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=1
+    move from_value_id=0 to_value_id=1 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=2 instruction_index=1
+    move from_value_id=2 to_value_id=3 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=4 instruction_index=1
+    move from_value_id=4 to_value_id=5 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=8 instruction_index=0
+    move from_value_id=6 to_value_id=7 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=8 instruction_index=2
+    move from_value_id=8 to_value_id=9 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=10 instruction_index=1
+    move from_value_id=10 to_value_id=11 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=12 instruction_index=1
+    move from_value_id=12 to_value_id=13 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+--- prepared-block-entry-publications ---
+prepared.func @main
+  block_entry_publication successor=logic.end.19 status=available to_value_id=8 to=%t27 home_kind=register destination_kind=value destination_storage=register reg=t0 block_index=7 instruction_index=0
+  block_entry_publication successor=logic.end.19 status=available to_value_id=8 to=%t27 home_kind=register destination_kind=value destination_storage=register reg=t0 block_index=6 instruction_index=0
+--- prepared-stack-layout ---
+frame_size=0 frame_alignment=1
+--- prepared-frame-plan ---
+prepared.func @main frame_size=0 frame_alignment=1 has_dynamic_stack=no fixed_slots_use_fp=no
+  saved_register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 save_index=0 width=1 units=s1 slot_placement=slot#0+stack0 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+--- prepared-dynamic-stack-plan ---
+--- prepared-call-plans ---
+--- prepared-store-source-publications ---
+--- prepared-select-chain-materializations ---
+  select_chain function=main block=entry value=%t1 root_is_select=no root_inst=0 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=0 source_producer=load_global source_producer_block=entry source_producer_inst=0
+  select_chain function=main block=entry value=%t2 root_is_select=no root_inst=1 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=1 source_producer=binary source_producer_block=entry source_producer_inst=1
+  select_chain function=main block=block_2 value=%t6 root_is_select=no root_inst=0 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=0 source_producer=load_global source_producer_block=block_2 source_producer_inst=0
+  select_chain function=main block=block_2 value=%t7 root_is_select=no root_inst=1 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=1 source_producer=binary source_producer_block=block_2 source_producer_inst=1
+  select_chain function=main block=block_4 value=%t12 root_is_select=no root_inst=0 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=0 source_producer=load_global source_producer_block=block_4 source_producer_inst=0
+  select_chain function=main block=block_4 value=%t13 root_is_select=no root_inst=1 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=1 source_producer=binary source_producer_block=block_4 source_producer_inst=1
+  select_chain function=main block=logic.rhs.16 value=%t22 root_is_select=no root_inst=0 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=0 source_producer=load_global source_producer_block=logic.rhs.16 source_producer_inst=0
+  select_chain function=main block=logic.end.19 value=%t27 root_is_select=yes root_inst=1 source_producer=select_materialization source_producer_block=logic.end.19 source_producer_inst=1
+  select_chain function=main block=block_6 value=%t31 root_is_select=no root_inst=0 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=0 source_producer=load_global source_producer_block=block_6 source_producer_inst=0
+  select_chain function=main block=block_6 value=%t32 root_is_select=no root_inst=1 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=1 source_producer=binary source_producer_block=block_6 source_producer_inst=1
+  select_chain function=main block=block_8 value=%t37 root_is_select=no root_inst=0 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=0 source_producer=load_global source_producer_block=block_8 source_producer_inst=0
+  select_chain function=main block=block_8 value=%t38 root_is_select=no root_inst=1 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=1 source_producer=binary source_producer_block=block_8 source_producer_inst=1
+--- prepared-variadic-entry-plans ---
+--- prepared-regalloc ---
+prepared.func @main
+--- prepared-storage-plans ---
+prepared.func @main
+  storage %t1 value_id=0 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t2 value_id=1 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t6 value_id=2 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t7 value_id=3 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t12 value_id=4 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t13 value_id=5 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t22 value_id=6 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t23 value_id=7 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t27 value_id=8 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t28 value_id=9 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t31 value_id=10 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t32 value_id=11 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t37 value_id=12 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t38 value_id=13 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+--- prepared-i128-carriers ---
+--- prepared-f128-carriers ---
+--- prepared-atomic-operations ---
+--- prepared-intrinsic-carriers ---
+--- prepared-inline-asm-carriers ---
+--- prepared-f128-runtime-helpers ---
+--- prepared-i128-runtime-helpers ---
+--- prepared-addressing ---
+prepared.func @main frame_size=0 frame_alignment=1
+  access block=entry inst_index=0 base=global_symbol result=%t1 symbol=v offset=0 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=block_2 inst_index=0 base=global_symbol result=%t6 symbol=v offset=4 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=block_4 inst_index=0 base=global_symbol result=%t12 symbol=v offset=8 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=logic.rhs.16 inst_index=0 base=global_symbol result=%t22 symbol=v offset=8 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=block_6 inst_index=0 base=global_symbol result=%t31 symbol=v offset=12 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=block_8 inst_index=0 base=global_symbol result=%t37 symbol=v offset=16 size=4 align=4 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown

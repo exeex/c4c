@@ -1,0 +1,159 @@
+prepared.module target=riscv64-linux-gnu route=semantic_bir_shared
+completed_phases: legalize stack_layout liveness out_of_ssa regalloc
+invariants:
+  - no_target_facing_i1
+  - no_phi_nodes
+notes:
+  - [prealloc] prealloc owns the shared semantic-BIR to prealloc-BIR route before MIR lowering
+  - [legalize] bootstrap BIR legalize kept semantic CFG and phi form intact while promoting i1 values plus function signature/storage bookkeeping, memory-address/load-store bookkeeping, and call ABI metadata
+  - [stack_layout] stack layout prepared function 'main' with 0 home slot(s) and 0 bytes of frame space
+  - [stack_layout] stack layout now emits provisional stack objects, elides dead and copy-coalesced home slots, and only allocates frame storage for objects that still require dedicated homes
+  - [liveness] liveness now computes BIR named-value intervals, exact def/use program points, predecessor-edge phi uses, call points, CFG-aware live-through extension, and loop depth independently of stack-layout object identity
+  - [out_of_ssa] out_of_ssa removed phi nodes from live prepared BIR and published authoritative join-transfer plus parallel-copy obligations
+  - [regalloc] regalloc seeded function 'main' with 12 allocation constraint(s) and 8 interference edge(s) from active liveness; assigned 12 register(s) and 0 stack slot(s)
+--- prepared-bir ---
+bir.func @main() -> i32 {
+entry:
+  %t2 = bir.load_global i8 @s
+  %t3 = bir.sext i8 %t2 to i32
+  %t4 = bir.ne i32 %t3, 97
+  bir.cond_br i32 %t4, block_1, block_2
+block_1:
+  bir.ret i32 1
+block_2:
+  %t9 = bir.load_global i8 @s, offset 1
+  %t10 = bir.sext i8 %t9 to i32
+  %t11 = bir.ne i32 %t10, 98
+  bir.cond_br i32 %t11, block_3, block_4
+block_3:
+  bir.ret i32 2
+block_4:
+  %t16 = bir.load_global i8 @s, offset 2
+  %t17 = bir.sext i8 %t16 to i32
+  %t18 = bir.ne i32 %t17, 99
+  bir.cond_br i32 %t18, block_5, block_6
+block_5:
+  bir.ret i32 3
+block_6:
+  %t23 = bir.load_global i8 @s, offset 3
+  %t24 = bir.sext i8 %t23 to i32
+  %t25 = bir.ne i32 %t24, 0
+  bir.cond_br i32 %t25, block_7, block_8
+block_7:
+  bir.ret i32 4
+block_8:
+  bir.ret i32 0
+}
+
+--- prepared-function-summaries ---
+prepared.summary @main stable_base=rsp frame_size=0 frame_alignment=1 has_dynamic_stack=no saved_regs=1 calls=0 dynamic_stack_ops=0 variadic_entry=no storage_values=12
+  saved gpr:s1 order=0 placement=gpr:callee_saved#0/w1 width=1 units=s1 slot_placement=slot#0+stack0 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+  storage %t2 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t3 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t4 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t9 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t10 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t11 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t16 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t17 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t18 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t23 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+  storage %t24 register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1
+  storage %t25 register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0
+--- prepared-control-flow ---
+prepared.func @main
+  block entry terminator=cond_branch true=block_1 false=block_2
+  block block_1 terminator=return
+  block block_2 terminator=cond_branch true=block_3 false=block_4
+  block block_3 terminator=return
+  block block_4 terminator=cond_branch true=block_5 false=block_6
+  block block_5 terminator=return
+  block block_6 terminator=cond_branch true=block_7 false=block_8
+  block block_7 terminator=return
+  block block_8 terminator=return
+  branch_condition entry kind=fused_compare condition=%t4 compare=ne i32 %t3, 97 can_fuse_with_branch=yes true=block_1 false=block_2
+  branch_condition block_2 kind=fused_compare condition=%t11 compare=ne i32 %t10, 98 can_fuse_with_branch=yes true=block_3 false=block_4
+  branch_condition block_4 kind=fused_compare condition=%t18 compare=ne i32 %t17, 99 can_fuse_with_branch=yes true=block_5 false=block_6
+  branch_condition block_6 kind=fused_compare condition=%t25 compare=ne i32 %t24, 0 can_fuse_with_branch=yes true=block_7 false=block_8
+--- prepared-value-locations ---
+prepared.func @main
+  home %t2 value_id=0 kind=register reg=t0
+  home %t3 value_id=1 kind=register reg=s1
+  home %t4 value_id=2 kind=register reg=t0
+  home %t9 value_id=3 kind=register reg=t0
+  home %t10 value_id=4 kind=register reg=s1
+  home %t11 value_id=5 kind=register reg=t0
+  home %t16 value_id=6 kind=register reg=t0
+  home %t17 value_id=7 kind=register reg=s1
+  home %t18 value_id=8 kind=register reg=t0
+  home %t23 value_id=9 kind=register reg=t0
+  home %t24 value_id=10 kind=register reg=s1
+  home %t25 value_id=11 kind=register reg=t0
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=1
+    move from_value_id=0 to_value_id=1 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=0 instruction_index=2
+    move from_value_id=1 to_value_id=2 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=2 instruction_index=1
+    move from_value_id=3 to_value_id=4 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=2 instruction_index=2
+    move from_value_id=4 to_value_id=5 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=4 instruction_index=1
+    move from_value_id=6 to_value_id=7 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=4 instruction_index=2
+    move from_value_id=7 to_value_id=8 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=6 instruction_index=1
+    move from_value_id=9 to_value_id=10 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+  move_bundle phase=before_instruction authority=none block_index=6 instruction_index=2
+    move from_value_id=10 to_value_id=11 destination_kind=value destination_storage=register op_kind=move uses_cycle_temp_source=no reason=consumer_register_to_register
+--- prepared-block-entry-publications ---
+--- prepared-stack-layout ---
+frame_size=0 frame_alignment=1
+--- prepared-frame-plan ---
+prepared.func @main frame_size=0 frame_alignment=1 has_dynamic_stack=no fixed_slots_use_fp=no
+  saved_register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 save_index=0 width=1 units=s1 slot_placement=slot#0+stack0 slot_size=8 slot_align=8 fixed_location=yes slot_reg=gpr:s1 slot_save_index=0 slot_width=1 slot_units=s1 slot_register_placement=gpr:callee_saved#0/w1
+--- prepared-dynamic-stack-plan ---
+--- prepared-call-plans ---
+--- prepared-store-source-publications ---
+--- prepared-select-chain-materializations ---
+  select_chain function=main block=entry value=%t2 root_is_select=no root_inst=0 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=0 source_producer=load_global source_producer_block=entry source_producer_inst=0
+  select_chain function=main block=entry value=%t3 root_is_select=no root_inst=1 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=1 source_producer=cast source_producer_block=entry source_producer_inst=1
+  select_chain function=main block=entry value=%t4 root_is_select=no root_inst=2 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=2 source_producer=binary source_producer_block=entry source_producer_inst=2
+  select_chain function=main block=block_2 value=%t9 root_is_select=no root_inst=0 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=0 source_producer=load_global source_producer_block=block_2 source_producer_inst=0
+  select_chain function=main block=block_2 value=%t10 root_is_select=no root_inst=1 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=1 source_producer=cast source_producer_block=block_2 source_producer_inst=1
+  select_chain function=main block=block_2 value=%t11 root_is_select=no root_inst=2 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=2 source_producer=binary source_producer_block=block_2 source_producer_inst=2
+  select_chain function=main block=block_4 value=%t16 root_is_select=no root_inst=0 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=0 source_producer=load_global source_producer_block=block_4 source_producer_inst=0
+  select_chain function=main block=block_4 value=%t17 root_is_select=no root_inst=1 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=1 source_producer=cast source_producer_block=block_4 source_producer_inst=1
+  select_chain function=main block=block_4 value=%t18 root_is_select=no root_inst=2 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=2 source_producer=binary source_producer_block=block_4 source_producer_inst=2
+  select_chain function=main block=block_6 value=%t23 root_is_select=no root_inst=0 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=0 source_producer=load_global source_producer_block=block_6 source_producer_inst=0
+  select_chain function=main block=block_6 value=%t24 root_is_select=no root_inst=1 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=1 source_producer=cast source_producer_block=block_6 source_producer_inst=1
+  select_chain function=main block=block_6 value=%t25 root_is_select=no root_inst=2 direct_global_select_chain=yes direct_global_root_is_select=no direct_global_root_inst=2 source_producer=binary source_producer_block=block_6 source_producer_inst=2
+--- prepared-variadic-entry-plans ---
+--- prepared-regalloc ---
+prepared.func @main
+--- prepared-storage-plans ---
+prepared.func @main
+  storage %t2 value_id=0 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t3 value_id=1 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t4 value_id=2 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t9 value_id=3 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t10 value_id=4 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t11 value_id=5 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t16 value_id=6 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t17 value_id=7 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t18 value_id=8 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t23 value_id=9 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+  storage %t24 value_id=10 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1 units=s1
+  storage %t25 value_id=11 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0 width=1 units=t0
+--- prepared-i128-carriers ---
+--- prepared-f128-carriers ---
+--- prepared-atomic-operations ---
+--- prepared-intrinsic-carriers ---
+--- prepared-inline-asm-carriers ---
+--- prepared-f128-runtime-helpers ---
+--- prepared-i128-runtime-helpers ---
+--- prepared-addressing ---
+prepared.func @main frame_size=0 frame_alignment=1
+  access block=entry inst_index=0 base=global_symbol result=%t2 symbol=s offset=0 size=1 align=1 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=block_2 inst_index=0 base=global_symbol result=%t9 symbol=s offset=1 size=1 align=1 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=block_4 inst_index=0 base=global_symbol result=%t16 symbol=s offset=2 size=1 align=1 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown
+  access block=block_6 inst_index=0 base=global_symbol result=%t23 symbol=s offset=3 size=1 align=1 base_plus_offset=yes layout_authority=unknown range_verdict=proven_in_bounds dynamic_array_verdict=unknown

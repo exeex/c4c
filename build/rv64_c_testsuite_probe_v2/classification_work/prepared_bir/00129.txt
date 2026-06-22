@@ -1,0 +1,57 @@
+prepared.module target=riscv64-linux-gnu route=semantic_bir_shared
+completed_phases: legalize stack_layout liveness out_of_ssa regalloc
+invariants:
+  - no_target_facing_i1
+  - no_phi_nodes
+notes:
+  - [prealloc] prealloc owns the shared semantic-BIR to prealloc-BIR route before MIR lowering
+  - [legalize] bootstrap BIR legalize kept semantic CFG and phi form intact while promoting i1 values plus function signature/storage bookkeeping, memory-address/load-store bookkeeping, and call ABI metadata
+  - [stack_layout] stack layout prepared function 'main' with 0 home slot(s) and 0 bytes of frame space
+  - [stack_layout] stack layout now emits provisional stack objects, elides dead and copy-coalesced home slots, and only allocates frame storage for objects that still require dedicated homes
+  - [liveness] liveness now computes BIR named-value intervals, exact def/use program points, predecessor-edge phi uses, call points, CFG-aware live-through extension, and loop depth independently of stack-layout object identity
+  - [out_of_ssa] out_of_ssa removed phi nodes from live prepared BIR and published authoritative join-transfer plus parallel-copy obligations
+  - [regalloc] regalloc seeded function 'main' with 0 allocation constraint(s) and 0 interference edge(s) from active liveness; assigned 0 register(s) and 0 stack slot(s)
+--- prepared-bir ---
+bir.func @main() -> i32 {
+entry:
+  bir.br ulbl_s
+ulbl_s:
+  bir.br block_1
+block_1:
+  bir.ret i32 0
+}
+
+--- prepared-function-summaries ---
+prepared.summary @main stable_base=rsp frame_size=0 frame_alignment=1 has_dynamic_stack=no saved_regs=0 calls=0 dynamic_stack_ops=0 variadic_entry=no storage_values=0
+--- prepared-control-flow ---
+prepared.func @main
+  block entry terminator=branch target=ulbl_s
+  block ulbl_s terminator=branch target=block_1
+  block block_1 terminator=return
+--- prepared-value-locations ---
+prepared.func @main
+--- prepared-block-entry-publications ---
+--- prepared-stack-layout ---
+frame_size=0 frame_alignment=1
+object #0 func=main name=%lv.s.0 source_kind=local_slot type=i32 size=4 align=4 address_exposed=no requires_home_slot=no permanent_home_slot=no
+object #1 func=main name=%lv.s.4 source_kind=local_slot type=i32 size=4 align=4 address_exposed=no requires_home_slot=no permanent_home_slot=no
+object #2 func=main name=%lv.s.1 source_kind=local_slot type=i32 size=4 align=4 address_exposed=no requires_home_slot=no permanent_home_slot=no
+--- prepared-frame-plan ---
+prepared.func @main frame_size=0 frame_alignment=1 has_dynamic_stack=no fixed_slots_use_fp=no
+--- prepared-dynamic-stack-plan ---
+--- prepared-call-plans ---
+--- prepared-store-source-publications ---
+--- prepared-select-chain-materializations ---
+--- prepared-variadic-entry-plans ---
+--- prepared-regalloc ---
+prepared.func @main
+--- prepared-storage-plans ---
+--- prepared-i128-carriers ---
+--- prepared-f128-carriers ---
+--- prepared-atomic-operations ---
+--- prepared-intrinsic-carriers ---
+--- prepared-inline-asm-carriers ---
+--- prepared-f128-runtime-helpers ---
+--- prepared-i128-runtime-helpers ---
+--- prepared-addressing ---
+prepared.func @main frame_size=0 frame_alignment=1
