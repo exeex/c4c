@@ -231,8 +231,16 @@ void publish_runtime_local_pointer_slot_address(std::string_view slot_name,
 }
 
 std::optional<bir::Value> symbol_pointer_value_for_global_address(
-    const lir_to_bir_detail::GlobalAddress& address) {
-  if (address.byte_offset != 0 || address.link_name_id == c4c::kInvalidLinkName) {
+    const lir_to_bir_detail::GlobalAddress& address,
+    const BirFunctionLowerer::GlobalTypes& global_types) {
+  if (address.byte_offset != 0) {
+    return std::nullopt;
+  }
+  const auto global_it = global_types.find(address.global_name);
+  if (global_it != global_types.end() && global_it->second.is_string_constant) {
+    return bir::Value::named(bir::TypeKind::Ptr, "@" + address.global_name);
+  }
+  if (address.link_name_id == c4c::kInvalidLinkName) {
     return std::nullopt;
   }
   return bir::Value::named_symbol_pointer("@" + address.global_name, address.link_name_id);
@@ -1743,8 +1751,19 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         local_slot_address_slots->erase(ptr_it->second);
         (*local_address_slots)[ptr_it->second] = global_ptr_it->second;
         local_indirect_pointer_slots->insert(ptr_it->second);
-        const auto published_value = symbol_pointer_value_for_global_address(global_ptr_it->second);
+        const auto published_value =
+            symbol_pointer_value_for_global_address(global_ptr_it->second, global_types);
         const auto stored_value = published_value.value_or(value);
+        const auto global_type_it = global_types.find(global_ptr_it->second.global_name);
+        const bool publishes_string_pointer_value =
+            published_value.has_value() && global_type_it != global_types.end() &&
+            global_type_it->second.is_string_constant && *published_value != value;
+        if (publishes_string_pointer_value) {
+          lowered_insts->push_back(bir::StoreLocalInst{
+              .slot_name = ptr_it->second,
+              .value = value,
+          });
+        }
         append_string_pointer_value_materialization(ptr_it->second,
                                                     stored_value,
                                                     global_ptr_it->second,
