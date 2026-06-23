@@ -53,6 +53,32 @@ owned by idea 321.
   rather than matching `src/00143.c`, `.Lmain_block_2`, linked section names, or
   observed instruction addresses.
 
+## Completion Note
+
+Closed on 2026-06-23 after Step 4 reprobe showed the old empty successor
+fallthrough/SIGILL was repaired. Focused empty loop-exit successor
+codegen/runtime coverage is positive.
+
+`src/00143.c` was reprobed under
+`build/rv64_c_testsuite_probe_latest/triage_322_step4/`. BIR dump,
+prepared-BIR dump, RV64 emit, and clang link all returned 0. The emitted RV64
+now defines `.Lmain_block_2`, the Duff's-device switch/fallthrough body blocks,
+the verification loop blocks, and valid return blocks. The linked binary no
+longer falls through into `_IO_stdin_used`; qemu exits normally with status 1
+instead of trapping with `SIGILL`.
+
+The remaining wrong-result is classified as
+`loop_carried_pointer_postincrement_residual`: repeated Duff's-device loop
+iterations rematerialize `%lv.from` and `%lv.to` from fixed array-base offsets
+instead of advancing from current loop-carried pointer values. That residual is
+outside this idea and is tracked by
+`ideas/open/323_rv64_loop_carried_pointer_postincrement_publication.md`.
+
+Close gate: existing accepted backend guard state passed with
+`test_before.log` compared to itself using `--allow-non-decreasing-passed`:
+281 passed, 1 failed before and after, with the existing
+`backend_riscv_prepared_edge_publication` failure unchanged.
+
 ## Reviewer Reject Signals
 
 - The implementation special-cases `src/00143.c`, `.Lmain_block_2`,
