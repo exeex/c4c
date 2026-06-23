@@ -1,78 +1,94 @@
 Status: Active
 Source Idea Path: ideas/open/322_rv64_empty_loop_exit_successor_emission.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Empty Successor Exit Emission
+Current Step ID: 4
+Current Step Title: Reprobe Candidate and Classify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 repair for idea 322, focused on reachable empty loop-exit
-successor emission without testcase-shaped routing.
+Completed Step 4 reprobe for idea 322, focused on
+`tests/c/external/c-testsuite/src/00143.c` after the Step 3 empty
+loop-exit successor repair.
 
-Implementation:
+Probe artifacts:
 
-- RV64 pointer frame-slot address materializations whose prepared home is a
-  computed pointer base plus offset with no assigned register are treated as
-  producer-side no-ops; consumers materialize from prepared address facts.
-- Pointer local stores now preserve existing register-homed pointer sources and
-  only fall back to producer-side address materialization when no prepared
-  pointer register exists.
-- Stack-homed operands for signed div/rem now use the existing scalar
-  register-materialization helper instead of failing before the generic stack
-  load path.
-- RV64 prepared local memory emission now handles prepared pointer-value i16
-  loads and stores with native `lh`/`sh` through the materialized pointer base.
+- BIR:
+  `build/rv64_c_testsuite_probe_latest/triage_322_step4/bir/src_00143_c.bir.txt`
+- prepared-BIR:
+  `build/rv64_c_testsuite_probe_latest/triage_322_step4/prepared/src_00143_c.prepared.txt`
+- RV64 assembly:
+  `build/rv64_c_testsuite_probe_latest/triage_322_step4/asm/src_00143_c.s`
+- linked c4cll binary:
+  `build/rv64_c_testsuite_probe_latest/triage_322_step4/bin/src_00143_c.bin`
+- clang reference binary:
+  `build/rv64_c_testsuite_probe_latest/triage_322_step4/bin/src_00143_c.clang_ref.bin`
+- linked objdump/symbols:
+  `build/rv64_c_testsuite_probe_latest/triage_322_step4/linked/`
+- command logs:
+  `build/rv64_c_testsuite_probe_latest/triage_322_step4/logs/`
+- summary:
+  `build/rv64_c_testsuite_probe_latest/triage_322_step4/summary.md`
+- status table:
+  `build/rv64_c_testsuite_probe_latest/triage_322_step4/probe_results.tsv`
 
-Focused coverage:
+Fresh status for `src/00143.c`:
 
-- `backend_codegen_route_riscv64_empty_loop_exit_successor` was converted from
-  expected-repair to a positive emitted-code contract requiring the successor
-  body, switch-case labels, halfword operations, `remw`, and a valid return
-  path.
-- `backend_rv64_runtime_riscv64_empty_loop_exit_successor` now proves the
-  fixture links and exits under qemu with status 0.
-- The existing `backend_dump_riscv64_empty_loop_exit_successor` prepared-fact
-  coverage remains in place.
+- `--dump-bir`: 0
+- `--dump-prepared-bir`: 0
+- RV64 asm emit: 0
+- clang assembler/link for c4cll output: 0
+- qemu for c4cll output: 1
+- qemu for clang reference binary: 0
 
-Result:
+Classification:
 
-- The focused fixture now emits all reachable loop-exit successor and switch
-  body blocks and returns normally under qemu.
-- Existing i16 halfword and stack-homed fused compare focused tests remain
-  green.
-- Previously regressed nearby pointer-local route/runtime tests were rerun and
-  pass after tightening pointer store materialization fallback.
+- The old idea 322 failure is fixed. RV64 now emits `.Lmain_block_2`, the
+  Duff's-device switch/fallthrough body blocks, the later verification loop
+  blocks, and valid return blocks. The linked binary no longer falls through
+  into `_IO_stdin_used`; qemu exits normally with status 1 rather than
+  trapping with `SIGILL`.
+- First remaining residual:
+  `loop_carried_pointer_postincrement_residual`.
+- Emitted-code evidence: the Duff's-device copy blocks repeatedly store fixed
+  stack addresses back into `%lv.from`/`%lv.to` homes, for example
+  `addi t1, sp, 2; sd t1, 160(sp)` and
+  `addi t1, sp, 80; sd t1, 168(sp)` in `.Lmain_block_6`, then similar fixed
+  offsets in following fallthrough blocks.
+- Prepared-BIR evidence matches that emitted shape, for example
+  `%t29 = bir.add ptr %lv.a.0, 2; bir.store_local %lv.from, ptr %t29`.
+  Repeated Duff's-device loop iterations therefore rematerialize pointer locals
+  from fixed array-base offsets instead of advancing from the current
+  loop-carried `from`/`to` values.
+- Scope: this residual is outside idea 322's empty loop-exit successor emission
+  route and should split as a loop-carried pointer post-increment
+  publication/lowering issue if pursued.
 
 ## Suggested Next
 
-Execute Step 4 reprobe for `src/00143.c` through BIR, prepared-BIR, RV64 emit,
-link, and qemu to classify whether idea 322 is closure-ready or exposes a
-later residual.
+Plan-owner/supervisor decision: idea 322 appears closure-ready for the owned
+empty successor emission route, with the remaining `src/00143.c` wrong-result
+classified as a separate loop-carried pointer post-increment residual.
 
 ## Watchouts
 
-- Do not special-case `src/00143.c`, `.Lmain_block_2`, `_IO_stdin_used`, fixed
-  block order, linked section layout, or observed instruction addresses.
-- The repair exposed and covered generic helper gaps needed to emit the
-  successor body: computed pointer address publication, stack-homed signed
-  remainder operands, and pointer-value i16 load/store lowering.
-- Keep idea 319 stack-homed fused compare, idea 320 nested store-source
-  publication, and idea 321 i16 local-array select/store as separate routes
-  unless Step 4 fresh evidence shows a regression.
+- Do not reopen idea 322 by treating qemu exit 1 as another empty successor
+  fallthrough; the emitted and linked evidence shows the successor body and
+  return paths are present.
+- Do not special-case Duff's device, `src/00143.c`, stack offsets, block names,
+  `_IO_stdin_used`, or section layout in a follow-up.
+- The next residual is about preserving loop-carried pointer post-increment
+  values across fallthrough/repeated loop iterations.
 
 ## Proof
 
-Focused proof:
-`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_(empty_loop_exit_successor|i16_local_array_select_store|stack_homed_fused_compare_missing_false_label)'`
+Build/probe command ran before artifact capture:
+`cmake --build --preset default -j`.
 
-Result: passed, 9/9 tests.
-
-Regression spot-check after an initial broad-run regression:
-`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(codegen_route|rv64_runtime)_riscv64_(prepared_local_array_base_pointer|prepared_local_array_subobject_pointer|prepared_local_array_pointer_step|prepared_local_array_i8_element_access|aggregate_local_self_pointer_chain|empty_loop_exit_successor)'`
-
-Result: passed, 10/10 tests.
+Candidate reprobe ran through BIR dump, prepared-BIR dump, RV64 asm emit,
+clang assembler/link, qemu for the c4cll binary, and qemu for a clang reference
+binary.
 
 Delegated proof to run:
 `cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
