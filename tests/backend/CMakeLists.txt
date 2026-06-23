@@ -519,6 +519,50 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_pointer_to_pointer_local_address
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_to_pointer_local_address.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.store_local %lv.p, ptr %lv.value|bir.store_local %lv.pp, ptr %lv.p|bir.load_local ptr %lv.pp|bir.store_local %t1.store.addr, i32 7, addr %t1|object #1 func=main name=%lv.p source_kind=local_slot type=ptr size=8 align=8 address_exposed=yes|address_materialization block=entry inst_index=2 kind=frame_slot result=%lv.p"
+  FORBIDDEN_SNIPPETS "src/00005.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address pointer_local pointer_to_pointer expected_repair dump
+)
+
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_pointer_integer_select_chain
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_integer_select_chain.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.select ne i32 %t0, 0, i32 0, 0|bir.inttoptr i32 %t7 to ptr|bir.store_local %lv.p, ptr %t8|select_chain function=main block=tern.end.15 value=%t32 root_is_select=yes|store_source function=main block=tern.end.15 inst=6 source=<none> status=missing_destination_access"
+  FORBIDDEN_SNIPPETS "src/00144.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 pointer select pointer_local expected_repair dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_pointer_to_pointer_local_address_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_to_pointer_local_address.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_to_pointer_local_address_expected_repair.s"
+  REQUIRED_SNIPPETS ".globl main|sd t1,|ld s2,"
+  FORBIDDEN_SNIPPETS "ret|src/00005.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address pointer_local pointer_to_pointer expected_repair emission
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_pointer_integer_select_chain_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_integer_select_chain.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_integer_select_chain_expected_repair.s"
+  REQUIRED_SNIPPETS ".Lmain_select_0_done:|mv t0, t0|mv t0, t0"
+  FORBIDDEN_SNIPPETS "ret|src/00144.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 pointer select pointer_local expected_repair emission
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_aggregate_local_self_pointer_chain
   SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_self_pointer_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
