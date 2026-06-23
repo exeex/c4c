@@ -563,25 +563,25 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
-  backend_dump_riscv64_function_pointer_local_storage_expected_repair
+  backend_dump_riscv64_function_pointer_local_storage
   SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_local_storage.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
   REQUIRED_SNIPPETS "bir.store_local %lv.slot.0, ptr @add_three|bir.store_local %lv.local_fn, ptr @add_three|bir.load_local ptr %lv.local_fn|bir.call i32 %t3(i32 4)|wrapper_kind=indirect|indirect_callee=%t3|address_materialization block=entry inst_index=0 kind=direct_global result=@add_three symbol=add_three|address_materialization block=entry inst_index=1 kind=direct_global result=@add_three symbol=add_three"
   FORBIDDEN_SNIPPETS "src/00087.c"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 function_pointer local_storage indirect_call expected_repair dump
+  LABELS riscv64 function_pointer local_storage indirect_call dump
 )
 
 c4c_add_backend_codegen_route_test(
-  backend_codegen_route_riscv64_function_pointer_local_storage_expected_repair
+  backend_codegen_route_riscv64_function_pointer_local_storage
   SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_local_storage.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_function_pointer_local_storage.s"
-  REQUIRED_SNIPPETS "add_three:|main:|addi sp, sp, -48|sd ra, 32(sp)"
-  FORBIDDEN_SNIPPETS "jalr|call add_three|lla"
+  REQUIRED_SNIPPETS "add_three:|main:|addi sp, sp, -48|sd ra, 32(sp)|lla s1, add_three|sd s1, 0(sp)|sd s1, 8(sp)|ld t0, 8(sp)|li a0, 4|jalr ra, 0(t0)|mv s2, a0|addi t0, s2, -7|mv a0, t0|ld ra, 32(sp)|ret"
+  FORBIDDEN_SNIPPETS "call add_three|src/00087.c"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 function_pointer local_storage indirect_call expected_repair emission
+  LABELS riscv64 function_pointer local_storage indirect_call emission
 )
 
 c4c_add_backend_dump_flag_test(
@@ -600,8 +600,8 @@ c4c_add_backend_codegen_route_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_return_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_function_pointer_return_chain.s"
-  REQUIRED_SNIPPETS "choose:|.Lchoose_block_2:|mv a0, t0|ret|.Lchoose_block_3:|main:|call choose|sd t0, 0(sp)|ld t0, 0(sp)"
-  FORBIDDEN_SNIPPETS "jalr|call sub|lla"
+  REQUIRED_SNIPPETS "choose:|.Lchoose_block_2:|mv a0, t0|ret|.Lchoose_block_3:|main:|call choose|sd t0, 0(sp)|ld t0, 0(sp)|li a0, 9|li a1, 4|jalr ra, 0(t0)"
+  FORBIDDEN_SNIPPETS "call sub|lla|src/00124.c"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 function_pointer return_chain indirect_call expected_repair emission
 )
@@ -746,6 +746,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_anonymous_union_fields.c"
   CASE_TIMEOUT_SEC 10
   LABELS aggregate local aggregate_subobject anonymous_union
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_function_pointer_local_storage
+  SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_local_storage.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS function_pointer local_storage indirect_call
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_external_strlen_runtime_link_policy

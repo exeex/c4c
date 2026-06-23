@@ -413,12 +413,20 @@ std::optional<std::string> emit_riscv_simple_store_local(
       out += "    addi t1, sp, " + std::to_string(*source_stack_offset) + "\n";
     } else if (materialization->kind ==
                c4c::backend::prepare::PreparedAddressMaterializationKind::DirectGlobal) {
+      const auto materialization_register =
+          prepared_pointer_register_for_value(context, store.value).value_or("t1");
       const auto materialized =
-          emit_riscv_direct_global_address_materialization(prepared, *materialization, "t1");
+          emit_riscv_direct_global_address_materialization(
+              prepared,
+              *materialization,
+              materialization_register);
       if (!materialized.has_value()) {
         return std::nullopt;
       }
       out += *materialized;
+      out += "    sd " + materialization_register + ", " +
+             std::to_string(*destination_stack_offset) + "(sp)\n";
+      return out;
     } else if (materialization->kind ==
                c4c::backend::prepare::PreparedAddressMaterializationKind::StringConstant) {
       const auto materialized =

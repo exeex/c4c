@@ -17,8 +17,7 @@ std::optional<std::string> emit_riscv_simple_call(
     const PreparedCurrentInstructionContext& context) {
   namespace prepare = c4c::backend::prepare;
 
-  if (call.is_indirect || call.callee.empty() || call.args.size() > 8 ||
-      context.lookups == nullptr) {
+  if (call.args.size() > 8 || context.lookups == nullptr) {
     return std::nullopt;
   }
 
@@ -28,16 +27,35 @@ std::optional<std::string> emit_riscv_simple_call(
       block_index,
       context.instruction_index);
   if (call_plan == nullptr ||
-      call_plan->is_indirect ||
-      call_plan->indirect_callee.has_value() ||
-      call_plan->direct_callee_name != std::optional<std::string>{call.callee} ||
-      (call_plan->wrapper_kind != prepare::PreparedCallWrapperKind::SameModule &&
-       call_plan->wrapper_kind != prepare::PreparedCallWrapperKind::DirectExternFixedArity) ||
       call_plan->variadic_fpr_arg_register_count != 0 ||
       call_plan->memory_return.has_value() ||
       call_plan->outgoing_stack_argument_area.has_value() ||
       call_plan->arguments.size() != call.args.size() ||
       call_plan->result.has_value() != call.result.has_value()) {
+    return std::nullopt;
+  }
+
+  const bool direct_call =
+      !call.is_indirect &&
+      !call.callee.empty() &&
+      !call_plan->is_indirect &&
+      !call_plan->indirect_callee.has_value() &&
+      call_plan->direct_callee_name == std::optional<std::string>{call.callee} &&
+      (call_plan->wrapper_kind == prepare::PreparedCallWrapperKind::SameModule ||
+       call_plan->wrapper_kind ==
+           prepare::PreparedCallWrapperKind::DirectExternFixedArity);
+  const bool indirect_call =
+      call.is_indirect &&
+      call_plan->is_indirect &&
+      call_plan->wrapper_kind == prepare::PreparedCallWrapperKind::Indirect &&
+      !call_plan->direct_callee_name.has_value() &&
+      call_plan->indirect_callee.has_value() &&
+      call_plan->indirect_callee->encoding ==
+          prepare::PreparedStorageEncodingKind::Register &&
+      call_plan->indirect_callee->bank == prepare::PreparedRegisterBank::Gpr &&
+      call_plan->indirect_callee->register_name.has_value() &&
+      !call_plan->indirect_callee->register_name->empty();
+  if (!direct_call && !indirect_call) {
     return std::nullopt;
   }
 
@@ -100,7 +118,11 @@ std::optional<std::string> emit_riscv_simple_call(
     }
   }
 
-  out += "    call " + call.callee + "\n";
+  if (direct_call) {
+    out += "    call " + call.callee + "\n";
+  } else {
+    out += "    jalr ra, 0(" + *call_plan->indirect_callee->register_name + ")\n";
+  }
 
   if (call.result.has_value()) {
     if (!call_plan->result.has_value() ||
