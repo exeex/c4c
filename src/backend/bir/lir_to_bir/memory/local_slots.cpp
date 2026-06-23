@@ -230,6 +230,10 @@ void publish_runtime_local_pointer_slot_address(std::string_view slot_name,
       runtime_pointer_address_from_local_slot_address(stored_value, address_it->second);
 }
 
+[[nodiscard]] bool target_publishes_local_slot_pointer_values(c4c::TargetArch arch) {
+  return arch == c4c::TargetArch::Aarch64 || arch == c4c::TargetArch::Riscv64;
+}
+
 std::optional<bir::Value> symbol_pointer_value_for_global_address(
     const lir_to_bir_detail::GlobalAddress& address,
     const BirFunctionLowerer::GlobalTypes& global_types) {
@@ -1643,7 +1647,7 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         local_address_slots->erase(ptr_it->second);
         local_indirect_pointer_slots->erase(ptr_it->second);
         stored_local_slot_address = true;
-        if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+        if (target_publishes_local_slot_pointer_values(context_.target_profile.arch) &&
             value.kind == bir::Value::Kind::Named) {
           const auto published_address = local_slot_address_slots->find(ptr_it->second);
           if (published_address != local_slot_address_slots->end()) {
@@ -1692,7 +1696,7 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         local_address_slots->erase(ptr_it->second);
         local_indirect_pointer_slots->erase(ptr_it->second);
         stored_local_slot_address = true;
-        if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+        if (target_publishes_local_slot_pointer_values(context_.target_profile.arch) &&
             value.kind == bir::Value::Kind::Named) {
           const auto published_address = local_slot_address_slots->find(ptr_it->second);
           if (published_address != local_slot_address_slots->end()) {
@@ -1735,7 +1739,7 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         local_address_slots->erase(ptr_it->second);
         local_indirect_pointer_slots->erase(ptr_it->second);
         stored_local_slot_address = true;
-        if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+        if (target_publishes_local_slot_pointer_values(context_.target_profile.arch) &&
             value.kind == bir::Value::Kind::Named) {
           const auto published_address = local_slot_address_slots->find(ptr_it->second);
           if (published_address != local_slot_address_slots->end()) {
@@ -1776,7 +1780,8 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         return LocalSlotStoreResult::Lowered;
       }
     }
-    if (context_.target_profile.arch == c4c::TargetArch::Aarch64 && stored_local_slot_address) {
+    if (target_publishes_local_slot_pointer_values(context_.target_profile.arch) &&
+        stored_local_slot_address) {
       publish_runtime_local_pointer_slot_address(ptr_it->second,
                                                  value,
                                                  *local_slot_address_slots,

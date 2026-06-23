@@ -372,25 +372,21 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_base_pointer.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.store_local %lv.arr.0, i32 11|bir.store_local %lv.arr.1, i32 31|bir.store_local %lv.p, ptr %t|bir.load_local ptr %lv.p|access block=entry inst_index=2 base=frame_slot stored=%t|frame_slot_order slot_id="
+  REQUIRED_SNIPPETS "bir.store_local %lv.arr.0, i32 11|bir.store_local %lv.arr.1, i32 31|bir.add ptr %lv.arr.0, 0|bir.store_local %lv.p, ptr %t|bir.load_local ptr %lv.p|access block=entry inst_index=3 base=frame_slot stored=%t|address_materialization block=entry inst_index=2 kind=frame_slot result=%t|frame_slot_order slot_id="
   FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00032|src/00032.c|src/00072.c"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 prepared_local_address array_base pointer_local dump
 )
 
 c4c_add_backend_codegen_route_test(
-  backend_codegen_route_riscv64_prepared_local_array_base_pointer_xfail
+  backend_codegen_route_riscv64_prepared_local_array_base_pointer
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_base_pointer.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_local_array_base_pointer.s"
-  REQUIRED_SNIPPETS "main:|addi t0, sp,|sd t0,|ld|lw|add|addi s1,|mv a0,|ret"
+  REQUIRED_SNIPPETS "main:|addi s1, sp,|sd s1,|ld|lw|add|addi s1,|mv a0,|ret"
   FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00032|src/00032.c|src/00072.c"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 prepared_local_address array_base pointer_local emission expected_failure
-)
-set_tests_properties(
-  backend_codegen_route_riscv64_prepared_local_array_base_pointer_xfail
-  PROPERTIES WILL_FAIL TRUE
+  LABELS riscv64 prepared_local_address array_base pointer_local emission
 )
 
 c4c_add_backend_dump_flag_test(
@@ -398,25 +394,21 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_subobject_pointer.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.store_local %lv.arr.28, i32 37|bir.store_local %lv.p, ptr %t|bir.load_local ptr %lv.p|object #4 func=main name=%lv.arr.16 source_kind=local_slot type=i32 size=4 align=4 address_exposed=yes|access block=entry inst_index=1 base=frame_slot stored=%t"
+  REQUIRED_SNIPPETS "bir.store_local %lv.arr.28, i32 37|bir.add ptr %lv.arr.16, 12|bir.store_local %lv.p, ptr %t|bir.load_local ptr %lv.p|bir.load_local i32 %t9.addr, addr %t|object #4 func=main name=%lv.arr.16 source_kind=local_slot type=i32 size=4 align=4 address_exposed=yes|access block=entry inst_index=2 base=frame_slot stored=%t|address_materialization block=entry inst_index=1 kind=frame_slot result=%t"
   FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00130|src/00130.c"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 prepared_local_address array_subobject pointer_local dump
 )
 
 c4c_add_backend_codegen_route_test(
-  backend_codegen_route_riscv64_prepared_local_array_subobject_pointer_xfail
+  backend_codegen_route_riscv64_prepared_local_array_subobject_pointer
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_subobject_pointer.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_local_array_subobject_pointer.s"
-  REQUIRED_SNIPPETS "main:|addi t0, sp,|sd t0,|ld|lw|addi s2, s1, -37|mv a0, s2|ret"
+  REQUIRED_SNIPPETS "main:|addi s1, sp,|sd s1,|ld|lw|addi s1, s2, -37|mv a0, s1|ret"
   FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00130|src/00130.c"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 prepared_local_address array_subobject pointer_local emission expected_failure
-)
-set_tests_properties(
-  backend_codegen_route_riscv64_prepared_local_array_subobject_pointer_xfail
-  PROPERTIES WILL_FAIL TRUE
+  LABELS riscv64 prepared_local_address array_subobject pointer_local emission
 )
 
 function(c4c_add_backend_runtime_case test_name)

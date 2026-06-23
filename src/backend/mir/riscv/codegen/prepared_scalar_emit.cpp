@@ -369,17 +369,56 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
 
   if (binary.opcode != c4c::backend::bir::BinaryOpcode::Add ||
       binary.result.kind != c4c::backend::bir::Value::Kind::Named ||
-      binary.result.type != c4c::backend::bir::TypeKind::Ptr ||
-      prepared_pointer_register_for_value(context, binary.result).has_value()) {
+      binary.result.type != c4c::backend::bir::TypeKind::Ptr) {
     return std::nullopt;
   }
   const auto* home = prepared_value_home_for(context, binary.result);
-  if (home == nullptr ||
-      home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+  if (home == nullptr) {
     return std::nullopt;
   }
   if (has_frame_slot_address_materialization_at(context)) {
-    return std::string{};
+    if ((home->kind == prepare::PreparedValueHomeKind::Register ||
+         home->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset) &&
+        home->register_name.has_value() &&
+        !home->register_name->empty()) {
+      const auto* materializations =
+          prepare::find_indexed_prepared_address_materializations(
+              &context.lookups->address_materializations,
+              context.block_label);
+      if (materializations == nullptr) {
+        return std::nullopt;
+      }
+      const prepare::PreparedAddressMaterialization* selected = nullptr;
+      const auto result_name = context.names.value_names.find(binary.result.name);
+      for (const auto* materialization : *materializations) {
+        if (materialization == nullptr ||
+            materialization->inst_index != context.instruction_index ||
+            materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
+            materialization->result_value_name !=
+                std::optional<c4c::ValueNameId>{result_name} ||
+            !materialization->frame_slot_id.has_value() ||
+            materialization->byte_offset < 0 ||
+            !fits_signed_12_bit_immediate(materialization->byte_offset)) {
+          continue;
+        }
+        if (selected != nullptr) {
+          return std::nullopt;
+        }
+        selected = materialization;
+      }
+      if (selected == nullptr) {
+        return std::nullopt;
+      }
+      return "    addi " + *home->register_name + ", sp, " +
+             std::to_string(selected->byte_offset) + "\n";
+    }
+    if (home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+      return std::string{};
+    }
+    return std::nullopt;
+  }
+  if (home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
   }
   if (!home->offset_bytes.has_value() ||
       home->size_bytes != std::optional<std::size_t>{8} ||
@@ -444,6 +483,54 @@ std::optional<std::string> emit_riscv_simple_binary(
   }
   const auto destination_register = prepared_register_for_value(names, lookups, binary.result);
   if (!destination_register.has_value()) {
+    const auto* destination_home = prepared_value_home_for(names, lookups, binary.result);
+    if (binary.result.type == c4c::backend::bir::TypeKind::I32 &&
+        destination_home != nullptr &&
+        destination_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+        destination_home->offset_bytes.has_value() &&
+        destination_home->size_bytes == std::optional<std::size_t>{4}) {
+      std::string out;
+      if (!emit_move_to_register(out, "t3", names, lookups, binary.lhs) ||
+          !emit_move_to_register(out, "t4", names, lookups, binary.rhs)) {
+        return std::nullopt;
+      }
+      switch (binary.opcode) {
+        case c4c::backend::bir::BinaryOpcode::Add:
+          out += "    add t3, t3, t4\n";
+          break;
+        case c4c::backend::bir::BinaryOpcode::Sub:
+          out += "    sub t3, t3, t4\n";
+          break;
+        case c4c::backend::bir::BinaryOpcode::Mul:
+          out += "    mul t3, t3, t4\n";
+          break;
+        case c4c::backend::bir::BinaryOpcode::SDiv:
+          out += "    divw t3, t3, t4\n";
+          break;
+        case c4c::backend::bir::BinaryOpcode::SRem:
+          out += "    remw t3, t3, t4\n";
+          break;
+        case c4c::backend::bir::BinaryOpcode::And:
+          out += "    and t3, t3, t4\n";
+          break;
+        case c4c::backend::bir::BinaryOpcode::Or:
+          out += "    or t3, t3, t4\n";
+          break;
+        case c4c::backend::bir::BinaryOpcode::Xor:
+          out += "    xor t3, t3, t4\n";
+          break;
+        default:
+          return std::nullopt;
+      }
+      const auto stored = emit_i32_store_to_stack_offset(
+          "t3",
+          static_cast<std::int64_t>(*destination_home->offset_bytes));
+      if (!stored.has_value()) {
+        return std::nullopt;
+      }
+      out += *stored;
+      return out;
+    }
     const auto result_immediate = prepared_immediate_i32_for_value(names, lookups, binary.result);
     return result_immediate.has_value() ? std::optional<std::string>{std::string{}} : std::nullopt;
   }
@@ -621,6 +708,51 @@ std::optional<std::string> emit_riscv_simple_binary(
            (binary.opcode == c4c::backend::bir::BinaryOpcode::Add ? "add " : "sub ") +
            *destination_register + ", " + *lhs_register + ", " +
            *rhs_register + "\n";
+    return out;
+  }
+  if (binary.opcode == c4c::backend::bir::BinaryOpcode::Add ||
+      binary.opcode == c4c::backend::bir::BinaryOpcode::Sub ||
+      binary.opcode == c4c::backend::bir::BinaryOpcode::Mul ||
+      binary.opcode == c4c::backend::bir::BinaryOpcode::SDiv ||
+      binary.opcode == c4c::backend::bir::BinaryOpcode::SRem ||
+      binary.opcode == c4c::backend::bir::BinaryOpcode::And ||
+      binary.opcode == c4c::backend::bir::BinaryOpcode::Or ||
+      binary.opcode == c4c::backend::bir::BinaryOpcode::Xor) {
+    if (!emit_move_to_register(out, "t3", names, lookups, binary.lhs) ||
+        !emit_move_to_register(out, "t4", names, lookups, binary.rhs)) {
+      return std::nullopt;
+    }
+    const char* opcode = nullptr;
+    switch (binary.opcode) {
+      case c4c::backend::bir::BinaryOpcode::Add:
+        opcode = "add";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Sub:
+        opcode = "sub";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Mul:
+        opcode = "mul";
+        break;
+      case c4c::backend::bir::BinaryOpcode::SDiv:
+        opcode = "divw";
+        break;
+      case c4c::backend::bir::BinaryOpcode::SRem:
+        opcode = "remw";
+        break;
+      case c4c::backend::bir::BinaryOpcode::And:
+        opcode = "and";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Or:
+        opcode = "or";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Xor:
+        opcode = "xor";
+        break;
+      default:
+        return std::nullopt;
+    }
+    out += std::string{"    "} + opcode + " " + *destination_register +
+           ", t3, t4\n";
     return out;
   }
   return std::nullopt;
