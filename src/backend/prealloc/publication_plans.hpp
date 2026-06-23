@@ -859,6 +859,7 @@ struct PreparedStoreSourcePublicationInputs {
   bool pointer_store_writeback = false;
   bool duplicate_publication = false;
   const PreparedEdgePublicationSourceProducer* source_producer = nullptr;
+  std::optional<std::size_t> publication_instruction_index;
 };
 
 struct PreparedFixedFormalStoreSourcePublication {

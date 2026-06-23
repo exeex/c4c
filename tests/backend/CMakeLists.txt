@@ -578,10 +578,10 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_nested_select_store_source_publication.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.store_local %lv.chosen, ptr %t8|bir.store_local %lv.published, ptr %t36|store_source function=main block=|source=%t8 status=available|store_source function=main block=|status=missing_destination_access|select_chain function=main block=|value=%t36 root_is_select=yes"
-  FORBIDDEN_SNIPPETS "src/00144.c|riscv64_pointer_typed_select_publication|i16"
+  REQUIRED_SNIPPETS "bir.store_local %lv.chosen, ptr %t8|bir.store_local %lv.published, ptr %t36|store_source function=main block=|source=%t8 status=available|store_source function=main block=|source=%t36 status=available|source_producer=select_materialization|source_select=yes|store_source function=main block=|source=%t56 status=available|source_cast=yes|select_chain function=main block=|value=%t36 root_is_select=yes"
+  FORBIDDEN_SNIPPETS "src/00144.c|riscv64_pointer_typed_select_publication|i16|status=missing_destination_access"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 pointer select nested_select store_source expected_repair dump
+  LABELS riscv64 pointer select nested_select store_source dump
 )
 
 c4c_add_backend_dump_flag_test(

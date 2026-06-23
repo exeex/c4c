@@ -86,6 +86,11 @@ namespace {
 
 [[nodiscard]] bool prepared_store_source_producer_metadata_agrees(
     const PreparedStoreSourcePublicationInputs& inputs) {
+  const auto publication_instruction_index =
+      inputs.publication_instruction_index.value_or(
+          inputs.destination_access != nullptr
+              ? inputs.destination_access->inst_index
+              : std::size_t{0});
   if (inputs.source_value == nullptr ||
       inputs.destination_access == nullptr ||
       inputs.source_producer == nullptr ||
@@ -95,7 +100,7 @@ namespace {
       inputs.source_producer->block_label !=
           inputs.destination_access->block_label ||
       inputs.source_producer->instruction_index >=
-          inputs.destination_access->inst_index ||
+          publication_instruction_index ||
       !prepared_source_producer_has_matching_payload(*inputs.source_producer)) {
     return false;
   }
@@ -220,6 +225,45 @@ find_pending_store_global_source_producer(
     return &*found;
   }
   return nullptr;
+}
+
+[[nodiscard]] const PreparedMemoryAccess*
+find_store_source_publication_access(
+    const PreparedNameTables& names,
+    const PreparedAddressingFunction* addressing,
+    BlockLabelId block_label,
+    const bir::Value& stored_value,
+    std::size_t instruction_index) {
+  if (addressing == nullptr) {
+    return nullptr;
+  }
+  if (const auto* exact =
+          find_prepared_memory_access(*addressing, block_label, instruction_index);
+      exact != nullptr) {
+    return exact;
+  }
+
+  if (stored_value.kind != bir::Value::Kind::Named || stored_value.name.empty()) {
+    return nullptr;
+  }
+  const auto stored_name = names.value_names.find(stored_value.name);
+  if (stored_name == kInvalidValueName) {
+    return nullptr;
+  }
+
+  const PreparedMemoryAccess* selected = nullptr;
+  for (const auto& access : addressing->accesses) {
+    if (access.block_label != block_label ||
+        access.stored_value_name != std::optional<ValueNameId>{stored_name} ||
+        access.result_value_name.has_value()) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = &access;
+  }
+  return selected;
 }
 
 [[nodiscard]] PreparedScalarPublicationPlan missing_destination_home(
@@ -1873,9 +1917,8 @@ void populate_store_source_publication_plans(PreparedBirModule& prepared) {
         const bir::Value& source_value =
             store_local != nullptr ? store_local->value : store_global->value;
         const auto* access =
-            addressing != nullptr
-                ? find_prepared_memory_access(*addressing, block_label, inst_index)
-                : nullptr;
+            find_store_source_publication_access(
+                prepared.names, addressing, block_label, source_value, inst_index);
         const auto* source_home =
             find_publication_source_home(value_locations,
                                          access != nullptr ? access->stored_value_name
@@ -1950,6 +1993,7 @@ void populate_store_source_publication_plans(PreparedBirModule& prepared) {
             .stack_homes_only = store_global != nullptr,
             .duplicate_publication = duplicate_publication,
             .source_producer = source_producer,
+            .publication_instruction_index = inst_index,
         });
         append_store_source_record(prepared.store_source_publications,
                                    function_name,
