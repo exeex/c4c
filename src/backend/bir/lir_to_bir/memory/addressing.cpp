@@ -1108,6 +1108,70 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     note_function_lowering_family_failure("gep local-memory semantic family");
     return false;
   };
+  const auto is_loop_carried_pointer_publication_gep =
+      [&](const c4c::codegen::lir::LirGepOp& candidate) {
+        if (candidate.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+          return false;
+        }
+        const std::string& result_name = candidate.result.str();
+        std::optional<std::size_t> containing_block_index;
+        bool stores_result_to_local_pointer = false;
+        for (std::size_t block_index = 0; block_index < function_.blocks.size();
+             ++block_index) {
+          const auto& block = function_.blocks[block_index];
+          for (const auto& inst : block.insts) {
+            if (const auto* gep_inst = std::get_if<c4c::codegen::lir::LirGepOp>(&inst);
+                gep_inst != nullptr && gep_inst->result == candidate.result) {
+              containing_block_index = block_index;
+            }
+            const auto* store_inst = std::get_if<c4c::codegen::lir::LirStoreOp>(&inst);
+            if (store_inst == nullptr || store_inst->val != candidate.result ||
+                store_inst->type_str.str() != "ptr" ||
+                store_inst->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+              continue;
+            }
+            if (local_pointer_slots.find(store_inst->ptr.str()) != local_pointer_slots.end()) {
+              stores_result_to_local_pointer = true;
+            }
+          }
+        }
+        if (!containing_block_index.has_value() || !stores_result_to_local_pointer) {
+          return false;
+        }
+
+        const auto& containing_block = function_.blocks[*containing_block_index];
+        const auto reaches_containing_block = [&](const std::string& target_label) {
+          return target_label == containing_block.label;
+        };
+        for (std::size_t block_index = *containing_block_index;
+             block_index < function_.blocks.size();
+             ++block_index) {
+          const auto& terminator = function_.blocks[block_index].terminator;
+          if (const auto* branch = std::get_if<c4c::codegen::lir::LirBr>(&terminator);
+              branch != nullptr && reaches_containing_block(branch->target_label)) {
+            return true;
+          }
+          if (const auto* cond = std::get_if<c4c::codegen::lir::LirCondBr>(&terminator);
+              cond != nullptr &&
+              (reaches_containing_block(cond->true_label) ||
+               reaches_containing_block(cond->false_label))) {
+            return true;
+          }
+          if (const auto* sw = std::get_if<c4c::codegen::lir::LirSwitch>(&terminator);
+              sw != nullptr) {
+            if (reaches_containing_block(sw->default_label)) {
+              return true;
+            }
+            for (const auto& [case_value, case_label] : sw->cases) {
+              (void)case_value;
+              if (reaches_containing_block(case_label)) {
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      };
   const auto widen_gep_byte_offset_to_i64 =
       [&](std::string_view result_name, bir::Value offset) -> std::optional<bir::Value> {
         if (offset.type == bir::TypeKind::I64) {
@@ -1572,6 +1636,135 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     return true;
   }
 
+  if (pointer_value_addresses.find(gep.ptr.str()) != pointer_value_addresses.end() &&
+      pointer_value_addresses.find(gep.ptr.str())->second.provenance.base_identity.kind ==
+          bir::MemoryProvenanceBaseIdentityKind::UnknownRuntimeBase &&
+      gep.ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
+      is_loop_carried_pointer_publication_gep(gep) &&
+      (gep.indices.size() == 1 || gep.indices.size() == 2)) {
+    const auto addressed_ptr_it = pointer_value_addresses.find(gep.ptr.str());
+    std::size_t typed_index_pos = 0;
+    if (gep.indices.size() == 2) {
+      const auto base_index = parse_typed_operand(gep.indices.front());
+      if (!base_index.has_value()) {
+        return fail_gep();
+      }
+      const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+      if (!base_imm.has_value() || *base_imm != 0) {
+        return fail_gep();
+      }
+      typed_index_pos = 1;
+    }
+    const auto parsed_index = parse_typed_operand(gep.indices[typed_index_pos]);
+    const auto element_type = lower_scalar_or_function_pointer_type(gep.element_type.str());
+    if (parsed_index.has_value() && element_type.has_value() &&
+        parsed_index->operand.kind() == c4c::codegen::lir::LirOperandKind::Immediate) {
+      auto scaled_offset = lower_typed_index_value(*parsed_index, value_aliases);
+      const auto element_size = type_size_bytes(*element_type);
+      if (scaled_offset.has_value() && element_size != 0 &&
+          scaled_offset->kind == bir::Value::Kind::Immediate) {
+        scaled_offset = bir::Value::immediate_i64(
+            scaled_offset->immediate * static_cast<std::int64_t>(element_size));
+        if (scaled_offset->type == bir::TypeKind::I64) {
+          const auto base_pointer = bir::Value::named(bir::TypeKind::Ptr, gep.ptr.str());
+          if (scaled_offset->immediate == 0) {
+            value_aliases[gep.result.str()] = base_pointer;
+          } else {
+            lowered_insts->push_back(bir::BinaryInst{
+                .opcode = bir::BinaryOpcode::Add,
+                .result = bir::Value::named(bir::TypeKind::Ptr, gep.result.str()),
+                .operand_type = bir::TypeKind::Ptr,
+                .lhs = base_pointer,
+                .rhs = *scaled_offset,
+            });
+            value_aliases[gep.result.str()] =
+                bir::Value::named(bir::TypeKind::Ptr, gep.result.str());
+          }
+          const auto result_value = value_aliases[gep.result.str()];
+          pointer_value_addresses[gep.result.str()] = PointerAddress{
+              .base_value = result_value,
+              .value_type = *element_type,
+              .byte_offset = 0,
+              .dynamic_element_count = addressed_ptr_it->second.dynamic_element_count,
+              .dynamic_element_stride_bytes =
+                  addressed_ptr_it->second.dynamic_element_stride_bytes,
+              .storage_type_text = addressed_ptr_it->second.storage_type_text,
+              .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
+                  gep.element_type.str())),
+              .loaded_pointer_value_type = addressed_ptr_it->second.loaded_pointer_value_type,
+              .loaded_pointer_type_text = addressed_ptr_it->second.loaded_pointer_type_text,
+              .aarch64_variadic_fp_register_save_area =
+                  addressed_ptr_it->second.aarch64_variadic_fp_register_save_area,
+              .loaded_pointer_aarch64_variadic_fp_register_save_area =
+                  addressed_ptr_it->second.loaded_pointer_aarch64_variadic_fp_register_save_area,
+              .provenance = pointer_value_base_provenance(result_value),
+          };
+          return true;
+        }
+      }
+    }
+  }
+
+  if (pointer_value_addresses.find(gep.ptr.str()) == pointer_value_addresses.end() &&
+      gep.ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
+      is_loop_carried_pointer_publication_gep(gep)) {
+    const auto runtime_local_slot_ptr_it = local_slot_pointer_values.find(gep.ptr.str());
+    if (runtime_local_slot_ptr_it != local_slot_pointer_values.end() &&
+        (gep.indices.size() == 1 || gep.indices.size() == 2)) {
+      std::size_t typed_index_pos = 0;
+      if (gep.indices.size() == 2) {
+        const auto base_index = parse_typed_operand(gep.indices.front());
+        if (!base_index.has_value()) {
+          return fail_gep();
+        }
+        const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+        if (!base_imm.has_value() || *base_imm != 0) {
+          return fail_gep();
+        }
+        typed_index_pos = 1;
+      }
+      const auto parsed_index = parse_typed_operand(gep.indices[typed_index_pos]);
+      const auto element_type = lower_scalar_or_function_pointer_type(gep.element_type.str());
+      if (parsed_index.has_value() && element_type.has_value() &&
+          parsed_index->operand.kind() == c4c::codegen::lir::LirOperandKind::Immediate) {
+        auto scaled_offset = lower_typed_index_value(*parsed_index, value_aliases);
+        const auto element_size = type_size_bytes(*element_type);
+        if (scaled_offset.has_value() && element_size != 0 &&
+            scaled_offset->kind == bir::Value::Kind::Immediate) {
+          scaled_offset = bir::Value::immediate_i64(
+              scaled_offset->immediate * static_cast<std::int64_t>(element_size));
+          if (scaled_offset->type == bir::TypeKind::I64) {
+            const auto base_pointer = bir::Value::named(bir::TypeKind::Ptr, gep.ptr.str());
+            if (scaled_offset->immediate == 0) {
+              value_aliases[gep.result.str()] = base_pointer;
+            } else {
+              lowered_insts->push_back(bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result = bir::Value::named(bir::TypeKind::Ptr, gep.result.str()),
+                  .operand_type = bir::TypeKind::Ptr,
+                  .lhs = base_pointer,
+                  .rhs = *scaled_offset,
+              });
+              value_aliases[gep.result.str()] =
+                  bir::Value::named(bir::TypeKind::Ptr, gep.result.str());
+            }
+            const auto result_value = value_aliases[gep.result.str()];
+            pointer_value_addresses[gep.result.str()] = PointerAddress{
+                .base_value = result_value,
+                .value_type = *element_type,
+                .byte_offset = 0,
+                .storage_type_text = runtime_local_slot_ptr_it->second.storage_type_text,
+                .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
+                    gep.element_type.str())),
+                .provenance = pointer_value_base_provenance(result_value),
+            };
+            return true;
+          }
+        }
+      }
+    }
+  }
+
   if (const auto handled = try_lower_local_array_slot_gep(gep,
                                                           value_aliases,
                                                           local_array_slots,
@@ -1935,20 +2128,26 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
       return fail_gep();
     }
     return true;
-  } else if (const auto handled_local_slot_gep =
-                 try_lower_local_slot_pointer_gep(
-                     gep,
-                     value_aliases,
-                     type_decls,
-                     &structured_layouts_,
-                     local_slot_types,
-                     &local_slot_pointer_values);
-             handled_local_slot_gep.has_value()) {
-    if (!*handled_local_slot_gep) {
-      return fail_gep();
-    }
-    return true;
   } else {
+    const bool has_runtime_pointer_address =
+        pointer_value_addresses.find(gep.ptr.str()) != pointer_value_addresses.end();
+    if (!has_runtime_pointer_address) {
+      if (const auto handled_local_slot_gep =
+              try_lower_local_slot_pointer_gep(
+                  gep,
+                  value_aliases,
+                  type_decls,
+                  &structured_layouts_,
+                  local_slot_types,
+                  &local_slot_pointer_values);
+          handled_local_slot_gep.has_value()) {
+        if (!*handled_local_slot_gep) {
+          return fail_gep();
+        }
+        return true;
+      }
+    }
+
     const auto addressed_ptr_it = pointer_value_addresses.find(gep.ptr.str());
     const auto ptr_it = local_pointer_slots.find(gep.ptr.str());
     if (addressed_ptr_it != pointer_value_addresses.end() || ptr_it == local_pointer_slots.end()) {
