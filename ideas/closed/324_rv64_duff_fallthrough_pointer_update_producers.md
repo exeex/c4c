@@ -72,6 +72,26 @@ homes and publishes them as pointer locals before qemu segfaults at
 - Repairs create or preserve semantic/prepared pointer producer facts rather
   than teaching RV64 to guess from uninitialized stack homes.
 
+## Completion Note
+
+Closed on 2026-06-23 after Step 4/5 evidence satisfied the source idea. Focused
+Duff fallthrough producer dump/codegen/runtime coverage is positive:
+
+- `backend_dump_riscv64_duff_fallthrough_pointer_update_producers`
+- `backend_codegen_route_riscv64_duff_fallthrough_pointer_update_producers`
+- `backend_rv64_runtime_riscv64_duff_fallthrough_pointer_update_producers`
+
+Probe artifacts under
+`build/rv64_c_testsuite_probe_latest/triage_324_step4/` show the focused Duff
+fixture, `src/00143.c`, and the clang reference for `src/00143.c` all emit,
+link, and pass qemu. The old missing-producer publication residual is no
+longer blocking this route, and no concrete follow-up residual was identified.
+
+Close gate: existing accepted backend guard state passed with
+`test_before.log` compared to itself using `--allow-non-decreasing-passed`:
+287 passed, 1 failed before and after, with the existing
+`backend_riscv_prepared_edge_publication` failure unchanged.
+
 ## Reviewer Reject Signals
 
 - The implementation special-cases `src/00143.c`, Duff's-device block names,
