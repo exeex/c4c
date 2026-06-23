@@ -93,6 +93,64 @@ std::optional<std::int64_t> simple_or_prepared_integer_immediate(
   return prepared_immediate_i32_for_value(names, lookups, value);
 }
 
+std::optional<std::string> emit_riscv_simple_compare_value(
+    const c4c::backend::bir::BinaryInst& binary,
+    std::string_view destination_register,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  if (!c4c::backend::bir::is_compare_opcode(binary.opcode)) {
+    return std::nullopt;
+  }
+
+  std::string out;
+  if (!emit_move_to_register(out, "t3", names, lookups, binary.lhs) ||
+      !emit_move_to_register(out, "t4", names, lookups, binary.rhs)) {
+    return std::nullopt;
+  }
+
+  const std::string destination{destination_register};
+  switch (binary.opcode) {
+    case c4c::backend::bir::BinaryOpcode::Eq:
+      out += "    xor " + destination + ", t3, t4\n";
+      out += "    sltiu " + destination + ", " + destination + ", 1\n";
+      return out;
+    case c4c::backend::bir::BinaryOpcode::Ne:
+      out += "    xor " + destination + ", t3, t4\n";
+      out += "    sltu " + destination + ", zero, " + destination + "\n";
+      return out;
+    case c4c::backend::bir::BinaryOpcode::Slt:
+      out += "    slt " + destination + ", t3, t4\n";
+      return out;
+    case c4c::backend::bir::BinaryOpcode::Sgt:
+      out += "    slt " + destination + ", t4, t3\n";
+      return out;
+    case c4c::backend::bir::BinaryOpcode::Sle:
+      out += "    slt " + destination + ", t4, t3\n";
+      out += "    xori " + destination + ", " + destination + ", 1\n";
+      return out;
+    case c4c::backend::bir::BinaryOpcode::Sge:
+      out += "    slt " + destination + ", t3, t4\n";
+      out += "    xori " + destination + ", " + destination + ", 1\n";
+      return out;
+    case c4c::backend::bir::BinaryOpcode::Ult:
+      out += "    sltu " + destination + ", t3, t4\n";
+      return out;
+    case c4c::backend::bir::BinaryOpcode::Ugt:
+      out += "    sltu " + destination + ", t4, t3\n";
+      return out;
+    case c4c::backend::bir::BinaryOpcode::Ule:
+      out += "    sltu " + destination + ", t4, t3\n";
+      out += "    xori " + destination + ", " + destination + ", 1\n";
+      return out;
+    case c4c::backend::bir::BinaryOpcode::Uge:
+      out += "    sltu " + destination + ", t3, t4\n";
+      out += "    xori " + destination + ", " + destination + ", 1\n";
+      return out;
+    default:
+      return std::nullopt;
+  }
+}
+
 bool emit_move_to_i32_location(
     std::string& out,
     const c4c::backend::prepare::PreparedValueHome& destination_home,
@@ -374,7 +432,11 @@ std::optional<std::string> emit_riscv_simple_binary(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
   if ((binary.opcode != c4c::backend::bir::BinaryOpcode::Add &&
        binary.opcode != c4c::backend::bir::BinaryOpcode::Sub &&
-       binary.opcode != c4c::backend::bir::BinaryOpcode::Mul) ||
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Mul &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::And &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Or &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Xor &&
+       !c4c::backend::bir::is_compare_opcode(binary.opcode)) ||
       binary.result.kind != c4c::backend::bir::Value::Kind::Named) {
     return std::nullopt;
   }
@@ -382,6 +444,13 @@ std::optional<std::string> emit_riscv_simple_binary(
   if (!destination_register.has_value()) {
     const auto result_immediate = prepared_immediate_i32_for_value(names, lookups, binary.result);
     return result_immediate.has_value() ? std::optional<std::string>{std::string{}} : std::nullopt;
+  }
+  if (c4c::backend::bir::is_compare_opcode(binary.opcode)) {
+    return emit_riscv_simple_compare_value(
+        binary,
+        *destination_register,
+        names,
+        lookups);
   }
 
   const auto lhs_imm = simple_or_prepared_integer_immediate(names, lookups, binary.lhs);
@@ -401,6 +470,15 @@ std::optional<std::string> emit_riscv_simple_binary(
         break;
       case c4c::backend::bir::BinaryOpcode::Mul:
         result = *lhs_imm * *rhs_imm;
+        break;
+      case c4c::backend::bir::BinaryOpcode::And:
+        result = *lhs_imm & *rhs_imm;
+        break;
+      case c4c::backend::bir::BinaryOpcode::Or:
+        result = *lhs_imm | *rhs_imm;
+        break;
+      case c4c::backend::bir::BinaryOpcode::Xor:
+        result = *lhs_imm ^ *rhs_imm;
         break;
       default:
         return std::nullopt;
@@ -433,6 +511,37 @@ std::optional<std::string> emit_riscv_simple_binary(
     out += "    mul " + *destination_register + ", " + lhs_register_name + ", " +
            rhs_register_name + "\n";
     return out;
+  }
+  if (binary.opcode == c4c::backend::bir::BinaryOpcode::And ||
+      binary.opcode == c4c::backend::bir::BinaryOpcode::Or ||
+      binary.opcode == c4c::backend::bir::BinaryOpcode::Xor) {
+    const auto register_immediate_opcode =
+        binary.opcode == c4c::backend::bir::BinaryOpcode::And ? "andi" :
+        binary.opcode == c4c::backend::bir::BinaryOpcode::Or ? "ori" : "xori";
+    const auto register_register_opcode =
+        binary.opcode == c4c::backend::bir::BinaryOpcode::And ? "and" :
+        binary.opcode == c4c::backend::bir::BinaryOpcode::Or ? "or" : "xor";
+    if (lhs_register.has_value() && rhs_imm.has_value() &&
+        fits_signed_12_bit_immediate(*rhs_imm)) {
+      out += std::string{"    "} + register_immediate_opcode + " " +
+             *destination_register + ", " + *lhs_register + ", " +
+             std::to_string(*rhs_imm) + "\n";
+      return out;
+    }
+    if (rhs_register.has_value() && lhs_imm.has_value() &&
+        fits_signed_12_bit_immediate(*lhs_imm)) {
+      out += std::string{"    "} + register_immediate_opcode + " " +
+             *destination_register + ", " + *rhs_register + ", " +
+             std::to_string(*lhs_imm) + "\n";
+      return out;
+    }
+    if (lhs_register.has_value() && rhs_register.has_value()) {
+      out += std::string{"    "} + register_register_opcode + " " +
+             *destination_register + ", " + *lhs_register + ", " +
+             *rhs_register + "\n";
+      return out;
+    }
+    return std::nullopt;
   }
   if (lhs_register.has_value() && rhs_imm.has_value()) {
     const auto immediate = binary.opcode == c4c::backend::bir::BinaryOpcode::Add

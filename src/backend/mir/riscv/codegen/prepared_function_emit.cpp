@@ -28,10 +28,17 @@ std::optional<c4c::FunctionNameId> prepared_function_id_for(
 }
 
 std::optional<c4c::BlockLabelId> prepared_block_label_id_for(
+    const c4c::backend::bir::NameTables& bir_names,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::bir::Block& block) {
   if (block.label_id != c4c::kInvalidBlockLabel) {
-    return block.label_id;
+    const std::string_view structured_label = bir_names.block_labels.spelling(block.label_id);
+    if (!structured_label.empty()) {
+      const auto prepared_label = names.block_labels.find(structured_label);
+      if (prepared_label != c4c::kInvalidBlockLabel) {
+        return prepared_label;
+      }
+    }
   }
   const auto block_label = names.block_labels.find(block.label);
   if (block_label == c4c::kInvalidBlockLabel) {
@@ -108,7 +115,10 @@ bool append_simple_prepared_bir_function_asm(
 
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
-    const auto block_label_id = prepared_block_label_id_for(prepared.names, block);
+    const auto block_label_id = prepared_block_label_id_for(
+        prepared.module.names,
+        prepared.names,
+        block);
     if (!block_label_id.has_value()) {
       return false;
     }
@@ -160,7 +170,6 @@ bool append_simple_prepared_bir_function_asm(
               .lhs = binary->lhs,
               .rhs = binary->rhs,
           };
-          continue;
         }
         auto emitted = emit_riscv_simple_prepared_pointer_add(
             *binary,
