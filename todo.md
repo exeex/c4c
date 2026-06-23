@@ -1,87 +1,78 @@
 Status: Active
 Source Idea Path: ideas/open/314_rv64_aggregate_local_subobject_and_byval_flow.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Repair Or Classify Aggregate Copy And Byval Flow
+Current Step ID: 5
+Current Step Title: Reprobe And Close Classification
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 aggregate copy/byval classification for idea 314.
+Step 5 final reprobe and classification summary for idea 314.
 
-Classified `src/00140.c` rather than implementing a broad ABI repair.
+Final candidate statuses:
 
-Probe result:
+- `src/00019.c`: emit/link/qemu pass. Step 3 repaired the nested aggregate
+  self-pointer/subobject representative.
+- `src/00046.c`: emit/link pass, qemu exits `2`. Aggregate stores/reloads are
+  emitted, and the remaining failure is a separate select-chain/short-circuit
+  runtime lowering residual.
+- `src/00140.c`: emit/link pass, qemu exits `132`. Assembly remains truncated
+  at `f1` byval aggregate handling, classified as a separate RV64 prepared
+  byval aggregate call ABI residual.
 
-- `src/00140.c` emits and links, but qemu exits `132` (`Illegal instruction`)
-  because emitted assembly is truncated.
+Step 5 artifacts:
 
-First bad mechanism:
+- `build/rv64_c_testsuite_probe_latest/triage_314_step5/probe_results.tsv`
+- `build/rv64_c_testsuite_probe_latest/triage_314_step5/summary.md`
 
-- `f1` starts with byval aggregate-copy loads through `%p.f`.
-- Prepared value locations put `%p.f` in a stack-slot home:
-  `home %p.f value_id=0 kind=stack_slot slot_id=0 offset=0`.
-- The current RV64 prepared local-memory emitter supports pointer-value loads
-  when the pointer base is in a register, but not when the pointer base is this
-  byval stack-slot home. Emission stops after the `f1` prologue.
+Closure recommendation:
 
-Additional ABI evidence:
-
-- `main`'s prepared call plan classifies byval argument 0 as
-  `aggregate_address` with no ordinary GPR destination, and before-call moves
-  include `destination_storage=stack_slot abi_index=0`.
-- The current simple prepared call emitter only handles ordinary GPR
-  register/immediate arguments and rejects aggregate transport / stack argument
-  forms.
-- The byval aggregate contains a `float` lane (`struct foo::v`), so repairing
-  the full case would fold in floating aggregate lane behavior.
-
-Classification:
-
-- `separate_byval_aggregate_call_abi_residual`
-- This packet does not implement the repair because it would require
-  coordinated RV64 prepared byval aggregate call ABI support across callee
-  byval stack-slot pointer handling, caller aggregate-address/byval payload
-  transport, and floating aggregate lane handling.
-
-Step 4 probe artifacts:
-
-- `build/rv64_c_testsuite_probe_latest/triage_314_step4/probe_results.tsv`
-- `build/rv64_c_testsuite_probe_latest/triage_314_step4/summary.md`
+- Idea 314 appears closure-ready from the executor perspective if its intended
+  scope is the aggregate-local subobject repair plus classification of the
+  remaining byval/control-flow residuals.
+- Separate follow-up ideas are needed for `src/00046.c` select-chain /
+  short-circuit runtime lowering and `src/00140.c` RV64 prepared byval
+  aggregate call ABI.
 
 ## Suggested Next
 
-Hand Step 4 classification to the supervisor/plan owner. A future repair
-should be an explicit RV64 prepared byval aggregate call ABI packet, not a
-continuation of this narrow aggregate-local subobject emission slice.
+Hand Step 5 classification to the supervisor/plan owner for lifecycle
+decision. Do not close directly from executor role.
 
 ## Watchouts
 
 - Do not special-case filenames, fixed offsets, or struct/union names.
 - Do not reopen generic local frame-slot address publication unless aggregate
   evidence proves it is still incomplete.
-- Do not repair `src/00140.c` by only teaching the callee to read `%p.f` from a
-  stack-slot home; caller-side aggregate-address/byval payload transport is
-  also missing from the simple prepared call emitter.
-- Do not fold vararg/floating aggregate ABI behavior into this Step 4 packet.
-- The generated assembly can emit/link while truncated; keep qemu or emission
-  completeness checks in any future byval packet.
+- `src/00046.c` is no longer an aggregate-store/reload emission failure; it is
+  a select-chain/short-circuit runtime lowering residual.
+- `src/00140.c` should not be repaired by only teaching the callee to read
+  `%p.f` from a stack-slot home; caller-side aggregate-address/byval payload
+  transport is also missing from the simple prepared call emitter.
+- Do not fold vararg/floating aggregate ABI behavior into idea 314 closure; use
+  a separate byval ABI idea if repairing `src/00140.c`.
 
 ## Proof
 
 Ran:
 
 - `cmake --build --preset default -j`
-- emit/link/qemu probe for `src/00140.c` into `build/rv64_c_testsuite_probe_latest/triage_314_step4/`
+- emit/link/qemu probes for `src/00019.c`, `src/00046.c`, and `src/00140.c`
+  into `build/rv64_c_testsuite_probe_latest/triage_314_step5/`
+- `ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_aggregate_local_(self_pointer_chain|anonymous_union_fields)'`
 - `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
 Results:
 
 - Build passed.
-- No focused tests were added or modified in this classification-only packet.
-- `src/00140.c` probe emitted and linked, then qemu exited `132`; classified
-  as `separate_byval_aggregate_call_abi_residual`.
+- Probe results:
+  - `src/00019.c`: emit `0`, link `0`, qemu `0`, `pass`.
+  - `src/00046.c`: emit `0`, link `0`, qemu `2`,
+    `separate_select_chain_runtime_failure`.
+  - `src/00140.c`: emit `0`, link `0`, qemu `132`,
+    `separate_byval_aggregate_call_abi_residual`.
+- Focused aggregate-local tests passed `6/6`.
 - Delegated backend proof wrote `test_after.log` and failed with the existing
   `backend_riscv_prepared_edge_publication` failure as the only failing backend
   test.
