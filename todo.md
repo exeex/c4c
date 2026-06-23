@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/312_rv64_local_stack_slot_address_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Cover And Repair Array Element Local Access
+Current Step ID: 5
+Current Step Title: Cover Aggregate And Function-Pointer Local Flow
 
 # Current Packet
 
