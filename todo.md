@@ -1,74 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/318_rv64_byval_aggregate_call_abi.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused Byval Aggregate Call Coverage
+Current Step ID: 3
+Current Step Title: Repair Caller-Side Byval Payload Transport
 
 # Current Packet
 
 ## Just Finished
 
-Completed idea 318 Step 2 by adding focused expected-repair backend coverage
-for RV64 byval aggregate call ABI transport and callee-side byval home loads.
+Completed idea 318 Step 3 by repairing the focused fixed-arity RV64 byval
+aggregate call route enough for `riscv64_byval_aggregate_fixed_call` to become
+positive dump, codegen, and QEMU runtime coverage.
 
-New focused fixture:
+Implemented boundary:
 
-- `tests/backend/case/riscv64_byval_aggregate_fixed_call.c`
+- caller-side byval aggregate-address arguments now gather prepared split local
+  aggregate field homes into an ABI-sized temporary payload before the call
+- the byval payload gather helper validates range and shape into local pending
+  output before committing stack adjustment/copy text, so failed helper checks
+  do not leak partial assembly into fallback emission
+- later frame-address arguments are materialized against the adjusted stack
+  pointer while the temporary payload is live
+- callee-side byval pointer formals are stored from their incoming RV64 GPR
+  argument register into the prepared stack home
+- pointer-value loads can read through stack-homed byval pointer formals
+- null pointer local stores are supported for the focused pointer lane
 
-New expected-repair tests:
+Focused tests now positive:
 
 - `backend_dump_riscv64_byval_aggregate_fixed_call`
-- `backend_codegen_route_riscv64_byval_aggregate_fixed_call_expected_repair`
+- `backend_codegen_route_riscv64_byval_aggregate_fixed_call`
+- `backend_rv64_runtime_riscv64_byval_aggregate_fixed_call`
 
-The fixture is a fixed-arity, non-variadic call using a small aggregate with
-two integer lanes and one pointer lane. It proves the same Step 1 boundary
-without copying `src/00140.c`, `%p.f`, its field names, or fixed stack homes.
-
-Dump coverage asserts:
-
-- a callee signature with `ptr byval(size=16, align=8)`
-- callee-side aggregate-param and byval copy loads from `addr %p.value`
-- pointer-lane byval home load at offset `+8`
-- caller-side byval call and `aggregate_address` arg0 plan
-- before-call `destination_storage=stack_slot` ABI movement
-- `source_kind=byval_param` stack object and `base=pointer_value` callee
-  access records
-
-Codegen coverage asserts the current bad RV64 route stays captured: the callee
-emits only its prologue and the caller truncates before a `call consume_parcel`
-or any `ret`, while still showing the initialized aggregate payload stores.
-That rejects fake callee-local values by requiring the prepared byval caller and
-callee access facts, not just a direct local aggregate read.
+The repair stays limited to fixed-arity integer/pointer byval payload transport
+and callee byval home loading. Float/FPR byval lanes, variadic byval transport,
+and broader aggregate ABI classification remain outside this packet.
 
 ## Suggested Next
 
-Repair the fixed-arity RV64 byval aggregate path: caller payload transport into
-the byval ABI slot and callee-side byval home loads should emit enough assembly
-for the focused fixture to become positive codegen/runtime coverage.
+Reprobe `src/00140.c` or advance to the next idea 318 step to decide whether
+the candidate now passes or exposes a separate float/variadic aggregate ABI
+residual.
 
 ## Watchouts
 
 - Do not special-case `src/00140.c`, `%p.f`, field names, or fixed stack-slot
   homes.
-- Do not fake callee-local aggregate values; prove caller-side payload
-  transport across the call boundary.
-- Keep aggregate-local, function-pointer, external-call, and select/control
-  repairs out of scope unless evidence proves a true dependency.
-- Float-lane byval ABI coverage should split if the fixed integer/pointer
-  byval repair exposes a separate FPR/float aggregate lane mechanism; this
-  Step 2 fixture stays focused on the first bad callee/caller byval transport
-  boundary.
+- Do not fake callee-local aggregate values; caller payload transport must cross
+  the call boundary.
+- The current byval payload gather uses prepared aggregate member stack-object
+  offsets plus BIR call ABI size metadata; it is not a broad aggregate ABI
+  rewrite.
 
 ## Proof
 
-Focused proof passed 2/2:
-`cmake --build --preset default -j && ctest --test-dir build -j
---output-on-failure -R 'backend_(dump|codegen_route)_riscv64_byval_aggregate_fixed_call'`.
+Focused proof passed 3/3:
+`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_byval_aggregate_fixed_call'`.
 
 Delegated proof ran:
-`cmake --build --preset default -j && ctest --test-dir build -j
---output-on-failure -R '^backend_' > test_after.log`.
+`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
 
 Result: build passed; backend CTest returned nonzero because the existing
 unrelated `backend_riscv_prepared_edge_publication` test still fails. The
-fresh proof log is `test_after.log`.
+focused byval dump/codegen/runtime tests pass in the final proof log. Fresh log:
+`test_after.log`.

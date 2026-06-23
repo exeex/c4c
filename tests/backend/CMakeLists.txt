@@ -636,18 +636,18 @@ c4c_add_backend_dump_flag_test(
   REQUIRED_SNIPPETS "bir.func @consume_parcel(ptr byval(size=16, align=8) %p.value, ptr %p.mirror) -> i32|%lv.param.p.value.aggregate.param.copy.0 = bir.load_local i32 %lv.param.p.value.0, addr %p.value|%lv.param.p.value.aggregate.param.copy.8 = bir.load_local ptr %lv.param.p.value.8, addr %p.value+8|%lv.param.value.byval.copy.0 = bir.load_local i32 %lv.param.value.0, addr %p.value|%t9 = bir.call i32 consume_parcel(ptr byval(size=16, align=8) %lv.value, ptr %lv.mirror.0)|arg0 bank=aggregate_address from=register:s1 to=none|move from_value_id=20 to_value_id=20 destination_kind=call_argument_abi destination_storage=stack_slot|source_kind=byval_param type=ptr size=16 align=8|base=pointer_value result=%lv.param.p.value.aggregate.param.copy.0 pointer=%p.value|base=pointer_value result=%lv.param.value.byval.copy.8 pointer=%p.value"
   FORBIDDEN_SNIPPETS "src/00140.c|%p.f"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 byval aggregate call expected_repair dump
+  LABELS riscv64 byval aggregate call dump
 )
 
 c4c_add_backend_codegen_route_test(
-  backend_codegen_route_riscv64_byval_aggregate_fixed_call_expected_repair
+  backend_codegen_route_riscv64_byval_aggregate_fixed_call
   SRC "${BACKEND_CASE_ROOT}/riscv64_byval_aggregate_fixed_call.c"
   TARGET_TRIPLE riscv64-linux-gnu
-  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_byval_aggregate_fixed_call_expected_repair.s"
-  REQUIRED_SNIPPETS ".globl consume_parcel|consume_parcel:|.Lconsume_parcel_entry:|addi sp, sp, -64|.globl main|main:|sd ra, 48(sp)|sw t1, 16(sp)|sw t1, 24(sp)"
-  FORBIDDEN_SNIPPETS "call consume_parcel|ret|src/00140.c|%p.f"
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_byval_aggregate_fixed_call.s"
+  REQUIRED_SNIPPETS ".globl consume_parcel|consume_parcel:|.Lconsume_parcel_entry:|sd a0, 0(sp)|ld t3, 0(sp)|.globl main|main:|sd ra, 48(sp)|addi sp, sp, -16|ld t3, 24(sp)|sd t3, 8(sp)|lw t3, 32(sp)|sw t3, 0(sp)|lw t3, 40(sp)|sw t3, 4(sp)|mv a0, sp|addi a1, sp, 16|call consume_parcel|addi sp, sp, 16|ret"
+  FORBIDDEN_SNIPPETS "src/00140.c|%p.f"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 byval aggregate call expected_repair emission
+  LABELS riscv64 byval aggregate call emission
 )
 
 c4c_add_backend_dump_flag_test(
@@ -920,6 +920,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_return_chain.c"
   CASE_TIMEOUT_SEC 10
   LABELS function_pointer return_chain indirect_call
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_byval_aggregate_fixed_call
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_aggregate_fixed_call.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS byval aggregate call
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_external_strlen_runtime_link_policy

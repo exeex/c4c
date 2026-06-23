@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../bir/bir.hpp"
+#include "../../../prealloc/module.hpp"
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -10,6 +11,8 @@ namespace c4c::backend::riscv::codegen {
 struct PreparedCurrentInstructionContext;
 
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_call(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
     const c4c::backend::bir::CallInst& call,
     std::size_t block_index,
     const PreparedCurrentInstructionContext& context);

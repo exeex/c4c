@@ -17,6 +17,20 @@
 namespace c4c::backend::riscv::codegen {
 namespace {
 
+std::optional<std::string_view> riscv_gpr_argument_register(std::size_t index) {
+  switch (index) {
+    case 0: return std::string_view{"a0"};
+    case 1: return std::string_view{"a1"};
+    case 2: return std::string_view{"a2"};
+    case 3: return std::string_view{"a3"};
+    case 4: return std::string_view{"a4"};
+    case 5: return std::string_view{"a5"};
+    case 6: return std::string_view{"a6"};
+    case 7: return std::string_view{"a7"};
+    default: return std::nullopt;
+  }
+}
+
 std::optional<c4c::FunctionNameId> prepared_function_id_for(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::bir::Function& function) {
@@ -107,6 +121,48 @@ const c4c::backend::prepare::PreparedBranchCondition* find_branch_condition_for_
   return selected;
 }
 
+bool append_riscv_byval_formal_entry_homes(
+    std::string& out,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Function& function) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  for (std::size_t param_index = 0; param_index < function.params.size(); ++param_index) {
+    const auto& param = function.params[param_index];
+    if (!param.is_byval ||
+        param.type != bir::TypeKind::Ptr ||
+        param.name.empty()) {
+      continue;
+    }
+    const auto source_register = riscv_gpr_argument_register(param_index);
+    if (!source_register.has_value()) {
+      return false;
+    }
+    const bir::Value value{
+        .kind = bir::Value::Kind::Named,
+        .type = bir::TypeKind::Ptr,
+        .name = param.name,
+    };
+    const auto* home = prepared_value_home_for(names, lookups, value);
+    if (home == nullptr ||
+        home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+        !home->offset_bytes.has_value() ||
+        !home->size_bytes.has_value() ||
+        *home->size_bytes < 8 ||
+        !fits_signed_12_bit_load_offset(*home->offset_bytes)) {
+      return false;
+    }
+    out += "    sd ";
+    out += *source_register;
+    out += ", ";
+    out += std::to_string(*home->offset_bytes);
+    out += "(sp)\n";
+  }
+  return true;
+}
+
 }  // namespace
 
 bool append_simple_prepared_bir_function_asm(
@@ -189,6 +245,14 @@ bool append_simple_prepared_bir_function_asm(
     }
     if (block_index == 0 && return_address_stack_offset.has_value()) {
       out += "    sd ra, " + std::to_string(*return_address_stack_offset) + "(sp)\n";
+    }
+    if (block_index == 0 &&
+        !append_riscv_byval_formal_entry_homes(
+            out,
+            prepared.names,
+            lookups,
+            function)) {
+      return false;
     }
 
     for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
@@ -282,6 +346,8 @@ bool append_simple_prepared_bir_function_asm(
       const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
       if (call != nullptr) {
         const auto emitted = emit_riscv_simple_call(
+            prepared,
+            *function_name_id,
             *call,
             block_index,
             context);
