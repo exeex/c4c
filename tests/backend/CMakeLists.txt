@@ -548,7 +548,7 @@ c4c_add_backend_dump_flag_test(
   REQUIRED_SNIPPETS "bir.select ne i32 %t0, 0, ptr %lv.value, 0|bir.store_local %lv.selected, ptr %t7|bir.store_local %lv.published, ptr %t8|select_chain function=main block=tern.end.6 value=%t7 root_is_select=yes|store_source function=main block=tern.end.6 inst=1 source=%t7 status=available"
   FORBIDDEN_SNIPPETS "src/00144.c|riscv64_pointer_integer_select_chain"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 pointer select pointer_local expected_repair dump
+  LABELS riscv64 pointer select pointer_local dump
 )
 
 c4c_add_backend_codegen_route_test(
@@ -574,14 +574,14 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
-  backend_codegen_route_riscv64_pointer_typed_select_publication_expected_repair
+  backend_codegen_route_riscv64_pointer_typed_select_publication
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_typed_select_publication.c"
   TARGET_TRIPLE riscv64-linux-gnu
-  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_typed_select_publication_expected_repair.s"
-  REQUIRED_SNIPPETS ".Lmain_tern_end_6:|mv t0, t0"
-  FORBIDDEN_SNIPPETS "ret|src/00144.c|riscv64_pointer_integer_select_chain"
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_typed_select_publication.s"
+  REQUIRED_SNIPPETS ".Lmain_tern_end_6:|bne t3, t4, .Lmain_select_|li t0, 0|addi t0, sp,|sd t0,|ld t0,|mv a0, t0|ret"
+  FORBIDDEN_SNIPPETS "mv t0, t0|src/00144.c|riscv64_pointer_integer_select_chain"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 pointer select pointer_local expected_repair emission
+  LABELS riscv64 pointer select pointer_local emission
 )
 
 c4c_add_backend_dump_flag_test(
@@ -810,6 +810,12 @@ c4c_add_backend_rv64_runtime_case(
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_pointer_integer_select_chain
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_integer_select_chain.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS pointer select pointer_local
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_pointer_typed_select_publication
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_typed_select_publication.c"
   CASE_TIMEOUT_SEC 10
   LABELS pointer select pointer_local
 )

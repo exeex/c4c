@@ -198,6 +198,7 @@ bool append_simple_prepared_bir_function_asm(
       if (select != nullptr) {
         const auto emitted = emit_riscv_simple_select(
             *select,
+            prepared,
             function_name,
             context,
             &block);

@@ -5,6 +5,7 @@
 #include "prepared_global_memory_emit.hpp"
 
 #include "../../../prealloc/addressing.hpp"
+#include "../../../prealloc/module.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -168,6 +169,17 @@ bool emit_move_to_i32_location(
     std::size_t depth,
     std::size_t& label_serial);
 
+bool emit_move_to_pointer_location(
+    std::string& out,
+    const c4c::backend::prepare::PreparedValueHome& destination_home,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value,
+    std::string_view function_name,
+    const c4c::backend::bir::Block* block,
+    std::size_t depth,
+    std::size_t& label_serial);
+
 const c4c::backend::bir::SelectInst* find_same_block_select_producer(
     const c4c::backend::bir::Block* block,
     const c4c::backend::bir::Value& value,
@@ -245,6 +257,150 @@ std::optional<std::string> emit_select_to_i32_location(
                                  block,
                                  depth + 1U,
                                  label_serial)) {
+    return std::nullopt;
+  }
+  out += done_label + ":\n";
+  return out;
+}
+
+std::optional<std::int64_t> prepared_local_frame_address_offset_for(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    std::string_view function_name,
+    const c4c::backend::bir::Value& value) {
+  namespace bir = c4c::backend::bir;
+
+  if (value.kind != bir::Value::Kind::Named ||
+      value.type != bir::TypeKind::Ptr ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return std::nullopt;
+  }
+
+  std::optional<std::int64_t> selected_offset;
+  for (const auto& object : prepared.stack_layout.objects) {
+    if (object.function_name != function_id ||
+        c4c::backend::prepare::prepared_stack_object_name(prepared.names, object) !=
+            value.name ||
+        (!object.address_exposed && !object.permanent_home_slot)) {
+      continue;
+    }
+    const auto* slot =
+        c4c::backend::prepare::find_prepared_frame_slot(prepared.stack_layout,
+                                                        object.object_id);
+    if (slot == nullptr ||
+        slot->function_name != function_id ||
+        !fits_signed_12_bit_immediate(static_cast<std::int64_t>(slot->offset_bytes))) {
+      continue;
+    }
+    const auto offset = static_cast<std::int64_t>(slot->offset_bytes);
+    if (selected_offset.has_value() && *selected_offset != offset) {
+      return std::nullopt;
+    }
+    selected_offset = offset;
+  }
+  return selected_offset;
+}
+
+bool emit_move_to_pointer_register(
+    std::string& out,
+    std::string_view destination_register,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value,
+    std::string_view function_name) {
+  if (value.type != c4c::backend::bir::TypeKind::Ptr) {
+    return false;
+  }
+  if (const auto frame_offset =
+          prepared_local_frame_address_offset_for(prepared, function_name, value);
+      frame_offset.has_value()) {
+    out += "    addi ";
+    out += destination_register;
+    out += ", sp, ";
+    out += std::to_string(*frame_offset);
+    out += "\n";
+    return true;
+  }
+  if (emit_move_to_register(
+          out,
+          destination_register,
+          context.names,
+          context.lookups,
+          value)) {
+    return true;
+  }
+  const auto* home = prepared_value_home_for(context, value);
+  if (home != nullptr &&
+      home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      home->offset_bytes.has_value() &&
+      home->size_bytes == std::optional<std::size_t>{8} &&
+      fits_signed_12_bit_immediate(static_cast<std::int64_t>(*home->offset_bytes))) {
+    out += "    ld ";
+    out += destination_register;
+    out += ", ";
+    out += std::to_string(*home->offset_bytes);
+    out += "(sp)\n";
+    return true;
+  }
+  return false;
+}
+
+std::optional<std::string> emit_select_to_pointer_location(
+    const c4c::backend::bir::SelectInst& select,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    std::string_view function_name,
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::prepare::PreparedValueHome& destination_home,
+    const c4c::backend::bir::Block* block,
+    std::size_t depth,
+    std::size_t& label_serial) {
+  if (depth > 16U || select.result.type != c4c::backend::bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+  const auto mnemonic = riscv_branch_mnemonic(select.predicate);
+  if (!mnemonic.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string out;
+  if (!emit_move_to_register(out, "t3", context.names, context.lookups, select.lhs) ||
+      !emit_move_to_register(out, "t4", context.names, context.lookups, select.rhs)) {
+    return std::nullopt;
+  }
+
+  const std::size_t label_id = label_serial++;
+  const std::string label_base = ".L" + std::string(function_name) + "_select_" +
+                                 std::to_string(context.block_label) + "_" +
+                                 std::to_string(context.instruction_index) + "_" +
+                                 std::to_string(label_id);
+  const std::string true_label = label_base + "_true";
+  const std::string done_label = label_base + "_done";
+  out += "    " + *mnemonic + " t3, t4, " + true_label + "\n";
+  if (!emit_move_to_pointer_location(out,
+                                     destination_home,
+                                     prepared,
+                                     context,
+                                     select.false_value,
+                                     function_name,
+                                     block,
+                                     depth + 1U,
+                                     label_serial)) {
+    return std::nullopt;
+  }
+  out += "    j " + done_label + "\n";
+  out += true_label + ":\n";
+  if (!emit_move_to_pointer_location(out,
+                                     destination_home,
+                                     prepared,
+                                     context,
+                                     select.true_value,
+                                     function_name,
+                                     block,
+                                     depth + 1U,
+                                     label_serial)) {
     return std::nullopt;
   }
   out += done_label + ":\n";
@@ -337,6 +493,111 @@ bool emit_move_to_i32_location(
       out += *emitted;
     }
     out += "    sw t3, ";
+    out += std::to_string(*destination_home.offset_bytes);
+    out += "(sp)\n";
+    return true;
+  }
+  return false;
+}
+
+bool emit_move_to_pointer_location(
+    std::string& out,
+    const c4c::backend::prepare::PreparedValueHome& destination_home,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::Value& value,
+    std::string_view function_name,
+    const c4c::backend::bir::Block* block,
+    std::size_t depth,
+    std::size_t& label_serial) {
+  if ((destination_home.kind == c4c::backend::prepare::PreparedValueHomeKind::Register ||
+       destination_home.kind ==
+           c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset) &&
+      destination_home.register_name.has_value()) {
+    if (emit_move_to_pointer_register(
+            out,
+            *destination_home.register_name,
+            prepared,
+            context,
+            value,
+            function_name)) {
+      return true;
+    }
+    std::size_t producer_instruction_index = 0;
+    const auto* nested_select = find_same_block_select_producer(
+        block,
+        value,
+        context.instruction_index,
+        &producer_instruction_index);
+    if (nested_select == nullptr) {
+      return false;
+    }
+    const PreparedCurrentInstructionContext nested_context{
+        .names = context.names,
+        .lookups = context.lookups,
+        .block_label = context.block_label,
+        .instruction_index = producer_instruction_index,
+    };
+    const auto emitted = emit_select_to_pointer_location(
+        *nested_select,
+        prepared,
+        function_name,
+        nested_context,
+        destination_home,
+        block,
+        depth,
+        label_serial);
+    if (!emitted.has_value()) {
+      return false;
+    }
+    out += *emitted;
+    return true;
+  }
+  if (destination_home.kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      destination_home.offset_bytes.has_value() &&
+      destination_home.size_bytes == std::optional<std::size_t>{8} &&
+      fits_signed_12_bit_immediate(static_cast<std::int64_t>(*destination_home.offset_bytes))) {
+    if (!emit_move_to_pointer_register(
+            out,
+            "t3",
+            prepared,
+            context,
+            value,
+            function_name)) {
+      std::size_t producer_instruction_index = 0;
+      const auto* nested_select = find_same_block_select_producer(
+          block,
+          value,
+          context.instruction_index,
+          &producer_instruction_index);
+      if (nested_select == nullptr) {
+        return false;
+      }
+      const PreparedCurrentInstructionContext nested_context{
+          .names = context.names,
+          .lookups = context.lookups,
+          .block_label = context.block_label,
+          .instruction_index = producer_instruction_index,
+      };
+      const c4c::backend::prepare::PreparedValueHome register_home{
+          .kind = c4c::backend::prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"t3"},
+      };
+      const auto emitted = emit_select_to_pointer_location(
+          *nested_select,
+          prepared,
+          function_name,
+          nested_context,
+          register_home,
+          block,
+          depth,
+          label_serial);
+      if (!emitted.has_value()) {
+        return false;
+      }
+      out += *emitted;
+    }
+    out += "    sd t3, ";
     out += std::to_string(*destination_home.offset_bytes);
     out += "(sp)\n";
     return true;
@@ -531,11 +792,13 @@ std::optional<std::string> emit_riscv_simple_cast(
 
 std::optional<std::string> emit_riscv_simple_select(
     const c4c::backend::bir::SelectInst& select,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
     std::string_view function_name,
     const PreparedCurrentInstructionContext& context,
     const c4c::backend::bir::Block* block) {
   if (select.result.kind != c4c::backend::bir::Value::Kind::Named ||
-      select.result.type != c4c::backend::bir::TypeKind::I32) {
+      (select.result.type != c4c::backend::bir::TypeKind::I32 &&
+       select.result.type != c4c::backend::bir::TypeKind::Ptr)) {
     return std::nullopt;
   }
   const auto* destination_home = prepared_value_home_for(context, select.result);
@@ -543,6 +806,17 @@ std::optional<std::string> emit_riscv_simple_select(
     return std::string{};
   }
   std::size_t label_serial = 0;
+  if (select.result.type == c4c::backend::bir::TypeKind::Ptr) {
+    return emit_select_to_pointer_location(
+        select,
+        prepared,
+        function_name,
+        context,
+        *destination_home,
+        block,
+        0,
+        label_serial);
+  }
   return emit_select_to_i32_location(
       select,
       function_name,

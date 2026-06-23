@@ -49,6 +49,7 @@ struct SimpleCompare {
 
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_select(
     const c4c::backend::bir::SelectInst& select,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
     std::string_view function_name,
     const PreparedCurrentInstructionContext& context,
     const c4c::backend::bir::Block* block);
