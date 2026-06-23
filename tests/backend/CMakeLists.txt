@@ -562,6 +562,50 @@ c4c_add_backend_codegen_route_test(
   LABELS riscv64 aggregate local aggregate_subobject anonymous_union emission
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_function_pointer_local_storage_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_local_storage.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.store_local %lv.slot.0, ptr @add_three|bir.store_local %lv.local_fn, ptr @add_three|bir.load_local ptr %lv.local_fn|bir.call i32 %t3(i32 4)|wrapper_kind=indirect|indirect_callee=%t3|address_materialization block=entry inst_index=0 kind=direct_global result=@add_three symbol=add_three|address_materialization block=entry inst_index=1 kind=direct_global result=@add_three symbol=add_three"
+  FORBIDDEN_SNIPPETS "src/00087.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 function_pointer local_storage indirect_call expected_repair dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_function_pointer_local_storage_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_local_storage.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_function_pointer_local_storage.s"
+  REQUIRED_SNIPPETS "add_three:|main:|addi sp, sp, -48|sd ra, 32(sp)"
+  FORBIDDEN_SNIPPETS "jalr|call add_three|lla"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 function_pointer local_storage indirect_call expected_repair emission
+)
+
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_function_pointer_return_chain_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_return_chain.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.ret ptr @sub|bir.ret ptr 0|%t0 = bir.call ptr choose(i32 1)|bir.store_local %lv.selected, ptr %t0|bir.load_local ptr %lv.selected|bir.call i32 %t1(i32 9, i32 4)|wrapper_kind=indirect|indirect_callee=%t1|home @sub value_id=5 kind=register reg=t0"
+  FORBIDDEN_SNIPPETS "src/00124.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 function_pointer return_chain indirect_call expected_repair dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_function_pointer_return_chain_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_return_chain.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_function_pointer_return_chain.s"
+  REQUIRED_SNIPPETS "choose:|.Lchoose_block_2:|mv a0, t0|ret|.Lchoose_block_3:|main:|call choose|sd t0, 0(sp)|ld t0, 0(sp)"
+  FORBIDDEN_SNIPPETS "jalr|call sub|lla"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 function_pointer return_chain indirect_call expected_repair emission
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)
