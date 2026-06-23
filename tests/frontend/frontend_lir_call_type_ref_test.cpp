@@ -36,6 +36,20 @@ void expect_eq(std::string_view actual, std::string_view expected,
   }
 }
 
+void expect_contains(std::string_view text, std::string_view needle,
+                     const std::string& msg) {
+  if (text.find(needle) == std::string_view::npos) {
+    fail(msg + "\nMissing: " + std::string(needle));
+  }
+}
+
+void expect_not_contains(std::string_view text, std::string_view needle,
+                         const std::string& msg) {
+  if (text.find(needle) != std::string_view::npos) {
+    fail(msg + "\nUnexpected: " + std::string(needle));
+  }
+}
+
 c4c::hir::Module lower_hir_module(std::string_view source) {
   c4c::Lexer lexer(std::string(source),
                    c4c::lex_profile_from(c4c::SourceProfile::C));
@@ -53,6 +67,17 @@ c4c::hir::Module lower_hir_module(std::string_view source) {
   expect_true(result.hir_module.has_value(),
               "fixture source should lower to HIR");
   return *result.hir_module;
+}
+
+c4c::codegen::lir::LirModule lower_lir_module_for_target(
+    std::string_view source, std::string_view target_triple) {
+  c4c::hir::Module hir_module = lower_hir_module(source);
+  hir_module.target_profile =
+      c4c::target_profile_from_triple(std::string(target_triple));
+  c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(hir_module);
+  c4c::codegen::lir::verify_module(lir_module);
+  return lir_module;
 }
 
 c4c::codegen::lir::LirFunction& require_function(
@@ -474,6 +499,85 @@ struct StaleNoOwnerCallCompat call_no_owner(struct StaleNoOwnerCallCompat value)
                          "no-owner call argument compatibility mirror");
 }
 
+void test_rv64_direct_variadic_integer_extension_attrs() {
+  c4c::codegen::lir::LirModule lir_module = lower_lir_module_for_target(R"c(
+int printf(const char *, ...);
+unsigned int vf(const char *, ...);
+
+int main(void) {
+  return printf("%d\n", 7) + (int)vf("%d\n", 7);
+}
+)c", "riscv64-linux-gnu");
+
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
+  expect_contains(llvm_ir, "declare signext i32 @printf(ptr, ...)",
+                  "RV64 variadic signed extern return declaration should carry signext");
+  expect_contains(llvm_ir, "call signext i32 (ptr, ...) @printf(",
+                  "RV64 variadic signed call result should carry signext");
+  expect_contains(llvm_ir, "declare zeroext i32 @vf(ptr, ...)",
+                  "RV64 variadic unsigned extern return declaration should carry zeroext");
+  expect_contains(llvm_ir, "call zeroext i32 (ptr, ...) @vf(",
+                  "RV64 variadic unsigned call result should carry zeroext");
+  expect_contains(llvm_ir, "i32 noundef signext 7",
+                  "RV64 variadic integer argument should carry signext");
+}
+
+void test_rv64_scalar_stdarg_uses_pointer_cursor() {
+  c4c::codegen::lir::LirModule lir_module = lower_lir_module_for_target(R"c(
+typedef __builtin_va_list va_list;
+
+static int pick_first_int(int count, ...) {
+  va_list ap;
+  __builtin_va_start(ap, count);
+  int value = __builtin_va_arg(ap, int);
+  __builtin_va_end(ap);
+  return value;
+}
+
+int main(void) {
+  return pick_first_int(1, 7);
+}
+)c", "riscv64-linux-gnu");
+
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
+  expect_contains(llvm_ir, "%lv.ap = alloca ptr, align 8",
+                  "RV64 scalar stdarg should allocate va_list as pointer storage");
+  expect_contains(llvm_ir, "call void @llvm.va_start.p0(ptr %lv.ap)",
+                  "RV64 scalar stdarg should pass pointer storage to va_start");
+  expect_contains(llvm_ir, "load ptr, ptr %lv.ap",
+                  "RV64 scalar stdarg should load the cursor");
+  expect_contains(llvm_ir, "getelementptr inbounds i8, ptr %t0, i64 8",
+                  "RV64 scalar stdarg should advance the cursor by one slot");
+  expect_contains(llvm_ir, "store ptr %t1, ptr %lv.ap",
+                  "RV64 scalar stdarg should store the advanced cursor");
+  expect_contains(llvm_ir, "load i32, ptr %t0",
+                  "RV64 scalar stdarg should load the scalar from the original cursor");
+  expect_not_contains(llvm_ir, "%struct.__va_list_tag_",
+                      "RV64 scalar stdarg should not use the AArch64 structured va_list");
+}
+
+void test_aarch64_scalar_stdarg_preserves_structured_va_list() {
+  c4c::codegen::lir::LirModule lir_module = lower_lir_module_for_target(R"c(
+typedef __builtin_va_list va_list;
+
+static int pick_first_int(int count, ...) {
+  va_list ap;
+  __builtin_va_start(ap, count);
+  int value = __builtin_va_arg(ap, int);
+  __builtin_va_end(ap);
+  return value;
+}
+
+int main(void) {
+  return pick_first_int(1, 7);
+}
+)c", "aarch64-linux-gnu");
+
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
+  expect_contains(llvm_ir, "%struct.__va_list_tag_",
+                  "AArch64 scalar stdarg should preserve structured va_list lowering");
+}
+
 }  // namespace
 
 int main() {
@@ -814,6 +918,9 @@ int call_unspecified_indirect(int (*fp)()) {
   test_member_access_owner_tag_recovery_preserves_no_owner_compatibility();
   test_call_type_ref_rejects_stale_rendered_owner_miss();
   test_call_type_ref_preserves_no_owner_compatibility_name_id();
+  test_rv64_direct_variadic_integer_extension_attrs();
+  test_rv64_scalar_stdarg_uses_pointer_cursor();
+  test_aarch64_scalar_stdarg_preserves_structured_va_list();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;
