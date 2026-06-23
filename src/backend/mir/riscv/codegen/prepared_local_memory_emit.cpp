@@ -105,6 +105,43 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i32_acce
   return access;
 }
 
+const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_ptr_access_for(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::LoadLocalInst& load) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (context.lookups == nullptr ||
+      load.result.kind != bir::Value::Kind::Named ||
+      load.result.type != bir::TypeKind::Ptr ||
+      load.result.name.empty()) {
+    return nullptr;
+  }
+  const auto result_value_name = context.names.value_names.find(load.result.name);
+  if (result_value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  const auto* access = prepare::find_indexed_prepared_memory_access(
+      &context.lookups->memory_accesses,
+      context.block_label,
+      context.instruction_index);
+  if (access == nullptr ||
+      access->result_value_name != std::optional<c4c::ValueNameId>{result_value_name} ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !access->address.pointer_value_name.has_value() ||
+      access->address.size_bytes != 8 ||
+      access->address.align_bytes < 8 ||
+      access->address.byte_offset < 0 ||
+      access->address.byte_offset % 8 != 0 ||
+      !access->address.can_use_base_plus_offset ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return nullptr;
+  }
+  return access;
+}
+
 const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i32_access_for(
     const PreparedCurrentInstructionContext& context,
     const c4c::backend::bir::StoreLocalInst& store) {
@@ -505,6 +542,23 @@ std::optional<std::string> emit_riscv_simple_load_local(
           prepared,
           *string_access,
           *destination_register);
+    }
+
+    if (const auto* pointer_access = simple_pointer_value_ptr_access_for(
+            context,
+            load);
+        pointer_access != nullptr) {
+      const auto base_register = prepared_register_for_value_name_id(
+          context,
+          *pointer_access->address.pointer_value_name);
+      const auto destination_register =
+          prepared_pointer_register_for_value(context, load.result);
+      if (!base_register.has_value() || !destination_register.has_value()) {
+        return std::nullopt;
+      }
+      return "    ld " + *destination_register + ", " +
+             std::to_string(pointer_access->address.byte_offset) + "(" +
+             *base_register + ")\n";
     }
 
     const auto* access = simple_pointer_frame_slot_access_for(

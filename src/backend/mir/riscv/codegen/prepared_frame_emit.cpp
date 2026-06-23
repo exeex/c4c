@@ -76,6 +76,45 @@ bool fits_i32_bytewise_stack_offsets(std::int64_t stack_offset) {
          fits_signed_12_bit_immediate(stack_offset + 3);
 }
 
+bool fixed_byte_split_frame_slot_span_covers(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    c4c::FunctionNameId function_name,
+    std::size_t start_offset,
+    std::size_t size_bytes) {
+  if (size_bytes == 0 ||
+      start_offset > std::numeric_limits<std::size_t>::max() - size_bytes) {
+    return false;
+  }
+
+  const std::size_t end_offset = start_offset + size_bytes;
+  for (std::size_t cursor = start_offset; cursor < end_offset; ++cursor) {
+    bool found_slot = false;
+    for (const auto& candidate : stack_layout.frame_slots) {
+      if (candidate.function_name != function_name ||
+          !candidate.fixed_location ||
+          candidate.size_bytes != 1 ||
+          candidate.offset_bytes != cursor ||
+          candidate.offset_bytes >
+              std::numeric_limits<std::size_t>::max() - candidate.size_bytes) {
+        continue;
+      }
+      const std::size_t candidate_end =
+          candidate.offset_bytes + candidate.size_bytes;
+      if (candidate_end != cursor + 1) {
+        return false;
+      }
+      if (found_slot) {
+        return false;
+      }
+      found_slot = true;
+    }
+    if (!found_slot) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 std::string riscv_local_block_label(std::string_view function_name,
@@ -122,8 +161,7 @@ std::optional<std::int64_t> simple_frame_slot_sp_offset_for(
     return std::nullopt;
   }
   const auto access_offset = static_cast<std::size_t>(access.address.byte_offset);
-  if (access_offset > frame_slot->size_bytes ||
-      access.address.size_bytes > frame_slot->size_bytes - access_offset) {
+  if (access_offset > frame_slot->size_bytes) {
     return std::nullopt;
   }
   if (frame_slot->offset_bytes >
@@ -131,8 +169,26 @@ std::optional<std::int64_t> simple_frame_slot_sp_offset_for(
           access_offset) {
     return std::nullopt;
   }
+  const std::size_t concrete_offset = frame_slot->offset_bytes + access_offset;
+  const bool access_fits_slot =
+      access.address.size_bytes <= frame_slot->size_bytes - access_offset;
+  const bool byte_split_aggregate_i32_access =
+      !access_fits_slot &&
+      access.address.byte_offset == 0 &&
+      access.address.size_bytes == 4 &&
+      frame_slot->fixed_location &&
+      frame_slot->size_bytes == 1;
+  if (!access_fits_slot &&
+      (!byte_split_aggregate_i32_access ||
+       !fixed_byte_split_frame_slot_span_covers(
+          prepared.stack_layout,
+          function_name,
+          concrete_offset,
+          access.address.size_bytes))) {
+    return std::nullopt;
+  }
   const auto stack_offset =
-      static_cast<std::int64_t>(frame_slot->offset_bytes + access_offset);
+      static_cast<std::int64_t>(concrete_offset);
   if (!fits_signed_12_bit_immediate(stack_offset)) {
     return std::nullopt;
   }
