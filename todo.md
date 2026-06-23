@@ -8,40 +8,47 @@ Current Step Title: Reprobe And Close Classification
 
 ## Just Finished
 
-Completed the focused Step 5 RV64 caller pointer argument materialization repair
-exposed after byval payload staging.
+Completed the focused Step 5 RV64 prepared callee incoming formal publication
+repair exposed after byval payload staging.
 
 Implemented repair:
 
-- RV64 prepared call emission now checks prepared frame-slot address
-  materialization facts before falling back to a preserved source register for
-  GPR call arguments.
-- The materialization path resolves the prepared frame-slot stack offset and
-  adds the active byval stack adjustment, so pointer arguments after temporary
-  byval payload staging point back to the source local.
-- Duplicate identical frame-slot materialization records for the same call
-  instruction are accepted; conflicting materialization offsets still fail the
-  fast path.
+- RV64 prepared function entry emission now publishes incoming non-byval GPR
+  fixed formals from ABI argument registers into their prepared homes.
+- Register homes get an entry `mv` when the prepared home differs from the ABI
+  register; stack-slot homes get a typed GPR store through the same prologue
+  boundary.
+- The existing byval pointer-home publication remains in the same entry helper,
+  so byval payload staging still records the incoming byval address before
+  aggregate lane loads.
 
 New focused fixture:
 
-- `tests/backend/case/riscv64_byval_preserved_pointer_args.c`
+- `tests/backend/case/riscv64_byval_formal_gpr_publication.c`
 
 New focused tests:
 
-- `backend_dump_riscv64_byval_preserved_pointer_args`
-- `backend_codegen_route_riscv64_byval_preserved_pointer_args`
-- `backend_rv64_runtime_riscv64_byval_preserved_pointer_args`
+- `backend_dump_riscv64_byval_formal_gpr_publication`
+- `backend_codegen_route_riscv64_byval_formal_gpr_publication`
+- `backend_rv64_runtime_riscv64_byval_formal_gpr_publication`
 
 Focused coverage result:
 
-- The dump test proves a repeated byval call where the second call's byval
-  aggregate and pointer argument are selected from prior preservation.
-- The codegen test rejects stale `mv a1, s1` and proves active-stack-adjusted
-  frame-slot address materialization after byval staging.
+- The dump test proves a byval callee whose non-byval pointer formal homes in
+  `t0` while arriving in `a1`, and whose non-byval integer formal homes in
+  `s1` while arriving in `a2`.
+- The codegen test proves entry publication with `mv t0, a1` and `mv s1, a2`
+  before pointer-field loads and integer use.
 - The runtime test passes under qemu for the focused case.
+- The focused fixture keeps a variadic declaration only because the currently
+  admitted fixed-arity shapes either fail before prepared BIR for byval plus
+  trailing scalar formals, or home the non-byval formals directly in `a1`/`a2`
+  and therefore do not expose the repaired `a1 -> t0` / `a2 -> s1` publication
+  boundary. The fixture does not use `va_arg` and does not claim broader
+  variadic ABI behavior.
 - Existing byval fixed-call dump/codegen/runtime tests remain positive.
 - Existing byval float-lane dump/codegen tests remain positive.
+- Existing preserved-pointer byval dump/codegen/runtime tests remain positive.
 
 `src/00140.c` reprobe artifacts:
 
@@ -56,45 +63,47 @@ Focused coverage result:
 - `--dump-prepared-bir`: 0
 - RV64 asm emit: 0
 - clang link: 0
-- qemu: 139
+- qemu: 0
 
 Current classification:
 
-- The caller pointer argument materialization residual is repaired. Emitted
-  `main` now uses `addi a1, sp, 32`, `addi a4, sp, 32`, and `addi a5, sp, 32`
-  after byval payload staging instead of stale preserved-register moves from
-  `s1`.
-- The next first-bad mechanism is separate callee incoming formal publication
-  for non-byval GPR arguments in this prepared route. Emitted `f1` reads `%p.p`
-  through `t0` (`lw t3, 0(t0)`) and `%p.n` through `s1`, but the function entry
-  does not publish incoming `a1` to `t0` or incoming `a2` to `s1`.
-- Per packet boundary, the callee formal-home residual was recorded and not
-  folded into this caller materialization repair.
+- The callee incoming formal publication residual is repaired. Emitted `f1`
+  now records the byval address in its prepared stack home, publishes incoming
+  `%p.p` with `mv t0, a1`, and publishes incoming `%p.n` with `mv s1, a2`
+  before using the prepared homes.
+- `src/00140.c` now emits, links, and exits successfully under qemu after the
+  byval payload, F32 lane, caller pointer-materialization, and callee
+  formal-publication repairs.
+- No further first-bad mechanism is exposed by this candidate in the fresh Step
+  5 reprobe.
 
 ## Suggested Next
 
-Split or execute a focused packet for RV64 prepared callee incoming formal
-publication for non-byval GPR parameters when the prepared home is not already
-the ABI argument register.
+Plan-owner or supervisor review can decide whether idea 318 is closure-ready
+based on the final Step 5 reprobe and focused coverage.
 
 ## Watchouts
 
 - Do not fold broad variadic ABI, runtime F-extension behavior, or unrelated
-  aggregate ABI rewrites into the callee formal-home packet.
+  aggregate ABI rewrites into this closure decision.
+- Treat the `riscv64_byval_formal_gpr_publication` variadic spelling as a
+  fixture-admission shape for fixed formal publication only; it is not proof of
+  vararg payload transport or `va_arg` lowering.
 - Do not special-case `src/00140.c`, `%p.f`, `%lv.f`, or fixed stack offsets.
 - The byval pointer home, i8 lane, float/FPR lane, and caller pointer argument
-  materialization boundaries now have focused positive coverage.
+  materialization boundaries have focused positive coverage; this packet adds
+  positive focused coverage for callee GPR formal publication.
 
 ## Proof
 
 Focused proof passed:
-`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_byval_(aggregate_fixed_call|aggregate_float_lane|preserved_pointer_args)'`.
+`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_byval_(aggregate_fixed_call|aggregate_float_lane|preserved_pointer_args|formal_gpr_publication)'`.
 
 Delegated proof ran:
 `cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
 
 Result: build passed; backend CTest returned nonzero because the existing
 unrelated `backend_riscv_prepared_edge_publication` test still fails. The new
-preserved-pointer byval tests, existing fixed-call byval tests, and existing
-float-lane byval tests pass in the final proof log. Fresh log:
-`test_after.log`.
+formal-publication byval tests, existing preserved-pointer byval tests,
+existing fixed-call byval tests, and existing float-lane byval tests pass in
+the final proof log. Fresh log: `test_after.log`.

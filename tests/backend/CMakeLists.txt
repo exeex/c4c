@@ -695,6 +695,28 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_byval_formal_gpr_publication
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_formal_gpr_publication.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @consume_formal_box(ptr byval(size=16, align=4) %p.value, ptr %p.mirror, i32 %p.delta) -> i32|storage %p.value frame_slot bank=gpr|storage %p.mirror register bank=gpr placement=gpr:caller_saved#0/w1 reg=t0|storage %p.delta register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1|arg index=1 value_bank=gpr|dest_reg=a1|arg index=2 value_bank=gpr|dest_reg=a2|base=pointer_value result=%t4 pointer=%p.mirror|base=pointer_value result=%t18 pointer=%p.mirror"
+  FORBIDDEN_SNIPPETS "src/00140.c|%p.f|%lv.f"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 byval aggregate call formal_publication dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_byval_formal_gpr_publication
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_formal_gpr_publication.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_byval_formal_gpr_publication.s"
+  REQUIRED_SNIPPETS ".globl consume_formal_box|consume_formal_box:|mv t0, a1|mv s1, a2|lw t3, 0(t0)|mv t4, s1|.globl main|main:|li a2, 5|call consume_formal_box"
+  FORBIDDEN_SNIPPETS "src/00140.c|%p.f|%lv.f"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 byval aggregate call formal_publication emission
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_aggregate_local_self_pointer_chain
   SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_self_pointer_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
@@ -976,6 +998,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_byval_preserved_pointer_args.c"
   CASE_TIMEOUT_SEC 10
   LABELS byval aggregate call pointer prepared_call_boundary
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_byval_formal_gpr_publication
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_formal_gpr_publication.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS byval aggregate call formal_publication
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_external_strlen_runtime_link_policy
