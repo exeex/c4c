@@ -567,10 +567,10 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_duff_fallthrough_pointer_update_producers.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t45 = bir.add ptr %t44, 2|bir.store_local %lv.src, ptr %t45|%t48 = bir.add ptr %t47, 2|bir.store_local %lv.dst, ptr %t48|block_7:|bir.store_local %lv.src, ptr %t55|bir.store_local %lv.dst, ptr %t58|store_source function=main block=block_4 inst=2 source=%t45 status=available intent=store_local_publication source_producer=binary|store_source function=main block=block_7 inst=1 source=%t55 status=available intent=store_local_publication source_producer=unknown|store_source function=main block=block_7 inst=4 source=%t58 status=available intent=store_local_publication source_producer=unknown|base=pointer_value result=|base=pointer_value stored="
-  FORBIDDEN_SNIPPETS "src/00143.c|Tom Duff|0x0000000500000002"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t45 = bir.add ptr %t44, 2|bir.store_local %lv.src, ptr %t45|%t48 = bir.add ptr %t47, 2|bir.store_local %lv.dst, ptr %t48|block_7:|%t55 = bir.add ptr %t54, 2|bir.store_local %lv.src, ptr %t55|%t58 = bir.add ptr %t57, 2|bir.store_local %lv.dst, ptr %t58|block_8:|%t60 = bir.add ptr %t59, 2|bir.store_local %lv.src, ptr %t60|%t63 = bir.add ptr %t62, 2|bir.store_local %lv.dst, ptr %t63|store_source function=main block=block_4 inst=2 source=%t45 status=available intent=store_local_publication source_producer=binary|store_source function=main block=block_7 inst=2 source=%t55 status=available intent=store_local_publication source_producer=binary|store_source function=main block=block_7 inst=6 source=%t58 status=available intent=store_local_publication source_producer=binary|store_source function=main block=block_8 inst=2 source=%t60 status=available intent=store_local_publication source_producer=binary|store_source function=main block=block_8 inst=6 source=%t63 status=available intent=store_local_publication source_producer=binary|base=pointer_value result=|base=pointer_value stored="
+  FORBIDDEN_SNIPPETS "src/00143.c|Tom Duff|0x0000000500000002|store_source function=main block=block_7 inst=1 source=%t55 status=available intent=store_local_publication source_producer=unknown|store_source function=main block=block_7 inst=4 source=%t58 status=available intent=store_local_publication source_producer=unknown"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 prepared_local_address array_base pointer_local pointer_step fallthrough expected_repair dump
+  LABELS riscv64 prepared_local_address array_base pointer_local pointer_step fallthrough dump
 )
 
 c4c_add_backend_dump_flag_test(

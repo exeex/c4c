@@ -1108,63 +1108,98 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     note_function_lowering_family_failure("gep local-memory semantic family");
     return false;
   };
-  const auto is_loop_carried_pointer_publication_gep =
+  const auto is_local_pointer_publication_gep =
       [&](const c4c::codegen::lir::LirGepOp& candidate) {
         if (candidate.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
           return false;
         }
         const std::string& result_name = candidate.result.str();
         std::optional<std::size_t> containing_block_index;
-        bool stores_result_to_local_pointer = false;
+        const c4c::codegen::lir::LirBlock* containing_block = nullptr;
+        const c4c::codegen::lir::LirGepOp* containing_gep = nullptr;
         for (std::size_t block_index = 0; block_index < function_.blocks.size();
              ++block_index) {
           const auto& block = function_.blocks[block_index];
           for (const auto& inst : block.insts) {
             if (const auto* gep_inst = std::get_if<c4c::codegen::lir::LirGepOp>(&inst);
                 gep_inst != nullptr && gep_inst->result == candidate.result) {
+              containing_block = &block;
+              containing_gep = gep_inst;
               containing_block_index = block_index;
-            }
-            const auto* store_inst = std::get_if<c4c::codegen::lir::LirStoreOp>(&inst);
-            if (store_inst == nullptr || store_inst->val != candidate.result ||
-                store_inst->type_str.str() != "ptr" ||
-                store_inst->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-              continue;
-            }
-            if (local_pointer_slots.find(store_inst->ptr.str()) != local_pointer_slots.end()) {
-              stores_result_to_local_pointer = true;
+              break;
             }
           }
+          if (containing_block != nullptr) {
+            break;
+          }
         }
-        if (!containing_block_index.has_value() || !stores_result_to_local_pointer) {
+        if (containing_block == nullptr || containing_gep == nullptr ||
+            !containing_block_index.has_value()) {
           return false;
         }
 
-        const auto& containing_block = function_.blocks[*containing_block_index];
-        const auto reaches_containing_block = [&](const std::string& target_label) {
-          return target_label == containing_block.label;
+        bool saw_candidate_gep = false;
+        bool stores_result_to_local_pointer = false;
+        for (const auto& inst : containing_block->insts) {
+          if (const auto* gep_inst = std::get_if<c4c::codegen::lir::LirGepOp>(&inst);
+              gep_inst == containing_gep) {
+            saw_candidate_gep = true;
+            continue;
+          }
+          if (!saw_candidate_gep) {
+            continue;
+          }
+          const auto* store_inst = std::get_if<c4c::codegen::lir::LirStoreOp>(&inst);
+          if (store_inst == nullptr || store_inst->val != candidate.result ||
+              store_inst->type_str.str() != "ptr" ||
+              store_inst->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+            continue;
+          }
+          if (local_pointer_slots.find(store_inst->ptr.str()) != local_pointer_slots.end()) {
+            stores_result_to_local_pointer = true;
+            break;
+          }
+        }
+        if (!stores_result_to_local_pointer) {
+          return false;
+        }
+
+        const auto label_index = [&](const std::string& label) -> std::optional<std::size_t> {
+          for (std::size_t index = 0; index < function_.blocks.size(); ++index) {
+            if (function_.blocks[index].label == label) {
+              return index;
+            }
+          }
+          return std::nullopt;
         };
+        const auto closes_suffix_to_containing_or_earlier =
+            [&](const std::string& target_label) {
+              const auto target_index = label_index(target_label);
+              return target_index.has_value() && *target_index <= *containing_block_index;
+            };
         for (std::size_t block_index = *containing_block_index;
              block_index < function_.blocks.size();
              ++block_index) {
           const auto& terminator = function_.blocks[block_index].terminator;
           if (const auto* branch = std::get_if<c4c::codegen::lir::LirBr>(&terminator);
-              branch != nullptr && reaches_containing_block(branch->target_label)) {
+              branch != nullptr &&
+              closes_suffix_to_containing_or_earlier(branch->target_label)) {
             return true;
           }
           if (const auto* cond = std::get_if<c4c::codegen::lir::LirCondBr>(&terminator);
               cond != nullptr &&
-              (reaches_containing_block(cond->true_label) ||
-               reaches_containing_block(cond->false_label))) {
+              (closes_suffix_to_containing_or_earlier(cond->true_label) ||
+               closes_suffix_to_containing_or_earlier(cond->false_label))) {
             return true;
           }
           if (const auto* sw = std::get_if<c4c::codegen::lir::LirSwitch>(&terminator);
               sw != nullptr) {
-            if (reaches_containing_block(sw->default_label)) {
+            if (closes_suffix_to_containing_or_earlier(sw->default_label)) {
               return true;
             }
             for (const auto& [case_value, case_label] : sw->cases) {
               (void)case_value;
-              if (reaches_containing_block(case_label)) {
+              if (closes_suffix_to_containing_or_earlier(case_label)) {
                 return true;
               }
             }
@@ -1640,7 +1675,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
       pointer_value_addresses.find(gep.ptr.str())->second.provenance.base_identity.kind ==
           bir::MemoryProvenanceBaseIdentityKind::UnknownRuntimeBase &&
       gep.ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
-      is_loop_carried_pointer_publication_gep(gep) &&
+      is_local_pointer_publication_gep(gep) &&
       (gep.indices.size() == 1 || gep.indices.size() == 2)) {
     const auto addressed_ptr_it = pointer_value_addresses.find(gep.ptr.str());
     std::size_t typed_index_pos = 0;
@@ -1707,7 +1742,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
 
   if (pointer_value_addresses.find(gep.ptr.str()) == pointer_value_addresses.end() &&
       gep.ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
-      is_loop_carried_pointer_publication_gep(gep)) {
+      is_local_pointer_publication_gep(gep)) {
     const auto runtime_local_slot_ptr_it = local_slot_pointer_values.find(gep.ptr.str());
     if (runtime_local_slot_ptr_it != local_slot_pointer_values.end() &&
         (gep.indices.size() == 1 || gep.indices.size() == 2)) {
