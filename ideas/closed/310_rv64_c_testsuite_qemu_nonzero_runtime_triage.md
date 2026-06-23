@@ -195,3 +195,26 @@ as required CTest coverage under this idea.
   location. Keep durable idea text concise.
 - If one bucket clearly belongs to a known deferred family, write a focused
   follow-up idea instead of stretching this triage into implementation.
+
+## Closure Summary
+
+Closed after the active triage runbook completed all acceptance criteria. The
+latest probe evidence is recorded from
+`build/rv64_c_testsuite_probe_latest/summary.tsv`: 220 real source rows,
+including `PASS=67`, `EMIT_FAIL=26`, `CLANG_FAIL=4`, `QEMU_NONZERO=122`, and
+`QEMU_TIMEOUT=1`; undefined-main remained zero.
+
+All 123 runtime-failure rows were classified in
+`build/rv64_c_testsuite_probe_latest/triage_step4/classification.tsv` and
+summarized in `triage_step4/summary.md`: external/bodyless stubs 59,
+ordinary incomplete control or expression emission 23, local stack slot or
+address materialization 21, global storage or address flow 8, wide/narrow
+scalar storage lowering 7, and unmaterialized value or comparison result 5.
+Representative backend evidence is preserved under
+`build/rv64_c_testsuite_probe_latest/triage_step3/`.
+
+Follow-up repair ideas were created under `ideas/open/`:
+`311_rv64_ordinary_control_expression_completion.md`,
+`312_rv64_local_stack_slot_address_materialization.md`, and
+`313_rv64_external_empty_stub_policy_runtime.md`. No implementation repair was
+performed under this triage-only idea.
