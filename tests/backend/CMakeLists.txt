@@ -394,7 +394,7 @@ c4c_add_backend_dump_flag_test(
   REQUIRED_SNIPPETS "bir.func @main() -> i32 {|block for.cond.1 terminator=cond_branch true=block_1 false=block_2|branch_condition for.cond.1 kind=fused_compare condition=%|compare=slt i32|can_fuse_with_branch=yes true=block_1 false=block_2|storage %|frame_slot bank=gpr|home %|kind=stack_slot"
   FORBIDDEN_SNIPPETS "src/00143.c|Duff"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 prepared_control_flow fused_compare loop stack_publication expected_repair dump
+  LABELS riscv64 prepared_control_flow fused_compare loop stack_publication dump
 )
 
 c4c_add_backend_codegen_route_test(
@@ -402,10 +402,10 @@ c4c_add_backend_codegen_route_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_stack_homed_fused_compare_missing_false_label.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_stack_homed_fused_compare_missing_false_label.s"
-  REQUIRED_SNIPPETS "main:|.Lmain_for_cond_1:|blt t3, t4, .Lmain_block_1|j .Lmain_block_2|.Lmain_block_1:"
-  FORBIDDEN_SNIPPETS ".Lmain_block_2:|src/00143.c|Duff"
+  REQUIRED_SNIPPETS "main:|.Lmain_for_cond_1:|blt t3, t4, .Lmain_block_1|j .Lmain_block_2|.Lmain_block_1:|j .Lmain_for_latch_1|.Lmain_block_2:|ret"
+  FORBIDDEN_SNIPPETS "src/00143.c|Duff"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 prepared_control_flow fused_compare loop missing_label expected_repair emission
+  LABELS riscv64 prepared_control_flow fused_compare loop missing_label emission
 )
 
 c4c_add_backend_dump_flag_test(
@@ -984,6 +984,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_compare_result_select_false_arm.c"
   CASE_TIMEOUT_SEC 10
   LABELS select short_circuit
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_stack_homed_fused_compare_missing_false_label
+  SRC "${BACKEND_CASE_ROOT}/riscv64_stack_homed_fused_compare_missing_false_label.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS prepared_control_flow fused_compare loop stack_publication
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_aggregate_local_self_pointer_chain

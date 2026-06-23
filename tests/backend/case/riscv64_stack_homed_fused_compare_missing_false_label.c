@@ -1,7 +1,7 @@
 int main(void) {
   int i;
-  short left[16];
-  short right[16];
+  int left[16];
+  int right[16];
 
   for (i = 0; i < 16; i++) {
     left[i] = i;
@@ -20,5 +20,5 @@ int main(void) {
       break;
   }
 
-  return right[0] + right[1] + right[2];
+  return (right[0] + right[1] + right[2]) == 1 ? 0 : 1;
 }
