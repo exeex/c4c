@@ -6,6 +6,7 @@
 #include "../../../prealloc/addressing.hpp"
 
 #include <algorithm>
+#include <limits>
 
 namespace c4c::backend::riscv::codegen {
 
@@ -367,7 +368,8 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
   namespace bir = c4c::backend::bir;
   namespace prepare = c4c::backend::prepare;
 
-  if (binary.opcode != c4c::backend::bir::BinaryOpcode::Add ||
+  if ((binary.opcode != c4c::backend::bir::BinaryOpcode::Add &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Sub) ||
       binary.result.kind != c4c::backend::bir::Value::Kind::Named ||
       binary.result.type != c4c::backend::bir::TypeKind::Ptr) {
     return std::nullopt;
@@ -397,7 +399,6 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
             materialization->result_value_name !=
                 std::optional<c4c::ValueNameId>{result_name} ||
             !materialization->frame_slot_id.has_value() ||
-            materialization->byte_offset < 0 ||
             !fits_signed_12_bit_immediate(materialization->byte_offset)) {
           continue;
         }
@@ -428,11 +429,12 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
 
   const bir::Value* base = nullptr;
   const bir::Value* offset = nullptr;
-  if (binary.lhs.type == bir::TypeKind::Ptr &&
-      binary.rhs.type != bir::TypeKind::Ptr) {
+  const bool is_sub = binary.opcode == bir::BinaryOpcode::Sub;
+  if (binary.lhs.type == bir::TypeKind::Ptr && binary.rhs.type != bir::TypeKind::Ptr) {
     base = &binary.lhs;
     offset = &binary.rhs;
-  } else if (binary.rhs.type == bir::TypeKind::Ptr &&
+  } else if (!is_sub &&
+             binary.rhs.type == bir::TypeKind::Ptr &&
              binary.lhs.type != bir::TypeKind::Ptr) {
     base = &binary.rhs;
     offset = &binary.lhs;
@@ -449,17 +451,23 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
   const auto offset_immediate =
       simple_or_prepared_integer_immediate(context.names, context.lookups, *offset);
   if (offset_immediate.has_value()) {
-    if (!fits_signed_12_bit_immediate(*offset_immediate)) {
+    if (is_sub && *offset_immediate == std::numeric_limits<std::int64_t>::min()) {
+      return std::nullopt;
+    }
+    const std::int64_t adjusted_offset = is_sub ? -*offset_immediate : *offset_immediate;
+    if (!fits_signed_12_bit_immediate(adjusted_offset)) {
       return std::nullopt;
     }
     out += "    addi t3, " + *base_register + ", " +
-           std::to_string(*offset_immediate) + "\n";
+           std::to_string(adjusted_offset) + "\n";
   } else {
     const auto offset_register = prepared_register_for_value(context, *offset);
     if (!offset_register.has_value()) {
       return std::nullopt;
     }
-    out += "    add t3, " + *base_register + ", " + *offset_register + "\n";
+    out += "    ";
+    out += is_sub ? "sub" : "add";
+    out += " t3, " + *base_register + ", " + *offset_register + "\n";
   }
   out += "    sd t3, " + std::to_string(*home->offset_bytes) + "(sp)\n";
   return out;

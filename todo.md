@@ -8,43 +8,50 @@ Current Step Title: Cover And Repair Array Element Local Access
 
 ## Just Finished
 
-Step 3 implementation packet repaired the selected local frame-slot address
-publication boundary for RV64 prepared emission.
+Step 4 implementation packet repaired the next local array pointer-step
+boundary exposed by `src/00032.c`.
 
-The local-slot lowering path now publishes local pointer-slot address values for
-RV64, so pointer locals assigned from local array/subobject addresses get an
-explicit prepared pointer add and prepared frame-slot address materialization.
-The RV64 prepared pointer-add emitter consumes that metadata and emits a real
-`sp + offset` pointer value before the pointer-local store. The focused route
-tests were flipped from expected-fail to ordinary passing tests.
+Fresh repro under
+`build/rv64_c_testsuite_probe_latest/triage_312_step4/` showed `00032`
+emitted and linked but qemu exited 139 with the repo runtime command shape. The
+first bad point was `.Lmain_block_6`: emission stopped after loading the pointer
+local because `%t27 = bir.sub ptr %lv.arr.0, 4` was unsupported. The prepared
+facts already described this as a frame-slot address materialization with
+`offset=-4`.
 
-The same packet added bounded scalar publication needed by the focused base
-array case to reach its return tail: simple i32 binary results can now be
-stored into stack-slot homes, and register-result binary ops can materialize
-stack-slot operands before the arithmetic op.
+RV64 prepared pointer address emission now handles pointer-minus-integer using
+the same semantic materialization path as pointer add. Frame-slot pointer
+materializations accept signed 12-bit offsets, including negative offsets, and
+the fallback stack-slot pointer path emits `addi` with a negated immediate or
+`sub` for register offsets. Pointer-pointer subtraction remains unsupported.
 
-Runtime probe movement under
-`build/rv64_c_testsuite_probe_latest/triage_312_step3/`: all five probed cases
-now emit and link. `00072` passes qemu. `00032` reaches qemu and exits 139;
-`00130`, `00005`, and `00143` reach qemu and exit 132.
+Added compact backend coverage in
+`tests/backend/case/riscv64_prepared_local_array_pointer_step.c` for a local
+array pointer local that is reassigned, post-incremented, pre-decremented, and
+post-decremented. The dump/route/runtime tests assert the `ptr - int` prepared
+BIR shape, `sp - 4` materialization, and end-to-end qemu success.
+
+Runtime movement under
+`build/rv64_c_testsuite_probe_latest/triage_312_step4/`: `00032` now passes
+emit, clang, and qemu; `00072` remains passing; `00130` still emits and links
+but exits qemu 132.
 
 ## Suggested Next
 
-Repair the next coherent local array access boundary exposed by the Step 3
-probe: indexed/reassigned local pointer dereference for `00032`, or split to
-the byte/subobject tail for `00130` if the supervisor wants to keep array-base
-and byte-lane work separate.
+Repair or reclassify the remaining `00130` qemu 132 tail. It is no longer the
+constant subobject pointer publication fixed in Step 3 and did not move with
+the pointer-minus-integer Step 4 repair.
 
 ## Watchouts
 
 - Do not special-case candidate filenames, variable names, or fixed stack
   offsets.
-- `00072` is the clean end-to-end proof for this local address publication
-  slice.
-- `00032` no longer fails to publish the base pointer, but still crashes after
-  multiple pointer-local reassignments and dereferences.
+- `00032` is now an end-to-end proof for local array pointer reassignment and
+  pointer-step materialization.
+- `00072` remains the clean end-to-end proof for base local address
+  publication.
 - `00130` now publishes the constant subobject address and links; its qemu 132
-  residual appears beyond the first address-publication boundary.
+  residual appears beyond pointer add/sub address materialization.
 - `00143` remains too broad for this packet; keep it as indexed local
   array/select-update-chain follow-up evidence.
 
@@ -53,19 +60,17 @@ and byte-lane work separate.
 Proof run:
 
 - `cmake --build --preset default -j`
-- `ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route)_riscv64_prepared_local_array_(base|subobject)_pointer'`
+- `ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_prepared_local_array_pointer_step'`
 - `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
-- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
 
 Results:
 
 - Build passed.
-- Focused local-array pointer subset passed `4/4` with no xfail properties.
-- Backend subset produced `test_after.log`: `passed=223 failed=1 total=224`.
+- Focused pointer-step subset passed `3/3`.
+- Backend subset produced `test_after.log`: `passed=226 failed=1 total=227`.
   The only failing test is the pre-existing
   `backend_riscv_prepared_edge_publication`.
-- Strict monotonic guard reported no new failures but failed because the pass
-  count did not strictly increase from the current `test_before.log`.
-  Non-decreasing guard passed with `delta passed=0 failed=0`.
+- Regression guard passed with `delta passed=3 failed=0` and no new failures.
 - Runtime probe results are in
-  `build/rv64_c_testsuite_probe_latest/triage_312_step3/probe_results.tsv`.
+  `build/rv64_c_testsuite_probe_latest/triage_312_step4/probe_results.tsv`.

@@ -411,6 +411,28 @@ c4c_add_backend_codegen_route_test(
   LABELS riscv64 prepared_local_address array_subobject pointer_local emission
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_prepared_local_array_pointer_step
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_pointer_step.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.add ptr %lv.arr.0, 0|bir.store_local %lv.p, ptr|bir.load_local ptr %lv.p|bir.add ptr %lv.arr.0, 4|bir.sub ptr %lv.arr.0, 4|base=pointer_value|address_materialization block=entry|offset=-4"
+  FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00032|src/00032.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address array_base pointer_local pointer_step dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_prepared_local_array_pointer_step
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_pointer_step.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_local_array_pointer_step.s"
+  REQUIRED_SNIPPETS "main:|addi s1, sp, 0|sd s1,|ld s1,|addi s2, sp, 4|sd s2,|lw s2, 0(s1)|.Lmain_block_4:|addi s1, sp, 4|sd s1,|ld s1,|addi s1, sp, 0|sd s1,|lw s1, 0(sp)|.Lmain_block_6:|addi s1, sp, 0|sd s1,|ld s1,|addi s2, sp, -4|sd s2,|lw s2, 0(s1)|li a0, 0|ret"
+  FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00032|src/00032.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address array_base pointer_local pointer_step emission
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)
@@ -527,6 +549,12 @@ c4c_add_backend_rv64_runtime_case(
   CASE_TIMEOUT_SEC 10
   EXPECTED_RUN_CODE 12
   LABELS scalar return call local
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_prepared_local_array_pointer_step
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_pointer_step.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS prepared_local_address array_base pointer_local pointer_step
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_two_arg_both_local_arg
