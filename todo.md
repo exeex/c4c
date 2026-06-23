@@ -1,36 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/311_rv64_ordinary_control_expression_completion.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Probe Nearby Runtime Candidates
+Current Step ID: 5
+Current Step Title: Complete Remaining Ordinary Tails
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Repair The First Semantic Emission Boundary is implemented for RV64
-prepared fused-compare `cond_branch` emission. The RV64 prepared function
-emitter now looks up the prepared control-flow branch condition for the current
-block, verifies it matches the terminator condition, and lowers
-`kind=fused_compare` by materializing the prepared compare operands through the
-existing prepared value-home helpers before emitting the true branch plus false
-fallthrough jump. The prepared path resolves and validates true/false branch
-targets through `resolve_prepared_compare_branch_target_labels`, then formats
-the RV64 assembly targets from those prepared label IDs. The fallback
-simple-compare path remains unchanged.
+Step 4: Probe Nearby Runtime Candidates is complete. The targeted RV64
+c-testsuite probe ran the delegated emit -> clang -> QEMU shape for
+`src/00008.c`, `src/00030.c`, `src/00105.c`, and nearby same-bucket cases
+`src/00006.c`, `src/00007.c`, `src/00009.c`, `src/00027.c`, `src/00028.c`,
+`src/00029.c`, `src/00031.c`, and `src/00143.c`.
 
-The repair is semantic rather than filename-shaped. It supports prepared
-register, rematerializable immediate, simple immediate, and supported i32 stack
-slot homes through the same `emit_move_to_register` path used by nearby RV64
-prepared scalar emission. Added emitted-assembly route coverage for both the
-local-loaded loop predicate and same-module call-result predicate cases; the
-existing prepared-BIR dump coverage remains in place.
+Scratch artifacts are under
+`build/rv64_c_testsuite_probe_latest/triage_311_step4/`, including
+`probe_results.tsv`, per-case assembly/binary/status/stdout/stderr artifacts,
+and `summary.md`.
+
+| Case | Previous | New | Classification |
+| --- | --- | --- | --- |
+| `src/00008.c` | `QEMU_NONZERO 139` | `PASS` | do/while fused-compare branch, block labels, and return tail now emit |
+| `src/00030.c` | `QEMU_NONZERO 132` | `PASS` | call-result fused-compare branch chain now emits |
+| `src/00105.c` | `QEMU_NONZERO 139` | `CLANG_FAIL` | fused compare now emits `blt`, but `.Lmain_block_1/.Lmain_block_2` are undefined |
+| `src/00006.c` | `QEMU_NONZERO 132` | `PASS` | while fused-compare branch and return tail now emit |
+| `src/00007.c` | `QEMU_NONZERO 132` | `CLANG_FAIL` | fused compare now emits `bne`, but loop successor labels are undefined |
+| `src/00009.c` | `QEMU_NONZERO 132` | `QEMU_NONZERO 132` | straight-line expression chain stops before division/modulo/return tail |
+| `src/00027.c` | `QEMU_NONZERO 132` | `QEMU_NONZERO 132` | bitwise OR/result/return tail still missing |
+| `src/00028.c` | `QEMU_NONZERO 132` | `QEMU_NONZERO 132` | bitwise AND/result/return tail still missing |
+| `src/00029.c` | `QEMU_NONZERO 132` | `QEMU_NONZERO 132` | bitwise XOR/result/return tail still missing |
+| `src/00031.c` | `QEMU_NONZERO 132` | `PASS` | increment/decrement call-result predicate chain now emits |
+| `src/00143.c` | `QEMU_NONZERO 132` | `CLANG_FAIL` | first loop compare now emits `blt`, but successor labels are undefined |
+
+Outcome counts: `PASS=4`, `CLANG_FAIL=3`, `QEMU_NONZERO=4`,
+`EMIT_FAIL=0`, `QEMU_TIMEOUT=0`. The primary representatives moved because
+fused-compare branch emission now exists: `src/00008.c` and `src/00030.c`
+pass, while `src/00105.c` moved from runtime failure to an assembler-visible
+missing successor-label/body publication failure. Nearby movers include
+`src/00006.c`, `src/00007.c`, `src/00031.c`, and `src/00143.c`.
 
 ## Suggested Next
 
-Execute Step 4: probe nearby RV64 c-testsuite runtime candidates, including
-`src/00008.c`, `src/00030.c`, and `src/00105.c`, and classify moved versus
-still-failing outcomes by mechanism.
+Execute Step 5: complete the remaining ordinary tails exposed by this probe.
+The tight next repair boundary is successor label/body publication for prepared
+loop branches, using `src/00105.c` and `src/00007.c` as representatives. After
+that, handle the separate straight-line arithmetic/bitwise expression result
+and return-tail gap shown by `src/00009.c` and `src/00027.c` through
+`src/00029.c`.
 
 ## Watchouts
 
@@ -41,33 +58,30 @@ still-failing outcomes by mechanism.
 - The prepared fused-compare emitter currently relies on the existing RV64
   prepared value-home movement support; unsupported non-i32 or unsupported
   stack/address homes should remain separate blockers rather than being hidden.
-- `backend_riscv_prepared_edge_publication` remains the existing out-of-scope
-  backend failure in the delegated `^backend_` subset.
+- `src/00143.c` also exposes missing successor labels after branch emission,
+  but it mixes large local arrays, pointer/address movement, and switch flow;
+  keep it as a later stress case rather than the first Step 5 repair target.
+- `src/00009.c`, `src/00027.c`, `src/00028.c`, and `src/00029.c` still
+  assemble and then die with QEMU status `132` because the assembly ends after
+  partial expression lowering with no result/return tail. These are ordinary
+  expression completion gaps, not fused-compare branch emission failures.
+- The old out-of-scope `backend_riscv_prepared_edge_publication` test failure
+  was not exercised by this no-CTest runtime probe.
 
 ## Proof
 
-Delegated proof command:
+Delegated proof was a targeted runtime probe only; no broad CTest proof was
+requested for this packet, and no `test_after.log` was produced or modified.
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+Per probed case, the command shape was:
 
-Result: build succeeded and `test_after.log` was produced. CTest reported
-`217/218` passing. The only failing test is the known out-of-scope
-`backend_riscv_prepared_edge_publication` failure:
-`RISC-V prepared module should emit a register edge move`.
+`./build/c4cll --codegen asm --target riscv64-linux-gnu tests/c/external/c-testsuite/<case> -o <scratch>.s`
 
-Supervisor regression guard:
+`/usr/bin/clang --target=riscv64-linux-gnu --gcc-toolchain=/usr -x assembler <scratch>.s -o <scratch>.bin -lm`
 
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+`timeout 5s /usr/bin/qemu-riscv64 -L /usr/riscv64-linux-gnu <scratch>.bin`
 
-Result: PASS. Before `passed=215 failed=1 total=216`, after
-`passed=217 failed=1 total=218`, delta `passed=2 failed=0`, and no new failing
-tests.
-
-Focused check run before the full subset:
-
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route)_riscv64_prepared_fused_compare'`
-
-Result: `4/4` tests passed, covering the two prepared-BIR dump tests and the
-two emitted-assembly route tests for fused-compare branch emission.
-Supervisor generated-assembly spot-check for the two focused route cases shows
-the expected `bne`/`beq` branches, false jumps, and returns.
+All 11 delegated cases completed the emit step. Clang failed only for
+`src/00007.c`, `src/00105.c`, and `src/00143.c`, all with undefined temporary
+successor labels `.Lmain_block_1` and `.Lmain_block_2`. QEMU was run under a
+5-second timeout for all successfully linked cases; there were no timeouts.
