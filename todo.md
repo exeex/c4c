@@ -8,47 +8,42 @@ Current Step Title: Repair Callee-Side Byval Home Access
 
 ## Just Finished
 
-Completed idea 318 Step 4 by reproving `src/00140.c` after the Step 3 byval
-payload transport repair and narrowing the remaining callee-side mechanism.
+Added focused Step 4 backend coverage for the RV64 prepared local-memory
+float/FPR pointer-value lane repaired in the previous packet.
 
-Probe artifacts:
+New focused fixture:
 
-- `build/rv64_c_testsuite_probe_latest/triage_318_step4/probe_results.tsv`
-- `build/rv64_c_testsuite_probe_latest/triage_318_step4/summary.md`
-- BIR, prepared-BIR, emitted RV64 assembly, clang, and qemu logs under the same
-  triage directory
+- `tests/backend/case/riscv64_byval_aggregate_float_lane.c`
 
-Probe result for `src/00140.c`:
+New focused tests:
 
-- `--dump-bir`: 0
-- `--dump-prepared-bir`: 0
-- RV64 asm emit: 0
-- clang link: 0
-- qemu: 139 because emitted `f1` remains incomplete and falls through
+- `backend_dump_riscv64_byval_aggregate_float_lane`
+- `backend_codegen_route_riscv64_byval_aggregate_float_lane`
 
-Implemented repair within Step 4:
+Coverage contract:
 
-- RV64 prepared i8 pointer-value loads now use `load_pointer_value_base_register`
-  so stack-homed byval pointer formals can drive byte-field copies.
-- This moves `src/00140.c` past the previous callee byte-field byval copy
-  truncation.
+- The dump test proves a fixed-arity byval aggregate formal with an `F32` field
+  lowers to prepared pointer-value `float` load/store records and FPR homes.
+- The codegen test proves RV64 emission for that callee includes `flw`/`fsw`
+  through the byval pointer-value base and completes the callee body.
+- The fixture is callee-focused and does not copy `src/00140.c`, `%p.f`, fixed
+  stack homes, or candidate-specific names.
 
 Current classification:
 
 - Callee byval pointer home setup is no longer the first bad mechanism. Emitted
   `f1` stores incoming `a0` into `%p.f` with `sd a0, 0(sp)`, and i32/i8/ptr
   lanes now load through `ld t3, 0(sp)` before reading from the byval payload.
-- The first remaining emitted-code truncation is the float/FPR aggregate byval
-  lane:
-  `%lv.param.p.f.aggregate.param.copy.24 = bir.load_local float %lv.param.p.f.24, addr %p.f+24`.
-- Prepared-BIR places that value in FPR `ft0` and records a pointer-value
-  memory access at offset 24, size 4, align 8. RV64 prepared local memory
-  emission does not yet lower float/FPR pointer-value load/store lanes.
-- Per the packet boundary, float/FPR byval aggregate lane transport was not
-  repaired here and should split or be handled by the next focused packet.
-- A later caller-side pointer argument materialization issue may remain for
-  `a1` sourced from preserved `%lv.f`/`s1`, but emitted code does not reach that
-  semantic use before the float-lane truncation.
+- The float/FPR byval aggregate lane is no longer the first bad mechanism.
+- The next first-bad mechanism is separate caller pointer argument
+  materialization for frame-slot address arguments after byval payload staging.
+  Prepared call plans select `%lv.f` from prior preservation in `s1`
+  (`arg1 bank=gpr from=register:s1 to=a1`, and later args 4/5 also use `s1`),
+  while emitted `main` passes `mv a1, s1`, `mv a4, s1`, and `mv a5, s1`
+  without materializing `s1` as `%lv.f`'s frame-slot address.
+- Emitted `f1` reaches `lw t3, 0(t0)` after the byval copy lanes and qemu
+  segfaults. Per the packet boundary, caller pointer argument materialization is
+  recorded as the next residual rather than repaired here.
 
 Focused byval coverage remains positive:
 
@@ -58,18 +53,22 @@ Focused byval coverage remains positive:
 
 ## Suggested Next
 
-Split or execute a focused packet for RV64 byval aggregate float/FPR lane
-lowering, then reprobe `src/00140.c` again to see whether the later caller
-pointer-argument materialization issue becomes first bad.
+Split or execute a focused packet for RV64 caller pointer argument
+materialization when a frame-slot address argument is selected from preservation
+after byval payload staging.
 
 ## Watchouts
 
 - Do not fold broad variadic ABI or unrelated aggregate ABI rewrites into the
-  float/FPR lane packet.
+  caller pointer argument materialization packet.
 - Do not special-case `src/00140.c`, `%p.f`, field names, or fixed stack homes.
-- `src/00140.c` currently emits and links even when `f1` is incomplete, so qemu
-  status 139 is a symptom of fallthrough after truncation, not a complete
-  runtime execution of the intended function.
+- `src/00140.c` now emits a complete `f1` body through the byval copy lanes, but
+  qemu status 139 still blocks semantic pass because pointer arguments sourced
+  from `%lv.f` are not materialized correctly.
+- Positive runtime coverage was not added for the new float-lane fixture because
+  a linked binary containing the isolated `flw`/`fsw` lane exits under qemu with
+  illegal instruction in this environment. The existing integer/pointer byval
+  runtime fixture remains positive.
 
 ## Proof
 
@@ -78,5 +77,5 @@ Delegated proof ran:
 
 Result: build passed; backend CTest returned nonzero because the existing
 unrelated `backend_riscv_prepared_edge_publication` test still fails. The
-focused byval dump/codegen/runtime tests pass in the final proof log. Fresh log:
-`test_after.log`.
+new float-lane dump/codegen tests and existing fixed-call byval dump/codegen/
+runtime tests pass in the final proof log. Fresh log: `test_after.log`.

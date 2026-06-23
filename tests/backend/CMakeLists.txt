@@ -651,6 +651,28 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_byval_aggregate_float_lane
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_aggregate_float_lane.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @consume_float_parcel(ptr byval(size=16, align=4) %p.value) -> i32|%lv.param.p.value.aggregate.param.copy.4 = bir.load_local float %lv.param.p.value.4, addr %p.value+4|bir.store_local %lv.param.p.value.4, float %lv.param.p.value.aggregate.param.copy.4|%lv.param.value.byval.copy.4 = bir.load_local float %lv.param.value.4, addr %p.value+4|bir.store_local %lv.param.value.4, float %lv.param.value.byval.copy.4|storage %lv.param.p.value.aggregate.param.copy.4 register bank=fpr|storage %lv.param.value.byval.copy.4 register bank=fpr|base=pointer_value result=%lv.param.p.value.aggregate.param.copy.4 pointer=%p.value|base=frame_slot stored=%lv.param.p.value.aggregate.param.copy.4|base=pointer_value result=%lv.param.value.byval.copy.4 pointer=%p.value|base=frame_slot stored=%lv.param.value.byval.copy.4"
+  FORBIDDEN_SNIPPETS "src/00140.c|%p.f"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 byval aggregate scalar_fp call dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_byval_aggregate_float_lane
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_aggregate_float_lane.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_byval_aggregate_float_lane.s"
+  REQUIRED_SNIPPETS ".globl consume_float_parcel|consume_float_parcel:|sd a0, 0(sp)|ld t3, 0(sp)|flw ft0, 4(t3)|fsw ft0,|li t4, 5|li t4, 7|li t4, 9|ret"
+  FORBIDDEN_SNIPPETS "src/00140.c|%p.f"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 byval aggregate scalar_fp call emission
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_aggregate_local_self_pointer_chain
   SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_self_pointer_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
