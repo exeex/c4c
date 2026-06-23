@@ -1,62 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/319_rv64_stack_homed_fused_compare_control_flow.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Normalize Stack-Homed Fused Compare Evidence
+Current Step ID: 2
+Current Step Title: Add Focused Stack-Homed Compare Control Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 evidence normalization for `src/00077.c` and `src/00143.c`.
+Completed Step 2 focused expected-repair coverage for the stack-homed fused
+compare missing false-successor label failure.
 
-Fresh probe artifacts:
+New focused fixture:
 
-- `build/rv64_c_testsuite_probe_latest/triage_319_step1/probe_results.tsv`
-- `build/rv64_c_testsuite_probe_latest/triage_319_step1/summary.md`
-- BIR dumps under `build/rv64_c_testsuite_probe_latest/triage_319_step1/bir/`
-- prepared-BIR dumps under
-  `build/rv64_c_testsuite_probe_latest/triage_319_step1/prepared/`
-- emitted RV64 assembly under
-  `build/rv64_c_testsuite_probe_latest/triage_319_step1/asm/`
-- clang/qemu logs under
-  `build/rv64_c_testsuite_probe_latest/triage_319_step1/logs/`
+- `tests/backend/case/riscv64_stack_homed_fused_compare_missing_false_label.c`
 
-Fresh candidate status:
+New focused tests:
 
-| case | BIR | prepared BIR | RV64 emit | clang link | qemu | classification |
-| --- | ---: | ---: | ---: | ---: | ---: | --- |
-| `src/00077.c` | 0 | 0 | 0 | 0 | 0 | `supported-linked-pass` |
-| `src/00143.c` | 0 | 0 | 0 | 1 | skipped | `link-failure` |
+- `backend_dump_riscv64_stack_homed_fused_compare_missing_false_label`
+- `backend_codegen_route_riscv64_stack_homed_fused_compare_missing_false_label`
 
-`src/00077.c` prepared fused-compare evidence:
+Focused coverage result:
 
-- `branch_condition entry kind=fused_compare condition=%t5 compare=ne i32 %t4, 1000`
-  consumes stack-homed `%t5` (`home %t5 ... kind=stack_slot`) in the entry
-  conditional branch to `block_1` / `block_2`.
-- `branch_condition block_2 kind=fused_compare condition=%t12 compare=ne i32 %t11, 1000`
-  consumes `%t12` with stack-homed compare operand `%t11`.
-- The emitted code links and qemu returns 0, so no current emitted-code failure
-  remains for this candidate.
-
-`src/00143.c` prepared fused-compare evidence:
-
-- `branch_condition for.cond.1 kind=fused_compare condition=%t1 compare=slt i32 %t0, 39`
-  consumes stack-homed `%t1` (`home %t1 ... kind=stack_slot`) in the loop
-  condition branch to `block_1` / `block_2`.
-- Later stack-homed fused compare consumers are also present:
-  `for.cond.16` consumes `%t23`, `dowhile.cond.6` consumes `%t35`, and
-  `block_16` consumes `%t83`.
-- First emitted-code failure: the emitted first loop condition contains
-  `blt t3, t4, .Lmain_block_1` followed by `j .Lmain_block_2`, but the emitted
-  assembly defines `.Lmain_block_1` and never defines `.Lmain_block_2`. Clang
-  fails with `Undefined temporary symbol .Lmain_block_2`.
+- The dump test proves a prepared loop condition with a fused compare whose
+  false successor is `block_2`, with stack-slot GPR homes present in the same
+  prepared route. It avoids c-testsuite filenames, fixed offsets, and exact
+  generated compare SSA names.
+- The codegen expected-repair test captures the current failure: emitted RV64
+  contains a false-successor jump to `.Lmain_block_2` and a true-successor
+  `.Lmain_block_1:` label, but no `.Lmain_block_2:` label definition.
+- The fixture is a nearby same-feature case using 16-element local short arrays
+  plus a post-loop switch; it does not copy `src/00143.c` or Duff's-device
+  source shape.
+- `src/00077.c` remains passing evidence from Step 1 and is not used as a
+  failing acceptance target.
 
 ## Suggested Next
 
-Add focused expected-repair coverage for the `src/00143.c` pattern: a
-stack-homed fused compare in a loop condition whose false successor must still
-be emitted as a defined block label.
+Repair RV64 prepared function/block emission so a stack-homed fused compare
+loop condition's false successor is emitted as a defined block label, then flip
+the expected-repair codegen assertion to a positive label-definition/link or
+runtime contract.
 
 ## Watchouts
 
@@ -66,17 +50,21 @@ be emitted as a defined block label.
   acceptance target unless it regresses.
 - `src/00143.c` does not reach qemu because clang rejects the missing false
   successor label first.
+- The new codegen test intentionally asserts the current broken missing-label
+  output and is labeled `expected_repair`; the repair packet should flip it
+  rather than preserve that output.
 - Do not fold nested select-chain/store-source, aggregate/byval,
   function-pointer, or external-call work into this route.
 
 ## Proof
 
-Probe build ran:
-`cmake --build --preset default -j`.
+Focused proof passed:
+`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route)_riscv64_stack_homed_fused_compare_missing_false_label'`.
 
 Delegated proof ran:
 `cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
 
 Result: build passed; backend CTest returned nonzero because the existing
-unrelated `backend_riscv_prepared_edge_publication` test still fails. Fresh
-proof log: `test_after.log`.
+unrelated `backend_riscv_prepared_edge_publication` test still fails. The new
+stack-homed fused-compare expected-repair dump/codegen tests pass in the final
+proof log. Fresh log: `test_after.log`.

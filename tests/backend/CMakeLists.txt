@@ -387,6 +387,28 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_stack_homed_fused_compare_missing_false_label
+  SRC "${BACKEND_CASE_ROOT}/riscv64_stack_homed_fused_compare_missing_false_label.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|block for.cond.1 terminator=cond_branch true=block_1 false=block_2|branch_condition for.cond.1 kind=fused_compare condition=%|compare=slt i32|can_fuse_with_branch=yes true=block_1 false=block_2|storage %|frame_slot bank=gpr|home %|kind=stack_slot"
+  FORBIDDEN_SNIPPETS "src/00143.c|Duff"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_control_flow fused_compare loop stack_publication expected_repair dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_stack_homed_fused_compare_missing_false_label
+  SRC "${BACKEND_CASE_ROOT}/riscv64_stack_homed_fused_compare_missing_false_label.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_stack_homed_fused_compare_missing_false_label.s"
+  REQUIRED_SNIPPETS "main:|.Lmain_for_cond_1:|blt t3, t4, .Lmain_block_1|j .Lmain_block_2|.Lmain_block_1:"
+  FORBIDDEN_SNIPPETS ".Lmain_block_2:|src/00143.c|Duff"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_control_flow fused_compare loop missing_label expected_repair emission
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_prepared_fused_compare_call_result_predicate
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_fused_compare_call_result_predicate.c"
   TARGET_TRIPLE riscv64-linux-gnu
