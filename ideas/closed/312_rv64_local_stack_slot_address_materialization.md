@@ -109,3 +109,46 @@ Representative evidence called out by triage:
   slot lowering and leaves the local candidate failures unchanged.
 - A helper rename or abstraction preserves the same bad `sp` offset/load/store
   behavior behind a new interface name.
+
+## Closure Summary
+
+Closed after the RV64 local stack/address materialization route repaired the
+core local effective-address family and reclassified the remaining runtime
+residuals into separate follow-up initiatives.
+
+Completed capability:
+
+- Published RV64 local frame-slot addresses for address-taken local values.
+- Lowered local array base/subobject pointer materialization and pointer steps.
+- Loaded RV64 local array `i8` elements and extended narrow values before use.
+- Preserved backend subset regression state with the existing
+  `backend_riscv_prepared_edge_publication` failure unchanged.
+
+Representative acceptance evidence:
+
+- `src/00072.c` passes as local array base address publication proof.
+- `src/00032.c` passes as local array pointer reassignment and pointer-step
+  materialization proof.
+- `src/00130.c` passes as constant subobject address, byte element load, and
+  narrow-extension proof.
+- Step 5 sweep emitted and linked all 22 candidate cases and moved 13 to qemu
+  pass: `00018`, `00026`, `00032`, `00037`, `00039`, `00043`, `00058`,
+  `00072`, `00073`, `00078`, `00130`, `00137`, and `00138`.
+
+Residual classification:
+
+- `src/00019.c`, `src/00046.c`, and `src/00140.c` require aggregate-local
+  subobject, aggregate copy, and byval/ABI work tracked by
+  `ideas/open/314_rv64_aggregate_local_subobject_and_byval_flow.md`.
+- `src/00087.c` and `src/00124.c` require function-address, function-pointer
+  local storage, returned function-pointer, and indirect-call work tracked by
+  `ideas/open/315_rv64_function_pointer_local_and_indirect_call_flow.md`.
+- `src/00005.c`, `src/00077.c`, `src/00143.c`, and `src/00144.c` split across
+  pointer-to-pointer locals, array-parameter/local-array pointer flow, indexed
+  local array select/update chains, and pointer integer/select flow tracked by
+  `ideas/open/316_rv64_residual_pointer_array_select_flow.md`.
+
+The remaining failures are not one missing local frame-slot address
+materialization rule. Continuing inside this plan would widen the active route
+into aggregate ABI, indirect call, and pointer-select policy work, so the
+source idea is considered complete with follow-ups.
