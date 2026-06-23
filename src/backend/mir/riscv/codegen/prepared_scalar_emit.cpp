@@ -305,20 +305,47 @@ std::optional<std::string> emit_riscv_simple_cast(
     return std::nullopt;
   }
   const auto destination_register = prepared_register_for_value(names, lookups, cast.result);
-  if (!destination_register.has_value()) {
-    return std::nullopt;
-  }
+  const auto* destination_home = prepared_value_home_for(names, lookups, cast.result);
+  const std::string materialization_register =
+      destination_register.has_value() ? *destination_register : "t3";
 
   std::string out;
-  if (!emit_move_to_register(out, *destination_register, names, lookups, cast.operand)) {
+  if (!emit_move_to_register(out, materialization_register, names, lookups, cast.operand)) {
     return std::nullopt;
+  }
+  if (cast.opcode == c4c::backend::bir::CastOpcode::SExt &&
+      cast.operand.type == c4c::backend::bir::TypeKind::I8 &&
+      cast.result.type == c4c::backend::bir::TypeKind::I32) {
+    out += "    slli " + materialization_register + ", " + materialization_register + ", 56\n";
+    out += "    srai " + materialization_register + ", " + materialization_register + ", 56\n";
+  }
+  if (cast.opcode == c4c::backend::bir::CastOpcode::ZExt &&
+      cast.operand.type == c4c::backend::bir::TypeKind::I8 &&
+      cast.result.type == c4c::backend::bir::TypeKind::I32) {
+    out += "    andi " + materialization_register + ", " + materialization_register + ", 255\n";
   }
   if (cast.opcode == c4c::backend::bir::CastOpcode::ZExt &&
       cast.operand.type == c4c::backend::bir::TypeKind::I32 &&
       cast.result.type == c4c::backend::bir::TypeKind::I64) {
-    out += "    slli " + *destination_register + ", " + *destination_register + ", 32\n";
-    out += "    srli " + *destination_register + ", " + *destination_register + ", 32\n";
+    out += "    slli " + materialization_register + ", " + materialization_register + ", 32\n";
+    out += "    srli " + materialization_register + ", " + materialization_register + ", 32\n";
   }
+  if (destination_register.has_value()) {
+    return out;
+  }
+  if (destination_home == nullptr ||
+      destination_home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+      !destination_home->offset_bytes.has_value() ||
+      destination_home->size_bytes != std::optional<std::size_t>{4}) {
+    return std::nullopt;
+  }
+  const auto stored = emit_i32_store_to_stack_offset(
+      materialization_register,
+      static_cast<std::int64_t>(*destination_home->offset_bytes));
+  if (!stored.has_value()) {
+    return std::nullopt;
+  }
+  out += *stored;
   return out;
 }
 

@@ -528,7 +528,8 @@ std::optional<std::string> emit_riscv_simple_load_local(
            std::to_string(*stack_offset) + "(sp)\n";
   }
 
-  if (load.result.type != c4c::backend::bir::TypeKind::I32) {
+  if (load.result.type != c4c::backend::bir::TypeKind::I8 &&
+      load.result.type != c4c::backend::bir::TypeKind::I32) {
     return std::nullopt;
   }
 
@@ -570,6 +571,34 @@ std::optional<std::string> emit_riscv_simple_load_local(
     return out;
   }
 
+  if (load.result.type == c4c::backend::bir::TypeKind::I8) {
+    const auto* pointer_access =
+        context.lookups == nullptr
+            ? nullptr
+            : c4c::backend::prepare::find_indexed_prepared_memory_access(
+                  &context.lookups->memory_accesses,
+                  context.block_label,
+                  context.instruction_index);
+    if (pointer_access != nullptr &&
+        pointer_access->address.base_kind ==
+            c4c::backend::prepare::PreparedAddressBaseKind::PointerValue &&
+        pointer_access->address.pointer_value_name.has_value() &&
+        pointer_access->address.size_bytes == 1) {
+      const auto base_register = prepared_register_for_value_name_id(
+          context,
+          *pointer_access->address.pointer_value_name);
+      const auto destination_register =
+          prepared_register_for_value(context, load.result);
+      if (!base_register.has_value() || !destination_register.has_value() ||
+          !fits_signed_12_bit_immediate(pointer_access->address.byte_offset)) {
+        return std::nullopt;
+      }
+      return "    lb " + *destination_register + ", " +
+             std::to_string(pointer_access->address.byte_offset) + "(" +
+             *base_register + ")\n";
+    }
+  }
+
   const auto* access = simple_frame_slot_access_for(
       context,
       load.result.type);
@@ -582,6 +611,13 @@ std::optional<std::string> emit_riscv_simple_load_local(
     return std::nullopt;
   }
   const auto destination_register = prepared_register_for_value(context, load.result);
+  if (load.result.type == c4c::backend::bir::TypeKind::I8) {
+    if (!destination_register.has_value()) {
+      return std::nullopt;
+    }
+    return "    lb " + *destination_register + ", " +
+           std::to_string(*stack_offset) + "(sp)\n";
+  }
   if (destination_register.has_value()) {
     return emit_i32_load_from_stack_offset(*destination_register, *stack_offset);
   }

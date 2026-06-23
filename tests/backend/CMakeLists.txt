@@ -433,6 +433,28 @@ c4c_add_backend_codegen_route_test(
   LABELS riscv64 prepared_local_address array_base pointer_local pointer_step emission
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_prepared_local_array_i8_element_access
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_i8_element_access.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.store_local %lv.arr.7, i8 2|bir.load_local i8 %lv.arr.7|bir.load_local i8 %t32.addr, addr %t31|bir.sext i8|base=pointer_value result=%t32|address_materialization block=entry inst_index=1 kind=frame_slot result=%t4"
+  FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00130|src/00130.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address array_subobject i8_load pointer_local dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_prepared_local_array_i8_element_access
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_i8_element_access.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_local_array_i8_element_access.s"
+  REQUIRED_SNIPPETS "main:|addi t1, sp, 0|sd t1, 8(sp)|addi s2, sp, 7|sd s2, 16(sp)|sb t1, 7(sp)|lb s2, 7(sp)|bne t3, t4, .Lmain_block_1|ld t0, 16(sp)|lb s1, 0(t0)|li a0, 0|ret"
+  FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00130|src/00130.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address array_subobject i8_load pointer_local emission
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)
@@ -555,6 +577,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_pointer_step.c"
   CASE_TIMEOUT_SEC 10
   LABELS prepared_local_address array_base pointer_local pointer_step
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_prepared_local_array_i8_element_access
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_i8_element_access.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS prepared_local_address array_subobject i8_load pointer_local
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_two_arg_both_local_arg
