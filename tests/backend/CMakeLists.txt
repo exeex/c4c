@@ -551,6 +551,28 @@ c4c_add_backend_dump_flag_test(
   LABELS riscv64 pointer select pointer_local dump
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_short_circuit_select_false_lhs
+  SRC "${BACKEND_CASE_ROOT}/riscv64_short_circuit_select_false_lhs.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.select ne i32 %t5, 5, i32 %t16, 0|bir.load_local i32 %t15.addr, addr %lv.box.4|bir.load_local i32 %lv.box.8|select_chain function=main block=logic.end.12 value=%t20 root_is_select=yes|block_entry_publication successor=logic.end.12 status=available"
+  FORBIDDEN_SNIPPETS "src/00046.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 select short_circuit aggregate expected_repair dump
+)
+
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_compare_result_select_false_arm
+  SRC "${BACKEND_CASE_ROOT}/riscv64_compare_result_select_false_arm.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.select ne i32 %t0, 5, i32 %t10, 0|bir.store_local %lv.selected, i32 %t12|bir.load_local i32 %lv.selected|select_chain function=main block=tern.end.8 value=%t12 root_is_select=yes"
+  FORBIDDEN_SNIPPETS "src/00046.c|riscv64_short_circuit_select_false_lhs"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 select short_circuit expected_repair dump
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_pointer_to_pointer_local_address
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_to_pointer_local_address.c"
@@ -582,6 +604,28 @@ c4c_add_backend_codegen_route_test(
   FORBIDDEN_SNIPPETS "mv t0, t0|src/00144.c|riscv64_pointer_integer_select_chain"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 pointer select pointer_local emission
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_short_circuit_select_false_lhs_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_short_circuit_select_false_lhs.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_short_circuit_select_false_lhs_expected_repair.s"
+  REQUIRED_SNIPPETS ".Lmain_logic_end_12:|lw s1,|li t4, 7|li t4, 5|bne t3, t4, .Lmain_select_|li a0, 2|ret"
+  FORBIDDEN_SNIPPETS "src/00046.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 select short_circuit aggregate expected_repair emission
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_compare_result_select_false_arm_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_compare_result_select_false_arm.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_compare_result_select_false_arm_expected_repair.s"
+  REQUIRED_SNIPPETS ".Lmain_tern_end_8:|lw s1,|li t4, 7|li t4, 5|bne t3, t4, .Lmain_select_|mv t0, t0"
+  FORBIDDEN_SNIPPETS "ret|src/00046.c|riscv64_short_circuit_select_false_lhs"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 select short_circuit expected_repair emission
 )
 
 c4c_add_backend_dump_flag_test(
