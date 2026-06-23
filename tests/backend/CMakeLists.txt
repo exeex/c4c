@@ -356,6 +356,17 @@ c4c_add_backend_codegen_route_test(
   LABELS riscv64 prepared_control_flow fused_compare loop boolean_tail emission
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_prepared_signed_div_rem_return_tail
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_signed_div_rem_return_tail.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_signed_div_rem_return_tail.s"
+  REQUIRED_SNIPPETS "main:|li t1, 42|sw t1, 0(sp)|lw t0, 0(sp)|li t4, 5|divw s1, t0, t4|sw t1, 0(sp)|lw t0, 0(sp)|li t4, 3|remw s1, t0, t4|sw t1, 0(sp)|lw t0, 0(sp)|addi s1, t0, -2|mv a0, s1|ret"
+  FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00009|src/00009.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_control_flow signed_div_rem return_tail emission
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)

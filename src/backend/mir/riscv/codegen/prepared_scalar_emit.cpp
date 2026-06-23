@@ -433,6 +433,8 @@ std::optional<std::string> emit_riscv_simple_binary(
   if ((binary.opcode != c4c::backend::bir::BinaryOpcode::Add &&
        binary.opcode != c4c::backend::bir::BinaryOpcode::Sub &&
        binary.opcode != c4c::backend::bir::BinaryOpcode::Mul &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::SDiv &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::SRem &&
        binary.opcode != c4c::backend::bir::BinaryOpcode::And &&
        binary.opcode != c4c::backend::bir::BinaryOpcode::Or &&
        binary.opcode != c4c::backend::bir::BinaryOpcode::Xor &&
@@ -444,6 +446,11 @@ std::optional<std::string> emit_riscv_simple_binary(
   if (!destination_register.has_value()) {
     const auto result_immediate = prepared_immediate_i32_for_value(names, lookups, binary.result);
     return result_immediate.has_value() ? std::optional<std::string>{std::string{}} : std::nullopt;
+  }
+  if ((binary.opcode == c4c::backend::bir::BinaryOpcode::SDiv ||
+       binary.opcode == c4c::backend::bir::BinaryOpcode::SRem) &&
+      binary.result.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
   }
   if (c4c::backend::bir::is_compare_opcode(binary.opcode)) {
     return emit_riscv_simple_compare_value(
@@ -471,6 +478,18 @@ std::optional<std::string> emit_riscv_simple_binary(
       case c4c::backend::bir::BinaryOpcode::Mul:
         result = *lhs_imm * *rhs_imm;
         break;
+      case c4c::backend::bir::BinaryOpcode::SDiv:
+        if (*rhs_imm == 0) {
+          return std::nullopt;
+        }
+        result = *lhs_imm / *rhs_imm;
+        break;
+      case c4c::backend::bir::BinaryOpcode::SRem:
+        if (*rhs_imm == 0) {
+          return std::nullopt;
+        }
+        result = *lhs_imm % *rhs_imm;
+        break;
       case c4c::backend::bir::BinaryOpcode::And:
         result = *lhs_imm & *rhs_imm;
         break;
@@ -485,6 +504,34 @@ std::optional<std::string> emit_riscv_simple_binary(
     }
     out += "    li " + *destination_register + ", " +
            std::to_string(result) + "\n";
+    return out;
+  }
+  if (binary.opcode == c4c::backend::bir::BinaryOpcode::SDiv ||
+      binary.opcode == c4c::backend::bir::BinaryOpcode::SRem) {
+    std::string lhs_register_name;
+    if (lhs_register.has_value()) {
+      lhs_register_name = *lhs_register;
+    } else if (lhs_imm.has_value()) {
+      lhs_register_name = "t3";
+      out += "    li " + lhs_register_name + ", " + std::to_string(*lhs_imm) + "\n";
+    } else {
+      return std::nullopt;
+    }
+
+    std::string rhs_register_name;
+    if (rhs_register.has_value()) {
+      rhs_register_name = *rhs_register;
+    } else if (rhs_imm.has_value()) {
+      rhs_register_name = "t4";
+      out += "    li " + rhs_register_name + ", " + std::to_string(*rhs_imm) + "\n";
+    } else {
+      return std::nullopt;
+    }
+
+    const char* opcode =
+        binary.opcode == c4c::backend::bir::BinaryOpcode::SDiv ? "divw" : "remw";
+    out += std::string{"    "} + opcode + " " + *destination_register + ", " +
+           lhs_register_name + ", " + rhs_register_name + "\n";
     return out;
   }
   if (binary.opcode == c4c::backend::bir::BinaryOpcode::Mul) {
