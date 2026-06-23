@@ -541,6 +541,28 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_loop_carried_pointer_postincrement
+  SRC "${BACKEND_CASE_ROOT}/riscv64_loop_carried_pointer_postincrement.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.load_local ptr %lv.from|bir.add ptr %lv.source.0, 2|bir.store_local %lv.from, ptr|bir.load_local ptr %lv.to|bir.add ptr %lv.sink.0, 2|bir.store_local %lv.to, ptr|base=pointer_value result=|offset=0 size=2|base=pointer_value stored=|offset=0 size=2"
+  FORBIDDEN_SNIPPETS "src/00143.c|Duff|missing_destination_access"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address array_base pointer_local pointer_step loop expected_repair dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_loop_carried_pointer_postincrement
+  SRC "${BACKEND_CASE_ROOT}/riscv64_loop_carried_pointer_postincrement.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_loop_carried_pointer_postincrement.s"
+  REQUIRED_SNIPPETS "main:|sh t1,|sd t1,|j .Lmain_|.Lmain_"
+  FORBIDDEN_SNIPPETS "src/00143.c|Duff|ret"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address array_base pointer_local pointer_step loop expected_repair emission
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_prepared_local_array_i8_element_access
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_i8_element_access.c"
   TARGET_TRIPLE riscv64-linux-gnu

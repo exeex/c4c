@@ -1,47 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/323_rv64_loop_carried_pointer_postincrement_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Normalize Loop-Carried Pointer Evidence
+Current Step ID: 2
+Current Step Title: Add Focused Loop-Carried Pointer Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 evidence normalization for
-`tests/c/external/c-testsuite/src/00143.c`.
+Completed Step 2 focused expected-repair coverage for loop-carried pointer
+post-increment publication/lowering.
 
-Artifacts are under
-`build/rv64_c_testsuite_probe_latest/triage_323_step1/`:
-`probe_results.tsv`, `summary.md`, BIR/prepared-BIR dumps, RV64 assembly,
-linked binary metadata, c4cll qemu logs, and clang-reference qemu logs.
+Added `tests/backend/case/riscv64_loop_carried_pointer_postincrement.c`, a
+small halfword-array loop that repeats `*to++ = *from++` and then checks the
+copied values plus final pointer positions. The case is independent of
+`src/00143.c`, Duff's-device spelling, fixed stack offsets, candidate block
+names, candidate SSA names, and candidate array sizes.
 
-Fresh status:
+Added backend CTest coverage:
 
-| case | BIR | prepared BIR | emit | clang link | c4cll qemu | clang ref qemu | classification |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `src/00143.c` | 0 | 0 | 0 | 0 | 1 | 0 | `bir_fixed_array_base_postincrement_residual` |
+- `backend_dump_riscv64_loop_carried_pointer_postincrement`
+- `backend_codegen_route_riscv64_loop_carried_pointer_postincrement`
 
-The first bad mechanism is already visible before RV64 emission: pointer
-post-increment values are derived from fixed array bases instead of the current
-loop-carried pointer locals. In `block_6`, BIR loads `%lv.from` / `%lv.to` but
-stores `%lv.a.0 + 2` and `%lv.b.0 + 2`; later blocks repeat fixed base offsets
-such as `%lv.a.0 + 16` and `%lv.b.0 + 16`. The emitted RV64 follows those facts
-by storing `sp + 2`, `sp + 80`, `sp + 16`, and `sp + 94` into the pointer homes.
-Because the Duff-style body repeats through the loop, those next pointer values
-need to be based on the current pointer local plus stride.
-
-This is distinct from prior routes: stack-homed fused compare branch labels are
-present, semantic i16 `lh`/`sh` body emission is present, and the empty loop-exit
-successor now reaches a normal return path. The remaining failure is a normal
-qemu exit status 1 for the c4cll binary while the clang reference exits 0.
+The dump test captures the current expected-repair fact: the loop body loads
+the current pointer locals, but the published next pointer values are still
+materialized from fixed array bases (`%lv.source.0 + 2` and `%lv.sink.0 + 2`)
+instead of from the loaded loop-carried pointer local plus element stride. The
+codegen test captures the current expected-repair RV64 truncation at the loop
+body before a valid return path is emitted.
 
 ## Suggested Next
 
-Add focused expected-repair backend coverage for loop-carried pointer
-post-increment publication/lowering: a pointer local updated in a repeated loop
-body should publish the next value from the current pointer local plus element
-stride, not rematerialize from the fixed array base.
+Repair the loop-carried pointer post-increment lowering so the next pointer
+publication is derived from the current pointer local plus stride, then flip the
+new expected-repair dump/codegen coverage to positive contracts and add/enable
+runtime qemu coverage once RV64 emits a valid body and return path.
 
 ## Watchouts
 
@@ -54,22 +47,28 @@ stride, not rematerialize from the fixed array base.
   regression.
 - Keep runtime proof on the supported path; do not mark the candidate
   unsupported or skip qemu to claim progress.
-- The first bad fact appears in BIR/prepared facts, so Step 2 coverage should
-  assert the semantic loop-carried pointer update rather than only matching
-  emitted RV64 text.
+- Runtime expected-repair coverage was not kept in this packet because the RV64
+  runtime helper reports signal exits as the string `Illegal instruction`, not
+  a numeric expected run code. The dump/codegen expected-repair checks are the
+  encodable proof for the current gap; runtime should become positive after the
+  repair removes truncation.
+- Do not satisfy the repair by rematerializing one observed array base or by
+  matching the new fixture's local names. The semantic boundary is current
+  pointer local plus stride in a repeated loop body.
 
 ## Proof
 
-Probe commands run for `src/00143.c`: dump BIR, dump prepared BIR, RV64 asm
-emit, clang link with `--target=riscv64-linux-gnu --gcc-toolchain=/usr`, qemu
-with `-L /usr/riscv64-linux-gnu`, and clang-reference qemu.
+Focused proof:
+`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_(loop_carried_pointer_postincrement|empty_loop_exit_successor|i16_local_array_select_store|stack_homed_fused_compare_missing_false_label)'`
 
-Delegated proof still to run:
+Result: passed, 11/11 tests.
+
+Delegated proof:
 `cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
 
 Result: build succeeded; backend subset returned nonzero with 281/282 tests
-passing. The sole failure recorded in `test_after.log` is the existing
+passing before this packet and 283/284 after adding the two expected-repair
+tests. The sole failure recorded in `test_after.log` remains the existing
 `backend_riscv_prepared_edge_publication` contract:
 `RISC-V prepared module should emit a register edge move`. The focused RV64
-neighbors for fused compare, i16 local-array halfword emission, and empty
-loop-exit successor passed in this backend run.
+neighbors from ideas 319, 321, and 322 passed in both focused and backend runs.
