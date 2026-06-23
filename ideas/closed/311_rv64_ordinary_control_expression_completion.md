@@ -1,5 +1,30 @@
 # RV64 Ordinary Control And Expression Completion
 
+## Closure Summary
+
+Closed after the ordinary RV64 prepared-backend control/expression family was
+repaired through semantic lowering rules rather than c-testsuite-specific
+matching:
+
+- fused compare branch emission now completes prepared conditional branches
+- prepared loop successor bodies continue through prepared block-label lookup
+- compare results can materialize as values when used outside fused branches
+- integer `and`/`or`/`xor` and i32 signed `sdiv`/`srem` tails are emitted for
+  ordinary return/control paths
+
+Focused backend coverage for fused-compare, loop-successor, and signed
+division/remainder cases passed. The targeted RV64 c-testsuite acceptance sweep
+passed `src/00006.c`, `src/00007.c`, `src/00008.c`, `src/00009.c`,
+`src/00027.c`, `src/00028.c`, `src/00029.c`, `src/00030.c`, `src/00031.c`,
+and `src/00105.c` through emit, clang, and QEMU.
+
+The remaining probed residual, `src/00143.c`, is intentionally left out of
+this idea: its failure involves expanded local array indexed updates/reads,
+large `i16` select/update chains, pointer/address-offset local access forms,
+and later switch-shaped flow rather than the ordinary fused-compare,
+successor-body, bitwise boolean-tail, or signed div/rem return-tail mechanisms
+owned here.
+
 ## Goal
 
 Complete ordinary RV64 control-flow and expression-result emission so compiled
