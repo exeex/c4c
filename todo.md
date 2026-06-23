@@ -1,44 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/324_rv64_duff_fallthrough_pointer_update_producers.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Repair RV64 Publication Outcome
+Current Step ID: 5
+Current Step Title: Reprobe and Close Classification
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 RV64 publication outcome verification for Duff/fallthrough
-pointer updates.
+Completed Step 5 final close classification for idea 324.
 
-Reprobed `tests/backend/case/riscv64_duff_fallthrough_pointer_update_producers.c`
-and `tests/c/external/c-testsuite/src/00143.c` through RV64 asm emit, clang
-link, and qemu under
-`build/rv64_c_testsuite_probe_latest/triage_324_step4/`. Both c4cll outputs
-passed qemu, and the clang reference for `src/00143.c` also passed.
+Final classification: closure-ready for supervisor/plan-owner review.
 
-No RV64 backend repair was needed. The emitted RV64 consumes the repaired
-producer facts by loading the current pointer local, adding the halfword stride,
-publishing the next pointer, and using the original pointer for the halfword
-load/store transfer in later fallthrough blocks.
+The Step 4 evidence remains authoritative:
+`build/rv64_c_testsuite_probe_latest/triage_324_step4/probe_results.tsv`
+records the focused Duff fixture, `tests/c/external/c-testsuite/src/00143.c`,
+and the clang reference for `src/00143.c` as emit/link/qemu pass. No additional
+Step 5 probe artifacts were needed because this packet is close classification
+only and the requested outcome was already captured in Step 4 artifacts.
 
-Promoted the focused Duff fixture beyond dump coverage by adding:
+Focused Duff fallthrough producer coverage is green across all three routes:
 
+- `backend_dump_riscv64_duff_fallthrough_pointer_update_producers`
 - `backend_codegen_route_riscv64_duff_fallthrough_pointer_update_producers`
 - `backend_rv64_runtime_riscv64_duff_fallthrough_pointer_update_producers`
 
-The focused dump/codegen/runtime contracts avoid `src/00143.c`, Duff comments,
-fixed stack offsets, and fixed candidate values as behavior contracts.
+`src/00143.c` is now a supported linked pass under qemu for the idea 324 route.
+No remaining idea 324 residual was found, and no implementation or test files
+were changed in this Step 5 packet.
 
 ## Suggested Next
 
-Supervisor/plan owner should decide whether idea 324 is closure-ready. Executor
-evidence shows the owned candidate now passes and no Step 4 residual remains.
+Supervisor/plan owner should close idea 324 if their acceptance review agrees
+that the focused coverage and `src/00143.c` candidate evidence satisfy the
+source idea. No executor follow-up packet is recommended for this idea.
 
 ## Watchouts
 
-- Do not special-case `src/00143.c`, Duff's-device block names, `%t39`,
-  `%t42`, `%lv.from`, `%lv.to`, fixed stack offsets, or fixed array sizes.
 - Existing unrelated untracked `review/` artifacts were not touched.
 - The only broad backend failure remains the existing
   `backend_riscv_prepared_edge_publication` contract.
@@ -60,8 +58,8 @@ Delegated proof:
 
 Result: build succeeded; backend subset returned nonzero with 287/288 tests
 passing (`test_after.log`). The only remaining failure is the existing
-`backend_riscv_prepared_edge_publication` contract. The new Duff fallthrough
-codegen/runtime tests passed in the broad run.
+`backend_riscv_prepared_edge_publication` contract. The focused Duff
+dump/codegen/runtime tests passed in the broad run.
 
 Probe artifacts:
 `build/rv64_c_testsuite_probe_latest/triage_324_step4/probe_results.tsv` and
