@@ -198,3 +198,23 @@ actual commands used.
 - If the answer is that c4c's LIR-to-LLVM-IR dump must become
   target-dependent, write that as a first-class follow-up rather than hiding it
   inside RV64 backend code.
+
+## Closure Summary
+
+Closed on 2026-06-23 after the active triage runbook completed Steps 1-6.
+
+Evidence was recorded under `build/variadic_abi_triage/` for the direct
+external variadic `printf` fixture and the scalar `stdarg` fixture. The clang
+comparison showed RV64 direct-call `signext` requirements and RV64
+pointer-cursor `va_list`/`va_arg` lowering, while AArch64 keeps its structured
+`va_list` route. c4c evidence showed the first missing or flattened
+target-specific facts at LLVM-route IR generation: RV64 direct calls lack the
+clang-observed extension attributes, and RV64 scalar `stdarg` is emitted with
+the AArch64-shaped structured `va_list` lowering.
+
+The next repair boundary is intentionally not semantic BIR admission, prepared
+ABI publication, or RV64 final emission. Those are downstream consumers after
+target-correct RV64 LLVM-route/LIR facts exist. The focused follow-up is
+`ideas/open/326_rv64_variadic_target_llvm_route_facts.md`.
+
+No RV64 unsupported variadic diagnostics were weakened during this triage.
