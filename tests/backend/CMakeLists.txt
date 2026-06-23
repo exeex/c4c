@@ -60,6 +60,41 @@ function(c4c_add_backend_codegen_route_test test_name)
   c4c_set_backend_test_labels("${test_name}" backend_route ${ARG_LABELS})
 endfunction()
 
+function(c4c_add_backend_dump_flag_test test_name)
+  set(options)
+  set(one_value_args SRC TARGET_TRIPLE DUMP_FLAG REQUIRED_SNIPPETS FORBIDDEN_SNIPPETS
+                     EXTRA_ARGS CASE_TIMEOUT_SEC)
+  set(multi_value_args LABELS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "c4c_add_backend_dump_flag_test(${test_name}) got unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  foreach(required_arg IN ITEMS SRC TARGET_TRIPLE DUMP_FLAG)
+    if(NOT DEFINED ARG_${required_arg} OR "${ARG_${required_arg}}" STREQUAL "")
+      message(FATAL_ERROR
+        "c4c_add_backend_dump_flag_test(${test_name}) missing ${required_arg}")
+    endif()
+  endforeach()
+
+  add_test(
+    NAME "${test_name}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DSRC=${ARG_SRC}
+            -DTARGET_TRIPLE=${ARG_TARGET_TRIPLE}
+            -DDUMP_FLAG=${ARG_DUMP_FLAG}
+            "-DREQUIRED_SNIPPETS=${ARG_REQUIRED_SNIPPETS}"
+            "-DFORBIDDEN_SNIPPETS=${ARG_FORBIDDEN_SNIPPETS}"
+            "-DEXTRA_ARGS=${ARG_EXTRA_ARGS}"
+            "-DCASE_TIMEOUT_SEC=${ARG_CASE_TIMEOUT_SEC}"
+            -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+  )
+  c4c_set_backend_test_labels("${test_name}" backend_dump ${ARG_LABELS})
+endfunction()
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_aarch64_prepared_call_boundary_scalability
   SRC "${BACKEND_CASE_ROOT}/aarch64_prepared_call_boundary_scalability.c"
@@ -264,6 +299,28 @@ c4c_add_backend_codegen_route_test(
   REQUIRED_SNIPPETS ".bss|rv64_step4_pair_global:|.zero 8|.text|.globl main|main:|li t1, 13|lla t0, rv64_step4_pair_global|sw t1, 0(t0)|li t1, 29|sw t1, 4(t0)|lw t0, 4(t0)|lw s1, 0(s1)"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 global aggregate load_global store_global output_contract
+)
+
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_prepared_fused_compare_loop_predicate
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_fused_compare_loop_predicate.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.load_local i32 %lv.remaining|%t1 = bir.ne i32 %t0, 0|bir.cond_br i32 %t1, block_2, block_3|block block_1 terminator=cond_branch true=block_2 false=block_3|branch_condition block_1 kind=fused_compare condition=%t1 compare=ne i32 %t0, 0 can_fuse_with_branch=yes true=block_2 false=block_3|access block=block_1 inst_index=0 base=frame_slot result=%t0"
+  FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00008|src/00008.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_control_flow fused_compare loop local_load
+)
+
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_prepared_fused_compare_call_result_predicate
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_fused_compare_call_result_predicate.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @rv64_predicate_value() -> i32 {|bir.func @main() -> i32 {|%t0 = bir.call i32 rv64_predicate_value()|%t1 = bir.ne i32 %t0, 0|bir.cond_br i32 %t1, block_2, block_3|block entry terminator=cond_branch true=block_2 false=block_3|branch_condition entry kind=fused_compare condition=%t1 compare=ne i32 %t0, 0 can_fuse_with_branch=yes true=block_2 false=block_3|call block_index=0 inst_index=0 wrapper_kind=same_module|result value_bank=gpr source_storage=register destination_storage=register destination_value_id=0"
+  FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00030|src/00030.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_control_flow fused_compare call_result
 )
 
 function(c4c_add_backend_runtime_case test_name)

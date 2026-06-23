@@ -1,53 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/311_rv64_ordinary_control_expression_completion.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused Control/Expression Coverage
+Current Step ID: 3
+Current Step Title: Repair The First Semantic Emission Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Normalize Representative Failure Evidence is complete. Matched RV64
-`--dump-bir`, `--dump-prepared-bir --mir-focus-function main`, and
-`--codegen asm` artifacts were generated under
-`build/rv64_c_testsuite_probe_latest/triage_311_step1/` for
-`src/00008.c`, `src/00030.c`, and `src/00105.c`; all commands exited `0`.
+Step 2: Add Focused Control/Expression Coverage is implemented as a test-only
+packet. Added focused RV64 prepared-BIR dump coverage for semantic fused-compare
+conditional branches without c-testsuite filenames:
 
-Step 4 classification already placed all three in
-`incomplete_control_or_expression_emission`. The normalized evidence shows the
-same first semantic emission boundary across the representatives:
+- `backend_dump_riscv64_prepared_fused_compare_loop_predicate` uses
+  `tests/backend/case/riscv64_prepared_fused_compare_loop_predicate.c` and
+  asserts a local-loaded loop predicate flows through `bir.ne`, `bir.cond_br`,
+  and prepared `branch_condition ... kind=fused_compare ... true=block_2
+  false=block_3`, with frame-slot addressing for the loaded predicate source.
+- `backend_dump_riscv64_prepared_fused_compare_call_result_predicate` uses
+  `tests/backend/case/riscv64_prepared_fused_compare_call_result_predicate.c`
+  and asserts a same-module call result flows through `bir.ne`, `bir.cond_br`,
+  the prepared fused-compare branch condition, and the prepared call-result
+  publication plan.
 
-- `src/00008.c`: BIR and prepared BIR contain `dowhile.cond.1` with
-  `bir.ne i32 %t2, 0`, `bir.cond_br`, and prepared
-  `branch_condition ... kind=fused_compare ... can_fuse_with_branch=yes`;
-  emitted RV64 stops at `.Lmain_dowhile_cond_1: lw t0, 0(sp)`.
-- `src/00030.c`: BIR and prepared BIR contain repeated `f()` call-result
-  comparisons followed by `bir.cond_br`; prepared call plans publish `a0` to
-  `t0`, and prepared control flow records six `kind=fused_compare` branch
-  conditions; emitted RV64 stops after `call f` and `mv t0, a0`.
-- `src/00105.c`: BIR and prepared BIR contain `for.cond.1` with
-  `bir.slt i32 %t0, 10`, `bir.cond_br`, and prepared
-  `branch_condition ... kind=fused_compare ... can_fuse_with_branch=yes`;
-  emitted RV64 stops at `.Lmain_for_cond_1: lw t0, 0(sp)`.
-
-Selected first repair boundary: RV64 emission for prepared `cond_branch`
-terminators whose `branch_condition` is `kind=fused_compare`, specifically the
-tail after operand publication that must lower the compare and emit the
-true/false successor transfer. This covers loop predicates and call-result
-predicates without filename matching because the common prepared-control-flow
-contract is the same in all three representatives. Return-value finalization,
-epilogues, and final `ret` emission are deferred until execution can reach the
-successor return blocks; stack-slot/address materialization and external-stub
-policy are not part of this boundary.
+The new tests are semantic prepared-control-flow coverage. They intentionally
+do not claim RV64 final assembly/runtime success before the implementation
+lowers the prepared fused-compare `cond_branch` tail.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: add focused control/expression coverage for
-RV64 prepared fused-compare conditional branches. The test shape should cover
-at least one local-loaded loop predicate and one call-result predicate flowing
-through a compare into a conditional branch, with semantic assertions on the
-emitted compare/branch successor behavior rather than c-testsuite filenames.
+Execute the next implementation packet for Step 3: lower RV64 prepared
+`cond_branch` terminators with `branch_condition kind=fused_compare` after
+operand publication, covering both local-loaded loop predicates and call-result
+predicates through the same prepared-control-flow contract.
 
 ## Watchouts
 
@@ -59,16 +44,29 @@ emitted compare/branch successor behavior rather than c-testsuite filenames.
   emitted functions stop before the prepared fused compare/conditional branch;
   appending a `ret` would hide the missing control transfer instead of repairing
   it.
+- `backend_riscv_prepared_edge_publication` remains the existing same-scope
+  backend failure. The corrected regression guard shows this packet added only
+  the two focused passing tests and introduced no new failures.
 
 ## Proof
 
-Read-only evidence normalization plus targeted artifact generation:
+Delegated proof command:
 
-- `./build/c4cll --dump-bir --target riscv64-linux-gnu <case>`
-- `./build/c4cll --dump-prepared-bir --target riscv64-linux-gnu --mir-focus-function main <case>`
-- `./build/c4cll --codegen asm --target riscv64-linux-gnu <case> -o build/rv64_c_testsuite_probe_latest/triage_311_step1/<stem>.s`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
 
-Cases: `tests/c/external/c-testsuite/src/00008.c`,
-`tests/c/external/c-testsuite/src/00030.c`, and
-`tests/c/external/c-testsuite/src/00105.c`. No build or CTest proof was
-required by the delegated packet; no `test_after.log` was produced.
+Supervisor regenerated matching before/after backend logs with the dirty-worktree
+stash flow and ran:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+
+Result: PASS. Same-scope regression guard reported before
+`passed=213 failed=1 total=214`, after `passed=215 failed=1 total=216`, delta
+`passed=2 failed=0`, and no new failing tests. The remaining failure is the
+pre-existing `backend_riscv_prepared_edge_publication`; both new focused tests
+pass in the after log.
+
+Additional direct check for the new coverage:
+
+`ctest --test-dir build -j --output-on-failure -R 'backend_dump_riscv64_prepared_fused_compare'`
+
+Result: `2/2` tests passed.
