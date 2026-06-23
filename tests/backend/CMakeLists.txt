@@ -573,6 +573,17 @@ c4c_add_backend_dump_flag_test(
   LABELS riscv64 prepared_local_address array_base pointer_local pointer_step fallthrough dump
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_duff_fallthrough_pointer_update_producers
+  SRC "${BACKEND_CASE_ROOT}/riscv64_duff_fallthrough_pointer_update_producers.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_duff_fallthrough_pointer_update_producers.s"
+  REQUIRED_SNIPPETS "main:|.Lmain_block_7:|ld t0,|addi t3, t0, 2|sd s1,|lh t3, 0(t0)|sh t1, 0(t0)|.Lmain_block_8:|ld t0,|addi t3, t0, 2|sd s1,|lh t3, 0(t0)|sh t1, 0(t0)|li a0, 0|ret"
+  FORBIDDEN_SNIPPETS "src/00143.c|Tom Duff|0x0000000500000002|addi t3, sp, 0\n    addi t3, t3, 2|addi t3, sp, 10\n    addi t3, t3, 2"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address array_base pointer_local pointer_step fallthrough emission
+)
+
 c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_prepared_local_array_i8_element_access
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_i8_element_access.c"
@@ -1042,6 +1053,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_loop_carried_pointer_postincrement.c"
   CASE_TIMEOUT_SEC 10
   LABELS prepared_local_address array_base pointer_local pointer_step loop
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_duff_fallthrough_pointer_update_producers
+  SRC "${BACKEND_CASE_ROOT}/riscv64_duff_fallthrough_pointer_update_producers.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS prepared_local_address array_base pointer_local pointer_step fallthrough
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_prepared_local_array_i8_element_access
