@@ -629,6 +629,28 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_byval_aggregate_fixed_call
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_aggregate_fixed_call.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @consume_parcel(ptr byval(size=16, align=8) %p.value, ptr %p.mirror) -> i32|%lv.param.p.value.aggregate.param.copy.0 = bir.load_local i32 %lv.param.p.value.0, addr %p.value|%lv.param.p.value.aggregate.param.copy.8 = bir.load_local ptr %lv.param.p.value.8, addr %p.value+8|%lv.param.value.byval.copy.0 = bir.load_local i32 %lv.param.value.0, addr %p.value|%t9 = bir.call i32 consume_parcel(ptr byval(size=16, align=8) %lv.value, ptr %lv.mirror.0)|arg0 bank=aggregate_address from=register:s1 to=none|move from_value_id=20 to_value_id=20 destination_kind=call_argument_abi destination_storage=stack_slot|source_kind=byval_param type=ptr size=16 align=8|base=pointer_value result=%lv.param.p.value.aggregate.param.copy.0 pointer=%p.value|base=pointer_value result=%lv.param.value.byval.copy.8 pointer=%p.value"
+  FORBIDDEN_SNIPPETS "src/00140.c|%p.f"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 byval aggregate call expected_repair dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_byval_aggregate_fixed_call_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_aggregate_fixed_call.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_byval_aggregate_fixed_call_expected_repair.s"
+  REQUIRED_SNIPPETS ".globl consume_parcel|consume_parcel:|.Lconsume_parcel_entry:|addi sp, sp, -64|.globl main|main:|sd ra, 48(sp)|sw t1, 16(sp)|sw t1, 24(sp)"
+  FORBIDDEN_SNIPPETS "call consume_parcel|ret|src/00140.c|%p.f"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 byval aggregate call expected_repair emission
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_aggregate_local_self_pointer_chain
   SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_self_pointer_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
