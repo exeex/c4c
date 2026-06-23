@@ -541,6 +541,28 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_i16_local_array_select_store
+  SRC "${BACKEND_CASE_ROOT}/riscv64_i16_local_array_select_store.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.store_local %lv.values.2, i16 3|bir.load_local i16 %lv.replacement|bir.select eq i64 %t15, 2, i16 %t13, %t16.elt2|bir.store_local %lv.values.2, i16 %t16.store2|store_source function=main block=entry inst=19 source=%t16.store2 status=available|source_producer=select_materialization|select_chain function=main block=entry value=%t16.store2 root_is_select=yes|access block=entry inst_index=19 base=frame_slot stored=%t16.store2|size=2"
+  FORBIDDEN_SNIPPETS "src/00143.c|%t9.store0|missing_destination_access|i32 %t16.store2"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address array_subobject i16_load select store_source dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_i16_local_array_select_store
+  SRC "${BACKEND_CASE_ROOT}/riscv64_i16_local_array_select_store.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_i16_local_array_select_store.s"
+  REQUIRED_SNIPPETS "main:|li t1, 2"
+  FORBIDDEN_SNIPPETS "src/00143.c|%t9.store0|sh |lh |lhu |ret"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address array_subobject i16_load select store_source expected_repair emission
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_pointer_to_pointer_local_address
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_to_pointer_local_address.c"
   TARGET_TRIPLE riscv64-linux-gnu
