@@ -100,6 +100,14 @@ inline bool llvm_target_is_x86_64(const std::string& triple) {
   return llvm_target_is_x86_64(resolve_target_profile(triple));
 }
 
+inline bool llvm_target_is_riscv64(const c4c::TargetProfile& target_profile) {
+  return target_profile.arch == c4c::TargetArch::Riscv64;
+}
+
+inline bool llvm_target_is_riscv64(const std::string& triple) {
+  return llvm_target_is_riscv64(resolve_target_profile(triple));
+}
+
 inline bool llvm_target_is_amd64_sysv(const c4c::TargetProfile& target_profile) {
   return llvm_target_is_x86_64(target_profile) &&
          target_profile.os != c4c::TargetOs::Darwin &&
@@ -124,7 +132,8 @@ inline std::string llvm_long_double_ty() {
 }
 
 inline bool llvm_va_list_is_pointer_object(const c4c::TargetProfile& target_profile) {
-  return llvm_target_is_apple(target_profile) && llvm_target_is_aarch64(target_profile);
+  return llvm_target_is_riscv64(target_profile) ||
+         (llvm_target_is_apple(target_profile) && llvm_target_is_aarch64(target_profile));
 }
 
 inline bool llvm_va_list_is_pointer_object(const std::string& target_triple) {

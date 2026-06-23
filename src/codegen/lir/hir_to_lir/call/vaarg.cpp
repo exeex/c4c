@@ -294,6 +294,24 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
       return "zeroinitializer";
     }
   }
+  const bool is_scalar_or_pointer_payload =
+      res_ts.array_rank == 0 &&
+      (res_ts.ptr_level > 0 ||
+       (res_ts.ptr_level == 0 &&
+        (is_any_int(res_ts.base) || res_ts.base == TB_FLOAT || res_ts.base == TB_DOUBLE ||
+         res_ts.base == TB_LONGDOUBLE)));
+  const bool is_single_rv64_va_slot_payload =
+      is_scalar_or_pointer_payload && sizeof_ts(mod_, res_ts) <= 8;
+  if (llvm_target_is_riscv64(mod_.target_profile) && is_single_rv64_va_slot_payload) {
+    const std::string slot_ptr = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirLoadOp{slot_ptr, std::string("ptr"), ap_ptr});
+    const std::string next_ptr = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirGepOp{next_ptr, "i8", slot_ptr, true, {"i64 8"}});
+    emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), next_ptr, ap_ptr});
+    const std::string out = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, slot_ptr});
+    return out;
+  }
   if (llvm_va_list_is_pointer_object(mod_.target_profile)) {
     const std::string out = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirVaArgOp{out, ap_ptr, res_ty});
