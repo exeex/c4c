@@ -34,6 +34,7 @@ struct CallTargetInfo {
   std::string ret_ty;
   const Function* target_fn = nullptr;
   const FnPtrSig* callee_fn_ptr_sig = nullptr;
+  LirExtAttr return_ext_attr = LirExtAttr::None;
   std::string callee_type_suffix;
   bool builtin_special = false;
 };

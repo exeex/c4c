@@ -20,6 +20,12 @@
 
 namespace c4c::codegen::lir {
 
+enum class LirExtAttr : unsigned char {
+  None,
+  SignExt,
+  ZeroExt,
+};
+
 enum class LirCallCalleeKind : unsigned char {
   DirectGlobal,
   DirectIntrinsic,
@@ -43,6 +49,7 @@ struct OwnedLirTypedCallArg {
   std::size_t aarch64_hfa_lane_count = 0;
   std::size_t aarch64_hfa_lane_index = 0;
   std::size_t aarch64_stack_align_bytes = 0;
+  LirExtAttr ext_attr = LirExtAttr::None;
 };
 
 struct FormattedLirTypedCall {
@@ -303,6 +310,26 @@ inline std::string format_lir_typed_call_arg(std::string_view type,
 
 inline std::string format_lir_typed_call_arg(const OwnedLirTypedCallArg& arg) {
   std::string formatted_type(trim_lir_arg_text(arg.type));
+  switch (arg.ext_attr) {
+    case LirExtAttr::SignExt:
+      if (formatted_type.find(" signext") == std::string::npos) {
+        if (formatted_type.find(" noundef") == std::string::npos) {
+          formatted_type += " noundef";
+        }
+        formatted_type += " signext";
+      }
+      break;
+    case LirExtAttr::ZeroExt:
+      if (formatted_type.find(" zeroext") == std::string::npos) {
+        if (formatted_type.find(" noundef") == std::string::npos) {
+          formatted_type += " noundef";
+        }
+        formatted_type += " zeroext";
+      }
+      break;
+    case LirExtAttr::None:
+      break;
+  }
   if (arg.aarch64_stack_align_bytes > 0 &&
       formatted_type.find(" alignstack(") == std::string::npos) {
     formatted_type += " alignstack(" + std::to_string(arg.aarch64_stack_align_bytes) + ")";

@@ -537,7 +537,15 @@ bool set_terminator_if_open(FnCtx& ctx, lir::LirTerminator terminator) {
   return true;
 }
 
-TypeSpec sig_return_type(const FnPtrSig& sig) { return sig.return_type.spec; }
+TypeSpec sig_return_type(const FnPtrSig& sig) {
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig && fsig->return_type) {
+      return sema::typespec_from_canonical(*fsig->return_type);
+    }
+  }
+  return sig.return_type.spec;
+}
 
 TypeSpec sig_param_type(const FnPtrSig& sig, size_t i) {
   if (sig.canonical_sig) {
@@ -1362,9 +1370,10 @@ void StmtEmitter::emit_fallthrough_lbl(FnCtx& ctx, const std::string& lbl) {
 std::string StmtEmitter::fresh_tmp(FnCtx& ctx) { return "%t" + std::to_string(ctx.tmp_idx++); }
 
 void StmtEmitter::record_extern_call_decl(const std::string& name, const std::string& ret_ty,
-                                          LinkNameId link_name_id) {
+                                          LinkNameId link_name_id,
+                                          lir::LirExtAttr return_ext_attr) {
   if (name.empty() || mod_.fn_index.count(name)) return;
-  module_->record_extern_decl(name, ret_ty, link_name_id);
+  module_->record_extern_decl(name, ret_ty, link_name_id, return_ext_attr);
 }
 
 std::string StmtEmitter::fresh_lbl(FnCtx& ctx, const std::string& pfx) {

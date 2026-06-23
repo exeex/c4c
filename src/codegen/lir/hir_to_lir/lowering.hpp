@@ -377,7 +377,8 @@ class StmtEmitter {
   void emit_fallthrough_lbl(FnCtx& ctx, const std::string& lbl);
   std::string fresh_tmp(FnCtx& ctx);
   void record_extern_call_decl(const std::string& name, const std::string& ret_ty,
-                               LinkNameId link_name_id = kInvalidLinkName);
+                               LinkNameId link_name_id = kInvalidLinkName,
+                               lir::LirExtAttr return_ext_attr = lir::LirExtAttr::None);
   std::string fresh_lbl(FnCtx& ctx, const std::string& pfx);
 
 

@@ -87,6 +87,20 @@ bool is_aarch64_fixed_hfa_param(const c4c::hir::Module& mod, const TypeSpec& ts)
          classify_aarch64_hfa(mod, ts).has_value();
 }
 
+bool llvm_target_is_rv64(const c4c::TargetProfile& target_profile) {
+  return target_profile.arch == c4c::TargetArch::Riscv64;
+}
+
+LirExtAttr rv64_integer_ext_attr_for_abi_type(const c4c::hir::Module& mod,
+                                              const TypeSpec& ts) {
+  if (!llvm_target_is_rv64(mod.target_profile) ||
+      ts.ptr_level != 0 || ts.array_rank != 0 ||
+      !is_any_int(ts.base) || int_bits(ts.base) != 32) {
+    return LirExtAttr::None;
+  }
+  return is_signed_int(ts.base) ? LirExtAttr::SignExt : LirExtAttr::ZeroExt;
+}
+
 void append_call_signature_param(LirCallSignature& out,
                                  const c4c::hir::Module& mod,
                                  LirModule* lir_module,
@@ -163,11 +177,16 @@ std::optional<LirCallSignature> structured_callee_signature(
     LirModule* lir_module,
     const CallTargetInfo& call_target) {
   if (call_target.target_fn) {
-    return lir_call_signature_from_function(mod, lir_module, *call_target.target_fn);
+    LirCallSignature sig =
+        lir_call_signature_from_function(mod, lir_module, *call_target.target_fn);
+    sig.return_ext_attr = call_target.return_ext_attr;
+    return sig;
   }
   if (!call_target.callee_fn_ptr_sig) return std::nullopt;
-  return lir_call_signature_from_fn_ptr_sig(
+  LirCallSignature sig = lir_call_signature_from_fn_ptr_sig(
       mod, lir_module, *call_target.callee_fn_ptr_sig);
+  sig.return_ext_attr = call_target.return_ext_attr;
+  return sig;
 }
 
 }  // namespace
@@ -234,16 +253,39 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
   }
 
   info.ret_ty = llvm_return_ty(mod_, info.ret_spec);
+  if (info.target_fn && info.target_fn->linkage.is_extern &&
+      info.target_fn->blocks.empty() && info.target_fn->attrs.variadic) {
+    info.return_ext_attr =
+        rv64_integer_ext_attr_for_abi_type(mod_, info.target_fn->return_type.spec);
+    if (info.return_ext_attr == LirExtAttr::None &&
+        llvm_target_is_rv64(mod_.target_profile) &&
+        info.ret_ty == "i32") {
+      info.return_ext_attr = LirExtAttr::SignExt;
+    }
+  }
   info.builtin_special =
       info.builtin && info.builtin->lowering != BuiltinLoweringKind::AliasCall;
-  if (unresolved_external_callee && !info.builtin_special) {
-    record_extern_call_decl(unresolved_external_name, info.ret_ty, info.callee_link_name_id);
-  }
   info.callee_fn_ptr_sig = info.target_fn ? nullptr : resolve_callee_fn_ptr_sig(ctx, callee_e);
   if (info.target_fn) {
     info.callee_type_suffix = llvm_fn_type_suffix_str(mod_, *info.target_fn);
   } else if (info.callee_fn_ptr_sig) {
     info.callee_type_suffix = llvm_fn_type_suffix_str(mod_, *info.callee_fn_ptr_sig);
+  }
+  const bool unresolved_external_variadic =
+      unresolved_external_callee && !info.builtin_special &&
+      info.callee_fn_ptr_sig && sig_is_variadic(*info.callee_fn_ptr_sig);
+  if (unresolved_external_variadic) {
+    info.return_ext_attr =
+        rv64_integer_ext_attr_for_abi_type(mod_, sig_return_type(*info.callee_fn_ptr_sig));
+    if (info.return_ext_attr == LirExtAttr::None &&
+        llvm_target_is_rv64(mod_.target_profile) &&
+        info.ret_ty == "i32") {
+      info.return_ext_attr = LirExtAttr::SignExt;
+    }
+  }
+  if (unresolved_external_callee && !info.builtin_special) {
+    record_extern_call_decl(unresolved_external_name, info.ret_ty,
+                            info.callee_link_name_id, info.return_ext_attr);
   }
 
   return info;

@@ -256,6 +256,30 @@ std::string rendered_signature_return_type(const c4c::hir::Module& mod,
   return stmt_emitter_detail::llvm_return_ty(mod, return_ts);
 }
 
+LirExtAttr rv64_variadic_return_ext_attr_for_abi_type(
+    const c4c::hir::Module& mod, const c4c::hir::Function& fn) {
+  using namespace c4c::codegen::llvm_helpers;
+  const TypeSpec& ts = fn.return_type.spec;
+  if (mod.target_profile.arch != c4c::TargetArch::Riscv64 ||
+      !fn.attrs.variadic || ts.ptr_level != 0 || ts.array_rank != 0 ||
+      !is_any_int(ts.base) || int_bits(ts.base) != 32) {
+    return LirExtAttr::None;
+  }
+  return is_signed_int(ts.base) ? LirExtAttr::SignExt : LirExtAttr::ZeroExt;
+}
+
+std::string_view signature_ext_attr_prefix(LirExtAttr attr) {
+  switch (attr) {
+    case LirExtAttr::SignExt:
+      return "signext ";
+    case LirExtAttr::ZeroExt:
+      return "zeroext ";
+    case LirExtAttr::None:
+      return "";
+  }
+  return "";
+}
+
 std::string rendered_signature_param_type(const c4c::hir::Module& mod,
                                           const LirModule* lir_module,
                                           const TypeSpec& param_ts) {
@@ -817,6 +841,7 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
   std::ostringstream sig_out;
   const std::string ret_ty = rendered_signature_return_type(mod, fn.return_type.spec);
   const std::string emitted_name = emitted_link_name(mod, fn.link_name_id, fn.name);
+  const LirExtAttr return_ext_attr = rv64_variadic_return_ext_attr_for_abi_type(mod, fn);
 
   const bool void_param_list =
       fn.params.size() == 1 &&
@@ -827,7 +852,8 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
   // Declaration (extern with no body)
   if (fn.linkage.is_extern && fn.blocks.empty()) {
     const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
-    sig_out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
+    sig_out << decl_kw << llvm_visibility(fn.linkage.visibility)
+            << signature_ext_attr_prefix(return_ext_attr) << ret_ty << " "
             << llvm_global_sym(emitted_name) << "(";
     bool first_param = true;
     for (size_t i = 0; i < fn.params.size(); ++i) {
@@ -959,6 +985,7 @@ static void finalize_module(LirModule& module,
     ed.return_type = decl_info.return_type.empty()
         ? module.extern_return_type_ref(decl_info.return_type_str)
         : decl_info.return_type;
+    ed.return_ext_attr = decl_info.return_ext_attr;
     if (!ed.return_type.has_struct_name_id()) {
       const LirTypeRef finalized_type =
           module.extern_return_type_ref(decl_info.return_type_str);

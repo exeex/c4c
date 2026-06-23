@@ -38,6 +38,7 @@
 
 #include "operands.hpp"
 #include "types.hpp"
+#include "call_args.hpp"
 #include "ast.hpp"  // TypeSpec, TypeBase
 #include "../../shared/struct_name_table.hpp"
 #include "../../shared/text_id_table.hpp"
@@ -276,6 +277,7 @@ struct LirGepOp {
 
 struct LirCallSignature {
   std::optional<LirTypeRef> return_type_ref;
+  LirExtAttr return_ext_attr = LirExtAttr::None;
   std::vector<std::string> fixed_param_types;
   std::vector<LirTypeRef> fixed_param_type_refs;
   bool is_variadic = false;
@@ -290,6 +292,7 @@ struct LirCallArg {
   std::size_t aarch64_hfa_lane_count = 0;
   std::size_t aarch64_hfa_lane_index = 0;
   std::size_t aarch64_stack_align_bytes = 0;
+  LirExtAttr ext_attr = LirExtAttr::None;
 };
 
 // Typed call instruction.
@@ -304,6 +307,7 @@ struct LirCallOp {
   std::vector<LirTypeRef> arg_type_refs;  // Mirrors argument type fragments when available
   std::optional<LirCallSignature> callee_signature;  // Structured callee signature when available.
   std::vector<LirCallArg> structured_args;  // Generated argument facts; empty for raw compatibility.
+  LirExtAttr return_ext_attr = LirExtAttr::None;
 };
 
 // Typed binary arithmetic/bitwise/unary operation.
@@ -512,6 +516,7 @@ struct LirExternDecl {
   std::string name;
   std::string return_type_str;  // LLVM return type (temporary; will be TypeSpec later)
   LirTypeRef return_type;
+  LirExtAttr return_ext_attr = LirExtAttr::None;
   LinkNameId link_name_id = kInvalidLinkName;
 };
 
@@ -629,6 +634,7 @@ struct LirModule {
     std::string name;
     std::string return_type_str;
     LirTypeRef return_type;
+    LirExtAttr return_ext_attr = LirExtAttr::None;
     LinkNameId link_name_id = kInvalidLinkName;
   };
 
@@ -670,15 +676,21 @@ struct LirModule {
   void merge_extern_decl_info(ExternDeclInfo& info, const std::string& name,
                               const std::string& ret_ty,
                               const LirTypeRef& ret_type,
+                              LirExtAttr return_ext_attr,
                               LinkNameId link_name_id) {
     if (info.name.empty()) info.name = name;
     if (info.return_type_str == "void" && ret_ty != "void") {
       info.return_type_str = ret_ty;
       info.return_type = ret_type;
+      info.return_ext_attr = return_ext_attr;
     } else if (info.return_type_str == ret_ty &&
                !info.return_type.has_struct_name_id() &&
                ret_type.has_struct_name_id()) {
       info.return_type = ret_type;
+    }
+    if (info.return_ext_attr == LirExtAttr::None &&
+        return_ext_attr != LirExtAttr::None) {
+      info.return_ext_attr = return_ext_attr;
     }
     if (info.link_name_id == kInvalidLinkName &&
         link_name_id != kInvalidLinkName) {
@@ -691,7 +703,8 @@ struct LirModule {
   /// semantic id exists yet. Upgrades void returns to concrete types when a
   /// non-void call is seen.
   void record_extern_decl(const std::string& name, const std::string& ret_ty,
-                          LinkNameId link_name_id = kInvalidLinkName) {
+                          LinkNameId link_name_id = kInvalidLinkName,
+                          LirExtAttr return_ext_attr = LirExtAttr::None) {
     if (link_name_id == kInvalidLinkName) {
       const LinkNameId known_link_name_id = link_names.find(name);
       if (known_link_name_id != kInvalidLinkName &&
@@ -709,25 +722,29 @@ struct LirModule {
         if (by_name != extern_decl_name_map.end()) {
           ExternDeclInfo info = std::move(by_name->second);
           extern_decl_name_map.erase(by_name);
-          merge_extern_decl_info(info, name, ret_ty, ret_type, link_name_id);
+          merge_extern_decl_info(info, name, ret_ty, ret_type, return_ext_attr,
+                                 link_name_id);
           extern_decl_link_name_map.emplace(link_name_id, std::move(info));
           return;
         }
         extern_decl_link_name_map.emplace(
-            link_name_id, ExternDeclInfo{name, ret_ty, ret_type, link_name_id});
+            link_name_id,
+            ExternDeclInfo{name, ret_ty, ret_type, return_ext_attr, link_name_id});
         return;
       }
-      merge_extern_decl_info(it->second, name, ret_ty, ret_type, link_name_id);
+      merge_extern_decl_info(it->second, name, ret_ty, ret_type,
+                             return_ext_attr, link_name_id);
       return;
     }
 
     auto it = extern_decl_name_map.find(name);
     if (it == extern_decl_name_map.end()) {
       extern_decl_name_map.emplace(
-          name, ExternDeclInfo{name, ret_ty, ret_type, link_name_id});
+          name, ExternDeclInfo{name, ret_ty, ret_type, return_ext_attr, link_name_id});
       return;
     }
-    merge_extern_decl_info(it->second, name, ret_ty, ret_type, link_name_id);
+    merge_extern_decl_info(it->second, name, ret_ty, ret_type,
+                           return_ext_attr, link_name_id);
   }
 
   // Legacy type declaration shadow kept for compatibility with older output

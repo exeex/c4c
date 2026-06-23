@@ -69,6 +69,20 @@ bool is_aarch64_fixed_hfa_arg(const c4c::hir::Module& mod, const TypeSpec* fixed
          classify_aarch64_hfa(mod, *fixed_param_ts).has_value();
 }
 
+bool llvm_target_is_rv64(const c4c::TargetProfile& target_profile) {
+  return target_profile.arch == c4c::TargetArch::Riscv64;
+}
+
+LirExtAttr rv64_integer_ext_attr_for_abi_type(const c4c::hir::Module& mod,
+                                              const TypeSpec& ts) {
+  if (!llvm_target_is_rv64(mod.target_profile) ||
+      ts.ptr_level != 0 || ts.array_rank != 0 ||
+      !is_any_int(ts.base) || int_bits(ts.base) != 32) {
+    return LirExtAttr::None;
+  }
+  return is_signed_int(ts.base) ? LirExtAttr::SignExt : LirExtAttr::ZeroExt;
+}
+
 }  // namespace
 
 bool StmtEmitter::callee_needs_va_list_by_value_copy(const CallTargetInfo& call_target,
@@ -124,6 +138,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   const FnPtrSig* callee_fn_ptr_sig = call_target.callee_fn_ptr_sig;
   const TypeSpec* fixed_param_ts = nullptr;
   TypeSpec fn_ptr_param_ts{};
+  bool is_variadic_arg = false;
   if (target_fn) {
     const bool has_void_param_list = target_fn->params.size() == 1 &&
                                      target_fn->params[0].type.spec.base == TB_VOID &&
@@ -131,12 +146,16 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
                                      target_fn->params[0].type.spec.array_rank == 0;
     if (!has_void_param_list && arg_index < target_fn->params.size()) {
       fixed_param_ts = &target_fn->params[arg_index].type.spec;
+    } else if (target_fn->attrs.variadic) {
+      is_variadic_arg = true;
     }
   } else if (callee_fn_ptr_sig) {
     const bool has_void_pl = sig_has_void_param_list(*callee_fn_ptr_sig);
     if (!has_void_pl && arg_index < sig_param_count(*callee_fn_ptr_sig)) {
       fn_ptr_param_ts = sig_param_type(*callee_fn_ptr_sig, arg_index);
       fixed_param_ts = &fn_ptr_param_ts;
+    } else if (sig_is_variadic(*callee_fn_ptr_sig)) {
+      is_variadic_arg = true;
     }
   }
 
@@ -338,7 +357,11 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
 
   const std::string out_llvm_ty = llvm_value_ty(mod_, out_arg_ts);
   PreparedCallArg out_arg{
-      {{out_llvm_ty, arg, lir_call_type_ref(out_llvm_ty, module_, mod_, out_arg_ts)}},
+      {{.type = out_llvm_ty,
+        .operand = arg,
+        .type_ref = lir_call_type_ref(out_llvm_ty, module_, mod_, out_arg_ts),
+        .ext_attr = is_variadic_arg ? rv64_integer_ext_attr_for_abi_type(mod_, out_arg_ts)
+                                    : LirExtAttr::None}},
       false};
   if (amd64_state && !out_arg.skip) {
     amd64_account_type_if_needed(mod_, out_arg_ts, amd64_state);

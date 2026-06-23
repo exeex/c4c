@@ -70,6 +70,18 @@ std::string resolve_extern_decl_name(const LirExternDecl& decl,
   return resolved_name.empty() ? decl.name : std::string(resolved_name);
 }
 
+std::string_view render_ext_attr(LirExtAttr attr) {
+  switch (attr) {
+    case LirExtAttr::SignExt:
+      return "signext ";
+    case LirExtAttr::ZeroExt:
+      return "zeroext ";
+    case LirExtAttr::None:
+      return {};
+  }
+  return {};
+}
+
 // Render a single LirInst to text.
 void render_inst(std::ostringstream& os, const LirInst& inst,
                  const c4c::LinkNameTable& link_names) {
@@ -276,7 +288,8 @@ void render_inst(std::ostringstream& os, const LirInst& inst,
                                  {LirOperandKind::SsaValue}, true)
          << " = ";
     }
-    os << "call " << require_type_ref(op->return_type, "LirCallOp.return_type", true) << " ";
+    os << "call " << render_ext_attr(op->return_ext_attr)
+       << require_type_ref(op->return_type, "LirCallOp.return_type", true) << " ";
     LirCallOp validated = *op;
     validated.callee = require_operand_kind(op->callee, "LirCallOp.callee",
                                             {LirOperandKind::SsaValue,
@@ -580,7 +593,8 @@ std::string print_llvm(const LirModule& mod) {
 
   // External function declarations.
   for (const auto& ed : mod.extern_decls) {
-    out << "declare " << ed.return_type_str << " "
+    out << "declare " << render_ext_attr(ed.return_ext_attr)
+        << ed.return_type_str << " "
         << llvm_global_sym(resolve_extern_decl_name(ed, mod.link_names))
         << "(...)\n";
   }

@@ -72,7 +72,8 @@ inline std::vector<LirCallArg> lir_call_structured_args(
          .type_ref = arg.type_ref,
          .aarch64_hfa_lane_count = arg.aarch64_hfa_lane_count,
          .aarch64_hfa_lane_index = arg.aarch64_hfa_lane_index,
-         .aarch64_stack_align_bytes = arg.aarch64_stack_align_bytes});
+         .aarch64_stack_align_bytes = arg.aarch64_stack_align_bytes,
+         .ext_attr = arg.ext_attr});
   }
   return structured_args;
 }
@@ -86,6 +87,8 @@ inline LirCallOp make_lir_call_op_with_return_type_ref(
     LinkNameId direct_callee_link_name_id = kInvalidLinkName,
     std::optional<LirCallSignature> callee_signature = std::nullopt) {
   const auto formatted = format_lir_call_fields(callee_type_suffix, args);
+  const LirExtAttr return_ext_attr =
+      callee_signature ? callee_signature->return_ext_attr : LirExtAttr::None;
   return LirCallOp{std::string(trim_lir_arg_text(result)),
                    std::move(return_type),
                    std::string(trim_lir_arg_text(callee)),
@@ -94,7 +97,8 @@ inline LirCallOp make_lir_call_op_with_return_type_ref(
                    formatted.args_str,
                    lir_call_arg_type_refs(formatted, args),
                    std::move(callee_signature),
-                   lir_call_structured_args(args)};
+                   lir_call_structured_args(args),
+                   return_ext_attr};
 }
 
 inline LirCallOp make_lir_call_op(std::string result,
