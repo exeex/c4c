@@ -55,6 +55,26 @@ control-flow emission has already progressed past the loop condition.
   facts rather than weakening runtime contracts or marking the candidate
   unsupported.
 
+## Completion Note
+
+Closed on 2026-06-23 after Step 3/4 i16 halfword repair satisfied the source
+idea criteria. Focused i16 local-array select/store dump/codegen/runtime
+coverage is positive and preserves halfword semantics with `lh`/`sh`.
+
+`src/00143.c` was reprobed under
+`build/rv64_c_testsuite_probe_latest/triage_321_step3/`. BIR dump,
+prepared-BIR dump, RV64 emit, and clang link all returned 0. The emitted RV64
+now contains semantic halfword select/store bodies for the former i16
+local-array publication boundary. qemu exits 132 because `.Lmain_block_2` is an
+empty loop-exit successor at the end of emitted text and falls into the next
+section. That is a separate control-flow/empty-exit residual, now tracked by
+`ideas/open/322_rv64_empty_loop_exit_successor_emission.md`.
+
+Close gate: backend regression guard passed with
+`test_before.log` versus `test_after.log` using
+`--allow-non-decreasing-passed`: 278 passed, 1 failed before and after, with
+the existing `backend_riscv_prepared_edge_publication` failure unchanged.
+
 ## Reviewer Reject Signals
 
 - The implementation special-cases `src/00143.c`, `.Lmain_block_1`,
