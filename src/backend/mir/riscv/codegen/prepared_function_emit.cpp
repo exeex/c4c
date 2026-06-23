@@ -55,10 +55,14 @@ bool append_simple_prepared_bir_function_asm(
   const std::string function_name = function.name.empty() ? "anon" : function.name;
   std::size_t prepared_frame_size = 0;
   const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan = nullptr;
+  const c4c::backend::prepare::PreparedControlFlowFunction* control_flow = nullptr;
   const auto function_name_id = prepared_function_id_for(prepared.names, function);
   if (function_name_id.has_value()) {
     frame_plan = c4c::backend::prepare::find_prepared_frame_plan(
         prepared,
+        *function_name_id);
+    control_flow = c4c::backend::prepare::find_prepared_control_flow_function(
+        prepared.control_flow,
         *function_name_id);
     if (frame_plan != nullptr) {
       prepared_frame_size = frame_plan->frame_size_bytes;
@@ -307,6 +311,47 @@ bool append_simple_prepared_bir_function_asm(
 
         if (block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named) {
           return false;
+        }
+        if (control_flow != nullptr) {
+          const auto* branch_condition =
+              c4c::backend::prepare::find_prepared_branch_condition(
+                  *control_flow,
+                  *block_label_id);
+          if (branch_condition != nullptr &&
+              branch_condition->condition_value.kind ==
+                  c4c::backend::bir::Value::Kind::Named &&
+              branch_condition->condition_value.name == block.terminator.condition.name) {
+            const auto prepared_targets =
+                c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
+                    prepared.names,
+                    control_flow,
+                    *block_label_id,
+                    block,
+                    *branch_condition);
+            if (!prepared_targets.has_value()) {
+              return false;
+            }
+            const std::string prepared_true_asm_label = riscv_local_block_label(
+                function_name,
+                c4c::backend::prepare::prepared_block_label(
+                    prepared.names,
+                    prepared_targets->true_label));
+            const std::string prepared_false_asm_label = riscv_local_block_label(
+                function_name,
+                c4c::backend::prepare::prepared_block_label(
+                    prepared.names,
+                    prepared_targets->false_label));
+            const auto prepared_branch = emit_riscv_prepared_fused_compare_branch(
+                *branch_condition,
+                prepared.names,
+                lookups,
+                prepared_true_asm_label,
+                prepared_false_asm_label);
+            if (prepared_branch.has_value()) {
+              out += *prepared_branch;
+              break;
+            }
+          }
         }
         const auto compare_it = compares.find(block.terminator.condition.name);
         if (compare_it == compares.end()) {

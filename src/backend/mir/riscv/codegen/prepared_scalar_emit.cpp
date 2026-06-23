@@ -42,6 +42,31 @@ std::optional<std::string> riscv_branch_mnemonic(
   }
 }
 
+void normalize_riscv_compare_branch(c4c::backend::bir::BinaryOpcode& opcode,
+                                    const c4c::backend::bir::Value*& lhs,
+                                    const c4c::backend::bir::Value*& rhs) {
+  switch (opcode) {
+    case c4c::backend::bir::BinaryOpcode::Sle:
+      opcode = c4c::backend::bir::BinaryOpcode::Sge;
+      std::swap(lhs, rhs);
+      break;
+    case c4c::backend::bir::BinaryOpcode::Ule:
+      opcode = c4c::backend::bir::BinaryOpcode::Uge;
+      std::swap(lhs, rhs);
+      break;
+    case c4c::backend::bir::BinaryOpcode::Sgt:
+      opcode = c4c::backend::bir::BinaryOpcode::Slt;
+      std::swap(lhs, rhs);
+      break;
+    case c4c::backend::bir::BinaryOpcode::Ugt:
+      opcode = c4c::backend::bir::BinaryOpcode::Ult;
+      std::swap(lhs, rhs);
+      break;
+    default:
+      break;
+  }
+}
+
 std::optional<std::int64_t> prepared_immediate_i32_for_value(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -103,35 +128,19 @@ std::optional<std::string> emit_riscv_simple_compare_branch(
     const SimpleCompare& compare,
     std::string_view true_label,
     std::string_view false_label) {
-  const auto lhs_imm = simple_integer_immediate(compare.lhs);
-  const auto rhs_imm = simple_integer_immediate(compare.rhs);
+  const auto* lhs_value = &compare.lhs;
+  const auto* rhs_value = &compare.rhs;
+  c4c::backend::bir::BinaryOpcode opcode = compare.opcode;
+  normalize_riscv_compare_branch(opcode, lhs_value, rhs_value);
+
+  const auto lhs_imm = simple_integer_immediate(*lhs_value);
+  const auto rhs_imm = simple_integer_immediate(*rhs_value);
   if (!lhs_imm.has_value() || !rhs_imm.has_value()) {
     return std::nullopt;
   }
 
-  c4c::backend::bir::BinaryOpcode opcode = compare.opcode;
   std::int64_t lhs = *lhs_imm;
   std::int64_t rhs = *rhs_imm;
-  switch (opcode) {
-    case c4c::backend::bir::BinaryOpcode::Sle:
-      opcode = c4c::backend::bir::BinaryOpcode::Sge;
-      std::swap(lhs, rhs);
-      break;
-    case c4c::backend::bir::BinaryOpcode::Ule:
-      opcode = c4c::backend::bir::BinaryOpcode::Uge;
-      std::swap(lhs, rhs);
-      break;
-    case c4c::backend::bir::BinaryOpcode::Sgt:
-      opcode = c4c::backend::bir::BinaryOpcode::Slt;
-      std::swap(lhs, rhs);
-      break;
-    case c4c::backend::bir::BinaryOpcode::Ugt:
-      opcode = c4c::backend::bir::BinaryOpcode::Ult;
-      std::swap(lhs, rhs);
-      break;
-    default:
-      break;
-  }
 
   const auto mnemonic = riscv_branch_mnemonic(opcode);
   if (!mnemonic.has_value()) {
@@ -142,6 +151,40 @@ std::optional<std::string> emit_riscv_simple_compare_branch(
   out += "    li t0, " + std::to_string(lhs) + "\n";
   out += "    li t1, " + std::to_string(rhs) + "\n";
   out += "    " + *mnemonic + " t0, t1, " + std::string(true_label) + "\n";
+  out += "    j " + std::string(false_label) + "\n";
+  return out;
+}
+
+std::optional<std::string> emit_riscv_prepared_fused_compare_branch(
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::string_view true_label,
+    std::string_view false_label) {
+  if (branch_condition.kind !=
+          c4c::backend::prepare::PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition.predicate.has_value() ||
+      !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  const c4c::backend::bir::Value* lhs_value = &*branch_condition.lhs;
+  const c4c::backend::bir::Value* rhs_value = &*branch_condition.rhs;
+  c4c::backend::bir::BinaryOpcode opcode = *branch_condition.predicate;
+  normalize_riscv_compare_branch(opcode, lhs_value, rhs_value);
+
+  const auto mnemonic = riscv_branch_mnemonic(opcode);
+  if (!mnemonic.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string out;
+  if (!emit_move_to_register(out, "t3", names, lookups, *lhs_value) ||
+      !emit_move_to_register(out, "t4", names, lookups, *rhs_value)) {
+    return std::nullopt;
+  }
+  out += "    " + *mnemonic + " t3, t4, " + std::string(true_label) + "\n";
   out += "    j " + std::string(false_label) + "\n";
   return out;
 }

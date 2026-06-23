@@ -1,38 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/311_rv64_ordinary_control_expression_completion.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair The First Semantic Emission Boundary
+Current Step ID: 4
+Current Step Title: Probe Nearby Runtime Candidates
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Add Focused Control/Expression Coverage is implemented as a test-only
-packet. Added focused RV64 prepared-BIR dump coverage for semantic fused-compare
-conditional branches without c-testsuite filenames:
+Step 3: Repair The First Semantic Emission Boundary is implemented for RV64
+prepared fused-compare `cond_branch` emission. The RV64 prepared function
+emitter now looks up the prepared control-flow branch condition for the current
+block, verifies it matches the terminator condition, and lowers
+`kind=fused_compare` by materializing the prepared compare operands through the
+existing prepared value-home helpers before emitting the true branch plus false
+fallthrough jump. The prepared path resolves and validates true/false branch
+targets through `resolve_prepared_compare_branch_target_labels`, then formats
+the RV64 assembly targets from those prepared label IDs. The fallback
+simple-compare path remains unchanged.
 
-- `backend_dump_riscv64_prepared_fused_compare_loop_predicate` uses
-  `tests/backend/case/riscv64_prepared_fused_compare_loop_predicate.c` and
-  asserts a local-loaded loop predicate flows through `bir.ne`, `bir.cond_br`,
-  and prepared `branch_condition ... kind=fused_compare ... true=block_2
-  false=block_3`, with frame-slot addressing for the loaded predicate source.
-- `backend_dump_riscv64_prepared_fused_compare_call_result_predicate` uses
-  `tests/backend/case/riscv64_prepared_fused_compare_call_result_predicate.c`
-  and asserts a same-module call result flows through `bir.ne`, `bir.cond_br`,
-  the prepared fused-compare branch condition, and the prepared call-result
-  publication plan.
-
-The new tests are semantic prepared-control-flow coverage. They intentionally
-do not claim RV64 final assembly/runtime success before the implementation
-lowers the prepared fused-compare `cond_branch` tail.
+The repair is semantic rather than filename-shaped. It supports prepared
+register, rematerializable immediate, simple immediate, and supported i32 stack
+slot homes through the same `emit_move_to_register` path used by nearby RV64
+prepared scalar emission. Added emitted-assembly route coverage for both the
+local-loaded loop predicate and same-module call-result predicate cases; the
+existing prepared-BIR dump coverage remains in place.
 
 ## Suggested Next
 
-Execute the next implementation packet for Step 3: lower RV64 prepared
-`cond_branch` terminators with `branch_condition kind=fused_compare` after
-operand publication, covering both local-loaded loop predicates and call-result
-predicates through the same prepared-control-flow contract.
+Execute Step 4: probe nearby RV64 c-testsuite runtime candidates, including
+`src/00008.c`, `src/00030.c`, and `src/00105.c`, and classify moved versus
+still-failing outcomes by mechanism.
 
 ## Watchouts
 
@@ -40,33 +38,36 @@ predicates through the same prepared-control-flow contract.
 - Do not downgrade supported-path expectations or mark cases unsupported.
 - Keep stack/local address materialization and external-stub policy separate
   unless they directly block ordinary control/expression completion proof.
-- The current first boundary is not a generic append-epilogue problem. The
-  emitted functions stop before the prepared fused compare/conditional branch;
-  appending a `ret` would hide the missing control transfer instead of repairing
-  it.
-- `backend_riscv_prepared_edge_publication` remains the existing same-scope
-  backend failure. The corrected regression guard shows this packet added only
-  the two focused passing tests and introduced no new failures.
+- The prepared fused-compare emitter currently relies on the existing RV64
+  prepared value-home movement support; unsupported non-i32 or unsupported
+  stack/address homes should remain separate blockers rather than being hidden.
+- `backend_riscv_prepared_edge_publication` remains the existing out-of-scope
+  backend failure in the delegated `^backend_` subset.
 
 ## Proof
 
 Delegated proof command:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 
-Supervisor regenerated matching before/after backend logs with the dirty-worktree
-stash flow and ran:
+Result: build succeeded and `test_after.log` was produced. CTest reported
+`217/218` passing. The only failing test is the known out-of-scope
+`backend_riscv_prepared_edge_publication` failure:
+`RISC-V prepared module should emit a register edge move`.
+
+Supervisor regression guard:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
 
-Result: PASS. Same-scope regression guard reported before
-`passed=213 failed=1 total=214`, after `passed=215 failed=1 total=216`, delta
-`passed=2 failed=0`, and no new failing tests. The remaining failure is the
-pre-existing `backend_riscv_prepared_edge_publication`; both new focused tests
-pass in the after log.
+Result: PASS. Before `passed=215 failed=1 total=216`, after
+`passed=217 failed=1 total=218`, delta `passed=2 failed=0`, and no new failing
+tests.
 
-Additional direct check for the new coverage:
+Focused check run before the full subset:
 
-`ctest --test-dir build -j --output-on-failure -R 'backend_dump_riscv64_prepared_fused_compare'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route)_riscv64_prepared_fused_compare'`
 
-Result: `2/2` tests passed.
+Result: `4/4` tests passed, covering the two prepared-BIR dump tests and the
+two emitted-assembly route tests for fused-compare branch emission.
+Supervisor generated-assembly spot-check for the two focused route cases shows
+the expected `bne`/`beq` branches, false jumps, and returns.

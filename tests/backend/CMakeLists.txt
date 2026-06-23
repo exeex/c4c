@@ -312,6 +312,17 @@ c4c_add_backend_dump_flag_test(
   LABELS riscv64 prepared_control_flow fused_compare loop local_load
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_prepared_fused_compare_loop_predicate
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_fused_compare_loop_predicate.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_fused_compare_loop_predicate.s"
+  REQUIRED_SNIPPETS "main:|.Lmain_block_1:|lw t0, 0(sp)|mv t3, t0|li t4, 0|bne t3, t4, .Lmain_block_2|j .Lmain_block_3|.Lmain_block_2:|j .Lmain_block_1|.Lmain_block_3:|ret"
+  FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00008|src/00008.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_control_flow fused_compare loop local_load emission
+)
+
 c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_prepared_fused_compare_call_result_predicate
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_fused_compare_call_result_predicate.c"
@@ -321,6 +332,17 @@ c4c_add_backend_dump_flag_test(
   FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00030|src/00030.c"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 prepared_control_flow fused_compare call_result
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_prepared_fused_compare_call_result_predicate
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_fused_compare_call_result_predicate.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_fused_compare_call_result_predicate.s"
+  REQUIRED_SNIPPETS "rv64_predicate_value:|ret|main:|call rv64_predicate_value|mv t0, a0|mv t3, t0|li t4, 0|bne t3, t4, .Lmain_block_2|j .Lmain_block_3|.Lmain_block_2:|li a0, 1|ret|.Lmain_block_3:|li a0, 0|ret"
+  FORBIDDEN_SNIPPETS "define i32 @main()|bir.func @00030|src/00030.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_control_flow fused_compare call_result emission
 )
 
 function(c4c_add_backend_runtime_case test_name)

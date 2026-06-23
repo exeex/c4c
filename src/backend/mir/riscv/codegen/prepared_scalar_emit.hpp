@@ -35,6 +35,13 @@ struct SimpleCompare {
     std::string_view true_label,
     std::string_view false_label);
 
+[[nodiscard]] std::optional<std::string> emit_riscv_prepared_fused_compare_branch(
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::string_view true_label,
+    std::string_view false_label);
+
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_cast(
     const c4c::backend::bir::CastInst& cast,
     const c4c::backend::prepare::PreparedNameTables& names,
