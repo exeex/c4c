@@ -49,6 +49,25 @@ stack-homed before the branch.
 - Generated assembly does not fall through into the next function or truncate
   before emitting the required branch/return path for the focused cases.
 
+## Completion Note
+
+Closed on 2026-06-23 after Step 5 reclassification. Focused stack-homed fused
+compare dump/codegen/runtime coverage passes. Fresh evidence shows
+`src/00077.c` emits, links, and exits qemu with status 0.
+
+`src/00143.c` still fails link with an undefined `.Lmain_block_2`, but the
+emitted assembly has already emitted the stack-homed fused compare loop branch
+and truncates later inside `.Lmain_block_1`. Prepared evidence identifies the
+next body operations as the i32-to-i64 index cast plus i16 local-array
+select/store publication (`%t9.store0` family). That residual is outside this
+idea's compare/control-flow boundary and is tracked separately in
+`ideas/open/321_rv64_i16_local_array_select_store_publication.md`.
+
+Close gate: backend regression guard passed with
+`test_before.log` versus `test_after.log` using
+`--allow-non-decreasing-passed`: 274 passed, 1 failed before and after, with
+the existing `backend_riscv_prepared_edge_publication` failure unchanged.
+
 ## Reviewer Reject Signals
 
 - The implementation special-cases `src/00077.c`, `src/00143.c`, `%t5`, `%t1`,
