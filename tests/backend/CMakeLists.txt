@@ -540,6 +540,17 @@ c4c_add_backend_dump_flag_test(
   LABELS riscv64 pointer select pointer_local dump
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_pointer_typed_select_publication
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_typed_select_publication.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.select ne i32 %t0, 0, ptr %lv.value, 0|bir.store_local %lv.selected, ptr %t7|bir.store_local %lv.published, ptr %t8|select_chain function=main block=tern.end.6 value=%t7 root_is_select=yes|store_source function=main block=tern.end.6 inst=1 source=%t7 status=available"
+  FORBIDDEN_SNIPPETS "src/00144.c|riscv64_pointer_integer_select_chain"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 pointer select pointer_local expected_repair dump
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_pointer_to_pointer_local_address
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_to_pointer_local_address.c"
@@ -560,6 +571,17 @@ c4c_add_backend_codegen_route_test(
   FORBIDDEN_SNIPPETS "src/00144.c"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 pointer select pointer_local emission
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_pointer_typed_select_publication_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_typed_select_publication.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_typed_select_publication_expected_repair.s"
+  REQUIRED_SNIPPETS ".Lmain_tern_end_6:|mv t0, t0"
+  FORBIDDEN_SNIPPETS "ret|src/00144.c|riscv64_pointer_integer_select_chain"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 pointer select pointer_local expected_repair emission
 )
 
 c4c_add_backend_dump_flag_test(

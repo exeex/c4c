@@ -8,64 +8,51 @@ Current Step Title: Iterate Or Split Remaining Candidate Buckets
 
 ## Just Finished
 
-Completed idea 316 Step 4 evidence re-evaluation after the pointer-to-pointer
-and pointer/integer select-chain repairs. Reprobed `src/00005.c`,
-`src/00077.c`, `src/00143.c`, and `src/00144.c` with BIR, prepared-BIR, RV64
-assembly emission, clang link, and qemu execution where possible. Probe
-artifacts are under
-`build/rv64_c_testsuite_probe_latest/triage_316_step4/`.
+Added focused expected-repair backend coverage for the remaining idea 316
+in-scope residual: pointer-typed select materialization/publication into a
+local pointer slot. The new case is
+`tests/backend/case/riscv64_pointer_typed_select_publication.c`; it is smaller
+than `src/00144.c` and distinct from the existing
+`riscv64_pointer_integer_select_chain.c` fixture because the selected value is
+itself `ptr` typed rather than an I32 select followed by `inttoptr`.
 
-Classification from the reprobe:
+New expected-repair tests:
 
-- `src/00005.c`: now passes emit, link, and qemu. This appears covered by the
-  Step 3 pointer-to-pointer local-address repair.
-- `src/00077.c`: emits and links, but qemu exits 139. The first bad emitted
-  code is a truncated `foo` after `lw s2, 0(a0)`; prepared BIR shows the first
-  compare result `%t5` stack-homed before the fused branch. This looks like a
-  separate stack-homed compare/control-flow residual before later pointer
-  checks.
-- `src/00143.c`: emits and links, but qemu exits 132. Emission truncates in the
-  first loop condition after stack-homing `%t0`; prepared BIR has
-  `branch_condition for.cond.1` from `slt i32 %t0, 39` with `%t0` and `%t1`
-  stack-homed. This also looks like a separate stack-homed compare/control-flow
-  residual before later array/select work.
-- `src/00144.c`: emits and links, but qemu exits 132. Prepared BIR has
-  `%t16 = bir.select ne i32 %t9, 0, ptr 0, 0` with available select-chain and
-  store-source records, while assembly truncates after pointer-select no-op
-  moves in `tern.end.15`. This remains an in-scope pointer/select residual, but
-  specifically pointer-typed select materialization/publication rather than the
-  Step 3 I32 select-chain repair.
+- `backend_dump_riscv64_pointer_typed_select_publication`
+- `backend_codegen_route_riscv64_pointer_typed_select_publication_expected_repair`
+
+The dump test asserts the prepared `ptr` select, local pointer publication, and
+available select/store-source records. The codegen route test asserts the
+current RV64 truncation after `.Lmain_tern_end_6` with no `ret`. No runtime
+expected-repair test was added because the RV64 runtime harness only supports
+expected run-code checks and does not provide a green expected-crash/truncated
+assembly mode.
 
 ## Suggested Next
 
-Split or schedule a focused repair for the `src/00144.c` pointer-typed select
-materialization/publication residual. Treat `src/00077.c` and `src/00143.c` as
-separate stack-homed compare/control-flow work unless the plan owner chooses to
-expand the current route.
+Repair pointer-typed select materialization/publication for RV64 prepared
+emission, then convert the new expected-repair coverage to positive semantic
+dump/codegen/runtime contracts if qemu execution is supported after repair.
 
 ## Watchouts
 
-- This packet is evidence-only; it does not claim new backend capability beyond
-  classification.
-- `src/00005.c` is now a passing representative and should not drive more
-  pointer-to-pointer repair in this idea.
-- `src/00077.c` and `src/00143.c` still need re-evaluation after stack-homed
-  compare/control-flow emission is repaired; their later pointer/array bodies
-  are not yet the first bad mechanism.
-- `src/00144.c` is the remaining in-family pointer/select candidate and should
-  not be conflated with the stack-homed compare/control-flow failures.
+- Do not weaken the existing positive `riscv64_pointer_integer_select_chain`
+  tests; this new fixture covers a different `ptr` select boundary.
+- The expected-repair codegen test intentionally proves current truncation
+  without naming `src/00144.c` or depending on one stack offset.
+- `src/00077.c` and `src/00143.c` remain classified as separate stack-homed
+  compare/control-flow residuals from the prior Step 4 reprobe.
 
 ## Proof
 
-Ran build proof `cmake --build --preset default -j`, then captured BIR,
-prepared-BIR, emitted RV64 assembly, clang link, and qemu outcomes for
-`src/00005.c`, `src/00077.c`, `src/00143.c`, and `src/00144.c` into
-`build/rv64_c_testsuite_probe_latest/triage_316_step4/`. Recorded
-`probe_results.tsv` and `summary.md` there.
+Ran focused proof
+`cmake --build --preset default -j && ctest --test-dir build -j
+--output-on-failure -R 'backend_(dump|codegen_route)_riscv64_pointer_typed_select_publication'`,
+which passed 2/2 tests.
 
 Ran delegated proof
 `cmake --build --preset default -j && ctest --test-dir build -j
---output-on-failure -R '^backend_' > test_after.log`. The build was current
-and the backend subset still did not pass because
-`backend_riscv_prepared_edge_publication` failed with "RISC-V prepared module
-should emit a register edge move"; `test_after.log` is the proof log.
+--output-on-failure -R '^backend_' > test_after.log`. The new expected-repair
+tests passed in the full backend run. The backend subset still did not pass
+because `backend_riscv_prepared_edge_publication` failed with "RISC-V prepared
+module should emit a register edge move"; `test_after.log` is the proof log.
