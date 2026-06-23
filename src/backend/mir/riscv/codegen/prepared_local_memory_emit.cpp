@@ -815,19 +815,24 @@ std::optional<std::string> emit_riscv_simple_load_local(
         pointer_access->address.base_kind ==
             c4c::backend::prepare::PreparedAddressBaseKind::PointerValue &&
         pointer_access->address.pointer_value_name.has_value() &&
-        pointer_access->address.size_bytes == 1) {
-      const auto base_register = prepared_register_for_value_name_id(
+        pointer_access->address.size_bytes == 1 &&
+        pointer_access->address.can_use_base_plus_offset) {
+      std::string out;
+      const auto base_register = load_pointer_value_base_register(
+          out,
           context,
-          *pointer_access->address.pointer_value_name);
+          *pointer_access->address.pointer_value_name,
+          "t3");
       const auto destination_register =
           prepared_register_for_value(context, load.result);
       if (!base_register.has_value() || !destination_register.has_value() ||
           !fits_signed_12_bit_immediate(pointer_access->address.byte_offset)) {
         return std::nullopt;
       }
-      return "    lb " + *destination_register + ", " +
+      out += "    lb " + *destination_register + ", " +
              std::to_string(pointer_access->address.byte_offset) + "(" +
              *base_register + ")\n";
+      return out;
     }
   }
 
