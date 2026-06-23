@@ -518,6 +518,50 @@ c4c_add_backend_codegen_route_test(
   LABELS riscv64 prepared_local_address array_subobject i8_load pointer_local emission
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_aggregate_local_self_pointer_chain_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_self_pointer_chain.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.store_local %lv.node.8, i32 9|bir.store_local %lv.node.0, ptr %lv.node|bir.load_local ptr %t5.addr, addr %lv.node|bir.load_local ptr %t7.addr, addr %t5|bir.load_local i32 %t9.addr, addr %t7+8|base=pointer_value result=%t5 pointer=%lv.node|base=pointer_value result=%t7 pointer=%t5|base=pointer_value result=%t9 pointer=%t7"
+  FORBIDDEN_SNIPPETS "define i32 @main()|src/00019.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 aggregate local pointer_local aggregate_subobject expected_repair dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_aggregate_local_self_pointer_chain_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_self_pointer_chain.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_aggregate_local_self_pointer_chain.s"
+  REQUIRED_SNIPPETS "main:|li t1, 9|sw t1, 8(sp)|sd s1, 0(sp)"
+  FORBIDDEN_SNIPPETS "lw|ret"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 aggregate local pointer_local aggregate_subobject expected_repair emission
+)
+
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_aggregate_local_anonymous_union_fields_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_anonymous_union_fields.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.store_local %lv.value.0, i32 1|bir.store_local %lv.value.4, i32 2, addr %lv.value.4|bir.store_local %lv.value.8, i32 3, addr %lv.value.8|bir.store_local %lv.value.12, i32 4|bir.load_local i32 %t15.addr, addr %lv.value.4|bir.load_local i32 %t25.addr, addr %lv.value.4|bir.load_local i32 %t36.addr, addr %lv.value.8|range_verdict=proven_out_of_bounds"
+  FORBIDDEN_SNIPPETS "define i32 @main()|src/00046.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 aggregate local aggregate_subobject anonymous_union expected_repair dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_aggregate_local_anonymous_union_fields_expected_repair
+  SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_anonymous_union_fields.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_aggregate_local_anonymous_union_fields.s"
+  REQUIRED_SNIPPETS "main:|li t1, 1|sw t1, 0(sp)|mv t0, t0"
+  FORBIDDEN_SNIPPETS "lw|ret"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 aggregate local aggregate_subobject anonymous_union expected_repair emission
+)
+
 function(c4c_add_backend_runtime_case test_name)
   set(options)
   set(one_value_args SRC)
