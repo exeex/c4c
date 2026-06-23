@@ -59,6 +59,31 @@ advancing from the current loop-carried `from`/`to` values.
 - Repairs consume or improve prepared pointer/local publication facts rather
   than target-local source scans or testcase-shaped fallback matching.
 
+## Completion Note
+
+Closed on 2026-06-23 after Step 5 reprobe showed the focused loop-carried
+pointer post-increment residual was repaired. The focused
+`backend_(dump|codegen_route|rv64_runtime)_riscv64_loop_carried_pointer_postincrement`
+coverage is positive. In `src/00143.c`, Duff `block_6` now loads current
+`%lv.from`/`%lv.to`, computes next pointer values with `addi ... 2`, stores
+the updated pointer locals, and copies the halfword through the old pointer
+value.
+
+`src/00143.c` still emits and links but qemu exits 139. The remaining failure
+is classified as `separate-duff-fallthrough-pointer-update-publication-residual`.
+The first bad block is `block_9`: BIR stores `%t39` and `%t42` into
+`%lv.from`/`%lv.to`, but there are no `bir.add ptr` producer instructions for
+those next-pointer values. Prepared-BIR gives `%t39` and `%t42` stack homes
+with `source_producer=unknown`, and emitted RV64 loads uninitialized stack
+homes before publishing them as pointer locals. That residual is outside idea
+323's repaired current-pointer consumption path and is tracked by
+`ideas/open/324_rv64_duff_fallthrough_pointer_update_producers.md`.
+
+Close gate: existing accepted backend guard state passed with
+`test_before.log` compared to itself using `--allow-non-decreasing-passed`:
+284 passed, 1 failed before and after, with the existing
+`backend_riscv_prepared_edge_publication` failure unchanged.
+
 ## Reviewer Reject Signals
 
 - The implementation special-cases `src/00143.c`, Duff's-device block layout,
