@@ -49,6 +49,32 @@ returned function-address values and indirect calls.
 - RV64 emission uses semantic function-address and indirect-call lowering, not
   hard-coded symbol names or candidate-specific control flow.
 
+## Completion Note
+
+Closed after Step 5 evidence in
+`build/rv64_c_testsuite_probe_latest/triage_315_step5/summary.md` and
+`probe_results.tsv`.
+
+Both source-idea candidate cases now pass:
+
+- `src/00087.c`: emit `0`, clang `0`, qemu `0`, classification `pass`.
+- `src/00124.c`: emit `0`, clang `0`, qemu `0`, classification `pass`.
+
+The final route covers same-module function-address materialization for local
+function-pointer storage, register-backed `jalr` indirect-call emission,
+same-module function-pointer return materialization, null function-pointer
+return emission, explicit same-module symbol lookup, and chained indirect-call
+use. Focused backend coverage includes positive dump, codegen-route, and RV64
+runtime tests for both local-storage and return-chain function-pointer paths.
+
+No separate residual remained after Step 5, so no follow-up idea was created.
+
+Close-time guard: `cmake --build --preset default -j` passed, then
+`ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+matched the rolled-forward `test_before.log` backend subset. The regression
+guard passed with `--allow-non-decreasing-passed`: 245 passed, 1 accepted
+existing failure (`backend_riscv_prepared_edge_publication`), 0 new failures.
+
 ## Reviewer Reject Signals
 
 - The route fixes only `00087` by hard-coding `foo`, a field offset, or a local
