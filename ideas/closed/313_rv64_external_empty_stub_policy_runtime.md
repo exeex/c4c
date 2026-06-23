@@ -140,6 +140,32 @@ Representative evidence called out by triage:
 - Remaining runtime failures in this candidate bucket are documented as
   separate backend mechanisms if they are not caused by external empty stubs.
 
+## Completion Note
+
+Closed after Step 5 evidence in
+`build/rv64_c_testsuite_probe_latest/triage_313_step5/summary.md` and
+`probe_results.tsv`.
+
+The full 59-case candidate bucket now has no bodyless external-stub residuals:
+`src/00025.c` emits, links, and runs through the preserved `strlen`
+runtime-link path, while the other 58 candidates fail during emission with
+explicit `unsupported_external_call` diagnostics before runnable assembly is
+produced. Required representatives `src/00056.c`, `src/00125.c`,
+`src/00179.c`, and `src/00220.c` stop at the unsupported variadic `printf`
+boundary. Additional policy probes cover fixed-arity math and libc-style
+externals through `sin`, `fclose`, and `llvm.stackrestore` diagnostics.
+
+Broader libc, libm, string, variadic, and user-external runtime support remains
+outside this idea. Future work should open a separate source idea with
+per-symbol-family supported-runtime proof instead of treating those currently
+unsupported diagnostics as residual empty-stub failures.
+
+Close-time guard: `cmake --build --preset default -j` passed, then
+`ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+matched the rolled-forward `test_before.log` backend subset. The regression
+guard passed with `--allow-non-decreasing-passed`: 233 passed, 1 accepted
+existing failure (`backend_riscv_prepared_edge_publication`), 0 new failures.
+
 ## Reviewer Reject Signals
 
 - The implementation adds fake named bodies for c-testsuite-observed libc,
