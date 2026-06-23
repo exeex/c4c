@@ -8,42 +8,53 @@ Current Step Title: Cover Aggregate And Function-Pointer Local Flow
 
 ## Just Finished
 
-Step 4 implementation packet repaired the remaining `src/00130.c` local array
-element access tail.
+Step 5 evidence packet reprobed the aggregate-local and function-pointer local
+candidate set under
+`build/rv64_c_testsuite_probe_latest/triage_312_step5/` with emit -> clang ->
+qemu and a 5s timeout per phase.
 
-Fresh repro under
-`build/rv64_c_testsuite_probe_latest/triage_312_step4_00130/` showed `00130`
-emitted and linked but qemu exited 132. The emitted assembly stopped after the
-initial local stores and before any compare/return path. BIR/prepared-BIR
-showed the local subobject address was already published (`%t4` materialized
-from the frame slot at offset 7); the first bad point was the next local array
-byte load and sign-extension chain:
-`bir.load_local i8 %lv.arr.7`, `bir.sext i8 ... to i32`, and later
-`bir.load_local i8 ... addr %t31` through the pointer local.
+All 22 candidates emitted and linked. End-to-end qemu results were `13/22`
+passing. Passing cases were `00018`, `00026`, `00032`, `00037`, `00039`,
+`00043`, `00058`, `00072`, `00073`, `00078`, `00130`, `00137`, and `00138`.
+The Step 3/4 non-regression probes `00032`, `00072`, and `00130` remained
+green.
 
-RV64 prepared local memory emission now handles `i8` loads from frame slots and
-from prepared pointer-value accesses. RV64 prepared scalar cast emission now
-materializes `i8` sign/zero extension to `i32` into either a prepared register
-home or a 4-byte stack home. This keeps the repair on the local array/subobject
-access rule rather than adding filename, local-name, or offset-specific
-handling.
+Remaining runtime failures:
 
-Added focused backend coverage in
-`tests/backend/case/riscv64_prepared_local_array_i8_element_access.c` for a
-local `char[2][4]`, pointer-to-subarray, pointer-to-element, direct element
-load, pointer-value element load, and adjacent `int[4]` check. The dump,
-codegen-route, and rv64 runtime tests assert the prepared BIR shape, emitted
-`lb` paths, and end-to-end qemu success.
+- `00019`, `00046`, and `00140` are aggregate-local residuals. `00019` stops
+  after publishing `s.p = &s` and before chained aggregate pointer loads;
+  `00046` stops on nested union/struct field offset stores; `00140` stops at
+  aggregate byval parameter/local copy and also carries vararg/float aggregate
+  ABI surface. This is real aggregate-local evidence, but not one small
+  coherent repair family.
+- `00087` and `00124` are function-pointer residuals. `00087` stops before
+  storing function address `@foo` into a local struct field; `00124` additionally
+  needs returning a function address and an indirect call through the returned
+  pointer. Repairing only `00087` would be testcase-shaped because the real
+  function-pointer-use representative crosses into indirect-call/global
+  function-address policy.
+- `00005` remains a pointer-to-pointer local residual after the first pointer
+  dereference, outside aggregate/function-pointer Step 5.
+- `00077` is array parameter/local array pointer flow, outside aggregate and
+  function-pointer Step 5.
+- `00144` is pointer select/inttoptr/ptrtoint conditional flow, not local stack
+  address materialization.
+- `00143` remains broad indexed local array select/update plus switch-shaped
+  flow and should stay follow-up evidence.
 
-Runtime movement under
-`build/rv64_c_testsuite_probe_latest/triage_312_step4_00130/`: `00130`,
-`00032`, and `00072` all pass emit, clang, and qemu.
+No code/test repair was made in this packet because the remaining in-scope
+evidence splits across aggregate subobject access, aggregate byval ABI, and
+function-pointer indirect-call behavior. There is no single small coherent
+aggregate/function-pointer local materialization rule to implement without
+widening the packet.
 
 ## Suggested Next
 
-Run the Step 6 acceptance sweep for idea 312 candidates, then decide whether
-remaining failures are aggregate/function-pointer local flow for Step 5 or
-out-of-scope follow-up work.
+Run Step 6 acceptance/reclassification using the Step 5 sweep as the latest
+candidate baseline. Recommend closure or follow-up split rather than a Step 5
+local repair: aggregate subobject/byval handling and function-pointer indirect
+call/function-address handling should be separate initiatives if the supervisor
+wants them pursued.
 
 ## Watchouts
 
@@ -56,25 +67,22 @@ out-of-scope follow-up work.
 - `00130` is now an end-to-end proof for constant local subobject address
   publication, byte element loads, pointer-value byte loads, and narrow
   extension before branch compares.
-- `00143` remains too broad for this packet; keep it as indexed local
-  array/select-update-chain follow-up evidence.
+- Avoid accepting a narrow `00087` function-address store as Step 5 progress
+  without addressing `00124`; that would not prove function-pointer local use.
+- Keep `00143` as indexed local array/select-update-chain follow-up evidence.
 
 ## Proof
 
-Proof run:
+Evidence-only proof run:
 
-- `cmake --build --preset default -j`
-- `ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_prepared_local_array_(base|subobject|pointer_step|i8_element)'`
-- `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
-- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+- Reprobe candidate set with `./build/c4cll --codegen asm --target
+  riscv64-linux-gnu`, `clang --target=riscv64-linux-gnu`, and
+  `QEMU_LD_PREFIX=/usr/riscv64-linux-gnu qemu-riscv64`, each with a 5s timeout.
+- `build/rv64_c_testsuite_probe_latest/triage_312_step5/probe_results.tsv`
+  records the sweep.
+- Representative `.s`, `.bir.txt`, `.prepared-bir.txt`, and phase
+  stdout/stderr files are under
+  `build/rv64_c_testsuite_probe_latest/triage_312_step5/`.
 
-Results:
-
-- Build passed.
-- Focused local array subset passed `10/10`.
-- Backend subset produced `test_after.log`: `passed=229 failed=1 total=230`.
-  The only failing test is the pre-existing
-  `backend_riscv_prepared_edge_publication`.
-- Regression guard passed with `delta passed=3 failed=0` and no new failures.
-- Runtime probe results are in
-  `build/rv64_c_testsuite_probe_latest/triage_312_step4_00130/probe_results.tsv`.
+No build, CTest, or `test_after.log` was produced because this was an
+evidence-only packet with no code changes.
