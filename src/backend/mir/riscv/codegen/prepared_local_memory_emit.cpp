@@ -296,6 +296,43 @@ simple_store_source_publication_for(
   return selected;
 }
 
+std::optional<std::string> load_pointer_value_base_register(
+    std::string& out,
+    const PreparedCurrentInstructionContext& context,
+    c4c::ValueNameId value_name,
+    std::string_view scratch_register) {
+  const auto existing_register = prepared_register_for_value_name_id(
+      context,
+      value_name);
+  if (existing_register.has_value()) {
+    return existing_register;
+  }
+  if (context.lookups == nullptr || value_name == c4c::kInvalidValueName ||
+      scratch_register.empty()) {
+    return std::nullopt;
+  }
+  const auto value_id_it = context.lookups->value_homes.value_ids.find(value_name);
+  if (value_id_it == context.lookups->value_homes.value_ids.end()) {
+    return std::nullopt;
+  }
+  const auto home_it =
+      context.lookups->value_homes.homes_by_id.find(value_id_it->second);
+  if (home_it == context.lookups->value_homes.homes_by_id.end() ||
+      home_it->second == nullptr) {
+    return std::nullopt;
+  }
+  const auto& home = *home_it->second;
+  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+      !home.offset_bytes.has_value() ||
+      home.size_bytes != std::optional<std::size_t>{8} ||
+      !fits_signed_12_bit_load_offset(*home.offset_bytes)) {
+    return std::nullopt;
+  }
+  out += "    ld " + std::string{scratch_register} + ", " +
+         std::to_string(*home.offset_bytes) + "(sp)\n";
+  return std::string{scratch_register};
+}
+
 std::optional<std::string> emit_riscv_string_constant_address_materialization(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedAddressMaterialization& materialization,
@@ -449,14 +486,16 @@ std::optional<std::string> emit_riscv_simple_store_local(
           context,
           store);
       pointer_access != nullptr) {
-    const auto base_register = prepared_register_for_value_name_id(
+    std::string out;
+    const auto base_register = load_pointer_value_base_register(
+        out,
         context,
-        *pointer_access->address.pointer_value_name);
+        *pointer_access->address.pointer_value_name,
+        "t3");
     if (!base_register.has_value()) {
       return std::nullopt;
     }
     const std::string source_register = *base_register == "t1" ? "t3" : "t1";
-    std::string out;
     if (!emit_move_to_register(
             out,
             source_register,
@@ -556,17 +595,39 @@ std::optional<std::string> emit_riscv_simple_load_local(
             context,
             load);
         pointer_access != nullptr) {
-      const auto base_register = prepared_register_for_value_name_id(
+      std::string out;
+      const auto base_register = load_pointer_value_base_register(
+          out,
           context,
-          *pointer_access->address.pointer_value_name);
+          *pointer_access->address.pointer_value_name,
+          "t3");
       const auto destination_register =
           prepared_pointer_register_for_value(context, load.result);
-      if (!base_register.has_value() || !destination_register.has_value()) {
+      if (!base_register.has_value()) {
         return std::nullopt;
       }
-      return "    ld " + *destination_register + ", " +
+      if (destination_register.has_value()) {
+        out += "    ld " + *destination_register + ", " +
+               std::to_string(pointer_access->address.byte_offset) + "(" +
+               *base_register + ")\n";
+        return out;
+      }
+      const auto* destination_home = prepared_value_home_for(context, load.result);
+      if (destination_home == nullptr ||
+          destination_home->kind !=
+              c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+          !destination_home->offset_bytes.has_value() ||
+          destination_home->size_bytes != std::optional<std::size_t>{8} ||
+          !fits_signed_12_bit_load_offset(*destination_home->offset_bytes)) {
+        return std::nullopt;
+      }
+      const std::string destination_scratch = *base_register == "t3" ? "t1" : "t3";
+      out += "    ld " + destination_scratch + ", " +
              std::to_string(pointer_access->address.byte_offset) + "(" +
              *base_register + ")\n";
+      out += "    sd " + destination_scratch + ", " +
+             std::to_string(*destination_home->offset_bytes) + "(sp)\n";
+      return out;
     }
 
     const auto* access = simple_pointer_frame_slot_access_for(

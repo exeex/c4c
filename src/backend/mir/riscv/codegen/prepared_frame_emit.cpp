@@ -210,16 +210,7 @@ std::optional<std::int64_t> simple_frame_slot_sp_offset_for(
   }
   const auto materialization_offset =
       static_cast<std::size_t>(materialization.byte_offset);
-  if (materialization_offset > frame_slot->size_bytes) {
-    return std::nullopt;
-  }
-  if (frame_slot->offset_bytes >
-      static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) -
-          materialization_offset) {
-    return std::nullopt;
-  }
-  const auto stack_offset =
-      static_cast<std::int64_t>(frame_slot->offset_bytes + materialization_offset);
+  const auto stack_offset = static_cast<std::int64_t>(materialization_offset);
   if (!fits_signed_12_bit_immediate(stack_offset)) {
     return std::nullopt;
   }

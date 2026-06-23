@@ -526,7 +526,7 @@ c4c_add_backend_dump_flag_test(
   REQUIRED_SNIPPETS "bir.store_local %lv.p, ptr %lv.value|bir.store_local %lv.pp, ptr %lv.p|bir.load_local ptr %lv.pp|bir.store_local %t1.store.addr, i32 7, addr %t1|object #1 func=main name=%lv.p source_kind=local_slot type=ptr size=8 align=8 address_exposed=yes|address_materialization block=entry inst_index=2 kind=frame_slot result=%lv.p"
   FORBIDDEN_SNIPPETS "src/00005.c"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 prepared_local_address pointer_local pointer_to_pointer expected_repair dump
+  LABELS riscv64 prepared_local_address pointer_local pointer_to_pointer dump
 )
 
 c4c_add_backend_dump_flag_test(
@@ -541,14 +541,14 @@ c4c_add_backend_dump_flag_test(
 )
 
 c4c_add_backend_codegen_route_test(
-  backend_codegen_route_riscv64_pointer_to_pointer_local_address_expected_repair
+  backend_codegen_route_riscv64_pointer_to_pointer_local_address
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_to_pointer_local_address.c"
   TARGET_TRIPLE riscv64-linux-gnu
-  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_to_pointer_local_address_expected_repair.s"
-  REQUIRED_SNIPPETS ".globl main|sd t1,|ld s2,"
-  FORBIDDEN_SNIPPETS "ret|src/00005.c"
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_to_pointer_local_address.s"
+  REQUIRED_SNIPPETS ".globl main|sd t1,|ld s2,|ld t3, 0(s2)|sd t3,|ld t3,|sw t1, 0(t3)|ret"
+  FORBIDDEN_SNIPPETS "src/00005.c"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 prepared_local_address pointer_local pointer_to_pointer expected_repair emission
+  LABELS riscv64 prepared_local_address pointer_local pointer_to_pointer emission
 )
 
 c4c_add_backend_codegen_route_test(
@@ -778,6 +778,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_i8_element_access.c"
   CASE_TIMEOUT_SEC 10
   LABELS prepared_local_address array_subobject i8_load pointer_local
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_pointer_to_pointer_local_address
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_to_pointer_local_address.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS prepared_local_address pointer_local pointer_to_pointer
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_aggregate_local_self_pointer_chain
