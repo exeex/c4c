@@ -1,76 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/322_rv64_empty_loop_exit_successor_emission.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Normalize Empty Exit Successor Evidence
+Current Step ID: 2
+Current Step Title: Add Focused Empty Loop-Exit Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 evidence normalization for idea 322, focused on
-`src/00143.c` empty loop-exit successor emission.
+Completed Step 2 focused expected-repair coverage for idea 322, focused on a
+reachable empty loop-exit successor whose body is present in prepared BIR but
+omitted by current RV64 emission.
 
-Probe artifacts:
+New focused fixture:
 
-- BIR:
-  `build/rv64_c_testsuite_probe_latest/triage_322_step1/bir/src_00143_c.bir.txt`
-- prepared-BIR:
-  `build/rv64_c_testsuite_probe_latest/triage_322_step1/prepared/src_00143_c.prepared.txt`
-- RV64 assembly:
-  `build/rv64_c_testsuite_probe_latest/triage_322_step1/asm/src_00143_c.s`
-- linked binary:
-  `build/rv64_c_testsuite_probe_latest/triage_322_step1/bin/src_00143_c.bin`
-- linked objdump/symbols:
-  `build/rv64_c_testsuite_probe_latest/triage_322_step1/linked/`
-- command logs:
-  `build/rv64_c_testsuite_probe_latest/triage_322_step1/logs/`
-- summary:
-  `build/rv64_c_testsuite_probe_latest/triage_322_step1/summary.md`
-- status table:
-  `build/rv64_c_testsuite_probe_latest/triage_322_step1/probe_results.tsv`
+- `tests/backend/case/riscv64_empty_loop_exit_successor.c`
 
-Fresh status for `src/00143.c`:
+New CTest coverage:
 
-- `--dump-bir`: 0
-- `--dump-prepared-bir`: 0
-- RV64 asm emit: 0
-- clang link: 0
-- qemu: 132 (`SIGILL`)
+- `backend_dump_riscv64_empty_loop_exit_successor`
+- `backend_codegen_route_riscv64_empty_loop_exit_successor`
 
-First bad mechanism:
+Coverage contract:
 
-- Classification:
-  `emitted_empty_reachable_loop_exit_successor_body_omitted`.
-- BIR and prepared-BIR both keep `for.cond.1` as a conditional branch with
-  true successor `block_1` and false successor `block_2`.
-- `block_2` is not empty in BIR/prepared-BIR: it materializes the local array
-  base pointers into `%lv.from`/`%lv.to`, initializes `%lv.count`, computes
-  `%t21`, and begins a `block_2.switch.case.*` cascade.
-- RV64 assembly emits the loop false branch as `j .Lmain_block_2`, and it
-  defines `.Lmain_block_2:` at the end of the function text with no body,
-  branch, epilogue, or return.
-- The linked objdump resolves that jump to `0x132c <_IO_stdin_used>`, the next
-  section symbol, and qemu traps with `SIGILL`.
-- Semantic i16 body emission now precedes the runtime failure: the first loop
-  body contains repeated native `lh`/`sh` select-store sequences and branches
-  back through `.Lmain_for_latch_1`.
+- The dump test proves the loop false successor reaches a prepared block with
+  real pointer-local setup, switch/fused-compare control flow, pointer-value
+  memory access, and a semantic `bir.ret i32`.
+- The codegen route test records the current expected-repair RV64 failure:
+  current emission branches to a generated block label after native `lh`/`sh`
+  body emission, but the output has no valid `li a0`/`ret` epilogue path.
+- The fixture is independent of `src/00143.c`, `_IO_stdin_used`, linked
+  section layout, observed instruction addresses, and a fixed concrete
+  `.Lmain_block_2` spelling.
 
-Route distinction:
+Previous Step 1 evidence remains the source classification:
 
-- Not idea 321: i16 local-array select/store publication is now emitted with
-  halfword operations before the failure.
-- Not idea 319: the false successor label exists; the failure is omitted
-  reachable successor body emission, not a missing label.
-- Not idea 320: prepared store-source/select-chain records are available and
-  the current failure is after the first loop exits into the omitted successor.
+- `src/00143.c` BIR/prepared-BIR keep `for.cond.1` false successor `block_2`
+  with real successor body work.
+- RV64 assembly emits the loop false jump and defines the successor label with
+  no body, branch, epilogue, or return, so linked execution falls into the next
+  section and qemu reports `SIGILL`.
+- i16 `lh`/`sh` body emission and stack-homed fused compare label emission
+  remain separate repaired boundaries before this failure.
 
 ## Suggested Next
 
-Add focused expected-repair backend coverage for a reachable loop false
-successor whose BIR/prepared block has a real body after the first loop. The
-test should prove the successor body is emitted and reachable, not just that
-the label exists.
+Repair RV64 block traversal/emission so reachable loop-exit successor blocks
+with real prepared bodies are emitted before the function text closes, then
+convert `riscv64_empty_loop_exit_successor` from expected-repair to positive
+codegen and runtime coverage.
 
 ## Watchouts
 
@@ -82,18 +60,20 @@ the label exists.
 - Do not hide qemu `SIGILL` by marking the supported candidate unsupported,
   skipping runtime proof, or adding an unreachable trap instead of a valid
   return/epilogue path.
-- The focused Step 2 test should avoid requiring switch lowering unless the
-  smallest reproducible successor-body omission needs it; the owned boundary is
+- The Step 2 fixture uses switch-controlled successor work only because the
+  smaller loop-tail cases already emit correctly; the owned boundary remains
   reachable successor block traversal/emission after loop exit.
 
 ## Proof
 
-Probe/build command ran before artifact capture:
-`cmake --build --preset default -j`.
+Focused proof:
+`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_(empty_loop_exit_successor|i16_local_array_select_store|stack_homed_fused_compare_missing_false_label)'`
+
+Result: passed, 8/8 tests.
 
 Delegated proof to run:
 `cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
 
 Result: build passed; backend CTest returned nonzero only because the existing
 unrelated `backend_riscv_prepared_edge_publication` test still fails. The
-current packet is evidence-only and changed no implementation or tests.
+canonical proof log is `test_after.log`.

@@ -409,6 +409,28 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_empty_loop_exit_successor
+  SRC "${BACKEND_CASE_ROOT}/riscv64_empty_loop_exit_successor.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|block for.cond.1 terminator=cond_branch true=block_1 false=block_2|bir.store_local %lv.from, ptr|bir.store_local %lv.to, ptr|bir.cond_br i32 %block_2.switch.case.0.match|block block_2 terminator=cond_branch|branch_condition block_2 kind=fused_compare|base=pointer_value|bir.ret i32"
+  FORBIDDEN_SNIPPETS "src/00143.c|_IO_stdin_used"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_control_flow loop empty_exit successor_body pointer_local switch expected_repair dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_empty_loop_exit_successor
+  SRC "${BACKEND_CASE_ROOT}/riscv64_empty_loop_exit_successor.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_empty_loop_exit_successor.s"
+  REQUIRED_SNIPPETS "main:|j .Lmain_block_|.Lmain_block_|lh |sh "
+  FORBIDDEN_SNIPPETS "src/00143.c|_IO_stdin_used|li a0|ret"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_control_flow loop empty_exit successor_body pointer_local switch expected_repair emission
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_prepared_fused_compare_call_result_predicate
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_fused_compare_call_result_predicate.c"
   TARGET_TRIPLE riscv64-linux-gnu
