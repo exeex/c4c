@@ -8,87 +8,60 @@ Current Step Title: Acceptance Sweep And Closure Readiness
 
 ## Just Finished
 
-Step 5: Complete Remaining Ordinary Tails repaired the straight-line prepared
-RV64 signed division/remainder ordinary-tail gap exposed by `src/00009.c`.
+Step 6: Acceptance Sweep And Closure Readiness ran the targeted RV64
+c-testsuite acceptance sweep for the idea 311 ordinary control/expression
+completion family.
 
-Initial reprobe under
-`build/rv64_c_testsuite_probe_latest/triage_311_step5_tail/` showed
-`src/00027.c`, `src/00028.c`, and `src/00029.c` already passed after the prior
-prepared bitwise slice, while `src/00009.c` still emitted and linked but died
-with QEMU status `132`.
-
-The selected missing operation was semantic `i32` signed division/remainder
-value materialization in prepared scalar binary emission. The fix adds prepared
-RV64 `sdiv`/`srem` lowering through `divw`/`remw` for `i32` results, preserves
-existing value-home movement into stores and returns, and leaves unsigned or
-non-owned tail families out of this packet. Focused coverage added
-`backend_codegen_route_riscv64_prepared_signed_div_rem_return_tail`, a compact
-store/load/div/rem/return-tail case rather than a c-testsuite filename
-contract.
-
-Runtime probe scratch artifacts are under
-`build/rv64_c_testsuite_probe_latest/triage_311_step5_tail/`, including
-`probe_results.tsv`, `probe_results_after.tsv`, regenerated BIR/prepared-BIR
-for `00009`, and per-case emit/clang/QEMU artifacts. A supervisor rerun after
-the final i32 scope tightening is under
-`build/rv64_c_testsuite_probe_latest/triage_311_step5_tail_final/`.
+Scratch artifacts are under
+`build/rv64_c_testsuite_probe_latest/triage_311_step6_acceptance/`, including
+`probe_results.tsv`, per-case emitted assembly, clang stdout/stderr, QEMU
+stdout/stderr, and regenerated BIR/prepared-BIR evidence for the one residual
+runtime failure.
 
 | Case | Emit | Clang | QEMU | Classification |
 | --- | ---: | ---: | ---: | --- |
+| `src/00006.c` | `0` | `0` | `0` | `PASS` |
+| `src/00007.c` | `0` | `0` | `0` | `PASS` |
+| `src/00008.c` | `0` | `0` | `0` | `PASS` |
 | `src/00009.c` | `0` | `0` | `0` | `PASS` |
 | `src/00027.c` | `0` | `0` | `0` | `PASS` |
 | `src/00028.c` | `0` | `0` | `0` | `PASS` |
 | `src/00029.c` | `0` | `0` | `0` | `PASS` |
+| `src/00030.c` | `0` | `0` | `0` | `PASS` |
+| `src/00031.c` | `0` | `0` | `0` | `PASS` |
+| `src/00105.c` | `0` | `0` | `0` | `PASS` |
+| `src/00143.c` | `0` | `0` | `132` | `QEMU_NONZERO` |
+
+The remaining `src/00143.c` failure is closure-ready as an out-of-scope stress
+residual for idea 311. The emitted assembly now reaches the first loop
+condition but stops after loading `n` and publishing the value to a stack home;
+the prepared BIR then expands indexed local array writes and reads into large
+`i16` element-select/update chains, pointer/address-offset local access forms,
+and later switch-shaped flow. That is not the ordinary fused-compare,
+successor-body, bitwise boolean-tail, or signed div/rem return-tail mechanism
+owned by this runbook.
 
 ## Suggested Next
 
-Proceed to Step 6: Acceptance Sweep And Closure Readiness. Re-run the
-supervisor-selected broader checkpoint and targeted runtime subset for idea 311,
-then decide whether remaining failures are outside ordinary control/expression
-completion or need a focused follow-up idea.
+Proceed to lifecycle closure review for idea 311. If the supervisor wants to
+keep mining `src/00143.c`, use a separate follow-up focused on local
+array/address materialization and expanded select chains rather than extending
+this ordinary control/expression completion runbook.
 
 ## Watchouts
 
 - Do not implement filename-shaped logic or c-testsuite-specific shortcuts.
 - Do not downgrade supported-path expectations or mark cases unsupported.
-- Keep stack/local address materialization and external-stub policy separate
-  unless they directly block ordinary control/expression completion proof.
-- The prepared fused-compare and signed div/rem emitters currently rely on the
-  existing RV64 prepared value-home movement support; unsupported non-i32,
-  unsupported stack/address homes, and unsigned div/rem tails should remain
-  separate blockers unless the Step 6 sweep proves they are required for this
-  source idea.
+- Keep `src/00143.c` separate unless explicitly opening local array/address
+  materialization work; it mixes expanded local arrays, pointer/address-offset
+  access, `i16` select chains, and switch-shaped flow.
 - The old out-of-scope `backend_riscv_prepared_edge_publication` test failure
   still exists in the backend subset and is unchanged by this packet.
-- `src/00143.c` should remain a later stress probe: it shares the repaired
-  successor-label shape but also mixes large local arrays, pointer/address
-  movement, and switch flow.
+- No fresh full backend guard was run in this validation-only packet; the
+  supervisor-provided current guard baseline remains `test_before.log` after
+  commit `54155bca`.
 
 ## Proof
-
-Build and focused backend proof:
-
-`cmake --build --preset default -j`
-
-`ctest --test-dir build -j --output-on-failure -R 'backend_codegen_route_riscv64_prepared_signed_div_rem_return_tail'`
-
-Focused result: `1/1` passed.
-
-Backend regression guard shape:
-
-`ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
-
-The backend subset still exits nonzero because of the pre-existing
-`backend_riscv_prepared_edge_publication` failure. Regression comparison
-against existing `test_before.log` passed:
-
-`before: passed=218 failed=1 total=219`
-
-`after: passed=219 failed=1 total=220`
-
-`new failing tests: 0`
-
-`result: PASS`
 
 Targeted runtime probe command shape:
 
@@ -98,6 +71,16 @@ Targeted runtime probe command shape:
 
 `timeout 5s qemu-riscv64 -L /usr/riscv64-linux-gnu <scratch>.bin`
 
-Runtime result: `src/00009.c`, `src/00027.c`, `src/00028.c`, and
-`src/00029.c` all passed emit, clang, and QEMU in the executor probe and the
-supervisor final rerun.
+Runtime result: 10 of 11 delegated cases passed emit, clang, and QEMU. The
+only residual is `src/00143.c`, classified as `QEMU_NONZERO` status `132` and
+out of scope for idea 311.
+
+Focused backend sanity:
+
+`ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route)_riscv64_prepared_(fused_compare|loop_successor|signed_div_rem)'`
+
+Focused result: `6/6` passed.
+
+This validation-only packet did not rewrite `test_after.log`; the canonical
+backend guard state remains with the supervisor-provided current
+`test_before.log` baseline.
