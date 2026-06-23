@@ -19,12 +19,15 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for(
 
   if (context.lookups == nullptr ||
       (value_type != bir::TypeKind::I8 &&
+       value_type != bir::TypeKind::I16 &&
        value_type != bir::TypeKind::I32 &&
        value_type != bir::TypeKind::F32)) {
     return nullptr;
   }
-  const std::size_t size_bytes = value_type == bir::TypeKind::I8 ? 1 : 4;
-  const std::size_t align_bytes = value_type == bir::TypeKind::I8 ? 1 : 4;
+  const std::size_t size_bytes =
+      value_type == bir::TypeKind::I8 ? 1 :
+      value_type == bir::TypeKind::I16 ? 2 : 4;
+  const std::size_t align_bytes = size_bytes;
   const auto* access = prepare::find_indexed_prepared_memory_access(
       &context.lookups->memory_accesses,
       context.block_label,
@@ -50,12 +53,15 @@ bool is_simple_scalar_frame_slot_access(
   namespace prepare = c4c::backend::prepare;
 
   if (value_type != bir::TypeKind::I8 &&
+      value_type != bir::TypeKind::I16 &&
       value_type != bir::TypeKind::I32 &&
       value_type != bir::TypeKind::F32) {
     return false;
   }
-  const std::size_t size_bytes = value_type == bir::TypeKind::I8 ? 1 : 4;
-  const std::size_t align_bytes = value_type == bir::TypeKind::I8 ? 1 : 4;
+  const std::size_t size_bytes =
+      value_type == bir::TypeKind::I8 ? 1 :
+      value_type == bir::TypeKind::I16 ? 2 : 4;
+  const std::size_t align_bytes = size_bytes;
   return access.address_space == bir::AddressSpace::Default &&
          !access.is_volatile &&
          access.address.base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
@@ -73,6 +79,7 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for_
   if (context.lookups == nullptr ||
       load.result.kind != bir::Value::Kind::Named ||
       (load.result.type != bir::TypeKind::I8 &&
+       load.result.type != bir::TypeKind::I16 &&
        load.result.type != bir::TypeKind::I32 &&
        load.result.type != bir::TypeKind::F32) ||
       load.result.name.empty()) {
@@ -745,6 +752,10 @@ std::optional<std::string> emit_riscv_simple_store_local(
     out += "    sb t1, " + std::to_string(*stack_offset) + "(sp)\n";
     return out;
   }
+  if (store.value.type == c4c::backend::bir::TypeKind::I16) {
+    out += "    sh t1, " + std::to_string(*stack_offset) + "(sp)\n";
+    return out;
+  }
   const auto stored = emit_i32_store_to_stack_offset("t1", *stack_offset);
   if (!stored.has_value()) {
     return std::nullopt;
@@ -867,6 +878,7 @@ std::optional<std::string> emit_riscv_simple_load_local(
   }
 
   if (load.result.type != c4c::backend::bir::TypeKind::I8 &&
+      load.result.type != c4c::backend::bir::TypeKind::I16 &&
       load.result.type != c4c::backend::bir::TypeKind::I32 &&
       load.result.type != c4c::backend::bir::TypeKind::F32) {
     return std::nullopt;
@@ -1007,6 +1019,22 @@ std::optional<std::string> emit_riscv_simple_load_local(
     }
     return "    lb " + *destination_register + ", " +
            std::to_string(*stack_offset) + "(sp)\n";
+  }
+  if (load.result.type == c4c::backend::bir::TypeKind::I16) {
+    if (destination_register.has_value()) {
+      return "    lh " + *destination_register + ", " +
+             std::to_string(*stack_offset) + "(sp)\n";
+    }
+    const auto* destination_home = prepared_value_home_for(context, load.result);
+    if (destination_home == nullptr ||
+        destination_home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+        !destination_home->offset_bytes.has_value() ||
+        destination_home->size_bytes != std::optional<std::size_t>{2} ||
+        !fits_signed_12_bit_load_offset(*destination_home->offset_bytes)) {
+      return std::nullopt;
+    }
+    return "    lh t3, " + std::to_string(*stack_offset) + "(sp)\n"
+           "    sh t3, " + std::to_string(*destination_home->offset_bytes) + "(sp)\n";
   }
   if (load.result.type == c4c::backend::bir::TypeKind::F32) {
     if (destination_register.has_value()) {
