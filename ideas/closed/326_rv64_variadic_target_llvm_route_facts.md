@@ -130,3 +130,24 @@ weakening the contract.
 - The proof only demonstrates the exact `printf("%d\n", 7)` spelling while
   nearby direct external variadic integer calls would still bypass the new
   target-aware rule.
+
+## Closure Note
+
+Closed on 2026-06-23 after the active runbook completed the owned
+LLVM-route/LIR boundary:
+
+- RV64 direct external variadic integer-call LLVM output carries the required
+  integer extension facts, including signed and unsigned return attributes and
+  `signext` on variadic integer operands.
+- RV64 scalar `stdarg` LLVM output now models `va_list` as pointer storage and
+  lowers scalar `va_arg` through cursor load, 8-byte cursor advance, cursor
+  store, and scalar load from the original cursor.
+- AArch64 still uses the structured `%struct.__va_list_tag_` route for the
+  same scalar fixture.
+- Focused regression coverage lives in
+  `tests/frontend/frontend_lir_call_type_ref_test.cpp`.
+
+Remaining semantic BIR, prepared ABI, final RV64 emission, broad c-testsuite
+registration, aggregate `va_arg`, and wider-than-8-byte RV64 `va_arg` payload
+support stay intentionally out of scope for this idea and require separate
+source ideas if pursued.
