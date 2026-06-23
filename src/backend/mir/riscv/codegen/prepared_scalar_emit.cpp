@@ -908,11 +908,35 @@ bool emit_move_to_register(std::string& out,
     }
     return true;
   }
+  if (value.type == c4c::backend::bir::TypeKind::Ptr) {
+    const auto pointer_register = prepared_pointer_register_for_value(names, lookups, value);
+    if (pointer_register.has_value()) {
+      if (*pointer_register != destination_register) {
+        out += "    mv ";
+        out += destination_register;
+        out += ", ";
+        out += *pointer_register;
+        out += "\n";
+      }
+      return true;
+    }
+  }
 
   const auto* home = prepared_value_home_for(names, lookups, value);
   if (home != nullptr &&
-      home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+       home->kind == c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset) &&
       home->offset_bytes.has_value()) {
+    if (value.type == c4c::backend::bir::TypeKind::Ptr &&
+        home->size_bytes == std::optional<std::size_t>{8} &&
+        fits_signed_12_bit_load_offset(*home->offset_bytes)) {
+      out += "    ld ";
+      out += destination_register;
+      out += ", ";
+      out += std::to_string(*home->offset_bytes);
+      out += "(sp)\n";
+      return true;
+    }
     if (value.type == c4c::backend::bir::TypeKind::I16 &&
         home->size_bytes == std::optional<std::size_t>{2} &&
         fits_signed_12_bit_load_offset(*home->offset_bytes)) {
@@ -1130,21 +1154,45 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
       return "    addi " + *home->register_name + ", sp, " +
              std::to_string(selected->byte_offset) + "\n";
     }
-    if (home->kind == prepare::PreparedValueHomeKind::StackSlot) {
-      return std::string{};
-    }
-    if (home->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
-        !home->register_name.has_value()) {
-      return std::string{};
+    if ((home->kind == prepare::PreparedValueHomeKind::StackSlot ||
+         home->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset) &&
+        home->offset_bytes.has_value() &&
+        home->size_bytes == std::optional<std::size_t>{8} &&
+        fits_signed_12_bit_load_offset(*home->offset_bytes)) {
+      const auto* materializations =
+          prepare::find_indexed_prepared_address_materializations(
+              &context.lookups->address_materializations,
+              context.block_label);
+      if (materializations == nullptr) {
+        return std::nullopt;
+      }
+      const prepare::PreparedAddressMaterialization* selected = nullptr;
+      const auto result_name = context.names.value_names.find(binary.result.name);
+      for (const auto* materialization : *materializations) {
+        if (materialization == nullptr ||
+            materialization->inst_index != context.instruction_index ||
+            materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
+            materialization->result_value_name !=
+                std::optional<c4c::ValueNameId>{result_name} ||
+            !materialization->frame_slot_id.has_value() ||
+            !fits_signed_12_bit_immediate(materialization->byte_offset)) {
+          continue;
+        }
+        if (selected != nullptr) {
+          return std::nullopt;
+        }
+        selected = materialization;
+      }
+      if (selected == nullptr) {
+        return std::string{};
+      }
+      return "    addi t3, sp, " + std::to_string(selected->byte_offset) + "\n"
+             "    sd t3, " + std::to_string(*home->offset_bytes) + "(sp)\n";
     }
     return std::nullopt;
   }
-  if (home->kind != prepare::PreparedValueHomeKind::StackSlot) {
-    return std::nullopt;
-  }
-  if (!home->offset_bytes.has_value() ||
-      home->size_bytes != std::optional<std::size_t>{8} ||
-      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(*home->offset_bytes))) {
+  if (home->kind != prepare::PreparedValueHomeKind::StackSlot &&
+      home->kind != prepare::PreparedValueHomeKind::PointerBasePlusOffset) {
     return std::nullopt;
   }
 
@@ -1189,6 +1237,17 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     out += "    ";
     out += is_sub ? "sub" : "add";
     out += " t3, " + *base_register + ", " + *offset_register + "\n";
+  }
+  if (home->register_name.has_value() && !home->register_name->empty()) {
+    if (*home->register_name != "t3") {
+      out += "    mv " + *home->register_name + ", t3\n";
+    }
+    return out;
+  }
+  if (!home->offset_bytes.has_value() ||
+      home->size_bytes != std::optional<std::size_t>{8} ||
+      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(*home->offset_bytes))) {
+    return std::nullopt;
   }
   out += "    sd t3, " + std::to_string(*home->offset_bytes) + "(sp)\n";
   return out;

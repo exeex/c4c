@@ -774,6 +774,14 @@ std::optional<std::string> emit_riscv_simple_store_local(
                std::to_string(*destination_stack_offset) + "(sp)\n";
         return out;
       }
+      if (emit_move_to_register(out,
+                                "t1",
+                                context.names,
+                                context.lookups,
+                                store.value)) {
+        out += "    sd t1, " + std::to_string(*destination_stack_offset) + "(sp)\n";
+        return out;
+      }
       materialization = simple_pointer_address_materialization_before_or_at(
           context,
           store.value);

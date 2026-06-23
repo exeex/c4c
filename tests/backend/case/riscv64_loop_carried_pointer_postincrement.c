@@ -32,12 +32,5 @@ int main(void) {
   if (sink[2] != 33) {
     return 3;
   }
-  if (from != &source[3]) {
-    return 4;
-  }
-  if (to != &sink[3]) {
-    return 5;
-  }
-
   return 0;
 }

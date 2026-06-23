@@ -556,10 +556,10 @@ c4c_add_backend_codegen_route_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_loop_carried_pointer_postincrement.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_loop_carried_pointer_postincrement.s"
-  REQUIRED_SNIPPETS "main:|sh t1,|sd t1,|j .Lmain_|.Lmain_"
-  FORBIDDEN_SNIPPETS "src/00143.c|Duff|ret"
+  REQUIRED_SNIPPETS "main:|ld t0,|addi t3, t0, 2|sd s1,|lh t3, 0(t0)|sh t1, 0(t0)|j .Lmain_|.Lmain_|ret"
+  FORBIDDEN_SNIPPETS "src/00143.c|Duff|addi t3, sp, 0\n    addi t3, t3, 2|addi t3, sp, 8\n    addi t3, t3, 2"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 prepared_local_address array_base pointer_local pointer_step loop expected_repair emission
+  LABELS riscv64 prepared_local_address array_base pointer_local pointer_step loop emission
 )
 
 c4c_add_backend_dump_flag_test(
@@ -1025,6 +1025,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_pointer_step.c"
   CASE_TIMEOUT_SEC 10
   LABELS prepared_local_address array_base pointer_local pointer_step
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_loop_carried_pointer_postincrement
+  SRC "${BACKEND_CASE_ROOT}/riscv64_loop_carried_pointer_postincrement.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS prepared_local_address array_base pointer_local pointer_step loop
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_prepared_local_array_i8_element_access
