@@ -8,55 +8,46 @@ Current Step Title: Stop Emitting Executable Empty External Bodies
 
 ## Just Finished
 
-Step 2 policy coverage for RV64 declaration-only external functions.
+Step 3 declaration/definition separation for RV64 prepared module emission.
 
-Added compact semantic backend cases:
+RV64 prepared module emission now resolves the matching non-declaration BIR
+function before publishing a global label. Declaration-only control-flow
+records are skipped, so external calls remain `call <symbol>` relocations
+instead of resolving to compiler-owned empty bodies. Same translation-unit
+definitions still publish `.globl name` and `name:`.
 
-- `tests/backend/case/riscv64_external_strlen_runtime_link.c`
-- `tests/backend/case/riscv64_external_stdio_declaration_guard.c`
-
-Added expected-repair tests:
+The three Step 2 expected-repair tests were flipped to ordinary passing
+contracts:
 
 - `backend_codegen_route_riscv64_external_strlen_runtime_link_policy`
-  requires `call strlen` and forbids local `strlen:` / `.globl strlen` body
-  publication. It is marked `WILL_FAIL` until declaration-only functions stop
-  emitting executable local labels.
 - `backend_rv64_runtime_riscv64_external_strlen_runtime_link_policy`
-  requires the same fixed-arity external `strlen` case to link through the
-  target runtime and exit 0 under qemu. It is marked `WILL_FAIL` until the call
-  resolves to libc instead of the compiler-owned empty `strlen:` label.
 - `backend_codegen_route_riscv64_external_stdio_declaration_stub_guard`
-  verifies a small `stdio`/`printf` include shape does not emit local body
-  labels for declaration-only functions such as `printf`, `remove`,
-  `ftrylockfile`, and `__overflow`. It is marked `WILL_FAIL`; variadic
-  `printf` execution remains outside this first policy contract.
 
-CTest log confirmation:
-
-- The `strlen` route contract currently fails on forbidden `strlen:`.
-- The `stdio` guard currently fails on forbidden `printf:` and also shows the
-  broader header declaration-label family.
-- The `strlen` runtime contract currently times out under qemu because the call
-  resolves to the compiler-owned empty label.
+The fixed-arity `strlen` case needed one adjacent ordinary scalar tail repair:
+prepared RV64 casts now support named-result integer `trunc`, allowing
+`trunc i64` call results to flow into the final subtract and return path.
 
 ## Suggested Next
 
-Implement Step 3 declaration/definition separation in RV64 prepared module
-emission. Remove the expected-failure properties from the three new
-external-policy tests when the assembly stops emitting declaration-only body
-labels and the fixed-arity `strlen` runtime case exits 0.
+Proceed to the next external-call policy packet: classify and repair the
+remaining supported external-call residuals without reintroducing executable
+declaration bodies. A likely next boundary is variadic `printf`/stdio call
+handling, because `00056`, `00125`, and `00179` now emit and link without local
+declaration labels but still exit under qemu with illegal instruction status
+132.
 
 ## Watchouts
 
 - Do not add fake named libc/libm/string/user external bodies.
 - Do not classify every external call as unsupported unless supported runtime
   linkage has been considered and preserved where available.
-- Reject progress that only removes one observed empty label while bodyless
-  executable external stubs remain elsewhere.
-- The stdio guard intentionally does not require variadic `printf` execution to
-  pass; it is only a declaration-stub policy guard for the next packet.
-- A real same-translation-unit function definition must still emit `.globl name`
-  and `name:` when needed by normal calls.
+- The stdio declaration guard is green, but it still does not prove variadic
+  `printf` execution.
+- `src/00025.c` now passes emit, clang, and qemu. `src/00056.c`,
+  `src/00125.c`, and `src/00179.c` all emit/link and have no local external
+  declaration labels, but still exit 132 under qemu.
+- Keep same-TU definitions publishing real labels; the policy fix is only for
+  declaration-only functions.
 
 ## Proof
 
@@ -64,7 +55,18 @@ Ran:
 
 - `cmake --build --preset default -j`
 - `ctest --test-dir build -j --output-on-failure -R 'backend_(codegen_route|rv64_runtime)_riscv64_external_(strlen_runtime_link_policy|stdio_declaration_stub_guard)'`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
 
-Result: build passed and the focused subset passed `3/3` via explicit
-`WILL_FAIL` properties on the three new post-repair contracts. No broad backend
-guard was requested, and `test_after.log` was not produced or modified.
+Results:
+
+- Build passed.
+- Focused external-policy subset passed `3/3`.
+- Backend guard passed against `test_before.log`: before `229 passed, 1 failed,
+  230 total`; after `232 passed, 1 failed, 233 total`; new failures `0`.
+- Existing `backend_riscv_prepared_edge_publication` remains the only backend
+  subset failure.
+- Runtime probe artifacts:
+  `build/rv64_c_testsuite_probe_latest/triage_313_step3/probe_results.tsv`.
+  `00025` passed; `00056`, `00125`, and `00179` remained qemu `132` after
+  declaration-label separation.

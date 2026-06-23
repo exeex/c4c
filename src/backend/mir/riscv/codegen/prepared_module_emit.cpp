@@ -24,6 +24,16 @@ std::string emit_prepared_module_text(
     const auto lookups = prepare::make_prepared_function_lookups(module, function);
     const auto function_name = prepare::prepared_function_name(module.names,
                                                               function.function_name);
+    const auto function_it = std::find_if(
+        module.module.functions.begin(),
+        module.module.functions.end(),
+        [&](const c4c::backend::bir::Function& candidate) {
+          return candidate.name == function_name && !candidate.is_declaration;
+        });
+    if (function_it == module.module.functions.end()) {
+      continue;
+    }
+
     if (!function_name.empty()) {
       out += "    .globl ";
       out += function_name;
@@ -32,14 +42,7 @@ std::string emit_prepared_module_text(
       out += ":\n";
     }
 
-    const auto function_it = std::find_if(
-        module.module.functions.begin(),
-        module.module.functions.end(),
-        [&](const c4c::backend::bir::Function& candidate) {
-          return candidate.name == function_name;
-        });
-    if (function_it != module.module.functions.end() &&
-        append_simple_prepared_bir_function_asm(out, module, &lookups, *function_it)) {
+    if (append_simple_prepared_bir_function_asm(out, module, &lookups, *function_it)) {
       continue;
     }
 

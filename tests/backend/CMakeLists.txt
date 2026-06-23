@@ -291,10 +291,6 @@ c4c_add_backend_codegen_route_test(
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 extern_call string_literal direct_call external_policy expected_repair
 )
-set_tests_properties(
-  backend_codegen_route_riscv64_external_strlen_runtime_link_policy
-  PROPERTIES WILL_FAIL TRUE
-)
 
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_external_stdio_declaration_stub_guard
@@ -305,10 +301,6 @@ c4c_add_backend_codegen_route_test(
   FORBIDDEN_SNIPPETS "printf:|remove:|ftrylockfile:|__overflow:"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 extern_call stdio declaration external_policy expected_repair
-)
-set_tests_properties(
-  backend_codegen_route_riscv64_external_stdio_declaration_stub_guard
-  PROPERTIES WILL_FAIL TRUE
 )
 
 c4c_add_backend_codegen_route_test(
@@ -619,10 +611,6 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_external_strlen_runtime_link.c"
   CASE_TIMEOUT_SEC 10
   LABELS extern_call string_literal direct_call external_policy expected_repair
-)
-set_tests_properties(
-  backend_rv64_runtime_riscv64_external_strlen_runtime_link_policy
-  PROPERTIES WILL_FAIL TRUE
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_two_arg_both_local_arg

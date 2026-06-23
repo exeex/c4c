@@ -300,7 +300,8 @@ std::optional<std::string> emit_riscv_simple_cast(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
   if ((cast.opcode != c4c::backend::bir::CastOpcode::SExt &&
-       cast.opcode != c4c::backend::bir::CastOpcode::ZExt) ||
+       cast.opcode != c4c::backend::bir::CastOpcode::ZExt &&
+       cast.opcode != c4c::backend::bir::CastOpcode::Trunc) ||
       cast.result.kind != c4c::backend::bir::Value::Kind::Named) {
     return std::nullopt;
   }
