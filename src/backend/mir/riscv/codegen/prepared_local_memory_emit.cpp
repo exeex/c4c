@@ -41,6 +41,69 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for(
   return access;
 }
 
+bool is_simple_scalar_frame_slot_access(
+    const c4c::backend::prepare::PreparedMemoryAccess& access,
+    c4c::backend::bir::TypeKind value_type) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (value_type != bir::TypeKind::I8 && value_type != bir::TypeKind::I32) {
+    return false;
+  }
+  const std::size_t size_bytes = value_type == bir::TypeKind::I8 ? 1 : 4;
+  const std::size_t align_bytes = value_type == bir::TypeKind::I8 ? 1 : 4;
+  return access.address_space == bir::AddressSpace::Default &&
+         !access.is_volatile &&
+         access.address.base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
+         access.address.frame_slot_id.has_value() &&
+         access.address.size_bytes == size_bytes &&
+         access.address.align_bytes >= align_bytes &&
+         access.address.can_use_base_plus_offset &&
+         fits_signed_12_bit_immediate(access.address.byte_offset);
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for_load(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::LoadLocalInst& load) {
+  namespace bir = c4c::backend::bir;
+  if (context.lookups == nullptr ||
+      load.result.kind != bir::Value::Kind::Named ||
+      (load.result.type != bir::TypeKind::I8 && load.result.type != bir::TypeKind::I32) ||
+      load.result.name.empty()) {
+    return nullptr;
+  }
+  const auto result_value_name = context.names.value_names.find(load.result.name);
+  if (result_value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  if (const auto* access =
+          c4c::backend::prepare::find_indexed_prepared_memory_access(
+              &context.lookups->memory_accesses,
+              context.block_label,
+              context.instruction_index);
+      access != nullptr &&
+      access->result_value_name == std::optional<c4c::ValueNameId>{result_value_name} &&
+      is_simple_scalar_frame_slot_access(*access, load.result.type)) {
+    return access;
+  }
+
+  const c4c::backend::prepare::PreparedMemoryAccess* selected = nullptr;
+  for (const auto& entry : context.lookups->memory_accesses.accesses_by_position) {
+    const auto* access = entry.second;
+    if (access == nullptr ||
+        access->block_label != context.block_label ||
+        access->result_value_name != std::optional<c4c::ValueNameId>{result_value_name} ||
+        !is_simple_scalar_frame_slot_access(*access, load.result.type)) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = access;
+  }
+  return selected;
+}
+
 bool is_simple_pointer_frame_slot_access(
     const c4c::backend::prepare::PreparedMemoryAccess& access) {
   namespace bir = c4c::backend::bir;
@@ -751,9 +814,12 @@ std::optional<std::string> emit_riscv_simple_load_local(
     }
   }
 
-  const auto* access = simple_frame_slot_access_for(
-      context,
-      load.result.type);
+  const auto* access = simple_frame_slot_access_for_load(context, load);
+  if (access == nullptr) {
+    access = simple_frame_slot_access_for(
+        context,
+        load.result.type);
+  }
   if (access == nullptr) {
     return std::nullopt;
   }

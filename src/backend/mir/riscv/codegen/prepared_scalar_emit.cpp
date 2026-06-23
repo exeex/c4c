@@ -207,6 +207,30 @@ const c4c::backend::bir::SelectInst* find_same_block_select_producer(
   return nullptr;
 }
 
+const c4c::backend::bir::BinaryInst* find_immediate_compare_producer(
+    const c4c::backend::bir::Block* block,
+    const c4c::backend::bir::Value& value,
+    std::size_t instruction_index) {
+  if (block == nullptr ||
+      instruction_index == 0 ||
+      instruction_index > block->insts.size() ||
+      value.kind != c4c::backend::bir::Value::Kind::Named ||
+      value.type != c4c::backend::bir::TypeKind::I32 ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  const auto& inst = block->insts[instruction_index - 1U];
+  const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+  if (binary == nullptr ||
+      !c4c::backend::bir::is_compare_opcode(binary->opcode) ||
+      binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      binary->result.name != value.name ||
+      binary->result.type != c4c::backend::bir::TypeKind::I32) {
+    return nullptr;
+  }
+  return binary;
+}
+
 std::optional<std::string> emit_select_to_i32_location(
     const c4c::backend::bir::SelectInst& select,
     std::string_view function_name,
@@ -418,6 +442,19 @@ bool emit_move_to_i32_location(
     std::size_t& label_serial) {
   if (destination_home.kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
       destination_home.register_name.has_value()) {
+    if (const auto* compare_producer =
+            find_immediate_compare_producer(block, value, context.instruction_index);
+        compare_producer != nullptr) {
+      const auto emitted = emit_riscv_simple_compare_value(
+          *compare_producer,
+          *destination_home.register_name,
+          context.names,
+          context.lookups);
+      if (emitted.has_value()) {
+        out += *emitted;
+        return true;
+      }
+    }
     if (emit_move_to_register(
         out,
         *destination_home.register_name,
@@ -459,7 +496,21 @@ bool emit_move_to_i32_location(
       destination_home.offset_bytes.has_value() &&
       destination_home.size_bytes == std::optional<std::size_t>{4} &&
       fits_signed_12_bit_load_offset(*destination_home.offset_bytes)) {
-    if (!emit_move_to_register(out, "t3", context.names, context.lookups, value)) {
+    bool materialized = false;
+    if (const auto* compare_producer =
+            find_immediate_compare_producer(block, value, context.instruction_index);
+        compare_producer != nullptr) {
+      const auto emitted = emit_riscv_simple_compare_value(
+          *compare_producer,
+          "t3",
+          context.names,
+          context.lookups);
+      if (emitted.has_value()) {
+        out += *emitted;
+        materialized = true;
+      }
+    }
+    if (!materialized && !emit_move_to_register(out, "t3", context.names, context.lookups, value)) {
       std::size_t producer_instruction_index = 0;
       const auto* nested_select = find_same_block_select_producer(
           block,

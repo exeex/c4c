@@ -47,6 +47,66 @@ std::optional<c4c::BlockLabelId> prepared_block_label_id_for(
   return block_label;
 }
 
+bool next_select_uses_value(
+    const c4c::backend::bir::Block& block,
+    std::size_t instruction_index,
+    const c4c::backend::bir::Value& value) {
+  if (instruction_index + 1U >= block.insts.size() ||
+      value.kind != c4c::backend::bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return false;
+  }
+  const auto* select =
+      std::get_if<c4c::backend::bir::SelectInst>(&block.insts[instruction_index + 1U]);
+  if (select == nullptr) {
+    return false;
+  }
+  const auto names_match = [&](const c4c::backend::bir::Value& candidate) {
+    return candidate.kind == c4c::backend::bir::Value::Kind::Named &&
+           candidate.name == value.name;
+  };
+  return names_match(select->true_value) || names_match(select->false_value);
+}
+
+bool terminator_uses_value_as_condition(
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::bir::Value& value) {
+  return block.terminator.kind == c4c::backend::bir::TerminatorKind::CondBranch &&
+         value.kind == c4c::backend::bir::Value::Kind::Named &&
+         block.terminator.condition.kind == c4c::backend::bir::Value::Kind::Named &&
+         value.name == block.terminator.condition.name;
+}
+
+const c4c::backend::prepare::PreparedBranchCondition* find_branch_condition_for_terminator(
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    c4c::BlockLabelId block_label_id,
+    const c4c::backend::bir::Value& condition) {
+  if (condition.kind != c4c::backend::bir::Value::Kind::Named ||
+      condition.name.empty()) {
+    return nullptr;
+  }
+  const auto* direct =
+      c4c::backend::prepare::find_prepared_branch_condition(control_flow, block_label_id);
+  if (direct != nullptr &&
+      direct->condition_value.kind == c4c::backend::bir::Value::Kind::Named &&
+      direct->condition_value.name == condition.name) {
+    return direct;
+  }
+
+  const c4c::backend::prepare::PreparedBranchCondition* selected = nullptr;
+  for (const auto& candidate : control_flow.branch_conditions) {
+    if (candidate.condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
+        candidate.condition_value.name != condition.name) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = &candidate;
+  }
+  return selected;
+}
+
 }  // namespace
 
 bool append_simple_prepared_bir_function_asm(
@@ -170,6 +230,12 @@ bool append_simple_prepared_bir_function_asm(
               .lhs = binary->lhs,
               .rhs = binary->rhs,
           };
+          if (next_select_uses_value(block, instruction_index, binary->result)) {
+            continue;
+          }
+          if (terminator_uses_value_as_condition(block, binary->result)) {
+            continue;
+          }
         }
         auto emitted = emit_riscv_simple_prepared_pointer_add(
             *binary,
@@ -191,6 +257,10 @@ bool append_simple_prepared_bir_function_asm(
           return false;
         }
         out += *emitted;
+        continue;
+      }
+
+      if (std::holds_alternative<c4c::backend::bir::PhiInst>(inst)) {
         continue;
       }
 
@@ -326,13 +396,13 @@ bool append_simple_prepared_bir_function_asm(
         }
         if (control_flow != nullptr) {
           const auto* branch_condition =
-              c4c::backend::prepare::find_prepared_branch_condition(
+              find_branch_condition_for_terminator(
                   *control_flow,
-                  *block_label_id);
-          if (branch_condition != nullptr &&
-              branch_condition->condition_value.kind ==
-                  c4c::backend::bir::Value::Kind::Named &&
-              branch_condition->condition_value.name == block.terminator.condition.name) {
+                  *block_label_id,
+                  block.terminator.condition);
+          if (branch_condition != nullptr) {
+            std::string prepared_true_asm_label = true_asm_label;
+            std::string prepared_false_asm_label = false_asm_label;
             const auto prepared_targets =
                 c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
                     prepared.names,
@@ -340,19 +410,18 @@ bool append_simple_prepared_bir_function_asm(
                     *block_label_id,
                     block,
                     *branch_condition);
-            if (!prepared_targets.has_value()) {
-              return false;
+            if (prepared_targets.has_value()) {
+              prepared_true_asm_label = riscv_local_block_label(
+                  function_name,
+                  c4c::backend::prepare::prepared_block_label(
+                      prepared.names,
+                      prepared_targets->true_label));
+              prepared_false_asm_label = riscv_local_block_label(
+                  function_name,
+                  c4c::backend::prepare::prepared_block_label(
+                      prepared.names,
+                      prepared_targets->false_label));
             }
-            const std::string prepared_true_asm_label = riscv_local_block_label(
-                function_name,
-                c4c::backend::prepare::prepared_block_label(
-                    prepared.names,
-                    prepared_targets->true_label));
-            const std::string prepared_false_asm_label = riscv_local_block_label(
-                function_name,
-                c4c::backend::prepare::prepared_block_label(
-                    prepared.names,
-                    prepared_targets->false_label));
             const auto prepared_branch = emit_riscv_prepared_fused_compare_branch(
                 *branch_condition,
                 prepared.names,
@@ -368,6 +437,22 @@ bool append_simple_prepared_bir_function_asm(
         const auto compare_it = compares.find(block.terminator.condition.name);
         if (compare_it == compares.end()) {
           return false;
+        }
+        c4c::backend::prepare::PreparedBranchCondition synthetic_branch_condition;
+        synthetic_branch_condition.kind =
+            c4c::backend::prepare::PreparedBranchConditionKind::FusedCompare;
+        synthetic_branch_condition.predicate = compare_it->second.opcode;
+        synthetic_branch_condition.lhs = compare_it->second.lhs;
+        synthetic_branch_condition.rhs = compare_it->second.rhs;
+        const auto register_branch = emit_riscv_prepared_fused_compare_branch(
+            synthetic_branch_condition,
+            prepared.names,
+            lookups,
+            true_asm_label,
+            false_asm_label);
+        if (register_branch.has_value()) {
+          out += *register_branch;
+          break;
         }
         const auto branch = emit_riscv_simple_compare_branch(
             compare_it->second,
