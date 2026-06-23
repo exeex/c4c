@@ -673,6 +673,28 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_byval_preserved_pointer_args
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_preserved_pointer_args.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.call i32 consume_pairbox(ptr byval(size=16, align=4) %lv.value, ptr %lv.value)|arg index=1 value_bank=gpr source_encoding=register source_value_id=20 source_placement=gpr:callee_saved#0/w1 source_reg=s1 source_bank=gpr dest_placement=gpr:call_argument#1/w1 dest_reg=a1 dest_bank=gpr arg.source_selection=prior_preservation|address_materialization block=entry inst_index=6 kind=frame_slot result=%lv.value"
+  FORBIDDEN_SNIPPETS "src/00140.c|%p.f"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 byval aggregate call pointer prepared_call_boundary dump
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_byval_preserved_pointer_args
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_preserved_pointer_args.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_byval_preserved_pointer_args.s"
+  REQUIRED_SNIPPETS "main:|addi sp, sp, -16|mv a0, sp|addi a1, sp, 16|call consume_pairbox|addi sp, sp, 16|addi sp, sp, -16|mv a0, sp|addi a1, sp, 16|call consume_pairbox"
+  FORBIDDEN_SNIPPETS "mv a1, s1|src/00140.c|%p.f"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 byval aggregate call pointer prepared_call_boundary emission
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_aggregate_local_self_pointer_chain
   SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_self_pointer_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
@@ -948,6 +970,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_byval_aggregate_fixed_call.c"
   CASE_TIMEOUT_SEC 10
   LABELS byval aggregate call
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_byval_preserved_pointer_args
+  SRC "${BACKEND_CASE_ROOT}/riscv64_byval_preserved_pointer_args.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS byval aggregate call pointer prepared_call_boundary
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_external_strlen_runtime_link_policy

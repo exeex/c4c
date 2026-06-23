@@ -119,6 +119,85 @@ std::optional<std::vector<ByvalPayloadField>> byval_payload_fields_for_argument(
   return fields;
 }
 
+std::optional<std::int64_t> prepared_frame_slot_address_offset_for_value(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const PreparedCurrentInstructionContext& context,
+    c4c::backend::prepare::PreparedValueId value_id) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (context.lookups == nullptr) {
+    return std::nullopt;
+  }
+  const auto home_it = context.lookups->value_homes.homes_by_id.find(value_id);
+  const auto* materializations =
+      prepare::find_indexed_prepared_address_materializations(
+          &context.lookups->address_materializations,
+          context.block_label);
+  if (home_it == context.lookups->value_homes.homes_by_id.end() ||
+      home_it->second == nullptr ||
+      home_it->second->value_name == c4c::kInvalidValueName ||
+      materializations == nullptr) {
+    return std::nullopt;
+  }
+
+  std::optional<std::int64_t> selected_offset;
+  for (const auto* materialization : *materializations) {
+    if (materialization == nullptr ||
+        materialization->inst_index != context.instruction_index ||
+        materialization->kind !=
+            prepare::PreparedAddressMaterializationKind::FrameSlot ||
+        materialization->result_value_name != home_it->second->value_name) {
+      continue;
+    }
+    const auto stack_offset =
+        simple_frame_slot_sp_offset_for(prepared, function_name, *materialization);
+    if (!stack_offset.has_value()) {
+      return std::nullopt;
+    }
+    if (selected_offset.has_value() && *selected_offset != *stack_offset) {
+      return std::nullopt;
+    }
+    selected_offset = *stack_offset;
+  }
+  return selected_offset;
+}
+
+bool emit_riscv_frame_slot_address_argument(
+    std::string& out,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& plan,
+    const PreparedCurrentInstructionContext& context,
+    std::size_t active_stack_adjustment_bytes) {
+  if (!plan.source_value_id.has_value() ||
+      !plan.destination_register_name.has_value() ||
+      plan.destination_register_name->empty()) {
+    return false;
+  }
+  const auto stack_offset = prepared_frame_slot_address_offset_for_value(
+      prepared,
+      function_name,
+      context,
+      *plan.source_value_id);
+  if (!stack_offset.has_value() || *stack_offset < 0 ||
+      active_stack_adjustment_bytes >
+          static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
+      static_cast<std::size_t>(*stack_offset) >
+          static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) -
+              active_stack_adjustment_bytes ||
+      !fits_signed_12_bit_immediate(
+          *stack_offset + static_cast<std::int64_t>(active_stack_adjustment_bytes))) {
+    return false;
+  }
+
+  out += "    addi " + *plan.destination_register_name + ", sp, " +
+         std::to_string(
+             *stack_offset + static_cast<std::int64_t>(active_stack_adjustment_bytes)) +
+         "\n";
+  return true;
+}
+
 bool emit_riscv_byval_aggregate_address_argument(
     std::string& out,
     const c4c::backend::prepare::PreparedBirModule& prepared,
@@ -223,40 +302,22 @@ bool emit_riscv_byval_aggregate_address_argument(
   }
 
   if (context.lookups != nullptr && plan.source_value_id.has_value()) {
-    const auto home_it =
-        context.lookups->value_homes.homes_by_id.find(*plan.source_value_id);
-    const auto* materializations =
-        prepare::find_indexed_prepared_address_materializations(
-            &context.lookups->address_materializations,
-            context.block_label);
-    if (home_it != context.lookups->value_homes.homes_by_id.end() &&
-        home_it->second != nullptr &&
-        home_it->second->value_name != c4c::kInvalidValueName &&
-        materializations != nullptr) {
-      const prepare::PreparedAddressMaterialization* selected = nullptr;
-      for (const auto* materialization : *materializations) {
-        if (materialization == nullptr ||
-            materialization->inst_index != context.instruction_index ||
-            materialization->kind !=
-                prepare::PreparedAddressMaterializationKind::FrameSlot ||
-            materialization->result_value_name != home_it->second->value_name ||
-            materialization->byte_offset < 0 ||
-            !fits_signed_12_bit_immediate(materialization->byte_offset)) {
-          continue;
-        }
-        if (selected != nullptr) {
-          return false;
-        }
-        selected = materialization;
+    const auto stack_offset = prepared_frame_slot_address_offset_for_value(
+        prepared,
+        function_name,
+        context,
+        *plan.source_value_id);
+    if (stack_offset.has_value()) {
+      if (*stack_offset < 0 ||
+          !fits_signed_12_bit_immediate(*stack_offset)) {
+        return false;
       }
-      if (selected != nullptr) {
-        out += "    addi ";
-        out += *destination_register;
-        out += ", sp, ";
-        out += std::to_string(selected->byte_offset);
-        out += "\n";
-        return true;
-      }
+      out += "    addi ";
+      out += *destination_register;
+      out += ", sp, ";
+      out += std::to_string(*stack_offset);
+      out += "\n";
+      return true;
     }
   }
 
@@ -385,6 +446,14 @@ std::optional<std::string> emit_riscv_simple_call(
             std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} &&
         plan->source_register_name.has_value() &&
         !plan->source_register_name->empty()) {
+      if (emit_riscv_frame_slot_address_argument(out,
+                                                 prepared,
+                                                 function_name,
+                                                 *plan,
+                                                 context,
+                                                 active_stack_adjustment_bytes)) {
+        continue;
+      }
       if (*plan->source_register_name != *plan->destination_register_name) {
         out += "    mv " + *plan->destination_register_name + ", " +
                *plan->source_register_name + "\n";
