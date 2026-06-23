@@ -563,6 +563,17 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_duff_fallthrough_pointer_update_producers
+  SRC "${BACKEND_CASE_ROOT}/riscv64_duff_fallthrough_pointer_update_producers.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t45 = bir.add ptr %t44, 2|bir.store_local %lv.src, ptr %t45|%t48 = bir.add ptr %t47, 2|bir.store_local %lv.dst, ptr %t48|block_7:|bir.store_local %lv.src, ptr %t55|bir.store_local %lv.dst, ptr %t58|store_source function=main block=block_4 inst=2 source=%t45 status=available intent=store_local_publication source_producer=binary|store_source function=main block=block_7 inst=1 source=%t55 status=available intent=store_local_publication source_producer=unknown|store_source function=main block=block_7 inst=4 source=%t58 status=available intent=store_local_publication source_producer=unknown|base=pointer_value result=|base=pointer_value stored="
+  FORBIDDEN_SNIPPETS "src/00143.c|Tom Duff|0x0000000500000002"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 prepared_local_address array_base pointer_local pointer_step fallthrough expected_repair dump
+)
+
+c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_prepared_local_array_i8_element_access
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_i8_element_access.c"
   TARGET_TRIPLE riscv64-linux-gnu

@@ -1,56 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/324_rv64_duff_fallthrough_pointer_update_producers.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Normalize Duff Fallthrough Producer Evidence
+Current Step ID: 2
+Current Step Title: Add Focused Duff Fallthrough Producer Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 evidence normalization for the missing Duff fallthrough
-pointer update producer route.
+Completed Step 2 focused expected-repair coverage for missing Duff/fallthrough
+pointer update producer publication.
 
-Fresh artifacts for `tests/c/external/c-testsuite/src/00143.c` are under
-`build/rv64_c_testsuite_probe_latest/triage_324_step1/`: `probe_results.tsv`,
-`summary.md`, `evidence_excerpt.txt`, BIR/prepared-BIR dumps, emitted RV64
-assembly, linked c4cll and clang-reference binaries, and command logs/status
-files.
+Added `tests/backend/case/riscv64_duff_fallthrough_pointer_update_producers.c`,
+a small switch/fallthrough copy fixture with local pointer post-increments. It
+is independent of `src/00143.c`, the Duff comment/source spelling, candidate
+block names, observed value IDs, observed stack offsets, and fixed candidate
+array sizes.
 
-Probe status: `dump_bir=0`, `dump_prepared=0`, `emit=0`, `clang_link=0`,
-`qemu_c4cll=139`, clang reference `build/qemu=0/0`. The c4cll binary segfaults
-at `0x0000000500000002`.
+Added `backend_dump_riscv64_duff_fallthrough_pointer_update_producers` to
+`tests/backend/CMakeLists.txt`. The corrected expected-repair dump test proves
+both sides of the boundary:
 
-The route is distinct from idea 323. The repaired idea 323 path still works in
-`block_6`: BIR has explicit `%t29 = bir.add ptr %t28, 2` and
-`%t32 = bir.add ptr %t31, 2`, prepared store-source records classify them as
-`source_producer=binary`, and emitted RV64 computes/stores the next pointer
-from the current pointer value before copying the halfword.
+- the already-repaired idea 323 shape still exists in the same nearby feature
+  family through `bir.add ptr` and `source_producer=binary` pointer-local
+  publication;
+- a later fallthrough copy/update block currently stores next pointer values
+  into pointer locals with `source_producer=unknown`, while still having
+  pointer-value load/store memory accesses.
 
-The first later bad fallthrough is `block_9`. BIR stores `%t39` and `%t42`
-into `%lv.from`/`%lv.to`, but those values have no defining `bir.add ptr`
-producer:
-
-```text
-block_9:
-  %t38 = bir.load_local ptr %lv.from
-  bir.store_local %lv.from, ptr %t39
-  %t40 = bir.load_local i16 %t40.addr, addr %t38
-  %t41 = bir.load_local ptr %lv.to
-  bir.store_local %lv.to, ptr %t42
-  bir.store_local %t41.store.addr, i16 %t40, addr %t41
-```
-
-Prepared store-source records report `source_producer=unknown` for `%t39` and
-`%t42`; emitted RV64 then loads uninitialized stack homes (`216(sp)` and
-`224(sp)`) and publishes those as pointer locals. The same pattern continues in
-later Duff fallthrough blocks.
+This is intentionally dump-only pre-repair coverage. Runtime/codegen positive
+coverage should wait until the missing producer facts are repaired; the current
+test preserves the gap without encoding c-testsuite filenames or fixed stack
+homes. The existing dump harness supports literal snippets only, so the
+expected-repair assertion pins the focused fixture's concrete fallthrough
+store-source records (`block_7` pointer-local stores) to avoid the earlier false
+positive from unrelated `source=<none>` initialization stores.
 
 ## Suggested Next
 
-Add focused expected-repair coverage for Duff-style fallthrough pointer update
-publication: repeated copy blocks after a switch/fallthrough entry must publish
-next-pointer producer facts analogous to the first repaired loop-carried block.
+Repair semantic/prepared publication for Duff-style fallthrough pointer updates
+so later fallthrough copy blocks publish next-pointer producer facts analogous
+to the first repaired loop-carried block. Then flip the expected-repair dump
+coverage to a positive contract and add/enable runtime proof if supported.
 
 ## Watchouts
 
@@ -62,25 +53,27 @@ next-pointer producer facts analogous to the first repaired loop-carried block.
   still have unknown source producers.
 - Keep runtime proof on the supported path; do not weaken qemu coverage or
   mark the candidate unsupported.
-- The focused test should prove missing producer facts before RV64 consumption,
-  not only the final segfault or a fixed observed address.
+- Keep the focused fixture semantic. The test currently checks the specific
+  prepared missing-producer boundary for the later fallthrough pointer stores;
+  do not convert it to a runtime-only crash, a generic `source_producer=unknown`
+  match, or an offset-shaped assertion.
 
 ## Proof
 
-Candidate reprobe:
-`tests/c/external/c-testsuite/src/00143.c` was run through BIR dump,
-prepared-BIR dump, RV64 emit, clang link, qemu for c4cll output, and clang
-reference build/qemu. Results are recorded in
-`build/rv64_c_testsuite_probe_latest/triage_324_step1/probe_results.tsv` and
-`summary.md`.
+Focused proof:
+`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_(duff_fallthrough_pointer_update_producers|loop_carried_pointer_postincrement|prepared_local_array_pointer_step)'`
 
-Result: c4cll emit/link succeeded; qemu exits 139. Clang reference exits 0.
-Classification: `missing-duff-fallthrough-pointer-update-producers`.
+Result: passed, 7/7 tests. The corrected expected-repair dump coverage passed
+with snippets tied to the later fallthrough pointer-local store-source records,
+and the idea 323 loop-carried pointer post-increment plus prepared local-array
+pointer-step neighbor tests remained positive.
 
 Delegated proof:
 `cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
 
 Result: build succeeded; backend subset returned nonzero with 284/285 tests
-passing (`test_after.log`). The only remaining failure is the existing
-`backend_riscv_prepared_edge_publication` contract. The idea 323
-loop-carried dump/codegen/runtime tests passed in the broad run.
+passing before this packet; after adding the expected-repair dump test the
+backend subset returned nonzero with 285/286 tests passing (`test_after.log`).
+The only remaining failure is the existing `backend_riscv_prepared_edge_publication`
+contract. The new expected-repair dump test and idea 323 loop-carried
+dump/codegen/runtime tests passed in the broad run.
