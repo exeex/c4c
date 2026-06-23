@@ -1,80 +1,82 @@
 Status: Active
 Source Idea Path: ideas/open/323_rv64_loop_carried_pointer_postincrement_publication.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Repair RV64 Consumption and Runtime Behavior
+Current Step ID: 5
+Current Step Title: Reprobe and Close Classification
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 RV64 consumption repair for the loop-carried pointer
-post-increment path.
+Completed Step 5 reprobe/classification for
+`tests/c/external/c-testsuite/src/00143.c` after the Step 4 loop-carried
+pointer consumption repair.
 
-RV64 prepared scalar emission now consumes pointer `PointerBasePlusOffset`
-homes as pointer values: pointer moves can read register or 8-byte stack homes,
-and prepared pointer add can publish computed pointer results either to a
-register home or an 8-byte stack home. Frame-slot address materialization also
-publishes stack-homed computed-address results, so local pointer initialization
-does not load stale pointer homes.
+Artifacts are under
+`build/rv64_c_testsuite_probe_latest/triage_323_step5/`:
+`probe_results.tsv`, `summary.md`, BIR/prepared-BIR dumps, RV64 assembly,
+linked c4cll and clang-reference binaries, and command logs/status files.
 
-RV64 prepared local-memory store emission now stores pointer values through the
-same prepared move path when the source is a computed pointer home rather than a
-direct pointer register.
+Focused proof and the candidate assembly confirm the owned loop-carried pointer
+post-increment residual is fixed. The focused
+`backend_(dump|codegen_route|rv64_runtime)_riscv64_loop_carried_pointer_postincrement`
+tests pass, and `src/00143.c` Duff `block_6` now emits current-pointer-based
+updates: load `%lv.from`/`%lv.to`, compute next pointer with `addi ... 2`,
+store the updated pointer locals, and copy the halfword through the old pointer
+value.
 
-The regression fix keeps dynamic local-array GEP compatibility intact: the
-frame-slot address-materialization helper only emits a stack-homed computed
-address when the prepared materialization belongs to the pointer-add result.
-When the materialization belongs to the base object for an already-handled
-dynamic GEP, it preserves the old no-op path instead of failing emission.
+`src/00143.c` still fails at runtime after emit/link. Probe status:
+`dump_bir=0`, `dump_prepared=0`, `emit=0`, `clang_link=0`,
+`qemu_c4cll=139`, clang reference `build/qemu=0/0`. The qemu strace records
+SIGSEGV at `0x0000000500000002`.
 
-`backend_codegen_route_riscv64_loop_carried_pointer_postincrement` was flipped
-from expected-repair to a positive codegen contract and
-`backend_rv64_runtime_riscv64_loop_carried_pointer_postincrement` was added.
-Together with the existing dump test, the focused coverage now proves that the
-loop body loads current pointer locals, computes the next pointer by adding the
-element stride to that current value, stores the updated pointer local, copies
-the halfword through the old pointer value, and returns 0 under qemu.
+The first remaining residual is a separate Duff fallthrough pointer-update
+publication route, not the Step 4 RV64 consumption path. The first bad block is
+`block_9`, reached by `count % 8 == 7`. BIR stores `%t39` and `%t42` into
+`%lv.from`/`%lv.to`, but there is no `bir.add ptr` producer for those next
+pointer values:
 
-The fixture no longer compares `from`/`to` against `&source[3]` and `&sink[3]`.
-Those endpoint checks introduced a separate unprepared local-array GEP compare
-route (`%t62`/`%t68` register homes without address materialization), which is
-not the Step 4 RV64 consumption boundary. The runtime assertion remains focused
-on copied values, while dump/codegen contracts reject fixed array-base
-rematerialization for the loop-carried pointer updates.
+```text
+block_9:
+  %t38 = bir.load_local ptr %lv.from
+  bir.store_local %lv.from, ptr %t39
+  %t40 = bir.load_local i16 %t40.addr, addr %t38
+  %t41 = bir.load_local ptr %lv.to
+  bir.store_local %lv.to, ptr %t42
+  bir.store_local %t41.store.addr, i16 %t40, addr %t41
+```
+
+Prepared-BIR gives `%t39` and `%t42` stack homes (`stack216` and `stack224`)
+with `source_producer=unknown`; emitted RV64 then loads those uninitialized
+homes and publishes them as pointer locals before the later crash.
 
 ## Suggested Next
 
-Run Step 5 reprobe for `src/00143.c`. The focused loop-carried pointer body is
-ready for candidate reprobe, but endpoint local-array GEP comparison may need a
-separate prepared publication route if it appears in broader candidates.
+Have the plan owner/supervisor decide whether idea 323 is closure-ready for the
+focused loop-carried pointer post-increment repair, with a follow-up idea for
+Duff fallthrough pointer-update publication if `src/00143.c` remains a target.
 
 ## Watchouts
 
-- Do not special-case `src/00143.c`, Duff's-device block layout, `%lv.from`,
-  `%lv.to`, `%t29`, fixed stack offsets, block names, or fixed array sizes.
-- Do not fake endpoint `&array[3]` comparison values from source names or
-  observed stack offsets; require semantic/prepared address materialization or
-  pointer-base facts if that route becomes owned later.
-- Keep the dynamic-GEP no-op compatibility in the frame-slot materialization
-  path. Treating base-object materializations as failed result materializations
-  regresses stack-homed fused compare, empty loop-exit successor, and i16
-  local-array select/store routes.
+- Do not claim `src/00143.c` passes; it emits and links but still segfaults.
+- Do not special-case `src/00143.c`, Duff's-device block layout, block names,
+  `%t39`/`%t42`, fixed stack offsets, or fixed array sizes.
+- A follow-up repair should create semantic/prepared next-pointer producer facts
+  for Duff fallthrough copy blocks rather than teaching RV64 to guess from
+  uninitialized stack homes.
 
 ## Proof
 
-Focused loop-carried proof:
-`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_loop_carried_pointer_postincrement'`
+Candidate reprobe:
+`tests/c/external/c-testsuite/src/00143.c` was run through BIR dump,
+prepared-BIR dump, RV64 emit, clang link, qemu for c4cll output, and clang
+reference build/qemu. Results are recorded in
+`build/rv64_c_testsuite_probe_latest/triage_323_step5/probe_results.tsv` and
+`summary.md`.
 
-Result: passed, 3/3 tests.
-
-Regression-focused proof:
-`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(codegen_route|rv64_runtime)_riscv64_(loop_carried_pointer_postincrement|empty_loop_exit_successor|i16_local_array_select_store|stack_homed_fused_compare_missing_false_label)|backend_rv64_runtime_packed_local_member_offsets'`
-
-Result: passed, 9/9 tests. The loop-carried codegen/runtime coverage stayed
-positive, and the previously regressed stack-homed fused compare, empty
-loop-exit successor, i16 local-array select/store, and packed local member
-runtime routes passed.
+Result: c4cll emit/link succeeded; qemu exits 139. Clang reference exits 0.
+Classification:
+`separate-duff-fallthrough-pointer-update-publication-residual`.
 
 Delegated proof:
 `cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.
@@ -82,4 +84,4 @@ Delegated proof:
 Result: build succeeded; backend subset returned nonzero with 284/285 tests
 passing (`test_after.log`). The only remaining failure is the existing
 `backend_riscv_prepared_edge_publication` contract. The loop-carried
-codegen/runtime tests and all listed regression routes passed in the broad run.
+dump/codegen/runtime tests passed in the broad run.
