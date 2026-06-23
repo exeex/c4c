@@ -49,6 +49,38 @@ publication.
 - Repairs use aggregate layout, local memory, and RV64 prepared emission rules
   rather than filename, offset, or field-name matching.
 
+## Completion Note
+
+Closed after Step 5 evidence in
+`build/rv64_c_testsuite_probe_latest/triage_314_step5/summary.md` and
+`probe_results.tsv`.
+
+The aggregate-local subobject repair is complete for this idea's narrow scope:
+`src/00019.c` now emits, links, and exits under qemu with status `0`. Focused
+aggregate-local backend coverage passed `6/6` in the executor proof.
+
+The two remaining candidates are no longer aggregate-local subobject emission
+failures:
+
+- `src/00046.c` emits and links, aggregate stores/reloads are present, and the
+  remaining qemu exit `2` is classified as a separate select-chain /
+  short-circuit runtime lowering residual.
+- `src/00140.c` emits and links, but assembly remains truncated at the `f1`
+  byval aggregate handling boundary. This is classified as a separate RV64
+  prepared byval aggregate call ABI residual, including aggregate-address /
+  payload transport and floating aggregate lane handling.
+
+Follow-up ideas were opened for those separate residuals:
+
+- `ideas/open/317_rv64_select_chain_short_circuit_runtime_lowering.md`
+- `ideas/open/318_rv64_byval_aggregate_call_abi.md`
+
+Close-time guard: `cmake --build --preset default -j` passed, then
+`ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+matched the rolled-forward `test_before.log` backend subset. The regression
+guard passed with `--allow-non-decreasing-passed`: 239 passed, 1 accepted
+existing failure (`backend_riscv_prepared_edge_publication`), 0 new failures.
+
 ## Reviewer Reject Signals
 
 - The route special-cases `00019`, `00046`, `00140`, fixed field offsets, or
