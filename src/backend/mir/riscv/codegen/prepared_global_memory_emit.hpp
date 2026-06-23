@@ -21,6 +21,11 @@ struct PreparedCurrentInstructionContext;
     const c4c::backend::prepare::PreparedAddressMaterialization& materialization,
     std::string_view destination_register);
 
+[[nodiscard]] std::optional<std::string> emit_riscv_direct_function_address_materialization(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::Value& value,
+    std::string_view destination_register);
+
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_load_global(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::bir::LoadGlobalInst& load,

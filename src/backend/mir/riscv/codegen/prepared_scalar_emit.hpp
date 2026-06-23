@@ -63,6 +63,7 @@ struct SimpleCompare {
 
 [[nodiscard]] std::optional<std::string> emit_riscv_simple_return(
     const c4c::backend::bir::Terminator& terminator,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     std::optional<std::size_t> return_address_stack_offset,

@@ -47,6 +47,17 @@ const c4c::backend::bir::Function* find_prepared_function(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::LinkNameId link_name,
     const std::string& fallback_name) {
+  if (!fallback_name.empty()) {
+    const auto it = std::find_if(
+        prepared.module.functions.begin(),
+        prepared.module.functions.end(),
+        [&](const c4c::backend::bir::Function& function) {
+          return function.name == fallback_name;
+        });
+    if (it != prepared.module.functions.end()) {
+      return &*it;
+    }
+  }
   if (link_name != c4c::kInvalidLinkName) {
     const auto it = std::find_if(
         prepared.module.functions.begin(),
@@ -58,16 +69,7 @@ const c4c::backend::bir::Function* find_prepared_function(
       return &*it;
     }
   }
-  if (fallback_name.empty()) {
-    return nullptr;
-  }
-  const auto it = std::find_if(
-      prepared.module.functions.begin(),
-      prepared.module.functions.end(),
-      [&](const c4c::backend::bir::Function& function) {
-        return function.name == fallback_name;
-      });
-  return it == prepared.module.functions.end() ? nullptr : &*it;
+  return nullptr;
 }
 
 std::optional<std::vector<std::int32_t>> simple_defined_i32_global_words(
@@ -256,6 +258,9 @@ std::string global_label(const c4c::backend::bir::Module& module,
 
 std::string function_label(const c4c::backend::bir::Module& module,
                            const c4c::backend::bir::Function& function) {
+  if (!function.name.empty()) {
+    return function.name;
+  }
   if (function.link_name_id != c4c::kInvalidLinkName) {
     const std::string_view spelling =
         module.names.link_names.spelling(function.link_name_id);
@@ -280,6 +285,13 @@ std::string prepared_link_name_spelling(
   }
   const std::string_view spelling = prepared.names.link_names.spelling(link_name);
   return std::string{spelling};
+}
+
+std::string symbol_pointer_fallback_name(const c4c::backend::bir::Value& value) {
+  if (!value.name.empty() && value.name.front() == '@') {
+    return value.name.substr(1);
+  }
+  return value.name;
 }
 
 const c4c::backend::prepare::PreparedMemoryAccess* simple_i32_global_access_for(
@@ -450,6 +462,35 @@ std::optional<std::string> emit_riscv_direct_global_address_materialization(
       prepared,
       *materialization.symbol_name,
       prepared_link_name_spelling(prepared, *materialization.symbol_name));
+  if (function == nullptr || function->is_declaration) {
+    return std::nullopt;
+  }
+  const auto label = function_label(prepared.module, *function);
+  if (label.empty()) {
+    return std::nullopt;
+  }
+
+  return "    lla " + std::string{destination_register} + ", " + label + "\n";
+}
+
+std::optional<std::string> emit_riscv_direct_function_address_materialization(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::Value& value,
+    std::string_view destination_register) {
+  namespace bir = c4c::backend::bir;
+
+  if (destination_register.empty() ||
+      value.kind != bir::Value::Kind::Named ||
+      value.type != bir::TypeKind::Ptr ||
+      (value.pointer_symbol_link_name_id == c4c::kInvalidLinkName &&
+       value.name.empty())) {
+    return std::nullopt;
+  }
+
+  const auto* function = find_prepared_function(
+      prepared,
+      value.pointer_symbol_link_name_id,
+      symbol_pointer_fallback_name(value));
   if (function == nullptr || function->is_declaration) {
     return std::nullopt;
   }

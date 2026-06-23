@@ -2,6 +2,7 @@
 
 #include "prepared_emit_context.hpp"
 #include "prepared_frame_emit.hpp"
+#include "prepared_global_memory_emit.hpp"
 
 #include "../../../prealloc/addressing.hpp"
 
@@ -796,6 +797,7 @@ std::optional<std::string> emit_riscv_simple_binary(
 
 std::optional<std::string> emit_riscv_simple_return(
     const c4c::backend::bir::Terminator& terminator,
+    const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     std::optional<std::size_t> return_address_stack_offset,
@@ -815,10 +817,27 @@ std::optional<std::string> emit_riscv_simple_return(
     append_epilogue(out);
     return out;
   }
+  if (terminator.value->type == c4c::backend::bir::TypeKind::Ptr &&
+      terminator.value->kind == c4c::backend::bir::Value::Kind::Immediate &&
+      terminator.value->immediate == 0) {
+    std::string out = "    li a0, 0\n";
+    append_epilogue(out);
+    return out;
+  }
   const auto immediate = simple_integer_immediate(*terminator.value);
   if (!immediate.has_value()) {
     std::string out;
-    if (!emit_move_to_register(out, "a0", names, lookups, *terminator.value)) {
+    if (terminator.value->type == c4c::backend::bir::TypeKind::Ptr) {
+      const auto function_address = emit_riscv_direct_function_address_materialization(
+          prepared,
+          *terminator.value,
+          "a0");
+      if (function_address.has_value()) {
+        out += *function_address;
+      } else if (!emit_move_to_register(out, "a0", names, lookups, *terminator.value)) {
+        return std::nullopt;
+      }
+    } else if (!emit_move_to_register(out, "a0", names, lookups, *terminator.value)) {
       return std::nullopt;
     }
     append_epilogue(out);

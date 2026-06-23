@@ -585,25 +585,25 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_dump_flag_test(
-  backend_dump_riscv64_function_pointer_return_chain_expected_repair
+  backend_dump_riscv64_function_pointer_return_chain
   SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_return_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
   REQUIRED_SNIPPETS "bir.ret ptr @sub|bir.ret ptr 0|%t0 = bir.call ptr choose(i32 1)|bir.store_local %lv.selected, ptr %t0|bir.load_local ptr %lv.selected|bir.call i32 %t1(i32 9, i32 4)|wrapper_kind=indirect|indirect_callee=%t1|home @sub value_id=5 kind=register reg=t0"
   FORBIDDEN_SNIPPETS "src/00124.c"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 function_pointer return_chain indirect_call expected_repair dump
+  LABELS riscv64 function_pointer return_chain indirect_call dump
 )
 
 c4c_add_backend_codegen_route_test(
-  backend_codegen_route_riscv64_function_pointer_return_chain_expected_repair
+  backend_codegen_route_riscv64_function_pointer_return_chain
   SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_return_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_function_pointer_return_chain.s"
-  REQUIRED_SNIPPETS "choose:|.Lchoose_block_2:|mv a0, t0|ret|.Lchoose_block_3:|main:|call choose|sd t0, 0(sp)|ld t0, 0(sp)|li a0, 9|li a1, 4|jalr ra, 0(t0)"
-  FORBIDDEN_SNIPPETS "call sub|lla|src/00124.c"
+  REQUIRED_SNIPPETS "choose:|.Lchoose_block_2:|lla a0, sub|ret|.Lchoose_block_3:|li a0, 0|ret|main:|call choose|sd t0, 0(sp)|ld t0, 0(sp)|li a0, 9|li a1, 4|jalr ra, 0(t0)|mv s1, a0|addi t0, s1, -5|mv a0, t0|ld ra, 16(sp)|ret"
+  FORBIDDEN_SNIPPETS "call sub|src/00124.c"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 function_pointer return_chain indirect_call expected_repair emission
+  LABELS riscv64 function_pointer return_chain indirect_call emission
 )
 
 function(c4c_add_backend_runtime_case test_name)
@@ -752,6 +752,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_local_storage.c"
   CASE_TIMEOUT_SEC 10
   LABELS function_pointer local_storage indirect_call
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_function_pointer_return_chain
+  SRC "${BACKEND_CASE_ROOT}/riscv64_function_pointer_return_chain.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS function_pointer return_chain indirect_call
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_external_strlen_runtime_link_policy

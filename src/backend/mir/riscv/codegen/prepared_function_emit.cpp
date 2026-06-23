@@ -281,6 +281,7 @@ bool append_simple_prepared_bir_function_asm(
       case c4c::backend::bir::TerminatorKind::Return: {
         const auto returned = emit_riscv_simple_return(
             block.terminator,
+            prepared,
             prepared.names,
             lookups,
             return_address_stack_offset,
