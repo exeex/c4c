@@ -47,6 +47,26 @@ Prepared store-source records show `missing_destination_access` at
 - Generated assembly no longer truncates with self-moves such as `mv t0, t0`
   hiding missing destination-access facts in the focused proof cases.
 
+## Completion Note
+
+Closed on 2026-06-23 after Step 3 prepared destination-access publication
+repair satisfied the source idea criteria. Focused nested select store-source
+dump coverage is now positive and forbids `missing_destination_access`; the
+simple pointer-typed select publication neighbor remains green.
+
+`src/00144.c` was reprobed under
+`build/rv64_c_testsuite_probe_latest/triage_320_step3/` with BIR dump,
+prepared-BIR dump, RV64 emit, clang link, and qemu all returning 0. Former
+nested residual records including `tern.end.23`, `tern.end.33`, `tern.end.54`,
+and `tern.end.63` now have destination access and report `status=available`;
+`missing_destination_access` is absent from the prepared dump. No new RV64
+residual was exposed by the reprobe.
+
+Close gate: backend regression guard passed with
+`test_before.log` versus `test_after.log` using
+`--allow-non-decreasing-passed`: 275 passed, 1 failed before and after, with
+the existing `backend_riscv_prepared_edge_publication` failure unchanged.
+
 ## Reviewer Reject Signals
 
 - The implementation special-cases `src/00144.c`, `tern.end.23`, `tern.end.33`,
