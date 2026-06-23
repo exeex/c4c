@@ -60,6 +60,38 @@ function(c4c_add_backend_codegen_route_test test_name)
   c4c_set_backend_test_labels("${test_name}" backend_route ${ARG_LABELS})
 endfunction()
 
+function(c4c_add_backend_codegen_failure_test test_name)
+  set(options)
+  set(one_value_args SRC TARGET_TRIPLE OUT_TEXT EXPECTED_DIAGNOSTICS CASE_TIMEOUT_SEC)
+  set(multi_value_args LABELS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "c4c_add_backend_codegen_failure_test(${test_name}) got unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  foreach(required_arg IN ITEMS SRC TARGET_TRIPLE OUT_TEXT EXPECTED_DIAGNOSTICS)
+    if(NOT DEFINED ARG_${required_arg} OR "${ARG_${required_arg}}" STREQUAL "")
+      message(FATAL_ERROR
+        "c4c_add_backend_codegen_failure_test(${test_name}) missing ${required_arg}")
+    endif()
+  endforeach()
+
+  add_test(
+    NAME "${test_name}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DSRC=${ARG_SRC}
+            -DTARGET_TRIPLE=${ARG_TARGET_TRIPLE}
+            -DOUT_TEXT=${ARG_OUT_TEXT}
+            "-DEXPECTED_DIAGNOSTICS=${ARG_EXPECTED_DIAGNOSTICS}"
+            "-DCASE_TIMEOUT_SEC=${ARG_CASE_TIMEOUT_SEC}"
+            -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_codegen_failure_case.cmake"
+  )
+  c4c_set_backend_test_labels("${test_name}" backend_route expected_failure ${ARG_LABELS})
+endfunction()
+
 function(c4c_add_backend_dump_flag_test test_name)
   set(options)
   set(one_value_args SRC TARGET_TRIPLE DUMP_FLAG REQUIRED_SNIPPETS FORBIDDEN_SNIPPETS
@@ -292,15 +324,24 @@ c4c_add_backend_codegen_route_test(
   LABELS riscv64 extern_call string_literal direct_call external_policy expected_repair
 )
 
-c4c_add_backend_codegen_route_test(
-  backend_codegen_route_riscv64_external_stdio_declaration_stub_guard
+c4c_add_backend_codegen_failure_test(
+  backend_codegen_route_riscv64_external_stdio_unsupported_variadic_diagnostic
   SRC "${BACKEND_CASE_ROOT}/riscv64_external_stdio_declaration_guard.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_external_stdio_declaration_guard.s"
-  REQUIRED_SNIPPETS ".text|.globl main|main:"
-  FORBIDDEN_SNIPPETS "printf:|remove:|ftrylockfile:|__overflow:"
+  EXPECTED_DIAGNOSTICS "unsupported_external_call|callee='printf'|wrapper_kind=direct_extern_variadic|reason=variadic external calls"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 extern_call stdio declaration external_policy expected_repair
+)
+
+c4c_add_backend_codegen_failure_test(
+  backend_codegen_route_riscv64_external_user_unresolved_diagnostic
+  SRC "${BACKEND_CASE_ROOT}/riscv64_external_user_unresolved_call.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_external_user_unresolved_call.s"
+  EXPECTED_DIAGNOSTICS "unsupported_external_call|callee='user_external_add'|wrapper_kind=direct_extern_fixed_arity|reason=unsupported runtime external symbol"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 extern_call user_external declaration external_policy expected_repair
 )
 
 c4c_add_backend_codegen_route_test(
