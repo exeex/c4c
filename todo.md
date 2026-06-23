@@ -1,75 +1,78 @@
 Status: Active
 Source Idea Path: ideas/open/322_rv64_empty_loop_exit_successor_emission.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused Empty Loop-Exit Coverage
+Current Step ID: 3
+Current Step Title: Repair Empty Successor Exit Emission
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 focused expected-repair coverage for idea 322, focused on a
-reachable empty loop-exit successor whose body is present in prepared BIR but
-omitted by current RV64 emission.
+Completed Step 3 repair for idea 322, focused on reachable empty loop-exit
+successor emission without testcase-shaped routing.
 
-New focused fixture:
+Implementation:
 
-- `tests/backend/case/riscv64_empty_loop_exit_successor.c`
+- RV64 pointer frame-slot address materializations whose prepared home is a
+  computed pointer base plus offset with no assigned register are treated as
+  producer-side no-ops; consumers materialize from prepared address facts.
+- Pointer local stores now preserve existing register-homed pointer sources and
+  only fall back to producer-side address materialization when no prepared
+  pointer register exists.
+- Stack-homed operands for signed div/rem now use the existing scalar
+  register-materialization helper instead of failing before the generic stack
+  load path.
+- RV64 prepared local memory emission now handles prepared pointer-value i16
+  loads and stores with native `lh`/`sh` through the materialized pointer base.
 
-New CTest coverage:
+Focused coverage:
 
-- `backend_dump_riscv64_empty_loop_exit_successor`
-- `backend_codegen_route_riscv64_empty_loop_exit_successor`
+- `backend_codegen_route_riscv64_empty_loop_exit_successor` was converted from
+  expected-repair to a positive emitted-code contract requiring the successor
+  body, switch-case labels, halfword operations, `remw`, and a valid return
+  path.
+- `backend_rv64_runtime_riscv64_empty_loop_exit_successor` now proves the
+  fixture links and exits under qemu with status 0.
+- The existing `backend_dump_riscv64_empty_loop_exit_successor` prepared-fact
+  coverage remains in place.
 
-Coverage contract:
+Result:
 
-- The dump test proves the loop false successor reaches a prepared block with
-  real pointer-local setup, switch/fused-compare control flow, pointer-value
-  memory access, and a semantic `bir.ret i32`.
-- The codegen route test records the current expected-repair RV64 failure:
-  current emission branches to a generated block label after native `lh`/`sh`
-  body emission, but the output has no valid `li a0`/`ret` epilogue path.
-- The fixture is independent of `src/00143.c`, `_IO_stdin_used`, linked
-  section layout, observed instruction addresses, and a fixed concrete
-  `.Lmain_block_2` spelling.
-
-Previous Step 1 evidence remains the source classification:
-
-- `src/00143.c` BIR/prepared-BIR keep `for.cond.1` false successor `block_2`
-  with real successor body work.
-- RV64 assembly emits the loop false jump and defines the successor label with
-  no body, branch, epilogue, or return, so linked execution falls into the next
-  section and qemu reports `SIGILL`.
-- i16 `lh`/`sh` body emission and stack-homed fused compare label emission
-  remain separate repaired boundaries before this failure.
+- The focused fixture now emits all reachable loop-exit successor and switch
+  body blocks and returns normally under qemu.
+- Existing i16 halfword and stack-homed fused compare focused tests remain
+  green.
+- Previously regressed nearby pointer-local route/runtime tests were rerun and
+  pass after tightening pointer store materialization fallback.
 
 ## Suggested Next
 
-Repair RV64 block traversal/emission so reachable loop-exit successor blocks
-with real prepared bodies are emitted before the function text closes, then
-convert `riscv64_empty_loop_exit_successor` from expected-repair to positive
-codegen and runtime coverage.
+Execute Step 4 reprobe for `src/00143.c` through BIR, prepared-BIR, RV64 emit,
+link, and qemu to classify whether idea 322 is closure-ready or exposes a
+later residual.
 
 ## Watchouts
 
 - Do not special-case `src/00143.c`, `.Lmain_block_2`, `_IO_stdin_used`, fixed
   block order, linked section layout, or observed instruction addresses.
-- Do not reopen idea 321's i16 local-array select/store publication, idea
-  319's stack-homed fused compare control flow, or idea 320's nested
-  store-source publication unless fresh evidence proves a regression.
-- Do not hide qemu `SIGILL` by marking the supported candidate unsupported,
-  skipping runtime proof, or adding an unreachable trap instead of a valid
-  return/epilogue path.
-- The Step 2 fixture uses switch-controlled successor work only because the
-  smaller loop-tail cases already emit correctly; the owned boundary remains
-  reachable successor block traversal/emission after loop exit.
+- The repair exposed and covered generic helper gaps needed to emit the
+  successor body: computed pointer address publication, stack-homed signed
+  remainder operands, and pointer-value i16 load/store lowering.
+- Keep idea 319 stack-homed fused compare, idea 320 nested store-source
+  publication, and idea 321 i16 local-array select/store as separate routes
+  unless Step 4 fresh evidence shows a regression.
 
 ## Proof
 
 Focused proof:
 `cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(dump|codegen_route|rv64_runtime)_riscv64_(empty_loop_exit_successor|i16_local_array_select_store|stack_homed_fused_compare_missing_false_label)'`
 
-Result: passed, 8/8 tests.
+Result: passed, 9/9 tests.
+
+Regression spot-check after an initial broad-run regression:
+`cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R 'backend_(codegen_route|rv64_runtime)_riscv64_(prepared_local_array_base_pointer|prepared_local_array_subobject_pointer|prepared_local_array_pointer_step|prepared_local_array_i8_element_access|aggregate_local_self_pointer_chain|empty_loop_exit_successor)'`
+
+Result: passed, 10/10 tests.
 
 Delegated proof to run:
 `cmake --build --preset default -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`.

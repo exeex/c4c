@@ -912,10 +912,10 @@ bool emit_move_to_register(std::string& out,
   const auto* home = prepared_value_home_for(names, lookups, value);
   if (home != nullptr &&
       home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-      home->offset_bytes.has_value() &&
-      fits_signed_12_bit_load_offset(*home->offset_bytes)) {
+      home->offset_bytes.has_value()) {
     if (value.type == c4c::backend::bir::TypeKind::I16 &&
-        home->size_bytes == std::optional<std::size_t>{2}) {
+        home->size_bytes == std::optional<std::size_t>{2} &&
+        fits_signed_12_bit_load_offset(*home->offset_bytes)) {
       out += "    lh ";
       out += destination_register;
       out += ", ";
@@ -1133,6 +1133,10 @@ std::optional<std::string> emit_riscv_simple_prepared_pointer_add(
     if (home->kind == prepare::PreparedValueHomeKind::StackSlot) {
       return std::string{};
     }
+    if (home->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
+        !home->register_name.has_value()) {
+      return std::string{};
+    }
     return std::nullopt;
   }
   if (home->kind != prepare::PreparedValueHomeKind::StackSlot) {
@@ -1326,6 +1330,8 @@ std::optional<std::string> emit_riscv_simple_binary(
     } else if (lhs_imm.has_value()) {
       lhs_register_name = "t3";
       out += "    li " + lhs_register_name + ", " + std::to_string(*lhs_imm) + "\n";
+    } else if (emit_move_to_register(out, "t3", names, lookups, binary.lhs)) {
+      lhs_register_name = "t3";
     } else {
       return std::nullopt;
     }
@@ -1336,6 +1342,8 @@ std::optional<std::string> emit_riscv_simple_binary(
     } else if (rhs_imm.has_value()) {
       rhs_register_name = "t4";
       out += "    li " + rhs_register_name + ", " + std::to_string(*rhs_imm) + "\n";
+    } else if (emit_move_to_register(out, "t4", names, lookups, binary.rhs)) {
+      rhs_register_name = "t4";
     } else {
       return std::nullopt;
     }

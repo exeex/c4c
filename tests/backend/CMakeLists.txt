@@ -424,10 +424,10 @@ c4c_add_backend_codegen_route_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_empty_loop_exit_successor.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_empty_loop_exit_successor.s"
-  REQUIRED_SNIPPETS "main:|j .Lmain_block_|.Lmain_block_|lh |sh "
-  FORBIDDEN_SNIPPETS "src/00143.c|_IO_stdin_used|li a0|ret"
+  REQUIRED_SNIPPETS "main:|j .Lmain_block_|.Lmain_block_|.Lmain_block_2_switch_case_|lh |sh |remw|mv a0|ret"
+  FORBIDDEN_SNIPPETS "src/00143.c|_IO_stdin_used"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 prepared_control_flow loop empty_exit successor_body pointer_local switch expected_repair emission
+  LABELS riscv64 prepared_control_flow loop empty_exit successor_body pointer_local switch emission
 )
 
 c4c_add_backend_dump_flag_test(
@@ -1015,6 +1015,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_i16_local_array_select_store.c"
   CASE_TIMEOUT_SEC 10
   LABELS prepared_local_address array_subobject i16_load select store_source
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_empty_loop_exit_successor
+  SRC "${BACKEND_CASE_ROOT}/riscv64_empty_loop_exit_successor.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS prepared_control_flow loop empty_exit successor_body pointer_local switch
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_pointer_to_pointer_local_address
