@@ -534,10 +534,10 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_integer_select_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.select ne i32 %t0, 0, i32 0, 0|bir.inttoptr i32 %t7 to ptr|bir.store_local %lv.p, ptr %t8|select_chain function=main block=tern.end.15 value=%t32 root_is_select=yes|store_source function=main block=tern.end.15 inst=6 source=<none> status=missing_destination_access"
+  REQUIRED_SNIPPETS "bir.select ne i32 %t0, 0, i32 0, 0|bir.inttoptr i32 %t7 to ptr|bir.store_local %lv.p, ptr %t8|bir.inttoptr i32 %t32 to ptr|bir.store_local %lv.p, ptr %t33|bir.store_local %lv.q, ptr %t34|bir.ne ptr %t35, 0|select_chain function=main block=tern.end.15 value=%t32 root_is_select=yes"
   FORBIDDEN_SNIPPETS "src/00144.c"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 pointer select pointer_local expected_repair dump
+  LABELS riscv64 pointer select pointer_local dump
 )
 
 c4c_add_backend_codegen_route_test(
@@ -552,14 +552,14 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
-  backend_codegen_route_riscv64_pointer_integer_select_chain_expected_repair
+  backend_codegen_route_riscv64_pointer_integer_select_chain
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_integer_select_chain.c"
   TARGET_TRIPLE riscv64-linux-gnu
-  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_integer_select_chain_expected_repair.s"
-  REQUIRED_SNIPPETS ".Lmain_select_0_done:|mv t0, t0|mv t0, t0"
-  FORBIDDEN_SNIPPETS "ret|src/00144.c"
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_pointer_integer_select_chain.s"
+  REQUIRED_SNIPPETS ".globl main|mv s1, t0|sd s1,|ld t0,|bne t3, t4|mv a0, t0|ret"
+  FORBIDDEN_SNIPPETS "src/00144.c"
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 pointer select pointer_local expected_repair emission
+  LABELS riscv64 pointer select pointer_local emission
 )
 
 c4c_add_backend_dump_flag_test(
@@ -784,6 +784,12 @@ c4c_add_backend_rv64_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_to_pointer_local_address.c"
   CASE_TIMEOUT_SEC 10
   LABELS prepared_local_address pointer_local pointer_to_pointer
+)
+c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_pointer_integer_select_chain
+  SRC "${BACKEND_CASE_ROOT}/riscv64_pointer_integer_select_chain.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS pointer select pointer_local
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_aggregate_local_self_pointer_chain

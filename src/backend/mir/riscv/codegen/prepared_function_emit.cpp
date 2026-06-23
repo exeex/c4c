@@ -199,7 +199,8 @@ bool append_simple_prepared_bir_function_asm(
         const auto emitted = emit_riscv_simple_select(
             *select,
             function_name,
-            context);
+            context,
+            &block);
         if (!emitted.has_value()) {
           return false;
         }

@@ -41,31 +41,105 @@ const c4c::backend::prepare::PreparedMemoryAccess* simple_frame_slot_access_for(
   return access;
 }
 
-const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_frame_slot_access_for(
-    const PreparedCurrentInstructionContext& context,
-    c4c::backend::bir::TypeKind value_type) {
+bool is_simple_pointer_frame_slot_access(
+    const c4c::backend::prepare::PreparedMemoryAccess& access) {
   namespace bir = c4c::backend::bir;
   namespace prepare = c4c::backend::prepare;
 
-  if (context.lookups == nullptr || value_type != bir::TypeKind::Ptr) {
+  return access.address_space == bir::AddressSpace::Default &&
+         !access.is_volatile &&
+         access.address.base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
+         access.address.frame_slot_id.has_value() &&
+         access.address.size_bytes == 8 &&
+         access.address.align_bytes >= 8 &&
+         access.address.can_use_base_plus_offset &&
+         fits_signed_12_bit_immediate(access.address.byte_offset);
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess*
+simple_pointer_frame_slot_access_for_store(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::StoreLocalInst& store) {
+  namespace bir = c4c::backend::bir;
+  if (context.lookups == nullptr ||
+      store.value.type != bir::TypeKind::Ptr ||
+      store.value.kind != bir::Value::Kind::Named ||
+      store.value.name.empty()) {
     return nullptr;
   }
-  const auto* access = prepare::find_indexed_prepared_memory_access(
-      &context.lookups->memory_accesses,
-      context.block_label,
-      context.instruction_index);
-  if (access == nullptr ||
-      access->address_space != bir::AddressSpace::Default ||
-      access->is_volatile ||
-      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-      !access->address.frame_slot_id.has_value() ||
-      access->address.size_bytes != 8 ||
-      access->address.align_bytes < 8 ||
-      !access->address.can_use_base_plus_offset ||
-      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+  const auto stored_value_name = context.names.value_names.find(store.value.name);
+  if (stored_value_name == c4c::kInvalidValueName) {
     return nullptr;
   }
-  return access;
+  if (const auto* access =
+          c4c::backend::prepare::find_indexed_prepared_memory_access(
+              &context.lookups->memory_accesses,
+              context.block_label,
+              context.instruction_index);
+      access != nullptr &&
+      access->stored_value_name == std::optional<c4c::ValueNameId>{stored_value_name} &&
+      is_simple_pointer_frame_slot_access(*access)) {
+    return access;
+  }
+
+  const c4c::backend::prepare::PreparedMemoryAccess* selected = nullptr;
+  for (const auto& entry : context.lookups->memory_accesses.accesses_by_position) {
+    const auto* access = entry.second;
+    if (access == nullptr ||
+        access->block_label != context.block_label ||
+        access->stored_value_name != std::optional<c4c::ValueNameId>{stored_value_name} ||
+        !is_simple_pointer_frame_slot_access(*access)) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = access;
+  }
+  return selected;
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess*
+simple_pointer_frame_slot_access_for_load(
+    const PreparedCurrentInstructionContext& context,
+    const c4c::backend::bir::LoadLocalInst& load) {
+  namespace bir = c4c::backend::bir;
+  if (context.lookups == nullptr ||
+      load.result.type != bir::TypeKind::Ptr ||
+      load.result.kind != bir::Value::Kind::Named ||
+      load.result.name.empty()) {
+    return nullptr;
+  }
+  const auto result_value_name = context.names.value_names.find(load.result.name);
+  if (result_value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  if (const auto* access =
+          c4c::backend::prepare::find_indexed_prepared_memory_access(
+              &context.lookups->memory_accesses,
+              context.block_label,
+              context.instruction_index);
+      access != nullptr &&
+      access->result_value_name == std::optional<c4c::ValueNameId>{result_value_name} &&
+      is_simple_pointer_frame_slot_access(*access)) {
+    return access;
+  }
+
+  const c4c::backend::prepare::PreparedMemoryAccess* selected = nullptr;
+  for (const auto& entry : context.lookups->memory_accesses.accesses_by_position) {
+    const auto* access = entry.second;
+    if (access == nullptr ||
+        access->block_label != context.block_label ||
+        access->result_value_name != std::optional<c4c::ValueNameId>{result_value_name} ||
+        !is_simple_pointer_frame_slot_access(*access)) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = access;
+  }
+  return selected;
 }
 
 const c4c::backend::prepare::PreparedMemoryAccess* simple_pointer_value_i32_access_for(
@@ -259,43 +333,6 @@ simple_pointer_address_materialization_for(
       context.instruction_index);
 }
 
-const c4c::backend::prepare::PreparedStoreSourcePublicationPlan*
-simple_store_source_publication_for(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    c4c::FunctionNameId function_name,
-    const PreparedCurrentInstructionContext& context,
-    const c4c::backend::bir::StoreLocalInst& store) {
-  namespace bir = c4c::backend::bir;
-  namespace prepare = c4c::backend::prepare;
-
-  if (store.value.kind != bir::Value::Kind::Named ||
-      store.value.name.empty()) {
-    return nullptr;
-  }
-  const auto source_value_name = context.names.value_names.find(store.value.name);
-  if (source_value_name == c4c::kInvalidValueName) {
-    return nullptr;
-  }
-
-  const prepare::PreparedStoreSourcePublicationPlan* selected = nullptr;
-  for (const auto& record : prepared.store_source_publications.records) {
-    if (record.function_name != function_name ||
-        record.block_label != context.block_label ||
-        record.instruction_index != context.instruction_index ||
-        record.plan.status != prepare::PreparedStoreSourcePublicationStatus::Available ||
-        record.plan.intent !=
-            prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication ||
-        record.plan.source_value_name != source_value_name) {
-      continue;
-    }
-    if (selected != nullptr) {
-      return nullptr;
-    }
-    selected = &record.plan;
-  }
-  return selected;
-}
-
 std::optional<std::string> load_pointer_value_base_register(
     std::string& out,
     const PreparedCurrentInstructionContext& context,
@@ -406,9 +443,9 @@ std::optional<std::string> emit_riscv_simple_store_local(
     const c4c::backend::bir::StoreLocalInst& store,
     const PreparedCurrentInstructionContext& context) {
   if (store.value.type == c4c::backend::bir::TypeKind::Ptr) {
-    const auto* access = simple_pointer_frame_slot_access_for(
+    const auto* access = simple_pointer_frame_slot_access_for_store(
         context,
-        store.value.type);
+        store);
     const auto* materialization = simple_pointer_address_materialization_for(
         context,
         store.value);
@@ -423,14 +460,6 @@ std::optional<std::string> emit_riscv_simple_store_local(
 
     std::string out;
     if (materialization == nullptr) {
-      const auto* store_source = simple_store_source_publication_for(
-          prepared,
-          function_name,
-          context,
-          store);
-      if (store_source == nullptr) {
-        return std::nullopt;
-      }
       const auto source_register = prepared_pointer_register_for_value(context, store.value);
       if (!source_register.has_value()) {
         return std::nullopt;
@@ -630,9 +659,9 @@ std::optional<std::string> emit_riscv_simple_load_local(
       return out;
     }
 
-    const auto* access = simple_pointer_frame_slot_access_for(
+    const auto* access = simple_pointer_frame_slot_access_for_load(
         context,
-        load.result.type);
+        load);
     if (access == nullptr) {
       return std::nullopt;
     }
