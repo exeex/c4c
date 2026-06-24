@@ -142,3 +142,29 @@ c-testsuite object defaults; and semantic-BIR object mode.
   regression comparison.
 - New failures are absorbed into this umbrella silently instead of becoming
   focused follow-up ideas when they are distinct backend semantic bugs.
+
+## Closure Note
+
+Closed after completing the object-route scan/default-readiness decision.
+
+- Final selected proof command:
+  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_(return_zero|return_add|two_arg_helper|two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call|return_add_sub_chain|local_temp)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1`
+- Final result: 41/41 tests passed.
+- Close-time regression guard passed against the rolled 41/41 baseline.
+
+Final recommendation: keep `--codegen obj` as an explicit dual-route option
+for now. Do not make native object output the default backend route yet.
+
+Rationale: object-route evidence is much stronger than the initial CLI smoke,
+with target object unit coverage, CLI object-byte and diagnostic tests,
+AArch64 c-testsuite object-byte smokes for `00001.c`, `00002.c`, `00011.c`,
+and `00012.c`, and RV64 object-runtime c-testsuite smokes for `00001.c`,
+`00002.c`, `00011.c`, and `00012.c`. Existing asm-route coverage remains
+selected in the same proof. Default readiness is still not balanced across
+target features and policies.
+
+Remaining follow-up boundaries: AArch64 saved-callee/local-call-frame support
+for `00003.c`, `param_slot.c`, and `two_arg_*_rewrite.c`;
+branch/control-flow and branch/global c-testsuite families; AArch64 runtime;
+globals/data; pointers; aggregates; byval; indirect calls; x86 object output;
+object stdout; c-testsuite object defaults; and semantic-BIR object mode.
