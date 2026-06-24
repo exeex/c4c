@@ -78,6 +78,22 @@ std::optional<std::string> type_ref_mismatch_detail(const LirTypeRef& type) {
     }
   }
 
+  if (type.kind() == LirTypeKind::VrmRegister) {
+    const auto typed_width = type.vrm_width();
+    const auto text_width = LirTypeRef(type.str()).vrm_width();
+    if (typed_width != text_width) {
+      std::ostringstream detail;
+      detail << "typed VRM width ";
+      if (typed_width.has_value()) {
+        detail << *typed_width;
+      } else {
+        detail << "<missing>";
+      }
+      detail << " disagrees with text '" << type.str() << "'";
+      return detail.str();
+    }
+  }
+
   return std::nullopt;
 }
 
@@ -788,6 +804,20 @@ void verify_function_signature_return_type_ref_mirror(
   constexpr std::string_view field = "LirFunction.signature_return_type_ref";
   verify_signature_type_ref_semantics(mod, mirror, field);
 
+  if (fn.return_type.base == TB_VRM_REGISTER && fn.return_type.ptr_level == 0 &&
+      fn.return_type.array_rank == 0) {
+    const unsigned expected_width = static_cast<unsigned>(fn.return_type.vrm_width);
+    if (mirror.kind() != LirTypeKind::VrmRegister ||
+        mirror.vrm_width() != expected_width) {
+      std::ostringstream detail;
+      detail << "return mirror for function '" << fn.name
+             << "' must preserve VRM register carrier width "
+             << expected_width << "; mirror '" << mirror.str() << "'";
+      fail_verify(field, detail.str());
+    }
+    return;
+  }
+
   const StructNameId expected_id =
       expected_direct_aggregate_signature_id(mod, fn.return_type);
   if (expected_id == kInvalidStructName) return;
@@ -819,6 +849,20 @@ void verify_function_signature_param_type_ref_mirror(
   verify_signature_type_ref_semantics(mod, mirror, field);
 
   if (!param) return;
+
+  if (param->type.base == TB_VRM_REGISTER && param->type.ptr_level == 0 &&
+      param->type.array_rank == 0) {
+    const unsigned expected_width = static_cast<unsigned>(param->type.vrm_width);
+    if (mirror.kind() != LirTypeKind::VrmRegister ||
+        mirror.vrm_width() != expected_width) {
+      std::ostringstream detail;
+      detail << "parameter " << index << " mirror for function '" << fn.name
+             << "' must preserve VRM register carrier width "
+             << expected_width << "; mirror '" << mirror.str() << "'";
+      fail_verify(field, detail.str());
+    }
+    return;
+  }
 
   if (param->is_byval && mirror.str().find("byval(") == std::string::npos) {
     std::ostringstream detail;

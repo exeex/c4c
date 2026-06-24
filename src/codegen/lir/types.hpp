@@ -23,6 +23,7 @@ enum class LirTypeKind : unsigned char {
   Floating,
   Pointer,
   Vector,
+  VrmRegister,
   Array,
   Struct,
   Function,
@@ -37,11 +38,13 @@ class LirTypeRef {
   LirTypeRef(std::string text, std::optional<LirTypeKind> kind = std::nullopt)
       : text_(std::move(text)),
         kind_(kind.value_or(classify(text_))),
-        integer_bit_width_(derive_integer_bit_width(text_, kind_)) {}
+        integer_bit_width_(derive_integer_bit_width(text_, kind_)),
+        vrm_width_(derive_vrm_width(text_, kind_)) {}
   LirTypeRef(std::string text, LirTypeKind kind)
       : text_(std::move(text)),
         kind_(kind),
-        integer_bit_width_(derive_integer_bit_width(text_, kind_)) {}
+        integer_bit_width_(derive_integer_bit_width(text_, kind_)),
+        vrm_width_(derive_vrm_width(text_, kind_)) {}
   LirTypeRef(std::string text, LirTypeKind kind, unsigned integer_bit_width)
       : text_(std::move(text)),
         kind_(kind),
@@ -49,6 +52,12 @@ class LirTypeRef {
 
   [[nodiscard]] static LirTypeRef integer(unsigned bit_width) {
     return LirTypeRef("i" + std::to_string(bit_width), LirTypeKind::Integer, bit_width);
+  }
+
+  [[nodiscard]] static LirTypeRef vrm_register(unsigned width) {
+    LirTypeRef type("c4c.vrm" + std::to_string(width), LirTypeKind::VrmRegister);
+    type.vrm_width_ = width;
+    return type;
   }
 
   [[nodiscard]] static LirTypeRef struct_type(std::string rendered_text,
@@ -69,6 +78,7 @@ class LirTypeRef {
   [[nodiscard]] std::optional<unsigned> integer_bit_width() const {
     return integer_bit_width_;
   }
+  [[nodiscard]] std::optional<unsigned> vrm_width() const { return vrm_width_; }
   [[nodiscard]] StructNameId struct_name_id() const { return struct_name_id_; }
   [[nodiscard]] bool has_struct_name_id() const {
     return struct_name_id_ != kInvalidStructName;
@@ -183,11 +193,45 @@ class LirTypeRef {
     return parse_integer_bit_width(text);
   }
 
+  [[nodiscard]] static std::optional<unsigned> parse_vrm_width(
+      std::string_view text) {
+    constexpr std::string_view prefix = "c4c.vrm";
+    if (text.rfind(prefix, 0) != 0 || text.size() <= prefix.size()) {
+      return std::nullopt;
+    }
+
+    unsigned value = 0;
+    for (std::size_t index = prefix.size(); index < text.size(); ++index) {
+      const char ch = text[index];
+      if (ch < '0' || ch > '9') return std::nullopt;
+      value = (value * 10u) + static_cast<unsigned>(ch - '0');
+    }
+    switch (value) {
+      case 1:
+      case 2:
+      case 4:
+      case 8:
+        return value;
+      default:
+        return std::nullopt;
+    }
+  }
+
+  [[nodiscard]] static std::optional<unsigned> derive_vrm_width(
+      std::string_view text,
+      LirTypeKind kind) {
+    if (kind != LirTypeKind::VrmRegister) {
+      return std::nullopt;
+    }
+    return parse_vrm_width(text);
+  }
+
   [[nodiscard]] static LirTypeKind classify(std::string_view text) {
     if (text.empty()) return LirTypeKind::RawText;
     if (text == "void") return LirTypeKind::Void;
     if (text == "ptr") return LirTypeKind::Pointer;
     if (parse_integer_bit_width(text).has_value()) return LirTypeKind::Integer;
+    if (parse_vrm_width(text).has_value()) return LirTypeKind::VrmRegister;
     if (text == "half" || text == "float" || text == "double" ||
         text == "fp128" || text == "x86_fp80") {
       return LirTypeKind::Floating;
@@ -208,6 +252,7 @@ class LirTypeRef {
   std::string text_;
   LirTypeKind kind_ = LirTypeKind::RawText;
   std::optional<unsigned> integer_bit_width_;
+  std::optional<unsigned> vrm_width_;
   StructNameId struct_name_id_ = kInvalidStructName;
 };
 

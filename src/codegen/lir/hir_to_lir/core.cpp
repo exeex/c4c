@@ -878,6 +878,9 @@ std::optional<std::string> llvm_aggregate_value_ty(const hir::Module& mod,
 std::string llvm_value_ty(const hir::Module& mod, const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (ts.array_rank > 0) return "ptr";
+  if (ts.base == TB_VRM_REGISTER && ts.vrm_width > 0) {
+    return "c4c.vrm" + std::to_string(ts.vrm_width);
+  }
   if (const std::optional<std::string> aggregate_ty =
           llvm_aggregate_value_ty(mod, ts)) {
     return *aggregate_ty;

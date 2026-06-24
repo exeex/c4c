@@ -114,6 +114,30 @@ void expect_struct_type_ref(
             msg + " StructNameId should resolve to the mirrored signature text");
 }
 
+void expect_vrm_type_ref(const c4c::codegen::lir::LirTypeRef& type_ref,
+                         unsigned expected_width,
+                         const std::string& msg) {
+  const std::string expected_text = "c4c.vrm" + std::to_string(expected_width);
+  expect_eq(type_ref.str(), expected_text, msg + " text should match");
+  expect_true(type_ref.kind() == c4c::codegen::lir::LirTypeKind::VrmRegister,
+              msg + " should use the dedicated VRM type kind");
+  expect_true(type_ref.kind() != c4c::codegen::lir::LirTypeKind::Integer,
+              msg + " must not decay to an integer kind");
+  expect_true(type_ref.kind() != c4c::codegen::lir::LirTypeKind::Pointer,
+              msg + " must not decay to a pointer kind");
+  expect_true(type_ref.kind() != c4c::codegen::lir::LirTypeKind::Struct,
+              msg + " must not decay to an aggregate kind");
+  expect_true(type_ref.kind() != c4c::codegen::lir::LirTypeKind::Vector,
+              msg + " must not reuse GCC vector storage kind");
+  expect_true(type_ref.vrm_width().has_value(),
+              msg + " should carry structured VRM width metadata");
+  expect_eq(std::to_string(*type_ref.vrm_width()),
+            std::to_string(expected_width),
+            msg + " VRM width should match");
+  expect_true(!type_ref.has_struct_name_id(),
+              msg + " should not carry aggregate StructNameId metadata");
+}
+
 void expect_type_ref_structured_equality_uses_name_id(
     const c4c::codegen::lir::LirModule& module) {
   const c4c::StructNameId pair_id = module.struct_names.find("%struct.Pair");
@@ -282,11 +306,76 @@ struct StaleNoOwnerCompat no_owner_return(void);
                          "no-owner signature compatibility mirror");
 }
 
+void test_vrm_signature_type_refs_preserve_carrier_identity() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+__c4c_builtin_vrm1 vrm1_identity(__c4c_builtin_vrm1 input);
+typedef __c4c_builtin_vrm2 vrm2_t;
+vrm2_t vrm2_identity(vrm2_t input);
+__c4c_builtin_vrm4 vrm4_identity(__c4c_builtin_vrm4 input);
+typedef __c4c_builtin_vrm8 vrm8_t;
+vrm8_t vrm8_identity(vrm8_t input);
+)c");
+
+  const c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(hir_module);
+  c4c::codegen::lir::verify_module(lir_module);
+
+  for (const unsigned width : {1u, 2u, 4u, 8u}) {
+    const std::string name = "vrm" + std::to_string(width) + "_identity";
+    const auto& fn = require_function(lir_module, name, true);
+    expect_true(fn.signature_return_type_ref.has_value(),
+                name + " should carry a return type mirror");
+    expect_vrm_type_ref(*fn.signature_return_type_ref, width,
+                        name + " return type mirror");
+
+    expect_eq(std::to_string(fn.signature_param_type_refs.size()), "1",
+              name + " should carry one parameter mirror");
+    expect_vrm_type_ref(fn.signature_param_type_refs[0], width,
+                        name + " parameter type mirror");
+    expect_single_signature_param(fn, "%p.input", c4c::TB_VRM_REGISTER, false,
+                                  name + " signature metadata");
+    expect_eq(std::to_string(fn.signature_params[0].type.vrm_width),
+              std::to_string(width),
+              name + " structured signature parameter should carry VRM width");
+  }
+
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
+  for (const unsigned width : {1u, 2u, 4u, 8u}) {
+    const std::string type = "c4c.vrm" + std::to_string(width);
+    const std::string name = "vrm" + std::to_string(width) + "_identity";
+    expect_true(llvm_ir.find("declare " + type + " @" + name + "(" + type + ")") !=
+                    std::string::npos,
+                name + " printer output should keep the VRM carrier spelling");
+  }
+
+  c4c::codegen::lir::LirModule scalar_return = lir_module;
+  require_mutable_function(scalar_return, "vrm1_identity", true)
+      .signature_return_type_ref = c4c::codegen::lir::LirTypeRef::integer(64);
+  expect_verify_rejects(
+      scalar_return,
+      "verifier should reject a VRM signature return lowered as scalar integer");
+
+  c4c::codegen::lir::LirModule vector_param = lir_module;
+  require_mutable_function(vector_param, "vrm2_identity", true)
+      .signature_param_type_refs[0] = c4c::codegen::lir::LirTypeRef("<2 x i64>");
+  expect_verify_rejects(
+      vector_param,
+      "verifier should reject a VRM signature parameter lowered as GCC vector");
+
+  c4c::codegen::lir::LirModule wrong_width_param = lir_module;
+  require_mutable_function(wrong_width_param, "vrm4_identity", true)
+      .signature_param_type_refs[0] = c4c::codegen::lir::LirTypeRef::vrm_register(8);
+  expect_verify_rejects(
+      wrong_width_param,
+      "verifier should reject a VRM signature parameter with the wrong width");
+}
+
 }  // namespace
 
 int main() {
   test_owned_type_spec_rejects_stale_rendered_compatibility();
   test_signature_type_ref_preserves_no_owner_compatibility_name_id();
+  test_vrm_signature_type_refs_preserve_carrier_identity();
 
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct Pair {
