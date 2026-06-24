@@ -141,6 +141,21 @@ c4c::hir::Module lower_hir_module(std::string_view source,
   return *result.hir_module;
 }
 
+void expect_hir_rejects(std::string_view source,
+                        std::string_view expected_diagnostic,
+                        const std::string& msg) {
+  try {
+    (void)lower_hir_module(source);
+    fail(msg + ": expected HIR lowering to reject fixture");
+  } catch (const std::runtime_error& err) {
+    const std::string actual = err.what();
+    if (actual.find(expected_diagnostic) == std::string::npos) {
+      fail(msg + "\nExpected diagnostic fragment: " +
+           std::string(expected_diagnostic) + "\nActual: " + actual);
+    }
+  }
+}
+
 void expect_vrm_param(const c4c::hir::Function& fn,
                       std::size_t index,
                       int width,
@@ -7559,6 +7574,159 @@ int helper_style(int out, int a, int b, int c) {
                 "helper-style .insn.d input count should match literal input count");
 }
 
+void test_inline_asm_insn_r_structured_metadata_and_diagnostics() {
+  const char* source = R"cpp(
+int insn_r(int out, int lhs, int rhs) {
+  __asm__ __volatile__((".insn r " + "0x33, 0, 0, " + "%0, %1, %2")
+                       : "+r"(out)
+                       : "r"(lhs), "r"(rhs));
+  return out;
+}
+
+int ordinary(int value) {
+  __asm__ __volatile__("addi %0, %0, 1" : "+r"(value));
+  return value;
+}
+)cpp";
+  const c4c::hir::Module module = lower_hir_module(source);
+  const c4c::hir::Function* insn_r = find_hir_function_by_name(module, "insn_r");
+  const c4c::hir::Function* ordinary = find_hir_function_by_name(module, "ordinary");
+  expect_true(insn_r != nullptr, ".insn r fixture should lower to HIR");
+  expect_true(ordinary != nullptr, "ordinary inline asm fixture should lower to HIR");
+
+  const c4c::hir::InlineAsmStmt* insn_asm =
+      find_single_inline_asm_stmt(*insn_r);
+  const c4c::hir::InlineAsmStmt* ordinary_asm =
+      find_single_inline_asm_stmt(*ordinary);
+  expect_true(insn_asm != nullptr, ".insn r fixture should contain inline asm");
+  expect_true(ordinary_asm != nullptr, "ordinary fixture should contain inline asm");
+  expect_true(insn_asm->insn_r.has_value(),
+              ".insn r fixture should carry structured metadata");
+  expect_true(!ordinary_asm->insn_r.has_value(),
+              "ordinary inline asm must not gain .insn r metadata");
+  expect_eq(insn_asm->asm_template, ".insn r 0x33, 0, 0, ${0}, ${1}, ${2}",
+            ".insn r folded template text should preserve rewritten operands");
+  expect_eq(insn_asm->constraints, "+r,r,r",
+            ".insn r constraints should remain ordinary inline asm metadata");
+  expect_eq_int(static_cast<int>(insn_asm->insn_r->opcode), 0x33,
+                ".insn r opcode metadata should preserve numeric field");
+  expect_eq_int(static_cast<int>(insn_asm->insn_r->funct3), 0,
+                ".insn r funct3 metadata should preserve numeric field");
+  expect_eq_int(static_cast<int>(insn_asm->insn_r->funct7), 0,
+                ".insn r funct7 metadata should preserve numeric field");
+  expect_eq_int(static_cast<int>(insn_asm->insn_r->operand_indices[0]), 0,
+                ".insn r rd metadata should reference operand 0");
+  expect_eq_int(static_cast<int>(insn_asm->insn_r->operand_indices[1]), 1,
+                ".insn r rs1 metadata should reference operand 1");
+  expect_eq_int(static_cast<int>(insn_asm->insn_r->operand_indices[2]), 2,
+                ".insn r rs2 metadata should reference operand 2");
+
+  const c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(module);
+  const auto find_lir_function =
+      [&](std::string_view name) -> const c4c::codegen::lir::LirFunction* {
+    const auto it = std::find_if(
+        lir_module.functions.begin(), lir_module.functions.end(),
+        [&](const c4c::codegen::lir::LirFunction& fn) {
+          return fn.name == name;
+        });
+    return it == lir_module.functions.end() ? nullptr : &(*it);
+  };
+  const auto find_lir_inline_asm =
+      [&](const c4c::codegen::lir::LirFunction& fn)
+          -> const c4c::codegen::lir::LirInlineAsmOp* {
+    const c4c::codegen::lir::LirInlineAsmOp* found = nullptr;
+    for (const auto& block : fn.blocks) {
+      for (const auto& inst : block.insts) {
+        const auto* op = std::get_if<c4c::codegen::lir::LirInlineAsmOp>(&inst);
+        if (!op) continue;
+        expect_true(found == nullptr,
+                    "LIR inline asm fixture should contain only one inline asm op");
+        found = op;
+      }
+    }
+    return found;
+  };
+  const c4c::codegen::lir::LirFunction* lir_insn_r =
+      find_lir_function("insn_r");
+  const c4c::codegen::lir::LirFunction* lir_ordinary =
+      find_lir_function("ordinary");
+  expect_true(lir_insn_r != nullptr, ".insn r fixture should lower to LIR");
+  expect_true(lir_ordinary != nullptr, "ordinary fixture should lower to LIR");
+  const auto* lir_insn_asm = find_lir_inline_asm(*lir_insn_r);
+  const auto* lir_ordinary_asm = find_lir_inline_asm(*lir_ordinary);
+  expect_true(lir_insn_asm != nullptr && lir_insn_asm->insn_r.has_value(),
+              ".insn r LIR op should preserve structured metadata from HIR");
+  expect_true(lir_ordinary_asm != nullptr && !lir_ordinary_asm->insn_r.has_value(),
+              "ordinary LIR inline asm must not gain .insn r metadata");
+  expect_eq(lir_insn_asm->asm_text,
+            ".insn r 0x33, 0, 0, ${0}, ${1}, ${2}",
+            ".insn r LIR asm text should preserve rewritten template");
+  expect_eq_int(static_cast<int>(lir_insn_asm->insn_r->opcode), 0x33,
+                ".insn r LIR opcode metadata should preserve numeric field");
+  expect_eq_int(static_cast<int>(lir_insn_asm->insn_r->operand_indices[2]), 2,
+                ".insn r LIR rs2 metadata should preserve operand position");
+
+  c4c::codegen::lir::LirModule drift = lir_module;
+  auto drift_fn_it = std::find_if(
+      drift.functions.begin(), drift.functions.end(),
+      [](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.name == "insn_r";
+      });
+  expect_true(drift_fn_it != drift.functions.end(),
+              "drift fixture should find mutable .insn r function");
+  c4c::codegen::lir::LirInlineAsmOp* drift_op = nullptr;
+  for (auto& block : drift_fn_it->blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* op = std::get_if<c4c::codegen::lir::LirInlineAsmOp>(&inst)) {
+        drift_op = op;
+      }
+    }
+  }
+  expect_true(drift_op != nullptr && drift_op->insn_r.has_value(),
+              "drift fixture should find mutable .insn r op");
+  drift_op->insn_r->operand_indices[2] = 99;
+  bool rejected_drift = false;
+  try {
+    c4c::codegen::lir::verify_module(drift);
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+    rejected_drift = true;
+  }
+  expect_true(rejected_drift,
+              "LIR verifier should reject .insn r operand metadata drift");
+
+  expect_hir_rejects(R"cpp(
+int bad_count(int out, int lhs) {
+  __asm__ __volatile__(".insn r 0x33, 0, 0, %0, %1"
+                       : "+r"(out)
+                       : "r"(lhs));
+  return out;
+}
+)cpp",
+                     "malformed RV64 .insn r inline asm",
+                     ".insn r with missing fields should diagnose during HIR lowering");
+  expect_hir_rejects(R"cpp(
+int bad_numeric(int out, int lhs, int rhs) {
+  __asm__ __volatile__(".insn r 0x80, 0, 0, %0, %1, %2"
+                       : "+r"(out)
+                       : "r"(lhs), "r"(rhs));
+  return out;
+}
+)cpp",
+                     "opcode must fit 7 bits",
+                     ".insn r with out-of-range opcode should diagnose during HIR lowering");
+  expect_hir_rejects(R"cpp(
+int bad_operand(int out, int lhs, int rhs) {
+  __asm__ __volatile__(".insn r 0x33, 0, 0, %0, zero, %2"
+                       : "+r"(out)
+                       : "r"(lhs), "r"(rhs));
+  return out;
+}
+)cpp",
+                     "rd, rs1, and rs2 must be positional inline asm operands",
+                     ".insn r with a raw register token should diagnose during HIR lowering");
+}
+
 }  // namespace
 
 int main() {
@@ -7695,6 +7863,7 @@ int main() {
   test_hir_preserves_c4c_builtin_vrm_carrier_types();
   test_inline_asm_string_literal_plus_folds_to_literal_metadata();
   test_inline_asm_insn_d_string_literal_plus_folds_to_literal_metadata();
+  test_inline_asm_insn_r_structured_metadata_and_diagnostics();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;

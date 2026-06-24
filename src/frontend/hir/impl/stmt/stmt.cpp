@@ -1,9 +1,149 @@
 #include "stmt.hpp"
 #include "consteval.hpp"
 
+#include <cctype>
+#include <limits>
+
 namespace c4c::hir {
 
 namespace {
+
+std::string_view trim_view(std::string_view text) {
+  while (!text.empty() &&
+         std::isspace(static_cast<unsigned char>(text.front()))) {
+    text.remove_prefix(1);
+  }
+  while (!text.empty() &&
+         std::isspace(static_cast<unsigned char>(text.back()))) {
+    text.remove_suffix(1);
+  }
+  return text;
+}
+
+std::vector<std::string_view> split_comma_fields(std::string_view text) {
+  std::vector<std::string_view> fields;
+  std::size_t start = 0;
+  while (start <= text.size()) {
+    const std::size_t comma = text.find(',', start);
+    if (comma == std::string_view::npos) {
+      fields.push_back(trim_view(text.substr(start)));
+      break;
+    }
+    fields.push_back(trim_view(text.substr(start, comma - start)));
+    start = comma + 1;
+  }
+  return fields;
+}
+
+std::optional<std::uint32_t> parse_insn_r_uint(std::string_view text,
+                                               std::uint32_t max_value) {
+  text = trim_view(text);
+  if (text.empty()) return std::nullopt;
+  int base = 10;
+  if (text.size() > 2 && text[0] == '0' &&
+      (text[1] == 'x' || text[1] == 'X')) {
+    base = 16;
+    text.remove_prefix(2);
+  }
+  if (text.empty()) return std::nullopt;
+  std::uint32_t value = 0;
+  for (char ch : text) {
+    unsigned digit = 0;
+    if (ch >= '0' && ch <= '9') {
+      digit = static_cast<unsigned>(ch - '0');
+    } else if (base == 16 && ch >= 'a' && ch <= 'f') {
+      digit = static_cast<unsigned>(ch - 'a' + 10);
+    } else if (base == 16 && ch >= 'A' && ch <= 'F') {
+      digit = static_cast<unsigned>(ch - 'A' + 10);
+    } else {
+      return std::nullopt;
+    }
+    if (digit >= static_cast<unsigned>(base)) return std::nullopt;
+    if (value > (max_value - digit) / static_cast<std::uint32_t>(base)) {
+      return std::nullopt;
+    }
+    value = value * static_cast<std::uint32_t>(base) + digit;
+  }
+  return value <= max_value ? std::optional<std::uint32_t>{value} : std::nullopt;
+}
+
+std::optional<std::size_t> parse_rewritten_operand_placeholder(
+    std::string_view text) {
+  text = trim_view(text);
+  if (text.size() < 4 || text.substr(0, 2) != "${" || text.back() != '}') {
+    return std::nullopt;
+  }
+  text.remove_prefix(2);
+  text.remove_suffix(1);
+  if (text.empty()) return std::nullopt;
+  std::size_t value = 0;
+  for (char ch : text) {
+    if (ch < '0' || ch > '9') return std::nullopt;
+    const std::size_t digit = static_cast<std::size_t>(ch - '0');
+    if (value > (std::numeric_limits<std::size_t>::max() - digit) / 10) {
+      return std::nullopt;
+    }
+    value = value * 10 + digit;
+  }
+  return value;
+}
+
+[[noreturn]] void throw_insn_r_shape_error(const Node* n,
+                                           std::string_view reason) {
+  std::string diag = "error: malformed RV64 .insn r inline asm: ";
+  diag += reason;
+  if (n) {
+    diag += " (line ";
+    diag += std::to_string(n->line);
+    diag += ")";
+  }
+  throw std::runtime_error(diag);
+}
+
+std::optional<InlineAsmInsnRMetadata> parse_inline_asm_insn_r_metadata(
+    const Node* n, std::string_view asm_template) {
+  std::string_view text = trim_view(asm_template);
+  constexpr std::string_view prefix = ".insn r";
+  if (text.size() < prefix.size() || text.substr(0, prefix.size()) != prefix) {
+    return std::nullopt;
+  }
+  if (text.size() > prefix.size() &&
+      !std::isspace(static_cast<unsigned char>(text[prefix.size()]))) {
+    return std::nullopt;
+  }
+  text.remove_prefix(prefix.size());
+  text = trim_view(text);
+  if (text.empty()) {
+    throw_insn_r_shape_error(
+        n, "expected opcode, funct3, funct7, rd, rs1, rs2 fields");
+  }
+  const auto fields = split_comma_fields(text);
+  if (fields.size() != 6) {
+    throw_insn_r_shape_error(
+        n, ".insn r requires opcode, funct3, funct7, rd, rs1, rs2");
+  }
+  InlineAsmInsnRMetadata metadata{};
+  const auto opcode = parse_insn_r_uint(fields[0], 0x7f);
+  const auto funct3 = parse_insn_r_uint(fields[1], 0x7);
+  const auto funct7 = parse_insn_r_uint(fields[2], 0x7f);
+  if (!opcode || !funct3 || !funct7) {
+    throw_insn_r_shape_error(
+        n, "opcode must fit 7 bits, funct3 3 bits, and funct7 7 bits");
+  }
+  metadata.opcode = *opcode;
+  metadata.funct3 = *funct3;
+  metadata.funct7 = *funct7;
+  for (std::size_t index = 0; index < metadata.operand_indices.size(); ++index) {
+    const auto operand_index =
+        parse_rewritten_operand_placeholder(fields[index + 3]);
+    if (!operand_index) {
+      throw_insn_r_shape_error(
+          n, "rd, rs1, and rs2 must be positional inline asm operands");
+    }
+    metadata.operand_indices[index] = *operand_index;
+  }
+  return metadata;
+}
 
 bool is_bare_vrm_register_carrier(const TypeSpec& ts) {
   return ts.base == TB_VRM_REGISTER && ts.vrm_width > 0 &&
@@ -409,6 +549,7 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
     case NK_ASM: {
       InlineAsmStmt s{};
       s.asm_template = rewrite_gcc_asm_template(decode_string_node(n->left));
+      s.insn_r = parse_inline_asm_insn_r_metadata(n, s.asm_template);
       s.has_side_effects = true;
       for (int i = 0; i < n->asm_num_outputs; ++i) {
         const Node* output = n->children[i];

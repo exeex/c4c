@@ -110,7 +110,16 @@ void render_inst(std::ostringstream& os, const LirInst& inst,
     os << "call " << require_type_ref(op->ret_type, "LirInlineAsmOp.ret_type", true) << " asm ";
     if (op->side_effects) os << "sideeffect ";
     os << "\"" << op->asm_text << "\", \"" << op->constraints << "\"("
-       << op->args_str << ")\n";
+       << op->args_str << ")";
+    if (op->insn_r) {
+      os << " ; insn.r opcode=" << op->insn_r->opcode
+         << " funct3=" << op->insn_r->funct3
+         << " funct7=" << op->insn_r->funct7
+         << " rd=$" << op->insn_r->operand_indices[0]
+         << " rs1=$" << op->insn_r->operand_indices[1]
+         << " rs2=$" << op->insn_r->operand_indices[2];
+    }
+    os << "\n";
   } else if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
     os << "  call void @llvm.memcpy.p0.p0.i64(ptr "
        << require_operand_kind(op->dst, "LirMemcpyOp.dst",

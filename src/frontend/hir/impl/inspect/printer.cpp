@@ -510,6 +510,14 @@ class Printer {
 
   void print_stmt_payload(std::ostringstream& out, const InlineAsmStmt& s) {
     out << "asm \"" << s.asm_template << "\", \"" << s.constraints << "\"";
+    if (s.insn_r) {
+      out << " [insn.r opcode=" << s.insn_r->opcode
+          << ", funct3=" << s.insn_r->funct3
+          << ", funct7=" << s.insn_r->funct7
+          << ", rd=$" << s.insn_r->operand_indices[0]
+          << ", rs1=$" << s.insn_r->operand_indices[1]
+          << ", rs2=$" << s.insn_r->operand_indices[2] << "]";
+    }
     if (s.output) out << " -> expr#" << s.output->value;
   }
 

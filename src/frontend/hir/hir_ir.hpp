@@ -7,6 +7,7 @@
 // instead of adding them here.
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -850,6 +851,13 @@ struct ExprStmt {
   std::optional<ExprId> expr;
 };
 
+struct InlineAsmInsnRMetadata {
+  std::uint32_t opcode = 0;
+  std::uint32_t funct3 = 0;
+  std::uint32_t funct7 = 0;
+  std::array<std::size_t, 3> operand_indices{};
+};
+
 struct InlineAsmStmt {
   std::string asm_template;
   std::string constraints;
@@ -862,6 +870,7 @@ struct InlineAsmStmt {
   std::vector<ExprId> inputs;
   std::vector<std::string> clobbers;
   bool has_side_effects = true;
+  std::optional<InlineAsmInsnRMetadata> insn_r;
 };
 
 struct ReturnStmt {

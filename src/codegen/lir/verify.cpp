@@ -26,6 +26,15 @@ std::string operand_kind_name(LirOperandKind kind) {
   return "unknown";
 }
 
+std::size_t count_inline_asm_constraints(std::string_view constraints) {
+  if (constraints.empty()) return 0;
+  std::size_t count = 1;
+  for (char ch : constraints) {
+    if (ch == ',') ++count;
+  }
+  return count;
+}
+
 bool operand_kind_allowed(LirOperandKind kind,
                           std::initializer_list<LirOperandKind> allowed_kinds) {
   for (const auto allowed : allowed_kinds) {
@@ -542,6 +551,16 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     if (!op->result.empty() && op->ret_type == "void") {
       fail_verify("LirInlineAsmOp.ret_type",
                   "void inline asm must not carry a result operand");
+    }
+    if (op->insn_r) {
+      const std::size_t operand_count =
+          count_inline_asm_constraints(op->constraints);
+      for (const std::size_t operand_index : op->insn_r->operand_indices) {
+        if (operand_index >= operand_count) {
+          fail_verify("LirInlineAsmOp.insn_r",
+                      ".insn r operand index is outside the constraint list");
+        }
+      }
     }
     return;
   }

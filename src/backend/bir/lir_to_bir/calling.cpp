@@ -592,6 +592,16 @@ aapcs64_va_arg_hfa_payload_shape(
       .has_named_operand_references =
           inline_asm_template_has_named_operand_reference(inline_asm.asm_text),
       .has_template_modifiers = template_modifier_facts.has_modifier,
+      .insn_r =
+          inline_asm.insn_r
+              ? std::optional<bir::InlineAsmInsnRMetadata>{
+                    bir::InlineAsmInsnRMetadata{
+                        .opcode = inline_asm.insn_r->opcode,
+                        .funct3 = inline_asm.insn_r->funct3,
+                        .funct7 = inline_asm.insn_r->funct7,
+                        .operand_indices = inline_asm.insn_r->operand_indices,
+                    }}
+              : std::nullopt,
   };
 
   std::size_t next_arg_index = 0;

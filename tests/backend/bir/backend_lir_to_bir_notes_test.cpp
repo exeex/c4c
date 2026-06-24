@@ -3368,6 +3368,47 @@ LirModule make_structured_inline_asm_metadata_module() {
   return module;
 }
 
+LirModule make_rv64_insn_r_inline_asm_metadata_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.enum_underlying_base = c4c::TB_VOID;
+
+  LirFunction function;
+  function.name = "rv64_insn_r_inline_asm_metadata";
+  function.signature_text =
+      "define i32 @rv64_insn_r_inline_asm_metadata(i32 %lhs, i32 %rhs)";
+  function.params.push_back({"%lhs", int_type});
+  function.params.push_back({"%rhs", int_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirInlineAsmOp{
+      .result = LirOperand("%out"),
+      .ret_type = "i32",
+      .asm_text = ".insn r 0x33, 0, 0, ${0}, ${1}, ${2}",
+      .constraints = "=r,r,r",
+      .side_effects = true,
+      .args_str = "i32 %lhs, i32 %rhs",
+      .insn_r = c4c::codegen::lir::LirInlineAsmInsnRMetadata{
+          .opcode = 0x33,
+          .funct3 = 0,
+          .funct7 = 0,
+          .operand_indices = {0, 1, 2},
+      },
+  });
+  entry.terminator = LirRet{
+      .value_str = "%out",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_rendered_only_clobber_inline_asm_metadata_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
@@ -3557,6 +3598,28 @@ int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
       call->args[0] != c4c::backend::bir::Value::named(TypeKind::I32, "%x") ||
       call->args[1] != c4c::backend::bir::Value::immediate_i32(7)) {
     return fail("structured inline asm typed operands were not lowered");
+  }
+
+  auto insn_r_result = try_lower_to_bir_with_options(
+      make_rv64_insn_r_inline_asm_metadata_module(), BirLoweringOptions{});
+  if (!insn_r_result.module.has_value()) {
+    return fail("RV64 .insn r inline asm metadata fixture should lower to BIR");
+  }
+  const auto& insn_r_function = insn_r_result.module->functions.front();
+  const auto* insn_r_call =
+      std::get_if<c4c::backend::bir::CallInst>(
+          &insn_r_function.blocks.front().insts.front());
+  if (insn_r_call == nullptr || !insn_r_call->inline_asm.has_value() ||
+      !insn_r_call->inline_asm->insn_r.has_value()) {
+    return fail("RV64 .insn r fixture should preserve structured BIR metadata");
+  }
+  const auto& insn_r = *insn_r_call->inline_asm->insn_r;
+  if (insn_r.opcode != 0x33 || insn_r.funct3 != 0 || insn_r.funct7 != 0 ||
+      insn_r.operand_indices[0] != 0 || insn_r.operand_indices[1] != 1 ||
+      insn_r.operand_indices[2] != 2 ||
+      insn_r_call->inline_asm->asm_text !=
+          ".insn r 0x33, 0, 0, ${0}, ${1}, ${2}") {
+    return fail("RV64 .insn r structured metadata fields drifted in BIR lowering");
   }
 
   auto unsupported_result = try_lower_to_bir_with_options(

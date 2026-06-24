@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 #include <limits>
 #include <optional>
 #include <string>
@@ -1029,6 +1030,13 @@ struct InlineAsmOperandMetadata {
   std::optional<MemoryAddress> address;
 };
 
+struct InlineAsmInsnRMetadata {
+  std::uint32_t opcode = 0;
+  std::uint32_t funct3 = 0;
+  std::uint32_t funct7 = 0;
+  std::array<std::size_t, 3> operand_indices{};
+};
+
 struct InlineAsmMetadata {
   // Inline assembly payload text is final spelling passed through for dumps and
   // target emission diagnostics; it is not BIR lookup authority.
@@ -1041,6 +1049,7 @@ struct InlineAsmMetadata {
   std::vector<std::string> unsupported_facts;
   bool has_named_operand_references = false;
   bool has_template_modifiers = false;
+  std::optional<InlineAsmInsnRMetadata> insn_r;
 };
 
 struct IntrinsicOperation {

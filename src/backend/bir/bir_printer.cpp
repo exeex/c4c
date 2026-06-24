@@ -356,6 +356,15 @@ void render_function(std::ostringstream& out,
                 if (lowered.inline_asm->side_effects) {
                   out << ", sideeffect";
                 }
+                if (lowered.inline_asm->insn_r) {
+                  const auto& insn = *lowered.inline_asm->insn_r;
+                  out << ", insn.r={opcode=" << insn.opcode
+                      << ", funct3=" << insn.funct3
+                      << ", funct7=" << insn.funct7
+                      << ", rd=$" << insn.operand_indices[0]
+                      << ", rs1=$" << insn.operand_indices[1]
+                      << ", rs2=$" << insn.operand_indices[2] << "}";
+                }
                 out << "]";
               }
               out << "\n";

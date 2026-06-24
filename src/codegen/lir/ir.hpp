@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <array>
 #include <deque>
 #include <initializer_list>
 #include <limits>
@@ -392,6 +393,13 @@ struct LirAllocaOp {
 };
 
 // Typed inline asm call instruction.
+struct LirInlineAsmInsnRMetadata {
+  std::uint32_t opcode = 0;
+  std::uint32_t funct3 = 0;
+  std::uint32_t funct7 = 0;
+  std::array<std::size_t, 3> operand_indices{};
+};
+
 struct LirInlineAsmOp {
   LirOperand result;          // SSA name for result (empty for void asm)
   LirTypeRef ret_type;        // LLVM return type string (e.g. "void", "i32")
@@ -400,6 +408,7 @@ struct LirInlineAsmOp {
   bool side_effects = false;  // sideeffect flag
   std::string args_str;       // pre-formatted argument string
   std::vector<std::string> clobbers;
+  std::optional<LirInlineAsmInsnRMetadata> insn_r;
 };
 
 using LirInst = std::variant<

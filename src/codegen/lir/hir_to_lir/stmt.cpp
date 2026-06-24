@@ -284,7 +284,15 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
   if (!scalar_result_output) {
     emit_lir_op(ctx, lir::LirInlineAsmOp{
                          {}, ret_ty, asm_text, rendered_constraint_text, s.has_side_effects,
-                         asm_args_str, s.clobbers});
+                         asm_args_str, s.clobbers,
+                         s.insn_r ? std::optional<lir::LirInlineAsmInsnRMetadata>{
+                                        lir::LirInlineAsmInsnRMetadata{
+                                            .opcode = s.insn_r->opcode,
+                                            .funct3 = s.insn_r->funct3,
+                                            .funct7 = s.insn_r->funct7,
+                                            .operand_indices = s.insn_r->operand_indices,
+                                        }}
+                                  : std::nullopt});
     return;
   }
 
@@ -292,7 +300,15 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
   emit_lir_op(
       ctx,
       lir::LirInlineAsmOp{result, ret_ty, asm_text, rendered_constraint_text, s.has_side_effects,
-                          asm_args_str, s.clobbers});
+                          asm_args_str, s.clobbers,
+                          s.insn_r ? std::optional<lir::LirInlineAsmInsnRMetadata>{
+                                         lir::LirInlineAsmInsnRMetadata{
+                                             .opcode = s.insn_r->opcode,
+                                             .funct3 = s.insn_r->funct3,
+                                             .funct7 = s.insn_r->funct7,
+                                             .operand_indices = s.insn_r->operand_indices,
+                                         }}
+                                   : std::nullopt});
   TypeSpec out_pointee_ts{};
   const std::string out_ptr = emit_lval(ctx, outputs[0], out_pointee_ts);
   const std::string coerced = coerce(ctx, result, ret_ts, out_pointee_ts);
