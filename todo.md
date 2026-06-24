@@ -1,38 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/341_rv64_vector_register_inline_asm_constraints_stage2.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Group Allocation And Overlap Rules
+Current Step ID: 4
+Current Step Title: Implement Base-Register Substitution
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Implement Group Allocation And Overlap Rules completed.
+Step 4: Implement Base-Register Substitution completed.
 
-Fixed grouped-register eviction so a newly assigned value receives a legal span
-for its own required width/class after the evicted assignment is removed, rather
-than inheriting the evicted value's span shape. This preserves existing grouped
-linear-scan behavior while preventing width-mismatched reuse during eviction.
+Added a compiled RV64 prepared-carrier substitution helper that accepts complete
+positional inline-asm carriers and substitutes scalar `r`, `=r`, `+r`, numeric
+tied operands, and Stage 2 vector `VR`, `VRM2`, and `VRM4` register operands
+from their selected concrete register homes.
 
-Added RV64 inline-asm allocator coverage using the Stage 2 `VR`, `VRM2`, and
-`VRM4` operand metadata. Tests now prove legal width/alignment for `VR`,
-`VRM2`, and `VRM4`, full occupied-register reservation, no overlap between
-untied same-instruction operands, grouped homes for `+VRM2` read-write and
-numeric tied `=VRM4,0` reuse, and explicit impossible-allocation diagnostics
-when 33 simultaneous `VR` operands exhaust the disjoint vector register space.
+The vector path prints the prepared home register name only, so grouped
+`VRM2`/`VRM4` operands substitute the allocated base vector register rather
+than expanding occupied members or choosing a non-base member. Focused RV64
+object-emission tests cover `%0`, `%1`, `%2`, all three vector widths, a mixed
+scalar/vector template, and a numeric tied `=VRM4,0` template.
 
-The existing RV64 vector span split remains intentional and sufficient for this
-step: non-crossing allocation first uses `v0..v15` and then the disjoint
-callee-saved fallback spans `v16..v31`, so the combined allocator space covers
-`v0..v31` without overlapping the allocator's separate active caller/callee
-assignment sets.
+The scalar `.insn r` object encoder remains unchanged and still uses the
+existing GPR-only `rv64_register_number_for_inline_asm_operand` checks. No EV
+`.insn.d` object encoding, named operand support, `%c[...]` modifiers, mask
+constraints, consteval strings, or broad RVV lowering was added.
 
 ## Suggested Next
 
-Delegate Step 4 to implement base-register substitution for RV64 inline asm
-vector operands. The next packet should print the allocated base register for
-`VR`, `VRM2`, and `VRM4` placeholders while preserving scalar `.insn` behavior.
+Delegate Step 5 to validate Stage 2 against Stage 1 and negative cases, then
+ask the plan owner whether the runbook should close or split any remaining
+follow-up.
 
 ## Watchouts
 
@@ -42,16 +40,15 @@ vector operands. The next packet should print the allocated base register for
   named-operands, masks, and consteval asm strings are later children.
 - Treat testcase-overfit, expectation weakening, and raw-string constraint
   acceptance as route failures.
-- The pre-regalloc override hook is intentionally in
-  `src/backend/prealloc/prealloc.cpp` so regalloc sees inline-asm vector
-  class/width facts before assignment; keep later packets from moving this back
-  to carrier-only publication.
-- `+VRM2` is now covered by allocator-focused read-write tests; substitution
-  still needs to print only the selected base register.
-- Current RV64 object helper
-  `rv64_register_number_for_inline_asm_operand` hard-codes `=r`, `+r`, `r`,
-  and numeric tied GPR operands. Vector substitution should not weaken these
-  scalar fail-closed checks.
+- The compiled substitution helper lives next to the current prepared object
+  helper surface because the dormant RV64 `asm_emitter.cpp` source is not part
+  of the active backend target. This packet touched `object_emission.cpp` and
+  `object_emission.hpp` only to expose the prepared-carrier substitution helper
+  for compiled tests; it did not alter `.insn r` object encoding.
+- The existing RV64 object helper
+  `rv64_register_number_for_inline_asm_operand` still hard-codes `=r`, `+r`,
+  `r`, and numeric tied GPR operands. Keep future EV `.insn.d` object encoding
+  separate from this scalar fail-closed path.
 - The existing RV64 vector span helper splits caller/callee pools into
   `v0..v15` and `v16..v31`; Step 3 proved this as the intended disjoint
   combined `v0..v31` allocator space. Do not collapse it into one overlapping
@@ -63,6 +60,11 @@ Ran exact delegated proof:
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
 
-Result: build succeeded; backend CTest completed with only the known unrelated
-baseline failure `backend_codegen_route_riscv64_pointer_typed_select_publication`.
-No new backend failures were present. Proof log: `test_after.log`.
+Result: build succeeded; backend CTest completed with only the supervisor-known
+unrelated baseline failure
+`backend_codegen_route_riscv64_pointer_typed_select_publication`. No new
+backend failures were present. Proof log: `test_after.log`.
+
+Focused pre-proof check also passed:
+
+`ctest --test-dir build -R '^backend_riscv_object_emission$' --output-on-failure`

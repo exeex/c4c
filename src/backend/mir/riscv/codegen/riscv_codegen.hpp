@@ -13,6 +13,10 @@
 #include <variant>
 #include <vector>
 
+namespace c4c::backend::prepare {
+struct PreparedInlineAsmCarrier;
+}
+
 namespace c4c::backend::riscv::codegen {
 
 struct PhysReg {
@@ -800,6 +804,7 @@ enum class RvConstraintKind {
   ZeroOrReg,
   Specific,
   Tied,
+  VectorReg,
 };
 
 struct RvConstraint {
@@ -820,6 +825,9 @@ std::string substitute_riscv_asm_operands(
     const std::vector<std::optional<long long>>& op_imm_values,
     const std::vector<std::optional<std::string>>& op_imm_symbols,
     const std::vector<std::size_t>& gcc_to_internal);
+
+std::optional<std::string> substitute_prepared_riscv_inline_asm_operands(
+    const c4c::backend::prepare::PreparedInlineAsmCarrier& carrier);
 
 }  // namespace c4c::backend::riscv::codegen
 

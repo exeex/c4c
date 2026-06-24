@@ -658,6 +658,26 @@ prepare::PreparedValueHome rv64_gpr_home(prepare::PreparedValueId value_id,
   };
 }
 
+prepare::PreparedValueHome rv64_vector_home(prepare::PreparedValueId value_id,
+                                            c4c::FunctionNameId function_name,
+                                            c4c::ValueNameId value_name,
+                                            std::string register_name,
+                                            std::size_t physical_index) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::move(register_name),
+      .target_register_identity = prepare::PreparedTargetRegisterIdentity{
+          .target_arch = c4c::TargetArch::Riscv64,
+          .bank = prepare::PreparedRegisterBank::Vreg,
+          .register_class = prepare::PreparedRegisterClass::Vector,
+          .physical_index = physical_index,
+      },
+  };
+}
+
 prepare::PreparedBirModule make_prepared_inline_asm_insn_r_module(
     std::string asm_text = ".insn r 0x33, 0, 0, %0, %1, %2",
     bool complete_carrier = true,
@@ -1513,6 +1533,134 @@ int builds_prepared_inline_asm_insn_r_tied_input_object() {
   return 0;
 }
 
+int substitutes_prepared_rv64_vector_inline_asm_base_registers() {
+  prepare::PreparedInlineAsmCarrier carrier{
+      .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete,
+      .asm_text = "vcombo %0, %1, %2",
+      .constraints = "VR,VRM2,VRM4",
+      .side_effects = true,
+      .operands =
+          {
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterInput,
+                  .constraint_index = 0,
+                  .constraint = "VR",
+                  .arg_index = std::size_t{0},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 1,
+                  .home = rv64_vector_home(1, {}, {}, "v3", 3),
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterInput,
+                  .constraint_index = 1,
+                  .constraint = "VRM2",
+                  .arg_index = std::size_t{1},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 2,
+                  .home = rv64_vector_home(2, {}, {}, "v4", 4),
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterInput,
+                  .constraint_index = 2,
+                  .constraint = "VRM4",
+                  .arg_index = std::size_t{2},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 4,
+                  .home = rv64_vector_home(3, {}, {}, "v8", 8),
+              },
+          },
+  };
+
+  const auto substituted = rv64::substitute_prepared_riscv_inline_asm_operands(carrier);
+  if (!substituted.has_value() || *substituted != "vcombo v3, v4, v8") {
+    return fail("expected RV64 VR/VRM2/VRM4 substitution to print selected base vector registers");
+  }
+  return 0;
+}
+
+int substitutes_prepared_rv64_mixed_scalar_vector_inline_asm_registers() {
+  prepare::PreparedInlineAsmCarrier carrier{
+      .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete,
+      .asm_text = "mix %0, %1, %2",
+      .constraints = "=r,VRM2,r",
+      .side_effects = true,
+      .operands =
+          {
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterOutput,
+                  .constraint_index = 0,
+                  .constraint = "=r",
+                  .output_index = std::size_t{0},
+                  .register_class = bir::InlineAsmRegisterClass::General,
+                  .register_group_width = 1,
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterInput,
+                  .constraint_index = 1,
+                  .constraint = "VRM2",
+                  .arg_index = std::size_t{0},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 2,
+                  .home = rv64_vector_home(2, {}, {}, "v12", 12),
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterInput,
+                  .constraint_index = 2,
+                  .constraint = "r",
+                  .arg_index = std::size_t{1},
+                  .register_class = bir::InlineAsmRegisterClass::General,
+                  .register_group_width = 1,
+                  .home = rv64_gpr_home(3, {}, {}, "t1", 6),
+              },
+          },
+      .result_home = rv64_gpr_home(1, {}, {}, "t0", 5),
+  };
+
+  const auto substituted = rv64::substitute_prepared_riscv_inline_asm_operands(carrier);
+  if (!substituted.has_value() || *substituted != "mix t0, v12, t1") {
+    return fail("expected mixed RV64 scalar/vector inline asm substitution to preserve operand homes");
+  }
+  return 0;
+}
+
+int substitutes_prepared_rv64_tied_vector_inline_asm_base_register() {
+  const auto shared_home = rv64_vector_home(1, {}, {}, "v16", 16);
+  prepare::PreparedInlineAsmCarrier carrier{
+      .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete,
+      .asm_text = "vtie %0, %1",
+      .constraints = "=VRM4,0",
+      .side_effects = true,
+      .operands =
+          {
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterOutput,
+                  .constraint_index = 0,
+                  .constraint = "=VRM4",
+                  .output_index = std::size_t{0},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 4,
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::TiedInput,
+                  .constraint_index = 1,
+                  .constraint = "0",
+                  .arg_index = std::size_t{0},
+                  .tied_output_index = std::size_t{0},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 4,
+                  .home = shared_home,
+              },
+          },
+      .result_home = shared_home,
+  };
+
+  const auto substituted = rv64::substitute_prepared_riscv_inline_asm_operands(carrier);
+  if (!substituted.has_value() || *substituted != "vtie v16, v16") {
+    return fail("expected tied RV64 VRM4 substitution to print the shared base vector register");
+  }
+  return 0;
+}
+
 int rejects_prepared_inline_asm_insn_r_without_complete_carrier() {
   const auto prepared = make_prepared_inline_asm_insn_r_module(
       ".insn r 0x33, 0, 0, %0, %1, %2",
@@ -1969,6 +2117,9 @@ int main() {
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_inline_asm_insn_r_object();
   status |= builds_prepared_inline_asm_insn_r_tied_input_object();
+  status |= substitutes_prepared_rv64_vector_inline_asm_base_registers();
+  status |= substitutes_prepared_rv64_mixed_scalar_vector_inline_asm_registers();
+  status |= substitutes_prepared_rv64_tied_vector_inline_asm_base_register();
   status |= rejects_prepared_inline_asm_insn_r_without_complete_carrier();
   status |= rejects_prepared_inline_asm_non_insn_r_object();
   status |= rejects_prepared_inline_asm_insn_r_extra_field_object();

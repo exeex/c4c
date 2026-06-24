@@ -70,4 +70,7 @@ write_rv64_relocatable_elf_object(
 write_rv64_prepared_relocatable_elf_object(
     const c4c::backend::prepare::PreparedBirModule& prepared);
 
+[[nodiscard]] std::optional<std::string> substitute_prepared_riscv_inline_asm_operands(
+    const c4c::backend::prepare::PreparedInlineAsmCarrier& carrier);
+
 }  // namespace c4c::backend::riscv::codegen
