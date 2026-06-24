@@ -49,6 +49,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/object/elf_writer.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/object/model.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/emit.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/object_emission.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_call_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_edge_publication_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_emit_context.cpp"

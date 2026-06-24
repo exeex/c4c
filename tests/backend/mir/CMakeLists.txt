@@ -84,6 +84,11 @@ set_tests_properties(backend_object_model_records PROPERTIES
   LABELS "backend;internal;cpp;object"
 )
 
+c4c_add_mir_cpp_test(backend_riscv_object_emission)
+set_tests_properties(backend_riscv_object_emission PROPERTIES
+  LABELS "backend;internal;cpp;object;riscv"
+)
+
 c4c_add_mir_cpp_test(backend_x86_call_boundary_effect_ordering)
 set_tests_properties(backend_x86_call_boundary_effect_ordering PROPERTIES
   LABELS "backend;internal;cpp;x86"
