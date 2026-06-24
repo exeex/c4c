@@ -917,6 +917,70 @@ prepare::PreparedBirModule make_prepared_inline_asm_insn_r_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_inline_asm_insn_d_module(
+    prepare::PreparedInlineAsmCarrier carrier = make_prepared_insn_d_carrier()) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile.arch = c4c::TargetArch::Riscv64;
+  const auto function_name = prepared.names.function_names.intern("main");
+
+  bir::CallInst call;
+  call.result = bir::Value::named(bir::TypeKind::I32, "%vd");
+  call.callee = "llvm.inline_asm";
+  call.args = {
+      bir::Value::named(bir::TypeKind::I32, "%a"),
+      bir::Value::named(bir::TypeKind::I32, "%b"),
+      bir::Value::named(bir::TypeKind::I32, "%c"),
+      bir::Value::immediate_i32(static_cast<std::int32_t>(carrier.operands[4]
+                                                              .immediate_value
+                                                              .value_or(0))),
+      bir::Value::immediate_i32(static_cast<std::int32_t>(carrier.operands[5]
+                                                              .immediate_value
+                                                              .value_or(0))),
+      bir::Value::immediate_i32(static_cast<std::int32_t>(carrier.operands[6]
+                                                              .immediate_value
+                                                              .value_or(0))),
+  };
+  call.arg_types = {bir::TypeKind::I32,
+                    bir::TypeKind::I32,
+                    bir::TypeKind::I32,
+                    bir::TypeKind::I32,
+                    bir::TypeKind::I32,
+                    bir::TypeKind::I32};
+  call.return_type = bir::TypeKind::I32;
+  call.inline_asm = bir::InlineAsmMetadata{
+      .asm_text = carrier.asm_text,
+      .constraints = carrier.constraints,
+      .side_effects = true,
+  };
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+
+  carrier.function_name = function_name;
+  carrier.block_index = 0;
+  carrier.inst_index = 0;
+  prepared.inline_asm_carriers.functions.push_back(
+      prepare::PreparedInlineAsmCarrierFunction{
+          .function_name = function_name,
+          .carriers = {std::move(carrier)},
+      });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_local_register_arg_call_module() {
   prepare::PreparedBirModule prepared;
   const auto callee_name = prepared.names.function_names.intern("add_pair");
@@ -1868,6 +1932,84 @@ int classifies_prepared_inline_asm_insn_d_positional_shape() {
   return 0;
 }
 
+int encodes_prepared_inline_asm_insn_d_positional_shape() {
+  const auto carrier = make_prepared_insn_d_carrier();
+  const auto shape = rv64::classify_prepared_rv64_insn_d_inline_asm(carrier);
+  if (!shape.has_value()) {
+    return fail("expected positional RV64 EV .insn.d shape to classify before encode");
+  }
+  const auto encoded = rv64::encode_rv64_ev_insn_d_inline_asm(*shape);
+  if (!encoded.has_value()) {
+    return fail("expected positional RV64 EV .insn.d shape to encode");
+  }
+  if (*encoded != 0x0000030b10620a0aull) {
+    return fail("expected EV .insn.d fields to land in documented 64-bit bits");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_out_of_range_fields() {
+  auto carrier = make_prepared_insn_d_carrier();
+  carrier.operands[4].immediate_value = std::int64_t{0x80};
+  auto shape = rv64::classify_prepared_rv64_insn_d_inline_asm(carrier);
+  if (!shape.has_value() ||
+      rv64::encode_rv64_ev_insn_d_inline_asm(*shape).has_value()) {
+    return fail("expected EV .insn.d encoder to reject 7-bit namespace overflow");
+  }
+
+  carrier = make_prepared_insn_d_carrier();
+  carrier.operands[5].immediate_value = std::int64_t{0x100};
+  shape = rv64::classify_prepared_rv64_insn_d_inline_asm(carrier);
+  if (!shape.has_value() ||
+      rv64::encode_rv64_ev_insn_d_inline_asm(*shape).has_value()) {
+    return fail("expected EV .insn.d encoder to reject 8-bit operation overflow");
+  }
+
+  carrier = make_prepared_insn_d_carrier();
+  carrier.operands[6].immediate_value = std::int64_t{0x10000};
+  shape = rv64::classify_prepared_rv64_insn_d_inline_asm(carrier);
+  if (!shape.has_value() ||
+      rv64::encode_rv64_ev_insn_d_inline_asm(*shape).has_value()) {
+    return fail("expected EV .insn.d encoder to reject 16-bit dtype overflow");
+  }
+  return 0;
+}
+
+int builds_prepared_inline_asm_insn_d_object() {
+  const auto prepared = make_prepared_inline_asm_insn_d_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 inline-asm .insn.d object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected inline-asm .insn.d object to publish text/main");
+  }
+  if (text->bytes.size() != 12 || text->size_bytes != 12 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 12) {
+    return fail("expected inline-asm .insn.d object text layout");
+  }
+  if (read_u64(text->bytes, 0) != 0x0000030b10620a0aull ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected EV .insn.d bytes followed by return");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected inline-asm .insn.d object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_out_of_range_object() {
+  auto carrier = make_prepared_insn_d_carrier();
+  carrier.operands[6].immediate_value = std::int64_t{0x10000};
+  const auto prepared = make_prepared_inline_asm_insn_d_module(std::move(carrier));
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn.d object path to reject invalid fields");
+  }
+  return 0;
+}
+
 int rejects_prepared_inline_asm_insn_d_missing_field_shape() {
   const auto carrier = make_prepared_insn_d_carrier(
       ".insn.d %4, %5, %0, %1, %2, %3");
@@ -2297,6 +2439,10 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_r_unsupported_constraint_object();
   status |= rejects_prepared_inline_asm_insn_r_vector_home_object();
   status |= classifies_prepared_inline_asm_insn_d_positional_shape();
+  status |= encodes_prepared_inline_asm_insn_d_positional_shape();
+  status |= rejects_prepared_inline_asm_insn_d_out_of_range_fields();
+  status |= builds_prepared_inline_asm_insn_d_object();
+  status |= rejects_prepared_inline_asm_insn_d_out_of_range_object();
   status |= rejects_prepared_inline_asm_insn_d_missing_field_shape();
   status |= rejects_prepared_inline_asm_insn_d_extra_field_shape();
   status |= rejects_prepared_inline_asm_insn_d_literal_immediate_shape();

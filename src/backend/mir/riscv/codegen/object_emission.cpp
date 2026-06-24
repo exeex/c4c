@@ -64,6 +64,12 @@ void append_le32(std::vector<std::uint8_t>& bytes, std::uint32_t word) {
   bytes.push_back(static_cast<std::uint8_t>((word >> 24) & 0xffu));
 }
 
+void append_le64(std::vector<std::uint8_t>& bytes, std::uint64_t word) {
+  for (int shift = 0; shift < 64; shift += 8) {
+    bytes.push_back(static_cast<std::uint8_t>((word >> shift) & 0xffu));
+  }
+}
+
 constexpr bool fits_signed_12_bit_immediate(std::int64_t value) {
   return value >= -2048 && value <= 2047;
 }
@@ -372,6 +378,27 @@ std::optional<RiscvEncodedFragment> fragment_for_rv64_insn_r_inline_asm(
   return fragment;
 }
 
+std::optional<RiscvEncodedFragment> fragment_for_rv64_insn_d_inline_asm(
+    const c4c::backend::prepare::PreparedInlineAsmCarrier* carrier,
+    const c4c::backend::bir::CallInst& call) {
+  if (carrier == nullptr || !call.inline_asm.has_value() ||
+      call.callee != "llvm.inline_asm" || call.is_indirect ||
+      call.callee_value.has_value()) {
+    return std::nullopt;
+  }
+  const auto shape = classify_prepared_rv64_insn_d_inline_asm(*carrier);
+  if (!shape.has_value()) {
+    return std::nullopt;
+  }
+  const auto encoded = encode_rv64_ev_insn_d_inline_asm(*shape);
+  if (!encoded.has_value()) {
+    return std::nullopt;
+  }
+  RiscvEncodedFragment fragment;
+  append_le64(fragment.bytes, *encoded);
+  return fragment;
+}
+
 RiscvEncodedFragment make_rv64_return_immediate_fragment(std::int64_t immediate) {
   RiscvEncodedFragment fragment;
   append_rv64_load_immediate(fragment, 10, immediate);
@@ -492,6 +519,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   namespace prepare = c4c::backend::prepare;
 
   if (call.inline_asm.has_value()) {
+    if (auto fragment = fragment_for_rv64_insn_d_inline_asm(inline_asm_carrier, call);
+        fragment.has_value()) {
+      return fragment;
+    }
     return fragment_for_rv64_insn_r_inline_asm(inline_asm_carrier, call);
   }
 
@@ -1334,6 +1365,44 @@ std::optional<RiscvInsnDInlineAsmShape> classify_prepared_rv64_insn_d_inline_asm
       .accumulator = *accumulator,
       .dtype = *dtype,
   };
+}
+
+std::optional<std::uint64_t> encode_rv64_ev_insn_d_inline_asm(
+    const RiscvInsnDInlineAsmShape& shape) {
+  const auto unsigned_field = [](std::int64_t value,
+                                 std::uint64_t max) -> std::optional<std::uint64_t> {
+    if (value < 0 || static_cast<std::uint64_t>(value) > max) {
+      return std::nullopt;
+    }
+    return static_cast<std::uint64_t>(value);
+  };
+  const auto register_field =
+      [](const RiscvInsnDInlineAsmRegister& reg) -> std::optional<std::uint64_t> {
+    if (reg.physical_index > 31) {
+      return std::nullopt;
+    }
+    return static_cast<std::uint64_t>(reg.physical_index);
+  };
+
+  const auto opcode7 = unsigned_field(shape.major, 0x7f);
+  const auto evop8 = unsigned_field(shape.operation, 0xff);
+  const auto dtype16 = unsigned_field(shape.dtype, 0xffff);
+  const auto rd = register_field(shape.destination);
+  const auto rs1 = register_field(shape.lhs);
+  const auto rs2 = register_field(shape.rhs);
+  const auto rs3 = register_field(shape.accumulator);
+  if (!opcode7.has_value() || !evop8.has_value() || !dtype16.has_value() ||
+      !rd.has_value() || !rs1.has_value() || !rs2.has_value() ||
+      !rs3.has_value()) {
+    return std::nullopt;
+  }
+
+  // First supported EV64 shape:
+  // bits 6:0 opcode/namespace, 11:7 rd, 14:12 funct3=0,
+  // 19:15 rs1, 24:20 rs2, 29:25 rs3, 31:30 funct2=0,
+  // 39:32 EV operation, 55:40 dtype/policy, 63:56 opcode8=0.
+  return (*opcode7) | (*rd << 7) | (*rs1 << 15) | (*rs2 << 20) |
+         (*rs3 << 25) | (*evop8 << 32) | (*dtype16 << 40);
 }
 
 std::optional<std::uint32_t> rv64_elf_relocation_type(

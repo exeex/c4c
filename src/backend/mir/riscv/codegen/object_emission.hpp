@@ -98,4 +98,7 @@ write_rv64_prepared_relocatable_elf_object(
 classify_prepared_rv64_insn_d_inline_asm(
     const c4c::backend::prepare::PreparedInlineAsmCarrier& carrier);
 
+[[nodiscard]] std::optional<std::uint64_t> encode_rv64_ev_insn_d_inline_asm(
+    const RiscvInsnDInlineAsmShape& shape);
+
 }  // namespace c4c::backend::riscv::codegen
