@@ -139,3 +139,12 @@ are scheduled into RV64 target output.
   scheduling. Do not spend time proving RV64 has `mv`; it already does.
 - Coordinate with idea 327 if both are open: this idea owns only the old
   prepared edge publication failure.
+
+## Completion Note
+
+Closed after the RV64 prepared module emitter was repaired to append available
+shared edge-publication moves after successful simple prepared function
+emission. The focused final-assembly regression now emits the required
+register-edge move, helper authority remains shared-lookup based, and the
+matching regression guard resolved only
+`backend_riscv_prepared_edge_publication` with no new failures.
