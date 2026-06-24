@@ -209,9 +209,45 @@ RiscvEncodedFragment make_rv64_call_frame_prologue_fragment() {
   return fragment;
 }
 
+RiscvEncodedFragment make_rv64_stack_frame_prologue_fragment(
+    std::size_t stack_frame_bytes) {
+  RiscvEncodedFragment fragment;
+  append_le32(fragment.bytes,
+              encode_i_type(0x13,
+                            2,
+                            0,
+                            2,
+                            -static_cast<std::int32_t>(stack_frame_bytes)));
+  return fragment;
+}
+
 void append_rv64_call_frame_epilogue(RiscvEncodedFragment& fragment) {
   append_le32(fragment.bytes, encode_i_type(0x03, 1, 3, 2, 8));    // ld ra, 8(sp)
   append_le32(fragment.bytes, encode_i_type(0x13, 2, 0, 2, 16));   // addi sp, sp, 16
+}
+
+void append_rv64_stack_frame_epilogue(RiscvEncodedFragment& fragment,
+                                      std::size_t stack_frame_bytes) {
+  if (stack_frame_bytes == 0) {
+    return;
+  }
+  append_le32(fragment.bytes,
+              encode_i_type(0x13,
+                            2,
+                            0,
+                            2,
+                            static_cast<std::int32_t>(stack_frame_bytes)));
+}
+
+std::optional<std::size_t> rv64_object_stack_frame_size(
+    const c4c::backend::prepare::PreparedAddressingFunction* addressing) {
+  if (addressing == nullptr || addressing->frame_size_bytes == 0) {
+    return 0;
+  }
+  const auto aligned = ((addressing->frame_size_bytes + 15) / 16) * 16;
+  return fits_signed_12_bit_immediate(static_cast<std::int64_t>(aligned))
+             ? std::optional<std::size_t>{aligned}
+             : std::nullopt;
 }
 
 const c4c::backend::bir::Value* pure_instruction_result(
@@ -336,7 +372,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Terminator& terminator,
-    bool restore_return_address) {
+    bool restore_return_address,
+    std::size_t stack_frame_bytes) {
   if (terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !terminator.return_lanes.empty()) {
     return std::nullopt;
@@ -345,6 +382,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
   if (!terminator.value.has_value()) {
     if (restore_return_address) {
       append_rv64_call_frame_epilogue(fragment);
+    } else {
+      append_rv64_stack_frame_epilogue(fragment, stack_frame_bytes);
     }
     append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
     return fragment;
@@ -365,8 +404,89 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
   }
   if (restore_return_address) {
     append_rv64_call_frame_epilogue(fragment);
+  } else {
+    append_rv64_stack_frame_epilogue(fragment, stack_frame_bytes);
   }
   append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
+  return fragment;
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess*
+prepared_memory_access_for_instruction(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  if (lookups == nullptr) {
+    return nullptr;
+  }
+  return c4c::backend::prepare::find_indexed_prepared_memory_access(
+      &lookups->memory_accesses,
+      block_label,
+      instruction_index);
+}
+
+bool prepared_frame_slot_access_supported(
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes) {
+  if (access == nullptr || access->address_space != c4c::backend::bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind !=
+          c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value() ||
+      !access->address.can_use_base_plus_offset || access->address.size_bytes != 4 ||
+      access->address.align_bytes > 4 ||
+      access->address.byte_offset < 0 ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return false;
+  }
+  const auto offset = static_cast<std::size_t>(access->address.byte_offset);
+  return offset <= stack_frame_bytes && stack_frame_bytes - offset >= 4;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::StoreLocalInst& store,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes) {
+  if (!prepared_frame_slot_access_supported(access, stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  const auto immediate = integer_immediate_for_value(names, lookups, store.value);
+  if (!immediate.has_value() || !fits_signed_12_bit_immediate(*immediate)) {
+    return std::nullopt;
+  }
+  RiscvEncodedFragment fragment;
+  append_rv64_load_immediate(fragment, 6, *immediate);  // t1
+  append_le32(fragment.bytes,
+              encode_s_type(0x23,
+                            2,
+                            2,
+                            6,
+                            static_cast<std::int32_t>(access->address.byte_offset)));
+  return fragment;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::LoadLocalInst& load,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes) {
+  if (!prepared_frame_slot_access_supported(access, stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  const auto destination = gpr_register_number_for_value(names, lookups, load.result);
+  if (!destination.has_value()) {
+    return std::nullopt;
+  }
+  RiscvEncodedFragment fragment;
+  append_le32(fragment.bytes,
+              encode_i_type(0x03,
+                            *destination,
+                            2,
+                            2,
+                            static_cast<std::int32_t>(access->address.byte_offset)));
   return fragment;
 }
 
@@ -483,7 +603,7 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
   }
   const auto* function = find_defined_bir_function(prepared, function_name);
   if (function == nullptr || function->is_variadic ||
-      !function->local_slots.empty() || !function->atomic_operations.empty() ||
+      !function->atomic_operations.empty() ||
       function->blocks.size() != 1) {
     return std::nullopt;
   }
@@ -496,6 +616,11 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
       .name = function_name,
       .global = true,
   };
+  const auto* addressing = prepare::find_prepared_addressing(prepared, control_flow.function_name);
+  const auto stack_frame_bytes = rv64_object_stack_frame_size(addressing);
+  if (!stack_frame_bytes.has_value()) {
+    return std::nullopt;
+  }
 
   const bool has_call = std::any_of(block.insts.begin(),
                                     block.insts.end(),
@@ -503,8 +628,14 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
                                       return std::holds_alternative<
                                           c4c::backend::bir::CallInst>(inst);
                                     });
+  if (has_call && *stack_frame_bytes > 0) {
+    return std::nullopt;
+  }
   if (has_call) {
     object_function.fragments.push_back(make_rv64_call_frame_prologue_fragment());
+  } else if (*stack_frame_bytes > 0) {
+    object_function.fragments.push_back(
+        make_rv64_stack_frame_prologue_fragment(*stack_frame_bytes));
   }
 
   for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
@@ -515,6 +646,38 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
       if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(
               &block.insts[instruction_index])) {
         auto fragment = fragment_for_prepared_binary(prepared.names, &lookups, *binary);
+        if (fragment.has_value()) {
+          object_function.fragments.push_back(std::move(*fragment));
+          continue;
+        }
+      }
+      if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(
+              &block.insts[instruction_index])) {
+        auto fragment = fragment_for_prepared_store_local(
+            prepared.names,
+            &lookups,
+            *store,
+            prepared_memory_access_for_instruction(
+                &lookups,
+                block.label_id,
+                instruction_index),
+            *stack_frame_bytes);
+        if (fragment.has_value()) {
+          object_function.fragments.push_back(std::move(*fragment));
+          continue;
+        }
+      }
+      if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(
+              &block.insts[instruction_index])) {
+        auto fragment = fragment_for_prepared_load_local(
+            prepared.names,
+            &lookups,
+            *load,
+            prepared_memory_access_for_instruction(
+                &lookups,
+                block.label_id,
+                instruction_index),
+            *stack_frame_bytes);
         if (fragment.has_value()) {
           object_function.fragments.push_back(std::move(*fragment));
           continue;
@@ -541,7 +704,11 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
   }
 
   auto return_fragment =
-      fragment_for_prepared_return(prepared.names, &lookups, block.terminator, has_call);
+      fragment_for_prepared_return(prepared.names,
+                                   &lookups,
+                                   block.terminator,
+                                   has_call,
+                                   *stack_frame_bytes);
   if (!return_fragment.has_value()) {
     return std::nullopt;
   }

@@ -521,6 +521,106 @@ prepare::PreparedBirModule make_prepared_two_arg_scalar_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto slot_name = prepared.names.slot_names.intern("%lv.x");
+  const auto result_name = prepared.names.value_names.intern("%t0");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%lv.x",
+                  .slot_id = slot_name,
+                  .value = bir::Value::immediate_i32(5),
+                  .align_bytes = 4,
+              },
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+                  .slot_name = "%lv.x",
+                  .slot_id = slot_name,
+                  .align_bytes = 4,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%t0");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .local_slots = {bir::LocalSlot{
+          .name = "%lv.x",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 4,
+      .frame_alignment_bytes = 4,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{0},
+                      .byte_offset = 0,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .result_value_name = result_name,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{0},
+                      .byte_offset = 0,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+          },
+  });
+  return prepared;
+}
+
 int records_minimal_text_and_call_relocation() {
   const auto module = make_minimal_call_module();
   if (!module.has_value()) {
@@ -779,6 +879,36 @@ int builds_prepared_two_arg_scalar_call_object() {
       module->relocations[0].type != R_RISCV_CALL_PLT ||
       module->relocations[0].symbol != callee->id) {
     return fail("expected two-arg same-module call relocation at call pair");
+  }
+  return 0;
+}
+
+int builds_prepared_scalar_local_frame_object() {
+  const auto prepared = make_prepared_scalar_local_frame_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared scalar local RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared scalar local object to publish text/main");
+  }
+  if (text->bytes.size() != 28 || text->size_bytes != 28 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 28) {
+    return fail("expected prepared scalar local object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00500313 ||
+      read_u32(text->bytes, 8) != 0x00612023 ||
+      read_u32(text->bytes, 12) != 0x00012283 ||
+      read_u32(text->bytes, 16) != 0x00028513 ||
+      read_u32(text->bytes, 20) != 0x01010113 ||
+      read_u32(text->bytes, 24) != 0x00008067) {
+    return fail("expected stack-frame sw/lw scalar local object sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected scalar local object to need no relocations");
   }
   return 0;
 }
@@ -1109,6 +1239,7 @@ int main() {
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
   status |= builds_prepared_two_arg_scalar_call_object();
+  status |= builds_prepared_scalar_local_frame_object();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();

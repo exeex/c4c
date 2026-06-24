@@ -1403,6 +1403,13 @@ c4c_add_backend_rv64_runtime_case(
   EXPECTED_RUN_CODE 5
   LABELS scalar local
 )
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_local_temp
+  SRC "${BACKEND_CASE_ROOT}/local_temp.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 5
+  LABELS scalar local scan
+)
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_local_array
   SRC "${BACKEND_CASE_ROOT}/local_array.c"
