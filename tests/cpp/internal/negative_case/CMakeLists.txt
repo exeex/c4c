@@ -9,7 +9,7 @@ foreach(src IN LISTS _neg_srcs)
   set(extra_args)
   if(stem STREQUAL "bad_inline_asm_runtime_template")
     list(APPEND extra_args
-      "-DEXPECT_ERROR_SUBSTRING:STRING=unsupported inline asm template expression; expected string literal or adjacent string literals")
+      "-DEXPECT_ERROR_SUBSTRING:STRING=unsupported inline asm template expression; expected string literal, adjacent string literals, or string-literal + expression")
   endif()
   add_test(
     NAME "${test_name}"

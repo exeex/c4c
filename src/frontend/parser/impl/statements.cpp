@@ -1,4 +1,5 @@
 #include <cctype>
+#include <cstring>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -22,6 +23,28 @@ struct LexicalBindingScopeGuard {
         if (parser) parser->pop_local_binding_scope();
     }
 };
+
+std::string strip_asm_template_literal_quotes(const char* raw) {
+    if (!raw) return {};
+    std::string s(raw);
+    if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+        return s.substr(1, s.size() - 2);
+    }
+    return s;
+}
+
+bool fold_inline_asm_template_string_expr(const Node* n, std::string* out) {
+    if (!n || !out) return false;
+    if (n->kind == NK_STR_LIT) {
+        *out += strip_asm_template_literal_quotes(n->sval);
+        return true;
+    }
+    if (n->kind == NK_BINOP && n->op && std::strcmp(n->op, "+") == 0) {
+        return fold_inline_asm_template_string_expr(n->left, out) &&
+               fold_inline_asm_template_string_expr(n->right, out);
+    }
+    return false;
+}
 
 }  // namespace
 
@@ -956,7 +979,7 @@ Node* parse_stmt(Parser& parser) {
                         : parser.cur();
                 fprintf(stderr,
                         "%s:%d:%d: error: unsupported inline asm template expression; "
-                        "expected string literal or adjacent string literals\n",
+                        "expected string literal, adjacent string literals, or string-literal + expression\n",
                         parser.diag_file_at(err_idx), tok.line, tok.column);
                 parser.diagnostic_state_.had_error = true;
                 ++parser.diagnostic_state_.parse_error_count;
@@ -1013,7 +1036,18 @@ Node* parse_stmt(Parser& parser) {
             parser.match(TokenKind::Semi);
 
             if (asm_template && asm_template->kind != NK_STR_LIT) {
-                return reject_unsupported_template(asm_template_token_pos);
+                std::string folded_template;
+                if (fold_inline_asm_template_string_expr(asm_template, &folded_template)) {
+                    std::string quoted;
+                    quoted.reserve(folded_template.size() + 2);
+                    quoted.push_back('"');
+                    quoted += folded_template;
+                    quoted.push_back('"');
+                    asm_template =
+                        parser.make_str_lit(parser.arena_.strdup(quoted.c_str()), asm_template->line);
+                } else {
+                    return reject_unsupported_template(asm_template_token_pos);
+                }
             }
 
             const bool empty_template =

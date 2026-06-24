@@ -7366,6 +7366,83 @@ int call_helper(int value) { return helper(value); }
               "backend lir_to_bir should not trust a corrupted raw decl-backed direct-call symbol");
 }
 
+const c4c::hir::InlineAsmStmt* find_single_inline_asm_stmt(
+    const c4c::hir::Function& fn) {
+  const c4c::hir::InlineAsmStmt* found = nullptr;
+  for (const auto& block : fn.blocks) {
+    for (const auto& stmt : block.stmts) {
+      const auto* inline_asm =
+          std::get_if<c4c::hir::InlineAsmStmt>(&stmt.payload);
+      if (!inline_asm) {
+        continue;
+      }
+      expect_true(found == nullptr,
+                  "inline asm fixture should contain only one inline asm statement");
+      found = inline_asm;
+    }
+  }
+  return found;
+}
+
+const c4c::hir::Function* find_hir_function_by_name(
+    const c4c::hir::Module& module,
+    std::string_view name) {
+  const auto it = std::find_if(
+      module.functions.begin(), module.functions.end(),
+      [&](const c4c::hir::Function& fn) { return fn.name == name; });
+  return it == module.functions.end() ? nullptr : &(*it);
+}
+
+void test_inline_asm_string_literal_plus_folds_to_literal_metadata() {
+  const char* source = R"cpp(
+int literal(int value, int rhs) {
+  __asm__ __volatile__("addl %1, %0" : "+r"(value) : "r"(rhs) : "cc", "memory");
+  return value;
+}
+
+int folded(int value, int rhs) {
+  __asm__ __volatile__(("addl " + "%1, " + "%0") : "+r"(value) : "r"(rhs) : "cc", "memory");
+  return value;
+}
+)cpp";
+  const c4c::hir::Module module = lower_hir_module(source);
+  const c4c::hir::Function* literal = find_hir_function_by_name(module, "literal");
+  const c4c::hir::Function* folded = find_hir_function_by_name(module, "folded");
+  expect_true(literal != nullptr,
+              "literal inline asm fixture should lower to HIR");
+  expect_true(folded != nullptr,
+              "folded inline asm fixture should lower to HIR");
+
+  const c4c::hir::InlineAsmStmt* literal_asm =
+      find_single_inline_asm_stmt(*literal);
+  const c4c::hir::InlineAsmStmt* folded_asm =
+      find_single_inline_asm_stmt(*folded);
+  expect_true(literal_asm != nullptr,
+              "literal fixture should contain inline asm metadata");
+  expect_true(folded_asm != nullptr,
+              "folded fixture should contain inline asm metadata");
+
+  expect_eq(folded_asm->asm_template, "addl ${1}, ${0}",
+            "string-literal + inline asm template should fold to final text");
+  expect_eq(folded_asm->asm_template, literal_asm->asm_template,
+            "folded inline asm template text should match literal text");
+  expect_eq(folded_asm->constraints, literal_asm->constraints,
+            "folded inline asm constraints should match literal constraints");
+  expect_true(folded_asm->has_side_effects == literal_asm->has_side_effects,
+              "folded inline asm volatility/side-effect metadata should match literal metadata");
+  expect_eq_int(static_cast<int>(folded_asm->outputs.size()),
+                static_cast<int>(literal_asm->outputs.size()),
+                "folded inline asm output count should match literal output count");
+  expect_eq_int(static_cast<int>(folded_asm->inputs.size()),
+                static_cast<int>(literal_asm->inputs.size()),
+                "folded inline asm input count should match literal input count");
+  expect_eq_int(static_cast<int>(folded_asm->clobbers.size()),
+                static_cast<int>(literal_asm->clobbers.size()),
+                "folded inline asm clobber count should match literal clobber count");
+  expect_true(folded_asm->clobbers == literal_asm->clobbers,
+              "folded inline asm clobbers should match literal clobbers");
+}
+
 }  // namespace
 
 int main() {
@@ -7499,6 +7576,7 @@ int main() {
   test_lir_to_bir_resolves_direct_call_link_names_at_backend_boundary();
   test_lir_to_bir_resolves_extern_decl_link_names_at_backend_boundary();
   test_lir_to_bir_resolves_decl_backed_direct_call_link_names_at_backend_boundary();
+  test_inline_asm_string_literal_plus_folds_to_literal_metadata();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;
