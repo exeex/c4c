@@ -577,6 +577,8 @@ aapcs64_va_arg_hfa_payload_shape(
   return facts;
 }
 
+void validate_inline_asm_insn_r_metadata(bir::InlineAsmMetadata& metadata);
+
 [[nodiscard]] bir::InlineAsmMetadata make_inline_asm_metadata(
     const c4c::codegen::lir::LirInlineAsmOp& inline_asm) {
   const auto template_modifier_facts =
@@ -634,6 +636,11 @@ aapcs64_va_arg_hfa_payload_shape(
       operand.kind = bir::InlineAsmOperandKind::RegisterOutput;
       operand.output_index = next_output_index++;
       operand.register_class = bir::InlineAsmRegisterClass::General;
+    } else if (token == "+r") {
+      operand.kind = bir::InlineAsmOperandKind::RegisterOutput;
+      operand.arg_index = next_arg_index++;
+      operand.output_index = next_output_index++;
+      operand.register_class = bir::InlineAsmRegisterClass::General;
     } else if (const auto vector_constraint =
                    classify_inline_asm_vector_constraint(token);
                vector_constraint.is_vector_looking) {
@@ -685,7 +692,63 @@ aapcs64_va_arg_hfa_payload_shape(
   if (template_modifier_facts.has_unsupported_modifier) {
     metadata.unsupported_facts.push_back("unsupported_template_modifiers");
   }
+  validate_inline_asm_insn_r_metadata(metadata);
   return metadata;
+}
+
+[[nodiscard]] bool inline_asm_operand_is_scalar_gpr_field(
+    const std::vector<bir::InlineAsmOperandMetadata>& operands,
+    std::size_t operand_index) {
+  if (operand_index >= operands.size()) {
+    return false;
+  }
+  const auto& operand = operands[operand_index];
+  switch (operand.kind) {
+    case bir::InlineAsmOperandKind::RegisterOutput:
+    case bir::InlineAsmOperandKind::RegisterInput:
+      return operand.register_class == bir::InlineAsmRegisterClass::General &&
+             operand.register_group_width == 1;
+    case bir::InlineAsmOperandKind::TiedInput:
+      if (!operand.tied_output_index.has_value()) {
+        return false;
+      }
+      for (const auto& output : operands) {
+        if (output.kind == bir::InlineAsmOperandKind::RegisterOutput &&
+            output.output_index == operand.tied_output_index) {
+          return output.register_class == bir::InlineAsmRegisterClass::General &&
+                 output.register_group_width == 1;
+        }
+      }
+      return false;
+    case bir::InlineAsmOperandKind::Unsupported:
+    case bir::InlineAsmOperandKind::IntegerImmediateInput:
+    case bir::InlineAsmOperandKind::MemoryInput:
+    case bir::InlineAsmOperandKind::AddressInput:
+    case bir::InlineAsmOperandKind::Clobber:
+      return false;
+  }
+  return false;
+}
+
+void validate_inline_asm_insn_r_metadata(bir::InlineAsmMetadata& metadata) {
+  if (!metadata.insn_r.has_value()) {
+    return;
+  }
+  for (std::size_t field_index = 0;
+       field_index < metadata.insn_r->operand_indices.size();
+       ++field_index) {
+    const std::size_t operand_index = metadata.insn_r->operand_indices[field_index];
+    if (operand_index >= metadata.operands.size()) {
+      metadata.unsupported_facts.push_back(
+          "insn_r_operand" + std::to_string(field_index) + "_missing");
+      continue;
+    }
+    if (!inline_asm_operand_is_scalar_gpr_field(metadata.operands, operand_index)) {
+      metadata.unsupported_facts.push_back(
+          "insn_r_operand" + std::to_string(field_index) +
+          "_requires_scalar_gpr");
+    }
+  }
 }
 
 std::optional<std::string> parse_byval_pointee_type(std::string_view type_text) {

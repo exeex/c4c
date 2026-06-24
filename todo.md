@@ -1,34 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/346_rv64_standard_insn_scalar_inline_asm_object_route.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Parse And Represent Supported .insn r
+Current Step ID: 3
+Current Step Title: Bind Scalar Constraints And Substitute GPR Operands
 
 # Current Packet
 
 ## Just Finished
 
-Completed Plan Step 2 - Parse And Represent Supported `.insn r`.
+Completed Plan Step 3 - Bind Scalar Constraints And Substitute GPR Operands.
 
-Added structured optional `.insn r` metadata for the exact scalar RV64 shape
-`.insn r opcode, funct3, funct7, rd, rs1, rs2` after GCC placeholder rewrite:
-HIR `InlineAsmStmt`, LIR `LirInlineAsmOp`, and BIR `InlineAsmMetadata` now carry
-opcode/funct3/funct7 plus rd/rs1/rs2 operand indices. HIR lowering diagnoses
-malformed `.insn r` attempts early for field count, numeric range, and
-non-positional register fields while leaving ordinary non-`.insn` inline asm
-and other `.insn` forms as text-only templates.
+BIR inline asm metadata now classifies scalar `+r` as a read-write register
+operand with both input and output authority, and structured RV64 `.insn r`
+metadata now publishes unsupported facts when any rd/rs1/rs2 field does not
+bind to a scalar GPR-capable operand (`r`, `=r`, `+r`, or a supported tied
+operand). This connects the Step 2 `.insn r` shape to the existing scalar
+prepared-carrier path without adding a new allocator or object encoder route.
 
-Added dump visibility and a LIR verifier guard for `.insn r` metadata operand
-indices. Focused tests now prove HIR recognition and diagnostics, HIR-to-LIR
-metadata preservation, BIR metadata preservation, ordinary inline asm
-non-recognition, and unchanged backend RV64 object-emission behavior.
+Focused tests now cover clean untied scalar `.insn r` metadata, direct `+r`
+read-write metadata, invalid immediate constraints in register fields, prepared
+carrier binding for structured `+r`, existing untied/tied GPR carriers, and the
+unchanged RV64 object-emission route.
 
 ## Suggested Next
 
-Execute Step 3: bind scalar `r`, `=r`, `+r`, and supported tied operands for
-the structured `.insn r` route to the existing GPR carrier path, reject
-incompatible constraints at source/BIR metadata boundaries, and add focused
-fixtures for untied, tied, read-write, and invalid scalar operands.
+Execute Step 4: route the structured scalar `.insn r` fields into RV64 object
+encoding byte proof, preferably by consuming `InlineAsmInsnRMetadata` plus
+prepared GPR carrier homes instead of re-parsing the asm text as the primary
+authority. Keep existing string parser behavior only as compatibility/fallback
+where needed.
 
 ## Watchouts
 
@@ -36,26 +36,28 @@ fixtures for untied, tied, read-write, and invalid scalar operands.
   EV `.insn.d`, and consteval/template asm strings belong to later child ideas.
 - Do not prove progress by matching the umbrella's exact sample string.
 - Do not rely on an external assembler as the primary object-byte proof.
-- Existing object-side `.insn r` support is still late and string-based; Step 3
-  should reuse prepared carriers and must not introduce a parallel byte encoder
-  or object-route bypass.
+- Existing object-side `.insn r` support is still late and string-based; Step 4
+  should make structured metadata the documented authority for byte emission
+  without bypassing prepared carriers.
 - Current `.insn r` object path rejects clobbers, named operands, template
   modifiers, raw register names, vector homes, and incomplete carriers. Preserve
   those rejection contracts.
-- The delegated proof regex as written executes `frontend_hir_tests`,
-  `backend_lir_to_bir_notes`, and `backend_riscv_object_emission`; the
-  `frontend_lir_` alternative is exact-name anchored and does not match longer
-  frontend LIR test names.
+- `backend_prealloc_inline_asm` is now a CTest alias for the prepared-printer
+  carrier executable so the delegated Step 3 proof exercises the prealloc
+  inline-asm carrier assertions directly.
+- Some semantic-prealloc fixtures may spill result homes under pressure; avoid
+  treating that as scalar constraint failure unless the prepared carrier itself
+  is expected to be complete.
 
 ## Proof
 
 Command:
 
 ```sh
-bash -lc 'cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_tests|frontend_lir_|backend_lir_to_bir_notes|backend_riscv_object_emission)$" >> test_after.log 2>&1'
+bash -lc 'cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_tests|backend_lir_to_bir_notes|backend_prealloc_inline_asm|backend_riscv_object_emission)$" >> test_after.log 2>&1'
 ```
 
-Result: passed, `100% tests passed, 0 tests failed out of 3`.
+Result: passed, `100% tests passed, 0 tests failed out of 4`.
 Log: `test_after.log`
 
 Supervisor acceptance checks:
@@ -63,8 +65,9 @@ Supervisor acceptance checks:
 ```sh
 git diff --check
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
-ctest --test-dir build -j --output-on-failure -R '^frontend_lir_'
+ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_printer|backend_prealloc_inline_asm)$'
 ```
 
-Result: passed. Regression guard reported no passed/failed/total delta for the
-canonical three-test proof logs; explicit frontend LIR subset passed 4/4.
+Result: passed. Regression guard reported one additional passing test from the
+new `backend_prealloc_inline_asm` alias and no new failures; prepared-printer
+and prealloc alias checks passed 2/2.

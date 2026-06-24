@@ -238,6 +238,14 @@ set_tests_properties(backend_prepared_printer PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_test(
+  NAME backend_prealloc_inline_asm
+  COMMAND $<TARGET_FILE:backend_prepared_printer_test>
+)
+set_tests_properties(backend_prealloc_inline_asm PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 add_executable(backend_prepared_lookup_helper_test
     "${BACKEND_TEST_ROOT}/bir/backend_prepared_lookup_helper_test.cpp"
 )

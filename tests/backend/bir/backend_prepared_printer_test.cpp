@@ -3540,6 +3540,228 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_scalar_carrier_module() {
       module, target, prepare::PrepareOptions{});
 }
 
+prepare::PreparedBirModule prepare_rv64_insn_r_structured_scalar_carrier_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  const c4c::TargetProfile target = riscv_target_profile();
+  const auto i32_arg_abi = *prepare::infer_call_arg_abi(target, bir::TypeKind::I32);
+  const bir::CallResultAbiInfo i32_result_abi{
+      .type = bir::TypeKind::I32,
+      .primary_class = bir::AbiValueClass::Integer,
+  };
+
+  bir::Function function;
+  function.name = "rv64_insn_r_structured_scalar_carrier_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{.type = bir::TypeKind::I32,
+                                       .name = "lhs",
+                                       .size_bytes = 4,
+                                       .align_bytes = 4});
+  function.params.push_back(bir::Param{.type = bir::TypeKind::I32,
+                                       .name = "rhs",
+                                       .size_bytes = 4,
+                                       .align_bytes = 4});
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "sum"),
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "lhs"),
+               bir::Value::named(bir::TypeKind::I32, "rhs")},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi, i32_arg_abi},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = ".insn r 0x33, 0, 0, %0, %1, %2",
+          .constraints = "=r,r,r",
+          .side_effects = true,
+          .operands =
+              {
+                  inline_asm_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                     0,
+                                     "=r",
+                                     std::nullopt,
+                                     std::size_t{0},
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     bir::InlineAsmRegisterClass::General),
+                  inline_asm_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                     1,
+                                     "r",
+                                     std::size_t{0},
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     bir::InlineAsmRegisterClass::General),
+                  inline_asm_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                     2,
+                                     "r",
+                                     std::size_t{1},
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     bir::InlineAsmRegisterClass::General),
+              },
+          .insn_r = bir::InlineAsmInsnRMetadata{.opcode = 0x33,
+                                                .funct3 = 0,
+                                                .funct7 = 0,
+                                                .operand_indices = {0, 1, 2}},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tie"),
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "tie"),
+               bir::Value::named(bir::TypeKind::I32, "rhs")},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi, i32_arg_abi},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = ".insn r 0x33, 0, 0, %0, %1, %2",
+          .constraints = "=r,0,r",
+          .side_effects = true,
+          .operands =
+              {
+                  inline_asm_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                     0,
+                                     "=r",
+                                     std::nullopt,
+                                     std::size_t{0},
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     bir::InlineAsmRegisterClass::General),
+                  inline_asm_operand(bir::InlineAsmOperandKind::TiedInput,
+                                     1,
+                                     "0",
+                                     std::size_t{0},
+                                     std::nullopt,
+                                     std::size_t{0}),
+                  inline_asm_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                     2,
+                                     "r",
+                                     std::size_t{1},
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     bir::InlineAsmRegisterClass::General),
+              },
+          .insn_r = bir::InlineAsmInsnRMetadata{.opcode = 0x33,
+                                                .funct3 = 0,
+                                                .funct7 = 0,
+                                                .operand_indices = {0, 1, 2}},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "rw"),
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "rw"),
+               bir::Value::named(bir::TypeKind::I32, "rhs")},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi, i32_arg_abi},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = ".insn r 0x33, 0, 0, %0, %0, %1",
+          .constraints = "+r,r",
+          .side_effects = true,
+          .operands =
+              {
+                  inline_asm_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                     0,
+                                     "+r",
+                                     std::size_t{0},
+                                     std::size_t{0},
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     bir::InlineAsmRegisterClass::General),
+                  inline_asm_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                     1,
+                                     "r",
+                                     std::size_t{1},
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     bir::InlineAsmRegisterClass::General),
+              },
+          .insn_r = bir::InlineAsmInsnRMetadata{.opcode = 0x33,
+                                                .funct3 = 0,
+                                                .funct7 = 0,
+                                                .operand_indices = {0, 0, 1}},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "bad"),
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::immediate_i32(7), bir::Value::named(bir::TypeKind::I32, "rhs")},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi, i32_arg_abi},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = ".insn r 0x33, 0, 0, %0, %1, %2",
+          .constraints = "=r,I,r",
+          .side_effects = true,
+          .operands =
+              {
+                  inline_asm_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                     0,
+                                     "=r",
+                                     std::nullopt,
+                                     std::size_t{0},
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     bir::InlineAsmRegisterClass::General),
+                  inline_asm_operand(bir::InlineAsmOperandKind::IntegerImmediateInput,
+                                     1,
+                                     "I",
+                                     std::size_t{0}),
+                  inline_asm_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                     2,
+                                     "r",
+                                     std::size_t{1},
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     std::nullopt,
+                                     bir::InlineAsmRegisterClass::General),
+              },
+          .unsupported_facts = {"insn_r_operand1_requires_scalar_gpr"},
+          .insn_r = bir::InlineAsmInsnRMetadata{.opcode = 0x33,
+                                                .funct3 = 0,
+                                                .funct7 = 0,
+                                                .operand_indices = {0, 1, 2}},
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "rw"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, target, prepare::PrepareOptions{});
+}
+
 prepare::PreparedBirModule prepare_rv64_inline_asm_vector_carrier_module() {
   bir::Module module;
   module.target_triple = "riscv64-unknown-linux-gnu";
@@ -4009,6 +4231,49 @@ int rv64_inline_asm_carriers_preserve_scalar_register_identities() {
   if (!expect_not_contains(dump,
                            "target_invalid_tied_output_register_home",
                            "RV64 tied output invalid-register diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int rv64_insn_r_structured_scalar_carriers_bind_gpr_operands() {
+  const auto prepared = prepare_rv64_insn_r_structured_scalar_carrier_module();
+  const auto* function_carriers =
+      find_inline_asm_carriers(prepared,
+                               "rv64_insn_r_structured_scalar_carrier_contract");
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 4) {
+    std::cerr << "[FAIL] expected four structured RV64 .insn r carriers\n";
+    return EXIT_FAILURE;
+  }
+
+  const auto& readwrite = function_carriers->carriers[2];
+  const auto& invalid = function_carriers->carriers[3];
+  if (readwrite.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      readwrite.operands.size() != 2 ||
+      readwrite.operands[0].kind != bir::InlineAsmOperandKind::RegisterOutput ||
+      readwrite.operands[0].constraint != "+r" ||
+      readwrite.operands[0].arg_index.value_or(99) != 0 ||
+      readwrite.operands[0].output_index.value_or(99) != 0 ||
+      !readwrite.result_home.has_value() ||
+      !readwrite.result_home->target_register_identity.has_value() ||
+      !readwrite.operands[0].home.has_value() ||
+      !readwrite.operands[0].home->target_register_identity.has_value() ||
+      *readwrite.operands[0].home->target_register_identity !=
+          *readwrite.result_home->target_register_identity ||
+      !readwrite.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] structured RV64 .insn r +r scalar carrier incomplete\n";
+    return EXIT_FAILURE;
+  }
+  if (invalid.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Missing ||
+      invalid.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] structured RV64 .insn r invalid constraint should fail closed\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string dump = prepare::print(prepared);
+  if (!expect_contains(dump,
+                       "inst#3:insn_r_operand1_requires_scalar_gpr",
+                       "structured RV64 .insn r invalid scalar constraint fact")) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
@@ -5480,6 +5745,11 @@ int main() {
   }
   if (const int status =
           rv64_inline_asm_carriers_preserve_scalar_register_identities();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          rv64_insn_r_structured_scalar_carriers_bind_gpr_operands();
       status != 0) {
     return status;
   }
