@@ -129,3 +129,21 @@ EV 64-bit `.insn.d` template.
   remains.
 - Broad RVV lowering or unrelated backend rewrites dominate the slice instead
   of the focused inline asm vector constraint contract.
+
+## Closure Note
+
+Closed on 2026-06-24 after Stage 2 completed `VR`, `VRM2`, and `VRM4`
+classification, allocation, overlap/tied-operand handling, base-register
+substitution, and focused malformed/impossible-case diagnostics without
+weakening the existing scalar `.insn` route.
+
+Close proof used the canonical backend before/after logs:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: PASS, with 315 passed, 1 known unrelated backend failure, 316 total in
+both logs, and no new failures. The remaining EV `.insn.d`, named operand,
+mask/policy, and broader RVV semantics work remains out of scope for this
+closed child.
