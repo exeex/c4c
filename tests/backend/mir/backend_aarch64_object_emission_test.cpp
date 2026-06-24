@@ -1,14 +1,18 @@
 #include "src/backend/mir/aarch64/codegen/object_emission.hpp"
+#include "src/backend/mir/aarch64/codegen/returns.hpp"
 #include "src/backend/mir/object/model.hpp"
 
 #include <cstdint>
 #include <iostream>
 #include <optional>
+#include <string_view>
 #include <vector>
+#include <variant>
 
 namespace {
 
 namespace aarch64 = c4c::backend::aarch64::codegen;
+namespace aarch64_module = c4c::backend::aarch64::module;
 namespace object = c4c::backend::mir::object;
 
 constexpr std::uint32_t R_AARCH64_ADR_PREL_PG_HI21 = 275;
@@ -24,6 +28,39 @@ int fail(const char* message) {
 bool has_bytes(const object::SectionRecord& section,
                std::initializer_list<std::uint8_t> expected) {
   return section.bytes == std::vector<std::uint8_t>(expected);
+}
+
+aarch64_module::MachineInstruction machine_instruction(
+    aarch64::InstructionRecord target) {
+  return aarch64_module::MachineInstruction{.target = std::move(target)};
+}
+
+aarch64_module::MachineFunction machine_function(
+    std::initializer_list<aarch64_module::MachineInstruction> instructions) {
+  aarch64_module::MachineBlock block;
+  block.index = 0;
+  block.instructions = instructions;
+
+  aarch64_module::MachineFunction function;
+  function.blocks.push_back(std::move(block));
+  return function;
+}
+
+aarch64::InstructionRecord machine_return() {
+  return aarch64::make_return_instruction(aarch64::ReturnInstructionRecord{});
+}
+
+aarch64::InstructionRecord machine_direct_call(std::string_view callee) {
+  return aarch64::make_call_instruction(aarch64::CallInstructionRecord{
+      .direct_callee_label = callee,
+  });
+}
+
+aarch64::InstructionRecord unsupported_machine_scalar() {
+  return aarch64::make_unsupported_machine_instruction(
+      aarch64::InstructionFamily::Scalar,
+      aarch64::MachineNodeSelectionStatus::DeferredUnsupported,
+      "unsupported for object emission");
 }
 
 int maps_aarch64_relocation_kinds_locally() {
@@ -197,6 +234,149 @@ int rejects_fixups_without_instruction_slots() {
   return 0;
 }
 
+int builds_return_only_machine_function_object() {
+  const auto function = machine_function({machine_instruction(machine_return())});
+
+  const auto result = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "return_only",
+          .global = true,
+          .function = &function,
+      },
+  });
+  if (!result.ok()) {
+    return fail("expected return-only machine function to emit object module");
+  }
+
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* symbol = object::find_symbol(*result.module, "return_only");
+  if (text == nullptr || text->size_bytes != 4 ||
+      !has_bytes(*text, {0xc0, 0x03, 0x5f, 0xd6}) ||
+      symbol == nullptr ||
+      symbol->section != std::optional<object::SectionId>{text->id} ||
+      symbol->value != 0 || symbol->size_bytes != 4 ||
+      !result.module->relocations.empty()) {
+    return fail("expected structured return machine record to emit one RET");
+  }
+  return 0;
+}
+
+int builds_same_module_machine_direct_call_object() {
+  const auto caller = machine_function({
+      machine_instruction(machine_direct_call("callee")),
+      machine_instruction(machine_return()),
+  });
+  const auto callee = machine_function({machine_instruction(machine_return())});
+
+  const auto result = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "caller",
+          .global = true,
+          .function = &caller,
+      },
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "callee",
+          .global = true,
+          .function = &callee,
+      },
+  });
+  if (!result.ok()) {
+    return fail("expected same-module machine direct call object module");
+  }
+
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* callee_symbol = object::find_symbol(*result.module, "callee");
+  if (text == nullptr || callee_symbol == nullptr ||
+      callee_symbol->section != std::optional<object::SectionId>{text->id} ||
+      callee_symbol->value != 8 || callee_symbol->size_bytes != 4 ||
+      result.module->relocations.size() != 1 ||
+      result.module->relocations[0].type != R_AARCH64_CALL26 ||
+      result.module->relocations[0].offset != 0 ||
+      result.module->relocations[0].symbol != callee_symbol->id) {
+    return fail("expected structured same-module direct call relocation");
+  }
+  return 0;
+}
+
+int builds_external_machine_direct_call_object() {
+  const auto caller = machine_function({
+      machine_instruction(machine_direct_call("external_callee")),
+      machine_instruction(machine_return()),
+  });
+
+  const auto result = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "caller",
+          .global = true,
+          .function = &caller,
+      },
+  });
+  if (!result.ok()) {
+    return fail("expected external machine direct call object module");
+  }
+
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* callee = object::find_symbol(*result.module, "external_callee");
+  if (text == nullptr || callee == nullptr || !object::is_undefined_symbol(*callee) ||
+      result.module->relocations.size() != 1 ||
+      result.module->relocations[0].section != text->id ||
+      result.module->relocations[0].type != R_AARCH64_CALL26 ||
+      result.module->relocations[0].symbol != callee->id) {
+    return fail("expected external direct call to remain an undefined function relocation");
+  }
+  return 0;
+}
+
+int rejects_unsupported_machine_records_without_text_fallback() {
+  const auto function = machine_function({
+      machine_instruction(unsupported_machine_scalar()),
+      machine_instruction(machine_return()),
+  });
+
+  const auto result = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "unsupported",
+          .global = true,
+          .function = &function,
+      },
+  });
+  if (result.module.has_value() || result.diagnostics.size() != 1 ||
+      result.diagnostics[0].kind !=
+          aarch64::Aarch64ObjectEmissionDiagnosticKind::UnsupportedInstruction ||
+      result.diagnostics[0].function_name != "unsupported" ||
+      result.diagnostics[0].block_index != 0 ||
+      result.diagnostics[0].instruction_index != 0) {
+    return fail("expected unsupported machine record to produce explicit diagnostic");
+  }
+  return 0;
+}
+
+int rejects_unselected_machine_records_without_text_fallback() {
+  auto deferred_return = machine_return();
+  deferred_return.selection.status =
+      aarch64::MachineNodeSelectionStatus::DeferredUnsupported;
+  deferred_return.selection.diagnostic = "deferred return";
+
+  const auto function = machine_function({
+      machine_instruction(deferred_return),
+  });
+
+  const auto result = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "deferred_return",
+          .global = true,
+          .function = &function,
+      },
+  });
+  if (result.module.has_value() || result.diagnostics.size() != 1 ||
+      result.diagnostics[0].kind !=
+          aarch64::Aarch64ObjectEmissionDiagnosticKind::UnsupportedInstruction ||
+      result.diagnostics[0].function_name != "deferred_return") {
+    return fail("expected unselected machine record to produce explicit diagnostic");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -214,6 +394,25 @@ int main() {
     return status;
   }
   if (const int status = rejects_fixups_without_instruction_slots(); status != 0) {
+    return status;
+  }
+  if (const int status = builds_return_only_machine_function_object(); status != 0) {
+    return status;
+  }
+  if (const int status = builds_same_module_machine_direct_call_object();
+      status != 0) {
+    return status;
+  }
+  if (const int status = builds_external_machine_direct_call_object();
+      status != 0) {
+    return status;
+  }
+  if (const int status = rejects_unsupported_machine_records_without_text_fallback();
+      status != 0) {
+    return status;
+  }
+  if (const int status = rejects_unselected_machine_records_without_text_fallback();
+      status != 0) {
     return status;
   }
   return 0;

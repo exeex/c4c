@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mir/aarch64/module/module.hpp"
 #include "mir/object/elf_writer.hpp"
 #include "mir/object/model.hpp"
 
@@ -40,6 +41,37 @@ struct Aarch64ObjectFunction {
   std::vector<Aarch64EncodedFragment> fragments;
 };
 
+enum class Aarch64ObjectEmissionDiagnosticKind {
+  MissingFunction,
+  MissingFunctionName,
+  UnsupportedInstruction,
+  UnsupportedCall,
+};
+
+struct Aarch64ObjectEmissionDiagnostic {
+  Aarch64ObjectEmissionDiagnosticKind kind =
+      Aarch64ObjectEmissionDiagnosticKind::UnsupportedInstruction;
+  std::string function_name;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::string message;
+};
+
+struct Aarch64MachineObjectFunction {
+  std::string name;
+  bool global = true;
+  const c4c::backend::aarch64::module::MachineFunction* function = nullptr;
+};
+
+struct Aarch64ObjectEmissionResult {
+  std::optional<c4c::backend::mir::object::ObjectModule> module;
+  std::vector<Aarch64ObjectEmissionDiagnostic> diagnostics;
+
+  [[nodiscard]] bool ok() const {
+    return module.has_value() && diagnostics.empty();
+  }
+};
+
 [[nodiscard]] std::optional<std::uint32_t> aarch64_elf_relocation_type(
     Aarch64ObjectFixupKind kind);
 
@@ -57,6 +89,9 @@ aarch64_relocatable_elf_config();
 [[nodiscard]] std::optional<c4c::backend::mir::object::ObjectModule>
 build_aarch64_text_object_module(
     const std::vector<Aarch64ObjectFunction>& functions);
+
+[[nodiscard]] Aarch64ObjectEmissionResult build_aarch64_text_object_module(
+    const std::vector<Aarch64MachineObjectFunction>& functions);
 
 [[nodiscard]] std::optional<c4c::backend::mir::object::RelocatableElfImage>
 write_aarch64_relocatable_elf_object(

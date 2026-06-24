@@ -3,29 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/332_aarch64_minimal_relocatable_elf_object_emission.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add AArch64 Encoded Fragment And Fixup Records
+Current Step ID: 3
+Current Step Title: Integrate AArch64 Machine Emission With The Object Model
 
 ## Just Finished
 
-- Completed Step 2 of `plan.md`: added AArch64-owned encoded fragment and typed
-  fixup records under
-  `src/backend/mir/aarch64/codegen/object_emission.{hpp,cpp}`.
-- Added target-local helpers for `ret`, direct `bl` calls, and ADRP/ADD
-  address materialization placeholders without depending on printed assembly
-  text.
-- Added AArch64-local relocation mapping for `Aarch64ObjectFixupKind::Call26`,
-  `AdrPrelPgHi21`, and `AddAbsLo12Nc` to `R_AARCH64_CALL26`,
-  `R_AARCH64_ADR_PREL_PG_HI21`, and `R_AARCH64_ADD_ABS_LO12_NC`.
-- Added focused `backend_aarch64_object_emission` coverage proving `.text`
-  bytes, function symbols, undefined and same-module direct-call symbol
-  handling, and ADRP/ADD relocation pairs against an object symbol.
+- Completed Step 3 of `plan.md`: added an AArch64 machine-record object
+  emission entry point that consumes structured `MachineFunction` inputs and
+  lowers the supported subset through the Step 2 fragment/fixup helpers.
+- Supported selected `ReturnInstructionRecord` as `ret` and selected
+  `CallInstructionRecord` with `MachineOpcode::DirectCall` as `bl` plus
+  `R_AARCH64_CALL26`, without reading printed assembly text.
+- Added explicit object-emission diagnostics for missing function inputs,
+  missing function names, unsupported calls, and unsupported machine records
+  instead of silently falling back to `.s`.
+- Extended `backend_aarch64_object_emission` coverage for return-only,
+  same-module direct call, external direct call, unsupported-record rejection,
+  and preserved ADRP/ADD address-materialization fixture support.
 
 ## Suggested Next
 
-- Implement Step 3 by wiring a narrow AArch64 machine/module object builder into
-  the new target-local records for the supported minimal subset, keeping
-  unsupported prepared forms explicit instead of falling back to printed `.s`.
+- Implement Step 4 by adding the narrow public object emission handoff needed
+  by the next route, while keeping CLI/runtime/default-route exposure and
+  broader prepared globals/data/BSS support out of scope until explicitly
+  planned.
 
 ## Watchouts
 
@@ -35,6 +36,8 @@ Current Step Title: Add AArch64 Encoded Fragment And Fixup Records
   coverage in this child.
 - `Aarch64ObjectSymbolKind` currently distinguishes only function and object
   targets for first-slice undefined-symbol construction.
+- Structured object emission currently supports only selected return records
+  and direct-call records with non-empty `direct_callee_label`.
 - `EM_AARCH64` is machine `183` with ELF flags `0` for this relocatable writer
   path.
 - Known unsupported object features after the first slice: data/global section
@@ -47,8 +50,9 @@ Current Step Title: Add AArch64 Encoded Fragment And Fixup Records
 ## Proof
 
 - Delegated proof passed:
-  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_object_emission|backend_object_model_records|backend_aarch64_target_record_core_contract)$' --output-on-failure) > test_after.log 2>&1`
+  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_object_emission|backend_object_model_records|backend_aarch64_target_record_core_contract|backend_aarch64_return_lowering)$' --output-on-failure) > test_after.log 2>&1`
 - Test subset: `backend_aarch64_object_emission`,
   `backend_object_model_records`, and
-  `backend_aarch64_target_record_core_contract` passed 3/3.
+  `backend_aarch64_target_record_core_contract`, and
+  `backend_aarch64_return_lowering` passed 4/4.
 - Proof log path: `test_after.log`.

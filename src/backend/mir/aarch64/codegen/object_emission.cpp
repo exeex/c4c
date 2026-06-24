@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
@@ -56,6 +57,113 @@ object::SymbolId get_or_declare_symbol(
       object_symbol_kind(fixup.symbol_kind));
   symbols_by_name.emplace(undefined.name, undefined.id);
   return undefined.id;
+}
+
+bool is_selected_machine_instruction(const InstructionRecord& instruction) {
+  return instruction.surface == RecordSurfaceKind::MachineInstructionNode &&
+         instruction.selection.status == MachineNodeSelectionStatus::Selected;
+}
+
+void add_diagnostic(std::vector<Aarch64ObjectEmissionDiagnostic>& diagnostics,
+                    Aarch64ObjectEmissionDiagnosticKind kind,
+                    std::string function_name,
+                    std::size_t block_index,
+                    std::size_t instruction_index,
+                    std::string message) {
+  diagnostics.push_back(Aarch64ObjectEmissionDiagnostic{
+      .kind = kind,
+      .function_name = std::move(function_name),
+      .block_index = block_index,
+      .instruction_index = instruction_index,
+      .message = std::move(message),
+  });
+}
+
+std::optional<Aarch64EncodedFragment> fragment_for_machine_instruction(
+    const InstructionRecord& instruction,
+    std::vector<Aarch64ObjectEmissionDiagnostic>& diagnostics,
+    const std::string& function_name,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  if (!is_selected_machine_instruction(instruction)) {
+    add_diagnostic(diagnostics,
+                   Aarch64ObjectEmissionDiagnosticKind::UnsupportedInstruction,
+                   function_name,
+                   block_index,
+                   instruction_index,
+                   "AArch64 object emission supports only selected machine instructions");
+    return std::nullopt;
+  }
+
+  if (std::holds_alternative<ReturnInstructionRecord>(instruction.payload)) {
+    return make_aarch64_return_fragment();
+  }
+
+  if (const auto* call = std::get_if<CallInstructionRecord>(&instruction.payload)) {
+    if (instruction.opcode == MachineOpcode::DirectCall && !call->is_indirect &&
+        !call->direct_callee_label.empty()) {
+      return make_aarch64_direct_call_fragment(
+          std::string{call->direct_callee_label});
+    }
+    add_diagnostic(diagnostics,
+                   Aarch64ObjectEmissionDiagnosticKind::UnsupportedCall,
+                   function_name,
+                   block_index,
+                   instruction_index,
+                   "AArch64 object emission supports only selected direct calls");
+    return std::nullopt;
+  }
+
+  add_diagnostic(diagnostics,
+                 Aarch64ObjectEmissionDiagnosticKind::UnsupportedInstruction,
+                 function_name,
+                 block_index,
+                 instruction_index,
+                 "unsupported AArch64 machine instruction for object emission");
+  return std::nullopt;
+}
+
+std::optional<Aarch64ObjectFunction> object_function_from_machine(
+    const Aarch64MachineObjectFunction& input,
+    std::vector<Aarch64ObjectEmissionDiagnostic>& diagnostics) {
+  if (input.function == nullptr) {
+    add_diagnostic(diagnostics,
+                   Aarch64ObjectEmissionDiagnosticKind::MissingFunction,
+                   input.name,
+                   0,
+                   0,
+                   "missing AArch64 machine function");
+    return std::nullopt;
+  }
+  if (input.name.empty()) {
+    add_diagnostic(diagnostics,
+                   Aarch64ObjectEmissionDiagnosticKind::MissingFunctionName,
+                   input.name,
+                   0,
+                   0,
+                   "missing AArch64 object function name");
+    return std::nullopt;
+  }
+
+  Aarch64ObjectFunction object_function{
+      .name = input.name,
+      .global = input.global,
+  };
+  for (const auto& block : input.function->blocks) {
+    for (std::size_t index = 0; index < block.instructions.size(); ++index) {
+      const auto fragment = fragment_for_machine_instruction(
+          block.instructions[index].target,
+          diagnostics,
+          input.name,
+          block.index,
+          index);
+      if (!fragment.has_value()) {
+        return std::nullopt;
+      }
+      object_function.fragments.push_back(*fragment);
+    }
+  }
+  return object_function;
 }
 
 }  // namespace
@@ -177,6 +285,33 @@ std::optional<object::ObjectModule> build_aarch64_text_object_module(
   }
 
   return module;
+}
+
+Aarch64ObjectEmissionResult build_aarch64_text_object_module(
+    const std::vector<Aarch64MachineObjectFunction>& functions) {
+  Aarch64ObjectEmissionResult result;
+  std::vector<Aarch64ObjectFunction> object_functions;
+  object_functions.reserve(functions.size());
+
+  for (const auto& function : functions) {
+    auto object_function =
+        object_function_from_machine(function, result.diagnostics);
+    if (!object_function.has_value()) {
+      return result;
+    }
+    object_functions.push_back(std::move(*object_function));
+  }
+
+  result.module = build_aarch64_text_object_module(object_functions);
+  if (!result.module.has_value() && result.diagnostics.empty()) {
+    add_diagnostic(result.diagnostics,
+                   Aarch64ObjectEmissionDiagnosticKind::UnsupportedInstruction,
+                   "",
+                   0,
+                   0,
+                   "AArch64 object module construction failed");
+  }
+  return result;
 }
 
 std::optional<object::RelocatableElfImage> write_aarch64_relocatable_elf_object(
