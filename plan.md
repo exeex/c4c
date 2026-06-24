@@ -103,73 +103,136 @@ Completion check:
   exact frontend location where it must fold to final asm-template text.
 - No implementation route depends on runtime string values.
 
-## Step 2: Fold Accepted Template Expressions Before Inline Asm Lowering
+## Step 2: Gate Unsupported Non-Literal Templates
 
-Goal: Convert accepted asm-template expressions into final template text before
-the existing inline asm path consumes them.
+Goal: Keep literal and adjacent-literal asm templates working while rejecting
+runtime or unsupported expression templates with a clear diagnostic.
 
 Primary targets:
 
-- The frontend parser/sema boundary that builds the inline asm statement.
-- The HIR/LIR carrier for inline asm template text.
+- The frontend parser boundary that builds the inline asm statement.
+- Existing negative-test harness support for diagnostic substring checks.
 
 Actions:
 
-- Preserve raw literal behavior unchanged.
-- Add folding for the selected compile-time string expression forms.
-- Emit a clear diagnostic for runtime or unsupported template expressions.
-- Keep folded output indistinguishable from the literal text for downstream
-  parsing and metadata.
+- Preserve raw literal and adjacent string literal behavior unchanged.
+- Reject non-literal asm-template expressions until a real compile-time string
+  representation is selected and folded.
+- Add focused negative coverage for runtime/non-constant template expressions.
+- Do not claim helper or compile-time `+` support from this diagnostic gate.
 
 Completion check:
 
-- Focused frontend/HIR tests show literal and folded template forms produce the
-  same final template string, operands, constraints, clobbers, volatility, and
-  memory metadata.
-- Negative tests prove runtime strings and unsupported expression forms are
-  rejected.
+- Existing literal and adjacent-literal inline asm tests still pass.
+- A runtime/non-literal template expression fails with a specific diagnostic.
+- Downstream inline asm metadata is unchanged for literal templates.
 
-## Step 3: Prove RV64 `.insn.d` Helper Integration
+## Step 3: Preserve `.insn.d` Object Equivalence For Final Text
+
+Goal: Keep the RV64 EV object route guarded for final template text assembled
+from accepted literal fragments.
+
+Primary targets:
+
+- RV64 object emission tests that cover `.insn.d`.
+- Existing prepared inline asm object route for final template text.
+
+Actions:
+
+- Add or keep a positive object test whose final `.insn.d` text is assembled
+  from adjacent literal fragments.
+- Compare emitted bytes with the literal `.insn.d` route, including the known
+  EV byte sequence where applicable.
+- Keep `VRM2` operand constraints and positional placeholders in the proof.
+- Treat this as a downstream equivalence guard, not as consteval/helper support.
+
+Completion check:
+
+- The adjacent-fragment `.insn.d` object test emits exactly the expected 8-byte
+  instruction through c4c's object route.
+- The test does not introduce runtime string acceptance, helper shortcuts, or
+  any bypass of the existing inline asm/object path.
+
+## Step 4: Implement First Real Compile-Time String Folding Surface
+
+Goal: Accept one narrow compile-time asm-template expression form and fold it
+to final template text before the existing inline asm path consumes it.
+
+Primary targets:
+
+- The parser/sema boundary that currently requires an inline asm string
+  literal.
+- Existing constant-expression or compile-time string machinery identified by
+  Step 1.
+- HIR/LIR inline asm carriers that store final template text and metadata.
+
+Actions:
+
+- Select the smallest existing representation that can carry compile-time
+  string-valued results without runtime storage.
+- Implement folding for a real compile-time expression surface, preferably
+  string-literal `+` concatenation or an existing fixed-string representation.
+- Feed the folded result into the same inline asm parser, constraint handling,
+  substitution, and metadata path used by literal templates.
+- Preserve output/input operand order, constraints, clobbers, volatility,
+  memory effects, and `%0` positional placeholder semantics.
+- Keep unsupported compile-time string shapes rejected with diagnostics instead
+  of accepting empty, runtime, or unevaluated templates.
+- If no existing representation can support this without a broader frontend
+  initiative, stop and record the blocker in `todo.md`; do not proceed to
+  helper integration or closure.
+
+Completion check:
+
+- Focused frontend/HIR tests show literal and folded expression templates
+  produce the same final template string and inline asm metadata.
+- Negative tests still reject runtime strings and unsupported string shapes.
+- The proof demonstrates a real compile-time expression path, not only
+  adjacent literal token folding in source text.
+
+## Step 5: Prove Helper-Style `.insn.d` Integration
 
 Goal: Prove a user/library-style compile-time helper can build an EV `.insn.d`
 template that emits the same object bytes as a literal template.
 
 Primary targets:
 
+- The folded-template route implemented in Step 4.
 - RV64 inline asm tests that already cover `.insn.d` object emission.
 - Any frontend or integration test harness that compiles inline asm through the
   folded-template path.
 
 Actions:
 
-- Add a positive case for compile-time concatenation of `.insn.d` template
-  fragments.
-- Add a positive helper-style case, such as a consteval or template fixed-string
-  helper, only using the selected representation from Step 1.
+- Add a positive helper-style case, such as a `consteval`, `constexpr`, or
+  template fixed-string helper, only using the representation proven in Step 4.
+- Build an `.insn.d` template through that helper and route it through normal
+  inline asm lowering and object emission.
 - Compare emitted bytes with the literal `.insn.d` route, including the known
-  EV byte sequence when applicable.
-- Keep `VRM2` operand constraints and positional placeholders in the proof.
+  EV byte sequence where applicable.
+- Do not add compiler-known EV mnemonics, intrinsics, or named-case shortcuts.
 
 Completion check:
 
-- The `.insn.d` helper test emits exactly the expected 8-byte instruction
+- The helper-built `.insn.d` test emits exactly the expected 8-byte instruction
   through c4c's object route.
-- The literal and compile-time-built forms remain equivalent in final template
-  text and emitted bytes.
+- Literal, compile-time expression, and helper-built forms remain equivalent in
+  final template text, metadata, and emitted bytes.
 
-## Step 4: Broaden Proof And Prepare Closure
+## Step 6: Broaden Proof And Prepare Closure
 
 Goal: Establish that the feature is acceptance-ready without regressing the
 completed child stages.
 
 Actions:
 
-- Run the focused build and tests touched by parser/sema/HIR/LIR/backend work.
-- Run the supervisor-selected broader subset because this feature may cross
+- Run focused build and tests touched by parser/sema/HIR/LIR/backend work.
+- Run the supervisor-selected broader subset because this feature crosses
   frontend and backend boundaries.
 - Check that existing `.insn`, vector constraint, and `.insn.d` tests were not
   weakened or reclassified.
-- Summarize proof and any known leftovers in `todo.md`.
+- Summarize proof, accepted string surface, helper shape, and any known
+  leftovers in `todo.md`.
 
 Completion check:
 
