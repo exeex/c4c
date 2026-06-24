@@ -3,31 +3,29 @@
 Status: Active
 Source Idea Path: ideas/open/333_codegen_obj_cli_and_test_integration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Wire --codegen obj Through The CLI
+Current Step ID: 4
+Current Step Title: Add Object-Route Smoke Harness Support
 
 ## Just Finished
 
-- Step 3 wired `--codegen obj` through the codegen facade and CLI without
-  forcing object bytes through the existing text-returning
-  `emit_module_native(...)` path.
-- `src/codegen/llvm/llvm_codegen.hpp/.cpp` now expose
-  `NativeObjectResult` and `emit_module_native_object(...)`, lower HIR to LIR,
-  and call the backend object-byte facade when backend support is enabled.
-- `src/apps/c4cll.cpp` now accepts `--codegen obj`, requires `-o <path>` for
-  object output, surfaces backend diagnostics as `error: --codegen obj failed`,
-  and writes ELF bytes with binary `ostream::write`.
-- The CLI keeps `--codegen asm` on the existing text route; the selected proof
-  keeps the AArch64 asm smoke test beside the new object tests.
-- Added focused CMake object-route helpers and CLI tests for RV64/AArch64 ELF
-  object bytes, unsupported x86 object diagnostics, unsupported RV64 global
-  object diagnostics, and the `--codegen obj` output-path policy.
+- Step 4 added a focused RV64 object-route runtime smoke harness beside the
+  existing asm runtime harness.
+- `tests/backend/cmake/run_backend_rv64_object_runtime_case.cmake` emits
+  `--codegen obj` directly to `.o`, checks ELF magic and RV64 `e_machine`,
+  links the object with clang using the existing riscv64 toolchain convention,
+  and runs the linked binary with `qemu-riscv64`.
+- `tests/backend/CMakeLists.txt` now has
+  `c4c_add_backend_rv64_object_runtime_case(...)` and registers
+  `backend_obj_runtime_rv64_return_zero` for `tests/backend/case/return_zero.c`.
+- Existing asm-route runtime coverage and CLI object/asm tests were preserved;
+  the selected proof runs both `backend_rv64_runtime_return_zero` and the new
+  object runtime smoke.
 
 ## Suggested Next
 
-- Step 4 should extend the object-route smoke harness toward the first
-  compile/link/runtime proof, reusing the new CLI object helpers where possible
-  and keeping asm route coverage separate.
+- Step 5 should decide whether the active object-route scope is complete or
+  whether a narrow follow-up should add one more supported object smoke, such as
+  an AArch64 runtime proof only if the local toolchain is equally reliable.
 
 ## Watchouts
 
@@ -42,6 +40,8 @@ Current Step Title: Wire --codegen obj Through The CLI
 - `--backend-bir-stage semantic` remains asm-only.
 - Unsupported object combinations should continue to fail through backend/CLI
   diagnostic handoff, never by falling back to asm.
+- The new object runtime helper intentionally links the `.o` directly and never
+  reads, writes, or assembles `.s`.
 - RV64 globals/data remain unsupported by the prepared object writer in this
   child and are intentionally diagnostic-only until later object-route work.
 
@@ -50,8 +50,8 @@ Current Step Title: Wire --codegen obj Through The CLI
 - Passed:
 
 ```sh
-set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_cli_.*obj|backend_cli_aarch64_asm_external_return_zero_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1
+set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_return_zero|backend_cli_aarch64_asm_external_return_zero_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1
 ```
 
-- Result: 8/8 tests passed.
+- Result: 10/10 tests passed.
 - Proof log: `test_after.log`.

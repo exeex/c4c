@@ -1139,12 +1139,73 @@ function(c4c_add_backend_rv64_runtime_case test_name)
   c4c_set_backend_test_labels("${test_name}" backend_runtime rv64 qemu case ${ARG_LABELS})
 endfunction()
 
+function(c4c_add_backend_rv64_object_runtime_case test_name)
+  set(options)
+  set(one_value_args SRC CASE_TIMEOUT_SEC EXPECTED_RUN_CODE)
+  set(multi_value_args LABELS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "c4c_add_backend_rv64_object_runtime_case(${test_name}) got unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  if(NOT DEFINED ARG_SRC OR "${ARG_SRC}" STREQUAL "")
+    message(FATAL_ERROR
+      "c4c_add_backend_rv64_object_runtime_case(${test_name}) missing SRC")
+  endif()
+
+  if(NOT CLANG_EXECUTABLE)
+    message(FATAL_ERROR
+      "c4c_add_backend_rv64_object_runtime_case(${test_name}) requires CLANG_EXECUTABLE")
+  endif()
+  if(NOT QEMU_RISCV64_EXECUTABLE)
+    message(FATAL_ERROR
+      "c4c_add_backend_rv64_object_runtime_case(${test_name}) requires qemu-riscv64")
+  endif()
+
+  get_filename_component(case_stem "${ARG_SRC}" NAME_WE)
+  set(case_timeout "${ARG_CASE_TIMEOUT_SEC}")
+  if("${case_timeout}" STREQUAL "")
+    set(case_timeout 30)
+  endif()
+  set(expected_run_code "${ARG_EXPECTED_RUN_CODE}")
+  if("${expected_run_code}" STREQUAL "")
+    set(expected_run_code 0)
+  endif()
+
+  add_test(
+    NAME "${test_name}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DCLANG=${CLANG_EXECUTABLE}
+            -DQEMU_RISCV64=${QEMU_RISCV64_EXECUTABLE}
+            -DSRC=${ARG_SRC}
+            -DTARGET_TRIPLE=riscv64-linux-gnu
+            -DOUT_OBJECT=${CMAKE_BINARY_DIR}/backend_rv64_object_runtime/${case_stem}.o
+            -DOUT_BIN=${CMAKE_BINARY_DIR}/backend_rv64_object_runtime/${case_stem}.bin
+            -DSYSROOT=/usr/riscv64-linux-gnu
+            -DCASE_TIMEOUT_SEC=${case_timeout}
+            -DEXPECTED_RUN_CODE=${expected_run_code}
+            -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_rv64_object_runtime_case.cmake"
+  )
+  c4c_set_backend_test_labels("${test_name}" backend_runtime object rv64 qemu case ${ARG_LABELS})
+endfunction()
+
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_return_zero
   SRC "${BACKEND_CASE_ROOT}/return_zero.c"
   CASE_TIMEOUT_SEC 10
   LABELS scalar return
 )
+
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_return_zero
+  SRC "${BACKEND_CASE_ROOT}/return_zero.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS scalar return smoke
+)
+
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_return_add
   SRC "${BACKEND_CASE_ROOT}/return_add.c"
