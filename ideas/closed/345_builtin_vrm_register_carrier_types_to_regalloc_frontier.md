@@ -1,5 +1,14 @@
 # Builtin VRM Register Carrier Types To Regalloc Frontier
 
+Status: Closed
+
+Closure note: Completed through the intended regalloc-frontier scope. The
+source parser/type carrier, typedef identity, HIR/LIR/BIR identity,
+pre-regalloc vector class/width metadata, matching inline asm carrier proof,
+scalar mismatch rejection, and non-expanded VRM call-boundary diagnostics are
+covered. Final allocation, physical substitution, `.insn.d` encoding, and
+object-byte proof remain follow-up work rather than part of this idea.
+
 ## Goal
 
 Add source-level builtin VRM carrier types so inline asm vector-register
