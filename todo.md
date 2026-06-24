@@ -1,30 +1,31 @@
 Status: Active
-Source Idea Path: ideas/open/339_rv64_inline_asm_custom_vector_encoding_umbrella.md
+Source Idea Path: ideas/open/343_rv64_consteval_inline_asm_template_strings.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Create Final Consteval String Child Idea
+Current Step Title: Map Existing String And Inline Asm Surfaces
 
 # Current Packet
 
 ## Just Finished
 
-Lifecycle activation created the active umbrella runbook and executor-compatible
-state skeleton.
+Lifecycle switch created the consteval/template inline asm string child idea
+and activated its runbook.
 
 ## Suggested Next
 
-Delegate Step 1 to `c4c-plan-owner`: create the final consteval/template inline
-asm string child idea from the umbrella and switch active lifecycle state to
-that child if activatable.
+Delegate Step 1 to `c4c-executor`: inspect the existing inline asm and
+compile-time string surfaces, then identify the narrowest implementation route
+for folding accepted asm-template expressions before inline asm lowering.
 
 ## Watchouts
 
-- Do not implement final string support directly under the umbrella if a child
-  idea has not been created.
-- Keep Stage 1, Stage 2, and Stage 3 treated as completed foundations.
-- Do not close the umbrella before the final child and integration review are
-  complete.
+- Do not accept runtime strings.
+- Do not add EV intrinsics or compiler-known EV mnemonics as a substitute for
+  consteval inline asm template support.
+- Keep literal asm templates on the existing path.
+- Preserve `%0` positional placeholders, operand order, constraints, clobbers,
+  volatility, and memory metadata after folding.
 
 ## Proof
 
-Lifecycle-only activation. No code validation required.
+Lifecycle-only switch. No code validation required.

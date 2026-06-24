@@ -296,6 +296,12 @@ expected child ideas are:
 6. C++ consteval/template-produced asm string support.
 7. Final integration review for custom vector instruction library readiness.
 
+## Active Child Handoff
+
+Created `ideas/open/343_rv64_consteval_inline_asm_template_strings.md` as the
+final consteval/template-produced asm string child. Lifecycle state should run
+that child before returning to this umbrella for final integration review.
+
 ## Testing Expectations
 
 Stage 1 tests should prove:
