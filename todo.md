@@ -1,39 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/342_rv64_ev_insn_d_inline_asm_stage3.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Integrate With Object Emission And Existing Inline Asm Behavior
+Current Step ID: 5
+Current Step Title: Validate Stage 3 And Record Remaining Children
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 added focused integration coverage proving the prepared RV64 object path
-can emit existing scalar `.insn r` inline asm and the new EV `.insn.d` inline
-asm in one function without breaking the existing return path.
+Step 5 validated RV64 EV `.insn.d` Stage 3 coverage against the requested
+checklist and recorded remaining child scope without changing `plan.md` or the
+source idea.
 
-- Added mixed prepared object coverage that emits `.insn r` bytes
-  `0x007302b3`, EV `.insn.d` bytes `0x0000030b10620a0a`, the preserved return
-  move `0x00028513`, and `ret` in order.
-- Reused the existing vector-constraint `.insn.d` carrier and the existing
-  scalar `.insn r` prepared fixture so the test covers route integration rather
-  than a separate hand-built object fragment.
-- Existing `.insn r`, tied-input `.insn r`, vector substitution, and standalone
-  `.insn.d` object coverage still pass in the focused object-emission
-  executable.
+- Malformed syntax coverage is present for missing and extra `.insn.d`
+  positional fields.
+- Unsupported operand coverage is present for register slots backed by an
+  unsupported operand kind and for register operands used in immediate slots.
+- Non-constant or missing immediate coverage is present through rejection of
+  literal immediate fields and prepared `i` operands without an
+  `immediate_value`.
+- Invalid width/range coverage is present for namespace, operation, and dtype
+  overflow, including object-path rejection for an invalid dtype.
+- Relocation-like/no-relocation behavior is covered by the accepted `.insn.d`
+  object path and mixed `.insn r` plus `.insn.d` object path both asserting no
+  relocations are emitted; relocation-bearing operands remain outside the
+  supported Stage 3 shape.
+- Named operands and `%c` template modifiers are explicitly rejected for
+  `.insn.d`.
+- Mixed `.insn`/`.insn.d` coverage is present and verifies scalar `.insn r`
+  bytes, EV `.insn.d` bytes `0x0000030b10620a0a`, return move, and `ret` in
+  order.
 
 ## Suggested Next
 
-Supervisor should review and commit the Step 4 test-only integration slice, or
-move to the next lifecycle packet if broader route review is desired.
+Supervisor should review and commit the Stage 3 slice if the known unrelated
+backend baseline failure remains acceptable.
 
 ## Watchouts
 
-- No production implementation change was needed; the mixed prepared object
-  route passed with the existing `.insn.d`-first then `.insn r` fallback
-  dispatch.
-- Named operands, `%c[...]`, masks, consteval strings, relocations, and broad
-  EV operation semantics remain rejected or out of scope.
+- No additional implementation or test edits were needed for Step 5 validation.
+- Future child work, if desired, should be scoped separately for consteval or
+  template-built asm strings, GNU named operands, `%c[...]` modifiers, masks,
+  relocation-bearing operands, or broader EV operation semantics.
 - The backend proof still shows the known unrelated baseline failure
   `backend_codegen_route_riscv64_pointer_typed_select_publication`.
 
@@ -44,5 +52,7 @@ Ran exactly:
 
 Result: build succeeded and the backend subset ran. `test_after.log` contains
 one failing test, the known unrelated baseline failure
-`backend_codegen_route_riscv64_pointer_typed_select_publication`; the new mixed
-`backend_riscv_object_emission` `.insn r` plus `.insn.d` coverage passed.
+`backend_codegen_route_riscv64_pointer_typed_select_publication`;
+`backend_riscv_object_emission` passed, including the Stage 3 `.insn.d`
+classifier, encoder, object-byte, negative, no-relocation, and mixed
+`.insn r` plus `.insn.d` coverage.
