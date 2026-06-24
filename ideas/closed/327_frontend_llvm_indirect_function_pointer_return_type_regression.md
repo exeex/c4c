@@ -1,5 +1,13 @@
 # Frontend LLVM Indirect Function Pointer Return Type Regression
 
+## Completion Note
+
+Closed after the indirect-call lowering repair preserved function-pointer
+return metadata through `FnPtrSig::return_type.spec`. Focused regression
+coverage now exercises a nested indirect function-pointer-returning call, and
+the canonical regression guard resolved `c_testsuite_src_00124_c` with no new
+failures in the matching focused scope.
+
 ## Goal
 
 Repair the frontend LLVM-route lowering for indirect calls whose callee returns
