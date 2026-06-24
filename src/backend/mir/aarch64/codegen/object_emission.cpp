@@ -151,11 +151,9 @@ std::optional<Aarch64EncodedFragment> move_register_fragment(
   return fragment;
 }
 
-std::optional<Aarch64EncodedFragment> scalar_add_sub_fragment(
+std::optional<Aarch64EncodedFragment> scalar_alu_fragment(
     const ScalarAluRecord& alu) {
   if (!alu.result_register.has_value() ||
-      (alu.operation != ScalarAluOperationKind::Add &&
-       alu.operation != ScalarAluOperationKind::Sub) ||
       !alu.supported_integer_operation) {
     return std::nullopt;
   }
@@ -184,16 +182,83 @@ std::optional<Aarch64EncodedFragment> scalar_add_sub_fragment(
     if (!rn.has_value() || !rm.has_value()) {
       return std::nullopt;
     }
-    const std::uint32_t base =
-        alu.operation == ScalarAluOperationKind::Add
-            ? (*view == abi::RegisterView::X ? 0x8b000000u : 0x0b000000u)
-            : (*view == abi::RegisterView::X ? 0xcb000000u : 0x4b000000u);
+    std::uint32_t base = 0;
+    switch (alu.operation) {
+      case ScalarAluOperationKind::Add:
+        base = *view == abi::RegisterView::X ? 0x8b000000u : 0x0b000000u;
+        break;
+      case ScalarAluOperationKind::Sub:
+        base = *view == abi::RegisterView::X ? 0xcb000000u : 0x4b000000u;
+        break;
+      case ScalarAluOperationKind::Mul:
+        base = *view == abi::RegisterView::X ? 0x9b007c00u : 0x1b007c00u;
+        break;
+      default:
+        return std::nullopt;
+    }
     append_le32(fragment.bytes,
                 base |
                     (static_cast<std::uint32_t>(*rm) << 16u) |
                     (static_cast<std::uint32_t>(*rn) << 5u) |
                     static_cast<std::uint32_t>(*rd));
     return fragment;
+  }
+
+  if (alu.operation == ScalarAluOperationKind::Mul) {
+    const RegisterOperand* register_operand = lhs_register;
+    const ImmediateOperand* immediate_operand = rhs_immediate;
+    if (register_operand == nullptr || immediate_operand == nullptr) {
+      register_operand = rhs_register;
+      immediate_operand = lhs_immediate;
+    }
+    if (register_operand == nullptr || immediate_operand == nullptr) {
+      return std::nullopt;
+    }
+
+    const auto rn = gpr_encoding_index(*register_operand, *view);
+    const auto immediate = unsigned_immediate_value(*immediate_operand);
+    if (!rn.has_value() || !immediate.has_value() || *immediate > 0xffffu) {
+      return std::nullopt;
+    }
+
+    const auto scratch_registers = abi::reserved_mir_scratch_gp_registers();
+    std::optional<std::uint8_t> scratch_index;
+    for (const auto scratch : scratch_registers) {
+      if (scratch.index != *rd && scratch.index != *rn) {
+        scratch_index = scratch.index;
+        break;
+      }
+    }
+    if (!scratch_index.has_value()) {
+      return std::nullopt;
+    }
+
+    RegisterOperand scratch_operand{
+        .reg = *view == abi::RegisterView::X ? abi::x_register(*scratch_index)
+                                             : abi::w_register(*scratch_index),
+        .role = RegisterOperandRole::ReservedMirScratch,
+        .prepared_class = prepare::PreparedRegisterClass::General,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = *view,
+        .contiguous_width = 1,
+    };
+    auto materialization = move_immediate_fragment(scratch_operand, *immediate_operand);
+    if (!materialization.has_value()) {
+      return std::nullopt;
+    }
+    const std::uint32_t base =
+        *view == abi::RegisterView::X ? 0x9b007c00u : 0x1b007c00u;
+    append_le32(materialization->bytes,
+                base |
+                    (static_cast<std::uint32_t>(*scratch_index) << 16u) |
+                    (static_cast<std::uint32_t>(*rn) << 5u) |
+                    static_cast<std::uint32_t>(*rd));
+    return materialization;
+  }
+
+  if (alu.operation != ScalarAluOperationKind::Add &&
+      alu.operation != ScalarAluOperationKind::Sub) {
+    return std::nullopt;
   }
 
   if (alu.rhs.kind != OperandKind::Immediate || rhs_immediate == nullptr) {
@@ -501,7 +566,7 @@ std::optional<Aarch64EncodedFragment> fragment_for_machine_instruction(
   if (const auto* scalar =
           std::get_if<ScalarInstructionRecord>(&instruction.payload)) {
     if (scalar->scalar_alu.has_value()) {
-      if (auto fragment = scalar_add_sub_fragment(*scalar->scalar_alu);
+      if (auto fragment = scalar_alu_fragment(*scalar->scalar_alu);
           fragment.has_value()) {
         return fragment;
       }
@@ -511,7 +576,7 @@ std::optional<Aarch64EncodedFragment> fragment_for_machine_instruction(
                    function_name,
                    block_index,
                    instruction_index,
-                   "AArch64 object emission supports only selected add/sub scalar instructions");
+                   "AArch64 object emission supports only selected add/sub/mul scalar instructions");
     return std::nullopt;
   }
 

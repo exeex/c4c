@@ -774,6 +774,57 @@ int builds_selected_scalar_immediate_machine_object() {
   return 0;
 }
 
+int builds_selected_scalar_multiply_machine_object() {
+  const auto function = machine_function({
+      machine_instruction(machine_move_immediate_w0(2)),
+      machine_instruction(machine_alu_immediate_w0(
+          aarch64::ScalarAluOperationKind::Add,
+          bir::BinaryOpcode::Add,
+          2,
+          prepare::PreparedValueId{2})),
+      machine_instruction(machine_alu_immediate_w0(
+          aarch64::ScalarAluOperationKind::Mul,
+          bir::BinaryOpcode::Mul,
+          2,
+          prepare::PreparedValueId{4})),
+      machine_instruction(machine_alu_immediate_w0(
+          aarch64::ScalarAluOperationKind::Sub,
+          bir::BinaryOpcode::Sub,
+          8,
+          prepare::PreparedValueId{5})),
+      machine_instruction(machine_return()),
+  });
+
+  const auto result = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "return_mul_chain",
+          .global = true,
+          .function = &function,
+      },
+  });
+  if (!result.ok()) {
+    return fail("expected selected scalar multiply machine records to emit object module");
+  }
+
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* symbol = object::find_symbol(*result.module, "return_mul_chain");
+  if (text == nullptr || text->size_bytes != 24 ||
+      !has_bytes(*text,
+                 {0x40, 0x00, 0x80, 0x52,
+                  0x00, 0x08, 0x00, 0x11,
+                  0x49, 0x00, 0x80, 0x52,
+                  0x00, 0x7c, 0x09, 0x1b,
+                  0x00, 0x20, 0x00, 0x51,
+                  0xc0, 0x03, 0x5f, 0xd6}) ||
+      symbol == nullptr ||
+      symbol->section != std::optional<object::SectionId>{text->id} ||
+      symbol->value != 0 || symbol->size_bytes != 24 ||
+      !result.module->relocations.empty()) {
+    return fail("expected MOV/ADD/MOV/MUL/SUB/RET scalar object bytes");
+  }
+  return 0;
+}
+
 int builds_selected_same_module_scalar_call_machine_object() {
   const auto add_three = machine_function({
       machine_instruction(machine_alu_immediate_w13(
@@ -1281,6 +1332,10 @@ int main() {
     return status;
   }
   if (const int status = builds_selected_scalar_immediate_machine_object();
+      status != 0) {
+    return status;
+  }
+  if (const int status = builds_selected_scalar_multiply_machine_object();
       status != 0) {
     return status;
   }

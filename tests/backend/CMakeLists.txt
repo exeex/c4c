@@ -457,6 +457,16 @@ c4c_add_backend_codegen_object_test(
   LABELS aarch64 c_testsuite output_contract dual-route cli smoke scan
 )
 
+c4c_add_backend_codegen_object_test(
+  backend_cli_aarch64_cts_00012_writes_elf_obj
+  SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00012.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/aarch64_cts_00012.o"
+  EXPECTED_MACHINE_LE b700
+  CASE_TIMEOUT_SEC 10
+  LABELS aarch64 c_testsuite output_contract dual-route cli smoke scan
+)
+
 c4c_add_backend_codegen_object_failure_test(
   backend_cli_x86_unsupported_target_diagnostic_obj
   SRC "${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c"
