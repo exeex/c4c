@@ -1,3 +1,4 @@
+#include "src/backend/backend.hpp"
 #include "src/backend/mir/object/elf_writer.hpp"
 #include "src/backend/mir/object/model.hpp"
 
@@ -5,10 +6,14 @@
 #include <iostream>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
 
+namespace backend = c4c::backend;
+namespace bir = c4c::backend::bir;
 namespace object = c4c::backend::mir::object;
 
 constexpr std::uint32_t SHT_SYMTAB = 2;
@@ -57,6 +62,53 @@ std::string read_c_string(const std::vector<std::uint8_t>& bytes,
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
+}
+
+bool has_elf_header_for_machine(const std::vector<std::uint8_t>& bytes,
+                                std::uint16_t machine) {
+  return bytes.size() >= 64 && bytes[0] == 0x7f && bytes[1] == 'E' &&
+         bytes[2] == 'L' && bytes[3] == 'F' && read_u16(bytes, 18) == machine;
+}
+
+bool contains(std::string_view haystack, std::string_view needle) {
+  return haystack.find(needle) != std::string_view::npos;
+}
+
+bir::Module make_return_zero_module(std::string target_triple) {
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  bir::Function function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  };
+
+  bir::Module module;
+  module.target_triple = std::move(target_triple);
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_rv64_global_object_unsupported_module() {
+  auto module = make_return_zero_module("riscv64-linux-gnu");
+  const auto link_name = module.names.link_names.intern("global_i32");
+  module.globals.push_back(bir::Global{
+      .name = "global_i32",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(7),
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+  return module;
 }
 
 object::ObjectModule sample_module() {
@@ -470,6 +522,72 @@ int serializes_minimal_relocatable_elf() {
   return 0;
 }
 
+int backend_facade_emits_rv64_object_bytes() {
+  const auto module = make_return_zero_module("riscv64-linux-gnu");
+  const auto result = backend::emit_module_object(
+      backend::BackendModuleInput(module),
+      backend::BackendOptions{});
+  if (!result.ok() || !result.diagnostic.empty()) {
+    return fail("expected backend facade to emit RV64 object bytes");
+  }
+  if (!has_elf_header_for_machine(result.bytes, 243)) {
+    return fail("expected backend facade RV64 object bytes to be ELF64/RISC-V");
+  }
+  return 0;
+}
+
+int backend_facade_emits_aarch64_object_bytes() {
+  const auto module = make_return_zero_module("aarch64-linux-gnu");
+  const auto result = backend::emit_module_object(
+      backend::BackendModuleInput(module),
+      backend::BackendOptions{});
+  if (!result.ok() || !result.diagnostic.empty()) {
+    return fail("expected backend facade to emit AArch64 object bytes");
+  }
+  if (!has_elf_header_for_machine(result.bytes, 183)) {
+    return fail("expected backend facade AArch64 object bytes to be ELF64/AArch64");
+  }
+  return 0;
+}
+
+int backend_facade_rejects_unsupported_object_target() {
+  const auto module = make_return_zero_module("x86_64-linux-gnu");
+  const auto result = backend::emit_module_object(
+      backend::BackendModuleInput(module),
+      backend::BackendOptions{});
+  if (result.ok() || !result.bytes.empty() ||
+      !contains(result.diagnostic, "backend object route unsupported target") ||
+      !contains(result.diagnostic, "x86_64")) {
+    return fail("expected backend object facade to reject unsupported x86 target");
+  }
+  return 0;
+}
+
+int backend_facade_rejects_unsupported_rv64_object_feature_without_asm_fallback() {
+  const auto module = make_rv64_global_object_unsupported_module();
+  const auto result = backend::emit_module_object(
+      backend::BackendModuleInput(module),
+      backend::BackendOptions{});
+  if (result.ok() || !result.bytes.empty() ||
+      !contains(result.diagnostic,
+                "RISC-V backend object route unsupported prepared module shape")) {
+    return fail("expected RV64 object facade to reject globals without asm fallback");
+  }
+  return 0;
+}
+
+int backend_facade_preserves_existing_asm_text_api() {
+  const auto module = make_return_zero_module("riscv64-linux-gnu");
+  const auto text = backend::emit_module(
+      backend::BackendModuleInput(module),
+      backend::BackendOptions{});
+  if (!contains(text, ".text") || !contains(text, "main:") ||
+      !contains(text, "ret")) {
+    return fail("expected existing backend asm text API to remain available");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -491,5 +609,21 @@ int main() {
   if (int rc = helpers_construct_target_like_module(); rc != 0) {
     return rc;
   }
-  return serializes_minimal_relocatable_elf();
+  if (int rc = serializes_minimal_relocatable_elf(); rc != 0) {
+    return rc;
+  }
+  if (int rc = backend_facade_emits_rv64_object_bytes(); rc != 0) {
+    return rc;
+  }
+  if (int rc = backend_facade_emits_aarch64_object_bytes(); rc != 0) {
+    return rc;
+  }
+  if (int rc = backend_facade_rejects_unsupported_object_target(); rc != 0) {
+    return rc;
+  }
+  if (int rc = backend_facade_rejects_unsupported_rv64_object_feature_without_asm_fallback();
+      rc != 0) {
+    return rc;
+  }
+  return backend_facade_preserves_existing_asm_text_api();
 }

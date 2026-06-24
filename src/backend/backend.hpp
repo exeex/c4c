@@ -4,10 +4,12 @@
 #include "bir/lir_to_bir.hpp"
 #include "prealloc/prealloc.hpp"
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace c4c::codegen::lir {
 struct LirModule;
@@ -71,6 +73,15 @@ struct BackendAssembleResult {
   std::string error;
 };
 
+struct BackendObjectResult {
+  std::vector<std::uint8_t> bytes;
+  std::string diagnostic;
+
+  [[nodiscard]] bool ok() const {
+    return diagnostic.empty() && !bytes.empty();
+  }
+};
+
 [[nodiscard]] c4c::backend::bir::Module prepare_bir_module_for_target(
     const c4c::backend::bir::Module& module,
     const c4c::TargetProfile& target_profile);
@@ -123,6 +134,17 @@ BackendAssembleResult stage_x86_lir_module_entry(
 // emit contract.
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
                                    const c4c::TargetProfile& target_profile);
+
+BackendObjectResult emit_target_bir_module_object(
+    const bir::Module& module,
+    const c4c::TargetProfile& target_profile);
+
+BackendObjectResult emit_target_lir_module_object(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::TargetProfile& target_profile);
+
+BackendObjectResult emit_module_object(const BackendModuleInput& input,
+                                       const BackendOptions& options);
 
 // Compatibility wrapper: x86 targets route through
 // `stage_x86_lir_module_entry(...)`, while non-x86 targets keep the existing

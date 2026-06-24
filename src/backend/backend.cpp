@@ -2,7 +2,11 @@
 
 #include "bir/bir.hpp"
 #include "mir/aarch64/codegen/asm_emitter.hpp"
+#include "mir/aarch64/codegen/codegen.hpp"
+#include "mir/aarch64/codegen/object_emission.hpp"
+#include "mir/object/elf_writer.hpp"
 #include "mir/riscv/codegen/emit.hpp"
+#include "mir/riscv/codegen/object_emission.hpp"
 #include "mir/x86/api/api.hpp"
 #include "mir/x86/x86.hpp"
 #include "prealloc/prepared_printer.hpp"
@@ -156,6 +160,110 @@ std::string make_backend_dump_failure_message(
     }
   }
   return message;
+}
+
+std::string target_name_for_diagnostic(const c4c::TargetProfile& target_profile) {
+  if (!target_profile.triple.empty()) {
+    return target_profile.triple;
+  }
+  switch (target_profile.arch) {
+    case c4c::TargetArch::X86_64:
+      return "x86_64";
+    case c4c::TargetArch::I686:
+      return "i686";
+    case c4c::TargetArch::Aarch64:
+      return "aarch64";
+    case c4c::TargetArch::Riscv64:
+      return "riscv64";
+    case c4c::TargetArch::Unknown:
+      return "unknown";
+  }
+  return "unknown";
+}
+
+c4c::backend::BackendObjectResult make_object_error(std::string message) {
+  return c4c::backend::BackendObjectResult{
+      .diagnostic = std::move(message),
+  };
+}
+
+c4c::backend::BackendObjectResult make_object_success(
+    c4c::backend::mir::object::RelocatableElfImage image) {
+  return c4c::backend::BackendObjectResult{
+      .bytes = std::move(image.bytes),
+  };
+}
+
+std::string make_object_lowering_failure_message(
+    const c4c::backend::BirLoweringResult& lowering) {
+  std::string message =
+      "backend object route requires semantic lir_to_bir lowering before the prepared object handoff";
+  for (auto it = lowering.notes.rbegin(); it != lowering.notes.rend(); ++it) {
+    if (it->phase == "module" || it->phase == "function") {
+      message += ": ";
+      message += it->message;
+      break;
+    }
+  }
+  return message;
+}
+
+c4c::backend::BackendObjectResult emit_rv64_prepared_object_module(
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  const auto image =
+      c4c::backend::riscv::codegen::write_rv64_prepared_relocatable_elf_object(prepared);
+  if (!image.has_value()) {
+    return make_object_error(
+        "RISC-V backend object route unsupported prepared module shape");
+  }
+  return make_object_success(*image);
+}
+
+c4c::backend::BackendObjectResult emit_aarch64_prepared_object_module(
+    c4c::backend::prepare::PreparedBirModule prepared) {
+  prepared.regalloc.functions.clear();
+  auto compiled =
+      c4c::backend::aarch64::codegen::compile_prepared_module(prepared);
+  if (!compiled.module.has_value()) {
+    std::string message =
+        "AArch64 backend object route could not build selected machine module";
+    if (compiled.error.has_value() && !compiled.error->message.empty()) {
+      message += ": ";
+      message += compiled.error->message;
+    }
+    return make_object_error(std::move(message));
+  }
+
+  std::vector<c4c::backend::aarch64::codegen::Aarch64MachineObjectFunction>
+      functions;
+  functions.reserve(compiled.module->functions.size());
+  for (const auto& function : compiled.module->functions) {
+    functions.push_back(
+        c4c::backend::aarch64::codegen::Aarch64MachineObjectFunction{
+            .name = std::string{function.label},
+            .global = true,
+            .function = &function.mir,
+        });
+  }
+  auto object_module =
+      c4c::backend::aarch64::codegen::build_aarch64_text_object_module(functions);
+  if (!object_module.ok()) {
+    std::string message =
+        "AArch64 backend object route unsupported machine module shape";
+    if (!object_module.diagnostics.empty() &&
+        !object_module.diagnostics.front().message.empty()) {
+      message += ": ";
+      message += object_module.diagnostics.front().message;
+    }
+    return make_object_error(std::move(message));
+  }
+  const auto image =
+      c4c::backend::aarch64::codegen::write_aarch64_relocatable_elf_object(
+          *object_module.module);
+  if (!image.has_value()) {
+    return make_object_error("AArch64 backend object route ELF serialization failed");
+  }
+  return make_object_success(*image);
 }
 
 bool dump_stage_uses_target_local_route_debug(c4c::backend::BackendDumpStage stage) {
@@ -1440,6 +1548,56 @@ std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
     return render_prepared_bir_text(prepared_bir.module);
   }
   return emit_bootstrap_lir_module(module, target_profile);
+}
+
+BackendObjectResult emit_target_bir_module_object(
+    const bir::Module& module,
+    const c4c::TargetProfile& target_profile) {
+  if (is_riscv_target(target_profile)) {
+    const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
+    return emit_rv64_prepared_object_module(prepared);
+  }
+  if (is_aarch64_target(target_profile)) {
+    auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
+    return emit_aarch64_prepared_object_module(std::move(prepared));
+  }
+
+  return make_object_error("backend object route unsupported target '" +
+                           target_name_for_diagnostic(target_profile) + "'");
+}
+
+BackendObjectResult emit_target_lir_module_object(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::TargetProfile& target_profile) {
+  if (!is_riscv_target(target_profile) && !is_aarch64_target(target_profile)) {
+    return make_object_error("backend object route unsupported target '" +
+                             target_name_for_diagnostic(target_profile) + "'");
+  }
+
+  c4c::backend::BirLoweringOptions lowering_options{};
+  lowering_options.preserve_dynamic_alloca = true;
+  auto lowering =
+      c4c::backend::try_lower_to_bir_with_options(module, lowering_options);
+  if (!lowering.module.has_value()) {
+    return make_object_error(make_object_lowering_failure_message(lowering));
+  }
+  return emit_target_bir_module_object(*lowering.module, target_profile);
+}
+
+BackendObjectResult emit_module_object(const BackendModuleInput& input,
+                                       const BackendOptions& options) {
+  if (input.holds_bir_module()) {
+    c4c::TargetProfile target_profile_storage;
+    const auto& target_profile = profile_or_default(options.target_profile,
+                                                    target_profile_storage,
+                                                    input.bir_module().target_triple);
+    return emit_target_bir_module_object(input.bir_module(), target_profile);
+  }
+
+  const auto& lir_module = input.lir_module();
+  const auto target_profile =
+      resolve_public_lir_target_profile(lir_module, options.target_profile);
+  return emit_target_lir_module_object(lir_module, target_profile);
 }
 
 BackendAssembleResult stage_x86_lir_module_entry(
