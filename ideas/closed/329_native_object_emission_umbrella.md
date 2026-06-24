@@ -1,5 +1,32 @@
 # Native Object Emission Umbrella
 
+## Closure Note
+
+Closed after final umbrella acceptance review confirmed the child closures
+compose into native object-emission readiness for the agreed supported subset.
+
+Evidence:
+
+- Child ideas 330, 331, 332, 333, 334, and 335 are closed, along with focused
+  follow-up target-emitter children 336, 337, and 338.
+- Direct `--codegen obj` emits backend-produced object bytes and does not route
+  through printed `.s` text.
+- RV64 and AArch64 both have accepted direct `.o` emission paths for the
+  agreed supported backend subsets.
+- Existing `.s` route coverage remains selected and meaningful.
+- Object-route tests cover ELF structure, diagnostics, linkability, RV64
+  runtime behavior, AArch64 object-byte output, and c-testsuite object smokes.
+- The c-testsuite/default strategy is intentionally dual-route for now:
+  `--codegen obj` remains explicit and is not the default backend output form.
+- Close-scope regression guard passed with `test_before.log` and
+  `test_after.log` both at 41/41 using `--allow-non-decreasing-passed`.
+
+Remaining boundaries are follow-up scope, not umbrella blockers: AArch64
+saved-callee/local-call-frame, branch/control-flow, branch/global families,
+AArch64 runtime, globals/data, pointers, aggregates, byval, indirect calls,
+x86 object output, object stdout, c-testsuite object defaults, and semantic-BIR
+object mode.
+
 ## Goal
 
 Plan and decompose the native `.o` emission route for RV64 and AArch64 so c4c
