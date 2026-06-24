@@ -163,6 +163,22 @@ aarch64::RegisterOperand w_register(unsigned index,
   };
 }
 
+aarch64::RegisterOperand x_register(unsigned index,
+                                     prepare::PreparedValueId value_id,
+                                     c4c::ValueNameId value_name,
+                                     aarch64::RegisterOperandRole role) {
+  return aarch64::RegisterOperand{
+      .reg = aarch64_abi::x_register(static_cast<std::uint8_t>(index)),
+      .role = role,
+      .value_id = value_id,
+      .value_name = value_name,
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = aarch64_abi::RegisterView::X,
+      .contiguous_width = 1,
+  };
+}
+
 aarch64::ImmediateOperand signed_i32_immediate(std::int64_t value,
                                                prepare::PreparedValueId value_id) {
   return aarch64::ImmediateOperand{
@@ -204,7 +220,50 @@ aarch64::InstructionRecord machine_move_immediate_w0(std::int64_t value) {
                              c4c::ValueNameId{1},
                              aarch64::RegisterOperandRole::CallAbi),
           },
+      };
+}
+
+aarch64::InstructionRecord selected_register_move(aarch64::RegisterOperand destination,
+                                                  aarch64::RegisterOperand source) {
+  return aarch64::InstructionRecord{
+      .family = aarch64::InstructionFamily::CallBoundary,
+      .surface = aarch64::RecordSurfaceKind::MachineInstructionNode,
+      .opcode = aarch64::MachineOpcode::CallBoundaryMove,
+      .selection =
+          aarch64::MachineNodeStatusRecord{
+              .status = aarch64::MachineNodeSelectionStatus::Selected,
+          },
+      .payload =
+          aarch64::CallBoundaryMoveInstructionRecord{
+              .move =
+                  prepare::PreparedMoveResolution{
+                      .from_value_id =
+                          source.value_id.value_or(prepare::PreparedValueId{1}),
+                      .to_value_id =
+                          destination.value_id.value_or(prepare::PreparedValueId{2}),
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "object_test_register_move",
+                  },
+              .source_register = source,
+              .destination_register = destination,
+          },
   };
+}
+
+aarch64::InstructionRecord selected_non_leaf_frame(
+    aarch64::FrameInstructionKind kind) {
+  return aarch64::make_frame_instruction(aarch64::FrameInstructionRecord{
+      .frame_kind = kind,
+      .function_name = c4c::FunctionNameId{2},
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+      .preserves_link_register = true,
+      .link_register_save_offset_bytes = std::size_t{0},
+  });
 }
 
 aarch64::InstructionRecord machine_alu_immediate_w0(
@@ -234,6 +293,37 @@ aarch64::InstructionRecord machine_alu_immediate_w0(
                   aarch64::RegisterOperandRole::StoragePlan)),
           .rhs = aarch64::make_immediate_operand(
               signed_i32_immediate(immediate, prepare::PreparedValueId{11})),
+          .supported_integer_operation = true,
+      }));
+}
+
+aarch64::InstructionRecord machine_alu_immediate_w13(
+    aarch64::ScalarAluOperationKind operation,
+    bir::BinaryOpcode opcode,
+    std::int64_t immediate,
+    prepare::PreparedValueId result_id) {
+  return aarch64::make_scalar_instruction(aarch64::make_scalar_alu_instruction_record(
+      aarch64::ScalarAluRecord{
+          .surface = aarch64::RecordSurfaceKind::RecordOnly,
+          .operation = operation,
+          .source_binary_opcode = opcode,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = result_id,
+          .result_value_name = c4c::ValueNameId{4},
+          .result_type = bir::TypeKind::I32,
+          .result_register =
+              w_register(13,
+                         result_id,
+                         c4c::ValueNameId{4},
+                         aarch64::RegisterOperandRole::StoragePlan),
+          .lhs =
+              aarch64::make_register_operand(w_register(
+                  0,
+                  prepare::PreparedValueId{20},
+                  c4c::ValueNameId{5},
+                  aarch64::RegisterOperandRole::StoragePlan)),
+          .rhs = aarch64::make_immediate_operand(
+              signed_i32_immediate(immediate, prepare::PreparedValueId{21})),
           .supported_integer_operation = true,
       }));
 }
@@ -553,6 +643,101 @@ int builds_selected_scalar_immediate_machine_object() {
   return 0;
 }
 
+int builds_selected_same_module_scalar_call_machine_object() {
+  const auto add_three = machine_function({
+      machine_instruction(machine_alu_immediate_w13(
+          aarch64::ScalarAluOperationKind::Add,
+          bir::BinaryOpcode::Add,
+          3,
+          prepare::PreparedValueId{10})),
+      machine_instruction(selected_register_move(
+          x_register(0,
+                     prepare::PreparedValueId{11},
+                     c4c::ValueNameId{6},
+                     aarch64::RegisterOperandRole::CallAbi),
+          x_register(13,
+                     prepare::PreparedValueId{10},
+                     c4c::ValueNameId{4},
+                     aarch64::RegisterOperandRole::StoragePlan))),
+      machine_instruction(machine_return()),
+  });
+  const auto main = machine_function({
+      machine_instruction(
+          selected_non_leaf_frame(aarch64::FrameInstructionKind::PrologueSetup)),
+      machine_instruction(machine_move_immediate_w0(2)),
+      machine_instruction(machine_direct_call("add_three")),
+      machine_instruction(selected_register_move(
+          x_register(13,
+                     prepare::PreparedValueId{12},
+                     c4c::ValueNameId{7},
+                     aarch64::RegisterOperandRole::StoragePlan),
+          x_register(0,
+                     prepare::PreparedValueId{11},
+                     c4c::ValueNameId{6},
+                     aarch64::RegisterOperandRole::CallAbi))),
+      machine_instruction(selected_register_move(
+          x_register(0,
+                     prepare::PreparedValueId{13},
+                     c4c::ValueNameId{8},
+                     aarch64::RegisterOperandRole::CallAbi),
+          x_register(13,
+                     prepare::PreparedValueId{12},
+                     c4c::ValueNameId{7},
+                     aarch64::RegisterOperandRole::StoragePlan))),
+      machine_instruction(
+          selected_non_leaf_frame(aarch64::FrameInstructionKind::EpilogueTeardown)),
+      machine_instruction(machine_return()),
+  });
+
+  const auto result = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "add_three",
+          .global = true,
+          .function = &add_three,
+      },
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "main",
+          .global = true,
+          .function = &main,
+      },
+  });
+  if (!result.ok()) {
+    return fail("expected selected same-module scalar call machine records to emit object module");
+  }
+
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* add_three_symbol = object::find_symbol(*result.module, "add_three");
+  const auto* main_symbol = object::find_symbol(*result.module, "main");
+  if (text == nullptr || text->size_bytes != 48 ||
+      !has_bytes(*text,
+                 {0x0d, 0x0c, 0x00, 0x11,
+                  0xe0, 0x03, 0x0d, 0xaa,
+                  0xc0, 0x03, 0x5f, 0xd6,
+                  0xff, 0x43, 0x00, 0xd1,
+                  0xfe, 0x03, 0x00, 0xf9,
+                  0x40, 0x00, 0x80, 0x52,
+                  0x00, 0x00, 0x00, 0x94,
+                  0xed, 0x03, 0x00, 0xaa,
+                  0xe0, 0x03, 0x0d, 0xaa,
+                  0xfe, 0x03, 0x40, 0xf9,
+                  0xff, 0x43, 0x00, 0x91,
+                  0xc0, 0x03, 0x5f, 0xd6}) ||
+      add_three_symbol == nullptr ||
+      add_three_symbol->section != std::optional<object::SectionId>{text->id} ||
+      add_three_symbol->value != 0 || add_three_symbol->size_bytes != 12 ||
+      main_symbol == nullptr ||
+      main_symbol->section != std::optional<object::SectionId>{text->id} ||
+      main_symbol->value != 12 || main_symbol->size_bytes != 36 ||
+      result.module->relocations.size() != 1 ||
+      result.module->relocations[0].section != text->id ||
+      result.module->relocations[0].offset != 24 ||
+      result.module->relocations[0].type != R_AARCH64_CALL26 ||
+      result.module->relocations[0].symbol != add_three_symbol->id) {
+    return fail("expected same-module scalar call object bytes and BL relocation");
+  }
+  return 0;
+}
+
 int rejects_unsupported_machine_records_without_text_fallback() {
   const auto function = machine_function({
       machine_instruction(unsupported_machine_scalar()),
@@ -815,6 +1000,10 @@ int main() {
     return status;
   }
   if (const int status = builds_selected_scalar_immediate_machine_object();
+      status != 0) {
+    return status;
+  }
+  if (const int status = builds_selected_same_module_scalar_call_machine_object();
       status != 0) {
     return status;
   }

@@ -8,32 +8,30 @@ Current Step Title: Add AArch64 Scalar Object Instruction Support
 
 ## Just Finished
 
-- Step 3 added minimal AArch64 object-emitter support for selected scalar
-  immediate object instructions needed by `return_add_sub_chain.c`.
+- Step 3 added focused AArch64 object-emitter support for the same-module
+  scalar call shape in `return_add.c`.
 - `src/backend/mir/aarch64/codegen/object_emission.cpp` now encodes selected
-  immediate GPR call-boundary moves as MOVZ and selected integer add/sub
-  scalar records with an immediate RHS as AArch64 ADD/SUB immediate
-  instructions. It supports W/X GPR views and handles an immediate LHS by
-  materializing it into the result register before the ADD/SUB in the same
-  object fragment.
-- Unsupported scalar shapes still fail closed with object-emission diagnostics;
-  there is no textual assembly, external assembler, asm fallback, filename
-  shortcut, or broad frame/call support in this packet.
+  GPR register-to-register call-boundary moves and the narrow fixed-size
+  non-leaf frame setup/teardown shape used by `return_add.c`: stack adjust
+  with `sp`, link-register save/restore at a prepared stack offset, no dynamic
+  stack, no frame pointer, and no additional callee-save records.
+- Existing MOVZ and ADD/SUB immediate scalar object support remains intact, and
+  direct-call relocation handling is reused for the same-module `add_three`
+  call.
 - `tests/backend/mir/backend_aarch64_object_emission_test.cpp` now covers the
-  selected MOVZ/ADD/SUB/RET object byte sequence directly, with no
-  relocations.
+  selected `add_three`/`main` object byte layout directly, including the BL
+  relocation offset and defined symbol sizes.
 - `tests/backend/CMakeLists.txt` restored
-  `backend_cli_aarch64_return_add_sub_chain_writes_elf_obj` as a selectable
-  AArch64 object-byte scan case beside the existing return-zero object route
-  and asm add-sub-chain smoke.
+  `backend_cli_aarch64_return_add_writes_elf_obj` as a selectable AArch64
+  object-byte scan case beside `return_add_sub_chain`.
 
 ## Suggested Next
 
-- Continue Step 3 with the next focused AArch64 scalar object gap only if the
-  supervisor wants more target-emitter capability before returning to scan
-  expansion; the known next candidate is the frame/call-heavy `return_add.c`,
-  which needs a separate packet because it is not just immediate add/sub
-  encoding.
+- If the supervisor wants more Step 3 target-emitter capability before scan
+  expansion resumes, choose the next scalar/no-global AArch64 case and inspect
+  its first selected instruction rejection. Otherwise, hand back to idea 334's
+  object-route scan expansion with AArch64 `return_add.c` and
+  `return_add_sub_chain.c` now available as object-byte scan cases.
 
 ## Watchouts
 
@@ -42,15 +40,16 @@ Current Step Title: Add AArch64 Scalar Object Instruction Support
 - Do not add expected-failure scan labels for the blocked scalar cases.
 - Keep broad RV64 globals/data, x86 object output, c-testsuite defaults, object
   stdout, and object semantic-BIR mode out of this focused child.
-- AArch64 support added here is intentionally limited to single-MOVZ
-  nonnegative immediates and ADD/SUB immediate encodings. It does not cover
-  negative constants, MOVK/MOVN sequences, register-register ALU, memory/frame
-  instructions, calls, prologue/epilogue, or `return_add.c`.
+- AArch64 support added in this packet is intentionally limited to selected
+  GPR moves and a fixed-size link-register frame shape. It does not cover
+  general load/store memory records, dynamic stack frames, frame-pointer
+  frames, extra callee-saves, negative constants, MOVK/MOVN sequences,
+  register-register ALU, globals/data, or runtime execution.
 
 ## Proof
 
 - Passed:
-  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_object_emission|backend_cli_aarch64_return_zero_writes_elf_obj|backend_cli_aarch64_return_add_sub_chain_writes_elf_obj|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke)$' --output-on-failure) > test_after.log 2>&1`
+  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_object_emission|backend_cli_aarch64_return_add_writes_elf_obj|backend_cli_aarch64_return_add_sub_chain_writes_elf_obj|backend_cli_aarch64_asm_external_return_add_smoke)$' --output-on-failure) > test_after.log 2>&1`
 - Result: 4/4 tests passed.
 - Proof log: `test_after.log`.
 - Passed: `git diff --check`.

@@ -128,6 +128,29 @@ std::optional<Aarch64EncodedFragment> move_immediate_fragment(
   return fragment;
 }
 
+std::optional<Aarch64EncodedFragment> move_register_fragment(
+    const RegisterOperand& destination,
+    const RegisterOperand& source) {
+  const auto view = gpr_instruction_view(destination);
+  if (!view.has_value()) {
+    return std::nullopt;
+  }
+  const auto rd = gpr_encoding_index(destination, *view);
+  const auto rm = gpr_encoding_index(source, *view);
+  if (!rd.has_value() || !rm.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::uint32_t base =
+      *view == abi::RegisterView::X ? 0xaa0003e0u : 0x2a0003e0u;
+  Aarch64EncodedFragment fragment;
+  append_le32(fragment.bytes,
+              base |
+                  (static_cast<std::uint32_t>(*rm) << 16u) |
+                  static_cast<std::uint32_t>(*rd));
+  return fragment;
+}
+
 std::optional<Aarch64EncodedFragment> scalar_add_sub_immediate_fragment(
     const ScalarAluRecord& alu) {
   if (!alu.result_register.has_value() ||
@@ -189,6 +212,46 @@ std::optional<Aarch64EncodedFragment> scalar_add_sub_immediate_fragment(
   return fragment;
 }
 
+std::optional<Aarch64EncodedFragment> frame_fragment(
+    const FrameInstructionRecord& frame) {
+  if ((frame.frame_kind != FrameInstructionKind::PrologueSetup &&
+       frame.frame_kind != FrameInstructionKind::EpilogueTeardown) ||
+      frame.frame_size_bytes == 0 || frame.frame_size_bytes > 0xfffu ||
+      frame.frame_alignment_bytes == 0 || frame.has_dynamic_stack ||
+      frame.uses_frame_pointer_for_fixed_slots || frame.preserves_frame_pointer ||
+      !frame.saved_callee_registers.empty() || frame.callee_save.has_value() ||
+      !frame.preserves_link_register ||
+      !frame.link_register_save_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto link_offset = *frame.link_register_save_offset_bytes;
+  if ((link_offset % 8U) != 0 || link_offset + 8U > frame.frame_size_bytes ||
+      (link_offset / 8U) > 0xfffu) {
+    return std::nullopt;
+  }
+
+  const auto stack_adjust =
+      static_cast<std::uint32_t>(frame.frame_size_bytes);
+  const auto link_slot = static_cast<std::uint32_t>(link_offset / 8U);
+  constexpr std::uint32_t sp = 31u;
+  constexpr std::uint32_t lr = 30u;
+
+  Aarch64EncodedFragment fragment;
+  if (frame.frame_kind == FrameInstructionKind::PrologueSetup) {
+    append_le32(fragment.bytes,
+                0xd1000000u | (stack_adjust << 10u) | (sp << 5u) | sp);
+    append_le32(fragment.bytes,
+                0xf9000000u | (link_slot << 10u) | (sp << 5u) | lr);
+  } else {
+    append_le32(fragment.bytes,
+                0xf9400000u | (link_slot << 10u) | (sp << 5u) | lr);
+    append_le32(fragment.bytes,
+                0x91000000u | (stack_adjust << 10u) | (sp << 5u) | sp);
+  }
+  return fragment;
+}
+
 void add_diagnostic(std::vector<Aarch64ObjectEmissionDiagnostic>& diagnostics,
                     Aarch64ObjectEmissionDiagnosticKind kind,
                     std::string function_name,
@@ -227,11 +290,36 @@ std::optional<Aarch64EncodedFragment> fragment_for_machine_instruction(
   if (const auto* move =
           std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.payload)) {
     if (instruction.opcode == MachineOpcode::CallBoundaryMove &&
-        move->source_immediate.has_value() &&
         move->destination_register.has_value()) {
-      if (auto fragment = move_immediate_fragment(*move->destination_register,
-                                                  *move->source_immediate);
-          fragment.has_value()) {
+      if (move->source_immediate.has_value()) {
+        if (auto fragment = move_immediate_fragment(*move->destination_register,
+                                                    *move->source_immediate);
+            fragment.has_value()) {
+          return fragment;
+        }
+      }
+      if (move->source_register.has_value()) {
+        if (auto fragment = move_register_fragment(*move->destination_register,
+                                                  *move->source_register);
+            fragment.has_value()) {
+          return fragment;
+        }
+      }
+    }
+    add_diagnostic(diagnostics,
+                   Aarch64ObjectEmissionDiagnosticKind::UnsupportedInstruction,
+                   function_name,
+                   block_index,
+                   instruction_index,
+                   "AArch64 object emission supports only selected GPR call-boundary moves");
+    return std::nullopt;
+  }
+
+  if (const auto* frame =
+          std::get_if<FrameInstructionRecord>(&instruction.payload)) {
+    if (instruction.opcode == MachineOpcode::FrameSetup ||
+        instruction.opcode == MachineOpcode::FrameTeardown) {
+      if (auto fragment = frame_fragment(*frame); fragment.has_value()) {
         return fragment;
       }
     }
@@ -240,7 +328,7 @@ std::optional<Aarch64EncodedFragment> fragment_for_machine_instruction(
                    function_name,
                    block_index,
                    instruction_index,
-                   "AArch64 object emission supports only selected immediate GPR call-boundary moves");
+                   "AArch64 object emission supports only selected fixed-size link-register frame setup/teardown");
     return std::nullopt;
   }
 
