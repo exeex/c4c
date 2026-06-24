@@ -86,3 +86,36 @@ policy decisions.
   weakened to make the new proof look green.
 - Broad globals/data, c-testsuite defaults, x86 object output, object stdout,
   or semantic-BIR object mode is absorbed into this focused child.
+
+## Closure Notes
+
+Closed after the focused target-emitter scalar expansion unblocked the first
+object-route scan candidate set.
+
+Completed support:
+
+- RV64 object runtime scalar coverage for `return_add.c`, `two_arg_helper.c`,
+  `return_add_sub_chain.c`, and `local_temp.c`.
+- AArch64 object-byte scalar coverage for `return_add.c` and
+  `return_add_sub_chain.c`.
+- Restored object-route selectors:
+  `backend_obj_runtime_rv64_return_zero`,
+  `backend_obj_runtime_rv64_return_add`,
+  `backend_obj_runtime_rv64_two_arg_helper`,
+  `backend_obj_runtime_rv64_return_add_sub_chain`,
+  `backend_obj_runtime_rv64_local_temp`,
+  `backend_cli_aarch64_return_zero_writes_elf_obj`,
+  `backend_cli_aarch64_return_add_writes_elf_obj`, and
+  `backend_cli_aarch64_return_add_sub_chain_writes_elf_obj`.
+
+Close proof:
+
+```bash
+set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_(return_zero|return_add|two_arg_helper|two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call|return_add_sub_chain|local_temp)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1
+```
+
+Result: 28/28 tests passed. Regression guard passed with matching
+`test_before.log` and `test_after.log` using non-decreasing pass-count mode.
+
+Remaining broader object scan/default-readiness work belongs to
+`ideas/open/334_object_route_scan_and_default_readiness.md`.

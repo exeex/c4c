@@ -56,22 +56,26 @@ flaky cases from being hidden by expectation churn.
 - May create additional focused follow-up ideas for specific object-route
   failures discovered during scanning.
 
-## Parked State
+## Resume State
 
-Temporarily parked after Step 2 scan expansion found prerequisite target
-object-emitter gaps rather than CMake harness gaps. The first attempted scalar
-object scan cases failed before link/runtime:
+Resumed after focused child
+`ideas/closed/336_target_object_emitter_scalar_scan_expansion.md` repaired the
+target-owned scalar object-emitter gaps that parked this umbrella.
+
+The first scalar object-route scan baseline is now green:
 
 - RV64 object runtime candidates `return_add.c`, `two_arg_helper.c`,
-  `return_add_sub_chain.c`, and `local_temp.c` failed with
-  `RISC-V backend object route unsupported prepared module shape`.
-- AArch64 object byte candidates `return_add.c` and `return_add_sub_chain.c`
-  failed with `unsupported AArch64 machine instruction for object emission`.
+  `return_add_sub_chain.c`, and `local_temp.c` are restored as object-route
+  runtime scan cases beside their asm-route counterparts.
+- AArch64 object byte candidates `return_add.c` and
+  `return_add_sub_chain.c` are restored as object-byte scan cases beside the
+  AArch64 asm external return smokes.
+- Matching 28-test restored scan proof passed before and after, with the
+  non-decreasing regression guard passing.
 
-Continue this umbrella after focused child
-`ideas/open/336_target_object_emitter_scalar_scan_expansion.md` repairs enough
-target-owned scalar object support for those candidate names to be added as
-green object-route scan cases without expected-failure labels or asm fallback.
+Continue this umbrella from the green scalar scan baseline. Broader object
+scan/default-readiness work should add or triage additional object-route cases
+without weakening existing asm-route or object-route expectations.
 
 ## Reviewer Reject Signals
 
