@@ -1,163 +1,170 @@
-# Target Object Emitter Local Call And RegReg Scalar Expansion Runbook
+# Object Route Scan And Default Readiness Runbook
 
 Status: Active
-Source Idea: ideas/open/337_target_object_emitter_local_call_and_regreg_scalar_expansion.md
-Split from: ideas/open/334_object_route_scan_and_default_readiness.md
+Source Idea: ideas/open/334_object_route_scan_and_default_readiness.md
+Resumed after: ideas/closed/337_target_object_emitter_local_call_and_regreg_scalar_expansion.md
 
 ## Purpose
 
-Repair the focused target-owned object-emitter gaps that currently prevent
-idea 334 from adding the next object-route scan cases without expected-failure
-labels or weakened expectations.
+Broaden native object-route validation from the restored scalar/local-call
+baseline toward default-readiness evidence, while keeping asm-route coverage
+meaningful and preserving clear diagnostics for unsupported object cases.
 
 ## Goal
 
-Support native object emission for RV64 scalar local-backed direct call
-arguments and AArch64 selected register-register scalar/call-result object
-output, then restore the corresponding object-route scan tests.
+Add and triage selectable object-route scan coverage for supported RV64 and
+AArch64 subsets, then record whether object output is ready to become the
+default backend route or should remain a documented dual-route option.
 
 ## Core Rule
 
-Do not make scan progress through testcase-name matching, asm fallback,
-external assemblers, expected-failure labels, or weaker object/asm contracts.
-Support the target-owned prepared or selected instruction shapes semantically.
+Do not claim scan progress by weakening expectations, adding expected-failure
+labels for known-red cases, deleting asm-route coverage, or hiding object-route
+failures behind generic toolchain errors. Fix focused target/backend gaps in
+separate child ideas when they are distinct capability work.
 
 ## Read First
 
-- `ideas/open/337_target_object_emitter_local_call_and_regreg_scalar_expansion.md`
 - `ideas/open/334_object_route_scan_and_default_readiness.md`
 - `todo.md`
 - `tests/backend/CMakeLists.txt`
 - `tests/backend/cmake/run_backend_rv64_object_runtime_case.cmake`
 - `tests/backend/cmake/run_backend_codegen_object_case.cmake`
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `src/backend/mir/aarch64/codegen/object_emission.cpp`
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
-- `tests/backend/mir/backend_aarch64_object_emission_test.cpp`
+- `tests/c/` helper surfaces if c-testsuite object selection is considered
 
 ## Current Baseline
 
-The parent scan baseline after child 336 is green:
+The expanded object-route scan baseline after child 337 is green:
 
 ```bash
 set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_(return_zero|return_add|two_arg_helper|two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call|return_add_sub_chain|local_temp)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1
 ```
 
-Result recorded by idea 334 Step 1: 28/28 restored scalar proof remains green,
-but the next candidate dry runs are known-red at target object emission:
+Result: 33/33 tests passed, with non-decreasing regression guard against the
+rolled baseline.
 
-- RV64: `two_arg_local_arg.c`, `two_arg_second_local_arg.c`,
-  `two_arg_both_local_arg.c`, and `local_arg_call.c` reject with
-  `RISC-V backend object route unsupported prepared module shape`.
-- AArch64: `two_arg_helper.c` rejects with selected immediate add/sub-only
-  object support; local/frame-memory AArch64 candidates remain a later
-  boundary.
+Restored selectors include:
+
+- RV64 object runtime scalar/local-call cases under `backend_obj_runtime_.*`
+- AArch64 scalar object-byte cases under `backend_cli_aarch64_.*_writes_elf_obj`
+- Existing asm-route RV64 runtime and AArch64 external-return smokes in the
+  same proof subset
+
+## Scope
+
+- Add selectable object-route scan coverage beside existing asm-route tests for
+  cases that the target object emitters can support natively.
+- Triage object-route failures to encoder, object writer, relocation, CLI,
+  linker, or runtime layers.
+- Preserve route labels that let CTest select object, asm, dual-route, runtime,
+  qemu, RV64, and AArch64 coverage independently.
+- Record any distinct target-emitter or default-policy blockers as follow-up
+  ideas instead of silently expanding this umbrella.
+- Decide default-readiness only after recorded scan commands, result counts,
+  and rationale exist.
 
 ## Non-Goals
 
-- Do not change CLI object policy, object stdout, x86 object output,
-  c-testsuite object defaults, or object semantic-BIR mode.
-- Do not add globals/data, arrays, pointer/aggregate support, broad RV64 memory
-  expansion, broad AArch64 frame/local-memory expansion, or AArch64 runtime.
-- Do not weaken existing asm-route or object-route tests.
-- Do not add expected-failure scan labels for the known-red candidates.
+- Do not implement shared object model rewrites or broad target object encoders
+  inside this scan umbrella.
+- Do not add initial `--codegen obj` CLI wiring; it already exists.
+- Do not remove or weaken asm-route coverage.
+- Do not force object stdout, x86 object output, semantic-BIR object mode, or
+  c-testsuite object defaults without explicit scan evidence and a plan step.
+- Do not absorb globals/data, arrays, pointers, aggregates, broad memory/control
+  flow, broad AArch64 frame/local-memory expansion, or AArch64 runtime fixes
+  into a scan-label packet.
 
 ## Execution Rules
 
-- Keep RV64 and AArch64 work in separate narrow packets when possible.
-- Add or restore scan tests only after the target object emitter can produce
-  native object bytes for that case.
-- Preserve existing object and asm selectors in each proof subset.
-- If a candidate reveals a broader target-emitter family than this idea covers,
-  stop and record the precise blocker rather than expanding scope.
+- Start each scan expansion from the current green baseline and keep proof
+  subsets selectable by label or stable regex.
+- Add only cases that are expected to pass through native object bytes; do not
+  add known-red cases as expected failures.
+- When a candidate fails because of target object-emitter capability, stop and
+  record or split a focused child idea.
+- Keep backend runtime helpers and c-testsuite helper defaults behaviorally
+  unchanged unless the step explicitly owns them.
+- Use `todo.md` for packet evidence and handoff notes; edit this runbook only
+  for lifecycle-level route changes.
 
-## Step 1: Inspect Local-Call And RegReg Object Rejections
+## Step 1: Resume Expanded Scan Baseline And Candidate Map
 
-Goal: record exact target-owned seams and first implementation proof plan.
+Goal: inspect the object-route scan surface after child 337 and choose the next
+conservative scan/default-readiness packet.
 
 Actions:
 
-- Inspect the RV64 prepared object records for `two_arg_local_arg.c`,
-  `two_arg_second_local_arg.c`, `two_arg_both_local_arg.c`, and
-  `local_arg_call.c`.
-- Inspect the AArch64 selected machine records for `two_arg_helper.c`.
-- Name the exact object-emission predicates or dispatch paths that reject the
-  candidates.
+- Confirm current object/asm/runtime/qemu/dual-route labels and representative
+  test names from `tests/backend/CMakeLists.txt` and backend CMake helpers.
+- Identify the next safe RV64 runtime and AArch64 object-byte scan candidates,
+  or name the exact target/default-policy blocker if none should be added yet.
+- Check whether any c-testsuite object-route selection can be introduced
+  without changing defaults or masking unsupported cases.
 - Record Step 2 owned files and proof command in `todo.md`.
 
 Completion check:
 
-- `todo.md` names the RV64 local-call seam, the AArch64 reg-reg scalar seam,
-  the first minimal implementation slice, unsupported boundaries, and proof.
+- `todo.md` confirms the restored 33/33 baseline, names next candidates or
+  blockers, preserves unsupported/default-policy boundaries, and gives an
+  exact Step 2 proof command.
 
-## Step 2: Add RV64 Local-Backed Scalar Call Object Support
+## Step 2: Add Next Selectable Object Scan Cases
 
-Goal: support the RV64 prepared shapes for local-backed scalar direct call
-arguments and restore the RV64 object-runtime scan cases.
-
-Actions:
-
-- Extend RV64 target object emission for scalar local homes used as direct call
-  arguments in the named no-global cases.
-- Add focused RV64 object-emitter tests for the new prepared-record support.
-- Add object-runtime CTest registrations beside existing asm-route tests for
-  `two_arg_local_arg.c`, `two_arg_second_local_arg.c`,
-  `two_arg_both_local_arg.c`, and `local_arg_call.c`.
-
-Completion check:
-
-- The restored RV64 object-runtime cases pass through native object bytes,
-  link with the existing RV64 toolchain, run under qemu, and preserve the
-  previous RV64 object/asm scalar cases.
-
-## Step 3: Add AArch64 RegReg Scalar Object Support
-
-Goal: support the AArch64 selected instruction family needed by
-`two_arg_helper.c` and restore its object-byte scan case.
+Goal: add the next conservative object-route scan coverage that is expected to
+pass from the current baseline.
 
 Actions:
 
-- Extend AArch64 target object emission for the selected register-register
-  scalar arithmetic or call-result movement needed by `two_arg_helper.c`.
-- Add focused AArch64 object-emitter tests for the new encoding support.
-- Add the AArch64 object-byte CTest registration beside existing asm-route
-  coverage.
+- Add object-route CTest registrations or helper extensions beside existing
+  asm-route coverage for the selected candidates.
+- Keep object, asm, dual-route, runtime, qemu, RV64, AArch64, scalar, and scan
+  labels useful for independent selection.
+- Do not change c-testsuite defaults unless Step 1 explicitly proves that is
+  the intended target for this step.
+- Run the focused proof command recorded by Step 1 and update `todo.md`.
 
 Completion check:
 
-- `backend_cli_aarch64_two_arg_helper_writes_elf_obj` passes as native ELF
-  object-byte output, and existing AArch64 object/asm scalar cases remain
-  green.
+- New object-route scan cases are green, existing asm-route selectors remain
+  selected and green, and `todo.md` records result counts and remaining
+  boundaries.
 
-## Step 4: Validate Expanded Scan Baseline
+## Step 3: Triage Remaining Object-Route Gaps
 
-Goal: prove the expanded object-route scan baseline before returning to idea
-334.
+Goal: classify remaining unsupported object-route scan candidates without
+weakening expectations.
 
 Actions:
 
-- Run the focused proof including prior object/asm scalar cases and the newly
-  restored RV64/AArch64 scan candidates.
-- Record supported selectors, remaining unsupported boundaries, command, and
-  result count in `todo.md`.
+- Dry-run or inspect representative unsupported candidates from the scan map.
+- Classify failures by owner: target encoder, object writer, relocation, CLI,
+  linker/toolchain, runtime, or policy/default readiness.
+- Create or request focused child ideas for distinct capability gaps that
+  should precede more scan expansion.
+- Keep known unsupported cases out of green selectors until repaired.
 
 Completion check:
 
-- `todo.md` records a green expanded baseline and explicitly hands back to
-  `ideas/open/334_object_route_scan_and_default_readiness.md`.
+- `todo.md` records the triage map, follow-up idea needs, and whether the
+  active plan should continue, split, or pause for a child.
 
-## Step 5: Hand Back To Object Route Scan
+## Step 4: Default-Readiness Recommendation
 
-Goal: complete the child lifecycle when target-owned gaps are repaired.
+Goal: decide whether object output should become the default backend route or
+remain an explicit dual-route option.
 
 Actions:
 
-- Summarize target-emitter capabilities added.
-- List restored object-route selectors.
-- Keep broader unsupported/default-policy boundaries assigned to idea 334.
-- Record the final proof command and result count in `todo.md`.
+- Compare object-route and asm-route scan evidence for supported RV64 and
+  AArch64 subsets.
+- Record commands, dates, result counts, unsupported boundaries, and rationale.
+- If default switching is not justified, document the remaining blockers and
+  keep object output opt-in.
+- If default switching is justified, define a separate implementation plan for
+  the default-route policy change.
 
 Completion check:
 
-- The child is ready for plan-owner closure, and idea 334 can resume from the
-  expanded green scan baseline.
+- `todo.md` and, if closing, the source idea record the recommendation and
+  evidence without changing defaults implicitly.

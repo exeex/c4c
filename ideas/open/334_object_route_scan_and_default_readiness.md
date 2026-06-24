@@ -77,22 +77,32 @@ Continue this umbrella from the green scalar scan baseline. Broader object
 scan/default-readiness work should add or triage additional object-route cases
 without weakening existing asm-route or object-route expectations.
 
-## Parked For Focused Child 337
+## Resume State After Focused Child 337
 
-The first resumed Step 1 inspection found that the next obvious scan candidates
-are not harness-only additions yet:
+Resumed after focused child
+`ideas/closed/337_target_object_emitter_local_call_and_regreg_scalar_expansion.md`
+repaired the next target-owned object-emitter gaps found by the first resumed
+scan inspection.
 
-- RV64 local-backed scalar call arguments in `two_arg_local_arg.c`,
+The expanded scalar/local-call object-route scan baseline is now green:
+
+- RV64 object runtime candidates `two_arg_local_arg.c`,
   `two_arg_second_local_arg.c`, `two_arg_both_local_arg.c`, and
-  `local_arg_call.c` still reject at target object emission.
-- AArch64 `two_arg_helper.c` still needs selected register-register scalar or
-  call-result object support.
-- AArch64 local/frame-memory cases remain a later boundary.
+  `local_arg_call.c` are restored as native object-route runtime scan cases
+  beside their asm-route counterparts.
+- AArch64 object byte candidate `two_arg_helper.c` is restored as an
+  object-byte scan case beside the AArch64 asm scalar smokes.
+- Expanded proof command:
+  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_(return_zero|return_add|two_arg_helper|two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call|return_add_sub_chain|local_temp)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1`
+- Result: 33/33 tests passed, with non-decreasing regression guard against the
+  rolled baseline.
 
-Idea `ideas/open/337_target_object_emitter_local_call_and_regreg_scalar_expansion.md`
-is activated to repair those target-owned gaps before this scan/default
-readiness umbrella resumes. Keep the 28/28 restored scalar proof as the parent
-baseline while 337 is active.
+Continue this umbrella from the 33/33 expanded green baseline. Broader
+globals/data, arrays, pointers, aggregates, broad memory/control flow,
+broad AArch64 frame/local-memory expansion, AArch64 runtime, x86 object output,
+object stdout, c-testsuite object defaults, and semantic-BIR object mode remain
+outside the completed child and should be handled deliberately by scan results
+or focused follow-up ideas.
 
 ## Reviewer Reject Signals
 

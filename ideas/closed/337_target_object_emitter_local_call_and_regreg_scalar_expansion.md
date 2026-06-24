@@ -70,6 +70,26 @@ umbrella can broaden again.
 - Final handoff records that idea 334 can resume scan/default-readiness work
   from the expanded green baseline.
 
+## Closure Evidence
+
+Closed after focused target-emitter capability work completed and the expanded
+object-route scan baseline passed.
+
+- RV64 native object emission now supports local-backed scalar direct call
+  arguments with local frame plus call frame composition and register-sourced
+  GPR call args.
+- Restored RV64 object runtime scan cases:
+  `backend_obj_runtime_rv64_two_arg_local_arg`,
+  `backend_obj_runtime_rv64_two_arg_second_local_arg`,
+  `backend_obj_runtime_rv64_two_arg_both_local_arg`, and
+  `backend_obj_runtime_rv64_local_arg_call`.
+- AArch64 selected object emission now supports GPR register-register ADD/SUB,
+  restoring `backend_cli_aarch64_two_arg_helper_writes_elf_obj`.
+- Close proof:
+  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_(return_zero|return_add|two_arg_helper|two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call|return_add_sub_chain|local_temp)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1`
+- Result: 33/33 tests passed. Regression guard against the rolled baseline
+  passed with 33 before and 33 after.
+
 ## Reviewer Reject Signals
 
 - The implementation matches testcase names, filenames, or exact function names
