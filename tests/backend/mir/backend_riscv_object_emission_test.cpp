@@ -159,6 +159,68 @@ prepare::PreparedBirModule make_prepared_direct_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_rematerialized_return_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto t0_name = prepared.names.value_names.intern("%t0");
+  const auto t1_name = prepared.names.value_names.intern("%t1");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+                  .operand_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::immediate_i32(2),
+                  .rhs = bir::Value::immediate_i32(3),
+              },
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Sub,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%t1"),
+                  .operand_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%t0"),
+                  .rhs = bir::Value::immediate_i32(1),
+              },
+          },
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%t1");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = t0_name,
+                  .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+                  .immediate_i32 = 5,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = t1_name,
+                  .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+                  .immediate_i32 = 4,
+              },
+          },
+  });
+  return prepared;
+}
+
 int records_minimal_text_and_call_relocation() {
   const auto module = make_minimal_call_module();
   if (!module.has_value()) {
@@ -325,6 +387,34 @@ int builds_prepared_text_object_module_without_call_text() {
       module->relocations[0].type != 19 ||
       module->relocations[0].symbol != callee->id) {
     return fail("expected prepared direct call to lower through R_RISCV_CALL_PLT");
+  }
+  return 0;
+}
+
+int builds_prepared_rematerialized_nonzero_return_object() {
+  const auto prepared = make_prepared_rematerialized_return_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared immediate-return RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared immediate-return object to publish text/main");
+  }
+  if (text->bytes.size() != 8 || text->size_bytes != 8 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 8 ||
+      main_symbol->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared immediate-return object to contain one RV64 return fragment");
+  }
+  if (text->bytes[0] != 0x13 || text->bytes[1] != 0x05 ||
+      text->bytes[2] != 0x40 || text->bytes[3] != 0x00 ||
+      text->bytes[4] != 0x67 || text->bytes[5] != 0x80 ||
+      text->bytes[6] != 0x00 || text->bytes[7] != 0x00) {
+    return fail("expected addi a0, zero, 4 followed by ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared immediate-return object to need no relocations");
   }
   return 0;
 }
@@ -652,6 +742,7 @@ int main() {
   status |= records_same_module_direct_call_symbol();
   status |= records_pcrel_hi_lo_pairing_with_auipc_site_label();
   status |= builds_prepared_text_object_module_without_call_text();
+  status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();

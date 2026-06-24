@@ -43,9 +43,95 @@ void append_le32(std::vector<std::uint8_t>& bytes, std::uint32_t word) {
   bytes.push_back(static_cast<std::uint8_t>((word >> 24) & 0xffu));
 }
 
+constexpr bool fits_signed_12_bit_immediate(std::int64_t value) {
+  return value >= -2048 && value <= 2047;
+}
+
 object::SymbolBinding binding_for_function(const RiscvObjectFunction& function) {
   return function.global ? object::SymbolBinding::Global
                          : object::SymbolBinding::Local;
+}
+
+const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  if (lookups == nullptr || value.kind != c4c::backend::bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  const auto value_id_it = lookups->value_homes.value_ids.find(value_name);
+  if (value_id_it == lookups->value_homes.value_ids.end()) {
+    return nullptr;
+  }
+  const auto home_it = lookups->value_homes.homes_by_id.find(value_id_it->second);
+  return home_it == lookups->value_homes.homes_by_id.end() ? nullptr
+                                                           : home_it->second;
+}
+
+std::optional<std::int64_t> integer_immediate_for_value(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  switch (value.type) {
+    case c4c::backend::bir::TypeKind::I1:
+    case c4c::backend::bir::TypeKind::I8:
+    case c4c::backend::bir::TypeKind::I16:
+    case c4c::backend::bir::TypeKind::I32:
+    case c4c::backend::bir::TypeKind::I64:
+      break;
+    default:
+      return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return value.immediate;
+  }
+  const auto* home = prepared_value_home_for(names, lookups, value);
+  if (home == nullptr ||
+      home->kind != c4c::backend::prepare::PreparedValueHomeKind::
+                        RematerializableImmediate ||
+      !home->immediate_i32.has_value()) {
+    return std::nullopt;
+  }
+  return home->immediate_i32;
+}
+
+RiscvEncodedFragment make_rv64_return_immediate_fragment(std::int64_t immediate) {
+  RiscvEncodedFragment fragment;
+  append_le32(fragment.bytes,
+              encode_i_type(0x13, 10, 0, 0, static_cast<std::int32_t>(immediate)));
+  append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
+  return fragment;
+}
+
+const c4c::backend::bir::Value* pure_instruction_result(
+    const c4c::backend::bir::Inst& inst) {
+  if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+    return &binary->result;
+  }
+  if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&inst)) {
+    return &select->result;
+  }
+  if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst)) {
+    return &cast->result;
+  }
+  return nullptr;
+}
+
+bool prepared_pure_instruction_is_rematerialized_immediate(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Inst& inst) {
+  const auto* result = pure_instruction_result(inst);
+  if (result == nullptr) {
+    return false;
+  }
+  const auto immediate = integer_immediate_for_value(names, lookups, *result);
+  return immediate.has_value() && fits_signed_12_bit_immediate(*immediate);
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
@@ -80,18 +166,23 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   return make_rv64_direct_call_fragment(*call_plan->direct_callee_name);
 }
 
-bool prepared_return_supported(const c4c::backend::bir::Terminator& terminator) {
+std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Terminator& terminator) {
   if (terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !terminator.return_lanes.empty()) {
-    return false;
+    return std::nullopt;
   }
   if (!terminator.value.has_value()) {
-    return true;
+    return make_rv64_return_immediate_fragment(0);
   }
-  return terminator.value->kind == c4c::backend::bir::Value::Kind::Immediate &&
-         terminator.value->immediate == 0 &&
-         (terminator.value->type == c4c::backend::bir::TypeKind::I32 ||
-          terminator.value->type == c4c::backend::bir::TypeKind::I64);
+  const auto immediate =
+      integer_immediate_for_value(names, lookups, *terminator.value);
+  if (!immediate.has_value() || !fits_signed_12_bit_immediate(*immediate)) {
+    return std::nullopt;
+  }
+  return make_rv64_return_immediate_fragment(*immediate);
 }
 
 const c4c::backend::bir::Function* find_defined_bir_function(
@@ -134,6 +225,12 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
     const auto* call = std::get_if<c4c::backend::bir::CallInst>(
         &block.insts[instruction_index]);
     if (call == nullptr) {
+      if (prepared_pure_instruction_is_rematerialized_immediate(
+              prepared.names,
+              &lookups,
+              block.insts[instruction_index])) {
+        continue;
+      }
       return std::nullopt;
     }
     const auto* call_plan = prepare::find_indexed_prepared_call_plan(
@@ -148,10 +245,12 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
     object_function.fragments.push_back(std::move(*fragment));
   }
 
-  if (!prepared_return_supported(block.terminator)) {
+  auto return_fragment =
+      fragment_for_prepared_return(prepared.names, &lookups, block.terminator);
+  if (!return_fragment.has_value()) {
     return std::nullopt;
   }
-  object_function.fragments.push_back(make_rv64_return_zero_fragment());
+  object_function.fragments.push_back(std::move(*return_fragment));
   return object_function;
 }
 
@@ -180,10 +279,7 @@ object::RelocatableElfConfig rv64_relocatable_elf_config() {
 }
 
 RiscvEncodedFragment make_rv64_return_zero_fragment() {
-  RiscvEncodedFragment fragment;
-  append_le32(fragment.bytes, encode_i_type(0x13, 10, 0, 0, 0));  // addi a0, zero, 0
-  append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));   // ret
-  return fragment;
+  return make_rv64_return_immediate_fragment(0);
 }
 
 RiscvEncodedFragment make_rv64_direct_call_fragment(std::string callee_name) {

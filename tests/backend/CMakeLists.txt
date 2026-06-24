@@ -1375,6 +1375,13 @@ c4c_add_backend_rv64_runtime_case(
   EXPECTED_RUN_CODE 4
   LABELS scalar return alu
 )
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_return_add_sub_chain
+  SRC "${BACKEND_CASE_ROOT}/return_add_sub_chain.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 4
+  LABELS scalar return alu scan
+)
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_local_temp
   SRC "${BACKEND_CASE_ROOT}/local_temp.c"
