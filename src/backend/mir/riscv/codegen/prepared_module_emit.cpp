@@ -120,6 +120,23 @@ void reject_unsupported_external_calls(
   }
 }
 
+void append_available_edge_publication_moves(
+    std::string& out,
+    const c4c::backend::prepare::PreparedFunctionLookups& lookups) {
+  namespace prepare = c4c::backend::prepare;
+
+  for (const auto& publication : lookups.edge_publications.publications) {
+    if (publication.status != prepare::PreparedEdgePublicationLookupStatus::Available) {
+      continue;
+    }
+    (void)append_edge_publication_move_instruction(out,
+                                                   &lookups,
+                                                   publication.predecessor_label,
+                                                   publication.successor_label,
+                                                   publication.destination_value_id);
+  }
+}
+
 }  // namespace
 
 std::string emit_prepared_module_text(
@@ -157,19 +174,11 @@ std::string emit_prepared_module_text(
     }
 
     if (append_simple_prepared_bir_function_asm(out, module, &lookups, *function_it)) {
+      append_available_edge_publication_moves(out, lookups);
       continue;
     }
 
-    for (const auto& publication : lookups.edge_publications.publications) {
-      if (publication.status != prepare::PreparedEdgePublicationLookupStatus::Available) {
-        continue;
-      }
-      (void)append_edge_publication_move_instruction(out,
-                                                     &lookups,
-                                                     publication.predecessor_label,
-                                                     publication.successor_label,
-                                                     publication.destination_value_id);
-    }
+    append_available_edge_publication_moves(out, lookups);
   }
   return out;
 }
