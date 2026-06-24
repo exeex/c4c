@@ -1,147 +1,136 @@
-# AArch64 Object Emitter Local Frame And Scalar Frontier Runbook
+# Object Route Scan And Default Readiness Runbook
 
 Status: Active
-Source Idea: ideas/open/338_aarch64_object_emitter_local_frame_and_scalar_frontier.md
-Split from: ideas/open/334_object_route_scan_and_default_readiness.md
+Source Idea: ideas/open/334_object_route_scan_and_default_readiness.md
+Resumed after: ideas/closed/338_aarch64_object_emitter_local_frame_and_scalar_frontier.md
 
 ## Purpose
 
-Repair the focused AArch64 target object-emitter gaps that currently block
-balanced c-testsuite/backend object scan expansion in parent idea 334.
+Broaden object-route validation across backend and c-testsuite coverage, then
+decide whether native object output is ready to become the default backend
+route or should remain an explicit dual-route option.
 
 ## Goal
 
-Support native AArch64 object emission for selected no-global scalar
-local-frame memory records and the selected scalar multiply frontier needed by
-the next c-testsuite/backend object candidates.
+Resume parent idea 334 from the 39/39 expanded object-route baseline and
+continue scan/default-readiness work without weakening existing asm-route or
+object-route contracts.
 
 ## Core Rule
 
-Do not make scan progress through testcase-name matching, asm fallback,
-external assemblers, expected-failure labels, or weaker object/asm contracts.
-Support selected AArch64 machine record shapes semantically and keep CLI/default
-policy unchanged.
+Do not claim scan/default-readiness progress by downgrading unsupported cases,
+adding expected-failure labels, hiding target-emitter gaps, or removing asm
+coverage. Object-route cases must either pass through native object bytes or be
+triaged to a concrete owner and split into focused follow-up work.
 
 ## Read First
 
-- `ideas/open/338_aarch64_object_emitter_local_frame_and_scalar_frontier.md`
 - `ideas/open/334_object_route_scan_and_default_readiness.md`
 - `todo.md`
-- `src/backend/mir/aarch64/codegen/object_emission.cpp`
-- `src/backend/mir/aarch64/codegen/object_emission.hpp`
-- `tests/backend/mir/backend_aarch64_object_emission_test.cpp`
 - `tests/backend/CMakeLists.txt`
 - `tests/backend/cmake/run_backend_codegen_object_case.cmake`
-- `tests/c/external/c-testsuite/src/00003.c`
-- `tests/c/external/c-testsuite/src/00011.c`
-- `tests/c/external/c-testsuite/src/00012.c`
-- `tests/backend/case/param_slot.c`
+- `tests/backend/cmake/run_backend_rv64_object_runtime_case.cmake`
+- `tests/c/external/c-testsuite/src/`
+- `tests/backend/case/`
 
 ## Current Baseline
 
-Parent idea 334 has a green 37/37 expanded object-route baseline after adding
-c-testsuite object smokes for `00001.c` and `00002.c`.
+The current expanded object-route baseline is green at 39/39 tests after child
+338 restored AArch64 object-byte c-testsuite `00011.c` and `00012.c`.
 
 ```bash
 set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_(return_zero|return_add|two_arg_helper|two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call|return_add_sub_chain|local_temp)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1
 ```
 
-The next AArch64 candidates currently reject in target object emission:
+Known green object additions from prior focused children:
 
-- c-testsuite `00003.c`, `00011.c`, and backend scalar local rewrite cases need
-  selected fixed-frame/local-memory object support.
-- c-testsuite `00012.c` needs selected scalar multiply object support.
+- RV64 object runtime scalar/local-call cases through `local_arg_call.c` and
+  `local_temp.c`.
+- RV64 object runtime c-testsuite `00001.c` and `00002.c`.
+- AArch64 object-byte scalar cases through `two_arg_helper.c`.
+- AArch64 object-byte c-testsuite `00001.c`, `00002.c`, `00011.c`, and
+  `00012.c`.
 
 ## Non-Goals
 
-- Do not add AArch64 runtime execution.
-- Do not implement broad AArch64 branch/control-flow, globals/data, pointers,
-  aggregates, byval, indirect calls, or broad memory lowering.
-- Do not implement RV64, x86, object stdout, semantic-BIR object mode, or
-  c-testsuite default-route changes.
-- Do not weaken existing object/asm tests or add expected-failure scan labels.
+- Do not implement new target object encoders inside the scan/default-readiness
+  umbrella.
+- Do not switch c-testsuite defaults or backend defaults until the scan and
+  rationale are recorded.
+- Do not add AArch64 runtime unless a separate reliable runtime packet is
+  explicitly chosen.
+- Do not remove or weaken asm-route tests.
+- Do not implement x86 object output, object stdout, semantic-BIR object mode,
+  broad globals/data, pointers, aggregates, byval, indirect calls, or broad
+  branch/control-flow inside an untriaged scan packet.
 
 ## Execution Rules
 
-- Inspect selected machine records first and record the smallest target-owned
-  seams in `todo.md`.
-- Keep local-frame memory and scalar multiply as separate packets unless the
-  selected object-emitter shape proves they share one minimal implementation
-  path.
-- Add scan registrations only after the target object emitter can produce
-  native bytes for the case.
-- Stop and record a blocker if a candidate requires broad frame/memory/control
-  flow support beyond this child.
+- Add object-route scan cases only when they are expected to pass through
+  native object bytes.
+- Use distinct selectable labels for object, asm, runtime, qemu,
+  c_testsuite, smoke, scan, and dual-route groups.
+- Preserve helper behavior for existing asm-route and object-route tests.
+- Dry-run uncertain candidates under `/tmp` before registering them.
+- If the next useful candidates fail at target object emission, record the
+  owner and split a focused child idea instead of adding expected failures.
+- Keep proof commands and result counts in `todo.md`.
 
-## Step 1: Inspect AArch64 Local-Frame And Multiply Object Rejections
+## Step 1: Resume 39-Test Baseline And Candidate Map
 
-Goal: record exact selected machine record shapes and first implementation
-proof plan.
-
-Actions:
-
-- Inspect AArch64 selected records or asm for c-testsuite `00003.c`, `00011.c`,
-  `00012.c`, backend `param_slot.c`, and one representative
-  `two_arg_*_rewrite.c` case.
-- Name the object-emission dispatch functions and instruction families that
-  reject local frame-memory and multiply records.
-- Decide the first minimal implementation slice and proof command.
-- Record Step 2 owned files, unsupported boundaries, and proof in `todo.md`.
-
-Completion check:
-
-- `todo.md` names the local-frame memory seam, multiply seam, first minimal
-  implementation slice, and exact Step 2 proof command.
-
-## Step 2: Add AArch64 Selected Local-Frame Memory Object Support
-
-Goal: support the smallest selected fixed-frame local-memory object shapes
-needed by the first accepted scalar no-global cases.
+Goal: inspect the current scan surface after child 338 and choose the next
+conservative parent-owned packet.
 
 Actions:
 
-- Extend AArch64 object emission for selected stack adjust, local store/load,
-  and required save/restore forms only as needed by the chosen cases.
-- Add focused AArch64 object-emitter unit tests for the new fragments.
-- Restore object-byte scan tests for accepted cases such as c-testsuite
-  `00003.c` and/or `00011.c`, and one backend scalar local case if supported.
+- Confirm current object, asm, runtime, qemu, c_testsuite, smoke, scan, and
+  dual-route labels plus representative test names.
+- Inspect or dry-run the next RV64 runtime and AArch64 object-byte candidates
+  under `/tmp`.
+- Decide whether parent 334 can add more selectable scan cases directly or
+  whether remaining failures require another focused target-emitter child.
+- Record the Step 2 owned files, proof command, unsupported/default-policy
+  boundaries, and candidate decision in `todo.md`.
 
 Completion check:
 
-- New object-byte scan cases pass through native AArch64 ELF bytes, and the
-  existing 37-test baseline remains green in the focused proof subset.
+- `todo.md` records the 39/39 baseline, current selector map, next candidate
+  decision, and exact Step 2 proof command or split recommendation.
 
-## Step 3: Add AArch64 Selected Scalar Multiply Object Support
+## Step 2: Add Or Split Next Object Scan Packet
 
-Goal: support the selected multiply family needed by c-testsuite `00012.c` if
-it is not already handled by Step 2.
+Goal: either add the next passing selectable object scan cases or split a
+focused child for target-owned gaps.
 
 Actions:
 
-- Extend AArch64 object emission for the selected `mul` machine record shape.
-- Add focused object-emitter encoding coverage.
-- Restore `00012.c` as an AArch64 object-byte scan case if the route is
-  otherwise supported.
+- If green candidates are identified, register them beside existing helpers
+  without changing defaults or asm behavior.
+- If blockers are target-emitter capability gaps, create or request a focused
+  child idea and park parent 334 with durable resume notes.
+- Run the packet proof selected by the supervisor.
+- Update `todo.md` with proof and next default-readiness or split handoff.
 
 Completion check:
 
-- c-testsuite `00012.c` passes as native AArch64 object-byte output, and
-  existing AArch64 scalar object cases remain green.
+- Parent-owned scan additions are green, or lifecycle state is coherently
+  split to a focused child before default-readiness work continues.
 
-## Step 4: Validate Expanded AArch64 Object Frontier
+## Step 3: Default-Readiness Decision
 
-Goal: prove the child’s accepted scan additions and hand back to parent idea
-334.
+Goal: decide whether native object output can become the default backend route
+or should remain a documented dual-route option.
 
 Actions:
 
-- Run the focused proof including AArch64 object-emitter tests, AArch64 object
-  scan cases, existing RV64 object runtime baseline selectors, and asm-route
-  smokes.
-- Record commands, result counts, remaining unsupported target boundaries, and
-  parent handoff in `todo.md`.
+- Review the accumulated object-route scan evidence and unresolved boundaries.
+- Compare asm-route and object-route coverage that remains selected.
+- Record the default-route recommendation with exact dates, commands, result
+  counts, and rationale.
+- Do not change defaults unless the evidence supports it and the supervisor
+  delegates that implementation explicitly.
 
 Completion check:
 
-- `todo.md` records a green expanded baseline and explicitly says whether idea
-  334 can resume default-readiness or needs another focused child.
+- `todo.md` records a defensible default-readiness recommendation and any
+  required follow-up ideas for unresolved object-route gaps.

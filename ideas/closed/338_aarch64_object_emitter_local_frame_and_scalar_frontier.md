@@ -91,3 +91,29 @@ evidence and should not proceed based on RV64-only growth.
   behind renamed helpers or a broader abstraction.
 - The final proof omits the new object-byte scan cases or does not preserve the
   existing 37/37 object-route smoke baseline.
+
+## Closure Note
+
+Closed after completing the focused AArch64 object frontier and handing the
+expanded baseline back to parent idea 334.
+
+- Added AArch64 selected leaf fixed-frame stack adjustment object support
+  without link-register preservation.
+- Added selected frame-slot scalar load/store object support for prepared
+  base-plus-offset frame-slot memory, including immediate stores through the
+  reserved MIR scratch GPR.
+- Restored `backend_cli_aarch64_cts_00011_writes_elf_obj`.
+- Added selected GPR scalar multiply object support for register-register and
+  small-immediate materialization through the reserved scratch GPR.
+- Restored `backend_cli_aarch64_cts_00012_writes_elf_obj`.
+- Final expanded proof:
+  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_(return_zero|return_add|two_arg_helper|two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call|return_add_sub_chain|local_temp)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1`
+- Result: 39/39 tests passed. Close-time regression guard passed against the
+  rolled 39/39 baseline.
+
+Remaining object-route/default-readiness boundaries belong back in parent idea
+334: saved-callee/local-call-frame expansion for `00003.c`, `param_slot.c`,
+and `two_arg_*_rewrite.c`; branch/control-flow and branch/global c-testsuite
+families; AArch64 runtime; globals/data; pointers; aggregates; byval;
+indirect calls; RV64; x86; object stdout; c-testsuite defaults; and
+semantic-BIR object mode.

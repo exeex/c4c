@@ -104,26 +104,28 @@ object stdout, c-testsuite object defaults, and semantic-BIR object mode remain
 outside the completed child and should be handled deliberately by scan results
 or focused follow-up ideas.
 
-## Parked For Focused Child 338
+## Resume State After Focused Child 338
 
-Step 3 triage after the 37/37 expanded baseline found that the next balanced
-object-route/default-readiness work is blocked by target object-emitter
-capability, not by scan harness, CLI, object writer, linker/toolchain, or
-runtime failures.
+Resumed after focused child
+`ideas/closed/338_aarch64_object_emitter_local_frame_and_scalar_frontier.md`
+repaired the AArch64 target-owned local-frame and scalar multiply object gaps
+found after the 37/37 expanded baseline.
 
-- AArch64 local/frame-memory candidates such as c-testsuite `src/00003.c`,
-  `src/00011.c`, backend `param_slot.c`, and representative
-  `two_arg_*_rewrite.c` cases reject in target object emission because selected
-  fixed-frame local-memory support is missing.
-- AArch64 c-testsuite `src/00012.c` reaches selected scalar arithmetic but
-  needs multiply object encoding.
-- RV64 has some additional green object candidates, but relying on RV64-only
-  scan growth would not support a balanced default-readiness recommendation.
+- AArch64 object-byte c-testsuite `src/00011.c` is restored through selected
+  leaf fixed-frame stack adjustment and frame-slot scalar load/store support.
+- AArch64 object-byte c-testsuite `src/00012.c` is restored through selected
+  GPR scalar multiply object support.
+- Expanded proof command:
+  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_(return_zero|return_add|two_arg_helper|two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call|return_add_sub_chain|local_temp)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1`
+- Result: 39/39 tests passed, with non-decreasing regression guard against the
+  rolled baseline.
 
-Idea `ideas/open/338_aarch64_object_emitter_local_frame_and_scalar_frontier.md`
-is activated to repair the AArch64 target-owned gap first. Keep the 37/37
-expanded object-route smoke baseline as the parent baseline while 338 is
-active.
+Continue this umbrella from the 39/39 expanded green baseline. Remaining
+boundaries include saved-callee/local-call-frame expansion for `00003.c`,
+`param_slot.c`, and `two_arg_*_rewrite.c`; branch/control-flow and
+branch/global c-testsuite families; AArch64 runtime; globals/data; pointers;
+aggregates; byval; indirect calls; RV64; x86 object output; object stdout;
+c-testsuite object defaults; and semantic-BIR object mode.
 
 ## Reviewer Reject Signals
 
