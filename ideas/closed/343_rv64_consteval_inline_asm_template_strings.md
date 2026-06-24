@@ -158,3 +158,13 @@ use that representation instead of inventing a parallel one.
   helper-style `.insn.d` object proof were complete, but this idea should not
   move to close review until that broad-proof blocker is resolved, explicitly
   baselined, or otherwise dispositioned by the supervisor.
+- 2026-06-24: Close accepted after the unrelated RV64 pointer-typed select
+  publication self-move blocker was resolved in commit `72ff5d74`. The accepted
+  implementation folds compile-time inline asm template string expressions into
+  the literal-template path, preserves literal asm behavior, rejects runtime
+  template strings, covers adjacent and helper-style `.insn.d` string assembly,
+  and proves helper-built RV64 EV `.insn.d` object emission matches the literal
+  byte sequence. The close gate used canonical full-suite logs:
+  `test_before.log` had 3344/3345 passing with only the unrelated self-move
+  blocker failing, `test_after.log` had 3345/3345 passing, and
+  `c4c-regression-guard` reported PASS.
