@@ -1,43 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/342_rv64_ev_insn_d_inline_asm_stage3.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Encode EV 64-Bit Fields
+Current Step ID: 4
+Current Step Title: Integrate With Object Emission And Existing Inline Asm Behavior
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 encoded the classified positional RV64 EV `.insn.d` shape into
-target-owned 64-bit instruction bytes and wired the prepared inline-asm object
-path to emit them.
+Step 4 added focused integration coverage proving the prepared RV64 object path
+can emit existing scalar `.insn r` inline asm and the new EV `.insn.d` inline
+asm in one function without breaking the existing return path.
 
-- Added `encode_rv64_ev_insn_d_inline_asm` with field-width validation:
-  7-bit EV namespace opcode, 8-bit EV operation, 16-bit dtype/policy, and
-  5-bit allocated register fields for destination/lhs/rhs/accumulator.
-- Added little-endian 64-bit byte append support for the object fragment path.
-- The first supported layout keeps minor `funct3`, `funct2`, and high
-  `opcode8` fields fixed at zero while encoding grouped vector operands by
-  their allocated base register.
-- Added object-emission tests proving `.insn.d %4, %5, %0, %1, %2, %3, %6`
-  emits `0x0000030b10620a0a` as eight little-endian text bytes and rejects
-  out-of-range immediate fields.
+- Added mixed prepared object coverage that emits `.insn r` bytes
+  `0x007302b3`, EV `.insn.d` bytes `0x0000030b10620a0a`, the preserved return
+  move `0x00028513`, and `ret` in order.
+- Reused the existing vector-constraint `.insn.d` carrier and the existing
+  scalar `.insn r` prepared fixture so the test covers route integration rather
+  than a separate hand-built object fragment.
+- Existing `.insn r`, tied-input `.insn r`, vector substitution, and standalone
+  `.insn.d` object coverage still pass in the focused object-emission
+  executable.
 
 ## Suggested Next
 
-Delegate Step 4 to add any desired mixed `.insn`/`.insn.d` prepared object
-coverage while preserving existing scalar `.insn` and vector substitution
-behavior.
+Supervisor should review and commit the Step 4 test-only integration slice, or
+move to the next lifecycle packet if broader route review is desired.
 
 ## Watchouts
 
-- The selected Step 3 layout maps the first immediate (`EV64`) to low
-  `opcode7`, the second immediate (`EVADD`) to bits 39:32, and dtype/policy to
-  bits 55:40; `funct3`, `funct2`, and high `opcode8` remain fixed zero for the
-  first shape.
+- No production implementation change was needed; the mixed prepared object
+  route passed with the existing `.insn.d`-first then `.insn r` fallback
+  dispatch.
 - Named operands, `%c[...]`, masks, consteval strings, relocations, and broad
   EV operation semantics remain rejected or out of scope.
-- The proof still shows the known unrelated baseline failure
+- The backend proof still shows the known unrelated baseline failure
   `backend_codegen_route_riscv64_pointer_typed_select_publication`.
 
 ## Proof
@@ -47,5 +44,5 @@ Ran exactly:
 
 Result: build succeeded and the backend subset ran. `test_after.log` contains
 one failing test, the known unrelated baseline failure
-`backend_codegen_route_riscv64_pointer_typed_select_publication`; the new
-`backend_riscv_object_emission` `.insn.d` coverage passed.
+`backend_codegen_route_riscv64_pointer_typed_select_publication`; the new mixed
+`backend_riscv_object_emission` `.insn r` plus `.insn.d` coverage passed.

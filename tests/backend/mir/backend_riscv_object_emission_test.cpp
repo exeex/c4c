@@ -981,6 +981,52 @@ prepare::PreparedBirModule make_prepared_inline_asm_insn_d_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_mixed_inline_asm_insn_module() {
+  auto prepared = make_prepared_inline_asm_insn_r_module();
+  auto carrier = make_prepared_insn_d_carrier();
+
+  bir::CallInst call;
+  call.result = bir::Value::named(bir::TypeKind::I32, "%vd");
+  call.callee = "llvm.inline_asm";
+  call.args = {
+      bir::Value::named(bir::TypeKind::I32, "%a"),
+      bir::Value::named(bir::TypeKind::I32, "%b"),
+      bir::Value::named(bir::TypeKind::I32, "%c"),
+      bir::Value::immediate_i32(static_cast<std::int32_t>(carrier.operands[4]
+                                                              .immediate_value
+                                                              .value_or(0))),
+      bir::Value::immediate_i32(static_cast<std::int32_t>(carrier.operands[5]
+                                                              .immediate_value
+                                                              .value_or(0))),
+      bir::Value::immediate_i32(static_cast<std::int32_t>(carrier.operands[6]
+                                                              .immediate_value
+                                                              .value_or(0))),
+  };
+  call.arg_types = {bir::TypeKind::I32,
+                    bir::TypeKind::I32,
+                    bir::TypeKind::I32,
+                    bir::TypeKind::I32,
+                    bir::TypeKind::I32,
+                    bir::TypeKind::I32};
+  call.return_type = bir::TypeKind::I32;
+  call.inline_asm = bir::InlineAsmMetadata{
+      .asm_text = carrier.asm_text,
+      .constraints = carrier.constraints,
+      .side_effects = true,
+  };
+
+  auto& function = prepared.module.functions.front();
+  function.blocks.front().insts.push_back(call);
+
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  carrier.function_name = function_name;
+  carrier.block_index = 0;
+  carrier.inst_index = 1;
+  prepared.inline_asm_carriers.functions.front().carriers.push_back(
+      std::move(carrier));
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_local_register_arg_call_module() {
   prepare::PreparedBirModule prepared;
   const auto callee_name = prepared.names.function_names.intern("add_pair");
@@ -2000,6 +2046,33 @@ int builds_prepared_inline_asm_insn_d_object() {
   return 0;
 }
 
+int builds_prepared_mixed_inline_asm_insn_object() {
+  const auto prepared = make_prepared_mixed_inline_asm_insn_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected mixed prepared RV64 inline-asm object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected mixed inline-asm object to publish text/main");
+  }
+  if (text->bytes.size() != 20 || text->size_bytes != 20 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 20) {
+    return fail("expected mixed inline-asm object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x007302b3 ||
+      read_u64(text->bytes, 4) != 0x0000030b10620a0aull ||
+      read_u32(text->bytes, 12) != 0x00028513 ||
+      read_u32(text->bytes, 16) != 0x00008067) {
+    return fail("expected .insn r, EV .insn.d, and return bytes in order");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected mixed inline-asm object to need no relocations");
+  }
+  return 0;
+}
+
 int rejects_prepared_inline_asm_insn_d_out_of_range_object() {
   auto carrier = make_prepared_insn_d_carrier();
   carrier.operands[6].immediate_value = std::int64_t{0x10000};
@@ -2442,6 +2515,7 @@ int main() {
   status |= encodes_prepared_inline_asm_insn_d_positional_shape();
   status |= rejects_prepared_inline_asm_insn_d_out_of_range_fields();
   status |= builds_prepared_inline_asm_insn_d_object();
+  status |= builds_prepared_mixed_inline_asm_insn_object();
   status |= rejects_prepared_inline_asm_insn_d_out_of_range_object();
   status |= rejects_prepared_inline_asm_insn_d_missing_field_shape();
   status |= rejects_prepared_inline_asm_insn_d_extra_field_shape();
