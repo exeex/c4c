@@ -75,3 +75,31 @@ minimal but real subset.
   policy instead of staying on minimal RV64 object emission.
 - The object file is structurally present but not linkable for the claimed
   supported subset.
+
+## Completion Note
+
+Closed after the active child runbook completed the minimal RV64 relocatable
+object emission scope. The implemented path keeps RV64 object emission
+target-owned, builds structured encoded fragments and typed fixups, lowers the
+supported subset into the shared object model, emits RV64 ELF objects through a
+target wrapper, proves direct-call relocation output, and adds structural
+`pcrel_hi` / `pcrel_lo` pairing coverage with low relocations tied to a
+synthetic AUIPC-site label.
+
+The accepted scope is intentionally narrow: prepared-backed `.text`, direct
+void calls, function symbols, direct-call relocations, focused structural RV64
+object tests, readelf/llvm-objdump/`ld -r` object proof, and nearby asm-route
+coverage. Later child ideas retain CLI `--codegen obj` exposure, c-testsuite
+object integration, default-route readiness scans, runtime smoke, global
+storage, `.data`, `.bss`, `.rodata`, `PcrelLo12S`, GOT/TLS, relaxation,
+compressed instruction policy, and broader RV64 object subset expansion.
+
+Close gate used a matched backend-focused guard:
+
+```sh
+set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_riscv_object_emission|backend_object_model_records|backend_riscv_prepared_edge_publication|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path|backend_codegen_route_riscv64_external_user_unresolved_diagnostic)$' --output-on-failure) > test_before.log 2>&1
+set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_riscv_object_emission|backend_object_model_records|backend_riscv_prepared_edge_publication|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path|backend_codegen_route_riscv64_external_user_unresolved_diagnostic)$' --output-on-failure) > test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: 5/5 passed before, 5/5 passed after, no regressions.
