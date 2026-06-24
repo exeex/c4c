@@ -41,6 +41,27 @@ struct RiscvObjectFunction {
   std::vector<RiscvEncodedFragment> fragments;
 };
 
+enum class RiscvInsnDInlineAsmRegisterBank {
+  Gpr,
+  Vector,
+};
+
+struct RiscvInsnDInlineAsmRegister {
+  RiscvInsnDInlineAsmRegisterBank bank = RiscvInsnDInlineAsmRegisterBank::Gpr;
+  std::uint32_t physical_index = 0;
+  std::size_t group_width = 1;
+};
+
+struct RiscvInsnDInlineAsmShape {
+  std::int64_t major = 0;
+  std::int64_t operation = 0;
+  RiscvInsnDInlineAsmRegister destination;
+  RiscvInsnDInlineAsmRegister lhs;
+  RiscvInsnDInlineAsmRegister rhs;
+  RiscvInsnDInlineAsmRegister accumulator;
+  std::int64_t dtype = 0;
+};
+
 [[nodiscard]] std::optional<std::uint32_t> rv64_elf_relocation_type(
     RiscvObjectFixupKind kind);
 
@@ -71,6 +92,10 @@ write_rv64_prepared_relocatable_elf_object(
     const c4c::backend::prepare::PreparedBirModule& prepared);
 
 [[nodiscard]] std::optional<std::string> substitute_prepared_riscv_inline_asm_operands(
+    const c4c::backend::prepare::PreparedInlineAsmCarrier& carrier);
+
+[[nodiscard]] std::optional<RiscvInsnDInlineAsmShape>
+classify_prepared_rv64_insn_d_inline_asm(
     const c4c::backend::prepare::PreparedInlineAsmCarrier& carrier);
 
 }  // namespace c4c::backend::riscv::codegen

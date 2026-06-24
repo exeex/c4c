@@ -678,6 +678,77 @@ prepare::PreparedValueHome rv64_vector_home(prepare::PreparedValueId value_id,
   };
 }
 
+prepare::PreparedInlineAsmCarrier make_prepared_insn_d_carrier(
+    std::string asm_text = ".insn.d %4, %5, %0, %1, %2, %3, %6") {
+  prepare::PreparedInlineAsmCarrier carrier{
+      .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete,
+      .asm_text = std::move(asm_text),
+      .constraints = "=VRM2,VRM2,VRM2,VRM2,i,i,i",
+      .side_effects = true,
+      .operands =
+          {
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterOutput,
+                  .constraint_index = 0,
+                  .constraint = "=VRM2",
+                  .output_index = std::size_t{0},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 2,
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterInput,
+                  .constraint_index = 1,
+                  .constraint = "VRM2",
+                  .arg_index = std::size_t{0},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 2,
+                  .home = rv64_vector_home(2, {}, {}, "v4", 4),
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterInput,
+                  .constraint_index = 2,
+                  .constraint = "VRM2",
+                  .arg_index = std::size_t{1},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 2,
+                  .home = rv64_vector_home(3, {}, {}, "v6", 6),
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterInput,
+                  .constraint_index = 3,
+                  .constraint = "VRM2",
+                  .arg_index = std::size_t{2},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 2,
+                  .home = rv64_vector_home(4, {}, {}, "v8", 8),
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::IntegerImmediateInput,
+                  .constraint_index = 4,
+                  .constraint = "i",
+                  .arg_index = std::size_t{3},
+                  .immediate_value = std::int64_t{0x0a},
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::IntegerImmediateInput,
+                  .constraint_index = 5,
+                  .constraint = "i",
+                  .arg_index = std::size_t{4},
+                  .immediate_value = std::int64_t{0x0b},
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::IntegerImmediateInput,
+                  .constraint_index = 6,
+                  .constraint = "i",
+                  .arg_index = std::size_t{5},
+                  .immediate_value = std::int64_t{0x03},
+              },
+          },
+      .result_home = rv64_vector_home(1, {}, {}, "v20", 20),
+  };
+  return carrier;
+}
+
 prepare::PreparedBirModule make_prepared_inline_asm_insn_r_module(
     std::string asm_text = ".insn r 0x33, 0, 0, %0, %1, %2",
     bool complete_carrier = true,
@@ -1778,6 +1849,99 @@ int rejects_prepared_inline_asm_insn_r_vector_home_object() {
   return 0;
 }
 
+int classifies_prepared_inline_asm_insn_d_positional_shape() {
+  const auto carrier = make_prepared_insn_d_carrier();
+  const auto shape = rv64::classify_prepared_rv64_insn_d_inline_asm(carrier);
+  if (!shape.has_value()) {
+    return fail("expected positional RV64 EV .insn.d shape to classify");
+  }
+  if (shape->major != 0x0a || shape->operation != 0x0b || shape->dtype != 0x03) {
+    return fail("expected .insn.d classifier to read prepared i immediates");
+  }
+  if (shape->destination.bank != rv64::RiscvInsnDInlineAsmRegisterBank::Vector ||
+      shape->destination.physical_index != 20 ||
+      shape->destination.group_width != 2 ||
+      shape->lhs.physical_index != 4 || shape->rhs.physical_index != 6 ||
+      shape->accumulator.physical_index != 8) {
+    return fail("expected .insn.d classifier to publish vector base register identities");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_missing_field_shape() {
+  const auto carrier = make_prepared_insn_d_carrier(
+      ".insn.d %4, %5, %0, %1, %2, %3");
+  if (rv64::classify_prepared_rv64_insn_d_inline_asm(carrier).has_value()) {
+    return fail("expected .insn.d classifier to reject missing positional field");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_extra_field_shape() {
+  const auto carrier = make_prepared_insn_d_carrier(
+      ".insn.d %4, %5, %0, %1, %2, %3, %6, %1");
+  if (rv64::classify_prepared_rv64_insn_d_inline_asm(carrier).has_value()) {
+    return fail("expected .insn.d classifier to reject extra positional field");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_literal_immediate_shape() {
+  const auto carrier = make_prepared_insn_d_carrier(
+      ".insn.d 0x0a, %5, %0, %1, %2, %3, %6");
+  if (rv64::classify_prepared_rv64_insn_d_inline_asm(carrier).has_value()) {
+    return fail("expected .insn.d classifier to require immediate placeholders");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_missing_immediate_value_shape() {
+  auto carrier = make_prepared_insn_d_carrier();
+  carrier.operands[4].immediate_value = std::nullopt;
+  if (rv64::classify_prepared_rv64_insn_d_inline_asm(carrier).has_value()) {
+    return fail("expected .insn.d classifier to require prepared compile-time immediates");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_register_in_immediate_slot_shape() {
+  const auto carrier = make_prepared_insn_d_carrier(
+      ".insn.d %1, %5, %0, %1, %2, %3, %6");
+  if (rv64::classify_prepared_rv64_insn_d_inline_asm(carrier).has_value()) {
+    return fail("expected .insn.d classifier to reject register operand in immediate field");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_unsupported_register_operand_shape() {
+  auto carrier = make_prepared_insn_d_carrier();
+  carrier.operands[1].kind = bir::InlineAsmOperandKind::MemoryInput;
+  if (rv64::classify_prepared_rv64_insn_d_inline_asm(carrier).has_value()) {
+    return fail("expected .insn.d classifier to reject unsupported register operand kind");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_named_operand_shape() {
+  auto carrier = make_prepared_insn_d_carrier(
+      ".insn.d %[major], %5, %0, %1, %2, %3, %6");
+  carrier.has_named_operand_references = true;
+  if (rv64::classify_prepared_rv64_insn_d_inline_asm(carrier).has_value()) {
+    return fail("expected .insn.d classifier to reject named operands");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_template_modifier_shape() {
+  auto carrier = make_prepared_insn_d_carrier(
+      ".insn.d %c4, %5, %0, %1, %2, %3, %6");
+  carrier.has_template_modifiers = true;
+  if (rv64::classify_prepared_rv64_insn_d_inline_asm(carrier).has_value()) {
+    return fail("expected .insn.d classifier to reject template modifiers");
+  }
+  return 0;
+}
+
 int rejects_prepared_inline_asm_insn_d_object() {
   const auto prepared = make_prepared_inline_asm_insn_r_module(
       ".insn.d 0x2b, 0, 0, %0, %1, %2");
@@ -2132,6 +2296,15 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_r_unsupported_operand_kind_object();
   status |= rejects_prepared_inline_asm_insn_r_unsupported_constraint_object();
   status |= rejects_prepared_inline_asm_insn_r_vector_home_object();
+  status |= classifies_prepared_inline_asm_insn_d_positional_shape();
+  status |= rejects_prepared_inline_asm_insn_d_missing_field_shape();
+  status |= rejects_prepared_inline_asm_insn_d_extra_field_shape();
+  status |= rejects_prepared_inline_asm_insn_d_literal_immediate_shape();
+  status |= rejects_prepared_inline_asm_insn_d_missing_immediate_value_shape();
+  status |= rejects_prepared_inline_asm_insn_d_register_in_immediate_slot_shape();
+  status |= rejects_prepared_inline_asm_insn_d_unsupported_register_operand_shape();
+  status |= rejects_prepared_inline_asm_insn_d_named_operand_shape();
+  status |= rejects_prepared_inline_asm_insn_d_template_modifier_shape();
   status |= rejects_prepared_inline_asm_insn_d_object();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= serializes_rv64_relocatable_elf_contract();

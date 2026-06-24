@@ -302,6 +302,31 @@ std::optional<std::uint32_t> rv64_register_number_for_inline_asm_operand(
   return std::nullopt;
 }
 
+std::optional<std::vector<std::string_view>> split_rv64_insn_fields(
+    std::string_view text,
+    std::size_t expected_count) {
+  std::vector<std::string_view> fields;
+  while (true) {
+    const std::size_t comma = text.find(',');
+    const bool last = comma == std::string_view::npos;
+    fields.push_back(trim_ascii(last ? text : text.substr(0, comma)));
+    if (last) {
+      break;
+    }
+    text.remove_prefix(comma + 1);
+    if (fields.size() == expected_count) {
+      return std::nullopt;
+    }
+  }
+  if (fields.size() != expected_count ||
+      std::any_of(fields.begin(), fields.end(), [](std::string_view field) {
+        return field.empty();
+      })) {
+    return std::nullopt;
+  }
+  return fields;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_rv64_insn_r_inline_asm(
     const c4c::backend::prepare::PreparedInlineAsmCarrier* carrier,
     const c4c::backend::bir::CallInst& call) {
@@ -325,32 +350,17 @@ std::optional<RiscvEncodedFragment> fragment_for_rv64_insn_r_inline_asm(
   text.remove_prefix(prefix.size());
   text = trim_ascii(text);
 
-  std::vector<std::string_view> fields;
-  while (true) {
-    const std::size_t comma = text.find(',');
-    const bool last = comma == std::string_view::npos;
-    fields.push_back(trim_ascii(last ? text : text.substr(0, comma)));
-    if (last) {
-      break;
-    }
-    text.remove_prefix(comma + 1);
-    if (fields.size() == 6) {
-      return std::nullopt;
-    }
-  }
-  if (fields.size() != 6 ||
-      std::any_of(fields.begin(), fields.end(), [](std::string_view field) {
-        return field.empty();
-      })) {
+  const auto fields = split_rv64_insn_fields(text, 6);
+  if (!fields.has_value()) {
     return std::nullopt;
   }
 
-  const auto opcode = parse_rv64_insn_u32(fields[0], 0x7f);
-  const auto funct3 = parse_rv64_insn_u32(fields[1], 0x7);
-  const auto funct7 = parse_rv64_insn_u32(fields[2], 0x7f);
-  const auto rd = rv64_register_number_for_inline_asm_operand(*carrier, fields[3]);
-  const auto rs1 = rv64_register_number_for_inline_asm_operand(*carrier, fields[4]);
-  const auto rs2 = rv64_register_number_for_inline_asm_operand(*carrier, fields[5]);
+  const auto opcode = parse_rv64_insn_u32((*fields)[0], 0x7f);
+  const auto funct3 = parse_rv64_insn_u32((*fields)[1], 0x7);
+  const auto funct7 = parse_rv64_insn_u32((*fields)[2], 0x7f);
+  const auto rd = rv64_register_number_for_inline_asm_operand(*carrier, (*fields)[3]);
+  const auto rs1 = rv64_register_number_for_inline_asm_operand(*carrier, (*fields)[4]);
+  const auto rs2 = rv64_register_number_for_inline_asm_operand(*carrier, (*fields)[5]);
   if (!opcode.has_value() || !funct3.has_value() || !funct7.has_value() ||
       !rd.has_value() || !rs1.has_value() || !rs2.has_value()) {
     return std::nullopt;
@@ -1110,6 +1120,135 @@ std::optional<std::string> substitute_positional_riscv_inline_asm_operands(
   return result;
 }
 
+std::optional<std::size_t> parse_positional_inline_asm_placeholder(
+    std::string_view token) {
+  token = trim_ascii(token);
+  if (token.size() < 2 || token.front() != '%') {
+    return std::nullopt;
+  }
+  token.remove_prefix(1);
+  if (token.empty() || token.front() == '[' || token.front() == 'c') {
+    return std::nullopt;
+  }
+  std::size_t operand_index = 0;
+  const char* const begin = token.data();
+  const char* const end = token.data() + token.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, operand_index);
+  if (ec != std::errc{} || ptr != end) {
+    return std::nullopt;
+  }
+  return operand_index;
+}
+
+const prepare::PreparedInlineAsmOperand* prepared_inline_asm_operand_by_constraint_index(
+    const prepare::PreparedInlineAsmCarrier& carrier,
+    std::size_t constraint_index) {
+  const prepare::PreparedInlineAsmOperand* found = nullptr;
+  for (const auto& operand : carrier.operands) {
+    if (operand.constraint_index != constraint_index) {
+      continue;
+    }
+    if (found != nullptr) {
+      return nullptr;
+    }
+    found = &operand;
+  }
+  return found;
+}
+
+std::optional<std::int64_t> insn_d_immediate_operand_value(
+    const prepare::PreparedInlineAsmCarrier& carrier,
+    std::string_view token) {
+  const auto operand_index = parse_positional_inline_asm_placeholder(token);
+  if (!operand_index.has_value()) {
+    return std::nullopt;
+  }
+  const auto* operand =
+      prepared_inline_asm_operand_by_constraint_index(carrier, *operand_index);
+  if (operand == nullptr ||
+      operand->kind != c4c::backend::bir::InlineAsmOperandKind::
+                           IntegerImmediateInput ||
+      operand->constraint != "i" || !operand->arg_index.has_value() ||
+      !operand->immediate_value.has_value()) {
+    return std::nullopt;
+  }
+  return *operand->immediate_value;
+}
+
+std::optional<RiscvInsnDInlineAsmRegister> insn_d_register_from_home(
+    const prepare::PreparedValueHome& home,
+    c4c::backend::bir::InlineAsmRegisterClass register_class,
+    std::size_t group_width) {
+  if (home.kind != prepare::PreparedValueHomeKind::Register ||
+      !home.target_register_identity.has_value()) {
+    return std::nullopt;
+  }
+  const auto& identity = *home.target_register_identity;
+  if (identity.target_arch != c4c::TargetArch::Riscv64 ||
+      identity.physical_index > 31) {
+    return std::nullopt;
+  }
+  RiscvInsnDInlineAsmRegister result;
+  switch (register_class) {
+    case c4c::backend::bir::InlineAsmRegisterClass::General:
+      if (identity.bank != prepare::PreparedRegisterBank::Gpr ||
+          identity.register_class != prepare::PreparedRegisterClass::General) {
+        return std::nullopt;
+      }
+      result.bank = RiscvInsnDInlineAsmRegisterBank::Gpr;
+      break;
+    case c4c::backend::bir::InlineAsmRegisterClass::Vector:
+      if (identity.bank != prepare::PreparedRegisterBank::Vreg ||
+          identity.register_class != prepare::PreparedRegisterClass::Vector) {
+        return std::nullopt;
+      }
+      result.bank = RiscvInsnDInlineAsmRegisterBank::Vector;
+      break;
+    case c4c::backend::bir::InlineAsmRegisterClass::None:
+      return std::nullopt;
+  }
+  result.physical_index = static_cast<std::uint32_t>(identity.physical_index);
+  result.group_width = group_width == 0 ? 1 : group_width;
+  return result;
+}
+
+std::optional<RiscvInsnDInlineAsmRegister> insn_d_register_operand(
+    const prepare::PreparedInlineAsmCarrier& carrier,
+    std::string_view token,
+    bool output) {
+  const auto operand_index = parse_positional_inline_asm_placeholder(token);
+  if (!operand_index.has_value()) {
+    return std::nullopt;
+  }
+  const auto* operand =
+      prepared_inline_asm_operand_by_constraint_index(carrier, *operand_index);
+  if (operand == nullptr) {
+    return std::nullopt;
+  }
+  if (output) {
+    if (operand->kind != c4c::backend::bir::InlineAsmOperandKind::RegisterOutput ||
+        !operand->output_index.has_value() || *operand->output_index != 0 ||
+        !carrier.result_home.has_value()) {
+      return std::nullopt;
+    }
+    return insn_d_register_from_home(
+        *carrier.result_home, operand->register_class, operand->register_group_width);
+  }
+  if (operand->kind != c4c::backend::bir::InlineAsmOperandKind::RegisterInput &&
+      operand->kind != c4c::backend::bir::InlineAsmOperandKind::TiedInput) {
+    return std::nullopt;
+  }
+  if (!operand->arg_index.has_value() || !operand->home.has_value()) {
+    return std::nullopt;
+  }
+  if (operand->kind == c4c::backend::bir::InlineAsmOperandKind::TiedInput &&
+      !is_decimal_inline_asm_tie(operand->constraint)) {
+    return std::nullopt;
+  }
+  return insn_d_register_from_home(
+      *operand->home, operand->register_class, operand->register_group_width);
+}
+
 }  // namespace
 
 std::optional<std::string> substitute_prepared_riscv_inline_asm_operands(
@@ -1147,6 +1286,54 @@ std::optional<std::string> substitute_prepared_riscv_inline_asm_operands(
   return substitute_positional_riscv_inline_asm_operands(
       carrier.asm_text,
       gcc_operand_registers);
+}
+
+std::optional<RiscvInsnDInlineAsmShape> classify_prepared_rv64_insn_d_inline_asm(
+    const c4c::backend::prepare::PreparedInlineAsmCarrier& carrier) {
+  namespace prepare = c4c::backend::prepare;
+  if (carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      carrier.has_named_operand_references || carrier.has_template_modifiers ||
+      !carrier.clobbers.empty() || !carrier.missing_required_facts.empty()) {
+    return std::nullopt;
+  }
+
+  std::string_view text = trim_ascii(carrier.asm_text);
+  constexpr std::string_view prefix = ".insn.d";
+  if (text.size() < prefix.size() || text.substr(0, prefix.size()) != prefix ||
+      (text.size() > prefix.size() && text[prefix.size()] != ' ' &&
+       text[prefix.size()] != '\t')) {
+    return std::nullopt;
+  }
+  text.remove_prefix(prefix.size());
+  text = trim_ascii(text);
+
+  const auto fields = split_rv64_insn_fields(text, 7);
+  if (!fields.has_value()) {
+    return std::nullopt;
+  }
+
+  auto major = insn_d_immediate_operand_value(carrier, (*fields)[0]);
+  auto operation = insn_d_immediate_operand_value(carrier, (*fields)[1]);
+  auto destination = insn_d_register_operand(carrier, (*fields)[2], true);
+  auto lhs = insn_d_register_operand(carrier, (*fields)[3], false);
+  auto rhs = insn_d_register_operand(carrier, (*fields)[4], false);
+  auto accumulator = insn_d_register_operand(carrier, (*fields)[5], false);
+  auto dtype = insn_d_immediate_operand_value(carrier, (*fields)[6]);
+  if (!major.has_value() || !operation.has_value() || !destination.has_value() ||
+      !lhs.has_value() || !rhs.has_value() || !accumulator.has_value() ||
+      !dtype.has_value()) {
+    return std::nullopt;
+  }
+
+  return RiscvInsnDInlineAsmShape{
+      .major = *major,
+      .operation = *operation,
+      .destination = *destination,
+      .lhs = *lhs,
+      .rhs = *rhs,
+      .accumulator = *accumulator,
+      .dtype = *dtype,
+  };
 }
 
 std::optional<std::uint32_t> rv64_elf_relocation_type(
