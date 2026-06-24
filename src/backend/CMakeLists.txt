@@ -38,6 +38,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/memory.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/memory_store_retargeting.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/module_compile.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/object_emission.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/operands.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/peephole.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/prologue.cpp"
