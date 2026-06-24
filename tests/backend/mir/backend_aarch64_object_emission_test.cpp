@@ -299,6 +299,70 @@ aarch64::InstructionRecord selected_non_leaf_frame(
   });
 }
 
+aarch64::InstructionRecord selected_leaf_frame(
+    aarch64::FrameInstructionKind kind) {
+  static const prepare::PreparedFramePlanFunction kLeafFramePlan{
+      .function_name = c4c::FunctionNameId{3},
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+      .frame_slot_order = {prepare::PreparedFrameSlotId{1}},
+  };
+  return aarch64::make_frame_instruction(aarch64::FrameInstructionRecord{
+      .frame_kind = kind,
+      .function_name = c4c::FunctionNameId{3},
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+      .frame_slot_order = {prepare::PreparedFrameSlotId{1}},
+      .source_frame = &kLeafFramePlan,
+  });
+}
+
+aarch64::MemoryOperand frame_slot_address(std::int64_t byte_offset,
+                                          std::size_t size_bytes) {
+  return aarch64::MemoryOperand{
+      .support = aarch64::MemoryOperandSupportKind::Prepared,
+      .function_name = c4c::FunctionNameId{3},
+      .block_label = c4c::BlockLabelId{1},
+      .base_kind = aarch64::MemoryBaseKind::FrameSlot,
+      .frame_slot_id = prepare::PreparedFrameSlotId{1},
+      .byte_offset = byte_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = size_bytes,
+      .align_bytes = size_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+aarch64::InstructionRecord selected_frame_slot_store_immediate(
+    std::int64_t byte_offset,
+    std::int64_t value) {
+  return aarch64::make_memory_instruction(aarch64::MemoryInstructionRecord{
+      .memory_kind = aarch64::MemoryInstructionKind::Store,
+      .address = frame_slot_address(byte_offset, 4),
+      .value = aarch64::make_immediate_operand(
+          signed_i32_immediate(value, prepare::PreparedValueId{30})),
+      .value_type = bir::TypeKind::I32,
+  });
+}
+
+aarch64::InstructionRecord selected_frame_slot_load_w13(std::int64_t byte_offset) {
+  auto address = frame_slot_address(byte_offset, 4);
+  address.result_value_id = prepare::PreparedValueId{31};
+  address.result_value_name = c4c::ValueNameId{31};
+  return aarch64::make_memory_instruction(aarch64::MemoryInstructionRecord{
+      .memory_kind = aarch64::MemoryInstructionKind::Load,
+      .address = address,
+      .result_value_id = prepare::PreparedValueId{31},
+      .result_value_name = c4c::ValueNameId{31},
+      .value_type = bir::TypeKind::I32,
+      .result_register =
+          w_register(13,
+                     prepare::PreparedValueId{31},
+                     c4c::ValueNameId{31},
+                     aarch64::RegisterOperandRole::StoragePlan),
+  });
+}
+
 aarch64::InstructionRecord machine_alu_immediate_w0(
     aarch64::ScalarAluOperationKind operation,
     bir::BinaryOpcode opcode,
@@ -901,6 +965,60 @@ int builds_selected_register_register_scalar_call_machine_object() {
   return 0;
 }
 
+int builds_selected_leaf_frame_slot_memory_machine_object() {
+  const auto function = machine_function({
+      machine_instruction(
+          selected_leaf_frame(aarch64::FrameInstructionKind::PrologueSetup)),
+      machine_instruction(selected_frame_slot_store_immediate(4, 0)),
+      machine_instruction(selected_frame_slot_store_immediate(0, 0)),
+      machine_instruction(selected_frame_slot_load_w13(0)),
+      machine_instruction(selected_register_move(
+          x_register(0,
+                     prepare::PreparedValueId{32},
+                     c4c::ValueNameId{32},
+                     aarch64::RegisterOperandRole::CallAbi),
+          x_register(13,
+                     prepare::PreparedValueId{31},
+                     c4c::ValueNameId{31},
+                     aarch64::RegisterOperandRole::StoragePlan))),
+      machine_instruction(
+          selected_leaf_frame(aarch64::FrameInstructionKind::EpilogueTeardown)),
+      machine_instruction(machine_return()),
+  });
+
+  const auto result = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "leaf_frame_slots",
+          .global = true,
+          .function = &function,
+      },
+  });
+  if (!result.ok()) {
+    return fail("expected selected leaf frame-slot memory records to emit object module");
+  }
+
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* symbol = object::find_symbol(*result.module, "leaf_frame_slots");
+  if (text == nullptr || text->size_bytes != 36 ||
+      !has_bytes(*text,
+                 {0xff, 0x43, 0x00, 0xd1,
+                  0x09, 0x00, 0x80, 0x52,
+                  0xe9, 0x07, 0x00, 0xb9,
+                  0x09, 0x00, 0x80, 0x52,
+                  0xe9, 0x03, 0x00, 0xb9,
+                  0xed, 0x03, 0x40, 0xb9,
+                  0xe0, 0x03, 0x0d, 0xaa,
+                  0xff, 0x43, 0x00, 0x91,
+                  0xc0, 0x03, 0x5f, 0xd6}) ||
+      symbol == nullptr ||
+      symbol->section != std::optional<object::SectionId>{text->id} ||
+      symbol->value != 0 || symbol->size_bytes != 36 ||
+      !result.module->relocations.empty()) {
+    return fail("expected leaf frame-slot memory object bytes with no relocations");
+  }
+  return 0;
+}
+
 int rejects_unsupported_machine_records_without_text_fallback() {
   const auto function = machine_function({
       machine_instruction(unsupported_machine_scalar()),
@@ -1172,6 +1290,10 @@ int main() {
   }
   if (const int status =
           builds_selected_register_register_scalar_call_machine_object();
+      status != 0) {
+    return status;
+  }
+  if (const int status = builds_selected_leaf_frame_slot_memory_machine_object();
       status != 0) {
     return status;
   }

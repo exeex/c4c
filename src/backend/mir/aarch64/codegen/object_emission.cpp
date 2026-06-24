@@ -236,6 +236,119 @@ std::optional<Aarch64EncodedFragment> scalar_add_sub_fragment(
   return fragment;
 }
 
+std::optional<std::uint32_t> stack_memory_base(const MemoryInstructionRecord& memory,
+                                               abi::RegisterView view) {
+  if (memory.address.support != MemoryOperandSupportKind::Prepared ||
+      !memory.address.can_use_base_plus_offset ||
+      memory.address.base_kind != MemoryBaseKind::FrameSlot ||
+      memory.address.uses_frame_pointer_base ||
+      memory.address.is_volatile ||
+      memory.address.byte_offset < 0 ||
+      (view == abi::RegisterView::W && memory.address.size_bytes != 4) ||
+      (view == abi::RegisterView::X && memory.address.size_bytes != 8)) {
+    return std::nullopt;
+  }
+
+  const auto scaled_offset =
+      static_cast<std::uint64_t>(memory.address.byte_offset) /
+      static_cast<std::uint64_t>(memory.address.size_bytes);
+  if ((static_cast<std::uint64_t>(memory.address.byte_offset) %
+       static_cast<std::uint64_t>(memory.address.size_bytes)) != 0 ||
+      scaled_offset > 0xfffu) {
+    return std::nullopt;
+  }
+
+  if (memory.memory_kind == MemoryInstructionKind::Load) {
+    return view == abi::RegisterView::X ? 0xf9400000u : 0xb9400000u;
+  }
+  return view == abi::RegisterView::X ? 0xf9000000u : 0xb9000000u;
+}
+
+std::optional<Aarch64EncodedFragment> memory_fragment(
+    const MemoryInstructionRecord& memory) {
+  constexpr std::uint32_t sp = 31u;
+
+  if (memory.memory_kind == MemoryInstructionKind::Load) {
+    if (!memory.result_register.has_value()) {
+      return std::nullopt;
+    }
+    const auto view = gpr_instruction_view(*memory.result_register);
+    if (!view.has_value()) {
+      return std::nullopt;
+    }
+    const auto base = stack_memory_base(memory, *view);
+    const auto rt = gpr_encoding_index(*memory.result_register, *view);
+    if (!base.has_value() || !rt.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto scaled_offset =
+        static_cast<std::uint32_t>(memory.address.byte_offset /
+                                  static_cast<std::int64_t>(memory.address.size_bytes));
+    Aarch64EncodedFragment fragment;
+    append_le32(fragment.bytes,
+                *base | (scaled_offset << 10u) | (sp << 5u) |
+                    static_cast<std::uint32_t>(*rt));
+    return fragment;
+  }
+
+  if (!memory.value.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* source_register =
+      std::get_if<RegisterOperand>(&memory.value->payload);
+  if (memory.value->kind == OperandKind::Register && source_register != nullptr) {
+    const auto view = gpr_instruction_view(*source_register);
+    if (!view.has_value()) {
+      return std::nullopt;
+    }
+    const auto base = stack_memory_base(memory, *view);
+    const auto rt = gpr_encoding_index(*source_register, *view);
+    if (!base.has_value() || !rt.has_value()) {
+      return std::nullopt;
+    }
+    const auto scaled_offset =
+        static_cast<std::uint32_t>(memory.address.byte_offset /
+                                  static_cast<std::int64_t>(memory.address.size_bytes));
+    Aarch64EncodedFragment fragment;
+    append_le32(fragment.bytes,
+                *base | (scaled_offset << 10u) | (sp << 5u) |
+                    static_cast<std::uint32_t>(*rt));
+    return fragment;
+  }
+
+  const auto* immediate = std::get_if<ImmediateOperand>(&memory.value->payload);
+  if (memory.value->kind == OperandKind::Immediate && immediate != nullptr) {
+    const auto scratch_index = abi::reserved_mir_scratch_gp_registers().front().index;
+    const auto scratch =
+        memory.address.size_bytes == 8 ? abi::x_register(scratch_index)
+                                       : abi::w_register(scratch_index);
+    RegisterOperand scratch_operand{
+        .reg = scratch,
+        .role = RegisterOperandRole::ReservedMirScratch,
+        .prepared_class = prepare::PreparedRegisterClass::General,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = scratch.view,
+        .contiguous_width = 1,
+    };
+    auto materialization = move_immediate_fragment(scratch_operand, *immediate);
+    const auto base = stack_memory_base(memory, scratch.view);
+    if (!materialization.has_value() || !base.has_value()) {
+      return std::nullopt;
+    }
+    const auto scaled_offset =
+        static_cast<std::uint32_t>(memory.address.byte_offset /
+                                  static_cast<std::int64_t>(memory.address.size_bytes));
+    append_le32(materialization->bytes,
+                *base | (scaled_offset << 10u) | (sp << 5u) |
+                    static_cast<std::uint32_t>(scratch.index));
+    return materialization;
+  }
+
+  return std::nullopt;
+}
+
 std::optional<Aarch64EncodedFragment> frame_fragment(
     const FrameInstructionRecord& frame) {
   if ((frame.frame_kind != FrameInstructionKind::PrologueSetup &&
@@ -243,10 +356,27 @@ std::optional<Aarch64EncodedFragment> frame_fragment(
       frame.frame_size_bytes == 0 || frame.frame_size_bytes > 0xfffu ||
       frame.frame_alignment_bytes == 0 || frame.has_dynamic_stack ||
       frame.uses_frame_pointer_for_fixed_slots || frame.preserves_frame_pointer ||
-      !frame.saved_callee_registers.empty() || frame.callee_save.has_value() ||
-      !frame.preserves_link_register ||
-      !frame.link_register_save_offset_bytes.has_value()) {
+      !frame.saved_callee_registers.empty() || frame.callee_save.has_value()) {
     return std::nullopt;
+  }
+
+  if (frame.preserves_link_register !=
+      frame.link_register_save_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto stack_adjust =
+      static_cast<std::uint32_t>(frame.frame_size_bytes);
+  constexpr std::uint32_t sp = 31u;
+  constexpr std::uint32_t lr = 30u;
+
+  Aarch64EncodedFragment fragment;
+  if (!frame.preserves_link_register) {
+    const std::uint32_t base =
+        frame.frame_kind == FrameInstructionKind::PrologueSetup ? 0xd1000000u
+                                                                : 0x91000000u;
+    append_le32(fragment.bytes, base | (stack_adjust << 10u) | (sp << 5u) | sp);
+    return fragment;
   }
 
   const auto link_offset = *frame.link_register_save_offset_bytes;
@@ -254,14 +384,7 @@ std::optional<Aarch64EncodedFragment> frame_fragment(
       (link_offset / 8U) > 0xfffu) {
     return std::nullopt;
   }
-
-  const auto stack_adjust =
-      static_cast<std::uint32_t>(frame.frame_size_bytes);
   const auto link_slot = static_cast<std::uint32_t>(link_offset / 8U);
-  constexpr std::uint32_t sp = 31u;
-  constexpr std::uint32_t lr = 30u;
-
-  Aarch64EncodedFragment fragment;
   if (frame.frame_kind == FrameInstructionKind::PrologueSetup) {
     append_le32(fragment.bytes,
                 0xd1000000u | (stack_adjust << 10u) | (sp << 5u) | sp);
@@ -353,6 +476,25 @@ std::optional<Aarch64EncodedFragment> fragment_for_machine_instruction(
                    block_index,
                    instruction_index,
                    "AArch64 object emission supports only selected fixed-size link-register frame setup/teardown");
+    return std::nullopt;
+  }
+
+  if (const auto* memory =
+          std::get_if<MemoryInstructionRecord>(&instruction.payload)) {
+    if ((instruction.opcode == MachineOpcode::Load ||
+         instruction.opcode == MachineOpcode::Store) &&
+        (memory->memory_kind == MemoryInstructionKind::Load ||
+         memory->memory_kind == MemoryInstructionKind::Store)) {
+      if (auto fragment = memory_fragment(*memory); fragment.has_value()) {
+        return fragment;
+      }
+    }
+    add_diagnostic(diagnostics,
+                   Aarch64ObjectEmissionDiagnosticKind::UnsupportedInstruction,
+                   function_name,
+                   block_index,
+                   instruction_index,
+                   "AArch64 object emission supports only selected frame-slot scalar loads/stores");
     return std::nullopt;
   }
 
