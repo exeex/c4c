@@ -116,3 +116,14 @@ operand constraints.
   string behavior before the Stage 1 scalar `.insn` path is proven.
 - Existing special cases are renamed or rearranged while the same `.insn`
   failure mode remains.
+
+## Lifecycle Note
+
+2026-06-24: Stage 1 implementation and runbook work are complete against the
+acceptance criteria. Closure was not accepted only because the strict
+before/after regression close gate rejected the unchanged backend baseline:
+both `test_before.log` and `test_after.log` reported 315/316 passing with the
+known unrelated
+`backend_codegen_route_riscv64_pointer_typed_select_publication` failure. The
+active runbook is parked rather than expanded into that unrelated baseline
+issue.
