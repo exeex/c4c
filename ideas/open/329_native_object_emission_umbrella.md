@@ -85,6 +85,15 @@ decomposition-oriented:
 The umbrella should not remain the active execution plan after the child idea
 queue has been created.
 
+## Lifecycle Note
+
+The first activation completed its research/decomposition pass and created the
+child queue under `ideas/open/330_native_object_model_and_emission_api.md`
+through `ideas/open/335_textual_assembler_object_route_followup.md`. Active
+execution has moved to child 330; keep this umbrella open until the child queue
+closes and final umbrella acceptance review confirms the children compose into
+native object-emission readiness.
+
 ## Child Idea Contract
 
 Each child idea must include:
