@@ -250,6 +250,46 @@ bool typespec_has_template_binding_carrier(const TypeSpec& ts) {
          !typespec_legacy_tag_if_present(ts, 0).empty();
 }
 
+bool explicit_text_or_no_metadata_name_allowed(
+    TextId source_text_id,
+    TextId canonical_name_text_id,
+    std::string_view rendered_name,
+    const std::unordered_set<TextId>& explicit_text_ids,
+    const std::unordered_set<std::string>& no_metadata_names) {
+  if (source_text_id != kInvalidText) {
+    return explicit_text_ids.find(source_text_id) != explicit_text_ids.end() ||
+           (canonical_name_text_id != kInvalidText &&
+            explicit_text_ids.find(canonical_name_text_id) !=
+                explicit_text_ids.end());
+  }
+  return no_metadata_names.find(std::string(rendered_name)) !=
+         no_metadata_names.end();
+}
+
+bool is_bare_vrm_register_carrier(const TypeSpec& ts) {
+  return ts.base == TB_VRM_REGISTER && ts.vrm_width > 0 &&
+         ts.ptr_level == 0 && ts.array_rank == 0 &&
+         !ts.is_lvalue_ref && !ts.is_rvalue_ref;
+}
+
+[[noreturn]] void throw_vrm_call_boundary_error(const Node* n,
+                                                const char* boundary,
+                                                int width) {
+  std::string diag =
+      "error: non-expanded VRM register carrier cannot cross function-call ABI boundary";
+  diag += " (";
+  diag += boundary;
+  diag += " c4c.vrm";
+  diag += std::to_string(width);
+  diag += ")";
+  if (n) {
+    diag += " (line ";
+    diag += std::to_string(n->line);
+    diag += ")";
+  }
+  throw std::runtime_error(diag);
+}
+
 }  // namespace
 
 std::optional<ExprId> Lowerer::try_lower_template_struct_call(FunctionCtx* ctx,
@@ -840,11 +880,71 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
                                   : (n->left && n->left->kind == NK_VAR && n->left->name
                                          ? direct_callee_fn(n->left->name)
                                          : nullptr);
+  auto callee_fn_ptr_sig = [&]() -> std::optional<FnPtrSig> {
+    if (!ctx || !n->left || n->left->kind != NK_VAR || !n->left->name) {
+      return std::nullopt;
+    }
+    const std::string name = n->left->name;
+    const TextId canonical_name_text_id = make_unqualified_text_id(
+        n->left, module_ ? module_->link_name_texts.get() : nullptr);
+    if (n->left->unqualified_text_id != kInvalidText) {
+      const auto local_it =
+          ctx->local_ids_by_text_id.find(n->left->unqualified_text_id);
+      if (local_it != ctx->local_ids_by_text_id.end()) {
+        if (ctx->local_fn_ptr_sigs_by_id.contains(local_it->second)) {
+          return ctx->local_fn_ptr_sigs_by_id.at(local_it->second);
+        }
+        return std::nullopt;
+      }
+      if (explicit_text_or_no_metadata_name_allowed(
+              n->left->unqualified_text_id, canonical_name_text_id, name,
+              ctx->rendered_compat_local_text_ids,
+              ctx->rendered_compat_local_names)) {
+        const auto lit = ctx->local_fn_ptr_sigs.find(name);
+        if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second;
+      }
+
+      const auto param_it =
+          ctx->param_indices_by_text_id.find(n->left->unqualified_text_id);
+      if (param_it != ctx->param_indices_by_text_id.end()) {
+        const auto sig_it = ctx->param_fn_ptr_sigs_by_index.find(param_it->second);
+        if (sig_it != ctx->param_fn_ptr_sigs_by_index.end()) {
+          return sig_it->second;
+        }
+        return std::nullopt;
+      }
+      if (explicit_text_or_no_metadata_name_allowed(
+              n->left->unqualified_text_id, canonical_name_text_id, name,
+              ctx->rendered_compat_param_text_ids,
+              ctx->rendered_compat_param_names)) {
+        const auto pit = ctx->param_fn_ptr_sigs.find(name);
+        if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second;
+      }
+    } else {
+      const auto lit = ctx->local_fn_ptr_sigs.find(name);
+      if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second;
+      const auto pit = ctx->param_fn_ptr_sigs.find(name);
+      if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second;
+    }
+    if (const std::optional<GlobalId> static_global =
+            lookup_static_global_bridge(*ctx, n->left, name)) {
+      if (const GlobalVar* gv = module_->find_global(*static_global)) {
+        if (gv->fn_ptr_sig) return *gv->fn_ptr_sig;
+      }
+    }
+    return std::nullopt;
+  }();
   for (int i = 0; i < n->n_children; ++i) {
     const TypeSpec* param_ts =
         (callee_fn && static_cast<size_t>(i) < callee_fn->params.size())
             ? &callee_fn->params[static_cast<size_t>(i)].type.spec
             : nullptr;
+    TypeSpec fn_ptr_param_ts{};
+    if (!param_ts && callee_fn_ptr_sig &&
+        static_cast<size_t>(i) < callee_fn_ptr_sig->params.size()) {
+      fn_ptr_param_ts = callee_fn_ptr_sig->params[static_cast<size_t>(i)].spec;
+      param_ts = &fn_ptr_param_ts;
+    }
     TypeSpec ast_param_ts{};
     if (n->children[i] && n->children[i]->kind == NK_INIT_LIST &&
         n->left && n->left->kind == NK_VAR && n->left->name) {
@@ -855,6 +955,10 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
         ast_param_ts = fn_node_it->second->params[i]->type;
         param_ts = &ast_param_ts;
       }
+    }
+    if (param_ts && is_bare_vrm_register_carrier(*param_ts)) {
+      throw_vrm_call_boundary_error(n->children[i], "parameter",
+                                    param_ts->vrm_width);
     }
     c.args.push_back(lower_call_arg(ctx, n->children[i], param_ts));
   }
@@ -869,6 +973,9 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
     bool known = false;
     TypeSpec kts = classify_known_call_return_type(n->left->name, &known);
     if (known) ts = kts;
+  }
+  if (is_bare_vrm_register_carrier(ts)) {
+    throw_vrm_call_boundary_error(n, "return", ts.vrm_width);
   }
   return append_expr(n, c, ts);
 }

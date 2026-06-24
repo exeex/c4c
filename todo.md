@@ -8,30 +8,28 @@ Current Step Title: Reject Non-Expanded VRM Call Boundaries
 
 ## Just Finished
 
-Step 5 validated the completed source-to-regalloc-frontier chain for
-`__c4c_builtin_vrm1`, `__c4c_builtin_vrm2`, `__c4c_builtin_vrm4`, and
-`__c4c_builtin_vrm8` without changing implementation files.
+Step 6 rejected non-expanded bare VRM carriers at real function-call ABI
+boundaries while preserving declaration-only signature carrier identity.
 
-Validated surfaces:
-- Parser/type and sema preserve dedicated VRM carrier identity for the four
-  builtin spellings instead of treating them as GCC vectors.
-- HIR and LIR dumps carry stable `c4c.vrmN` type refs through direct and
-  typedef spelling paths.
-- LIR-to-BIR lowering preserves `c4c.vrmN` as dedicated BIR value metadata.
-- Prepared inline asm validation accepts matching VRM carrier values for vector
-  register constraints and derives vector register class plus group width from
-  value type metadata.
-- Scalar negative behavior remains intact: scalar `long`/`I64` with grouped
-  vector constraints does not acquire VRM identity from constraint text alone
-  and rejects as an incompatible register class.
-- The delegated full build and full CTest suite completed successfully.
+Completed work:
+- Direct calls with bare `__c4c_builtin_vrm1/2/4/8` parameters now diagnose
+  during HIR call lowering before LIR/BIR call ABI lowering can invent a
+  convention.
+- Direct call expressions whose result type is bare `c4c.vrmN` now diagnose
+  before the result is materialized as an ordinary call value.
+- Explicit returns from functions returning bare `c4c.vrmN` now diagnose during
+  HIR statement lowering.
+- Function pointer calls use tracked local/parameter/global `FnPtrSig`
+  metadata to reject bare VRM parameters through the same call-boundary path.
+- Focused frontend LIR tests cover direct parameter, direct result, explicit
+  return, and reachable function-pointer parameter diagnostics while retaining
+  declaration-only VRM signature preservation and verifier drift checks.
 
 ## Suggested Next
 
-Execute Step 6 from `plan.md`: add diagnostic and negative proof that
-non-expanded function declarations, direct calls, function pointer calls where
-reachable, and returns carrying bare VRM values are rejected instead of
-lowering to an ordinary call ABI.
+Ask the plan owner to decide whether the active source idea can close or
+whether final allocation/substitution/object-byte follow-up should remain as a
+separate open initiative.
 
 ## Watchouts
 
@@ -41,10 +39,9 @@ lowering to an ordinary call ABI.
 - ABI and storage semantics remain intentionally narrow: ordinary call/return
   ABI lowering, memory storage, address-taking, arrays/members, arithmetic,
   casts, comparisons, and lane operations remain future work.
-- Source-idea closure is blocked until the non-expanded call-boundary
-  acceptance criterion has explicit diagnostic coverage. Existing VRM signature
-  identity fixtures are not enough because they can prove preservation while
-  still allowing a real call ABI boundary.
+- Step 6 intentionally rejects only bare VRM carriers with no pointer, array,
+  or reference layer; it does not implement VRM storage, memory, or ordinary C
+  ABI semantics.
 - Manual `PreparedRegisterGroupOverride` fixtures can still exercise regalloc
   mechanics on scalar-shaped values; source inline asm metadata no longer uses
   constraint strings alone to create vector identity.
@@ -53,11 +50,12 @@ lowering to an ordinary call ABI.
 
 ## Proof
 
-Ran delegated full-suite proof successfully:
-`bash -lc 'cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure >> test_after.log 2>&1'`.
+Ran delegated Step 6 proof successfully:
+`bash -lc 'cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R "^(negative_tests_|cpp_negative_tests_|frontend_lir_|backend_)" >> test_after.log 2>&1'`.
 
-Result: `100% tests passed, 0 tests failed out of 3345`.
+Result: passed.
 Proof log: `test_after.log`.
 
 Supervisor acceptance also ran:
 - `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+- `ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_parser_tests|frontend_parser_lookup_authority_tests|frontend_hir_lookup_tests|cpp_hir_)'`

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -51,6 +52,21 @@ c4c::hir::Module lower_hir_module(std::string_view source) {
   expect_true(result.hir_module.has_value(),
               "fixture source should lower to HIR");
   return *result.hir_module;
+}
+
+void expect_hir_rejects(std::string_view source,
+                        std::string_view expected_diagnostic,
+                        const std::string& msg) {
+  try {
+    (void)lower_hir_module(source);
+    fail(msg + ": expected HIR lowering to reject fixture");
+  } catch (const std::runtime_error& err) {
+    const std::string actual = err.what();
+    if (actual.find(expected_diagnostic) == std::string::npos) {
+      fail(msg + "\nExpected diagnostic fragment: " +
+           std::string(expected_diagnostic) + "\nActual: " + actual);
+    }
+  }
 }
 
 const c4c::codegen::lir::LirFunction& require_function(
@@ -370,12 +386,53 @@ vrm8_t vrm8_identity(vrm8_t input);
       "verifier should reject a VRM signature parameter with the wrong width");
 }
 
+void test_vrm_call_boundaries_reject_non_expanded_carriers() {
+  constexpr std::string_view boundary_diag =
+      "non-expanded VRM register carrier cannot cross function-call ABI boundary";
+
+  expect_hir_rejects(R"c(
+void vrm2_sink(__c4c_builtin_vrm2 input);
+void call_vrm2_param(__c4c_builtin_vrm2 input) {
+  vrm2_sink(input);
+}
+)c",
+                     boundary_diag,
+                     "bare VRM function parameter call boundary should reject");
+
+  expect_hir_rejects(R"c(
+__c4c_builtin_vrm1 make_vrm1(void);
+void call_vrm1_result(void) {
+  make_vrm1();
+}
+)c",
+                     boundary_diag,
+                     "bare VRM call result boundary should reject");
+
+  expect_hir_rejects(R"c(
+__c4c_builtin_vrm4 return_vrm4(__c4c_builtin_vrm4 input) {
+  return input;
+}
+)c",
+                     boundary_diag,
+                     "bare VRM function return boundary should reject");
+
+  expect_hir_rejects(R"c(
+void call_vrm8_fn_ptr(__c4c_builtin_vrm8 input,
+                      void (*callee)(__c4c_builtin_vrm8)) {
+  callee(input);
+}
+)c",
+                     boundary_diag,
+                     "bare VRM function pointer parameter boundary should reject");
+}
+
 }  // namespace
 
 int main() {
   test_owned_type_spec_rejects_stale_rendered_compatibility();
   test_signature_type_ref_preserves_no_owner_compatibility_name_id();
   test_vrm_signature_type_refs_preserve_carrier_identity();
+  test_vrm_call_boundaries_reject_non_expanded_carriers();
 
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct Pair {

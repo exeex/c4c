@@ -5,6 +5,26 @@ namespace c4c::hir {
 
 namespace {
 
+bool is_bare_vrm_register_carrier(const TypeSpec& ts) {
+  return ts.base == TB_VRM_REGISTER && ts.vrm_width > 0 &&
+         ts.ptr_level == 0 && ts.array_rank == 0 &&
+         !ts.is_lvalue_ref && !ts.is_rvalue_ref;
+}
+
+[[noreturn]] void throw_vrm_return_boundary_error(const Node* n, int width) {
+  std::string diag =
+      "error: non-expanded VRM register carrier cannot cross function-call ABI boundary";
+  diag += " (return c4c.vrm";
+  diag += std::to_string(width);
+  diag += ")";
+  if (n) {
+    diag += " (line ";
+    diag += std::to_string(n->line);
+    diag += ")";
+  }
+  throw std::runtime_error(diag);
+}
+
 template <typename T>
 auto set_typespec_final_spelling_tag_if_present(T& ts, const char* tag, int)
     -> decltype(ts.tag = tag, void()) {
@@ -433,6 +453,9 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
     case NK_RETURN: {
       ReturnStmt s{};
       if (n->left) {
+        if (ctx.fn && is_bare_vrm_register_carrier(ctx.fn->return_type.spec)) {
+          throw_vrm_return_boundary_error(n, ctx.fn->return_type.spec.vrm_width);
+        }
         ExprId val = lower_expr(&ctx, n->left);
         if (ctx.fn && is_any_ref_ts(ctx.fn->return_type.spec)) {
           UnaryExpr addr{};
