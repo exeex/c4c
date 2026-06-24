@@ -427,6 +427,26 @@ c4c_add_backend_codegen_object_test(
   LABELS aarch64 object output_contract dual-route cli scalar scan
 )
 
+c4c_add_backend_codegen_object_test(
+  backend_cli_aarch64_cts_00001_writes_elf_obj
+  SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00001.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/aarch64_cts_00001.o"
+  EXPECTED_MACHINE_LE b700
+  CASE_TIMEOUT_SEC 10
+  LABELS aarch64 c_testsuite output_contract dual-route cli smoke scan
+)
+
+c4c_add_backend_codegen_object_test(
+  backend_cli_aarch64_cts_00002_writes_elf_obj
+  SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00002.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/aarch64_cts_00002.o"
+  EXPECTED_MACHINE_LE b700
+  CASE_TIMEOUT_SEC 10
+  LABELS aarch64 c_testsuite output_contract dual-route cli smoke scan
+)
+
 c4c_add_backend_codegen_object_failure_test(
   backend_cli_x86_unsupported_target_diagnostic_obj
   SRC "${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c"
@@ -1234,6 +1254,22 @@ c4c_add_backend_rv64_object_runtime_case(
   SRC "${BACKEND_CASE_ROOT}/return_zero.c"
   CASE_TIMEOUT_SEC 10
   LABELS scalar return smoke
+)
+
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_cts_00001
+  SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00001.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 0
+  LABELS c_testsuite smoke scan
+)
+
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_cts_00002
+  SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00002.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 0
+  LABELS c_testsuite smoke scan
 )
 
 c4c_add_backend_rv64_runtime_case(
