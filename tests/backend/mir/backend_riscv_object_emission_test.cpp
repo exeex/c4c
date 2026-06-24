@@ -21,6 +21,9 @@ namespace rv64 = c4c::backend::riscv::codegen;
 
 constexpr std::uint32_t SHT_RELA = 4;
 constexpr std::uint32_t SHT_SYMTAB = 2;
+constexpr std::uint32_t R_RISCV_CALL_PLT = 19;
+constexpr std::uint32_t R_RISCV_PCREL_HI20 = 23;
+constexpr std::uint32_t R_RISCV_PCREL_LO12_I = 24;
 constexpr std::uint16_t SHN_UNDEF = 0;
 
 std::uint16_t read_u16(const std::vector<std::uint8_t>& bytes,
@@ -81,6 +84,20 @@ std::optional<object::ObjectModule> make_minimal_call_module() {
           .global = true,
           .fragments = {
               rv64::make_rv64_direct_call_fragment("callee"),
+              rv64::make_rv64_return_zero_fragment(),
+          },
+      },
+  });
+}
+
+std::optional<object::ObjectModule> make_minimal_pcrel_module() {
+  return rv64::build_rv64_text_object_module({
+      rv64::RiscvObjectFunction{
+          .name = "load_addr",
+          .global = true,
+          .fragments = {
+              rv64::make_rv64_pcrel_address_fragment("target",
+                                                     ".Lpcrel_hi_load_addr_0"),
               rv64::make_rv64_return_zero_fragment(),
           },
       },
@@ -222,6 +239,65 @@ int records_same_module_direct_call_symbol() {
   return 0;
 }
 
+int records_pcrel_hi_lo_pairing_with_auipc_site_label() {
+  const auto module = make_minimal_pcrel_module();
+  if (!module.has_value()) {
+    return fail("expected RV64 pcrel object module construction to succeed");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  if (text == nullptr || text->bytes.size() != 16 || text->size_bytes != 16) {
+    return fail("expected pcrel fixture to produce two address words plus return");
+  }
+  if (text->bytes[0] != 0x97 || text->bytes[1] != 0x02 ||
+      text->bytes[2] != 0x00 || text->bytes[3] != 0x00) {
+    return fail("expected pcrel fixture to start with auipc t0, 0");
+  }
+  if (text->bytes[4] != 0x93 || text->bytes[5] != 0x82 ||
+      text->bytes[6] != 0x02 || text->bytes[7] != 0x00) {
+    return fail("expected pcrel fixture to include addi t0, t0, 0");
+  }
+
+  const auto* target = object::find_symbol(*module, "target");
+  const auto* auipc_label = object::find_symbol(*module, ".Lpcrel_hi_load_addr_0");
+  const auto* function = object::find_symbol(*module, "load_addr");
+  if (target == nullptr || target->binding != object::SymbolBinding::Global ||
+      target->kind != object::SymbolKind::Function ||
+      !object::is_undefined_symbol(*target)) {
+    return fail("expected pcrel high relocation target to be an undefined symbol");
+  }
+  if (auipc_label == nullptr ||
+      auipc_label->binding != object::SymbolBinding::Local ||
+      auipc_label->kind != object::SymbolKind::NoType ||
+      auipc_label->section != std::optional<object::SectionId>{text->id} ||
+      auipc_label->value != 0 || auipc_label->size_bytes != 0) {
+    return fail("expected pcrel low relocation target to be a local AUIPC label");
+  }
+  if (function == nullptr ||
+      function->section != std::optional<object::SectionId>{text->id} ||
+      function->value != 0 || function->size_bytes != 16) {
+    return fail("expected pcrel fixture function symbol to cover the fragment");
+  }
+  if (module->labels.size() != 1 ||
+      module->labels[0].name != ".Lpcrel_hi_load_addr_0" ||
+      module->labels[0].section != text->id || module->labels[0].offset != 0) {
+    return fail("expected pcrel fixture to record the AUIPC-site label");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 0 ||
+      module->relocations[0].type != R_RISCV_PCREL_HI20 ||
+      module->relocations[0].symbol != target->id ||
+      module->relocations[0].addend != 0 ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 4 ||
+      module->relocations[1].type != R_RISCV_PCREL_LO12_I ||
+      module->relocations[1].symbol != auipc_label->id ||
+      module->relocations[1].addend != 0) {
+    return fail("expected paired R_RISCV_PCREL_HI20/LO12_I relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_text_object_module_without_call_text() {
   const auto prepared = make_prepared_direct_call_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -342,6 +418,99 @@ int serializes_rv64_relocatable_elf_contract() {
       read_c_string(bytes, strtab_offset + read_u32(bytes, symbol_offset));
   if (symbol_name != "callee" || read_u16(bytes, symbol_offset + 6) != 0) {
     return fail("expected relocation to reference undefined callee symbol");
+  }
+  return 0;
+}
+
+int serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol() {
+  const auto module = make_minimal_pcrel_module();
+  if (!module.has_value()) {
+    return fail("expected RV64 pcrel object module construction to succeed");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 pcrel ELF writer to produce an image");
+  }
+  const auto& bytes = image->bytes;
+  const std::size_t shoff = read_u64(bytes, 40);
+  const std::size_t shentsize = read_u16(bytes, 58);
+  const std::size_t shnum = read_u16(bytes, 60);
+  const std::size_t shstrndx = read_u16(bytes, 62);
+  if (bytes.size() < 64 || shoff == 0 || shentsize != 64 || shstrndx >= shnum) {
+    return fail("expected pcrel ELF section headers");
+  }
+
+  const std::size_t shstr_header = shoff + shstrndx * shentsize;
+  const std::size_t shstr_offset = read_u64(bytes, shstr_header + 24);
+  std::size_t text_header = 0;
+  std::size_t rela_text_header = 0;
+  std::size_t symtab_header = 0;
+  for (std::size_t index = 1; index < shnum; ++index) {
+    const std::size_t header = shoff + index * shentsize;
+    const std::string name =
+        read_c_string(bytes, shstr_offset + read_u32(bytes, header));
+    if (name == ".text") {
+      text_header = header;
+    } else if (name == ".rela.text") {
+      rela_text_header = header;
+    } else if (name == ".symtab") {
+      symtab_header = header;
+    }
+  }
+  if (text_header == 0 || rela_text_header == 0 || symtab_header == 0) {
+    return fail("expected pcrel ELF to include .text, .rela.text, and .symtab");
+  }
+  if (read_u64(bytes, text_header + 32) != 16 ||
+      read_u32(bytes, rela_text_header + 4) != SHT_RELA ||
+      read_u32(bytes, symtab_header + 4) != SHT_SYMTAB) {
+    return fail("expected pcrel ELF section sizes and types");
+  }
+
+  const std::size_t symtab_offset = read_u64(bytes, symtab_header + 24);
+  const std::size_t strtab_header =
+      shoff + read_u32(bytes, symtab_header + 40) * shentsize;
+  const std::size_t strtab_offset = read_u64(bytes, strtab_header + 24);
+  const auto symbol_name_at = [&](std::size_t symbol_index) {
+    const std::size_t symbol_offset = symtab_offset + symbol_index * 24;
+    return read_c_string(bytes, strtab_offset + read_u32(bytes, symbol_offset));
+  };
+  const auto symbol_section_at = [&](std::size_t symbol_index) {
+    const std::size_t symbol_offset = symtab_offset + symbol_index * 24;
+    return read_u16(bytes, symbol_offset + 6);
+  };
+  const auto symbol_value_at = [&](std::size_t symbol_index) {
+    const std::size_t symbol_offset = symtab_offset + symbol_index * 24;
+    return read_u64(bytes, symbol_offset + 8);
+  };
+
+  const std::size_t rela_offset = read_u64(bytes, rela_text_header + 24);
+  const std::size_t rela_size = read_u64(bytes, rela_text_header + 32);
+  const std::size_t rela_entsize = read_u64(bytes, rela_text_header + 56);
+  if (rela_size != 48 || rela_entsize != 24) {
+    return fail("expected pcrel ELF to serialize exactly two rela entries");
+  }
+  const std::uint64_t hi_offset = read_u64(bytes, rela_offset);
+  const std::uint64_t hi_info = read_u64(bytes, rela_offset + 8);
+  const std::uint64_t hi_symbol = hi_info >> 32;
+  const std::uint64_t lo_offset = read_u64(bytes, rela_offset + 24);
+  const std::uint64_t lo_info = read_u64(bytes, rela_offset + 32);
+  const std::uint64_t lo_symbol = lo_info >> 32;
+  if (hi_offset != 0 || (hi_info & 0xffffffffull) != R_RISCV_PCREL_HI20 ||
+      read_u64(bytes, rela_offset + 16) != 0) {
+    return fail("expected pcrel high relocation at AUIPC offset zero");
+  }
+  if (lo_offset != 4 || (lo_info & 0xffffffffull) != R_RISCV_PCREL_LO12_I ||
+      read_u64(bytes, rela_offset + 40) != 0) {
+    return fail("expected pcrel low relocation at ADDI offset four");
+  }
+  if (symbol_name_at(hi_symbol) != "target" ||
+      symbol_section_at(hi_symbol) != SHN_UNDEF) {
+    return fail("expected pcrel high relocation to reference final target symbol");
+  }
+  if (symbol_name_at(lo_symbol) != ".Lpcrel_hi_load_addr_0" ||
+      symbol_section_at(lo_symbol) == SHN_UNDEF ||
+      symbol_value_at(lo_symbol) != 0) {
+    return fail("expected pcrel low relocation to reference AUIPC-site label symbol");
   }
   return 0;
 }
@@ -481,9 +650,11 @@ int main() {
   int status = 0;
   status |= records_minimal_text_and_call_relocation();
   status |= records_same_module_direct_call_symbol();
+  status |= records_pcrel_hi_lo_pairing_with_auipc_site_label();
   status |= builds_prepared_text_object_module_without_call_text();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= serializes_rv64_relocatable_elf_contract();
+  status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
   status |= writes_prepared_rv64_relocatable_elf_object_file();
   return status;
 }

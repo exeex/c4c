@@ -20,6 +20,8 @@ namespace object = c4c::backend::mir::object;
 constexpr std::uint16_t kElfMachineRiscv = 243;
 constexpr std::uint32_t kRiscvElfFlagsRv64DoubleFloatAbi = 0x5;
 constexpr std::uint32_t kRiscvRelocCallPlt = 19;
+constexpr std::uint32_t kRiscvRelocPcrelHi20 = 23;
+constexpr std::uint32_t kRiscvRelocPcrelLo12I = 24;
 
 constexpr std::uint32_t encode_u_type(std::uint32_t opcode, std::uint32_t rd,
                                       std::uint32_t imm20) {
@@ -160,6 +162,10 @@ std::optional<std::uint32_t> rv64_elf_relocation_type(
   switch (kind) {
     case RiscvObjectFixupKind::CallPlt:
       return kRiscvRelocCallPlt;
+    case RiscvObjectFixupKind::PcrelHi20:
+      return kRiscvRelocPcrelHi20;
+    case RiscvObjectFixupKind::PcrelLo12I:
+      return kRiscvRelocPcrelLo12I;
   }
   return std::nullopt;
 }
@@ -188,6 +194,30 @@ RiscvEncodedFragment make_rv64_direct_call_fragment(std::string callee_name) {
       .offset_bytes = 0,
       .kind = RiscvObjectFixupKind::CallPlt,
       .symbol_name = std::move(callee_name),
+      .addend = 0,
+  });
+  return fragment;
+}
+
+RiscvEncodedFragment make_rv64_pcrel_address_fragment(
+    std::string symbol_name, std::string auipc_label_name) {
+  RiscvEncodedFragment fragment;
+  append_le32(fragment.bytes, encode_u_type(0x17, 5, 0));       // auipc t0, 0
+  append_le32(fragment.bytes, encode_i_type(0x13, 5, 0, 5, 0));  // addi t0, t0, 0
+  fragment.labels.push_back(RiscvObjectLabel{
+      .offset_bytes = 0,
+      .name = auipc_label_name,
+  });
+  fragment.fixups.push_back(RiscvObjectFixup{
+      .offset_bytes = 0,
+      .kind = RiscvObjectFixupKind::PcrelHi20,
+      .symbol_name = std::move(symbol_name),
+      .addend = 0,
+  });
+  fragment.fixups.push_back(RiscvObjectFixup{
+      .offset_bytes = 4,
+      .kind = RiscvObjectFixupKind::PcrelLo12I,
+      .symbol_name = std::move(auipc_label_name),
       .addend = 0,
   });
   return fragment;
@@ -222,6 +252,22 @@ std::optional<object::ObjectModule> build_rv64_text_object_module(
     const auto start_offset = text.size_bytes;
     for (const auto& fragment : function.fragments) {
       const auto fragment_offset = object::append_section_bytes(text, fragment.bytes);
+      for (const auto& label : fragment.labels) {
+        if (label.name.empty() || label.offset_bytes > fragment.bytes.size() ||
+            symbols_by_name.find(label.name) != symbols_by_name.end()) {
+          return std::nullopt;
+        }
+        const auto label_offset = fragment_offset + label.offset_bytes;
+        object::bind_label(module, label.name, text.id, label_offset);
+        auto& label_symbol = object::define_symbol(module,
+                                                   label.name,
+                                                   object::SymbolBinding::Local,
+                                                   object::SymbolKind::NoType,
+                                                   text.id,
+                                                   label_offset,
+                                                   0);
+        symbols_by_name.emplace(label_symbol.name, label_symbol.id);
+      }
       for (const auto& fixup : fragment.fixups) {
         const auto reloc_type = rv64_elf_relocation_type(fixup.kind);
         if (!reloc_type.has_value() || fixup.symbol_name.empty() ||
