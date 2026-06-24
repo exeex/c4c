@@ -1,5 +1,23 @@
 # AArch64 Minimal Relocatable ELF Object Emission
 
+## Closure Note
+
+Closed after the AArch64 child added target-owned encoded fragments, typed
+fixups for `Call26`, `AdrPrelPgHi21`, and `AddAbsLo12Nc`, structured machine
+record object emission for the minimal return/direct-call subset, and
+relocatable ELF serialization checks for AArch64 `.text`, symbols, and
+relocations. The close proof preserved nearby AArch64 asm-route coverage and
+passed the focused 8-test object/asm subset with the regression guard in
+non-decreasing mode.
+
+Remaining rollout work is intentionally covered by separate open children:
+`333_codegen_obj_cli_and_test_integration.md`,
+`334_object_route_scan_and_default_readiness.md`, and
+`335_textual_assembler_object_route_followup.md`. This child did not expose
+`--codegen obj`, switch defaults, run c-testsuite object-route scans, or add
+broader data/global/BSS, branch, GOT/TLS, indirect/variadic, stack-heavy, or
+runtime object-route coverage.
+
 ## Goal
 
 Add the first direct AArch64 relocatable ELF object-emission path for the
