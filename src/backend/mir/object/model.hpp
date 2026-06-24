@@ -2,8 +2,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace c4c::backend::mir::object {
@@ -111,6 +113,61 @@ struct ObjectModule {
   std::vector<LabelRecord> labels;
   std::vector<RelocationRecord> relocations;
 };
+
+std::optional<SectionId> find_section_id(const ObjectModule& module,
+                                         std::string_view name);
+SectionRecord* find_section(ObjectModule& module, SectionId id);
+const SectionRecord* find_section(const ObjectModule& module, SectionId id);
+SectionRecord* find_section(ObjectModule& module, std::string_view name);
+const SectionRecord* find_section(const ObjectModule& module,
+                                  std::string_view name);
+SectionRecord& create_section(ObjectModule& module, std::string name,
+                              SectionKind kind, std::uint64_t align_bytes,
+                              bool alloc, bool executable, bool writable);
+SectionRecord& get_or_create_section(ObjectModule& module, std::string name,
+                                     SectionKind kind,
+                                     std::uint64_t align_bytes, bool alloc,
+                                     bool executable, bool writable);
+
+std::uint64_t append_section_bytes(SectionRecord& section,
+                                   const std::vector<std::uint8_t>& bytes);
+std::uint64_t append_section_bytes(SectionRecord& section,
+                                   std::initializer_list<std::uint8_t> bytes);
+std::uint64_t reserve_section_bytes(SectionRecord& section,
+                                    std::uint64_t size_bytes);
+std::uint64_t align_section(SectionRecord& section, std::uint64_t align_bytes,
+                            std::uint8_t fill_byte = 0);
+
+std::optional<SymbolId> find_symbol_id(const ObjectModule& module,
+                                       std::string_view name);
+SymbolRecord* find_symbol(ObjectModule& module, SymbolId id);
+const SymbolRecord* find_symbol(const ObjectModule& module, SymbolId id);
+SymbolRecord* find_symbol(ObjectModule& module, std::string_view name);
+const SymbolRecord* find_symbol(const ObjectModule& module,
+                                std::string_view name);
+SymbolRecord& define_symbol(ObjectModule& module, std::string name,
+                            SymbolBinding binding, SymbolKind kind,
+                            SectionId section, std::uint64_t value,
+                            std::uint64_t size_bytes = 0);
+SymbolRecord& declare_undefined_symbol(ObjectModule& module, std::string name,
+                                       SymbolBinding binding, SymbolKind kind,
+                                       std::uint64_t size_bytes = 0);
+
+LabelRecord& bind_label(ObjectModule& module, std::string name,
+                        SectionId section, std::uint64_t offset);
+LabelRecord& bind_label_at_current_offset(ObjectModule& module,
+                                          std::string name,
+                                          const SectionRecord& section);
+
+RelocationRecord& attach_relocation(ObjectModule& module, SectionId section,
+                                    std::uint64_t offset, std::uint32_t type,
+                                    SymbolId symbol, std::int64_t addend = 0);
+RelocationRecord& attach_label_relocation(ObjectModule& module,
+                                          SectionId section,
+                                          std::uint64_t offset,
+                                          std::uint32_t type, SymbolId symbol,
+                                          LabelId label,
+                                          std::int64_t addend = 0);
 
 const char* section_kind_name(SectionKind kind);
 const char* symbol_binding_name(SymbolBinding binding);

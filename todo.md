@@ -1,35 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/330_native_object_model_and_emission_api.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Shared Object Model Records
+Current Step ID: 3
+Current Step Title: Add Compiler-Facing Construction Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 implementation completed: added the first target-neutral native object
-model records under `c4c::backend::mir::object`, wired the model source into
-`c4c_backend`, and added focused `backend_object_model_records` coverage.
+Step 3 implementation completed: added compiler-facing construction helpers
+for the shared native object model under `c4c::backend::mir::object`.
 
-The new records can express:
+The helper surface now lets target-like clients:
 
-- `.text`, `.data`, and `.bss` sections with bytes or reserved size,
-  alignment, and basic section attributes.
-- undefined symbols and defined local/global function or section symbols.
-- section-local labels by section id and offset.
-- numeric relocation records with target-chosen ELF relocation type values,
-  symbol targets, optional label bases, and signed addends.
+- create or find sections by stable id or name.
+- append initialized bytes, reserve uninitialized bytes, and apply alignment.
+- bind labels at explicit offsets or the current section offset.
+- publish defined symbols and undefined symbols through deterministic lookup.
+- attach numeric symbol and label relocation records with signed addends.
 
 No ELF serialization, target-specific relocation enum, instruction encoding,
 `--codegen obj`, parser dependency, or RV64/AArch64 object emission was added.
 
 ## Suggested Next
 
-Execute the next Step 2/3 boundary slice: add only the minimal shared object
-model helpers needed by the future writer, such as deterministic section and
-symbol lookup/append helpers, without adding ELF bytes or target-specific
-relocation policy yet.
+Execute Step 4 as the next bounded shared-model slice: add the minimal
+relocatable ELF writer/config records needed to serialize modules already built
+through these helpers, without adding target instruction encoding or CLI route
+wiring.
 
 ## Watchouts
 
@@ -39,12 +37,13 @@ relocation policy yet.
 - Keep target-specific relocation names and fixup semantics out of shared model
   helpers; shared relocation records currently store numeric target-chosen type
   values only.
-- Defer string tables, symbol-table ordering, relocation section emission, ELF
-  byte serialization, and target ELF config until the planned writer/API
-  slices.
-- The first proof initially exposed that backend library sources include from
-  `src/backend`, so library-local source includes should use paths such as
-  `mir/object/model.hpp`.
+- Step 3 helper semantics currently update an existing named symbol when it is
+  later defined after being declared undefined; later writer work should
+  preserve stable symbol ids.
+- `align_section` pads initialized sections only when `bytes.size()` matches
+  `size_bytes`; reserved sections grow by size without gaining bytes.
+- `clang-format` is not installed in this environment; C++ formatting was
+  adjusted manually.
 
 ## Proof
 

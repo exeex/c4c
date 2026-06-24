@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <iostream>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -219,6 +221,118 @@ int records_target_neutral_names() {
   return 0;
 }
 
+int helpers_construct_target_like_module() {
+  object::ObjectModule module;
+
+  const auto text_id =
+      object::get_or_create_section(module, ".text", object::SectionKind::Text,
+                                    4, true, true, false)
+          .id;
+  const auto duplicate_text_id =
+      object::get_or_create_section(module, ".text", object::SectionKind::Text,
+                                    16, true, true, false)
+          .id;
+  const auto data_id =
+      object::create_section(module, ".data", object::SectionKind::Data, 4,
+                             true, false, true)
+          .id;
+  const auto bss_id =
+      object::create_section(module, ".bss", object::SectionKind::Bss, 8, true,
+                             false, true)
+          .id;
+
+  if (module.sections.size() != 3 || duplicate_text_id != text_id) {
+    return fail("expected section lookup to avoid duplicate standard sections");
+  }
+
+  auto* text = object::find_section(module, text_id);
+  auto* data = object::find_section(module, ".data");
+  auto* bss = object::find_section(module, bss_id);
+  if (text == nullptr || data == nullptr || bss == nullptr ||
+      object::find_section_id(module, ".text") !=
+          std::optional<object::SectionId>{text_id}) {
+    return fail("expected created sections to be findable by id and name");
+  }
+
+  const auto entry_offset = object::append_section_bytes(*text, {0x13, 0x05});
+  const auto text_align_offset = object::align_section(*text, 4, 0);
+  const auto entry_label =
+      object::bind_label(module, ".Lentry", text->id, entry_offset).id;
+  const auto call_offset = object::append_section_bytes(*text, {0, 0, 0, 0});
+  const auto data_offset =
+      object::append_section_bytes(*data, std::vector<std::uint8_t>{0x2a});
+  object::align_section(*data, 4, 0);
+  const auto bss_offset = object::reserve_section_bytes(*bss, 5);
+  object::align_section(*bss, 8);
+
+  if (entry_offset != 0 || text_align_offset != 2 || call_offset != 4 ||
+      text->size_bytes != 8 || text->bytes.size() != 8 ||
+      text->align_bytes != 16 || data_offset != 0 || data->size_bytes != 4 ||
+      data->bytes.size() != 4 || bss_offset != 0 || bss->size_bytes != 8 ||
+      !bss->bytes.empty()) {
+    return fail(
+        "expected append, reserve, and alignment helpers to update sections");
+  }
+
+  const auto main_symbol =
+      object::define_symbol(module, "main", object::SymbolBinding::Global,
+                            object::SymbolKind::Function, text->id,
+                            entry_offset, text->size_bytes)
+          .id;
+  const auto extern_symbol =
+      object::declare_undefined_symbol(module, "extern_func",
+                                       object::SymbolBinding::Global,
+                                       object::SymbolKind::Function)
+          .id;
+  const auto section_symbol =
+      object::define_symbol(module, ".bss", object::SymbolBinding::Local,
+                            object::SymbolKind::Section, bss->id, 0,
+                            bss->size_bytes)
+          .id;
+  object::declare_undefined_symbol(module, "late_bound",
+                                   object::SymbolBinding::Global,
+                                   object::SymbolKind::Object, 4);
+  const auto late_bound =
+      object::define_symbol(module, "late_bound", object::SymbolBinding::Global,
+                            object::SymbolKind::Object, data->id, data_offset,
+                            4)
+          .id;
+
+  const auto* late_bound_record = object::find_symbol(module, "late_bound");
+  if (module.symbols.size() != 4 ||
+      object::find_symbol_id(module, "main") !=
+          std::optional<object::SymbolId>{main_symbol} ||
+      object::find_symbol(module, extern_symbol) == nullptr ||
+      object::find_symbol(module, ".bss") == nullptr ||
+      late_bound_record == nullptr || late_bound_record->section !=
+          std::optional<object::SectionId>{data->id} ||
+      late_bound.value != 3) {
+    return fail("expected symbol helpers to publish and find symbols");
+  }
+
+  const auto current_label =
+      object::bind_label_at_current_offset(module, ".Lafter_call", *text).id;
+  object::attach_relocation(module, text->id, call_offset, 26, extern_symbol,
+                            -4);
+  object::attach_label_relocation(module, text->id, call_offset + 2, 17,
+                                  main_symbol, entry_label, 12);
+
+  if (module.labels.size() != 2 ||
+      module.labels[current_label.value].offset != 8 ||
+      module.relocations.size() != 2 ||
+      module.relocations[0].base != object::RelocationBase::Symbol ||
+      module.relocations[0].symbol != extern_symbol ||
+      module.relocations[0].addend != -4 ||
+      module.relocations[1].base != object::RelocationBase::Label ||
+      module.relocations[1].label !=
+          std::optional<object::LabelId>{entry_label} ||
+      section_symbol.value != 2) {
+    return fail("expected label and relocation helpers to record structured fixups");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -234,5 +348,8 @@ int main() {
   if (int rc = records_numeric_relocations_with_addends(); rc != 0) {
     return rc;
   }
-  return records_target_neutral_names();
+  if (int rc = records_target_neutral_names(); rc != 0) {
+    return rc;
+  }
+  return helpers_construct_target_like_module();
 }
