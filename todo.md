@@ -2,7 +2,7 @@ Status: Active
 Source Idea Path: ideas/open/345_builtin_vrm_register_carrier_types_to_regalloc_frontier.md
 Source Plan Path: plan.md
 Current Step ID: 3
-Current Step Title: Preserve VRM Identity Through BIR Lowering And Publish Pre-Regalloc Classification Metadata
+Current Step Title: Preserve VRM Identity Through LIR/BIR Lowering
 
 # Current Packet
 
