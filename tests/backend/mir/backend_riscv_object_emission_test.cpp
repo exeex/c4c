@@ -749,6 +749,10 @@ prepare::PreparedInlineAsmCarrier make_prepared_insn_d_carrier(
   return carrier;
 }
 
+std::string helper_style_rv64_insn_d_template_text() {
+  return std::string(".insn.d ") + "%4, %5, " + "%0, %1, " + "%2, %3, %6";
+}
+
 prepare::PreparedBirModule make_prepared_inline_asm_insn_r_module(
     std::string asm_text = ".insn r 0x33, 0, 0, %0, %1, %2",
     bool complete_carrier = true,
@@ -2076,6 +2080,33 @@ int builds_prepared_inline_asm_insn_d_adjacent_template_object() {
   return 0;
 }
 
+int builds_prepared_inline_asm_insn_d_helper_template_object() {
+  auto carrier =
+      make_prepared_insn_d_carrier(helper_style_rv64_insn_d_template_text());
+  const auto prepared = make_prepared_inline_asm_insn_d_module(std::move(carrier));
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module) {
+    return fail("expected helper-built RV64 inline-asm .insn.d object module to build");
+  }
+  const auto* text = find_section(*module, ".text");
+  const auto* main = find_symbol(*module, "main");
+  if (!text || !main) {
+    return fail("expected helper-built inline-asm .insn.d object to publish text/main");
+  }
+  if (text->bytes.size() != 12 || text->size_bytes != 12 ||
+      main->value != 0 || main->size_bytes != 12) {
+    return fail("expected helper-built inline-asm .insn.d object text layout");
+  }
+  if (read_u64(text->bytes, 0) != 0x0000030b10620a0aull ||
+      read_u32(text->bytes, 8) != 0x00008067u) {
+    return fail("expected helper-built EV .insn.d bytes followed by return");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected helper-built inline-asm .insn.d object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_mixed_inline_asm_insn_object() {
   const auto prepared = make_prepared_mixed_inline_asm_insn_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -2546,6 +2577,7 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_d_out_of_range_fields();
   status |= builds_prepared_inline_asm_insn_d_object();
   status |= builds_prepared_inline_asm_insn_d_adjacent_template_object();
+  status |= builds_prepared_inline_asm_insn_d_helper_template_object();
   status |= builds_prepared_mixed_inline_asm_insn_object();
   status |= rejects_prepared_inline_asm_insn_d_out_of_range_object();
   status |= rejects_prepared_inline_asm_insn_d_missing_field_shape();

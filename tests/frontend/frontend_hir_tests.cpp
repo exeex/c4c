@@ -7443,6 +7443,55 @@ int folded(int value, int rhs) {
               "folded inline asm clobbers should match literal clobbers");
 }
 
+void test_inline_asm_insn_d_string_literal_plus_folds_to_literal_metadata() {
+  const char* source = R"cpp(
+int literal(int out, int a, int b, int c) {
+  __asm__ __volatile__(".insn.d %4, %5, %0, %1, %2, %3, %6"
+                       : "+r"(out)
+                       : "r"(a), "r"(b), "r"(c), "i"(10), "i"(11), "i"(3));
+  return out;
+}
+
+int helper_style(int out, int a, int b, int c) {
+  __asm__ __volatile__((".insn.d " + "%4, %5, " + "%0, %1, " + "%2, %3, %6")
+                       : "+r"(out)
+                       : "r"(a), "r"(b), "r"(c), "i"(10), "i"(11), "i"(3));
+  return out;
+}
+)cpp";
+  const c4c::hir::Module module = lower_hir_module(source);
+  const c4c::hir::Function* literal = find_hir_function_by_name(module, "literal");
+  const c4c::hir::Function* helper_style =
+      find_hir_function_by_name(module, "helper_style");
+  expect_true(literal != nullptr,
+              "literal .insn.d inline asm fixture should lower to HIR");
+  expect_true(helper_style != nullptr,
+              "helper-style .insn.d inline asm fixture should lower to HIR");
+
+  const c4c::hir::InlineAsmStmt* literal_asm =
+      find_single_inline_asm_stmt(*literal);
+  const c4c::hir::InlineAsmStmt* helper_asm =
+      find_single_inline_asm_stmt(*helper_style);
+  expect_true(literal_asm != nullptr,
+              "literal .insn.d fixture should contain inline asm metadata");
+  expect_true(helper_asm != nullptr,
+              "helper-style .insn.d fixture should contain inline asm metadata");
+
+  expect_eq(helper_asm->asm_template,
+            ".insn.d ${4}, ${5}, ${0}, ${1}, ${2}, ${3}, ${6}",
+            "helper-style .insn.d folded inline asm should preserve final text");
+  expect_eq(helper_asm->asm_template, literal_asm->asm_template,
+            "helper-style .insn.d folded template text should match literal text");
+  expect_eq(helper_asm->constraints, literal_asm->constraints,
+            "helper-style .insn.d constraints should match literal constraints");
+  expect_eq_int(static_cast<int>(helper_asm->outputs.size()),
+                static_cast<int>(literal_asm->outputs.size()),
+                "helper-style .insn.d output count should match literal output count");
+  expect_eq_int(static_cast<int>(helper_asm->inputs.size()),
+                static_cast<int>(literal_asm->inputs.size()),
+                "helper-style .insn.d input count should match literal input count");
+}
+
 }  // namespace
 
 int main() {
@@ -7577,6 +7626,7 @@ int main() {
   test_lir_to_bir_resolves_extern_decl_link_names_at_backend_boundary();
   test_lir_to_bir_resolves_decl_backed_direct_call_link_names_at_backend_boundary();
   test_inline_asm_string_literal_plus_folds_to_literal_metadata();
+  test_inline_asm_insn_d_string_literal_plus_folds_to_literal_metadata();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;
