@@ -3,41 +3,71 @@
 Status: Active
 Source Idea Path: ideas/open/334_object_route_scan_and_default_readiness.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Next Selectable Object Scan Cases
+Current Step ID: 3
+Current Step Title: Triage Remaining Object-Route Gaps
 
 ## Just Finished
 
-- Completed Step 2 by adding opt-in c-testsuite native object smoke
-  registrations without changing c-testsuite defaults.
-- Added RV64 object-runtime scan tests for the first two c-testsuite allowlist
-  sources:
-  `backend_obj_runtime_rv64_cts_00001` for
-  `tests/c/external/c-testsuite/src/00001.c` and
-  `backend_obj_runtime_rv64_cts_00002` for
-  `tests/c/external/c-testsuite/src/00002.c`. Both reuse the existing
-  `c4c_add_backend_rv64_object_runtime_case(...)` helper, emit native object
-  bytes, link with the RV64 clang/qemu path, and expect exit code 0.
-- Added AArch64 object-byte scan tests for the same sources:
-  `backend_cli_aarch64_cts_00001_writes_elf_obj` and
-  `backend_cli_aarch64_cts_00002_writes_elf_obj`. Both reuse the existing
-  `c4c_add_backend_codegen_object_test(...)` helper and verify ELF machine
-  `b700`.
-- Added selectable `c_testsuite`, `smoke`, and `scan` labels to the new tests
-  while preserving helper-added route labels such as `object`, `backend_route`,
-  `backend_runtime`, `rv64`, `qemu`, `case`, `cli`, and `dual-route`.
+- Completed Step 3 triage of remaining object-route scan candidates after the
+  37/37 expanded baseline.
+- Dry-ran representative backend and c-testsuite object candidates with
+  temporary `/tmp` outputs only. No CLI, linker/toolchain, or runtime failure
+  was the first blocker for the unsupported candidate families; failures were
+  target object-emitter diagnostics before link.
+- Target-emitter triage map:
+  - RV64 local rewrite / parameter reassignment candidates
+    (`param_slot.c`, `two_arg_*_rewrite.c`) fail at the RV64 prepared object
+    predicate with `RISC-V backend object route unsupported prepared module
+    shape`.
+  - RV64 branch/control-flow candidates (`branch_if_eq.c`, `branch_if_ne.c`,
+    `branch_if_lt.c`) fail at the same prepared object-shape gate.
+  - RV64 pointer/global candidates (`local_pointer_deref.c`, `global_load.c`,
+    `global_store.c`, c-testsuite `00004.c` through nearby pointer/local
+    cases) fail at the same prepared object-shape gate.
+  - RV64 has additional green object candidates (`local_array.c`, c-testsuite
+    `00003.c`, `00011.c`, `00012.c`, and `00015.c`) that emit/link/run under
+    qemu, but adding them now would create RV64-only scan growth while AArch64
+    is blocked on the same c-testsuite frontier.
+  - AArch64 local/frame-memory candidates (`param_slot.c`,
+    `two_arg_*_rewrite.c`, c-testsuite `00003.c`, `00004.c`, `00011.c`,
+    `00015.c`) fail in target object emission with selected fixed-frame /
+    local-memory support missing. The generated asm uses stack allocation,
+    `str`/`ldr`, and sometimes saved temporaries such as `x20`/`x21`.
+  - AArch64 branch/control-flow and global candidates fail at selected-machine
+    object emission with unsupported machine instructions.
+  - AArch64 c-testsuite `00012.c` reaches scalar arithmetic but fails because
+    the object emitter supports selected add/sub only; the generated asm uses
+    `mul`.
+- Owner classification:
+  - Target encoder / object emitter: all current unsupported cases above.
+  - Object writer / relocation: no first-failure evidence from this triage.
+  - CLI: no first-failure evidence; diagnostics are stable `--codegen obj`
+    target-backend failures.
+  - Linker/toolchain/runtime: no first-failure evidence for unsupported cases;
+    RV64 green candidates linked and ran when probed.
+  - Policy/default readiness: still blocked until target-emitter frontiers are
+    repaired or explicitly documented as out of default scope.
 
 ## Suggested Next
 
-- Proceed to Step 3 triage of remaining object-route gaps before adding more
-  green scan registrations.
-- Suggested Step 3 focus: inspect representative known-red families from Step
-  1, classify each by owner, and decide whether to split a focused child idea
-  before more scan expansion.
-- Suggested Step 3 owned file: `todo.md` only unless a plan-owner split is
-  requested after triage.
-- Suggested Step 3 proof: no build required for triage-only; run
-  `git diff --check` after updating `todo.md`.
+- Request plan-owner review/split before Step 4 default-readiness. More
+  parent-level scan expansion can continue only as narrow RV64-only additions,
+  but the balanced object-route/default-readiness path is blocked by target
+  object-emitter capability gaps.
+- Proposed focused child intent: expand target-owned object emission for the
+  next c-testsuite/backend object frontier without changing CLI/default policy.
+  First source files/cases should be:
+  - AArch64 local/frame-memory object support for `tests/c/external/c-testsuite/src/00003.c`,
+    `tests/c/external/c-testsuite/src/00011.c`, and backend `param_slot.c`
+    or one `two_arg_*_rewrite.c` case.
+  - AArch64 selected scalar multiply support for c-testsuite `00012.c`, if the
+    local/frame-memory child does not naturally include it.
+  - RV64 prepared object-shape expansion for `param_slot.c` /
+    `two_arg_*_rewrite.c` and basic branch/control-flow only as separate
+    substeps if the plan owner wants a multi-target child.
+- Step 4 should not make a default-readiness recommendation until the plan owner
+  either activates that focused child or explicitly narrows the default-readiness
+  decision to the current 37-test smoke baseline.
 
 ## Watchouts
 
@@ -45,18 +75,20 @@ Current Step Title: Add Next Selectable Object Scan Cases
 - The c-testsuite object smokes added here are explicit backend tests under
   `tests/backend/CMakeLists.txt`; c-testsuite's own default/frontend and
   backend-asm helpers were not changed.
-- Keep backend scalar `param_slot.c`, `two_arg_*_rewrite.c`, branch/control
-  flow, local arrays/pointers, globals/data, aggregates, broad AArch64
-  frame/local-memory expansion, AArch64 runtime, x86 object output, object
-  stdout, broader c-testsuite object defaults, and semantic-BIR object mode out
-  of scan-registration packets unless Step 3 triage points to a focused child.
+- Keep branch/control flow, local pointers, globals/data, aggregates, broad
+  AArch64 runtime, x86 object output, object stdout, broader c-testsuite object
+  defaults, and semantic-BIR object mode out of parent scan-registration
+  packets unless a focused child repairs the target emitter first.
+- Do not use RV64-only green candidates as default-readiness evidence for both
+  targets. They are useful probes, but AArch64 blocks the same c-testsuite
+  frontier at local/frame-memory and selected scalar instruction support.
 - Label caveat remains: avoid bare `ctest -L object` for proof selection
   because it also matches labels containing `object`, including
   `aggregate_subobject`.
 
 ## Proof
 
-- Ran exact delegated proof:
-  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_(return_zero|return_add|two_arg_helper|two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call|return_add_sub_chain|local_temp)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1`
-- Result: 37/37 tests passed. Proof log: `test_after.log`.
+- No build required for this triage-only packet.
+- Ran targeted `./build/c4cll --codegen obj ...` dry-runs for representative
+  backend and c-testsuite candidates, writing outputs only under `/tmp`.
 - Ran `git diff --check`; result: passed.
