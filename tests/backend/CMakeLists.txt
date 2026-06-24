@@ -1292,6 +1292,22 @@ c4c_add_backend_rv64_object_runtime_case(
   LABELS c_testsuite smoke scan
 )
 
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_cts_00011
+  SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00011.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 0
+  LABELS c_testsuite smoke scan
+)
+
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_cts_00012
+  SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00012.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 0
+  LABELS c_testsuite smoke scan
+)
+
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_return_add
   SRC "${BACKEND_CASE_ROOT}/return_add.c"
