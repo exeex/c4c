@@ -104,6 +104,27 @@ object stdout, c-testsuite object defaults, and semantic-BIR object mode remain
 outside the completed child and should be handled deliberately by scan results
 or focused follow-up ideas.
 
+## Parked For Focused Child 338
+
+Step 3 triage after the 37/37 expanded baseline found that the next balanced
+object-route/default-readiness work is blocked by target object-emitter
+capability, not by scan harness, CLI, object writer, linker/toolchain, or
+runtime failures.
+
+- AArch64 local/frame-memory candidates such as c-testsuite `src/00003.c`,
+  `src/00011.c`, backend `param_slot.c`, and representative
+  `two_arg_*_rewrite.c` cases reject in target object emission because selected
+  fixed-frame local-memory support is missing.
+- AArch64 c-testsuite `src/00012.c` reaches selected scalar arithmetic but
+  needs multiply object encoding.
+- RV64 has some additional green object candidates, but relying on RV64-only
+  scan growth would not support a balanced default-readiness recommendation.
+
+Idea `ideas/open/338_aarch64_object_emitter_local_frame_and_scalar_frontier.md`
+is activated to repair the AArch64 target-owned gap first. Keep the 37/37
+expanded object-route smoke baseline as the parent baseline while 338 is
+active.
+
 ## Reviewer Reject Signals
 
 - The scan marks failing cases unsupported, downgrades expectations, or narrows
