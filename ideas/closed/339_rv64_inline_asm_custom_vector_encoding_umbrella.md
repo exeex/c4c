@@ -152,56 +152,35 @@ dtype       = type/policy/data-shape metadata
 constraints = compiler-owned register allocation contract
 ```
 
-Suggested first supported user style should stay positional to avoid making
-named GCC operands part of the initial parser contract:
+Suggested user style:
 
 ```cpp
 #define EV64  0x0a
 #define EVADD 0x0b
 
-asm volatile(".insn.d %4, %5, %0, %1, %2, %3, %6"
+asm volatile(".insn.d %c[major], %c[op], %0, %1, %2, %3, %c[dtype]"
              : "=VRM2"(vd)
              : "VRM2"(a), "VRM2"(b), "VRM2"(c),
-               "i"(EV64), "i"(EVADD), "i"(EV_DTYPE_I32));
+               [major] "i"(EV64),
+               [op] "i"(EVADD),
+               [dtype] "i"(EV_DTYPE_I32));
 ```
 
 The `.insn.d` route should support fixed immediate fields, register operand
 substitution, and object emission of 64-bit instruction bytes.
-
-Named operands such as `[major] "i"(EV64)` and template modifiers such as
-`%c[major]` are ergonomic follow-up scope. They should not block the first
-`.insn.d` implementation unless the current inline-asm parser and BIR metadata
-already support them without broad parser surgery.
 
 ## Final Stage: Consteval/Template Asm Strings
 
 Allow the inline asm template string to be produced by C++ constant evaluation
 rather than only by a raw string literal.
 
-The preferred first user model is ordinary compile-time string concatenation
-with `+`. This keeps the feature close to the existing inline-asm parser path:
-the frontend folds the asm-template expression into one string, then the rest
-of the compiler sees the same `InlineAsmStmt.asm_template` text it already
-knows how to carry.
-
-Example shape, using whatever compile-time string wrapper c4c accepts for
-constant folding:
-
-```cpp
-asm volatile(cts(".insn.d ") + ev64_text + cts(", ") + evadd_text +
-                 cts(", %0, %1, %2, %3, ") + dtype_i32_text
-             : "=VRM2"(vd)
-             : "VRM2"(a), "VRM2"(b), "VRM2"(c));
-```
-
-The goal is also to support header-only custom instruction libraries that build
-the same final string through small constexpr/consteval helpers:
+The goal is to support header-only custom instruction libraries:
 
 ```cpp
 namespace ev {
 template<int Major, int Op, int DType>
 consteval auto insn_d() {
-  return /* compile-time string expression equivalent to concatenated literals */;
+  return /* compile-time asm template string */;
 }
 }
 
@@ -213,8 +192,6 @@ asm volatile(ev::insn_d<EV64, EVADD, EV_DTYPE_I32>()
 This stage should define the exact accepted constant-expression string type:
 
 - string literal
-- compile-time `+` concatenation of string literals and accepted fixed-string
-  values
 - `constexpr` array/reference
 - consteval function result
 - template-built fixed string type, if that is the existing or planned c4c
@@ -222,43 +199,6 @@ This stage should define the exact accepted constant-expression string type:
 
 The asm string must still be known at compile time. Runtime strings are out of
 scope.
-
-Python-style formatting or `std::format`-style template formatting is not the
-first target. Prefer the old, explicit, maintainable `+` model unless later
-evidence shows a formatter is needed.
-
-Plain C++ string literals and integer macros do not automatically form a
-compile-time concatenation expression with `+`. A child idea must define the
-accepted c4c compile-time string representation, such as a fixed-string helper,
-literal wrapper, or existing consteval string type, before claiming this
-surface is implemented.
-
-## Known Risks And Guardrails
-
-- The current inline-asm parser path accepts raw string-literal templates
-  cleanly. Non-literal template expressions must be constant-folded into the
-  same final template string before HIR/LIR lowering; if folding fails, emit a
-  diagnostic instead of silently dropping the asm statement.
-- GNU named operands and `%c[...]` modifiers are not required for initial EV64
-  support. Keep the first route positional so parser work does not overtake the
-  encoding goal.
-- Direct object emission must not prove `.insn` or `.insn.d` by routing through
-  an external assembler. After inline-asm operand substitution, c4c needs a
-  target-owned encoder/object path for the supported `.insn` forms.
-- RV64 inline asm may need target-specific carrier/substitution work even if
-  AArch64 already has a richer inline-asm path. Do not assume all prepared
-  inline-asm machinery is target-complete for RV64.
-- `VR`, `VRM2`, and `VRM4` need a source-language value representation for
-  operands such as `vd`, `a`, and `b`. A child idea should decide whether the
-  first proof uses opaque vector handles, builtin vector types, or a narrower
-  backend fixture before trying to expose broad C++ vector semantics.
-- EV64 `.insn.d` first support should avoid linker-visible symbol
-  relocations inside the 64-bit instruction. Keep the initial encoding to
-  registers and compile-time immediates so open-source linkers can treat it as
-  fixed text bytes.
-- Bare-metal/no-relax assumptions should be explicit in proof commands when
-  they matter. Do not let linker relaxation rewrite or reinterpret EV64 custom
-  instruction bytes.
 
 ## In Scope
 
@@ -292,15 +232,8 @@ expected child ideas are:
    `VRM4`.
 3. EV 64-bit `.insn.d` format design and minimal encoder/object emission.
 4. `.insn.d` register substitution and vector-group operand tests.
-5. Optional named-operand / `%c` template-modifier ergonomics for `.insn.d`.
-6. C++ consteval/template-produced asm string support.
-7. Final integration review for custom vector instruction library readiness.
-
-## Active Child Handoff
-
-Created `ideas/open/343_rv64_consteval_inline_asm_template_strings.md` as the
-final consteval/template-produced asm string child. Lifecycle state should run
-that child before returning to this umbrella for final integration review.
+5. C++ consteval/template-produced asm string support.
+6. Final integration review for custom vector instruction library readiness.
 
 ## Testing Expectations
 
@@ -326,98 +259,15 @@ Stage 3 tests should prove:
 - `opcode8` / EV op, `dtype/policy/imm16`, `funct3`, `funct2`, and register
   fields land in the expected bits.
 - `VR`/`VRM2`/`VRM4` operands encode their base register field.
-- the first implementation can use positional operands for immediate fields;
-  named operands and `%c[...]` modifiers are not required for initial success.
 - object output can be inspected with repo-native byte or objdump/readelf
   checks.
 
 Final-stage tests should prove:
 
 - asm templates can come from accepted constant-evaluated C++ string forms.
-- compile-time string `+` concatenation feeds the same final asm-template path
-  as a raw string literal.
 - template-built EV instruction helpers produce the same bytes as literal
   `.insn.d` templates.
 - non-constant asm strings remain rejected.
-
-## Proof Ladder
-
-Each child idea should choose the narrowest matching proof from this ladder,
-then the umbrella final review should run the composed set.
-
-Frontend / HIR proof:
-
-- Parse `asm volatile(...)` with `.insn` and `.insn.d` templates.
-- Preserve raw positional placeholders such as `%0`, `%1`, `%4`.
-- Preserve constraints in output/input order.
-- For consteval/template string work, prove the asm template expression folds
-  to the same final string as a raw literal.
-- Reject non-constant asm-template expressions with a clear diagnostic.
-
-BIR metadata proof:
-
-- `LirInlineAsmOp` lowers to `bir.call llvm.inline_asm` with retained
-  `InlineAsmMetadata`.
-- Constraint tokens classify into the expected operand kinds.
-- `VR`, `=VR`, `+VR`, `VRM2`, `=VRM2`, `+VRM2`, `VRM4`, `=VRM4`, and `+VRM4`
-  are represented as vector register-class operands, not generic unsupported
-  strings.
-- Immediate operands used for EV64 marker, EV op, dtype, policy, and small
-  format fields are represented as integer-immediate inputs.
-
-Prepared / register-allocation proof:
-
-- `VR` allocates one concrete vector register from `v0` through `v31`.
-- `VRM2` allocates only 2-aligned bases and reserves both occupied registers:
-  `v0+v1`, `v2+v3`, ..., `v30+v31`.
-- `VRM4` allocates only 4-aligned bases and reserves all four occupied
-  registers: `v0-v3`, `v4-v7`, ..., `v28-v31`.
-- Untied vector groups do not overlap.
-- Tied operands and `+VR*` read-write operands reuse the intended group.
-- Deliberately impossible allocation cases fail explicitly instead of silently
-  picking an invalid base such as `v1` for `VRM2`.
-
-Target substitution proof:
-
-- Positional placeholders substitute to the selected scalar/vector register
-  spelling.
-- Grouped vector operands substitute the group base register, not every member
-  and not a non-base register.
-- Integer-immediate placeholders substitute as numeric constants accepted by
-  the `.insn` / `.insn.d` encoder.
-- The final substituted `.insn.d` text remains target-owned intermediate text;
-  it is not proof unless c4c then encodes it through the object route.
-
-Object encoding proof:
-
-- `.insn` object tests compare emitted bytes against known standard RISC-V
-  encodings.
-- `.insn.d` object tests compare emitted 8-byte EV64 instruction bytes against
-  a hand-derived bit layout.
-- Tests check every field position in the agreed EV64 format: `opcode7`, `rd`,
-  `funct3`, `rs1`, `rs2`, `rs3`, `funct2`, EV op / `opcode8`, and
-  `dtype/policy/imm16`.
-- The EV64 instruction emits as exactly eight text bytes and does not create
-  linker-visible relocations in the first supported scope.
-
-Linker / bare-metal proof:
-
-- Link an object containing `.insn.d` with the intended bare-metal or
-  no-relax command line.
-- Prove the EV64 bytes survive linking unchanged at the linked text address.
-- Do not require open-source `objdump` to disassemble EV64 mnemonics in the
-  first scope; raw byte/address inspection is enough.
-- If linker relaxation is enabled elsewhere, prove it does not rewrite or
-  reinterpret EV64 bytes, or keep the EV64 proof under explicit no-relax mode.
-
-Negative proof:
-
-- malformed `.insn` / `.insn.d` fields diagnose clearly;
-- unsupported constraints remain unsupported instead of being accepted as GPRs;
-- misaligned `VRM2` / `VRM4` fixtures are rejected;
-- runtime-generated asm strings are rejected;
-- named operands and `%c[...]` remain optional ergonomics and are not required
-  for initial closure.
 
 ## Umbrella Completion Criteria
 
@@ -435,30 +285,30 @@ This umbrella can close only when:
 
 ## Closure Note
 
-2026-06-24: close accepted after all child stages were closed and reviewed
-together:
+Closed 2026-06-24 after the staged child queue and final integration review
+completed the umbrella contract. The closed scalar `.insn` object-route child
+proved target-owned `.insn r` parsing, metadata carriage, GPR constraint
+binding, diagnostics, and object-byte emission. The closed vector-constraint
+child proved `VR`, `VRM2`, and `VRM4` allocation, alignment, overlap/tied
+rules, and base-register substitution. The closed EV `.insn.d` child proved
+the agreed 64-bit EV encoding template, immediate validation, grouped operand
+encoding by base register, and little-endian object bytes. The closed
+consteval/template-string child proved compile-time asm-template expressions
+fold into the literal inline-asm path and reject runtime strings.
 
-- Stage 1 standard RV64 `.insn` inline asm:
-  `ideas/closed/340_rv64_standard_insn_inline_asm_stage1.md`
-- Stage 2 vector register constraints `VR`, `VRM2`, and `VRM4`:
-  `ideas/closed/341_rv64_vector_register_inline_asm_constraints_stage2.md`
-- Stage 3 EV 64-bit `.insn.d` encoding and object-route proof:
-  `ideas/closed/342_rv64_ev_insn_d_inline_asm_stage3.md`
-- Final consteval/template-produced asm string route:
-  `ideas/closed/343_rv64_consteval_inline_asm_template_strings.md`
+The final integration review child
+`ideas/closed/347_rv64_inline_asm_custom_vector_integration_review.md` mapped
+the parent completion criteria to closed child evidence and current tests,
+verified the composed literal/helper `.insn.d` route through `VRM*`
+constraints and RV64 object bytes, and found no required follow-up child before
+parent closure. Close-time regression guard passed on the existing broader
+`test_before.log` / `test_after.log` pair in non-decreasing mode: 80 passed
+before and after, 0 failures, and no new failures.
 
-The integrated route now lets user/library C++ build EV `.insn.d` inline asm
-templates at compile time, pass them through the literal inline-asm template
-path, bind scalar and grouped vector operands through compiler-owned
-constraints, and prove the resulting EV64 bytes through c4c's RV64 object
-emission route without adding compiler-known EV mnemonics for each operation.
-
-Canonical close proof used full-suite `test_before.log` and `test_after.log`.
-`test_before.log` reported 3344/3345 passing with only the unrelated
-`backend_codegen_route_riscv64_pointer_typed_select_publication` self-move
-blocker failing; `test_after.log` reported 3345/3345 passing after that
-blocker was fixed. `c4c-regression-guard` reported PASS with no new failing
-tests.
+Remaining GNU named operands, `%c[...]` modifiers, mask-specific constraints,
+broader GNU assembler compatibility, runtime asm strings, and compiler-known
+EV mnemonics/intrinsics remain outside this umbrella unless opened as separate
+ideas.
 
 ## Reviewer Reject Signals
 
