@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cctype>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -258,15 +259,34 @@ std::optional<std::uint32_t> rv64_register_number_for_inline_asm_operand(
   }
 
   const auto& operand = carrier.operands[operand_index];
+  const auto constraint_is_decimal_index = [](std::string_view constraint) {
+    return !constraint.empty() &&
+           std::all_of(constraint.begin(), constraint.end(), [](unsigned char ch) {
+             return std::isdigit(ch) != 0;
+           });
+  };
   switch (operand.kind) {
     case c4c::backend::bir::InlineAsmOperandKind::RegisterOutput:
+      if (operand.constraint != "=r" && operand.constraint != "+r") {
+        return std::nullopt;
+      }
       if (!operand.output_index.has_value() || *operand.output_index != 0 ||
           !carrier.result_home.has_value()) {
         return std::nullopt;
       }
       return gpr_register_number_for_home(*carrier.result_home);
     case c4c::backend::bir::InlineAsmOperandKind::RegisterInput:
+      if (operand.constraint != "r") {
+        return std::nullopt;
+      }
+      if (!operand.arg_index.has_value() || !operand.home.has_value()) {
+        return std::nullopt;
+      }
+      return gpr_register_number_for_home(*operand.home);
     case c4c::backend::bir::InlineAsmOperandKind::TiedInput:
+      if (!constraint_is_decimal_index(operand.constraint)) {
+        return std::nullopt;
+      }
       if (!operand.arg_index.has_value() || !operand.home.has_value()) {
         return std::nullopt;
       }

@@ -1540,11 +1540,101 @@ int rejects_prepared_inline_asm_insn_r_extra_field_object() {
   return 0;
 }
 
+int rejects_prepared_inline_asm_insn_r_missing_field_object() {
+  const auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %0, %1");
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to reject missing fields");
+  }
+  return 0;
+}
+
 int rejects_prepared_inline_asm_insn_r_out_of_range_numeric_object() {
   const auto prepared = make_prepared_inline_asm_insn_r_module(
       ".insn r 0x80, 0, 0, %0, %1, %2");
   if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
     return fail("expected inline-asm .insn r object path to reject invalid numeric fields");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_r_bad_operand_token_object() {
+  const auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %0, a0, %2");
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to reject raw register tokens");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_r_named_operand_object() {
+  auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %[dst], %1, %2");
+  prepared.inline_asm_carriers.functions[0].carriers[0].has_named_operand_references =
+      true;
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to reject named operands");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_r_template_modifier_object() {
+  auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %c0, %1, %2");
+  prepared.inline_asm_carriers.functions[0].carriers[0].has_template_modifiers =
+      true;
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to reject template modifiers");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_r_clobber_object() {
+  auto prepared = make_prepared_inline_asm_insn_r_module();
+  prepared.inline_asm_carriers.functions[0].carriers[0].clobbers.push_back("memory");
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to reject clobbers");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_r_unsupported_operand_kind_object() {
+  auto prepared = make_prepared_inline_asm_insn_r_module();
+  prepared.inline_asm_carriers.functions[0].carriers[0].operands[1].kind =
+      bir::InlineAsmOperandKind::IntegerImmediateInput;
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to reject non-register operands");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_r_unsupported_constraint_object() {
+  auto prepared = make_prepared_inline_asm_insn_r_module();
+  prepared.inline_asm_carriers.functions[0].carriers[0].operands[1].constraint = "v";
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to reject unsupported constraints");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_r_vector_home_object() {
+  auto prepared = make_prepared_inline_asm_insn_r_module();
+  auto& home =
+      *prepared.inline_asm_carriers.functions[0].carriers[0].operands[1].home;
+  home.register_name = "v1";
+  home.target_register_identity->bank = prepare::PreparedRegisterBank::Vreg;
+  home.target_register_identity->register_class = prepare::PreparedRegisterClass::Vector;
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to reject vector homes");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_d_object() {
+  const auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn.d 0x2b, 0, 0, %0, %1, %2");
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm object path to reject EV .insn.d");
   }
   return 0;
 }
@@ -1882,7 +1972,16 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_r_without_complete_carrier();
   status |= rejects_prepared_inline_asm_non_insn_r_object();
   status |= rejects_prepared_inline_asm_insn_r_extra_field_object();
+  status |= rejects_prepared_inline_asm_insn_r_missing_field_object();
   status |= rejects_prepared_inline_asm_insn_r_out_of_range_numeric_object();
+  status |= rejects_prepared_inline_asm_insn_r_bad_operand_token_object();
+  status |= rejects_prepared_inline_asm_insn_r_named_operand_object();
+  status |= rejects_prepared_inline_asm_insn_r_template_modifier_object();
+  status |= rejects_prepared_inline_asm_insn_r_clobber_object();
+  status |= rejects_prepared_inline_asm_insn_r_unsupported_operand_kind_object();
+  status |= rejects_prepared_inline_asm_insn_r_unsupported_constraint_object();
+  status |= rejects_prepared_inline_asm_insn_r_vector_home_object();
+  status |= rejects_prepared_inline_asm_insn_d_object();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
