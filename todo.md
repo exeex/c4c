@@ -3,35 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/336_target_object_emitter_scalar_scan_expansion.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add AArch64 Scalar Object Instruction Support
+Current Step ID: 4
+Current Step Title: Restore Scan Candidate Proof
 
 ## Just Finished
 
-- Step 3 added focused AArch64 object-emitter support for the same-module
-  scalar call shape in `return_add.c`.
-- `src/backend/mir/aarch64/codegen/object_emission.cpp` now encodes selected
-  GPR register-to-register call-boundary moves and the narrow fixed-size
-  non-leaf frame setup/teardown shape used by `return_add.c`: stack adjust
-  with `sp`, link-register save/restore at a prepared stack offset, no dynamic
-  stack, no frame pointer, and no additional callee-save records.
-- Existing MOVZ and ADD/SUB immediate scalar object support remains intact, and
-  direct-call relocation handling is reused for the same-module `add_three`
-  call.
-- `tests/backend/mir/backend_aarch64_object_emission_test.cpp` now covers the
-  selected `add_three`/`main` object byte layout directly, including the BL
-  relocation offset and defined symbol sizes.
-- `tests/backend/CMakeLists.txt` restored
-  `backend_cli_aarch64_return_add_writes_elf_obj` as a selectable AArch64
-  object-byte scan case beside `return_add_sub_chain`.
+- Step 4 ran the restored object-route scan candidate proof without
+  implementation, test, or CMake changes.
+- The original blocked 28-test scan candidate subset now passes end to end.
+- Restored RV64 object/runtime scan coverage is selectable through
+  `backend_obj_runtime_.*` and includes `backend_obj_runtime_rv64_return_zero`,
+  `backend_obj_runtime_rv64_return_add`,
+  `backend_obj_runtime_rv64_two_arg_helper`,
+  `backend_obj_runtime_rv64_return_add_sub_chain`, and
+  `backend_obj_runtime_rv64_local_temp`. The proof also keeps the matching RV64
+  asm/runtime scalar cases selected for coexistence.
+- Restored AArch64 object-byte scan coverage is selectable through
+  `backend_cli_.*obj` and includes
+  `backend_cli_aarch64_return_zero_writes_elf_obj`,
+  `backend_cli_aarch64_return_add_writes_elf_obj`, and
+  `backend_cli_aarch64_return_add_sub_chain_writes_elf_obj`, with the
+  AArch64 asm external return smokes selected for coexistence.
 
 ## Suggested Next
 
-- If the supervisor wants more Step 3 target-emitter capability before scan
-  expansion resumes, choose the next scalar/no-global AArch64 case and inspect
-  its first selected instruction rejection. Otherwise, hand back to idea 334's
-  object-route scan expansion with AArch64 `return_add.c` and
-  `return_add_sub_chain.c` now available as object-byte scan cases.
+- Step 5 should hand the completed scalar object-emitter unblocking result back
+  to idea 334's object-route scan/default-readiness work. The key handoff fact
+  is that the formerly blocked first scan candidate subset is green and can be
+  used as the baseline for broader object-route scan expansion.
 
 ## Watchouts
 
@@ -40,16 +39,15 @@ Current Step Title: Add AArch64 Scalar Object Instruction Support
 - Do not add expected-failure scan labels for the blocked scalar cases.
 - Keep broad RV64 globals/data, x86 object output, c-testsuite defaults, object
   stdout, and object semantic-BIR mode out of this focused child.
-- AArch64 support added in this packet is intentionally limited to selected
-  GPR moves and a fixed-size link-register frame shape. It does not cover
-  general load/store memory records, dynamic stack frames, frame-pointer
-  frames, extra callee-saves, negative constants, MOVK/MOVN sequences,
-  register-register ALU, globals/data, or runtime execution.
+- Remaining unsupported/default-policy boundaries are unchanged: RV64
+  globals/data object output, broader AArch64 memory/frame/call shapes,
+  AArch64 object runtime, x86 object output, object stdout, c-testsuite object
+  defaults, and object `--backend-bir-stage semantic` stay out of this child.
 
 ## Proof
 
 - Passed:
-  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_object_emission|backend_cli_aarch64_return_add_writes_elf_obj|backend_cli_aarch64_return_add_sub_chain_writes_elf_obj|backend_cli_aarch64_asm_external_return_add_smoke)$' --output-on-failure) > test_after.log 2>&1`
-- Result: 4/4 tests passed.
+  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_(return_zero|return_add|two_arg_helper|two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call|return_add_sub_chain|local_temp)|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1`
+- Result: 28/28 tests passed.
 - Proof log: `test_after.log`.
 - Passed: `git diff --check`.
