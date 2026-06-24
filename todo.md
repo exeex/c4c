@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/337_target_object_emitter_local_call_and_regreg_scalar_expansion.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Validate Expanded Scan Baseline
+Current Step ID: 5
+Current Step Title: Hand Back To Object Route Scan
 
 ## Just Finished
 
