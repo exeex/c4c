@@ -3,30 +3,29 @@
 Status: Active
 Source Idea Path: ideas/open/332_aarch64_minimal_relocatable_elf_object_emission.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Integrate AArch64 Machine Emission With The Object Model
+Current Step ID: 4
+Current Step Title: Implement AArch64 Relocatable ELF Object Output For A Smoke Subset
 
 ## Just Finished
 
-- Completed Step 3 of `plan.md`: added an AArch64 machine-record object
-  emission entry point that consumes structured `MachineFunction` inputs and
-  lowers the supported subset through the Step 2 fragment/fixup helpers.
-- Supported selected `ReturnInstructionRecord` as `ret` and selected
-  `CallInstructionRecord` with `MachineOpcode::DirectCall` as `bl` plus
-  `R_AARCH64_CALL26`, without reading printed assembly text.
-- Added explicit object-emission diagnostics for missing function inputs,
-  missing function names, unsupported calls, and unsupported machine records
-  instead of silently falling back to `.s`.
-- Extended `backend_aarch64_object_emission` coverage for return-only,
-  same-module direct call, external direct call, unsupported-record rejection,
-  and preserved ADRP/ADD address-materialization fixture support.
+- Completed Step 4 of `plan.md`: proved the AArch64 object-emission writer
+  serializes the supported machine-record external-call subset as a structural
+  ELF64 relocatable object.
+- Added in-process byte-level assertions for the AArch64 ELF header
+  (`EM_AARCH64` 183, flags 0), `.text`, `.rela.text`, `.symtab`, `.strtab`,
+  `.shstrtab`, the serialized BL/RET bytes, the defined caller symbol, the
+  undefined external function symbol, and `R_AARCH64_CALL26` relocation
+  encoding.
+- Extended the existing ADRP/ADD fixture through
+  `write_aarch64_relocatable_elf_object` and asserted the serialized
+  `R_AARCH64_ADR_PREL_PG_HI21` / `R_AARCH64_ADD_ABS_LO12_NC` relocation pair
+  against one undefined object symbol.
 
 ## Suggested Next
 
-- Implement Step 4 by adding the narrow public object emission handoff needed
-  by the next route, while keeping CLI/runtime/default-route exposure and
-  broader prepared globals/data/BSS support out of scope until explicitly
-  planned.
+- Implement Step 5 by running the focused object-emission and nearby AArch64
+  asm-route validation, then record the handoff limitations for the later
+  CLI/default-route integration child without exposing `--codegen obj`.
 
 ## Watchouts
 
@@ -38,6 +37,8 @@ Current Step Title: Integrate AArch64 Machine Emission With The Object Model
   targets for first-slice undefined-symbol construction.
 - Structured object emission currently supports only selected return records
   and direct-call records with non-empty `direct_callee_label`.
+- Step 4 uses deterministic byte-level ELF assertions instead of external
+  readelf/objdump/link tools, so it remains toolchain-independent.
 - `EM_AARCH64` is machine `183` with ELF flags `0` for this relocatable writer
   path.
 - Known unsupported object features after the first slice: data/global section
@@ -52,7 +53,7 @@ Current Step Title: Integrate AArch64 Machine Emission With The Object Model
 - Delegated proof passed:
   `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_aarch64_object_emission|backend_object_model_records|backend_aarch64_target_record_core_contract|backend_aarch64_return_lowering)$' --output-on-failure) > test_after.log 2>&1`
 - Test subset: `backend_aarch64_object_emission`,
-  `backend_object_model_records`, and
+  `backend_object_model_records`,
   `backend_aarch64_target_record_core_contract`, and
   `backend_aarch64_return_lowering` passed 4/4.
 - Proof log path: `test_after.log`.

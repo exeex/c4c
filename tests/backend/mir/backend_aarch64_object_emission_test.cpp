@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 #include <variant>
@@ -19,6 +20,43 @@ constexpr std::uint32_t R_AARCH64_ADR_PREL_PG_HI21 = 275;
 constexpr std::uint32_t R_AARCH64_ADD_ABS_LO12_NC = 277;
 constexpr std::uint32_t R_AARCH64_CALL26 = 283;
 constexpr std::uint16_t EM_AARCH64 = 183;
+constexpr std::uint32_t SHT_RELA = 4;
+constexpr std::uint32_t SHT_SYMTAB = 2;
+constexpr std::uint32_t SHT_STRTAB = 3;
+constexpr std::uint16_t SHN_UNDEF = 0;
+
+std::uint16_t read_u16(const std::vector<std::uint8_t>& bytes,
+                       std::size_t offset) {
+  return static_cast<std::uint16_t>(bytes[offset]) |
+         (static_cast<std::uint16_t>(bytes[offset + 1]) << 8);
+}
+
+std::uint32_t read_u32(const std::vector<std::uint8_t>& bytes,
+                       std::size_t offset) {
+  return static_cast<std::uint32_t>(bytes[offset]) |
+         (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
+         (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
+         (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
+}
+
+std::uint64_t read_u64(const std::vector<std::uint8_t>& bytes,
+                       std::size_t offset) {
+  std::uint64_t value = 0;
+  for (int shift = 0; shift < 64; shift += 8) {
+    value |= static_cast<std::uint64_t>(bytes[offset + shift / 8]) << shift;
+  }
+  return value;
+}
+
+std::string read_c_string(const std::vector<std::uint8_t>& bytes,
+                          std::size_t offset) {
+  std::string value;
+  while (offset < bytes.size() && bytes[offset] != 0) {
+    value.push_back(static_cast<char>(bytes[offset]));
+    ++offset;
+  }
+  return value;
+}
 
 int fail(const char* message) {
   std::cerr << message << "\n";
@@ -28,6 +66,55 @@ int fail(const char* message) {
 bool has_bytes(const object::SectionRecord& section,
                std::initializer_list<std::uint8_t> expected) {
   return section.bytes == std::vector<std::uint8_t>(expected);
+}
+
+struct ElfSections {
+  const std::vector<std::uint8_t>& bytes;
+  std::size_t shoff = 0;
+  std::size_t shentsize = 0;
+  std::size_t shnum = 0;
+  std::size_t shstr_offset = 0;
+
+  [[nodiscard]] std::size_t header(std::size_t index) const {
+    return shoff + index * shentsize;
+  }
+
+  [[nodiscard]] std::string name(std::size_t index) const {
+    const auto header_offset = header(index);
+    return read_c_string(bytes, shstr_offset + read_u32(bytes, header_offset));
+  }
+
+  [[nodiscard]] std::size_t find(std::string_view wanted) const {
+    for (std::size_t index = 1; index < shnum; ++index) {
+      if (name(index) == wanted) {
+        return header(index);
+      }
+    }
+    return 0;
+  }
+};
+
+std::optional<ElfSections> inspect_elf_sections(
+    const std::vector<std::uint8_t>& bytes) {
+  if (bytes.size() < 64 || bytes[0] != 0x7f || bytes[1] != 'E' ||
+      bytes[2] != 'L' || bytes[3] != 'F') {
+    return std::nullopt;
+  }
+  ElfSections sections{
+      .bytes = bytes,
+      .shoff = static_cast<std::size_t>(read_u64(bytes, 40)),
+      .shentsize = read_u16(bytes, 58),
+      .shnum = read_u16(bytes, 60),
+  };
+  const auto shstrndx = read_u16(bytes, 62);
+  if (sections.shoff == 0 || sections.shentsize != 64 ||
+      sections.shnum == 0 || shstrndx >= sections.shnum) {
+    return std::nullopt;
+  }
+  const auto shstr_header = sections.header(shstrndx);
+  sections.shstr_offset =
+      static_cast<std::size_t>(read_u64(bytes, shstr_header + 24));
+  return sections;
 }
 
 aarch64_module::MachineInstruction machine_instruction(
@@ -377,6 +464,187 @@ int rejects_unselected_machine_records_without_text_fallback() {
   return 0;
 }
 
+int serializes_external_call_machine_object_as_aarch64_elf() {
+  const auto caller = machine_function({
+      machine_instruction(machine_direct_call("external_callee")),
+      machine_instruction(machine_return()),
+  });
+
+  const auto result = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "caller",
+          .global = true,
+          .function = &caller,
+      },
+  });
+  if (!result.ok()) {
+    return fail("expected external-call machine records to produce object module");
+  }
+
+  const auto image = aarch64::write_aarch64_relocatable_elf_object(*result.module);
+  if (!image.has_value()) {
+    return fail("expected AArch64 ELF writer to serialize machine object module");
+  }
+  const auto& bytes = image->bytes;
+  const auto sections = inspect_elf_sections(bytes);
+  if (!sections.has_value() || bytes[4] != 2 || bytes[5] != 1 ||
+      read_u16(bytes, 16) != 1 || read_u16(bytes, 18) != EM_AARCH64 ||
+      read_u32(bytes, 48) != 0) {
+    return fail("expected ELF64 little-endian relocatable AArch64 header");
+  }
+
+  const auto text_header = sections->find(".text");
+  const auto rela_text_header = sections->find(".rela.text");
+  const auto symtab_header = sections->find(".symtab");
+  const auto strtab_header = sections->find(".strtab");
+  const auto shstrtab_header = sections->find(".shstrtab");
+  if (text_header == 0 || rela_text_header == 0 || symtab_header == 0 ||
+      strtab_header == 0 || shstrtab_header == 0) {
+    return fail("expected AArch64 ELF object section set");
+  }
+  if (read_u64(bytes, text_header + 32) != 8 ||
+      read_u32(bytes, rela_text_header + 4) != SHT_RELA ||
+      read_u32(bytes, symtab_header + 4) != SHT_SYMTAB ||
+      read_u32(bytes, strtab_header + 4) != SHT_STRTAB ||
+      read_u32(bytes, shstrtab_header + 4) != SHT_STRTAB ||
+      read_u32(bytes, rela_text_header + 40) !=
+          static_cast<std::uint32_t>(
+              (symtab_header - sections->shoff) / sections->shentsize) ||
+      read_u32(bytes, rela_text_header + 44) !=
+          static_cast<std::uint32_t>(
+              (text_header - sections->shoff) / sections->shentsize)) {
+    return fail("expected AArch64 text, rela, symtab, and string-table metadata");
+  }
+
+  const auto text_offset = static_cast<std::size_t>(read_u64(bytes, text_header + 24));
+  if (text_offset + 8 > bytes.size() ||
+      bytes[text_offset] != 0x00 || bytes[text_offset + 1] != 0x00 ||
+      bytes[text_offset + 2] != 0x00 || bytes[text_offset + 3] != 0x94 ||
+      bytes[text_offset + 4] != 0xc0 || bytes[text_offset + 5] != 0x03 ||
+      bytes[text_offset + 6] != 0x5f || bytes[text_offset + 7] != 0xd6) {
+    return fail("expected serialized AArch64 BL placeholder followed by RET");
+  }
+
+  const auto rela_offset =
+      static_cast<std::size_t>(read_u64(bytes, rela_text_header + 24));
+  const auto rela_size = read_u64(bytes, rela_text_header + 32);
+  const auto rela_entsize = read_u64(bytes, rela_text_header + 56);
+  if (rela_size != 24 || rela_entsize != 24 || read_u64(bytes, rela_offset) != 0) {
+    return fail("expected one serialized AArch64 call relocation");
+  }
+  const auto r_info = read_u64(bytes, rela_offset + 8);
+  if ((r_info & 0xffffffffull) != R_AARCH64_CALL26 ||
+      read_u64(bytes, rela_offset + 16) != 0) {
+    return fail("expected serialized R_AARCH64_CALL26 relocation encoding");
+  }
+
+  const auto symtab_offset =
+      static_cast<std::size_t>(read_u64(bytes, symtab_header + 24));
+  const auto strtab_offset =
+      static_cast<std::size_t>(read_u64(bytes, strtab_header + 24));
+  const auto symbol_name_at = [&](std::size_t symbol_index) {
+    const auto symbol_offset = symtab_offset + symbol_index * 24;
+    return read_c_string(bytes, strtab_offset + read_u32(bytes, symbol_offset));
+  };
+  const auto symbol_section_at = [&](std::size_t symbol_index) {
+    const auto symbol_offset = symtab_offset + symbol_index * 24;
+    return read_u16(bytes, symbol_offset + 6);
+  };
+  const auto symbol_value_at = [&](std::size_t symbol_index) {
+    const auto symbol_offset = symtab_offset + symbol_index * 24;
+    return read_u64(bytes, symbol_offset + 8);
+  };
+  const auto symbol_size_at = [&](std::size_t symbol_index) {
+    const auto symbol_offset = symtab_offset + symbol_index * 24;
+    return read_u64(bytes, symbol_offset + 16);
+  };
+  const auto relocated_symbol = static_cast<std::size_t>(r_info >> 32);
+  if (symbol_name_at(relocated_symbol) != "external_callee" ||
+      symbol_section_at(relocated_symbol) != SHN_UNDEF) {
+    return fail("expected call relocation to reference undefined function symbol");
+  }
+
+  bool saw_caller = false;
+  const auto symbol_count = read_u64(bytes, symtab_header + 32) / 24;
+  for (std::size_t index = 1; index < symbol_count; ++index) {
+    if (symbol_name_at(index) == "caller") {
+      saw_caller = symbol_section_at(index) != SHN_UNDEF &&
+                   symbol_value_at(index) == 0 && symbol_size_at(index) == 8;
+    }
+  }
+  if (!saw_caller) {
+    return fail("expected serialized caller function symbol");
+  }
+  return 0;
+}
+
+int serializes_adrp_add_aarch64_relocation_pair() {
+  const auto module = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64ObjectFunction{
+          .name = "load_address",
+          .global = true,
+          .fragments = {
+              aarch64::make_aarch64_address_materialization_fragment(
+                  "global_value",
+                  aarch64::Aarch64ObjectSymbolKind::Object),
+              aarch64::make_aarch64_return_fragment(),
+          },
+      },
+  });
+  if (!module.has_value()) {
+    return fail("expected AArch64 ADRP/ADD object module");
+  }
+  const auto image = aarch64::write_aarch64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected AArch64 ELF writer to serialize ADRP/ADD module");
+  }
+  const auto sections = inspect_elf_sections(image->bytes);
+  if (!sections.has_value()) {
+    return fail("expected ADRP/ADD ELF section headers");
+  }
+  const auto& bytes = image->bytes;
+  const auto text_header = sections->find(".text");
+  const auto rela_text_header = sections->find(".rela.text");
+  const auto symtab_header = sections->find(".symtab");
+  if (text_header == 0 || rela_text_header == 0 || symtab_header == 0 ||
+      read_u64(bytes, text_header + 32) != 12 ||
+      read_u32(bytes, rela_text_header + 4) != SHT_RELA) {
+    return fail("expected ADRP/ADD ELF text and relocation sections");
+  }
+
+  const auto rela_offset =
+      static_cast<std::size_t>(read_u64(bytes, rela_text_header + 24));
+  if (read_u64(bytes, rela_text_header + 32) != 48 ||
+      read_u64(bytes, rela_text_header + 56) != 24) {
+    return fail("expected two serialized ADRP/ADD relocation entries");
+  }
+  const auto hi_info = read_u64(bytes, rela_offset + 8);
+  const auto lo_info = read_u64(bytes, rela_offset + 32);
+  if (read_u64(bytes, rela_offset) != 0 ||
+      (hi_info & 0xffffffffull) != R_AARCH64_ADR_PREL_PG_HI21 ||
+      read_u64(bytes, rela_offset + 24) != 4 ||
+      (lo_info & 0xffffffffull) != R_AARCH64_ADD_ABS_LO12_NC ||
+      (hi_info >> 32) != (lo_info >> 32)) {
+    return fail("expected serialized AArch64 ADRP/ADD relocation pair");
+  }
+
+  const auto symtab_offset =
+      static_cast<std::size_t>(read_u64(bytes, symtab_header + 24));
+  const auto strtab_header =
+      sections->shoff + read_u32(bytes, symtab_header + 40) * sections->shentsize;
+  const auto strtab_offset =
+      static_cast<std::size_t>(read_u64(bytes, strtab_header + 24));
+  const auto symbol_index = static_cast<std::size_t>(hi_info >> 32);
+  const auto symbol_offset = symtab_offset + symbol_index * 24;
+  if (read_c_string(bytes,
+                    strtab_offset + read_u32(bytes, symbol_offset)) !=
+          "global_value" ||
+      read_u16(bytes, symbol_offset + 6) != SHN_UNDEF) {
+    return fail("expected ADRP/ADD relocations to reference undefined object symbol");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -412,6 +680,14 @@ int main() {
     return status;
   }
   if (const int status = rejects_unselected_machine_records_without_text_fallback();
+      status != 0) {
+    return status;
+  }
+  if (const int status = serializes_external_call_machine_object_as_aarch64_elf();
+      status != 0) {
+    return status;
+  }
+  if (const int status = serializes_adrp_add_aarch64_relocation_pair();
       status != 0) {
     return status;
   }
