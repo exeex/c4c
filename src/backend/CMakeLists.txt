@@ -46,6 +46,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/traversal.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/variadic.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/module/module.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/object/model.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_call_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_edge_publication_emit.cpp"
