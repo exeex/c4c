@@ -1,5 +1,16 @@
 # Textual Assembler Object Route Follow-Up
 
+## Closure Note
+
+Closed with a no-work-needed decision. Direct `--codegen obj` is already
+separate from textual assembly and does not depend on printed `.s`
+round-tripping; the asm route remains independently tested; and there is no
+active standalone `c4c-as` CLI/test seam requiring implementation now.
+
+Future textual assembler work should be reactivated only as a separate
+product-driven child for standalone external-input c4c-emitted assembly, and
+must not become a dependency of direct compiler object output.
+
 ## Goal
 
 Add a scoped textual assembler route for c4c-emitted assembly, if still needed
