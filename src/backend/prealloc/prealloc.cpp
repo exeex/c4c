@@ -32,6 +32,7 @@ PreparedBirModule BirPreAlloc::run() {
   run_stack_layout();
   run_liveness();
   run_out_of_ssa();
+  populate_inline_asm_register_group_overrides(prepared_);
   run_regalloc();
   publish_contract_plans();
   return std::move(prepared_);

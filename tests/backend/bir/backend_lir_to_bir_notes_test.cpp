@@ -3436,6 +3436,45 @@ LirModule make_unsupported_template_modifier_inline_asm_metadata_module() {
   return module;
 }
 
+LirModule make_rv64_vector_inline_asm_metadata_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.enum_underlying_base = c4c::TB_VOID;
+
+  LirFunction function;
+  function.name = "rv64_vector_inline_asm_metadata";
+  function.signature_text =
+      "define void @rv64_vector_inline_asm_metadata(i32 %a, i32 %b, i32 %c, i32 %d, i32 %e, i32 %f)";
+  function.params.push_back({"%a", int_type});
+  function.params.push_back({"%b", int_type});
+  function.params.push_back({"%c", int_type});
+  function.params.push_back({"%d", int_type});
+  function.params.push_back({"%e", int_type});
+  function.params.push_back({"%f", int_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirInlineAsmOp{
+      .result = LirOperand(""),
+      .ret_type = "void",
+      .asm_text = "vector %0 %1 %2",
+      .constraints = "VR,=VR,+VR,VRM2,=VRM2,+VRM2,VRM4,=VRM4,+VRM4,VRM8,=VRM3,+VRM",
+      .side_effects = true,
+      .args_str = "i32 %a, i32 %b, i32 %c, i32 %d, i32 %e, i32 %f",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
   auto result = try_lower_to_bir_with_options(make_structured_inline_asm_metadata_module(),
                                               BirLoweringOptions{});
@@ -3507,6 +3546,78 @@ int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
   }
   if (!saw_unsupported_modifier_fact) {
     return fail("unsupported inline asm modifier should emit fail-closed fact");
+  }
+
+  auto vector_result = try_lower_to_bir_with_options(
+      make_rv64_vector_inline_asm_metadata_module(), BirLoweringOptions{});
+  if (!vector_result.module.has_value()) {
+    return fail("RV64 vector inline asm metadata fixture should lower to BIR");
+  }
+  const auto& vector_function = vector_result.module->functions.front();
+  const auto* vector_call =
+      std::get_if<c4c::backend::bir::CallInst>(
+          &vector_function.blocks.front().insts.front());
+  if (vector_call == nullptr || !vector_call->inline_asm.has_value()) {
+    return fail("RV64 vector inline asm fixture should lower to an inline asm call");
+  }
+  const auto& vector_asm = *vector_call->inline_asm;
+  if (vector_asm.operands.size() != 12 ||
+      vector_asm.unsupported_facts.size() != 3 ||
+      vector_asm.unsupported_facts[0] != "unsupported_vector_constraint9:VRM8" ||
+      vector_asm.unsupported_facts[1] != "unsupported_vector_constraint10:=VRM3" ||
+      vector_asm.unsupported_facts[2] != "unsupported_vector_constraint11:+VRM") {
+    return fail("RV64 vector inline asm malformed constraints should diagnose explicitly");
+  }
+  const auto expect_vector_operand =
+      [&](std::size_t index,
+          c4c::backend::bir::InlineAsmOperandKind kind,
+          std::size_t width,
+          std::optional<std::size_t> arg_index,
+          std::optional<std::size_t> output_index) -> bool {
+    const auto& operand = vector_asm.operands[index];
+    return operand.kind == kind &&
+           operand.register_class ==
+               c4c::backend::bir::InlineAsmRegisterClass::Vector &&
+           operand.register_group_width == width &&
+           operand.arg_index == arg_index &&
+           operand.output_index == output_index;
+  };
+  if (!expect_vector_operand(0,
+                             c4c::backend::bir::InlineAsmOperandKind::RegisterInput,
+                             1,
+                             std::size_t{0},
+                             std::nullopt) ||
+      !expect_vector_operand(1,
+                             c4c::backend::bir::InlineAsmOperandKind::RegisterOutput,
+                             1,
+                             std::nullopt,
+                             std::size_t{0}) ||
+      !expect_vector_operand(2,
+                             c4c::backend::bir::InlineAsmOperandKind::RegisterOutput,
+                             1,
+                             std::size_t{1},
+                             std::size_t{1}) ||
+      !expect_vector_operand(3,
+                             c4c::backend::bir::InlineAsmOperandKind::RegisterInput,
+                             2,
+                             std::size_t{2},
+                             std::nullopt) ||
+      !expect_vector_operand(5,
+                             c4c::backend::bir::InlineAsmOperandKind::RegisterOutput,
+                             2,
+                             std::size_t{3},
+                             std::size_t{3}) ||
+      !expect_vector_operand(6,
+                             c4c::backend::bir::InlineAsmOperandKind::RegisterInput,
+                             4,
+                             std::size_t{4},
+                             std::nullopt) ||
+      !expect_vector_operand(8,
+                             c4c::backend::bir::InlineAsmOperandKind::RegisterOutput,
+                             4,
+                             std::size_t{5},
+                             std::size_t{5})) {
+    return fail("RV64 vector inline asm supported operands lost class or width facts");
   }
 
   auto rendered_only_result = try_lower_to_bir_with_options(

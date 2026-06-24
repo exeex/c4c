@@ -51,6 +51,10 @@ void append_inline_asm_missing_fact(PreparedInlineAsmCarrierFunction& function_c
       "inst#" + std::to_string(carrier.inst_index) + ":" + std::move(fact));
 }
 
+[[nodiscard]] std::optional<ValueNameId> prepared_inline_asm_named_value_id(
+    PreparedNameTables& names,
+    const std::optional<bir::Value>& value);
+
 [[nodiscard]] std::optional<std::size_t> parse_inline_asm_register_index(
     std::string_view digits,
     std::size_t max_index) {
@@ -125,12 +129,28 @@ aarch64_inline_asm_register_identity(std::string_view register_name) {
   };
 }
 
+[[nodiscard]] PreparedTargetRegisterIdentity rv64_vector_identity(std::size_t physical_index) {
+  return PreparedTargetRegisterIdentity{
+      .target_arch = c4c::TargetArch::Riscv64,
+      .bank = PreparedRegisterBank::Vreg,
+      .register_class = PreparedRegisterClass::Vector,
+      .physical_index = physical_index,
+  };
+}
+
 [[nodiscard]] std::optional<PreparedTargetRegisterIdentity>
 rv64_inline_asm_register_identity(std::string_view register_name) {
   if (register_name.size() >= 2 && register_name.front() == 'x') {
     const auto index = parse_inline_asm_register_index(register_name.substr(1), 31);
     if (index.has_value()) {
       return rv64_gpr_identity(*index);
+    }
+    return std::nullopt;
+  }
+  if (register_name.size() >= 2 && register_name.front() == 'v') {
+    const auto index = parse_inline_asm_register_index(register_name.substr(1), 31);
+    if (index.has_value()) {
+      return rv64_vector_identity(*index);
     }
     return std::nullopt;
   }
@@ -187,9 +207,121 @@ inline_asm_register_identity(const c4c::TargetProfile& target_profile,
 }
 
 [[nodiscard]] bool inline_asm_identity_matches_register_constraint(
-    const PreparedTargetRegisterIdentity& identity) {
-  return identity.bank == PreparedRegisterBank::Gpr &&
-         identity.register_class == PreparedRegisterClass::General;
+    const PreparedTargetRegisterIdentity& identity,
+    bir::InlineAsmRegisterClass register_class) {
+  switch (register_class) {
+    case bir::InlineAsmRegisterClass::General:
+      return identity.bank == PreparedRegisterBank::Gpr &&
+             identity.register_class == PreparedRegisterClass::General;
+    case bir::InlineAsmRegisterClass::Vector:
+      return identity.bank == PreparedRegisterBank::Vreg &&
+             identity.register_class == PreparedRegisterClass::Vector;
+    case bir::InlineAsmRegisterClass::None:
+      return true;
+  }
+  return false;
+}
+
+[[nodiscard]] PreparedRegisterClass prepared_register_class_from_inline_asm(
+    bir::InlineAsmRegisterClass register_class) {
+  switch (register_class) {
+    case bir::InlineAsmRegisterClass::General:
+      return PreparedRegisterClass::General;
+    case bir::InlineAsmRegisterClass::Vector:
+      return PreparedRegisterClass::Vector;
+    case bir::InlineAsmRegisterClass::None:
+      return PreparedRegisterClass::None;
+  }
+  return PreparedRegisterClass::None;
+}
+
+[[nodiscard]] bir::InlineAsmRegisterClass tied_output_register_class(
+    const std::vector<PreparedInlineAsmOperand>& operands,
+    std::size_t tied_output_index) {
+  for (const auto& operand : operands) {
+    if (operand.kind == bir::InlineAsmOperandKind::RegisterOutput &&
+        operand.output_index.has_value() && *operand.output_index == tied_output_index) {
+      return operand.register_class;
+    }
+  }
+  return bir::InlineAsmRegisterClass::None;
+}
+
+void append_inline_asm_register_group_override(PreparedBirModule& prepared,
+                                               FunctionNameId function_name,
+                                               ValueNameId value_name,
+                                               bir::InlineAsmRegisterClass register_class,
+                                               std::size_t register_group_width) {
+  const auto prepared_class = prepared_register_class_from_inline_asm(register_class);
+  if (function_name == kInvalidFunctionName || value_name == kInvalidValueName ||
+      prepared_class == PreparedRegisterClass::None) {
+    return;
+  }
+  if (const auto* existing =
+          find_prepared_register_group_override(prepared, function_name, value_name);
+      existing != nullptr) {
+    return;
+  }
+  prepared.register_group_overrides.values.push_back(PreparedRegisterGroupOverride{
+      .function_name = function_name,
+      .value_name = value_name,
+      .register_class = prepared_class,
+      .contiguous_width = register_group_width == 0 ? 1 : register_group_width,
+  });
+}
+
+void publish_inline_asm_register_group_overrides(PreparedBirModule& prepared,
+                                                 const PreparedInlineAsmCarrier& carrier) {
+  for (const auto& operand : carrier.operands) {
+    if (operand.value_name.has_value()) {
+      append_inline_asm_register_group_override(prepared,
+                                                carrier.function_name,
+                                                *operand.value_name,
+                                                operand.register_class,
+                                                operand.register_group_width);
+    }
+    if (operand.kind == bir::InlineAsmOperandKind::RegisterOutput &&
+        carrier.result_value_name.has_value()) {
+      append_inline_asm_register_group_override(prepared,
+                                                carrier.function_name,
+                                                *carrier.result_value_name,
+                                                operand.register_class,
+                                                operand.register_group_width);
+    }
+  }
+}
+
+void publish_inline_asm_metadata_register_group_overrides(PreparedBirModule& prepared,
+                                                          FunctionNameId function_name,
+                                                          const bir::CallInst& call) {
+  if (!call.inline_asm.has_value()) {
+    return;
+  }
+  for (const auto& operand : call.inline_asm->operands) {
+    if (operand.arg_index.has_value() && *operand.arg_index < call.args.size()) {
+      if (const auto value_name = prepared_inline_asm_named_value_id(
+              prepared.names, call.args[*operand.arg_index]);
+          value_name.has_value()) {
+        append_inline_asm_register_group_override(prepared,
+                                                  function_name,
+                                                  *value_name,
+                                                  operand.register_class,
+                                                  operand.register_group_width);
+      }
+    }
+    if (operand.kind == bir::InlineAsmOperandKind::RegisterOutput &&
+        call.result.has_value()) {
+      if (const auto value_name =
+              prepared_inline_asm_named_value_id(prepared.names, call.result);
+          value_name.has_value()) {
+        append_inline_asm_register_group_override(prepared,
+                                                  function_name,
+                                                  *value_name,
+                                                  operand.register_class,
+                                                  operand.register_group_width);
+      }
+    }
+  }
 }
 
 void populate_inline_asm_home_identity(const c4c::TargetProfile& target_profile,
@@ -267,6 +399,8 @@ void populate_inline_asm_home_identity(const c4c::TargetProfile& target_profile,
       .arg_index = metadata.arg_index,
       .output_index = metadata.output_index,
       .tied_output_index = metadata.tied_output_index,
+      .register_class = metadata.register_class,
+      .register_group_width = metadata.register_group_width,
       .value = std::nullopt,
       .value_name = std::nullopt,
       .home = std::nullopt,
@@ -346,6 +480,14 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
         if (!operand.output_index.has_value() || *operand.output_index != 0) {
           append_inline_asm_missing_fact(function_carriers, carrier, "unsupported_output_index");
         }
+        if (carrier.result_home.has_value() &&
+            carrier.result_home->target_register_identity.has_value() &&
+            !inline_asm_identity_matches_register_constraint(
+                *carrier.result_home->target_register_identity, operand.register_class)) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "result_home_incompatible_register_class");
+        }
         break;
       case bir::InlineAsmOperandKind::RegisterInput:
         if (!operand.arg_index.has_value() || !operand.value.has_value()) {
@@ -366,6 +508,13 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
                                          carrier,
                                          "operand" + std::to_string(*operand.arg_index) +
                                              "_requires_register_home");
+        } else if (operand.home->target_register_identity.has_value() &&
+                   !inline_asm_identity_matches_register_constraint(
+                       *operand.home->target_register_identity, operand.register_class)) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "operand" + std::to_string(*operand.arg_index) +
+                                             "_home_incompatible_register_class");
         }
         break;
       case bir::InlineAsmOperandKind::TiedInput:
@@ -430,8 +579,12 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
                                            "target_invalid_tied_output_register_home");
           }
           if (tied_identity.has_value() && output_identity.has_value()) {
-            if (!inline_asm_identity_matches_register_constraint(*tied_identity) ||
-                !inline_asm_identity_matches_register_constraint(*output_identity)) {
+            const auto expected_class =
+                operand.tied_output_index.has_value()
+                    ? tied_output_register_class(carrier.operands, *operand.tied_output_index)
+                    : operand.register_class;
+            if (!inline_asm_identity_matches_register_constraint(*tied_identity, expected_class) ||
+                !inline_asm_identity_matches_register_constraint(*output_identity, expected_class)) {
               append_inline_asm_missing_fact(
                   function_carriers,
                   carrier,
@@ -584,6 +737,27 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
 
 }  // namespace
 
+void populate_inline_asm_register_group_overrides(PreparedBirModule& prepared) {
+  for (const auto& function : prepared.module.functions) {
+    const FunctionNameId function_name =
+        prepared.names.function_names.find(function.name);
+    if (function_name == kInvalidFunctionName) {
+      continue;
+    }
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        const auto* call = std::get_if<bir::CallInst>(&inst);
+        if (call == nullptr || !call->inline_asm.has_value()) {
+          continue;
+        }
+        publish_inline_asm_metadata_register_group_overrides(prepared,
+                                                             function_name,
+                                                             *call);
+      }
+    }
+  }
+}
+
 void populate_inline_asm_carriers(PreparedBirModule& prepared) {
   prepared.inline_asm_carriers.functions.clear();
 
@@ -617,6 +791,8 @@ void populate_inline_asm_carriers(PreparedBirModule& prepared) {
                                      instruction_index,
                                      prepared.target_profile,
                                      value_locations));
+        publish_inline_asm_register_group_overrides(prepared,
+                                                    function_carriers.carriers.back());
       }
     }
     if (!function_carriers.carriers.empty() ||

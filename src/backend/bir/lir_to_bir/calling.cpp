@@ -127,6 +127,46 @@ struct InlineAsmTemplateModifierFacts {
   bool has_unsupported_modifier = false;
 };
 
+struct InlineAsmVectorConstraintFacts {
+  bool is_vector_looking = false;
+  bool supported = false;
+  bool is_output = false;
+  bool is_read_write = false;
+  std::size_t group_width = 1;
+};
+
+[[nodiscard]] InlineAsmVectorConstraintFacts classify_inline_asm_vector_constraint(
+    std::string_view token) {
+  InlineAsmVectorConstraintFacts facts;
+  if (token.empty()) {
+    return facts;
+  }
+  std::string_view body = token;
+  if (body.front() == '=') {
+    facts.is_output = true;
+    body.remove_prefix(1);
+  } else if (body.front() == '+') {
+    facts.is_output = true;
+    facts.is_read_write = true;
+    body.remove_prefix(1);
+  }
+  facts.is_vector_looking = body.size() >= 2 && body.substr(0, 2) == "VR";
+  if (!facts.is_vector_looking) {
+    return facts;
+  }
+  if (body == "VR") {
+    facts.supported = true;
+    facts.group_width = 1;
+  } else if (body == "VRM2") {
+    facts.supported = true;
+    facts.group_width = 2;
+  } else if (body == "VRM4") {
+    facts.supported = true;
+    facts.group_width = 4;
+  }
+  return facts;
+}
+
 [[nodiscard]] bool inline_asm_template_modifier_is_supported(char modifier,
                                                              char operand) {
   return (modifier == 'w' || modifier == 'x') &&
@@ -567,6 +607,8 @@ aapcs64_va_arg_hfa_payload_shape(
         .arg_index = std::nullopt,
         .output_index = std::nullopt,
         .tied_output_index = std::nullopt,
+        .register_class = bir::InlineAsmRegisterClass::None,
+        .register_group_width = 1,
         .name = std::nullopt,
         .memory_address = std::nullopt,
         .address = std::nullopt,
@@ -577,9 +619,29 @@ aapcs64_va_arg_hfa_payload_shape(
     } else if (token == "r") {
       operand.kind = bir::InlineAsmOperandKind::RegisterInput;
       operand.arg_index = next_arg_index++;
+      operand.register_class = bir::InlineAsmRegisterClass::General;
     } else if (token == "=r") {
       operand.kind = bir::InlineAsmOperandKind::RegisterOutput;
       operand.output_index = next_output_index++;
+      operand.register_class = bir::InlineAsmRegisterClass::General;
+    } else if (const auto vector_constraint =
+                   classify_inline_asm_vector_constraint(token);
+               vector_constraint.is_vector_looking) {
+      if (vector_constraint.supported) {
+        operand.kind = bir::InlineAsmOperandKind::RegisterInput;
+        operand.register_class = bir::InlineAsmRegisterClass::Vector;
+        operand.register_group_width = vector_constraint.group_width;
+        if (vector_constraint.is_output) {
+          operand.kind = bir::InlineAsmOperandKind::RegisterOutput;
+          operand.output_index = next_output_index++;
+        }
+        if (!vector_constraint.is_output || vector_constraint.is_read_write) {
+          operand.arg_index = next_arg_index++;
+        }
+      } else {
+        metadata.unsupported_facts.push_back(
+            "unsupported_vector_constraint" + std::to_string(index) + ":" + token);
+      }
     } else if (token == "i" || token == "I") {
       operand.kind = bir::InlineAsmOperandKind::IntegerImmediateInput;
       operand.arg_index = next_arg_index++;

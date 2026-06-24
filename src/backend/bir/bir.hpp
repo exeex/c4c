@@ -942,6 +942,25 @@ enum class InlineAsmOperandKind : unsigned char {
   Clobber,
 };
 
+enum class InlineAsmRegisterClass : unsigned char {
+  None,
+  General,
+  Vector,
+};
+
+[[nodiscard]] constexpr std::string_view inline_asm_register_class_name(
+    InlineAsmRegisterClass register_class) {
+  switch (register_class) {
+    case InlineAsmRegisterClass::None:
+      return "none";
+    case InlineAsmRegisterClass::General:
+      return "general";
+    case InlineAsmRegisterClass::Vector:
+      return "vector";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] constexpr std::string_view inline_asm_operand_kind_name(
     InlineAsmOperandKind kind) {
   switch (kind) {
@@ -972,6 +991,8 @@ struct InlineAsmOperandMetadata {
   std::optional<std::size_t> arg_index;
   std::optional<std::size_t> output_index;
   std::optional<std::size_t> tied_output_index;
+  InlineAsmRegisterClass register_class = InlineAsmRegisterClass::None;
+  std::size_t register_group_width = 1;
   std::optional<std::string> name;
   std::optional<MemoryAddress> memory_address;
   std::optional<MemoryAddress> address;

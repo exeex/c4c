@@ -307,6 +307,9 @@ struct PreparedInlineAsmOperand {
   std::optional<std::size_t> arg_index;
   std::optional<std::size_t> output_index;
   std::optional<std::size_t> tied_output_index;
+  c4c::backend::bir::InlineAsmRegisterClass register_class =
+      c4c::backend::bir::InlineAsmRegisterClass::None;
+  std::size_t register_group_width = 1;
   std::optional<c4c::backend::bir::Value> value;
   std::optional<ValueNameId> value_name;
   std::optional<PreparedValueHome> home;

@@ -63,6 +63,10 @@ void append_inline_asm_carriers(std::ostringstream& out, const PreparedBirModule
         out << " operand" << operand.constraint_index
             << "[kind=" << bir::inline_asm_operand_kind_name(operand.kind)
             << ",constraint=\"" << escape_quoted_text(operand.constraint) << "\"";
+        if (operand.register_class != bir::InlineAsmRegisterClass::None) {
+          out << ",class=" << bir::inline_asm_register_class_name(operand.register_class)
+              << ",width=" << operand.register_group_width;
+        }
         if (operand.arg_index.has_value()) {
           out << ",arg=" << *operand.arg_index;
         }

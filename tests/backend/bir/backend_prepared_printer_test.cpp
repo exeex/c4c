@@ -3331,7 +3331,9 @@ bir::InlineAsmOperandMetadata inline_asm_operand(
     std::optional<std::size_t> tied_output_index = std::nullopt,
     std::optional<std::string> name = std::nullopt,
     std::optional<bir::MemoryAddress> memory_address = std::nullopt,
-    std::optional<bir::MemoryAddress> address = std::nullopt) {
+    std::optional<bir::MemoryAddress> address = std::nullopt,
+    bir::InlineAsmRegisterClass register_class = bir::InlineAsmRegisterClass::None,
+    std::size_t register_group_width = 1) {
   return bir::InlineAsmOperandMetadata{
       .kind = kind,
       .constraint_index = constraint_index,
@@ -3339,6 +3341,8 @@ bir::InlineAsmOperandMetadata inline_asm_operand(
       .arg_index = arg_index,
       .output_index = output_index,
       .tied_output_index = tied_output_index,
+      .register_class = register_class,
+      .register_group_width = register_group_width,
       .name = std::move(name),
       .memory_address = std::move(memory_address),
       .address = std::move(address),
@@ -3518,6 +3522,125 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_scalar_carrier_module() {
                                  "=r",
                                  std::nullopt,
                                  std::size_t{0}),
+              inline_asm_operand(bir::InlineAsmOperandKind::TiedInput,
+                                 1,
+                                 "0",
+                                 std::size_t{0},
+                                 std::nullopt,
+                                 std::size_t{0}),
+          },
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "tie"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, target, prepare::PrepareOptions{});
+}
+
+prepare::PreparedBirModule prepare_rv64_inline_asm_vector_carrier_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  const c4c::TargetProfile target = riscv_target_profile();
+  const auto i32_arg_abi = *prepare::infer_call_arg_abi(target, bir::TypeKind::I32);
+  const bir::CallResultAbiInfo i32_result_abi{
+      .type = bir::TypeKind::I32,
+      .primary_class = bir::AbiValueClass::Integer,
+  };
+
+  bir::Function function;
+  function.name = "rv64_inline_asm_vector_carrier_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "x"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "x"),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "tmp")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "vmv.v.v %0, %0",
+          .constraints = "VRM2",
+          .side_effects = true,
+          .operands = {inline_asm_operand(
+              bir::InlineAsmOperandKind::RegisterInput,
+              0,
+              "VRM2",
+              std::size_t{0},
+              std::nullopt,
+              std::nullopt,
+              std::nullopt,
+              std::nullopt,
+              std::nullopt,
+              bir::InlineAsmRegisterClass::Vector,
+              2)},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "out"),
+      .callee = "llvm.inline_asm",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "vmv.v.i %0, 0",
+          .constraints = "=VRM4",
+          .side_effects = true,
+          .operands = {inline_asm_operand(
+              bir::InlineAsmOperandKind::RegisterOutput,
+              0,
+              "=VRM4",
+              std::nullopt,
+              std::size_t{0},
+              std::nullopt,
+              std::nullopt,
+              std::nullopt,
+              std::nullopt,
+              bir::InlineAsmRegisterClass::Vector,
+              4)},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tie"),
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "tie")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "vadd.vv %0, %0, %0",
+          .constraints = "=VRM2,0",
+          .side_effects = true,
+          .operands = {
+              inline_asm_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                 0,
+                                 "=VRM2",
+                                 std::nullopt,
+                                 std::size_t{0},
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 bir::InlineAsmRegisterClass::Vector,
+                                 2),
               inline_asm_operand(bir::InlineAsmOperandKind::TiedInput,
                                  1,
                                  "0",
@@ -3841,6 +3964,98 @@ int rv64_inline_asm_carriers_preserve_scalar_register_identities() {
   if (!expect_not_contains(dump,
                            "target_invalid_tied_output_register_home",
                            "RV64 tied output invalid-register diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int rv64_inline_asm_carriers_preserve_vector_register_group_facts() {
+  const auto prepared = prepare_rv64_inline_asm_vector_carrier_module();
+  const auto* function_carriers =
+      find_inline_asm_carriers(prepared, "rv64_inline_asm_vector_carrier_contract");
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 3) {
+    std::cerr << "[FAIL] expected three RV64 vector prepared inline asm carriers\n";
+    return EXIT_FAILURE;
+  }
+
+  const auto function_id =
+      prepared.names.function_names.find("rv64_inline_asm_vector_carrier_contract");
+  const auto value_id = [&](std::string_view name) {
+    return prepared.names.value_names.find(name);
+  };
+  const auto* x_override = prepare::find_prepared_register_group_override(
+      prepared, function_id, value_id("tmp"));
+  const auto* out_override = prepare::find_prepared_register_group_override(
+      prepared, function_id, value_id("out"));
+  const auto* tie_override = prepare::find_prepared_register_group_override(
+      prepared, function_id, value_id("tie"));
+  if (x_override == nullptr || out_override == nullptr || tie_override == nullptr ||
+      x_override->register_class != prepare::PreparedRegisterClass::Vector ||
+      x_override->contiguous_width != 2 ||
+      out_override->register_class != prepare::PreparedRegisterClass::Vector ||
+      out_override->contiguous_width != 4 ||
+      tie_override->register_class != prepare::PreparedRegisterClass::Vector ||
+      tie_override->contiguous_width != 2) {
+    std::cerr << "[FAIL] RV64 vector inline asm constraints did not publish group overrides\n";
+    return EXIT_FAILURE;
+  }
+
+  const auto& input_carrier = function_carriers->carriers[0];
+  const auto& output_carrier = function_carriers->carriers[1];
+  const auto& tied_carrier = function_carriers->carriers[2];
+  const auto is_vector_home = [](const std::optional<prepare::PreparedValueHome>& home,
+                                 std::size_t width) {
+    return home.has_value() &&
+           home->kind == prepare::PreparedValueHomeKind::Register &&
+           home->register_name.has_value() &&
+           home->target_register_identity.has_value() &&
+           home->target_register_identity->target_arch == c4c::TargetArch::Riscv64 &&
+           home->target_register_identity->bank == prepare::PreparedRegisterBank::Vreg &&
+           home->target_register_identity->register_class ==
+               prepare::PreparedRegisterClass::Vector &&
+           width > 0;
+  };
+  if (input_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      input_carrier.operands.size() != 1 ||
+      input_carrier.operands[0].register_class !=
+          bir::InlineAsmRegisterClass::Vector ||
+      input_carrier.operands[0].register_group_width != 2 ||
+      !is_vector_home(input_carrier.operands[0].home, 2)) {
+    std::cerr << "[FAIL] RV64 VRM2 input carrier lacks vector home facts\n";
+    return EXIT_FAILURE;
+  }
+  if (output_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      output_carrier.operands.size() != 1 ||
+      output_carrier.operands[0].register_class !=
+          bir::InlineAsmRegisterClass::Vector ||
+      output_carrier.operands[0].register_group_width != 4 ||
+      !is_vector_home(output_carrier.result_home, 4)) {
+    std::cerr << "[FAIL] RV64 =VRM4 output carrier lacks vector home facts\n";
+    return EXIT_FAILURE;
+  }
+  if (tied_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      tied_carrier.operands.size() != 2 ||
+      tied_carrier.operands[0].register_group_width != 2 ||
+      !tied_carrier.operands[1].tied_home_authority.has_value() ||
+      !is_vector_home(tied_carrier.result_home, 2) ||
+      !is_vector_home(tied_carrier.operands[1].home, 2) ||
+      tied_carrier.operands[1].tied_home_authority->shared_register.bank !=
+          prepare::PreparedRegisterBank::Vreg ||
+      !tied_carrier.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] RV64 tied vector inline asm carrier lacks shared vector authority\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string dump = prepare::print(prepared);
+  if (!expect_contains(dump,
+                       "operand0[kind=register_output,constraint=\"=VRM2\","
+                       "class=vector,width=2,output=0",
+                       "prepared vector inline asm class/width dump")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(dump,
+                           "tied_input_output_home_incompatible_register_class",
+                           "RV64 tied vector register-class diagnostic")) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
@@ -5189,6 +5404,11 @@ int main() {
   }
   if (const int status =
           rv64_inline_asm_carriers_preserve_scalar_register_identities();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          rv64_inline_asm_carriers_preserve_vector_register_group_facts();
       status != 0) {
     return status;
   }
