@@ -2064,6 +2064,43 @@ int rejects_prepared_inline_asm_insn_r_clobber_object() {
   return 0;
 }
 
+int rejects_structured_prepared_inline_asm_insn_r_closed_surface_object() {
+  auto named = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %[dst], %1, %2",
+      true,
+      false,
+      true);
+  named.inline_asm_carriers.functions[0].carriers[0].has_named_operand_references =
+      true;
+  if (rv64::build_rv64_prepared_text_object_module(named).has_value()) {
+    return fail("expected structured .insn r object path to reject named operands");
+  }
+
+  auto modifier = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %c0, %1, %2",
+      true,
+      false,
+      true);
+  modifier.inline_asm_carriers.functions[0].carriers[0].has_template_modifiers =
+      true;
+  if (rv64::build_rv64_prepared_text_object_module(modifier).has_value()) {
+    return fail("expected structured .insn r object path to reject template modifiers");
+  }
+
+  auto clobber = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %0, %1, %2",
+      true,
+      false,
+      true);
+  clobber.inline_asm_carriers.functions[0].carriers[0].clobbers.push_back(
+      "memory");
+  if (rv64::build_rv64_prepared_text_object_module(clobber).has_value()) {
+    return fail("expected structured .insn r object path to reject clobbers");
+  }
+
+  return 0;
+}
+
 int rejects_prepared_inline_asm_insn_r_unsupported_operand_kind_object() {
   auto prepared = make_prepared_inline_asm_insn_r_module();
   prepared.inline_asm_carriers.functions[0].carriers[0].operands[1].kind =
@@ -2705,6 +2742,7 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_r_named_operand_object();
   status |= rejects_prepared_inline_asm_insn_r_template_modifier_object();
   status |= rejects_prepared_inline_asm_insn_r_clobber_object();
+  status |= rejects_structured_prepared_inline_asm_insn_r_closed_surface_object();
   status |= rejects_prepared_inline_asm_insn_r_unsupported_operand_kind_object();
   status |= rejects_prepared_inline_asm_insn_r_unsupported_constraint_object();
   status |= rejects_prepared_inline_asm_insn_r_vector_home_object();

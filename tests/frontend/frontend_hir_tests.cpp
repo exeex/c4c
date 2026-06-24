@@ -7608,6 +7608,8 @@ int ordinary(int value) {
             ".insn r folded template text should preserve rewritten operands");
   expect_eq(insn_asm->constraints, "+r,r,r",
             ".insn r constraints should remain ordinary inline asm metadata");
+  expect_true(insn_asm->has_side_effects,
+              ".insn r volatile asm should preserve side-effect metadata");
   expect_eq_int(static_cast<int>(insn_asm->insn_r->opcode), 0x33,
                 ".insn r opcode metadata should preserve numeric field");
   expect_eq_int(static_cast<int>(insn_asm->insn_r->funct3), 0,
@@ -7662,6 +7664,8 @@ int ordinary(int value) {
   expect_eq(lir_insn_asm->asm_text,
             ".insn r 0x33, 0, 0, ${0}, ${1}, ${2}",
             ".insn r LIR asm text should preserve rewritten template");
+  expect_true(lir_insn_asm->side_effects,
+              ".insn r LIR op should preserve side-effect metadata");
   expect_eq_int(static_cast<int>(lir_insn_asm->insn_r->opcode), 0x33,
                 ".insn r LIR opcode metadata should preserve numeric field");
   expect_eq_int(static_cast<int>(lir_insn_asm->insn_r->operand_indices[2]), 2,
