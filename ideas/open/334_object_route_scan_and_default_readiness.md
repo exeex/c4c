@@ -77,6 +77,23 @@ Continue this umbrella from the green scalar scan baseline. Broader object
 scan/default-readiness work should add or triage additional object-route cases
 without weakening existing asm-route or object-route expectations.
 
+## Parked For Focused Child 337
+
+The first resumed Step 1 inspection found that the next obvious scan candidates
+are not harness-only additions yet:
+
+- RV64 local-backed scalar call arguments in `two_arg_local_arg.c`,
+  `two_arg_second_local_arg.c`, `two_arg_both_local_arg.c`, and
+  `local_arg_call.c` still reject at target object emission.
+- AArch64 `two_arg_helper.c` still needs selected register-register scalar or
+  call-result object support.
+- AArch64 local/frame-memory cases remain a later boundary.
+
+Idea `ideas/open/337_target_object_emitter_local_call_and_regreg_scalar_expansion.md`
+is activated to repair those target-owned gaps before this scan/default
+readiness umbrella resumes. Keep the 28/28 restored scalar proof as the parent
+baseline while 337 is active.
+
 ## Reviewer Reject Signals
 
 - The scan marks failing cases unsupported, downgrades expectations, or narrows
