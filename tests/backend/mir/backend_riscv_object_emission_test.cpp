@@ -1,5 +1,7 @@
 #include "src/backend/mir/object/model.hpp"
 #include "src/backend/mir/riscv/codegen/object_emission.hpp"
+#include "src/backend/prealloc/control_flow.hpp"
+#include "src/backend/prealloc/module.hpp"
 
 #include <cstdint>
 #include <iostream>
@@ -9,7 +11,9 @@
 
 namespace {
 
+namespace bir = c4c::backend::bir;
 namespace object = c4c::backend::mir::object;
+namespace prepare = c4c::backend::prepare;
 namespace rv64 = c4c::backend::riscv::codegen;
 
 constexpr std::uint32_t SHT_RELA = 4;
@@ -64,6 +68,61 @@ std::optional<object::ObjectModule> make_minimal_call_module() {
           },
       },
   });
+}
+
+bir::Function make_prepared_return_zero_function(std::string name) {
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+  return bir::Function{
+      .name = std::move(name),
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  };
+}
+
+prepare::PreparedBirModule make_prepared_direct_call_module() {
+  prepare::PreparedBirModule prepared;
+  const auto caller_name = prepared.names.function_names.intern("caller");
+  const auto callee_name = prepared.names.function_names.intern("callee");
+
+  bir::CallInst call;
+  call.return_type = bir::TypeKind::Void;
+  bir::Block caller_entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+  caller_entry.terminator.value = bir::Value::immediate_i32(0);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "caller",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(caller_entry)},
+  });
+  prepared.module.functions.push_back(make_prepared_return_zero_function("callee"));
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = caller_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = callee_name,
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = caller_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+          .direct_callee_name = std::string{"callee"},
+      }},
+  });
+  return prepared;
 }
 
 int records_minimal_text_and_call_relocation() {
@@ -142,6 +201,52 @@ int records_same_module_direct_call_symbol() {
       module->relocations[0].symbol != callee->id ||
       module->relocations[0].type != 19) {
     return fail("expected same-module direct call to target the defined callee symbol");
+  }
+  return 0;
+}
+
+int builds_prepared_text_object_module_without_call_text() {
+  const auto prepared = make_prepared_direct_call_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object module construction to succeed");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* caller = object::find_symbol(*module, "caller");
+  const auto* callee = object::find_symbol(*module, "callee");
+  if (text == nullptr || caller == nullptr || callee == nullptr) {
+    return fail("expected prepared object module to publish .text and function symbols");
+  }
+  if (text->bytes.size() != 24 || text->size_bytes != 24) {
+    return fail("expected prepared caller and callee text fragments");
+  }
+  if (caller->section != std::optional<object::SectionId>{text->id} ||
+      caller->value != 0 || caller->size_bytes != 16 ||
+      callee->section != std::optional<object::SectionId>{text->id} ||
+      callee->value != 16 || callee->size_bytes != 8) {
+    return fail("expected prepared function symbols to use shared object helpers");
+  }
+  if (module->relocations.size() != 1 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 0 ||
+      module->relocations[0].type != 19 ||
+      module->relocations[0].symbol != callee->id) {
+    return fail("expected prepared direct call to lower through R_RISCV_CALL_PLT");
+  }
+  return 0;
+}
+
+int rejects_prepared_data_without_asm_fallback() {
+  auto prepared = make_prepared_direct_call_module();
+  prepared.module.globals.push_back(bir::Global{
+      .name = "g",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(1),
+  });
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected prepared RV64 object path to reject unsupported globals");
   }
   return 0;
 }
@@ -230,6 +335,8 @@ int main() {
   int status = 0;
   status |= records_minimal_text_and_call_relocation();
   status |= records_same_module_direct_call_symbol();
+  status |= builds_prepared_text_object_module_without_call_text();
+  status |= rejects_prepared_data_without_asm_fallback();
   status |= serializes_rv64_relocatable_elf_contract();
   return status;
 }

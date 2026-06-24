@@ -1,11 +1,16 @@
 #include "object_emission.hpp"
 
+#include "../../../prealloc/prepared_lookups.hpp"
+
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 
 namespace c4c::backend::riscv::codegen {
 namespace {
@@ -39,6 +44,113 @@ void append_le32(std::vector<std::uint8_t>& bytes, std::uint32_t word) {
 object::SymbolBinding binding_for_function(const RiscvObjectFunction& function) {
   return function.global ? object::SymbolBinding::Global
                          : object::SymbolBinding::Local;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
+    const c4c::backend::prepare::PreparedCallPlan* call_plan,
+    const c4c::backend::bir::CallInst& call) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (call_plan == nullptr || call.is_indirect || call.callee_value.has_value() ||
+      !call.args.empty() || call.result.has_value() ||
+      call.return_type != c4c::backend::bir::TypeKind::Void ||
+      call_plan->is_indirect || call_plan->indirect_callee.has_value() ||
+      call_plan->memory_return.has_value() ||
+      call_plan->outgoing_stack_argument_area.has_value() ||
+      !call_plan->arguments.empty() || call_plan->result.has_value()) {
+    return std::nullopt;
+  }
+  switch (call_plan->wrapper_kind) {
+    case prepare::PreparedCallWrapperKind::SameModule:
+    case prepare::PreparedCallWrapperKind::DirectExternFixedArity:
+      break;
+    case prepare::PreparedCallWrapperKind::DirectExternVariadic:
+    case prepare::PreparedCallWrapperKind::Indirect:
+      return std::nullopt;
+  }
+  if (!call_plan->direct_callee_name.has_value() ||
+      call_plan->direct_callee_name->empty()) {
+    return std::nullopt;
+  }
+  if (!call.callee.empty() && call.callee != *call_plan->direct_callee_name) {
+    return std::nullopt;
+  }
+  return make_rv64_direct_call_fragment(*call_plan->direct_callee_name);
+}
+
+bool prepared_return_supported(const c4c::backend::bir::Terminator& terminator) {
+  if (terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !terminator.return_lanes.empty()) {
+    return false;
+  }
+  if (!terminator.value.has_value()) {
+    return true;
+  }
+  return terminator.value->kind == c4c::backend::bir::Value::Kind::Immediate &&
+         terminator.value->immediate == 0 &&
+         (terminator.value->type == c4c::backend::bir::TypeKind::I32 ||
+          terminator.value->type == c4c::backend::bir::TypeKind::I64);
+}
+
+const c4c::backend::bir::Function* find_defined_bir_function(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto it = std::find_if(
+      prepared.module.functions.begin(),
+      prepared.module.functions.end(),
+      [&](const c4c::backend::bir::Function& candidate) {
+        return !candidate.is_declaration && candidate.name == function_name;
+      });
+  return it == prepared.module.functions.end() ? nullptr : &*it;
+}
+
+std::optional<RiscvObjectFunction> prepared_function_to_object_function(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow) {
+  namespace prepare = c4c::backend::prepare;
+
+  const std::string function_name(
+      prepare::prepared_function_name(prepared.names, control_flow.function_name));
+  if (function_name.empty()) {
+    return std::nullopt;
+  }
+  const auto* function = find_defined_bir_function(prepared, function_name);
+  if (function == nullptr || function->is_variadic || !function->params.empty() ||
+      !function->local_slots.empty() || !function->atomic_operations.empty() ||
+      function->blocks.size() != 1) {
+    return std::nullopt;
+  }
+  const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
+  const auto& block = function->blocks.front();
+  RiscvObjectFunction object_function{
+      .name = function_name,
+      .global = true,
+  };
+
+  for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+       ++instruction_index) {
+    const auto* call = std::get_if<c4c::backend::bir::CallInst>(
+        &block.insts[instruction_index]);
+    if (call == nullptr) {
+      return std::nullopt;
+    }
+    const auto* call_plan = prepare::find_indexed_prepared_call_plan(
+        &lookups.call_plans,
+        prepare::find_prepared_call_plans(prepared, control_flow.function_name),
+        0,
+        instruction_index);
+    auto fragment = fragment_for_prepared_call(call_plan, *call);
+    if (!fragment.has_value()) {
+      return std::nullopt;
+    }
+    object_function.fragments.push_back(std::move(*fragment));
+  }
+
+  if (!prepared_return_supported(block.terminator)) {
+    return std::nullopt;
+  }
+  object_function.fragments.push_back(make_rv64_return_zero_fragment());
+  return object_function;
 }
 
 }  // namespace
@@ -148,6 +260,27 @@ std::optional<object::ObjectModule> build_rv64_text_object_module(
   }
 
   return module;
+}
+
+std::optional<object::ObjectModule> build_rv64_prepared_text_object_module(
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  if (!prepared.module.globals.empty() ||
+      !prepared.module.string_constants.empty()) {
+    return std::nullopt;
+  }
+  std::vector<RiscvObjectFunction> functions;
+  functions.reserve(prepared.control_flow.functions.size());
+  for (const auto& control_flow : prepared.control_flow.functions) {
+    auto function = prepared_function_to_object_function(prepared, control_flow);
+    if (!function.has_value()) {
+      return std::nullopt;
+    }
+    functions.push_back(std::move(*function));
+  }
+  if (functions.empty()) {
+    return std::nullopt;
+  }
+  return build_rv64_text_object_module(functions);
 }
 
 std::optional<object::RelocatableElfImage> write_rv64_relocatable_elf_object(

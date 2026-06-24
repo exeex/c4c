@@ -2,6 +2,7 @@
 
 #include "mir/object/elf_writer.hpp"
 #include "mir/object/model.hpp"
+#include "../../../prealloc/module.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -45,6 +46,10 @@ rv64_relocatable_elf_config();
 
 [[nodiscard]] std::optional<c4c::backend::mir::object::ObjectModule>
 build_rv64_text_object_module(const std::vector<RiscvObjectFunction>& functions);
+
+[[nodiscard]] std::optional<c4c::backend::mir::object::ObjectModule>
+build_rv64_prepared_text_object_module(
+    const c4c::backend::prepare::PreparedBirModule& prepared);
 
 [[nodiscard]] std::optional<c4c::backend::mir::object::RelocatableElfImage>
 write_rv64_relocatable_elf_object(
