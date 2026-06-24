@@ -3447,6 +3447,95 @@ prepare::PreparedBirModule prepare_inline_asm_carrier_dump_module() {
       module, aarch64_target_profile(), prepare::PrepareOptions{});
 }
 
+prepare::PreparedBirModule prepare_rv64_inline_asm_scalar_carrier_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  const c4c::TargetProfile target = riscv_target_profile();
+  const auto i32_arg_abi = *prepare::infer_call_arg_abi(target, bir::TypeKind::I32);
+  const bir::CallResultAbiInfo i32_result_abi{
+      .type = bir::TypeKind::I32,
+      .primary_class = bir::AbiValueClass::Integer,
+  };
+
+  bir::Function function;
+  function.name = "rv64_inline_asm_scalar_carrier_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "x")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = ".insn r 0x33, 0, 0, %0, %0, %0",
+          .constraints = "r",
+          .side_effects = true,
+          .operands = {inline_asm_operand(
+              bir::InlineAsmOperandKind::RegisterInput, 0, "r", std::size_t{0})},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "out"),
+      .callee = "llvm.inline_asm",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = ".insn r 0x33, 0, 0, %0, zero, zero",
+          .constraints = "=r",
+          .side_effects = true,
+          .operands = {inline_asm_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                          0,
+                                          "=r",
+                                          std::nullopt,
+                                          std::size_t{0})},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tie"),
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "tie")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = ".insn r 0x33, 0, 0, %0, %0, zero",
+          .constraints = "=r,0",
+          .side_effects = true,
+          .operands = {
+              inline_asm_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                 0,
+                                 "=r",
+                                 std::nullopt,
+                                 std::size_t{0}),
+              inline_asm_operand(bir::InlineAsmOperandKind::TiedInput,
+                                 1,
+                                 "0",
+                                 std::size_t{0},
+                                 std::nullopt,
+                                 std::size_t{0}),
+          },
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "tie"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, target, prepare::PrepareOptions{});
+}
+
 prepare::PreparedBirModule prepare_inline_asm_fail_closed_dump_module() {
   bir::Module module;
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -3672,6 +3761,86 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
                        "operand1[kind=clobber,constraint=\"~{memory}\","
                        "name=\"memory\",home=no] clobber0=\"memory\"",
                        "structured inline asm clobber detail")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int rv64_inline_asm_carriers_preserve_scalar_register_identities() {
+  const auto prepared = prepare_rv64_inline_asm_scalar_carrier_module();
+  const auto* function_carriers =
+      find_inline_asm_carriers(prepared, "rv64_inline_asm_scalar_carrier_contract");
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 3) {
+    std::cerr << "[FAIL] expected three RV64 prepared inline asm carriers\n";
+    return EXIT_FAILURE;
+  }
+
+  const auto& input_carrier = function_carriers->carriers[0];
+  const auto& output_carrier = function_carriers->carriers[1];
+  const auto& tied_carrier = function_carriers->carriers[2];
+  if (input_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      input_carrier.operands.size() != 1 ||
+      !input_carrier.operands[0].home.has_value() ||
+      !input_carrier.operands[0].home->target_register_identity.has_value() ||
+      input_carrier.operands[0].home->target_register_identity->target_arch !=
+          c4c::TargetArch::Riscv64 ||
+      input_carrier.operands[0].home->target_register_identity->bank !=
+          prepare::PreparedRegisterBank::Gpr ||
+      input_carrier.operands[0].home->target_register_identity->register_class !=
+          prepare::PreparedRegisterClass::General) {
+    std::cerr << "[FAIL] RV64 r inline asm carrier lacks concrete GPR identity\n";
+    return EXIT_FAILURE;
+  }
+  if (output_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      output_carrier.operands.size() != 1 ||
+      output_carrier.operands[0].kind != bir::InlineAsmOperandKind::RegisterOutput ||
+      !output_carrier.result_home.has_value() ||
+      !output_carrier.result_home->target_register_identity.has_value() ||
+      output_carrier.result_home->target_register_identity->target_arch !=
+          c4c::TargetArch::Riscv64 ||
+      output_carrier.result_home->target_register_identity->bank !=
+          prepare::PreparedRegisterBank::Gpr ||
+      output_carrier.result_home->target_register_identity->register_class !=
+          prepare::PreparedRegisterClass::General) {
+    std::cerr << "[FAIL] RV64 =r inline asm carrier lacks concrete GPR identity\n";
+    return EXIT_FAILURE;
+  }
+  if (tied_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      tied_carrier.operands.size() != 2 ||
+      tied_carrier.operands[0].kind != bir::InlineAsmOperandKind::RegisterOutput ||
+      tied_carrier.operands[1].kind != bir::InlineAsmOperandKind::TiedInput ||
+      tied_carrier.operands[1].tied_output_index.value_or(99) != 0 ||
+      !tied_carrier.result_home.has_value() ||
+      !tied_carrier.result_home->target_register_identity.has_value() ||
+      !tied_carrier.operands[1].home.has_value() ||
+      !tied_carrier.operands[1].home->target_register_identity.has_value() ||
+      !tied_carrier.operands[1].tied_home_authority.has_value() ||
+      tied_carrier.operands[1].tied_home_authority->tied_output_index != 0 ||
+      tied_carrier.operands[1].tied_home_authority->shared_register !=
+          *tied_carrier.result_home->target_register_identity ||
+      *tied_carrier.operands[1].home->target_register_identity !=
+          *tied_carrier.result_home->target_register_identity ||
+      !tied_carrier.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] RV64 tied numeric inline asm carrier lacks shared GPR authority\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string dump = prepare::print(prepared);
+  if (!expect_contains(dump,
+                       "inline_asm_carrier asm=\".insn r 0x33, 0, 0, %0, %0, zero\" "
+                       "constraints=\"=r,0\" block_index=0 inst_index=2 "
+                       "side_effects=yes operands=2 result=tie result_home=yes",
+                       "complete RV64 tied inline asm carrier")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(dump,
+                           "target_invalid_tied_input_register_home",
+                           "RV64 tied input invalid-register diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(dump,
+                           "target_invalid_tied_output_register_home",
+                           "RV64 tied output invalid-register diagnostic")) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
@@ -5015,6 +5184,11 @@ int main() {
   }
   if (const int status =
           inline_asm_carriers_preserve_supported_facts_and_printer_visibility();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          rv64_inline_asm_carriers_preserve_scalar_register_identities();
       status != 0) {
     return status;
   }

@@ -116,16 +116,71 @@ aarch64_inline_asm_register_identity(std::string_view register_name) {
   }
 }
 
+[[nodiscard]] PreparedTargetRegisterIdentity rv64_gpr_identity(std::size_t physical_index) {
+  return PreparedTargetRegisterIdentity{
+      .target_arch = c4c::TargetArch::Riscv64,
+      .bank = PreparedRegisterBank::Gpr,
+      .register_class = PreparedRegisterClass::General,
+      .physical_index = physical_index,
+  };
+}
+
+[[nodiscard]] std::optional<PreparedTargetRegisterIdentity>
+rv64_inline_asm_register_identity(std::string_view register_name) {
+  if (register_name.size() >= 2 && register_name.front() == 'x') {
+    const auto index = parse_inline_asm_register_index(register_name.substr(1), 31);
+    if (index.has_value()) {
+      return rv64_gpr_identity(*index);
+    }
+    return std::nullopt;
+  }
+
+  if (register_name == "zero") return rv64_gpr_identity(0);
+  if (register_name == "ra") return rv64_gpr_identity(1);
+  if (register_name == "sp") return rv64_gpr_identity(2);
+  if (register_name == "gp") return rv64_gpr_identity(3);
+  if (register_name == "tp") return rv64_gpr_identity(4);
+  if (register_name == "t0") return rv64_gpr_identity(5);
+  if (register_name == "t1") return rv64_gpr_identity(6);
+  if (register_name == "t2") return rv64_gpr_identity(7);
+  if (register_name == "s0" || register_name == "fp") return rv64_gpr_identity(8);
+  if (register_name == "s1") return rv64_gpr_identity(9);
+  if (register_name == "a0") return rv64_gpr_identity(10);
+  if (register_name == "a1") return rv64_gpr_identity(11);
+  if (register_name == "a2") return rv64_gpr_identity(12);
+  if (register_name == "a3") return rv64_gpr_identity(13);
+  if (register_name == "a4") return rv64_gpr_identity(14);
+  if (register_name == "a5") return rv64_gpr_identity(15);
+  if (register_name == "a6") return rv64_gpr_identity(16);
+  if (register_name == "a7") return rv64_gpr_identity(17);
+  if (register_name == "s2") return rv64_gpr_identity(18);
+  if (register_name == "s3") return rv64_gpr_identity(19);
+  if (register_name == "s4") return rv64_gpr_identity(20);
+  if (register_name == "s5") return rv64_gpr_identity(21);
+  if (register_name == "s6") return rv64_gpr_identity(22);
+  if (register_name == "s7") return rv64_gpr_identity(23);
+  if (register_name == "s8") return rv64_gpr_identity(24);
+  if (register_name == "s9") return rv64_gpr_identity(25);
+  if (register_name == "s10") return rv64_gpr_identity(26);
+  if (register_name == "s11") return rv64_gpr_identity(27);
+  if (register_name == "t3") return rv64_gpr_identity(28);
+  if (register_name == "t4") return rv64_gpr_identity(29);
+  if (register_name == "t5") return rv64_gpr_identity(30);
+  if (register_name == "t6") return rv64_gpr_identity(31);
+  return std::nullopt;
+}
+
 [[nodiscard]] std::optional<PreparedTargetRegisterIdentity>
 inline_asm_register_identity(const c4c::TargetProfile& target_profile,
                              std::string_view register_name) {
   switch (target_profile.arch) {
     case c4c::TargetArch::Aarch64:
       return aarch64_inline_asm_register_identity(register_name);
+    case c4c::TargetArch::Riscv64:
+      return rv64_inline_asm_register_identity(register_name);
     case c4c::TargetArch::Unknown:
     case c4c::TargetArch::X86_64:
     case c4c::TargetArch::I686:
-    case c4c::TargetArch::Riscv64:
       return std::nullopt;
   }
   return std::nullopt;
