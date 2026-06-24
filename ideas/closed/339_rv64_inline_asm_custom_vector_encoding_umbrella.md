@@ -433,6 +433,33 @@ This umbrella can close only when:
 - final review confirms that user-side C++ templates can define custom vector
   instruction families without modifying c4c's assembler for each operation.
 
+## Closure Note
+
+2026-06-24: close accepted after all child stages were closed and reviewed
+together:
+
+- Stage 1 standard RV64 `.insn` inline asm:
+  `ideas/closed/340_rv64_standard_insn_inline_asm_stage1.md`
+- Stage 2 vector register constraints `VR`, `VRM2`, and `VRM4`:
+  `ideas/closed/341_rv64_vector_register_inline_asm_constraints_stage2.md`
+- Stage 3 EV 64-bit `.insn.d` encoding and object-route proof:
+  `ideas/closed/342_rv64_ev_insn_d_inline_asm_stage3.md`
+- Final consteval/template-produced asm string route:
+  `ideas/closed/343_rv64_consteval_inline_asm_template_strings.md`
+
+The integrated route now lets user/library C++ build EV `.insn.d` inline asm
+templates at compile time, pass them through the literal inline-asm template
+path, bind scalar and grouped vector operands through compiler-owned
+constraints, and prove the resulting EV64 bytes through c4c's RV64 object
+emission route without adding compiler-known EV mnemonics for each operation.
+
+Canonical close proof used full-suite `test_before.log` and `test_after.log`.
+`test_before.log` reported 3344/3345 passing with only the unrelated
+`backend_codegen_route_riscv64_pointer_typed_select_publication` self-move
+blocker failing; `test_after.log` reported 3345/3345 passing after that
+blocker was fixed. `c4c-regression-guard` reported PASS with no new failing
+tests.
+
 ## Reviewer Reject Signals
 
 - The route claims custom instruction support while requiring every EV
