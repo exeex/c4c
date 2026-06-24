@@ -1,242 +1,152 @@
-# RV64 Consteval Inline Asm Template Strings Runbook
+# RV64 Pointer-Typed Select Publication Self-Move Runbook
 
 Status: Active
-Source Idea: ideas/open/343_rv64_consteval_inline_asm_template_strings.md
-Activated from: ideas/open/339_rv64_inline_asm_custom_vector_encoding_umbrella.md
+Source Idea: ideas/open/344_rv64_pointer_typed_select_publication_self_move.md
+Activated from: ideas/open/343_rv64_consteval_inline_asm_template_strings.md
 
 ## Purpose
 
-Enable C++ compile-time-produced inline asm template strings to feed the same
-compiler path as literal inline asm templates, completing the user/library side
-of RV64 EV custom vector instruction support.
+Resolve the unrelated RV64 backend-route failure that blocks full-suite proof
+for the parked consteval inline asm template string runbook.
 
 ## Goal
 
-Accept a narrow, explicit compile-time string surface for inline asm templates,
-reject runtime strings, and prove template-built `.insn.d` helpers emit the
-same bytes as literal `.insn.d` templates.
+Make `backend_codegen_route_riscv64_pointer_typed_select_publication` pass
+without accepting or preserving the forbidden `mv t0, t0` self-move.
 
 ## Core Rule
 
-Fold accepted asm-template expressions to final string text before inline asm
-lowering. After folding, the existing parser, metadata, constraint,
-substitution, and object emission paths must see the same template text they
-would see for a literal.
+Fix the backend route that produces or preserves the redundant self-move. Do
+not weaken the public test, baseline logs, or forbidden-snippet contract to make
+the failure disappear.
 
 ## Read First
 
-- `ideas/open/343_rv64_consteval_inline_asm_template_strings.md`
-- `ideas/open/339_rv64_inline_asm_custom_vector_encoding_umbrella.md`
-- `ideas/closed/340_rv64_standard_insn_inline_asm_stage1.md`
-- `ideas/closed/341_rv64_vector_register_inline_asm_constraints_stage2.md`
-- `ideas/closed/342_rv64_ev_insn_d_inline_asm_stage3.md`
+- `ideas/open/344_rv64_pointer_typed_select_publication_self_move.md`
+- `tests/backend/CMakeLists.txt`
+- The source fixture for `riscv64_pointer_typed_select_publication`
+- The generated failing assembly named in the latest broad proof log, if still
+  present under `build/tests/backend/`
 
 ## Current Targets
 
-- Frontend asm-statement parsing or semantic analysis surface that currently
-  requires a literal template string.
-- Existing constant-expression or compile-time string representation, if one
-  exists.
-- Inline asm HIR/LIR/BIR carrier paths that store final template text and
-  operand metadata.
-- RV64 `.insn.d` tests that can compare consteval/template-built templates
-  against literal-template object bytes.
+- RV64 backend codegen route for pointer-typed select publication.
+- Register assignment, move emission, and cleanup/peephole stages that can
+  produce or remove register-to-itself moves.
+- Focused backend tests around select chains, pointer typed select, and RV64
+  publication output.
 
 ## Non-Goals
 
-- Do not accept runtime-generated asm strings.
-- Do not add Python-style formatting, `std::format`-style formatting, named GNU
-  operands, or `%c[...]` modifiers.
-- Do not reopen completed `.insn`, `VR`/`VRM2`/`VRM4`, or `.insn.d` behavior
-  except for real integration defects exposed by constant-folded templates.
-- Do not add EV intrinsics or compiler-known EV mnemonics to claim progress.
-- Do not weaken existing inline asm or object tests.
+- Do not change consteval inline asm template string behavior.
+- Do not weaken, delete, or reclassify forbidden-snippet checks.
+- Do not add a test-name, filename, or exact-output shortcut for this fixture.
+- Do not accept `test_baseline.new.log` as lifecycle proof.
+- Do not perform a broad backend rewrite unless focused inspection proves the
+  self-move path requires it.
 
 ## Working Model
 
-- Keep the first accepted compile-time string surface narrow and aligned with
-  existing frontend capabilities.
-- Prefer compile-time `+` concatenation of literals and supported fixed-string
-  values.
-- Accept `constexpr` or `consteval` helper results only when they fold to final
-  template text before inline asm lowering.
-- Route unsupported compile-time string shapes to diagnostics rather than
-  silently accepting an empty, runtime, or unevaluated template.
+- Treat `mv t0, t0` as redundant backend output that should be avoided during
+  lowering or removed by a general cleanup path.
+- Prefer a small semantic fix in the affected move, register, or peephole route.
+- Use the failing publication test as the first proof, then cover nearby select
+  or RV64 backend routes before handing broad validation back to the supervisor.
 
 ## Execution Rules
 
-- Inspect existing parser, sema, constant-expression, HIR/LIR, and inline asm
-  tests before choosing the exact helper shape.
-- Make every positive case prove equivalence with a literal template route.
-- Keep negative diagnostics specific enough to distinguish non-constant asm
-  templates from malformed `.insn.d` or constraint failures.
-- Preserve operand ordering, constraint strings, clobbers, volatility, memory
-  effects, and `%0` positional placeholder semantics.
-- Use focused tests first, then run the supervisor-selected broader subset
-  because this route may cross frontend and backend surfaces.
+- Inspect the failing fixture and generated assembly before editing code.
+- Trace where the self-move is introduced or preserved.
+- Keep the forbidden-snippet expectation intact.
+- Do not claim progress from baseline updates or output rewrites alone.
+- Record focused proof and any remaining broad-proof requirements in `todo.md`.
 
-## Step 1: Map Existing String And Inline Asm Surfaces
+## Step 1: Reproduce And Localize The Self-Move
 
-Goal: Identify the narrowest existing representation that can carry a
-compile-time string expression into inline asm.
+Goal: Confirm the focused failure and identify the backend stage that emits or
+preserves `mv t0, t0`.
 
 Primary targets:
 
-- Parser/sema handling for `asm volatile(...)`.
-- Constant-expression or fixed-string support already present in the frontend.
-- Tests for string literal folding, concatenation, constexpr arrays, or
-  consteval helper results.
+- `tests/backend/CMakeLists.txt`
+- The `riscv64_pointer_typed_select_publication` fixture.
+- Generated assembly under `build/tests/backend/`.
+- RV64 move emission and peephole/cleanup code.
 
 Actions:
 
-- Inspect where inline asm currently requires a raw string literal.
-- Inspect whether c4c already represents compile-time string values or string
-  literal concatenation.
-- Choose one supported first surface for compile-time concatenation and one
-  helper-style surface only if it fits the existing machinery.
-- Record any unsupported but tempting string forms in `todo.md`; do not widen
-  the source idea.
+- Run the focused backend publication test or an equivalent narrow CTest
+  command selected by the supervisor.
+- Inspect the generated assembly around `mv t0, t0`.
+- Trace whether the self-move comes from lowering, register assignment,
+  selection-chain repair, or a missing cleanup pass.
+- Record the suspected owning code path in `todo.md`.
 
 Completion check:
 
-- The executor can name the selected compile-time string representation and the
-  exact frontend location where it must fold to final asm-template text.
-- No implementation route depends on runtime string values.
+- The executor can name the code path that creates or fails to remove the
+  self-move.
+- The test contract remains unchanged.
 
-## Step 2: Gate Unsupported Non-Literal Templates
+## Step 2: Repair The General Self-Move Path
 
-Goal: Keep literal and adjacent-literal asm templates working while rejecting
-runtime or unsupported expression templates with a clear diagnostic.
+Goal: Remove or avoid redundant register-to-itself moves through the owning
+backend path.
 
 Primary targets:
 
-- The frontend parser boundary that builds the inline asm statement.
-- Existing negative-test harness support for diagnostic substring checks.
+- The backend route identified in Step 1.
+- Existing RV64 move/peephole helpers, if they already cover this kind of
+  cleanup.
 
 Actions:
 
-- Preserve raw literal and adjacent string literal behavior unchanged.
-- Reject non-literal asm-template expressions until a real compile-time string
-  representation is selected and folded.
-- Add focused negative coverage for runtime/non-constant template expressions.
-- Do not claim helper or compile-time `+` support from this diagnostic gate.
+- Implement the smallest semantic fix that avoids or removes self-moves for the
+  affected route.
+- Prefer reusing or extending existing cleanup helpers over adding local
+  string-based output filtering.
+- Preserve meaningful moves between distinct registers.
+- Do not special-case the failing fixture or test name.
 
 Completion check:
 
-- Existing literal and adjacent-literal inline asm tests still pass.
-- A runtime/non-literal template expression fails with a specific diagnostic.
-- Downstream inline asm metadata is unchanged for literal templates.
+- `backend_codegen_route_riscv64_pointer_typed_select_publication` no longer
+  emits `mv t0, t0`.
+- The diff explains a general backend behavior, not a testcase-shaped bypass.
 
-## Step 3: Preserve `.insn.d` Object Equivalence For Final Text
+## Step 3: Prove Nearby Backend Routes
 
-Goal: Keep the RV64 EV object route guarded for final template text assembled
-from accepted literal fragments.
-
-Primary targets:
-
-- RV64 object emission tests that cover `.insn.d`.
-- Existing prepared inline asm object route for final template text.
+Goal: Show the self-move fix does not regress adjacent RV64 backend behavior.
 
 Actions:
 
-- Add or keep a positive object test whose final `.insn.d` text is assembled
-  from adjacent literal fragments.
-- Compare emitted bytes with the literal `.insn.d` route, including the known
-  EV byte sequence where applicable.
-- Keep `VRM2` operand constraints and positional placeholders in the proof.
-- Treat this as a downstream equivalence guard, not as consteval/helper support.
+- Run the focused failing test.
+- Run nearby RV64 backend route tests for pointer typed select, select chains,
+  and publication output as selected by the supervisor.
+- Keep all forbidden-snippet checks intact.
+- Record exact commands and results in `todo.md`.
 
 Completion check:
 
-- The adjacent-fragment `.insn.d` object test emits exactly the expected 8-byte
-  instruction through c4c's object route.
-- The test does not introduce runtime string acceptance, helper shortcuts, or
-  any bypass of the existing inline asm/object path.
+- Focused and nearby backend tests pass.
+- No expectation downgrade or baseline-only proof is used.
 
-## Step 4: Implement First Real Compile-Time String Folding Surface
+## Step 4: Hand Back For Broad Proof
 
-Goal: Accept one narrow compile-time asm-template expression form and fold it
-to final template text before the existing inline asm path consumes it.
-
-Primary targets:
-
-- The parser/sema boundary that currently requires an inline asm string
-  literal.
-- Existing constant-expression or compile-time string machinery identified by
-  Step 1.
-- HIR/LIR inline asm carriers that store final template text and metadata.
+Goal: Prepare the supervisor to rerun full CTest and return to the parked
+consteval inline asm template string close review.
 
 Actions:
 
-- Select the smallest existing representation that can carry compile-time
-  string-valued results without runtime storage.
-- Implement folding for a real compile-time expression surface, preferably
-  string-literal `+` concatenation or an existing fixed-string representation.
-- Feed the folded result into the same inline asm parser, constraint handling,
-  substitution, and metadata path used by literal templates.
-- Preserve output/input operand order, constraints, clobbers, volatility,
-  memory effects, and `%0` positional placeholder semantics.
-- Keep unsupported compile-time string shapes rejected with diagnostics instead
-  of accepting empty, runtime, or unevaluated templates.
-- If no existing representation can support this without a broader frontend
-  initiative, stop and record the blocker in `todo.md`; do not proceed to
-  helper integration or closure.
+- Summarize the fixed backend route, proof commands, and residual risk in
+  `todo.md`.
+- Note whether the same full CTest command that failed Step 6 should now be
+  rerun by the supervisor or an executor.
+- Leave the parked consteval inline asm template string source idea open until
+  broad proof succeeds or is explicitly dispositioned.
 
 Completion check:
 
-- Focused frontend/HIR tests show literal and folded expression templates
-  produce the same final template string and inline asm metadata.
-- Negative tests still reject runtime strings and unsupported string shapes.
-- The proof demonstrates a real compile-time expression path, not only
-  adjacent literal token folding in source text.
-
-## Step 5: Prove Helper-Style `.insn.d` Integration
-
-Goal: Prove a user/library-style compile-time helper can build an EV `.insn.d`
-template that emits the same object bytes as a literal template.
-
-Primary targets:
-
-- The folded-template route implemented in Step 4.
-- RV64 inline asm tests that already cover `.insn.d` object emission.
-- Any frontend or integration test harness that compiles inline asm through the
-  folded-template path.
-
-Actions:
-
-- Add a positive helper-style case, such as a `consteval`, `constexpr`, or
-  template fixed-string helper, only using the representation proven in Step 4.
-- Build an `.insn.d` template through that helper and route it through normal
-  inline asm lowering and object emission.
-- Compare emitted bytes with the literal `.insn.d` route, including the known
-  EV byte sequence where applicable.
-- Do not add compiler-known EV mnemonics, intrinsics, or named-case shortcuts.
-
-Completion check:
-
-- The helper-built `.insn.d` test emits exactly the expected 8-byte instruction
-  through c4c's object route.
-- Literal, compile-time expression, and helper-built forms remain equivalent in
-  final template text, metadata, and emitted bytes.
-
-## Step 6: Broaden Proof And Prepare Closure
-
-Goal: Establish that the feature is acceptance-ready without regressing the
-completed child stages.
-
-Actions:
-
-- Run focused build and tests touched by parser/sema/HIR/LIR/backend work.
-- Run the supervisor-selected broader subset because this feature crosses
-  frontend and backend boundaries.
-- Check that existing `.insn`, vector constraint, and `.insn.d` tests were not
-  weakened or reclassified.
-- Summarize proof, accepted string surface, helper shape, and any known
-  leftovers in `todo.md`.
-
-Completion check:
-
-- Focused positive and negative tests pass.
-- Broader validation has no new failure beyond supervisor-accepted baseline
-  failures.
-- The child source idea is ready for plan-owner close review.
+- The backend self-move idea has focused proof.
+- The supervisor has a clear next broad-proof command and can decide whether to
+  close this blocker and resume close review for the parked idea.

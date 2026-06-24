@@ -148,3 +148,13 @@ use that representation instead of inventing a parallel one.
   such as a fixed-string wrapper that still cannot be passed to `asm volatile`.
 - The route performs a broad constant evaluator or frontend rewrite that is not
   required by the selected compile-time string surface.
+
+## Lifecycle Notes
+
+- 2026-06-24: Current runbook was parked after Step 6 broad proof because full
+  CTest failed on the unrelated backend-route publication test
+  `backend_codegen_route_riscv64_pointer_typed_select_publication`, which
+  still emits forbidden `mv t0, t0`. Focused inline-asm-template proof and the
+  helper-style `.insn.d` object proof were complete, but this idea should not
+  move to close review until that broad-proof blocker is resolved, explicitly
+  baselined, or otherwise dispositioned by the supervisor.

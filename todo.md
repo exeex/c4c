@@ -1,42 +1,36 @@
 Status: Active
-Source Idea Path: ideas/open/343_rv64_consteval_inline_asm_template_strings.md
+Source Idea Path: ideas/open/344_rv64_pointer_typed_select_publication_self_move.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Prove Helper-Style .insn.d Integration
+Current Step ID: 1
+Current Step Title: Reproduce And Localize The Self-Move
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 proved helper-style RV64 `.insn.d` integration across the available
-folded-template and object-emission surfaces: frontend HIR now checks that a
-helper-style string-literal `+` `.insn.d` template folds to the same final
-template text and metadata as the literal form, and the RV64 object unit now
-checks that a helper-built `.insn.d` template emits the same expected EV bytes
-as the literal route.
+Lifecycle switched from the parked consteval inline asm template string runbook
+to the unrelated RV64 backend-route blocker found during Step 6 broad proof.
 
 ## Suggested Next
 
-Delegate Step 6 broad proof and closure preparation: run the supervisor-selected
-broader validation, check that the completed inline-asm child stages were not
-weakened, and summarize the accepted string surface plus known leftovers for
-plan-owner close review.
+Execute Step 1: reproduce
+`backend_codegen_route_riscv64_pointer_typed_select_publication`, inspect the
+generated `mv t0, t0`, and identify the backend path that emits or fails to
+remove the self-move.
 
 ## Watchouts
 
-- The accepted helper-style surface remains narrow: string literal leaves joined
-  by binary `+` before `NK_ASM`; this still does not accept runtime strings,
-  general `consteval` string returns, or fixed-string objects.
-- A direct public source-to-RV64-object test with vector typed operands is still
-  outside current semantic-BIR admission: vector signatures/locals fail before
-  inline asm object emission, while scalar operands reach BIR but do not provide
-  compatible vector register homes for `VRM2`.
-- No EV mnemonic, intrinsic, named-case shortcut, runtime string acceptance, or
-  expectation downgrade was added.
+- Keep the forbidden-snippet contract for `mv t0, t0` intact.
+- Do not treat `test_baseline.new.log` as accepted proof unless the supervisor
+  explicitly dispositions it.
+- Do not special-case the failing test name, fixture path, or exact emitted
+  assembly.
+- The previous source idea remains open and parked until this broad-proof
+  blocker is resolved or explicitly dispositioned.
 
 ## Proof
 
-Ran exactly:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '(^frontend_hir_tests$|^frontend_cxx_|cpp_parse_gnu_asm_adjacent_string_template_dump|cpp_negative_tests_bad_inline_asm_runtime_template|backend_riscv_object_emission|backend_codegen_route_x86_64_inline_asm_|inline_asm_aarch64_simple)') > test_after.log 2>&1`
-
-Result: passed, 15/15 selected tests green. Proof log: `test_after.log`.
+No implementation validation was run by the plan owner. The lifecycle switch is
+based on the delegated full-suite result:
+`backend_codegen_route_riscv64_pointer_typed_select_publication` failed because
+generated RV64 assembly still contained forbidden snippet `mv t0, t0`.
