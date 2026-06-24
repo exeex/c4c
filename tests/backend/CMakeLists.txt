@@ -1213,6 +1213,13 @@ c4c_add_backend_rv64_runtime_case(
   EXPECTED_RUN_CODE 5
   LABELS scalar return call alu
 )
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_return_add
+  SRC "${BACKEND_CASE_ROOT}/return_add.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 5
+  LABELS scalar return call alu scan
+)
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_two_arg_helper
   SRC "${BACKEND_CASE_ROOT}/two_arg_helper.c"

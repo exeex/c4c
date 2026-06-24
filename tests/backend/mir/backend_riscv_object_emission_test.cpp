@@ -221,6 +221,139 @@ prepare::PreparedBirModule make_prepared_rematerialized_return_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_scalar_same_module_call_module() {
+  prepare::PreparedBirModule prepared;
+  const auto callee_name = prepared.names.function_names.intern("add_three");
+  const auto main_name = prepared.names.function_names.intern("main");
+  const auto param_name = prepared.names.value_names.intern("%p.x");
+  const auto callee_result_name = prepared.names.value_names.intern("%t0");
+  const auto main_result_name = prepared.names.value_names.intern("%main.t0");
+
+  bir::Block callee_entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+                  .operand_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%p.x"),
+                  .rhs = bir::Value::immediate_i32(3),
+              },
+          },
+      .terminator = bir::Terminator{},
+  };
+  callee_entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%t0");
+
+  bir::CallInst call;
+  call.result = bir::Value::named(bir::TypeKind::I32, "%main.t0");
+  call.callee = "add_three";
+  call.args = {bir::Value::immediate_i32(2)};
+  call.arg_types = {bir::TypeKind::I32};
+  call.return_type = bir::TypeKind::I32;
+  bir::Block main_entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+  main_entry.terminator.value =
+      bir::Value::named(bir::TypeKind::I32, "%main.t0");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "add_three",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .params = {bir::Param{
+          .type = bir::TypeKind::I32,
+          .name = "%p.x",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      }},
+      .blocks = {std::move(callee_entry)},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(main_entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = callee_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = main_name,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = callee_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = callee_name,
+                  .value_name = param_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = callee_name,
+                  .value_name = callee_result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+          },
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = main_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 3,
+                  .function_name = main_name,
+                  .value_name = main_result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = main_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+          .direct_callee_name = std::string{"add_three"},
+          .arguments = {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 0,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+              .source_literal = bir::Value::immediate_i32(2),
+              .destination_register_name = std::string{"a0"},
+              .destination_contiguous_width = 1,
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          }},
+          .result = prepare::PreparedCallResultPlan{
+              .instruction_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_storage_kind =
+                  prepare::PreparedMoveStorageKind::Register,
+              .destination_value_id = 3,
+              .source_register_name = std::string{"a0"},
+              .source_contiguous_width = 1,
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_register_name = std::string{"t0"},
+              .destination_contiguous_width = 1,
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          },
+      }},
+  });
+  return prepared;
+}
+
 int records_minimal_text_and_call_relocation() {
   const auto module = make_minimal_call_module();
   if (!module.has_value()) {
@@ -372,18 +505,18 @@ int builds_prepared_text_object_module_without_call_text() {
   if (text == nullptr || caller == nullptr || callee == nullptr) {
     return fail("expected prepared object module to publish .text and function symbols");
   }
-  if (text->bytes.size() != 24 || text->size_bytes != 24) {
+  if (text->bytes.size() != 40 || text->size_bytes != 40) {
     return fail("expected prepared caller and callee text fragments");
   }
   if (caller->section != std::optional<object::SectionId>{text->id} ||
-      caller->value != 0 || caller->size_bytes != 16 ||
+      caller->value != 0 || caller->size_bytes != 32 ||
       callee->section != std::optional<object::SectionId>{text->id} ||
-      callee->value != 16 || callee->size_bytes != 8) {
+      callee->value != 32 || callee->size_bytes != 8) {
     return fail("expected prepared function symbols to use shared object helpers");
   }
   if (module->relocations.size() != 1 ||
       module->relocations[0].section != text->id ||
-      module->relocations[0].offset != 0 ||
+      module->relocations[0].offset != 8 ||
       module->relocations[0].type != 19 ||
       module->relocations[0].symbol != callee->id) {
     return fail("expected prepared direct call to lower through R_RISCV_CALL_PLT");
@@ -415,6 +548,39 @@ int builds_prepared_rematerialized_nonzero_return_object() {
   }
   if (!module->relocations.empty()) {
     return fail("expected prepared immediate-return object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_scalar_same_module_call_object() {
+  const auto prepared = make_prepared_scalar_same_module_call_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared scalar call RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* callee = object::find_symbol(*module, "add_three");
+  const auto* main = object::find_symbol(*module, "main");
+  if (text == nullptr || callee == nullptr || main == nullptr) {
+    return fail("expected prepared scalar call object to publish text/functions");
+  }
+  if (text->bytes.size() != 52 || text->size_bytes != 52 ||
+      callee->value != 0 || callee->size_bytes != 12 ||
+      main->value != 12 || main->size_bytes != 40) {
+    return fail("expected prepared scalar call object text layout");
+  }
+  if (text->bytes[0] != 0x93 || text->bytes[1] != 0x02 ||
+      text->bytes[2] != 0x35 || text->bytes[3] != 0x00 ||
+      text->bytes[4] != 0x13 || text->bytes[5] != 0x85 ||
+      text->bytes[6] != 0x02 || text->bytes[7] != 0x00) {
+    return fail("expected add_three to add immediate param and move return to a0");
+  }
+  if (module->relocations.size() != 1 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 24 ||
+      module->relocations[0].type != R_RISCV_CALL_PLT ||
+      module->relocations[0].symbol != callee->id) {
+    return fail("expected scalar same-module call relocation at call pair");
   }
   return 0;
 }
@@ -646,7 +812,7 @@ int writes_prepared_rv64_relocatable_elf_object_file() {
   if (text_header == 0 || rela_text_header == 0 || symtab_header == 0) {
     return fail("expected prepared ELF to include .text, .rela.text, and .symtab");
   }
-  if (read_u64(bytes, text_header + 32) != 24 ||
+  if (read_u64(bytes, text_header + 32) != 40 ||
       read_u32(bytes, rela_text_header + 4) != SHT_RELA ||
       read_u32(bytes, symtab_header + 4) != SHT_SYMTAB) {
     return fail("expected prepared ELF section sizes and types");
@@ -655,8 +821,8 @@ int writes_prepared_rv64_relocatable_elf_object_file() {
   const std::size_t rela_offset = read_u64(bytes, rela_text_header + 24);
   const std::size_t rela_size = read_u64(bytes, rela_text_header + 32);
   const std::size_t rela_entsize = read_u64(bytes, rela_text_header + 56);
-  if (rela_size != 24 || rela_entsize != 24 || read_u64(bytes, rela_offset) != 0) {
-    return fail("expected one prepared call relocation at text offset zero");
+  if (rela_size != 24 || rela_entsize != 24 || read_u64(bytes, rela_offset) != 8) {
+    return fail("expected one prepared call relocation after call frame setup");
   }
   const std::uint64_t r_info = read_u64(bytes, rela_offset + 8);
   if ((r_info & 0xffffffffull) != 19) {
@@ -687,10 +853,10 @@ int writes_prepared_rv64_relocatable_elf_object_file() {
     const std::string name = symbol_name_at(index);
     if (name == "caller") {
       saw_caller = read_u64(bytes, symbol_offset + 8) == 0 &&
-                   read_u64(bytes, symbol_offset + 16) == 16 &&
+                   read_u64(bytes, symbol_offset + 16) == 32 &&
                    read_u16(bytes, symbol_offset + 6) != SHN_UNDEF;
     } else if (name == "callee") {
-      saw_callee = read_u64(bytes, symbol_offset + 8) == 16 &&
+      saw_callee = read_u64(bytes, symbol_offset + 8) == 32 &&
                    read_u64(bytes, symbol_offset + 16) == 8 &&
                    read_u16(bytes, symbol_offset + 6) != SHN_UNDEF;
     }
@@ -743,6 +909,7 @@ int main() {
   status |= records_pcrel_hi_lo_pairing_with_auipc_site_label();
   status |= builds_prepared_text_object_module_without_call_text();
   status |= builds_prepared_rematerialized_nonzero_return_object();
+  status |= builds_prepared_scalar_same_module_call_object();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
