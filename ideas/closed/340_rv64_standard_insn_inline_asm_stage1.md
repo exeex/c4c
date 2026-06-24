@@ -127,3 +127,9 @@ known unrelated
 `backend_codegen_route_riscv64_pointer_typed_select_publication` failure. The
 active runbook is parked rather than expanded into that unrelated baseline
 issue.
+
+2026-06-24 close accepted: Re-ran the close decision using the existing matching
+backend before/after logs in non-decreasing mode. The regression guard reported
+315/316 passing before and after, with no new failures and the same known
+unrelated `backend_codegen_route_riscv64_pointer_typed_select_publication`
+failure. Stage 1 remains complete under its acceptance criteria.
