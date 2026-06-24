@@ -1,61 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/344_rv64_pointer_typed_select_publication_self_move.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reproduce And Localize The Self-Move
+Current Step ID: 2
+Current Step Title: Repair The General Self-Move Path
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 reproduced and localized
-`backend_codegen_route_riscv64_pointer_typed_select_publication` without
-implementation changes. The focused generated assembly at
-`build/tests/backend/riscv64_pointer_typed_select_publication.s` ends with
-`ret` followed by `mv t0, t0`, so the forbidden self-move is appended after the
-function body rather than produced by the in-block select lowering.
+Step 2 repaired the general RV64 prepared edge-publication self-move path in
+`src/backend/mir/riscv/codegen/prepared_edge_publication_emit.cpp`. Register
+destination publications now keep real differing-register `mv` instructions but
+render same-register register and zero-delta pointer-base publications as
+available no-ops with empty instruction text; the append helper skips empty
+available instructions, so the terminal publication path no longer emits
+`mv t0, t0` after the function body.
 
-Suspected path: `emit_prepared_module_text()` in
-`src/backend/mir/riscv/codegen/prepared_module_emit.cpp` calls
-`append_available_edge_publication_moves()` after
-`append_simple_prepared_bir_function_asm()`. That helper delegates to
-`append_edge_publication_move_instruction()` in
-`src/backend/mir/riscv/codegen/prepared_edge_publication_emit.cpp`, whose
-register-destination fallback can build `mv <destination>, <source>` without a
-same-register guard. Existing `emit_move_to_register()` guards same-register
-copies, and `peephole.cpp` has `eliminate_self_moves()`, but the prepared-module
-terminal text route does not appear to run `peephole_optimize()` after these
-late publication appends.
+Focused coverage in
+`tests/backend/bir/backend_riscv_prepared_edge_publication_test.cpp` preserves
+the existing `mv a1, a0` assertion for differing-register publications and adds
+a same-register fixture proving `mv a0, a0` is omitted while the publication is
+still consumed through shared lookup authority.
 
 ## Suggested Next
 
-Execute Step 2: repair the RV64 edge-publication append path so available
-register-to-same-register publication moves do not emit terminal self-moves.
-The bounded target is the prepared edge-publication move emission path, with a
-focused proof on
-`backend_codegen_route_riscv64_pointer_typed_select_publication` and nearby RV64
-publication/select route tests.
+Supervisor should decide whether Step 3 is lifecycle close review or broader
+validation. The focused Step 2 proof is green and
+`backend_codegen_route_riscv64_pointer_typed_select_publication` no longer
+emits the forbidden terminal self-move.
 
 ## Watchouts
 
-- Keep the forbidden-snippet contract for `mv t0, t0` intact.
-- Do not special-case the failing test name, fixture path, or exact emitted
-  assembly.
-- Preserve real publication moves where source and destination registers differ;
-  this packet only localized the same-register no-op path.
-- If choosing between a local emission guard and a terminal peephole call,
-  account for the fact that the offending move is appended after `ret` by
-  `append_available_edge_publication_moves()`.
-- The previous source idea remains open and parked until this broad-proof
-  blocker is resolved or explicitly dispositioned.
+- The forbidden-snippet expectations were not weakened.
+- The repair is semantic in the RV64 prepared edge-publication move emitter, not
+  keyed to the failing test name or generated assembly path.
+- Existing `_expected_repair.s` fixture files still contain literal `mv t0, t0`
+  text, but the generated
+  `build/tests/backend/riscv64_pointer_typed_select_publication.s` output does
+  not.
+- `emit.hpp` was left untouched because it was outside the delegated owned
+  files; no new public status enum value was added.
 
 ## Proof
 
-Ran the delegated localization proof exactly:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_codegen_route_riscv64_pointer_typed_select_publication$') > test_after.log 2>&1 || true`.
+Ran the delegated Step 2 proof exactly:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '(^backend_riscv_prepared_edge_publication$|^backend_(dump|codegen_route)_riscv64_(pointer_integer_select_chain|pointer_typed_select_publication|nested_select_store_source_publication|short_circuit_select_false_lhs|compare_result_select_false_arm|byval_formal_gpr_publication)$)') > test_after.log 2>&1`.
 
-Result: expected focused failure reproduced. `test_after.log` reports
-`[BACKEND_ROUTE_FORBIDDEN_SNIPPET]` for
-`build/tests/backend/riscv64_pointer_typed_select_publication.s` with unexpected
-snippet `mv t0, t0`. The failing focused test is expected for Step 1
-localization and is not a localization blocker.
+Result: passed, `12/12` selected tests green. `test_after.log` is the preserved
+proof log.

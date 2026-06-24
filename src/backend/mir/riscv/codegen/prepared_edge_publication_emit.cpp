@@ -589,8 +589,11 @@ RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
       }
       intent.destination_register = *destination_home.register_name;
       if (*intent.source_pointer_byte_delta == 0) {
-        intent.instruction_text =
-            "mv " + intent.destination_register + ", " + intent.source_pointer_base_register;
+        if (intent.destination_register != intent.source_pointer_base_register) {
+          intent.instruction_text =
+              "mv " + intent.destination_register + ", " +
+              intent.source_pointer_base_register;
+        }
       } else if (fits_signed_12_bit_immediate(*intent.source_pointer_byte_delta)) {
         intent.instruction_text =
             "addi " + intent.destination_register + ", " +
@@ -611,8 +614,10 @@ RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
         return intent;
       }
       intent.destination_register = *destination_home.register_name;
-      intent.instruction_text =
-          "mv " + intent.destination_register + ", " + *source_operand;
+      if (intent.destination_register != *source_operand) {
+        intent.instruction_text =
+            "mv " + intent.destination_register + ", " + *source_operand;
+      }
     }
     return intent;
   }
@@ -704,7 +709,8 @@ EdgePublicationMoveIntent append_edge_publication_move_instruction(
     c4c::backend::prepare::PreparedValueId destination_value_id) {
   auto intent = consume_edge_publication_move_intent(
       lookups, predecessor_label, successor_label, destination_value_id);
-  if (intent.status == EdgePublicationMoveIntentStatus::Available) {
+  if (intent.status == EdgePublicationMoveIntentStatus::Available &&
+      !intent.instruction_text.empty()) {
     output += "    " + intent.instruction_text + "\n";
   }
   return intent;

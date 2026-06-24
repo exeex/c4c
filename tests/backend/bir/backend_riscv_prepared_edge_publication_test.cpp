@@ -319,6 +319,36 @@ int check_register_to_register_move_uses_shared_lookup() {
     return 1;
   }
 
+  auto same_register = make_register_edge_publication_module();
+  auto& same_destination_home =
+      same_register.value_locations.functions.front().value_homes.at(1);
+  same_destination_home.register_name = std::string{"a0"};
+  auto& same_move =
+      same_register.value_locations.functions.front().move_bundles.front().moves.front();
+  same_move.destination_register_name = std::string{"a0"};
+  same_move.destination_register_placement = prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+      .slot_index = 0,
+      .contiguous_width = 1,
+  };
+
+  const auto same_register_asm_text = riscv::emit_prepared_module(same_register);
+  if (!expect(same_register_asm_text.find("mv a0, a0") == std::string::npos,
+              "RISC-V prepared module should omit same-register edge moves")) {
+    return 1;
+  }
+
+  auto same_register_lookups = make_lookups(same_register);
+  intent = riscv::consume_edge_publication_move_intent(
+      &same_register_lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::Available,
+              "RISC-V helper should consume same-register edge publications") ||
+      !expect(intent.instruction_text.empty(),
+              "RISC-V helper should render same-register edge publications as no-ops")) {
+    return 1;
+  }
+
   lookups.edge_publications.publications_by_edge_destination.clear();
   intent = riscv::consume_edge_publication_move_intent(
       &lookups, ids.predecessor, ids.successor, 2);
