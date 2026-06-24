@@ -3,6 +3,7 @@
 #include "../../../prealloc/prepared_lookups.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -71,9 +72,21 @@ object::SymbolBinding binding_for_function(const RiscvObjectFunction& function) 
 }
 
 std::optional<std::uint32_t> rv64_register_number(std::string_view name) {
+  if (name.size() >= 2 && name.front() == 'x') {
+    std::uint32_t value = 0;
+    const char* const begin = name.data() + 1;
+    const char* const end = name.data() + name.size();
+    const auto [ptr, ec] = std::from_chars(begin, end, value);
+    if (ec == std::errc{} && ptr == end && value <= 31) {
+      return value;
+    }
+    return std::nullopt;
+  }
   if (name == "zero") return 0;
   if (name == "ra") return 1;
   if (name == "sp") return 2;
+  if (name == "gp") return 3;
+  if (name == "tp") return 4;
   if (name == "t0") return 5;
   if (name == "t1") return 6;
   if (name == "t2") return 7;
@@ -195,6 +208,139 @@ void append_rv64_load_immediate(RiscvEncodedFragment& fragment,
                             static_cast<std::int32_t>(immediate)));
 }
 
+std::string_view trim_ascii(std::string_view text) {
+  while (!text.empty() && (text.front() == ' ' || text.front() == '\t' ||
+                          text.front() == '\n' || text.front() == '\r')) {
+    text.remove_prefix(1);
+  }
+  while (!text.empty() && (text.back() == ' ' || text.back() == '\t' ||
+                          text.back() == '\n' || text.back() == '\r')) {
+    text.remove_suffix(1);
+  }
+  return text;
+}
+
+std::optional<std::uint32_t> parse_rv64_insn_u32(std::string_view text,
+                                                 std::uint32_t max_value) {
+  text = trim_ascii(text);
+  if (text.empty()) {
+    return std::nullopt;
+  }
+  int base = 10;
+  if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
+    text.remove_prefix(2);
+    base = 16;
+  }
+  std::uint32_t value = 0;
+  const char* const begin = text.data();
+  const char* const end = text.data() + text.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, value, base);
+  if (ec != std::errc{} || ptr != end || value > max_value) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+std::optional<std::uint32_t> rv64_register_number_for_inline_asm_operand(
+    const c4c::backend::prepare::PreparedInlineAsmCarrier& carrier,
+    std::string_view token) {
+  token = trim_ascii(token);
+  if (token.size() < 2 || (token.front() != '%' && token.front() != '$')) {
+    return std::nullopt;
+  }
+  token.remove_prefix(1);
+  std::size_t operand_index = 0;
+  const char* const begin = token.data();
+  const char* const end = token.data() + token.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, operand_index);
+  if (ec != std::errc{} || ptr != end || operand_index >= carrier.operands.size()) {
+    return std::nullopt;
+  }
+
+  const auto& operand = carrier.operands[operand_index];
+  switch (operand.kind) {
+    case c4c::backend::bir::InlineAsmOperandKind::RegisterOutput:
+      if (!operand.output_index.has_value() || *operand.output_index != 0 ||
+          !carrier.result_home.has_value()) {
+        return std::nullopt;
+      }
+      return gpr_register_number_for_home(*carrier.result_home);
+    case c4c::backend::bir::InlineAsmOperandKind::RegisterInput:
+    case c4c::backend::bir::InlineAsmOperandKind::TiedInput:
+      if (!operand.arg_index.has_value() || !operand.home.has_value()) {
+        return std::nullopt;
+      }
+      return gpr_register_number_for_home(*operand.home);
+    case c4c::backend::bir::InlineAsmOperandKind::Unsupported:
+    case c4c::backend::bir::InlineAsmOperandKind::IntegerImmediateInput:
+    case c4c::backend::bir::InlineAsmOperandKind::MemoryInput:
+    case c4c::backend::bir::InlineAsmOperandKind::AddressInput:
+    case c4c::backend::bir::InlineAsmOperandKind::Clobber:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_rv64_insn_r_inline_asm(
+    const c4c::backend::prepare::PreparedInlineAsmCarrier* carrier,
+    const c4c::backend::bir::CallInst& call) {
+  namespace prepare = c4c::backend::prepare;
+  if (carrier == nullptr ||
+      carrier->carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      !call.inline_asm.has_value() || call.callee != "llvm.inline_asm" ||
+      call.is_indirect || call.callee_value.has_value() ||
+      carrier->has_named_operand_references || carrier->has_template_modifiers ||
+      !carrier->clobbers.empty() || !carrier->missing_required_facts.empty()) {
+    return std::nullopt;
+  }
+
+  std::string_view text = trim_ascii(call.inline_asm->asm_text);
+  constexpr std::string_view prefix = ".insn r";
+  if (text.size() < prefix.size() || text.substr(0, prefix.size()) != prefix ||
+      (text.size() > prefix.size() && text[prefix.size()] != ' ' &&
+       text[prefix.size()] != '\t')) {
+    return std::nullopt;
+  }
+  text.remove_prefix(prefix.size());
+  text = trim_ascii(text);
+
+  std::vector<std::string_view> fields;
+  while (true) {
+    const std::size_t comma = text.find(',');
+    const bool last = comma == std::string_view::npos;
+    fields.push_back(trim_ascii(last ? text : text.substr(0, comma)));
+    if (last) {
+      break;
+    }
+    text.remove_prefix(comma + 1);
+    if (fields.size() == 6) {
+      return std::nullopt;
+    }
+  }
+  if (fields.size() != 6 ||
+      std::any_of(fields.begin(), fields.end(), [](std::string_view field) {
+        return field.empty();
+      })) {
+    return std::nullopt;
+  }
+
+  const auto opcode = parse_rv64_insn_u32(fields[0], 0x7f);
+  const auto funct3 = parse_rv64_insn_u32(fields[1], 0x7);
+  const auto funct7 = parse_rv64_insn_u32(fields[2], 0x7f);
+  const auto rd = rv64_register_number_for_inline_asm_operand(*carrier, fields[3]);
+  const auto rs1 = rv64_register_number_for_inline_asm_operand(*carrier, fields[4]);
+  const auto rs2 = rv64_register_number_for_inline_asm_operand(*carrier, fields[5]);
+  if (!opcode.has_value() || !funct3.has_value() || !funct7.has_value() ||
+      !rd.has_value() || !rs1.has_value() || !rs2.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  append_le32(fragment.bytes,
+              encode_r_type(*opcode, *rd, *funct3, *rs1, *rs2, *funct7));
+  return fragment;
+}
+
 RiscvEncodedFragment make_rv64_return_immediate_fragment(std::int64_t immediate) {
   RiscvEncodedFragment fragment;
   append_rv64_load_immediate(fragment, 10, immediate);
@@ -310,8 +456,13 @@ bool prepared_pure_instruction_is_rematerialized_immediate(
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     const c4c::backend::prepare::PreparedCallPlan* call_plan,
+    const c4c::backend::prepare::PreparedInlineAsmCarrier* inline_asm_carrier,
     const c4c::backend::bir::CallInst& call) {
   namespace prepare = c4c::backend::prepare;
+
+  if (call.inline_asm.has_value()) {
+    return fragment_for_rv64_insn_r_inline_asm(inline_asm_carrier, call);
+  }
 
   if (call_plan == nullptr || call.is_indirect || call.callee_value.has_value() ||
       call_plan->is_indirect || call_plan->indirect_callee.has_value() ||
@@ -413,6 +564,21 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   }
 
   return fragment;
+}
+
+const c4c::backend::prepare::PreparedInlineAsmCarrier* find_prepared_inline_asm_carrier(
+    const c4c::backend::prepare::PreparedInlineAsmCarrierFunction* function_carriers,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  if (function_carriers == nullptr) {
+    return nullptr;
+  }
+  for (const auto& carrier : function_carriers->carriers) {
+    if (carrier.block_index == block_index && carrier.inst_index == instruction_index) {
+      return &carrier;
+    }
+  }
+  return nullptr;
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
@@ -689,6 +855,8 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
       .global = true,
   };
   const auto* addressing = prepare::find_prepared_addressing(prepared, control_flow.function_name);
+  const auto* inline_asm_carriers =
+      prepare::find_prepared_inline_asm_carriers(prepared, control_flow.function_name);
   const auto stack_frame_bytes = rv64_object_stack_frame_size(addressing);
   if (!stack_frame_bytes.has_value()) {
     return std::nullopt;
@@ -697,8 +865,10 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
   const bool has_call = std::any_of(block.insts.begin(),
                                     block.insts.end(),
                                     [](const c4c::backend::bir::Inst& inst) {
-                                      return std::holds_alternative<
-                                          c4c::backend::bir::CallInst>(inst);
+                                      const auto* call = std::get_if<
+                                          c4c::backend::bir::CallInst>(&inst);
+                                      return call != nullptr &&
+                                             !call->inline_asm.has_value();
                                     });
   if (has_call) {
     const auto call_frame_size = rv64_call_frame_size(*stack_frame_bytes);
@@ -773,7 +943,9 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
         prepare::find_prepared_call_plans(prepared, control_flow.function_name),
         0,
         instruction_index);
-    auto fragment = fragment_for_prepared_call(call_plan, *call);
+    const auto* inline_asm_carrier =
+        find_prepared_inline_asm_carrier(inline_asm_carriers, 0, instruction_index);
+    auto fragment = fragment_for_prepared_call(call_plan, inline_asm_carrier, *call);
     if (!fragment.has_value()) {
       return std::nullopt;
     }

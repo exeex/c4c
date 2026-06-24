@@ -621,6 +621,211 @@ prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
   return prepared;
 }
 
+bir::InlineAsmOperandMetadata inline_asm_register_operand(
+    bir::InlineAsmOperandKind kind,
+    std::size_t constraint_index,
+    std::string constraint,
+    std::optional<std::size_t> arg_index,
+    std::optional<std::size_t> output_index = std::nullopt,
+    std::optional<std::size_t> tied_output_index = std::nullopt) {
+  return bir::InlineAsmOperandMetadata{
+      .kind = kind,
+      .constraint_index = constraint_index,
+      .constraint = std::move(constraint),
+      .arg_index = arg_index,
+      .output_index = output_index,
+      .tied_output_index = tied_output_index,
+  };
+}
+
+prepare::PreparedValueHome rv64_gpr_home(prepare::PreparedValueId value_id,
+                                         c4c::FunctionNameId function_name,
+                                         c4c::ValueNameId value_name,
+                                         std::string register_name,
+                                         std::size_t physical_index) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::move(register_name),
+      .target_register_identity = prepare::PreparedTargetRegisterIdentity{
+          .target_arch = c4c::TargetArch::Riscv64,
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .register_class = prepare::PreparedRegisterClass::General,
+          .physical_index = physical_index,
+      },
+  };
+}
+
+prepare::PreparedBirModule make_prepared_inline_asm_insn_r_module(
+    std::string asm_text = ".insn r 0x33, 0, 0, %0, %1, %2",
+    bool complete_carrier = true,
+    bool tied_first_input = false) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile.arch = c4c::TargetArch::Riscv64;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto result_name = prepared.names.value_names.intern("%sum");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+
+  bir::CallInst call;
+  call.result = bir::Value::named(bir::TypeKind::I32, "%sum");
+  call.callee = "llvm.inline_asm";
+  call.args = {bir::Value::named(bir::TypeKind::I32, "%lhs"),
+               bir::Value::named(bir::TypeKind::I32, "%rhs")};
+  call.arg_types = {bir::TypeKind::I32, bir::TypeKind::I32};
+  call.return_type = bir::TypeKind::I32;
+  call.inline_asm = bir::InlineAsmMetadata{
+      .asm_text = std::move(asm_text),
+      .constraints = tied_first_input ? "=r,0,r" : "=r,r,r",
+      .side_effects = true,
+      .operands =
+          {
+              inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                          0,
+                                          "=r",
+                                          std::nullopt,
+                                          std::size_t{0}),
+              inline_asm_register_operand(tied_first_input
+                                              ? bir::InlineAsmOperandKind::TiedInput
+                                              : bir::InlineAsmOperandKind::RegisterInput,
+                                          1,
+                                          tied_first_input ? "0" : "r",
+                                          std::size_t{0},
+                                          std::nullopt,
+                                          tied_first_input ? std::optional<std::size_t>{0}
+                                                           : std::nullopt),
+              inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                          2,
+                                          "r",
+                                          std::size_t{1}),
+          },
+  };
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%sum");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, result_name, "t0", 5),
+              rv64_gpr_home(2,
+                            function_name,
+                            lhs_name,
+                            tied_first_input ? "t0" : "t1",
+                            tied_first_input ? 5 : 6),
+              rv64_gpr_home(3, function_name, rhs_name, "t2", 7),
+          },
+  });
+  if (complete_carrier) {
+    prepared.inline_asm_carriers.functions.push_back(
+        prepare::PreparedInlineAsmCarrierFunction{
+            .function_name = function_name,
+            .carriers =
+                {
+                    prepare::PreparedInlineAsmCarrier{
+                        .function_name = function_name,
+                        .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete,
+                        .block_index = 0,
+                        .inst_index = 0,
+                        .asm_text = ".insn r 0x33, 0, 0, %0, %1, %2",
+                        .constraints = tied_first_input ? "=r,0,r" : "=r,r,r",
+                        .side_effects = true,
+                        .operands =
+                            {
+                                prepare::PreparedInlineAsmOperand{
+                                    .kind = bir::InlineAsmOperandKind::RegisterOutput,
+                                    .constraint_index = 0,
+                                    .constraint = "=r",
+                                    .output_index = std::size_t{0},
+                                },
+                                prepare::PreparedInlineAsmOperand{
+                                    .kind = tied_first_input
+                                                ? bir::InlineAsmOperandKind::TiedInput
+                                                : bir::InlineAsmOperandKind::RegisterInput,
+                                    .constraint_index = 1,
+                                    .constraint = tied_first_input ? "0" : "r",
+                                    .arg_index = std::size_t{0},
+                                    .tied_output_index =
+                                        tied_first_input
+                                            ? std::optional<std::size_t>{0}
+                                            : std::nullopt,
+                                    .value = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+                                    .value_name = lhs_name,
+                                    .home = rv64_gpr_home(2,
+                                                          function_name,
+                                                          lhs_name,
+                                                          tied_first_input ? "t0" : "t1",
+                                                          tied_first_input ? 5 : 6),
+                                    .tied_home_authority =
+                                        tied_first_input
+                                            ? std::optional<
+                                                  prepare::PreparedInlineAsmTiedHomeAuthority>{
+                                                  prepare::PreparedInlineAsmTiedHomeAuthority{
+                                                      .tied_output_index = 0,
+                                                      .shared_register =
+                                                          prepare::
+                                                              PreparedTargetRegisterIdentity{
+                                                                  .target_arch =
+                                                                      c4c::TargetArch::
+                                                                          Riscv64,
+                                                                  .bank =
+                                                                      prepare::
+                                                                          PreparedRegisterBank::
+                                                                              Gpr,
+                                                                  .register_class =
+                                                                      prepare::
+                                                                          PreparedRegisterClass::
+                                                                              General,
+                                                                  .physical_index = 5,
+                                                              },
+                                                  }}
+                                            : std::nullopt,
+                                },
+                                prepare::PreparedInlineAsmOperand{
+                                    .kind = bir::InlineAsmOperandKind::RegisterInput,
+                                    .constraint_index = 2,
+                                    .constraint = "r",
+                                    .arg_index = std::size_t{1},
+                                    .value = bir::Value::named(bir::TypeKind::I32, "%rhs"),
+                                    .value_name = rhs_name,
+                                    .home = rv64_gpr_home(3,
+                                                          function_name,
+                                                          rhs_name,
+                                                          "t2",
+                                                          7),
+                                },
+                            },
+                        .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+                        .result_value_name = result_name,
+                        .result_home = rv64_gpr_home(1,
+                                                     function_name,
+                                                     result_name,
+                                                     "t0",
+                                                     5),
+                    },
+                },
+        });
+  }
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_local_register_arg_call_module() {
   prepare::PreparedBirModule prepared;
   const auto callee_name = prepared.names.function_names.intern("add_pair");
@@ -1261,6 +1466,89 @@ int builds_prepared_local_register_arg_call_object() {
   return 0;
 }
 
+int builds_prepared_inline_asm_insn_r_object() {
+  const auto prepared = make_prepared_inline_asm_insn_r_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 inline-asm .insn r object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected inline-asm .insn r object to publish text/main");
+  }
+  if (text->bytes.size() != 12 || text->size_bytes != 12 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 12) {
+    return fail("expected inline-asm .insn r object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x007302b3 ||
+      read_u32(text->bytes, 4) != 0x00028513 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected .insn r add t0, t1, t2 followed by return move");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected inline-asm .insn r object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_inline_asm_insn_r_tied_input_object() {
+  const auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %0, %1, %2",
+      true,
+      true);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 tied inline-asm .insn r object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  if (text == nullptr || text->bytes.size() != 12) {
+    return fail("expected tied inline-asm .insn r object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x007282b3 ||
+      read_u32(text->bytes, 4) != 0x00028513 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected tied .insn r add t0, t0, t2 followed by return move");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_r_without_complete_carrier() {
+  const auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %0, %1, %2",
+      false);
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to require complete carrier");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_non_insn_r_object() {
+  const auto prepared = make_prepared_inline_asm_insn_r_module("addi $0, $1, 0");
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm object path to reject unsupported asm template");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_r_extra_field_object() {
+  const auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %0, %1, %2, %0");
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to reject extra fields");
+  }
+  return 0;
+}
+
+int rejects_prepared_inline_asm_insn_r_out_of_range_numeric_object() {
+  const auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x80, 0, 0, %0, %1, %2");
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected inline-asm .insn r object path to reject invalid numeric fields");
+  }
+  return 0;
+}
+
 int rejects_prepared_data_without_asm_fallback() {
   auto prepared = make_prepared_direct_call_module();
   prepared.module.globals.push_back(bir::Global{
@@ -1589,6 +1877,12 @@ int main() {
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_local_register_arg_call_object();
+  status |= builds_prepared_inline_asm_insn_r_object();
+  status |= builds_prepared_inline_asm_insn_r_tied_input_object();
+  status |= rejects_prepared_inline_asm_insn_r_without_complete_carrier();
+  status |= rejects_prepared_inline_asm_non_insn_r_object();
+  status |= rejects_prepared_inline_asm_insn_r_extra_field_object();
+  status |= rejects_prepared_inline_asm_insn_r_out_of_range_numeric_object();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
