@@ -67,3 +67,26 @@ coverage or prematurely changing defaults.
   names or test classification.
 - The change starts c-testsuite default switching before target object proof is
   accepted.
+
+## Closure Note
+
+Closed after child 333 completed the scoped CLI and harness integration:
+`--codegen obj` writes backend-produced object bytes for the minimal RV64 and
+AArch64 supported subsets, focused CLI tests cover accepted and unsupported
+object combinations, the RV64 object route has a direct `.o` link/run smoke,
+and existing asm-route proof remains selected.
+
+Final focused validation used:
+
+```sh
+set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_object_model_records|backend_riscv_object_emission|backend_aarch64_object_emission|backend_cli_.*obj|backend_obj_runtime_.*|backend_rv64_runtime_return_zero|backend_cli_aarch64_asm_external_return_(zero|add|add_sub_chain)_smoke|backend_codegen_route_riscv64_external_no_storage_main_emits_return_path)$' --output-on-failure) > test_after.log 2>&1
+```
+
+Result: 14/14 tests passed. Matching `test_before.log` and regenerated
+`test_after.log` both passed 14/14; regression guard passed with
+`--allow-non-decreasing-passed`.
+
+Remaining broader object-route scan/default-readiness work is intentionally
+left to `ideas/open/334_object_route_scan_and_default_readiness.md`, including
+broader RV64 globals/data, x86 object output, object stdout policy, c-testsuite
+object defaults, and any object `--backend-bir-stage semantic` mode.
