@@ -26,3 +26,15 @@ if(rc EQUAL 0)
 else()
   message(STATUS "[PASS] negative compile failed as expected: ${SRC}")
 endif()
+
+if(DEFINED EXPECT_ERROR_SUBSTRING AND NOT "${EXPECT_ERROR_SUBSTRING}" STREQUAL "")
+  set(combined "${out}\n${err}")
+  string(FIND "${combined}" "${EXPECT_ERROR_SUBSTRING}" error_pos)
+  if(error_pos EQUAL -1)
+    message(FATAL_ERROR
+      "[FAIL] negative case output missing expected error substring\n"
+      "substring: ${EXPECT_ERROR_SUBSTRING}\n"
+      "stdout:\n${out}\n"
+      "stderr:\n${err}")
+  endif()
+endif()

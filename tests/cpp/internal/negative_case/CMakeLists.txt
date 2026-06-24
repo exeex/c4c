@@ -6,12 +6,18 @@ file(GLOB _neg_srcs CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 foreach(src IN LISTS _neg_srcs)
   get_filename_component(stem "${src}" NAME_WE)
   set(test_name "cpp_negative_tests_${stem}")
+  set(extra_args)
+  if(stem STREQUAL "bad_inline_asm_runtime_template")
+    list(APPEND extra_args
+      "-DEXPECT_ERROR_SUBSTRING:STRING=unsupported inline asm template expression; expected string literal or adjacent string literals")
+  endif()
   add_test(
     NAME "${test_name}"
     COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:c4cll>
             -DSRC=${src}
             -DENFORCE_NEGATIVE=ON
+            ${extra_args}
             -P "${_runner}"
   )
   set_tests_properties("${test_name}" PROPERTIES LABELS "internal;negative_case;cpp")

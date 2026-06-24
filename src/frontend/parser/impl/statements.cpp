@@ -947,6 +947,21 @@ Node* parse_stmt(Parser& parser) {
                 }
                 return true;
             };
+            auto reject_unsupported_template = [&](int token_pos) -> Node* {
+                const int err_idx = token_pos >= 0 ? token_pos : parser.core_input_state_.pos;
+                const Token& tok =
+                    (err_idx >= 0 &&
+                     err_idx < static_cast<int>(parser.core_input_state_.tokens.size()))
+                        ? parser.core_input_state_.tokens[err_idx]
+                        : parser.cur();
+                fprintf(stderr,
+                        "%s:%d:%d: error: unsupported inline asm template expression; "
+                        "expected string literal or adjacent string literals\n",
+                        parser.diag_file_at(err_idx), tok.line, tok.column);
+                parser.diagnostic_state_.had_error = true;
+                ++parser.diagnostic_state_.parse_error_count;
+                return parser.make_node(NK_INVALID_STMT, ln);
+            };
 
             parser.consume();
             // Skip optional qualifiers: volatile, goto, inline
@@ -963,9 +978,12 @@ Node* parse_stmt(Parser& parser) {
             parser.consume();  // (
 
             Node* asm_template = nullptr;
+            int asm_template_token_pos = -1;
             if (parser.check(TokenKind::StrLit)) {
+                asm_template_token_pos = parser.core_input_state_.pos;
                 asm_template = parser.make_str_lit(consume_adjacent_string_literal(parser), parser.cur().line);
             } else if (!parser.check(TokenKind::Colon) && !parser.check(TokenKind::RParen)) {
+                asm_template_token_pos = parser.core_input_state_.pos;
                 asm_template = parse_expr(parser);
             }
 
@@ -993,6 +1011,10 @@ Node* parse_stmt(Parser& parser) {
             }
             parser.expect(TokenKind::RParen);
             parser.match(TokenKind::Semi);
+
+            if (asm_template && asm_template->kind != NK_STR_LIT) {
+                return reject_unsupported_template(asm_template_token_pos);
+            }
 
             const bool empty_template =
                 asm_template && asm_template->kind == NK_STR_LIT && asm_template->sval &&
