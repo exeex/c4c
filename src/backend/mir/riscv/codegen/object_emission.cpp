@@ -288,4 +288,14 @@ std::optional<object::RelocatableElfImage> write_rv64_relocatable_elf_object(
   return object::write_relocatable_elf(module, rv64_relocatable_elf_config());
 }
 
+std::optional<object::RelocatableElfImage>
+write_rv64_prepared_relocatable_elf_object(
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  const auto module = build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return std::nullopt;
+  }
+  return write_rv64_relocatable_elf_object(*module);
+}
+
 }  // namespace c4c::backend::riscv::codegen

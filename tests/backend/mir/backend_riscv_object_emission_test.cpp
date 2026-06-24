@@ -4,6 +4,9 @@
 #include "src/backend/prealloc/module.hpp"
 
 #include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -18,6 +21,7 @@ namespace rv64 = c4c::backend::riscv::codegen;
 
 constexpr std::uint32_t SHT_RELA = 4;
 constexpr std::uint32_t SHT_SYMTAB = 2;
+constexpr std::uint16_t SHN_UNDEF = 0;
 
 std::uint16_t read_u16(const std::vector<std::uint8_t>& bytes,
                        std::size_t offset) {
@@ -50,6 +54,19 @@ std::string read_c_string(const std::vector<std::uint8_t>& bytes,
     ++offset;
   }
   return value;
+}
+
+std::string shell_quote(const std::filesystem::path& path) {
+  std::string quoted = "'";
+  for (const char ch : path.string()) {
+    if (ch == '\'') {
+      quoted += "'\\''";
+    } else {
+      quoted.push_back(ch);
+    }
+  }
+  quoted.push_back('\'');
+  return quoted;
 }
 
 int fail(const std::string& message) {
@@ -329,6 +346,135 @@ int serializes_rv64_relocatable_elf_contract() {
   return 0;
 }
 
+int writes_prepared_rv64_relocatable_elf_object_file() {
+  const auto prepared = make_prepared_direct_call_module();
+  const auto image = rv64::write_rv64_prepared_relocatable_elf_object(prepared);
+  if (!image.has_value()) {
+    return fail("expected prepared RV64 ELF writer to produce an image");
+  }
+  const auto& bytes = image->bytes;
+  if (bytes.size() < 64 || bytes[0] != 0x7f || bytes[1] != 'E' ||
+      bytes[2] != 'L' || bytes[3] != 'F' || read_u16(bytes, 18) != 243 ||
+      read_u32(bytes, 48) != 0x5) {
+    return fail("expected prepared object to serialize as RV64 ELF64");
+  }
+
+  const std::size_t shoff = read_u64(bytes, 40);
+  const std::size_t shentsize = read_u16(bytes, 58);
+  const std::size_t shnum = read_u16(bytes, 60);
+  const std::size_t shstrndx = read_u16(bytes, 62);
+  if (shoff == 0 || shentsize != 64 || shstrndx >= shnum) {
+    return fail("expected prepared ELF section headers");
+  }
+  const std::size_t shstr_header = shoff + shstrndx * shentsize;
+  const std::size_t shstr_offset = read_u64(bytes, shstr_header + 24);
+
+  std::size_t text_header = 0;
+  std::size_t rela_text_header = 0;
+  std::size_t symtab_header = 0;
+  for (std::size_t index = 1; index < shnum; ++index) {
+    const std::size_t header = shoff + index * shentsize;
+    const std::string name =
+        read_c_string(bytes, shstr_offset + read_u32(bytes, header));
+    if (name == ".text") {
+      text_header = header;
+    } else if (name == ".rela.text") {
+      rela_text_header = header;
+    } else if (name == ".symtab") {
+      symtab_header = header;
+    }
+  }
+  if (text_header == 0 || rela_text_header == 0 || symtab_header == 0) {
+    return fail("expected prepared ELF to include .text, .rela.text, and .symtab");
+  }
+  if (read_u64(bytes, text_header + 32) != 24 ||
+      read_u32(bytes, rela_text_header + 4) != SHT_RELA ||
+      read_u32(bytes, symtab_header + 4) != SHT_SYMTAB) {
+    return fail("expected prepared ELF section sizes and types");
+  }
+
+  const std::size_t rela_offset = read_u64(bytes, rela_text_header + 24);
+  const std::size_t rela_size = read_u64(bytes, rela_text_header + 32);
+  const std::size_t rela_entsize = read_u64(bytes, rela_text_header + 56);
+  if (rela_size != 24 || rela_entsize != 24 || read_u64(bytes, rela_offset) != 0) {
+    return fail("expected one prepared call relocation at text offset zero");
+  }
+  const std::uint64_t r_info = read_u64(bytes, rela_offset + 8);
+  if ((r_info & 0xffffffffull) != 19) {
+    return fail("expected prepared call relocation to be R_RISCV_CALL_PLT");
+  }
+
+  const std::size_t symtab_offset = read_u64(bytes, symtab_header + 24);
+  const std::size_t strtab_header =
+      shoff + read_u32(bytes, symtab_header + 40) * shentsize;
+  const std::size_t strtab_offset = read_u64(bytes, strtab_header + 24);
+  const auto symbol_name_at = [&](std::size_t symbol_index) {
+    const std::size_t symbol_offset = symtab_offset + symbol_index * 24;
+    return read_c_string(bytes, strtab_offset + read_u32(bytes, symbol_offset));
+  };
+  const std::size_t relocated_symbol_index = r_info >> 32;
+  const std::size_t relocated_symbol_offset =
+      symtab_offset + relocated_symbol_index * 24;
+  if (symbol_name_at(relocated_symbol_index) != "callee" ||
+      read_u16(bytes, relocated_symbol_offset + 6) == SHN_UNDEF) {
+    return fail("expected prepared relocation to reference defined callee symbol");
+  }
+
+  bool saw_caller = false;
+  bool saw_callee = false;
+  const std::size_t symbol_count = read_u64(bytes, symtab_header + 32) / 24;
+  for (std::size_t index = 1; index < symbol_count; ++index) {
+    const std::size_t symbol_offset = symtab_offset + index * 24;
+    const std::string name = symbol_name_at(index);
+    if (name == "caller") {
+      saw_caller = read_u64(bytes, symbol_offset + 8) == 0 &&
+                   read_u64(bytes, symbol_offset + 16) == 16 &&
+                   read_u16(bytes, symbol_offset + 6) != SHN_UNDEF;
+    } else if (name == "callee") {
+      saw_callee = read_u64(bytes, symbol_offset + 8) == 16 &&
+                   read_u64(bytes, symbol_offset + 16) == 8 &&
+                   read_u16(bytes, symbol_offset + 6) != SHN_UNDEF;
+    }
+  }
+  if (!saw_caller || !saw_callee) {
+    return fail("expected prepared object to publish defined caller/callee symbols");
+  }
+
+  const auto temp_dir = std::filesystem::temp_directory_path();
+  const auto object_path = temp_dir / "c4c_rv64_prepared_object_emission_test.o";
+  const auto linked_path = temp_dir / "c4c_rv64_prepared_object_emission_test.r.o";
+  {
+    std::ofstream out(object_path, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(bytes.data()),
+              static_cast<std::streamsize>(bytes.size()));
+    if (!out.good()) {
+      return fail("expected to write prepared ELF object temp file");
+    }
+  }
+
+  const std::string object_arg = shell_quote(object_path);
+  const std::string linked_arg = shell_quote(linked_path);
+  if (std::system(("readelf -h -S -r -s " + object_arg + " > /dev/null").c_str()) !=
+      0) {
+    std::filesystem::remove(object_path);
+    return fail("expected readelf to accept prepared RV64 object");
+  }
+  if (std::system(("llvm-objdump -r " + object_arg + " > /dev/null").c_str()) !=
+      0) {
+    std::filesystem::remove(object_path);
+    return fail("expected llvm-objdump to read prepared RV64 relocations");
+  }
+  if (std::system(("riscv64-linux-gnu-ld -r -o " + linked_arg + " " +
+                   object_arg + " > /dev/null").c_str()) != 0) {
+    std::filesystem::remove(object_path);
+    std::filesystem::remove(linked_path);
+    return fail("expected riscv64-linux-gnu-ld -r to accept prepared RV64 object");
+  }
+  std::filesystem::remove(object_path);
+  std::filesystem::remove(linked_path);
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -338,5 +484,6 @@ int main() {
   status |= builds_prepared_text_object_module_without_call_text();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= serializes_rv64_relocatable_elf_contract();
+  status |= writes_prepared_rv64_relocatable_elf_object_file();
   return status;
 }

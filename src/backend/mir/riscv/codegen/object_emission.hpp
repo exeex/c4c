@@ -55,4 +55,8 @@ build_rv64_prepared_text_object_module(
 write_rv64_relocatable_elf_object(
     const c4c::backend::mir::object::ObjectModule& module);
 
+[[nodiscard]] std::optional<c4c::backend::mir::object::RelocatableElfImage>
+write_rv64_prepared_relocatable_elf_object(
+    const c4c::backend::prepare::PreparedBirModule& prepared);
+
 }  // namespace c4c::backend::riscv::codegen
