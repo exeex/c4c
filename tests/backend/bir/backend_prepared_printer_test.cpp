@@ -3545,36 +3545,28 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_carrier_module() {
   module.target_triple = "riscv64-unknown-linux-gnu";
 
   const c4c::TargetProfile target = riscv_target_profile();
-  const auto i32_arg_abi = *prepare::infer_call_arg_abi(target, bir::TypeKind::I32);
-  const bir::CallResultAbiInfo i32_result_abi{
-      .type = bir::TypeKind::I32,
-      .primary_class = bir::AbiValueClass::Integer,
-  };
-
   bir::Function function;
   function.name = "rv64_inline_asm_vector_carrier_contract";
   function.return_type = bir::TypeKind::I32;
   function.params.push_back(bir::Param{
-      .type = bir::TypeKind::I32,
-      .name = "x",
-      .size_bytes = 4,
-      .align_bytes = 4,
+      .type = bir::TypeKind::Vrm2,
+      .name = "tmp",
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Vrm4,
+      .name = "out",
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Vrm2,
+      .name = "tie",
   });
 
   bir::Block entry;
   entry.label = "entry";
-  entry.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Add,
-      .result = bir::Value::named(bir::TypeKind::I32, "tmp"),
-      .operand_type = bir::TypeKind::I32,
-      .lhs = bir::Value::named(bir::TypeKind::I32, "x"),
-      .rhs = bir::Value::named(bir::TypeKind::I32, "x"),
-  });
   entry.insts.push_back(bir::CallInst{
       .callee = "llvm.inline_asm",
-      .args = {bir::Value::named(bir::TypeKind::I32, "tmp")},
-      .arg_types = {bir::TypeKind::I32},
-      .arg_abi = {i32_arg_abi},
+      .args = {bir::Value::named(bir::TypeKind::Vrm2, "tmp")},
+      .arg_types = {bir::TypeKind::Vrm2},
       .return_type = bir::TypeKind::Void,
       .inline_asm = bir::InlineAsmMetadata{
           .asm_text = "vmv.v.v %0, %0",
@@ -3595,10 +3587,9 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_carrier_module() {
       },
   });
   entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "out"),
+      .result = bir::Value::named(bir::TypeKind::Vrm4, "out"),
       .callee = "llvm.inline_asm",
-      .return_type = bir::TypeKind::I32,
-      .result_abi = i32_result_abi,
+      .return_type = bir::TypeKind::Vrm4,
       .inline_asm = bir::InlineAsmMetadata{
           .asm_text = "vmv.v.i %0, 0",
           .constraints = "=VRM4",
@@ -3618,13 +3609,11 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_carrier_module() {
       },
   });
   entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "tie"),
+      .result = bir::Value::named(bir::TypeKind::Vrm2, "tie"),
       .callee = "llvm.inline_asm",
-      .args = {bir::Value::named(bir::TypeKind::I32, "tie")},
-      .arg_types = {bir::TypeKind::I32},
-      .arg_abi = {i32_arg_abi},
-      .return_type = bir::TypeKind::I32,
-      .result_abi = i32_result_abi,
+      .args = {bir::Value::named(bir::TypeKind::Vrm2, "tie")},
+      .arg_types = {bir::TypeKind::Vrm2},
+      .return_type = bir::TypeKind::Vrm2,
       .inline_asm = bir::InlineAsmMetadata{
           .asm_text = "vadd.vv %0, %0, %0",
           .constraints = "=VRM2,0",
@@ -3651,7 +3640,7 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_carrier_module() {
       },
   });
   entry.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(bir::TypeKind::I32, "tie"),
+      .value = bir::Value::immediate_i32(0),
   };
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
@@ -3664,8 +3653,6 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_impossible_carrier_mod
   module.target_triple = "riscv64-unknown-linux-gnu";
 
   const c4c::TargetProfile target = riscv_target_profile();
-  const auto i32_arg_abi = *prepare::infer_call_arg_abi(target, bir::TypeKind::I32);
-
   bir::Function function;
   function.name = "rv64_inline_asm_vector_impossible_carrier_contract";
   function.return_type = bir::TypeKind::I32;
@@ -3682,24 +3669,13 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_impossible_carrier_mod
   };
 
   for (std::size_t index = 0; index < 33; ++index) {
-    const std::string param_name = "p" + std::to_string(index);
     const std::string value_name = "v" + std::to_string(index);
     function.params.push_back(bir::Param{
-        .type = bir::TypeKind::I32,
-        .name = param_name,
-        .size_bytes = 4,
-        .align_bytes = 4,
+        .type = bir::TypeKind::Vrm1,
+        .name = value_name,
     });
-    entry.insts.push_back(bir::BinaryInst{
-        .opcode = bir::BinaryOpcode::Add,
-        .result = bir::Value::named(bir::TypeKind::I32, value_name),
-        .operand_type = bir::TypeKind::I32,
-        .lhs = bir::Value::named(bir::TypeKind::I32, param_name),
-        .rhs = bir::Value::named(bir::TypeKind::I32, param_name),
-    });
-    inline_asm.args.push_back(bir::Value::named(bir::TypeKind::I32, value_name));
-    inline_asm.arg_types.push_back(bir::TypeKind::I32);
-    inline_asm.arg_abi.push_back(i32_arg_abi);
+    inline_asm.args.push_back(bir::Value::named(bir::TypeKind::Vrm1, value_name));
+    inline_asm.arg_types.push_back(bir::TypeKind::Vrm1);
     if (!inline_asm.inline_asm->constraints.empty()) {
       inline_asm.inline_asm->constraints += ",";
     }
@@ -3720,7 +3696,7 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_impossible_carrier_mod
 
   entry.insts.push_back(std::move(inline_asm));
   entry.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(bir::TypeKind::I32, "v0"),
+      .value = bir::Value::immediate_i32(0),
   };
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
@@ -4149,7 +4125,7 @@ int rv64_inline_asm_impossible_vector_allocation_diagnoses_missing_home() {
 
   const std::string dump = prepare::print(prepared);
   if (!expect_contains(dump,
-                       "missing fact=inst#33:operand32_requires_register_home",
+                       "missing fact=inst#0:operand32_requires_register_home",
                        "impossible RV64 vector inline asm missing carrier fact")) {
     return EXIT_FAILURE;
   }

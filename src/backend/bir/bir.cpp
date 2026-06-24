@@ -2608,6 +2608,14 @@ std::string render_type(TypeKind type) {
       return "double";
     case TypeKind::F128:
       return "f128";
+    case TypeKind::Vrm1:
+      return "c4c.vrm1";
+    case TypeKind::Vrm2:
+      return "c4c.vrm2";
+    case TypeKind::Vrm4:
+      return "c4c.vrm4";
+    case TypeKind::Vrm8:
+      return "c4c.vrm8";
   }
   return "<unknown>";
 }

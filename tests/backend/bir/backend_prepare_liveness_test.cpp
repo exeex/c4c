@@ -4230,32 +4230,23 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_group_allocation_modul
   module.target_triple = "riscv64-unknown-linux-gnu";
 
   const c4c::TargetProfile target = riscv_target_profile();
-  const auto i32_arg_abi = *prepare::infer_call_arg_abi(target, bir::TypeKind::I32);
-  const bir::CallResultAbiInfo i32_result_abi{
-      .type = bir::TypeKind::I32,
-      .primary_class = bir::AbiValueClass::Integer,
-  };
 
   bir::Function function;
   function.name = "rv64_inline_asm_vector_group_allocation";
   function.return_type = bir::TypeKind::I32;
-  for (std::string_view name : {"m2", "m4", "m1", "rw", "tie"}) {
-    function.params.push_back(bir::Param{
-        .type = bir::TypeKind::I32,
-        .name = std::string(name),
-        .size_bytes = 4,
-        .align_bytes = 4,
-    });
-  }
+  function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm2, .name = "m2"});
+  function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm4, .name = "m4"});
+  function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm1, .name = "m1"});
+  function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm2, .name = "rw"});
+  function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm4, .name = "tie"});
 
   auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::CallInst{
       .callee = "llvm.inline_asm",
-      .args = {bir::Value::named(bir::TypeKind::I32, "m2"),
-               bir::Value::named(bir::TypeKind::I32, "m4"),
-               bir::Value::named(bir::TypeKind::I32, "m1")},
-      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32, bir::TypeKind::I32},
-      .arg_abi = {i32_arg_abi, i32_arg_abi, i32_arg_abi},
+      .args = {bir::Value::named(bir::TypeKind::Vrm2, "m2"),
+               bir::Value::named(bir::TypeKind::Vrm4, "m4"),
+               bir::Value::named(bir::TypeKind::Vrm1, "m1")},
+      .arg_types = {bir::TypeKind::Vrm2, bir::TypeKind::Vrm4, bir::TypeKind::Vrm1},
       .return_type = bir::TypeKind::Void,
       .inline_asm = bir::InlineAsmMetadata{
           .asm_text = "vgroup %0, %1, %2",
@@ -4290,13 +4281,11 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_group_allocation_modul
       },
   });
   entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "rw"),
+      .result = bir::Value::named(bir::TypeKind::Vrm2, "rw"),
       .callee = "llvm.inline_asm",
-      .args = {bir::Value::named(bir::TypeKind::I32, "rw")},
-      .arg_types = {bir::TypeKind::I32},
-      .arg_abi = {i32_arg_abi},
-      .return_type = bir::TypeKind::I32,
-      .result_abi = i32_result_abi,
+      .args = {bir::Value::named(bir::TypeKind::Vrm2, "rw")},
+      .arg_types = {bir::TypeKind::Vrm2},
+      .return_type = bir::TypeKind::Vrm2,
       .inline_asm = bir::InlineAsmMetadata{
           .asm_text = "vrw %0",
           .constraints = "+VRM2",
@@ -4313,13 +4302,11 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_group_allocation_modul
       },
   });
   entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "tie"),
+      .result = bir::Value::named(bir::TypeKind::Vrm4, "tie"),
       .callee = "llvm.inline_asm",
-      .args = {bir::Value::named(bir::TypeKind::I32, "tie")},
-      .arg_types = {bir::TypeKind::I32},
-      .arg_abi = {i32_arg_abi},
-      .return_type = bir::TypeKind::I32,
-      .result_abi = i32_result_abi,
+      .args = {bir::Value::named(bir::TypeKind::Vrm4, "tie")},
+      .arg_types = {bir::TypeKind::Vrm4},
+      .return_type = bir::TypeKind::Vrm4,
       .inline_asm = bir::InlineAsmMetadata{
           .asm_text = "vtie %0",
           .constraints = "=VRM4,0",
@@ -4364,7 +4351,6 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_impossible_module() {
   module.target_triple = "riscv64-unknown-linux-gnu";
 
   const c4c::TargetProfile target = riscv_target_profile();
-  const auto i32_arg_abi = *prepare::infer_call_arg_abi(target, bir::TypeKind::I32);
 
   bir::Function function;
   function.name = "rv64_inline_asm_vector_impossible";
@@ -4381,24 +4367,13 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_impossible_module() {
   };
 
   for (std::size_t index = 0; index < 33; ++index) {
-    const std::string param_name = "p" + std::to_string(index);
     const std::string value_name = "v" + std::to_string(index);
     function.params.push_back(bir::Param{
-        .type = bir::TypeKind::I32,
-        .name = param_name,
-        .size_bytes = 4,
-        .align_bytes = 4,
+        .type = bir::TypeKind::Vrm1,
+        .name = value_name,
     });
-    entry.insts.push_back(bir::BinaryInst{
-        .opcode = bir::BinaryOpcode::Add,
-        .result = bir::Value::named(bir::TypeKind::I32, value_name),
-        .operand_type = bir::TypeKind::I32,
-        .lhs = bir::Value::named(bir::TypeKind::I32, param_name),
-        .rhs = bir::Value::named(bir::TypeKind::I32, param_name),
-    });
-    inline_asm.args.push_back(bir::Value::named(bir::TypeKind::I32, value_name));
-    inline_asm.arg_types.push_back(bir::TypeKind::I32);
-    inline_asm.arg_abi.push_back(i32_arg_abi);
+    inline_asm.args.push_back(bir::Value::named(bir::TypeKind::Vrm1, value_name));
+    inline_asm.arg_types.push_back(bir::TypeKind::Vrm1);
     if (!inline_asm.inline_asm->constraints.empty()) {
       inline_asm.inline_asm->constraints += ",";
     }
@@ -4416,8 +4391,53 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_impossible_module() {
 
   entry.insts.push_back(std::move(inline_asm));
   entry.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(bir::TypeKind::I32, "v0"),
+      .value = bir::Value::immediate_i32(0),
   };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, target, prepare::PrepareOptions{});
+}
+
+prepare::PreparedBirModule prepare_rv64_inline_asm_scalar_vrm2_negative_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  const c4c::TargetProfile target = riscv_target_profile();
+
+  bir::Function function;
+  function.name = "rv64_inline_asm_scalar_vrm2_negative";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "scalar",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  auto entry = make_block(module, "entry");
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I64, "scalar")},
+      .arg_types = {bir::TypeKind::I64},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "scalar %0",
+          .constraints = "VRM2",
+          .side_effects = true,
+          .operands = {inline_asm_register_operand(
+              bir::InlineAsmOperandKind::RegisterInput,
+              0,
+              "VRM2",
+              std::size_t{0},
+              std::nullopt,
+              std::nullopt,
+              bir::InlineAsmRegisterClass::Vector,
+              2)},
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
 
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
@@ -7199,6 +7219,42 @@ int check_rv64_inline_asm_vector_impossible_allocation(
   return 0;
 }
 
+int check_rv64_inline_asm_scalar_vrm2_negative(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* regalloc =
+      find_regalloc_function(prepared, "rv64_inline_asm_scalar_vrm2_negative");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for scalar VRM2 negative fixture");
+  }
+
+  const auto* scalar = find_regalloc_value(prepared, *regalloc, "scalar");
+  if (scalar == nullptr) {
+    return fail("expected scalar operand to appear in regalloc output");
+  }
+  if (scalar->type != bir::TypeKind::I64 ||
+      scalar->register_class != prepare::PreparedRegisterClass::General ||
+      scalar->register_group_width != 1) {
+    return fail("expected scalar VRM2 operand to remain a width-1 general register value");
+  }
+
+  const auto function_id =
+      prepared.names.function_names.find("rv64_inline_asm_scalar_vrm2_negative");
+  const auto* carriers = function_id != c4c::kInvalidFunctionName
+                             ? prepare::find_prepared_inline_asm_carriers(prepared, function_id)
+                             : nullptr;
+  if (carriers == nullptr || carriers->carriers.size() != 1) {
+    return fail("expected scalar VRM2 fixture to publish one inline asm carrier");
+  }
+  const auto& missing_facts = carriers->carriers.front().missing_required_facts;
+  if (std::find(missing_facts.begin(),
+                missing_facts.end(),
+                "operand0_home_incompatible_register_class") == missing_facts.end()) {
+    return fail("expected scalar VRM2 operand to reject vector-register carrier compatibility");
+  }
+
+  return 0;
+}
+
 int check_vector_grouped_cross_call(const prepare::PreparedBirModule& prepared) {
   const auto* regalloc = find_regalloc_function(prepared, "vector_grouped_cross_call");
   if (regalloc == nullptr) {
@@ -7889,6 +7945,13 @@ int main() {
       prepare_rv64_inline_asm_vector_impossible_module();
   if (const int rc = check_rv64_inline_asm_vector_impossible_allocation(
           rv64_inline_asm_vector_impossible_prepared);
+      rc != 0) {
+    return rc;
+  }
+  const auto rv64_inline_asm_scalar_vrm2_negative_prepared =
+      prepare_rv64_inline_asm_scalar_vrm2_negative_module();
+  if (const int rc = check_rv64_inline_asm_scalar_vrm2_negative(
+          rv64_inline_asm_scalar_vrm2_negative_prepared);
       rc != 0) {
     return rc;
   }

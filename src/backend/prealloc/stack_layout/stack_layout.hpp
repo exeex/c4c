@@ -113,6 +113,11 @@ std::vector<PreparedFrameSlot> assign_frame_slots(const PreparedNameTables& name
     case TypeKind::I128:
     case TypeKind::F128:
       return 16;
+    case TypeKind::Vrm1:
+    case TypeKind::Vrm2:
+    case TypeKind::Vrm4:
+    case TypeKind::Vrm8:
+      return 0;
   }
   return 0;
 }

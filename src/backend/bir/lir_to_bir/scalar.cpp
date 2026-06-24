@@ -91,6 +91,18 @@ std::optional<bir::TypeKind> BirFunctionLowerer::lower_scalar_or_function_pointe
   if (trimmed == "ptr" || trimmed.rfind("ptr ", 0) == 0) {
     return bir::TypeKind::Ptr;
   }
+  if (trimmed == "c4c.vrm1") {
+    return bir::TypeKind::Vrm1;
+  }
+  if (trimmed == "c4c.vrm2") {
+    return bir::TypeKind::Vrm2;
+  }
+  if (trimmed == "c4c.vrm4") {
+    return bir::TypeKind::Vrm4;
+  }
+  if (trimmed == "c4c.vrm8") {
+    return bir::TypeKind::Vrm8;
+  }
   return std::nullopt;
 }
 

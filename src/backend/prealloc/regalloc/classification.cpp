@@ -18,6 +18,11 @@ PreparedRegisterClass classify_register_class(const PreparedLivenessValue& value
     case bir::TypeKind::F64:
     case bir::TypeKind::F128:
       return PreparedRegisterClass::Float;
+    case bir::TypeKind::Vrm1:
+    case bir::TypeKind::Vrm2:
+    case bir::TypeKind::Vrm4:
+    case bir::TypeKind::Vrm8:
+      return PreparedRegisterClass::Vector;
     case bir::TypeKind::Void:
     case bir::TypeKind::I128:
       return PreparedRegisterClass::None;
@@ -45,6 +50,9 @@ std::size_t resolve_register_group_width(const PreparedBirModule& prepared,
           find_prepared_register_group_override(prepared, value.function_name, value.value_name);
       override != nullptr) {
     return std::max<std::size_t>(override->contiguous_width, 1);
+  }
+  if (const std::size_t width = bir::vrm_register_group_width(value.type); width != 0) {
+    return width;
   }
   return 1;
 }

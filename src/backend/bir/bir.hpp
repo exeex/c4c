@@ -92,7 +92,38 @@ enum class TypeKind : unsigned char {
   F32,
   F64,
   F128,
+  Vrm1,
+  Vrm2,
+  Vrm4,
+  Vrm8,
 };
+
+[[nodiscard]] constexpr bool is_vrm_register_type(TypeKind type) {
+  switch (type) {
+    case TypeKind::Vrm1:
+    case TypeKind::Vrm2:
+    case TypeKind::Vrm4:
+    case TypeKind::Vrm8:
+      return true;
+    default:
+      return false;
+  }
+}
+
+[[nodiscard]] constexpr std::size_t vrm_register_group_width(TypeKind type) {
+  switch (type) {
+    case TypeKind::Vrm1:
+      return 1;
+    case TypeKind::Vrm2:
+      return 2;
+    case TypeKind::Vrm4:
+      return 4;
+    case TypeKind::Vrm8:
+      return 8;
+    default:
+      return 0;
+  }
+}
 
 enum class AddressSpace : unsigned char {
   Default,

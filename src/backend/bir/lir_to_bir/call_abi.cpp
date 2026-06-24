@@ -60,6 +60,11 @@ std::optional<bir::CallResultAbiInfo> lower_function_return_abi(
       abi.primary_class = bir::AbiValueClass::Memory;
       abi.returned_in_memory = true;
       return abi;
+    case bir::TypeKind::Vrm1:
+    case bir::TypeKind::Vrm2:
+    case bir::TypeKind::Vrm4:
+    case bir::TypeKind::Vrm8:
+      return std::nullopt;
   }
   return std::nullopt;
 }
@@ -108,6 +113,10 @@ std::optional<bir::CallArgAbiInfo> lower_call_arg_abi(
       abi.passed_on_stack = true;
       return abi;
     case bir::TypeKind::Void:
+    case bir::TypeKind::Vrm1:
+    case bir::TypeKind::Vrm2:
+    case bir::TypeKind::Vrm4:
+    case bir::TypeKind::Vrm8:
       return std::nullopt;
   }
   return std::nullopt;
@@ -325,6 +334,20 @@ std::optional<bir::TypeKind> BirFunctionLowerer::lower_param_type(const c4c::Typ
   }
   if (type.base == TB_BOOL && type.ptr_level == 0 && type.array_rank == 0) {
     return bir::TypeKind::I1;
+  }
+  if (type.base == TB_VRM_REGISTER && type.ptr_level == 0 && type.array_rank == 0) {
+    switch (type.vrm_width) {
+      case 1:
+        return bir::TypeKind::Vrm1;
+      case 2:
+        return bir::TypeKind::Vrm2;
+      case 4:
+        return bir::TypeKind::Vrm4;
+      case 8:
+        return bir::TypeKind::Vrm8;
+      default:
+        return std::nullopt;
+    }
   }
   return lower_minimal_scalar_type(type);
 }

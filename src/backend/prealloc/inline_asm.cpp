@@ -235,6 +235,20 @@ inline_asm_register_identity(const c4c::TargetProfile& target_profile,
   return PreparedRegisterClass::None;
 }
 
+[[nodiscard]] bool inline_asm_constraint_accepts_value_type(
+    bir::InlineAsmRegisterClass register_class,
+    std::size_t register_group_width,
+    bir::TypeKind value_type) {
+  if (register_class != bir::InlineAsmRegisterClass::Vector) {
+    return true;
+  }
+  const std::size_t value_width = bir::vrm_register_group_width(value_type);
+  if (value_width == 0) {
+    return false;
+  }
+  return value_width == std::max<std::size_t>(register_group_width, 1);
+}
+
 [[nodiscard]] bir::InlineAsmRegisterClass tied_output_register_class(
     const std::vector<PreparedInlineAsmOperand>& operands,
     std::size_t tied_output_index) {
@@ -251,10 +265,15 @@ void append_inline_asm_register_group_override(PreparedBirModule& prepared,
                                                FunctionNameId function_name,
                                                ValueNameId value_name,
                                                bir::InlineAsmRegisterClass register_class,
-                                               std::size_t register_group_width) {
+                                               std::size_t register_group_width,
+                                               bir::TypeKind value_type) {
   const auto prepared_class = prepared_register_class_from_inline_asm(register_class);
   if (function_name == kInvalidFunctionName || value_name == kInvalidValueName ||
       prepared_class == PreparedRegisterClass::None) {
+    return;
+  }
+  if (!inline_asm_constraint_accepts_value_type(
+          register_class, register_group_width, value_type)) {
     return;
   }
   if (const auto* existing =
@@ -278,15 +297,8 @@ void publish_inline_asm_register_group_overrides(PreparedBirModule& prepared,
                                                 carrier.function_name,
                                                 *operand.value_name,
                                                 operand.register_class,
-                                                operand.register_group_width);
-    }
-    if (operand.kind == bir::InlineAsmOperandKind::RegisterOutput &&
-        carrier.result_value_name.has_value()) {
-      append_inline_asm_register_group_override(prepared,
-                                                carrier.function_name,
-                                                *carrier.result_value_name,
-                                                operand.register_class,
-                                                operand.register_group_width);
+                                                operand.register_group_width,
+                                                operand.value->type);
     }
   }
 }
@@ -306,7 +318,8 @@ void publish_inline_asm_metadata_register_group_overrides(PreparedBirModule& pre
                                                   function_name,
                                                   *value_name,
                                                   operand.register_class,
-                                                  operand.register_group_width);
+                                                  operand.register_group_width,
+                                                  call.args[*operand.arg_index].type);
       }
     }
     if (operand.kind == bir::InlineAsmOperandKind::RegisterOutput &&
@@ -318,7 +331,8 @@ void publish_inline_asm_metadata_register_group_overrides(PreparedBirModule& pre
                                                   function_name,
                                                   *value_name,
                                                   operand.register_class,
-                                                  operand.register_group_width);
+                                                  operand.register_group_width,
+                                                  call.result->type);
       }
     }
   }
@@ -357,6 +371,10 @@ void populate_inline_asm_home_identity(const c4c::TargetProfile& target_profile,
     case bir::TypeKind::F128:
     case bir::TypeKind::Ptr:
     case bir::TypeKind::Void:
+    case bir::TypeKind::Vrm1:
+    case bir::TypeKind::Vrm2:
+    case bir::TypeKind::Vrm4:
+    case bir::TypeKind::Vrm8:
       return false;
   }
   return false;

@@ -372,6 +372,18 @@ std::optional<bir::TypeKind> lower_integer_type(std::string_view text) {
   if (text == "void") {
     return bir::TypeKind::Void;
   }
+  if (text == "c4c.vrm1") {
+    return bir::TypeKind::Vrm1;
+  }
+  if (text == "c4c.vrm2") {
+    return bir::TypeKind::Vrm2;
+  }
+  if (text == "c4c.vrm4") {
+    return bir::TypeKind::Vrm4;
+  }
+  if (text == "c4c.vrm8") {
+    return bir::TypeKind::Vrm8;
+  }
   return std::nullopt;
 }
 
@@ -392,6 +404,11 @@ std::size_t type_size_bytes(bir::TypeKind type) {
     case bir::TypeKind::I128:
     case bir::TypeKind::F128:
       return 16;
+    case bir::TypeKind::Vrm1:
+    case bir::TypeKind::Vrm2:
+    case bir::TypeKind::Vrm4:
+    case bir::TypeKind::Vrm8:
+      return 0;
     default:
       return 0;
   }

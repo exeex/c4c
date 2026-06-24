@@ -3475,6 +3475,40 @@ LirModule make_rv64_vector_inline_asm_metadata_module() {
   return module;
 }
 
+LirModule make_rv64_vrm_inline_asm_bir_type_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+
+  c4c::TypeSpec vrm2_type{};
+  vrm2_type.base = c4c::TB_VRM_REGISTER;
+  vrm2_type.enum_underlying_base = c4c::TB_VOID;
+  vrm2_type.vrm_width = 2;
+
+  LirFunction function;
+  function.name = "rv64_vrm_inline_asm_bir_type";
+  function.signature_text = "define void @rv64_vrm_inline_asm_bir_type(c4c.vrm2 %m2)";
+  function.params.push_back({"%m2", vrm2_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirInlineAsmOp{
+      .result = LirOperand(""),
+      .ret_type = "void",
+      .asm_text = "vrm %0",
+      .constraints = "VRM2",
+      .side_effects = true,
+      .args_str = "c4c.vrm2 %m2",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
   auto result = try_lower_to_bir_with_options(make_structured_inline_asm_metadata_module(),
                                               BirLoweringOptions{});
@@ -3618,6 +3652,29 @@ int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
                              std::size_t{5},
                              std::size_t{5})) {
     return fail("RV64 vector inline asm supported operands lost class or width facts");
+  }
+
+  auto vrm_result = try_lower_to_bir_with_options(
+      make_rv64_vrm_inline_asm_bir_type_module(), BirLoweringOptions{});
+  if (!vrm_result.module.has_value()) {
+    return fail("RV64 VRM inline asm type fixture should lower to BIR");
+  }
+  const auto& vrm_function = vrm_result.module->functions.front();
+  if (vrm_function.params.size() != 1 ||
+      vrm_function.params.front().type != TypeKind::Vrm2) {
+    return fail("RV64 VRM function parameter should lower to BIR c4c.vrm2 metadata");
+  }
+  const auto* vrm_call =
+      std::get_if<c4c::backend::bir::CallInst>(
+          &vrm_function.blocks.front().insts.front());
+  if (vrm_call == nullptr || vrm_call->args.size() != 1 ||
+      vrm_call->args.front().type != TypeKind::Vrm2 ||
+      vrm_call->arg_types.size() != 1 ||
+      vrm_call->arg_types.front() != TypeKind::Vrm2 ||
+      !vrm_call->inline_asm.has_value() ||
+      vrm_call->inline_asm->operands.size() != 1 ||
+      vrm_call->inline_asm->operands.front().register_group_width != 2) {
+    return fail("RV64 VRM inline asm operand should preserve BIR c4c.vrm2 type and width metadata");
   }
 
   auto rendered_only_result = try_lower_to_bir_with_options(
