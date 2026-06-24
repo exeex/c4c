@@ -91,3 +91,16 @@ Parent idea: `ideas/open/339_rv64_inline_asm_custom_vector_encoding_umbrella.md`
 This child covers Stage 1 from the umbrella. It should close before the
 remaining child ideas for vector register constraints, EV `.insn.d`, and
 consteval/template-produced asm strings are treated as complete.
+
+## Closure Note
+
+Closed after committed Steps 1-5 completed the scalar RV64 `.insn r` object
+route: structured metadata is parsed and carried through HIR/LIR/BIR, scalar
+GPR operands are bound through the existing allocation/prealloc route, object
+emission proves exact encoded bytes, and side-effect plus diagnostic coverage
+preserves the supported route boundaries. Close-time regression guard passed on
+the broader 17-test proof logs with no pass-count or failure regression.
+
+Remaining vector constraints, EV `.insn.d`, consteval/template-produced asm
+strings, and broader GNU assembler compatibility remain outside this child and
+belong to separate follow-up source ideas.
