@@ -92,6 +92,80 @@ function(c4c_add_backend_codegen_failure_test test_name)
   c4c_set_backend_test_labels("${test_name}" backend_route expected_failure ${ARG_LABELS})
 endfunction()
 
+function(c4c_add_backend_codegen_object_test test_name)
+  set(options)
+  set(one_value_args SRC TARGET_TRIPLE OUT_OBJECT EXPECTED_MACHINE_LE CASE_TIMEOUT_SEC)
+  set(multi_value_args LABELS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "c4c_add_backend_codegen_object_test(${test_name}) got unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  foreach(required_arg IN ITEMS SRC TARGET_TRIPLE OUT_OBJECT EXPECTED_MACHINE_LE)
+    if(NOT DEFINED ARG_${required_arg} OR "${ARG_${required_arg}}" STREQUAL "")
+      message(FATAL_ERROR
+        "c4c_add_backend_codegen_object_test(${test_name}) missing ${required_arg}")
+    endif()
+  endforeach()
+
+  add_test(
+    NAME "${test_name}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DSRC=${ARG_SRC}
+            -DTARGET_TRIPLE=${ARG_TARGET_TRIPLE}
+            -DOUT_OBJECT=${ARG_OUT_OBJECT}
+            -DEXPECTED_MACHINE_LE=${ARG_EXPECTED_MACHINE_LE}
+            "-DCASE_TIMEOUT_SEC=${ARG_CASE_TIMEOUT_SEC}"
+            -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_codegen_object_case.cmake"
+  )
+  c4c_set_backend_test_labels("${test_name}" backend_route object ${ARG_LABELS})
+endfunction()
+
+function(c4c_add_backend_codegen_object_failure_test test_name)
+  set(options NO_OUTPUT_ARG)
+  set(one_value_args SRC TARGET_TRIPLE OUT_OBJECT EXPECTED_DIAGNOSTICS CASE_TIMEOUT_SEC)
+  set(multi_value_args LABELS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "c4c_add_backend_codegen_object_failure_test(${test_name}) got unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  foreach(required_arg IN ITEMS SRC TARGET_TRIPLE EXPECTED_DIAGNOSTICS)
+    if(NOT DEFINED ARG_${required_arg} OR "${ARG_${required_arg}}" STREQUAL "")
+      message(FATAL_ERROR
+        "c4c_add_backend_codegen_object_failure_test(${test_name}) missing ${required_arg}")
+    endif()
+  endforeach()
+
+  if(NOT ARG_NO_OUTPUT_ARG AND (NOT DEFINED ARG_OUT_OBJECT OR "${ARG_OUT_OBJECT}" STREQUAL ""))
+    message(FATAL_ERROR
+      "c4c_add_backend_codegen_object_failure_test(${test_name}) missing OUT_OBJECT")
+  endif()
+
+  set(output_object_arg)
+  if(NOT ARG_NO_OUTPUT_ARG)
+    set(output_object_arg -DOUT_OBJECT=${ARG_OUT_OBJECT})
+  endif()
+
+  add_test(
+    NAME "${test_name}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DSRC=${ARG_SRC}
+            -DTARGET_TRIPLE=${ARG_TARGET_TRIPLE}
+            ${output_object_arg}
+            "-DEXPECTED_DIAGNOSTICS=${ARG_EXPECTED_DIAGNOSTICS}"
+            "-DCASE_TIMEOUT_SEC=${ARG_CASE_TIMEOUT_SEC}"
+            -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_codegen_object_failure_case.cmake"
+  )
+  c4c_set_backend_test_labels("${test_name}" backend_route object expected_failure ${ARG_LABELS})
+endfunction()
+
 function(c4c_add_backend_dump_flag_test test_name)
   set(options)
   set(one_value_args SRC TARGET_TRIPLE DUMP_FLAG REQUIRED_SNIPPETS FORBIDDEN_SNIPPETS
@@ -301,6 +375,56 @@ c4c_add_backend_codegen_route_test(
   REQUIRED_SNIPPETS ".globl main|main:|li a0, 0|ret"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 extern_global no_storage output_contract
+)
+
+c4c_add_backend_codegen_object_test(
+  backend_cli_riscv64_return_zero_writes_elf_obj
+  SRC "${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_return_zero_smoke.o"
+  EXPECTED_MACHINE_LE f300
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object output_contract dual-route cli
+)
+
+c4c_add_backend_codegen_object_test(
+  backend_cli_aarch64_return_zero_writes_elf_obj
+  SRC "${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/aarch64_return_zero_smoke.o"
+  EXPECTED_MACHINE_LE b700
+  CASE_TIMEOUT_SEC 10
+  LABELS aarch64 object output_contract dual-route cli
+)
+
+c4c_add_backend_codegen_object_failure_test(
+  backend_cli_x86_unsupported_target_diagnostic_obj
+  SRC "${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c"
+  TARGET_TRIPLE x86_64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/x86_return_zero_smoke.o"
+  EXPECTED_DIAGNOSTICS "error: --codegen obj failed|backend object route unsupported target|x86_64-linux-gnu"
+  CASE_TIMEOUT_SEC 10
+  LABELS x86 object unsupported cli
+)
+
+c4c_add_backend_codegen_object_failure_test(
+  backend_cli_riscv64_unsupported_global_diagnostic_obj
+  SRC "${BACKEND_CASE_ROOT}/riscv64_zero_aggregate_global_storage.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_unsupported_global.o"
+  EXPECTED_DIAGNOSTICS "error: --codegen obj failed|RISC-V backend object route unsupported prepared module shape"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object unsupported global cli
+)
+
+c4c_add_backend_codegen_object_failure_test(
+  backend_cli_riscv64_requires_output_path_obj
+  SRC "${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  EXPECTED_DIAGNOSTICS "--codegen obj requires -o <path>"
+  CASE_TIMEOUT_SEC 10
+  NO_OUTPUT_ARG
+  LABELS riscv64 object cli
 )
 
 c4c_add_backend_codegen_route_test(

@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -78,6 +79,15 @@ bool write_text_file(const std::string& path, std::string_view text) {
   std::ofstream out(path, std::ios::binary);
   if (!out) return false;
   out << text;
+  return out.good();
+}
+
+bool write_binary_file(const std::string& path,
+                       const std::vector<std::uint8_t>& bytes) {
+  std::ofstream out(path, std::ios::binary);
+  if (!out) return false;
+  out.write(reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
   return out.good();
 }
 
@@ -292,9 +302,10 @@ void print_usage(const char *argv0) {
       << "\n"
       << "Code generation:\n"
 #if C4C_ENABLE_BACKEND
-      << "  --codegen llvm|asm|compare Select codegen backend path\n"
+      << "  --codegen llvm|asm|obj|compare Select codegen backend path\n"
       << "                            asm emits selected backend-native machine\n"
       << "                            nodes as assembly when supported\n"
+      << "                            obj emits target-native ELF object bytes\n"
       << "  --backend-bir-stage prepared|semantic\n"
       << "                            For --codegen asm only, choose prepared\n"
       << "                            backend lowering (default) or semantic\n"
@@ -325,13 +336,15 @@ void print_usage(const char *argv0) {
 #if C4C_ENABLE_BACKEND
       << "  " << argv0 << " --dump-bir test.c\n"
       << "  " << argv0 << " --codegen asm --target aarch64-linux-gnu test.c -o out.s\n"
+      << "  " << argv0 << " --codegen obj --target aarch64-linux-gnu test.c -o out.o\n"
 #endif
       << "\n"
       << "Notes:\n"
       << "  Only one frontend inspection mode may be selected at a time.\n"
 #if C4C_ENABLE_BACKEND
-      << "  AArch64 asm output is .s printer output from selected machine nodes;\n"
-      << "  c4cll does not parse it back, encode objects, or link executables.\n"
+      << "  AArch64 asm output is .s printer output from selected machine nodes.\n"
+      << "  Object output is emitted directly as target-native ELF bytes and\n"
+      << "  does not print .s or invoke an assembler.\n"
 #endif
       ;
 }
@@ -504,11 +517,13 @@ int main(int argc, char **argv) {
           codegen_path = c4c::codegen::llvm_backend::CodegenPath::Llvm;
         } else if (val == "asm") {
           codegen_path = c4c::codegen::llvm_backend::CodegenPath::Lir;
+        } else if (val == "obj") {
+          codegen_path = c4c::codegen::llvm_backend::CodegenPath::Obj;
         } else if (val == "compare") {
           codegen_path = c4c::codegen::llvm_backend::CodegenPath::Compare;
         } else {
           std::cerr << "unknown --codegen value: " << val
-                    << " (expected llvm, asm, or compare)\n";
+                    << " (expected llvm, asm, obj, or compare)\n";
           return 2;
         }
       } else if (arg == "--help" || arg == "-h") {
@@ -533,7 +548,7 @@ int main(int argc, char **argv) {
         return 2;
       }
       if (codegen_path != c4c::codegen::llvm_backend::CodegenPath::Llvm) {
-        std::cerr << "--emit-split-llvm cannot be combined with --codegen asm/compare\n";
+        std::cerr << "--emit-split-llvm cannot be combined with --codegen asm/obj/compare\n";
         return 2;
       }
       if (!output.empty()) {
@@ -546,6 +561,11 @@ int main(int argc, char **argv) {
     if (emit_semantic_bir &&
         codegen_path != c4c::codegen::llvm_backend::CodegenPath::Lir) {
       std::cerr << "--backend-bir-stage semantic requires --codegen asm\n";
+      return 2;
+    }
+    if (codegen_path == c4c::codegen::llvm_backend::CodegenPath::Obj &&
+        output.empty()) {
+      std::cerr << "--codegen obj requires -o <path>\n";
       return 2;
     }
     {
@@ -807,6 +827,26 @@ int main(int argc, char **argv) {
       }
       if (!write_text_file(device_output, device_ir)) {
         std::cerr << "error: cannot open output file: " << device_output << "\n";
+        return 1;
+      }
+      return 0;
+    }
+
+    if (codegen_path == c4c::codegen::llvm_backend::CodegenPath::Obj) {
+      const auto object_result =
+          c4c::codegen::llvm_backend::emit_module_native_object(
+              *sema_result.hir_module,
+              target_profile);
+      if (!object_result.ok()) {
+        std::cerr << "error: --codegen obj failed";
+        if (!object_result.diagnostic.empty()) {
+          std::cerr << ": " << object_result.diagnostic;
+        }
+        std::cerr << "\n";
+        return 2;
+      }
+      if (!write_binary_file(output, object_result.bytes)) {
+        std::cerr << "error: cannot open output file: " << output << "\n";
         return 1;
       }
       return 0;
