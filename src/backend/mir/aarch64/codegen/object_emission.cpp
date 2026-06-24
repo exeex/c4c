@@ -151,7 +151,7 @@ std::optional<Aarch64EncodedFragment> move_register_fragment(
   return fragment;
 }
 
-std::optional<Aarch64EncodedFragment> scalar_add_sub_immediate_fragment(
+std::optional<Aarch64EncodedFragment> scalar_add_sub_fragment(
     const ScalarAluRecord& alu) {
   if (!alu.result_register.has_value() ||
       (alu.operation != ScalarAluOperationKind::Add &&
@@ -162,9 +162,9 @@ std::optional<Aarch64EncodedFragment> scalar_add_sub_immediate_fragment(
 
   const auto* lhs_register = std::get_if<RegisterOperand>(&alu.lhs.payload);
   const auto* lhs_immediate = std::get_if<ImmediateOperand>(&alu.lhs.payload);
-  const auto* rhs = std::get_if<ImmediateOperand>(&alu.rhs.payload);
-  if (alu.rhs.kind != OperandKind::Immediate || rhs == nullptr ||
-      (lhs_register == nullptr && lhs_immediate == nullptr)) {
+  const auto* rhs_immediate = std::get_if<ImmediateOperand>(&alu.rhs.payload);
+  const auto* rhs_register = std::get_if<RegisterOperand>(&alu.rhs.payload);
+  if (lhs_register == nullptr && lhs_immediate == nullptr) {
     return std::nullopt;
   }
 
@@ -173,13 +173,37 @@ std::optional<Aarch64EncodedFragment> scalar_add_sub_immediate_fragment(
     return std::nullopt;
   }
   const auto rd = gpr_encoding_index(*alu.result_register, *view);
-  const auto immediate = unsigned_immediate_value(*rhs);
-  if (!rd.has_value() || !immediate.has_value() ||
-      *immediate > 0xfffu) {
+  if (!rd.has_value()) {
     return std::nullopt;
   }
 
   Aarch64EncodedFragment fragment;
+  if (lhs_register != nullptr && rhs_register != nullptr) {
+    const auto rn = gpr_encoding_index(*lhs_register, *view);
+    const auto rm = gpr_encoding_index(*rhs_register, *view);
+    if (!rn.has_value() || !rm.has_value()) {
+      return std::nullopt;
+    }
+    const std::uint32_t base =
+        alu.operation == ScalarAluOperationKind::Add
+            ? (*view == abi::RegisterView::X ? 0x8b000000u : 0x0b000000u)
+            : (*view == abi::RegisterView::X ? 0xcb000000u : 0x4b000000u);
+    append_le32(fragment.bytes,
+                base |
+                    (static_cast<std::uint32_t>(*rm) << 16u) |
+                    (static_cast<std::uint32_t>(*rn) << 5u) |
+                    static_cast<std::uint32_t>(*rd));
+    return fragment;
+  }
+
+  if (alu.rhs.kind != OperandKind::Immediate || rhs_immediate == nullptr) {
+    return std::nullopt;
+  }
+  const auto immediate = unsigned_immediate_value(*rhs_immediate);
+  if (!immediate.has_value() || *immediate > 0xfffu) {
+    return std::nullopt;
+  }
+
   std::uint8_t rn = *rd;
   if (lhs_register != nullptr) {
     const auto encoded_lhs = gpr_encoding_index(*lhs_register, *view);
@@ -335,8 +359,7 @@ std::optional<Aarch64EncodedFragment> fragment_for_machine_instruction(
   if (const auto* scalar =
           std::get_if<ScalarInstructionRecord>(&instruction.payload)) {
     if (scalar->scalar_alu.has_value()) {
-      if (auto fragment =
-              scalar_add_sub_immediate_fragment(*scalar->scalar_alu);
+      if (auto fragment = scalar_add_sub_fragment(*scalar->scalar_alu);
           fragment.has_value()) {
         return fragment;
       }
@@ -346,7 +369,7 @@ std::optional<Aarch64EncodedFragment> fragment_for_machine_instruction(
                    function_name,
                    block_index,
                    instruction_index,
-                   "AArch64 object emission supports only selected immediate add/sub scalar instructions");
+                   "AArch64 object emission supports only selected add/sub scalar instructions");
     return std::nullopt;
   }
 

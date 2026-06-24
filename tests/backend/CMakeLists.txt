@@ -408,6 +408,16 @@ c4c_add_backend_codegen_object_test(
 )
 
 c4c_add_backend_codegen_object_test(
+  backend_cli_aarch64_two_arg_helper_writes_elf_obj
+  SRC "${BACKEND_CASE_ROOT}/two_arg_helper.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/aarch64_two_arg_helper.o"
+  EXPECTED_MACHINE_LE b700
+  CASE_TIMEOUT_SEC 10
+  LABELS aarch64 object output_contract dual-route cli scalar scan
+)
+
+c4c_add_backend_codegen_object_test(
   backend_cli_aarch64_return_add_sub_chain_writes_elf_obj
   SRC "${BACKEND_CASE_ROOT}/return_add_sub_chain.c"
   TARGET_TRIPLE aarch64-linux-gnu
