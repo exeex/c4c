@@ -1202,6 +1202,7 @@ static bool types_compatible_after_typedef_resolution(TypeSpec a, TypeSpec b) {
     if (a.is_vector &&
         (a.vector_lanes != b.vector_lanes || a.vector_bytes != b.vector_bytes))
         return false;
+    if (a.vrm_width != b.vrm_width) return false;
     if (a.base != b.base) return false;
     if (a.ptr_level != b.ptr_level) return false;
     if (a.is_const != b.is_const || a.is_volatile != b.is_volatile) return false;

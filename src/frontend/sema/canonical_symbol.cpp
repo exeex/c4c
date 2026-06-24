@@ -14,7 +14,8 @@ CanonicalType make_leaf_type(TypeBase base,
                              bool is_volatile,
                              bool is_vector,
                              long long vector_lanes,
-                             long long vector_bytes) {
+                             long long vector_bytes,
+                             int vrm_width) {
   CanonicalType type{};
   type.user_spelling = std::move(spelling);
   type.source_base = base;
@@ -23,6 +24,12 @@ CanonicalType make_leaf_type(TypeBase base,
   type.is_vector = is_vector;
   type.vector_lanes = vector_lanes;
   type.vector_bytes = vector_bytes;
+  type.vrm_width = vrm_width;
+  if (vrm_width > 0) {
+    type.kind = CanonicalTypeKind::VendorExtended;
+    type.user_spelling = "c4c.vrm" + std::to_string(vrm_width);
+    return type;
+  }
 
   switch (base) {
     case TB_VOID: type.kind = CanonicalTypeKind::Void; break;
@@ -44,6 +51,7 @@ CanonicalType make_leaf_type(TypeBase base,
     case TB_INT128: type.kind = CanonicalTypeKind::Int128; break;
     case TB_UINT128: type.kind = CanonicalTypeKind::UInt128; break;
     case TB_VA_LIST: type.kind = CanonicalTypeKind::VaList; break;
+    case TB_VRM_REGISTER: type.kind = CanonicalTypeKind::VendorExtended; break;
     case TB_STRUCT: type.kind = CanonicalTypeKind::Struct; break;
     case TB_UNION: type.kind = CanonicalTypeKind::Union; break;
     case TB_ENUM: type.kind = CanonicalTypeKind::Enum; break;
@@ -343,7 +351,7 @@ CanonicalType canonicalize_base_type(const TypeSpec& ts) {
   CanonicalType type =
       make_leaf_type(ts.base, canonical_leaf_display_spelling(ts), ts.is_const,
                      ts.is_volatile, ts.is_vector, ts.vector_lanes,
-                     ts.vector_bytes);
+                     ts.vector_bytes, ts.vrm_width);
   type.identity = type_identity_from_typespec(ts);
   return type;
 }
@@ -693,6 +701,10 @@ std::string format_canonical_type(const CanonicalType& type) {
     result += std::to_string(type.vector_bytes);
     result += ")";
   }
+  if (type.vrm_width > 0) {
+    result += " c4c.vrm";
+    result += std::to_string(type.vrm_width);
+  }
 
   return result;
 }
@@ -847,6 +859,7 @@ TypeSpec typespec_from_canonical(const CanonicalType& ct) {
   ts.is_vector = false;
   ts.vector_lanes = 0;
   ts.vector_bytes = 0;
+  ts.vrm_width = 0;
   ts.array_size_expr = nullptr;
   ts.is_const = false;
   ts.is_volatile = false;
@@ -933,6 +946,7 @@ TypeSpec typespec_from_canonical(const CanonicalType& ct) {
   ts.is_vector = ct.is_vector;
   ts.vector_lanes = ct.vector_lanes;
   ts.vector_bytes = ct.vector_bytes;
+  ts.vrm_width = ct.vrm_width;
 
   // For nominal types, point tag to the canonical type's user_spelling storage.
   // SAFETY: the canonical type must outlive the returned TypeSpec.
@@ -954,6 +968,7 @@ bool types_equal(const CanonicalType& a, const CanonicalType& b) {
   if (a.is_vector != b.is_vector) return false;
   if (a.is_vector && (a.vector_lanes != b.vector_lanes || a.vector_bytes != b.vector_bytes))
     return false;
+  if (a.vrm_width != b.vrm_width) return false;
 
   switch (a.kind) {
     case CanonicalTypeKind::Pointer:

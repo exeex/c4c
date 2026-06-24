@@ -793,6 +793,7 @@ bool Parser::is_type_start() const {
         if (starts_with_value_like_template_expr(*this, core_input_state_.tokens,
                                                  core_input_state_.pos)) return false;
         if (match_floatn_keyword_base(name, nullptr)) return true;
+        if (match_c4c_builtin_vrm_type(name, nullptr)) return true;
         if (is_known_simple_visible_type_head(*this, name_text_id, name)) return true;
         // C++ fallback: identifier followed by < is likely a template type if
         // the name is registered as a template struct, or if we're inside a
@@ -2967,6 +2968,15 @@ TypeSpec Parser::parse_base_type() {
                         done = true;
                         break;
                     }
+                    int vrm_width = 0;
+                    if (match_c4c_builtin_vrm_type(name, &vrm_width)) {
+                        ts.base = TB_VRM_REGISTER;
+                        ts.vrm_width = vrm_width;
+                        base_set = true;
+                        consume();
+                        done = true;
+                        break;
+                    }
                     if (is_cpp_mode()) {
                         const bool already_have_base =
                             has_signed || has_unsigned || has_short || long_count > 0 ||
@@ -3256,6 +3266,29 @@ TypeSpec Parser::parse_base_type() {
                             break;
                         }
                     }
+                    const bool already_have_base_for_vrm_typedef =
+                        has_signed || has_unsigned || has_short || long_count > 0 ||
+                        has_int_kw || has_char || has_void || has_float || has_double ||
+                        has_bool || has_struct || has_union || has_enum || base_set;
+                    if (k == TokenKind::Identifier &&
+                        !already_have_base_for_vrm_typedef) {
+                        const TypeSpec* visible_vrm_type =
+                            find_visible_typedef_type(name_text_id);
+                        if (!visible_vrm_type) {
+                            visible_vrm_type = find_typedef_type(
+                                struct_typedef_key_in_context(
+                                    current_namespace_context_id(),
+                                    name_text_id));
+                        }
+                        if (visible_vrm_type &&
+                            visible_vrm_type->vrm_width > 0) {
+                            ts = *visible_vrm_type;
+                            consume();
+                            base_set = true;
+                            done = true;
+                            break;
+                        }
+                    }
                     if (k == TokenKind::KwTypename) {
                         done = true;
                         break;
@@ -3283,6 +3316,22 @@ TypeSpec Parser::parse_base_type() {
                             break;
                         }
                         if (!already_have_base) {
+                            if (const TypeSpec* visible_vrm_type =
+                                    find_visible_typedef_type(name_text_id);
+                                visible_vrm_type &&
+                                visible_vrm_type->vrm_width > 0 &&
+                                !(core_input_state_.pos + 1 <
+                                      static_cast<int>(
+                                          core_input_state_.tokens.size()) &&
+                                  core_input_state_
+                                          .tokens[core_input_state_.pos + 1]
+                                          .kind == TokenKind::Less)) {
+                                ts = *visible_vrm_type;
+                                consume();
+                                base_set = true;
+                                done = true;
+                                break;
+                            }
                             if (const TypeSpec* visible_record_type =
                                     find_local_visible_typedef_type(name_text_id);
                                 visible_record_type &&

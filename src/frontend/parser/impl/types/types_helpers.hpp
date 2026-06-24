@@ -41,6 +41,23 @@ bool match_floatn_keyword_base(std::string_view name, TypeBase* out_base) {
     return true;
 }
 
+bool match_c4c_builtin_vrm_type(std::string_view name, int* out_width) {
+    int width = 0;
+    if (name == "__c4c_builtin_vrm1") {
+        width = 1;
+    } else if (name == "__c4c_builtin_vrm2") {
+        width = 2;
+    } else if (name == "__c4c_builtin_vrm4") {
+        width = 4;
+    } else if (name == "__c4c_builtin_vrm8") {
+        width = 8;
+    } else {
+        return false;
+    }
+    if (out_width) *out_width = width;
+    return true;
+}
+
 bool skip_balanced_template_arg_tokens(const std::vector<Token>& tokens, int* pos) {
     if (!pos || *pos < 0 || *pos >= static_cast<int>(tokens.size()) ||
         tokens[*pos].kind != TokenKind::Less) {

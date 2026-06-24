@@ -728,6 +728,7 @@ bool type_binding_values_equivalent(const TypeSpec& lhs, const TypeSpec& rhs) {
   if (lhs.is_vector != rhs.is_vector) return false;
   if (lhs.vector_lanes != rhs.vector_lanes) return false;
   if (lhs.vector_bytes != rhs.vector_bytes) return false;
+  if (lhs.vrm_width != rhs.vrm_width) return false;
   if (lhs.array_size_expr != rhs.array_size_expr) return false;
   if (lhs.is_const != rhs.is_const) return false;
   if (lhs.is_volatile != rhs.is_volatile) return false;

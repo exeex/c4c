@@ -1259,6 +1259,7 @@ inline bool specialization_type_identity_equal(
       a.is_vector != b.is_vector ||
       a.vector_lanes != b.vector_lanes ||
       a.vector_bytes != b.vector_bytes ||
+      a.vrm_width != b.vrm_width ||
       a.array_size_expr != b.array_size_expr ||
       a.is_const != b.is_const ||
       a.is_volatile != b.is_volatile ||
@@ -1348,6 +1349,7 @@ inline bool specialization_type_identity_less(
   C4C_HIR_SPEC_LESS_FIELD(is_vector);
   C4C_HIR_SPEC_LESS_FIELD(vector_lanes);
   C4C_HIR_SPEC_LESS_FIELD(vector_bytes);
+  C4C_HIR_SPEC_LESS_FIELD(vrm_width);
   if (a.array_size_expr != b.array_size_expr) {
     return std::less<Node*>{}(a.array_size_expr, b.array_size_expr);
   }
@@ -1416,6 +1418,7 @@ inline size_t specialization_type_identity_hash(const TypeSpec& ts) noexcept {
   h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_vector));
   h = specialization_key_hash_mix(h, std::hash<long long>{}(ts.vector_lanes));
   h = specialization_key_hash_mix(h, std::hash<long long>{}(ts.vector_bytes));
+  h = specialization_key_hash_mix(h, std::hash<int>{}(ts.vrm_width));
   h = specialization_key_hash_mix(h, std::hash<Node*>{}(ts.array_size_expr));
   h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_const));
   h = specialization_key_hash_mix(h, std::hash<bool>{}(ts.is_volatile));

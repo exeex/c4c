@@ -126,6 +126,7 @@ struct CanonicalType {
   bool is_vector = false;
   long long vector_lanes = 0;
   long long vector_bytes = 0;
+  int vrm_width = 0;
 
   long long array_size = -1;
   std::shared_ptr<CanonicalType> element_type;

@@ -142,6 +142,14 @@ static std::string ts_str(const TypeSpec& ts, const Module& module) {
   std::string s;
   if (ts.is_const) s += "const ";
 
+  if (ts.vrm_width > 0) {
+    s += "c4c.vrm" + std::to_string(ts.vrm_width);
+    for (int i = 0; i < ts.ptr_level; ++i) s += "*";
+    if (ts.is_lvalue_ref) s += "&";
+    if (ts.is_rvalue_ref) s += "&&";
+    return s;
+  }
+
   switch (ts.base) {
     case TB_VOID:          s += "void"; break;
     case TB_CHAR:          s += "char"; break;

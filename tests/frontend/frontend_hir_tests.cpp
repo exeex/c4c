@@ -141,6 +141,73 @@ c4c::hir::Module lower_hir_module(std::string_view source,
   return *result.hir_module;
 }
 
+void expect_vrm_param(const c4c::hir::Function& fn,
+                      std::size_t index,
+                      int width,
+                      const std::string& msg) {
+  expect_true(index < fn.params.size(), msg + " should have the requested parameter");
+  const c4c::TypeSpec& spec = fn.params[index].type.spec;
+  expect_eq_int(spec.vrm_width, width, msg + " should preserve VRM width");
+  expect_true(!spec.is_vector, msg + " must not use GCC vector metadata");
+  expect_eq_int(static_cast<int>(spec.vector_lanes), 0,
+                msg + " must not carry GCC vector lanes");
+  expect_eq_int(static_cast<int>(spec.vector_bytes), 0,
+                msg + " must not carry GCC vector bytes");
+  expect_true(spec.base == c4c::TB_VRM_REGISTER,
+              msg + " should use the dedicated VRM TypeBase carrier");
+  expect_eq_int(spec.ptr_level, 0, msg + " must not decay to pointer storage");
+  expect_true(spec.record_def == nullptr, msg + " must not decay to record storage");
+}
+
+void test_hir_preserves_c4c_builtin_vrm_carrier_types() {
+  const c4c::hir::Module module = lower_hir_module(R"cpp(
+typedef __c4c_builtin_vrm1 vrm1_t;
+typedef __c4c_builtin_vrm2 vrm2_t;
+typedef __c4c_builtin_vrm4 vrm4_t;
+typedef __c4c_builtin_vrm8 vrm8_t;
+
+void direct_vrm(__c4c_builtin_vrm1 a,
+                __c4c_builtin_vrm2 b,
+                __c4c_builtin_vrm4 c,
+                __c4c_builtin_vrm8 d) {}
+
+void typedef_vrm(vrm1_t a, vrm2_t b, vrm4_t c, vrm8_t d) {}
+)cpp", c4c::SourceProfile::C4);
+
+  const auto direct_it = module.fn_index.find("direct_vrm");
+  expect_true(direct_it != module.fn_index.end(),
+              "direct VRM fixture should lower to HIR");
+  const c4c::hir::Function* direct = module.find_function(direct_it->second);
+  expect_true(direct != nullptr, "direct VRM function should resolve");
+  expect_eq_int(static_cast<int>(direct->params.size()), 4,
+                "direct VRM function should preserve four parameters");
+
+  const auto typedef_it = module.fn_index.find("typedef_vrm");
+  expect_true(typedef_it != module.fn_index.end(),
+              "typedef VRM fixture should lower to HIR");
+  const c4c::hir::Function* via_typedef =
+      module.find_function(typedef_it->second);
+  expect_true(via_typedef != nullptr, "typedef VRM function should resolve");
+  expect_eq_int(static_cast<int>(via_typedef->params.size()), 4,
+                "typedef VRM function should preserve four parameters");
+
+  const int widths[] = {1, 2, 4, 8};
+  for (std::size_t i = 0; i < 4; ++i) {
+    expect_vrm_param(*direct, i, widths[i], "direct VRM parameter");
+    expect_vrm_param(*via_typedef, i, widths[i], "typedef VRM parameter");
+  }
+
+  const std::string dump = c4c::hir::format_hir(module);
+  expect_true(dump.find("direct_vrm(a: c4c.vrm1, b: c4c.vrm2, c: c4c.vrm4, d: c4c.vrm8)") !=
+                  std::string::npos,
+              "HIR dump should print direct VRM carrier identities");
+  expect_true(dump.find("typedef_vrm(a: c4c.vrm1, b: c4c.vrm2, c: c4c.vrm4, d: c4c.vrm8)") !=
+                  std::string::npos,
+              "HIR dump should print typedef VRM carrier identities");
+  expect_true(dump.find("c4c.vrm1<") == std::string::npos,
+              "HIR dump must not print VRM carriers as GCC vectors");
+}
+
 void overwrite_signature_name(std::string* signature_text,
                               std::string_view replacement_name) {
   const std::size_t at_pos = signature_text->find('@');
@@ -7625,6 +7692,7 @@ int main() {
   test_lir_to_bir_resolves_direct_call_link_names_at_backend_boundary();
   test_lir_to_bir_resolves_extern_decl_link_names_at_backend_boundary();
   test_lir_to_bir_resolves_decl_backed_direct_call_link_names_at_backend_boundary();
+  test_hir_preserves_c4c_builtin_vrm_carrier_types();
   test_inline_asm_string_literal_plus_folds_to_literal_metadata();
   test_inline_asm_insn_d_string_literal_plus_folds_to_literal_metadata();
 

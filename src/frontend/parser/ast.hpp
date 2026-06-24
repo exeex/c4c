@@ -67,6 +67,7 @@ enum TypeBase {
     TB_INT128,      // __int128
     TB_UINT128,     // __uint128_t
     TB_VA_LIST,     // __builtin_va_list / __va_list
+    TB_VRM_REGISTER,// __c4c_builtin_vrmN register carrier
     TB_FUNC_PTR,    // function pointer type (from cast/sizeof)
     TB_COMPLEX_FLOAT,      // __complex__ float / float _Complex
     TB_COMPLEX_DOUBLE,     // __complex__ double / double _Complex
@@ -156,6 +157,7 @@ struct TypeSpec {
     bool is_vector;          // GCC vector type from __attribute__((vector_size(N)))
     long long vector_lanes;  // number of vector elements when is_vector=true
     long long vector_bytes;  // total storage size in bytes when is_vector=true
+    int vrm_width;           // __c4c_builtin_vrmN register carrier width, or 0
 
     // Debug/recovery payload: preserves the unevaluated bound expression when
     // the array size is not a resolved integer at parse time.

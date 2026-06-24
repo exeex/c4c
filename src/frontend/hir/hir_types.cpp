@@ -969,7 +969,8 @@ bool same_type_spec_for_struct_method_lookup_parity(
       a.array_size != b.array_size || a.array_rank != b.array_rank ||
       a.is_ptr_to_array != b.is_ptr_to_array || a.inner_rank != b.inner_rank ||
       a.is_vector != b.is_vector || a.vector_lanes != b.vector_lanes ||
-      a.vector_bytes != b.vector_bytes || a.array_size_expr != b.array_size_expr ||
+      a.vector_bytes != b.vector_bytes || a.vrm_width != b.vrm_width ||
+      a.array_size_expr != b.array_size_expr ||
       a.is_const != b.is_const || a.is_volatile != b.is_volatile ||
       a.is_fn_ptr != b.is_fn_ptr || a.is_packed != b.is_packed ||
       a.is_noinline != b.is_noinline || a.is_always_inline != b.is_always_inline ||
