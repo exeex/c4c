@@ -88,6 +88,21 @@ split again for any real gap discovered during review.
 - The parent umbrella is closed while a required child idea remains open or
   while this review has unresolved gaps.
 
+## Closure Note
+
+Closed 2026-06-24 after Steps 1-4 completed the integration review. The review
+mapped every parent umbrella completion criterion to closed child evidence,
+current tests, or explicit out-of-scope boundaries; proved the composed
+literal/helper `.insn.d` route through `VRM*` constraints, base-register
+substitution, EV 64-bit encoding, and RV64 object bytes; and recorded that no
+concrete follow-up child gap is required before parent umbrella close review.
+
+Close-time regression guard passed on the existing `test_before.log` /
+`test_after.log` broader validation pair: 80 passed before and after, 0
+failures, and no new failures. Remaining GNU named operands, `%c[...]`
+modifiers, mask-specific constraints, broader GNU assembler compatibility, and
+FPR `.insn` constraints remain outside this child unless opened separately.
+
 ## Parent
 
 Parent idea: `ideas/open/339_rv64_inline_asm_custom_vector_encoding_umbrella.md`.
