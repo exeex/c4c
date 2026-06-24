@@ -57,6 +57,9 @@ ABI behavior as part of this runbook.
 - Do not make VRM carriers part of the ordinary C ABI in this runbook.
   Parameters, returns, globals, and memory storage may remain explicitly
   unsupported unless a narrow local representation already exists.
+- Non-expanded function declarations, calls, function pointer calls, or returns
+  that would carry bare VRM values across a real call ABI boundary must
+  diagnose instead of lowering to an invented calling convention.
 - Do not weaken scalar/VRM mismatch diagnostics or tests.
 
 ## Working Model
@@ -216,3 +219,39 @@ Completion check:
   frontier.
 - Final register allocation, substitution, `.insn.d` encoding, and object-byte
   proof remain outside this runbook and are ready for a focused follow-up idea.
+
+## Step 6: Reject Non-Expanded VRM Call Boundaries
+
+Goal: Enforce the source idea's hard ABI boundary rule before lifecycle close:
+bare VRM carriers must not cross a real function-call ABI boundary.
+
+Primary targets:
+
+- Frontend or lowering diagnostics for function declarations and calls that
+  expose bare `__c4c_builtin_vrm1/2/4/8` parameters or returns.
+- Backend handoff paths that would otherwise accept VRM parameter or return
+  type metadata as a real call ABI representation.
+- Negative tests that compile source through the relevant source-to-backend
+  handoff rather than relying only on fixture-built LIR/BIR modules.
+
+Actions:
+
+- Add source-level negative coverage for a non-expanded function declaration
+  or call carrying a VRM parameter.
+- Add source-level negative coverage for a non-expanded function return
+  carrying a VRM value, if that route can currently reach call lowering.
+- Include function pointer call coverage if the existing frontend exposes that
+  boundary through the same diagnostic path.
+- Ensure any remaining fixture paths that preserve VRM signature metadata are
+  clearly limited to verifier/lowering identity checks and are not accepted as
+  ordinary ABI support.
+- Run the focused frontend/backend diagnostic tests plus the supervisor-selected
+  broader subset for shared lowering changes.
+
+Completion check:
+
+- A non-expanded call carrying VRM values is rejected with a diagnostic before
+  or at backend handoff.
+- No path silently lowers VRM parameters or returns as an ordinary C ABI.
+- Existing source-to-regalloc-frontier positive inline asm carrier proof and
+  scalar negative diagnostics remain green.

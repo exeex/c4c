@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/345_builtin_vrm_register_carrier_types_to_regalloc_frontier.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Validate Frontier And Prepare Handoff
+Current Step ID: 6
+Current Step Title: Reject Non-Expanded VRM Call Boundaries
 
 # Current Packet
 
@@ -28,10 +28,10 @@ Validated surfaces:
 
 ## Suggested Next
 
-Supervisor should review and decide whether this runbook is ready for
-lifecycle close or replacement by the next source idea. The natural follow-up
-initiative is final VRM allocation/substitution/object-byte work after the
-frontier metadata is accepted.
+Execute Step 6 from `plan.md`: add diagnostic and negative proof that
+non-expanded function declarations, direct calls, function pointer calls where
+reachable, and returns carrying bare VRM values are rejected instead of
+lowering to an ordinary call ABI.
 
 ## Watchouts
 
@@ -41,6 +41,10 @@ frontier metadata is accepted.
 - ABI and storage semantics remain intentionally narrow: ordinary call/return
   ABI lowering, memory storage, address-taking, arrays/members, arithmetic,
   casts, comparisons, and lane operations remain future work.
+- Source-idea closure is blocked until the non-expanded call-boundary
+  acceptance criterion has explicit diagnostic coverage. Existing VRM signature
+  identity fixtures are not enough because they can prove preservation while
+  still allowing a real call ABI boundary.
 - Manual `PreparedRegisterGroupOverride` fixtures can still exercise regalloc
   mechanics on scalar-shaped values; source inline asm metadata no longer uses
   constraint strings alone to create vector identity.
