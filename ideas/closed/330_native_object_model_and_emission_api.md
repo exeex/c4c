@@ -78,3 +78,36 @@ writers.
   symbols, or relocations are available to a target object emitter.
 - The implementation attempts to finish RV64, AArch64, CLI, or c-testsuite
   object routing inside this shared-model child.
+
+## Completion Note
+
+Closed on 2026-06-24 after adding the shared object model records,
+compiler-facing construction helpers, and minimal relocatable ELF writer.
+
+Implemented scope:
+
+- `src/backend/mir/object/model.hpp` and `.cpp` provide target-neutral object
+  sections, labels, symbols, relocations, and construction helpers.
+- `src/backend/mir/object/elf_writer.hpp` and `.cpp` serialize ELF64
+  little-endian relocatable objects with explicit target machine and flags,
+  string tables, symbol tables, section headers, and `.rela.*` sections.
+- `tests/backend/mir/backend_object_model_records_test.cpp` covers model
+  construction, helper behavior, and ELF writer structure.
+
+Remaining work is intentionally delegated to later child ideas: RV64 object
+emission, AArch64 object emission, `--codegen obj` CLI/test integration,
+object-route scan/default readiness, and textual assembler follow-up.
+
+Close-time proof:
+
+```bash
+cmake --preset default -DENABLE_C4C_BACKEND=ON &&
+cmake --build --preset default &&
+ctest --test-dir build -R '^(backend_object_model_records|backend_aarch64_target_record_core_contract|backend_riscv_prepared_edge_publication)$' --output-on-failure
+```
+
+Regression guard compared matching `test_before.log` and `test_after.log`
+from the Step 4 pre-writer checkpoint to `HEAD`. Strict mode reported 3/3
+passing before and after with no new failures; close accepted the same logs
+with `--allow-non-decreasing-passed` because the selected test count stayed
+constant while existing tests were extended.
