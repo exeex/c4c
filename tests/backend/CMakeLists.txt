@@ -1261,6 +1261,13 @@ c4c_add_backend_rv64_runtime_case(
   EXPECTED_RUN_CODE 12
   LABELS scalar return call local
 )
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_two_arg_local_arg
+  SRC "${BACKEND_CASE_ROOT}/two_arg_local_arg.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 12
+  LABELS scalar return call local scan
+)
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_prepared_local_array_pointer_step
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_local_array_pointer_step.c"
@@ -1388,6 +1395,13 @@ c4c_add_backend_rv64_runtime_case(
   EXPECTED_RUN_CODE 12
   LABELS scalar return call local
 )
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_two_arg_both_local_arg
+  SRC "${BACKEND_CASE_ROOT}/two_arg_both_local_arg.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 12
+  LABELS scalar return call local scan
+)
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_two_arg_second_local_arg
   SRC "${BACKEND_CASE_ROOT}/two_arg_second_local_arg.c"
@@ -1395,12 +1409,26 @@ c4c_add_backend_rv64_runtime_case(
   EXPECTED_RUN_CODE 12
   LABELS scalar return call local
 )
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_two_arg_second_local_arg
+  SRC "${BACKEND_CASE_ROOT}/two_arg_second_local_arg.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 12
+  LABELS scalar return call local scan
+)
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_local_arg_call
   SRC "${BACKEND_CASE_ROOT}/local_arg_call.c"
   CASE_TIMEOUT_SEC 10
   EXPECTED_RUN_CODE 6
   LABELS scalar return call local
+)
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_local_arg_call
+  SRC "${BACKEND_CASE_ROOT}/local_arg_call.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 6
+  LABELS scalar return call local scan
 )
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_return_add_sub_chain
