@@ -115,6 +115,26 @@ asm volatile(".insn.d %4, %5, %0, %1, %2, %3, %6"
   ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$|^frontend_cxx_'
   ```
 
+## Closure Notes
+
+Closed after Stage 3 implemented the positional RV64 EV `.insn.d` route with
+target-owned classifier, immediate validation, deterministic 64-bit encoding,
+little-endian object emission, no-relocation object proof, mixed `.insn r` plus
+`.insn.d` coverage, and negative coverage for malformed syntax, unsupported
+operands, missing or non-constant immediates, out-of-range fields, named
+operands, and `%c` modifiers.
+
+Close proof used the backend subset:
+
+```bash
+bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1
+```
+
+`c4c-regression-guard` passed in non-decreasing mode against the accepted
+backend baseline: 315/316 passed before and after, with no new failing tests.
+The only failure remained the known unrelated
+`backend_codegen_route_riscv64_pointer_typed_select_publication`.
+
 ## Reviewer Reject Signals
 
 - The route only passes by marking `.insn.d` tests unsupported or weakening
