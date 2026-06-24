@@ -117,6 +117,25 @@ c4c::codegen::lir::LirCallOp& require_indirect_call(
   fail("fixture function should contain an indirect call");
 }
 
+c4c::codegen::lir::LirCallOp& require_nth_indirect_call(
+    c4c::codegen::lir::LirFunction& fn,
+    std::size_t wanted_index) {
+  std::size_t index = 0;
+  for (auto& block : fn.blocks) {
+    for (auto& inst : block.insts) {
+      auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
+      if (!call ||
+          call->callee.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+        continue;
+      }
+      if (index == wanted_index) return *call;
+      ++index;
+    }
+  }
+  fail("fixture function should contain indirect call index " +
+       std::to_string(wanted_index));
+}
+
 c4c::hir::Expr& require_member_expr(c4c::hir::Module& module,
                                     std::string_view field) {
   for (c4c::hir::Expr& expr : module.expr_pool) {
@@ -642,6 +661,19 @@ int call_variadic_indirect(int (*fp)(int, ...), struct Pair tail) {
 int call_unspecified_indirect(int (*fp)()) {
   return fp(1);
 }
+
+int *leaf_ptr(int index) {
+  static int values[4];
+  return &values[index];
+}
+
+int *(*select_leaf_ptr(int seed))(int) {
+  return leaf_ptr;
+}
+
+int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
+  return *chooser(0)(2);
+}
 )c");
   hir_module.target_profile =
       c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -883,6 +915,23 @@ int call_unspecified_indirect(int (*fp)()) {
               "indirect unspecified call should not invent fixed params");
   expect_true(!indirect_unspecified_call.structured_args.empty(),
               "indirect unspecified call should carry structured argument facts");
+
+  c4c::codegen::lir::LirFunction& read_nested_indirect_return =
+      require_function(lir_module, "read_nested_indirect_return");
+  c4c::codegen::lir::LirCallOp& nested_selector_call =
+      require_nth_indirect_call(read_nested_indirect_return, 0);
+  expect_eq(nested_selector_call.return_type.str(), "ptr",
+            "nested function-pointer-returning indirect call should return ptr");
+  expect_true(nested_selector_call.callee_signature.has_value(),
+              "nested selector indirect call should carry callee signature");
+  expect_true(nested_selector_call.callee_signature->return_type_ref.has_value(),
+              "nested selector signature should carry return type ref");
+  expect_eq(nested_selector_call.callee_signature->return_type_ref->str(), "ptr",
+            "nested selector callee signature should preserve pointer return");
+  const std::string nested_selector_formatted =
+      c4c::codegen::lir::format_lir_call_site(nested_selector_call);
+  expect_true(nested_selector_formatted.find("(i32) %") != std::string::npos,
+              "nested selector call should preserve rendered function-pointer suffix");
 
   c4c::codegen::lir::LirCallOp raw_compat_call{};
   raw_compat_call.result = "%raw";

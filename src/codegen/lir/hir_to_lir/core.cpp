@@ -538,13 +538,17 @@ bool set_terminator_if_open(FnCtx& ctx, lir::LirTerminator terminator) {
 }
 
 TypeSpec sig_return_type(const FnPtrSig& sig) {
+  const TypeSpec patched_return_type = sig.return_type.spec;
+  if (patched_return_type.is_fn_ptr) {
+    return patched_return_type;
+  }
   if (sig.canonical_sig) {
     const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
     if (fsig && fsig->return_type) {
       return sema::typespec_from_canonical(*fsig->return_type);
     }
   }
-  return sig.return_type.spec;
+  return patched_return_type;
 }
 
 TypeSpec sig_param_type(const FnPtrSig& sig, size_t i) {
