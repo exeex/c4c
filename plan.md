@@ -1,213 +1,201 @@
-# Object Route Scan And Default Readiness Runbook
+# Target Object Emitter Scalar Scan Expansion Runbook
 
 Status: Active
-Source Idea: ideas/open/334_object_route_scan_and_default_readiness.md
-Activated from: ideas/open/329_native_object_emission_umbrella.md
-Depends on closed children:
-- ideas/closed/331_rv64_minimal_relocatable_elf_object_emission.md
-- ideas/closed/332_aarch64_minimal_relocatable_elf_object_emission.md
-- ideas/closed/333_codegen_obj_cli_and_test_integration.md
+Source Idea: ideas/open/336_target_object_emitter_scalar_scan_expansion.md
+Activated from: ideas/open/334_object_route_scan_and_default_readiness.md
+Blocked parent: ideas/open/334_object_route_scan_and_default_readiness.md
 
 ## Purpose
 
-Broaden object-route validation after the narrow `--codegen obj` integration
-work, identify target-specific gaps without hiding them behind expectation
-churn, and decide whether object output is ready to become the default backend
-route.
+Repair the first target-owned object-emitter gaps that block object-route scan
+expansion. The scan harness can select object cases, but RV64 and AArch64
+reject simple scalar/no-global object output before link/runtime.
 
 ## Goal
 
-Create selectable object-route scan coverage for supported RV64 and AArch64
-subsets, compare it with existing asm-route proof, triage failures into focused
-ownership, and record a default-route recommendation with commands, result
-counts, and rationale.
+Make the first RV64 runtime scalar object candidates and AArch64 object-byte
+scalar candidates pass through native target object emission, then hand back to
+idea 334 for broader scan/default-readiness work.
 
 ## Core Rule
 
-Do not claim default readiness by weakening expectations, deleting asm-route
-coverage, or hiding object-route failures behind generic unsupported results.
-Object-route scan failures must either be fixed in focused slices or moved into
-new child ideas with concrete target, layer, and proof ownership.
+Do not satisfy these cases through textual assembly, expected-failure scan
+labels, or testcase-shaped shortcuts. Support the target object
+records/instructions that the scalar candidates actually produce, and preserve
+existing asm-route and child-333 object-route proof.
 
 ## Read First
 
+- `ideas/open/336_target_object_emitter_scalar_scan_expansion.md`
 - `ideas/open/334_object_route_scan_and_default_readiness.md`
-- `ideas/closed/333_codegen_obj_cli_and_test_integration.md`
-- `tests/backend/CMakeLists.txt`
-- `tests/backend/cmake/`
-- `tests/c/`
-- `src/apps/c4cll.cpp`
-- `src/codegen/llvm/llvm_codegen.hpp`
+- `todo.md`
+- `test_after.log` from the blocked Step 2 scan attempt, if present
 - `src/backend/backend.hpp`
 - `src/backend/backend.cpp`
-- target object-emission tests for RV64 and AArch64 under `tests/backend/mir/`
+- RV64 object emission and prepared-module lowering under `src/backend/`
+- AArch64 object emission and machine-module construction under `src/backend/`
+- `tests/backend/CMakeLists.txt`
+- `tests/backend/cmake/run_backend_rv64_object_runtime_case.cmake`
+- `tests/backend/cmake/run_backend_codegen_object_case.cmake`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `tests/backend/mir/backend_aarch64_object_emission_test.cpp`
 
 ## Current Scope
 
-- Add or extend selectable object-route scan labels and helpers beside existing
-  asm-route coverage.
-- Run and triage object-route scan results for supported RV64 and AArch64
-  subsets.
-- Preserve meaningful asm-route proof while object-route coverage grows.
-- Record unsupported cases and distinct semantic/backend gaps as follow-up
-  ideas instead of weakening broad expectations.
-- Decide whether object output should become the default backend route or stay
-  as an explicit dual-route option.
+- Diagnose why RV64 prepared modules for `return_add.c`, `two_arg_helper.c`,
+  `return_add_sub_chain.c`, and `local_temp.c` are rejected by object emission.
+- Diagnose why AArch64 object emission rejects the machine instructions
+  produced by `return_add.c` and `return_add_sub_chain.c`.
+- Add minimal target-owned object support for that scalar/no-global subset.
+- Add the green scan cases back only after the target object emitters support
+  them.
+- Preserve asm-route selectors and defaults.
 
 ## Non-Goals
 
-- Do not redesign the shared object model or target object encoders.
-- Do not add the initial `--codegen obj` CLI wiring; child 333 already did
-  that.
-- Do not remove, rename away, or weaken existing asm-route coverage.
-- Do not fix every discovered backend semantic bug inside this scan child.
+- Do not implement broad RV64 globals/data object output.
+- Do not implement x86 object output.
+- Do not change c-testsuite defaults.
+- Do not add object stdout.
+- Do not add object `--backend-bir-stage semantic` mode.
+- Do not require AArch64 runtime execution.
 - Do not build textual assembler support.
-- Do not switch defaults before scan commands, result counts, and regression
-  comparison are recorded.
 
 ## Working Model
 
-Treat object output as a parallel backend route with its own selectable proof:
+The blocked scan candidates should eventually follow these routes:
 
 ```text
-asm route    -> existing .s tests and runtime/link smokes
-object route -> --codegen obj byte tests, link/runtime smokes, scan labels
-dual route   -> representative checks showing both routes remain available
+RV64 HIR -> LIR -> prepared BIR -> RV64 object records -> ELF .o -> clang link -> qemu-riscv64
+AArch64 HIR -> LIR -> prepared BIR -> AArch64 machine module -> object records -> ELF .o
 ```
 
-The scan should distinguish failures by layer:
+Failure ownership should stay target-local:
 
 ```text
-CLI/output policy -> codegen facade -> backend object facade -> target object
-writer/relocations -> linker/runtime
+unsupported prepared module shape -> inspect/fix RV64 prepared object writer support
+unsupported AArch64 machine instruction -> inspect/fix AArch64 object writer support
 ```
-
-Failures that are broader semantic lowering problems should not be absorbed
-into this umbrella unless a narrow fix is clearly required for scan mechanics.
 
 ## Execution Rules
 
-- Start by inspecting current object/asm labels, helper scripts, and scan
-  surfaces; record the first scan subset and proof plan in `todo.md`.
-- Keep object-route scan helpers independent from asm-route helpers unless a
-  shared wrapper preserves both behaviors explicitly.
-- Prefer small representative scan subsets before broadening to c-testsuite or
-  runtime matrices.
-- Preserve before/after logs for scan expansions and include asm-route
-  coexistence proof in acceptance checkpoints.
-- Create focused follow-up ideas under `ideas/open/` for distinct object-route
-  failures that are not fixed in this child; include reviewer reject signals in
-  each new idea.
-- Do not mark unsupported cases by weakening existing positive expectations
-  without explicit supervisor approval.
+- Start with inspection-only diagnosis of the rejected RV64 prepared-module
+  shapes and AArch64 machine instructions; record target-owned seams and proof
+  plan in `todo.md`.
+- Add one target capability at a time and prove it with focused tests before
+  restoring scan cases.
+- Keep object output byte-producing and native; do not call external
+  assemblers for `--codegen obj`.
+- Do not weaken unsupported diagnostics or scan expectations to create green
+  results.
+- If a candidate requires broader semantic lowering unrelated to target object
+  emission, split another focused idea instead of absorbing it here.
 
-## Step 1: Inspect Current Object Scan Surface
+## Step 1: Inspect Scalar Object Rejections
 
-Goal: identify the smallest reliable object-route scan expansion point after
-child 333.
+Goal: identify the exact target object records, prepared-module shapes, and
+machine instructions rejected by the first scalar scan candidates.
 
 Primary targets:
 
+- `src/backend/backend.cpp`
+- RV64 prepared object writer and object-emission sources under `src/backend/`
+- AArch64 object writer and machine-module sources under `src/backend/`
+- `tests/backend/case/return_add.c`
+- `tests/backend/case/two_arg_helper.c`
+- `tests/backend/case/return_add_sub_chain.c`
+- `tests/backend/case/local_temp.c`
 - `tests/backend/CMakeLists.txt`
-- `tests/backend/cmake/`
-- existing `backend_cli_.*obj`, `backend_obj_runtime_.*`,
-  `backend_riscv_object_emission`, and `backend_aarch64_object_emission` tests
-- existing asm-route runtime and external CLI smoke tests
-- relevant c-testsuite helper surfaces under `tests/c/`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `tests/backend/mir/backend_aarch64_object_emission_test.cpp`
 
 Actions:
 
-- List current object, asm, runtime, qemu, and dual-route labels and test
-  names.
-- Inspect how c-testsuite and backend runtime helpers choose compiler output
-  form.
-- Identify the first RV64 and AArch64 scan candidates that can run without
-  widening into unsupported globals/data or unrelated semantic bugs.
-- Record in `todo.md` the chosen scan seam, first proof subset, likely owned
-  files for Step 2, and unsupported combinations that should become follow-up
-  ideas if encountered.
+- Reproduce or inspect diagnostics for the six blocked candidates.
+- Locate the RV64 predicate or unsupported-shape check that rejects the
+  prepared modules.
+- Locate the AArch64 unsupported-instruction dispatch for scalar arithmetic.
+- Record in `todo.md` the target-owned seams, first minimal implementation
+  slice, expected tests, and unsupported boundaries.
 
 Completion check:
 
-- `todo.md` names the object-route scan seam, first scan candidates, proof
-  command, and known unsupported/default-policy boundaries.
+- `todo.md` names the exact RV64 and AArch64 object-emitter seams and the
+  first implementation/proof packet.
 
-## Step 2: Add Selectable Object Scan Helpers
+## Step 2: Add RV64 Scalar Prepared Object Support
 
-Goal: make object-route scan cases selectable independently from asm-route
-cases without changing default suite behavior.
+Goal: support the first RV64 scalar/no-global prepared-module shapes needed by
+the blocked runtime object candidates.
 
 Actions:
 
-- Add or extend CMake helpers for object-route scan cases beside existing asm
-  helpers.
-- Preserve existing asm route labels and test names.
-- Add labels that distinguish `object`, `asm`, `dual-route`, target, runtime,
-  linkability, and scan scope.
-- Start with the first reliable supported subset identified in Step 1.
+- Extend RV64 prepared object emission for the minimal scalar constants,
+  arithmetic/local, and call-shaped records required by the candidates.
+- Add focused RV64 object-emission or backend facade tests for the newly
+  supported records where useful.
+- Add back RV64 object runtime scan cases only when they pass as green tests:
+  `backend_obj_runtime_rv64_return_add`,
+  `backend_obj_runtime_rv64_two_arg_helper`,
+  `backend_obj_runtime_rv64_return_add_sub_chain`, and
+  `backend_obj_runtime_rv64_local_temp`.
 
 Completion check:
 
-- CTest can select the new object scan subset without selecting asm-only cases,
-  and existing asm-route tests still run under their previous selectors.
+- The RV64 object runtime scalar subset links and runs with qemu, and existing
+  RV64 asm runtime counterparts remain selected and green.
 
-## Step 3: Run And Triage Object Scan Results
+## Step 3: Add AArch64 Scalar Object Instruction Support
 
-Goal: execute the selected object-route scan and classify failures by concrete
-  ownership rather than expectation churn.
+Goal: support AArch64 object byte emission for the scalar/no-global machine
+instructions produced by `return_add.c` and `return_add_sub_chain.c`.
 
 Actions:
 
-- Run the Step 2 object scan with matching before/after logs.
-- Classify failures by target, object writer/relocation, CLI/output policy,
-  linker/runtime, or semantic lowering layer.
-- Fix only narrow scan-harness or integration defects that are within this
+- Extend AArch64 object writer/encoder support for the minimal scalar
+  instruction family needed by the blocked candidates.
+- Add focused AArch64 object-emission tests where useful.
+- Add back AArch64 object-byte scan cases only when they pass as green tests:
+  `backend_cli_aarch64_return_add_writes_elf_obj` and
+  `backend_cli_aarch64_return_add_sub_chain_writes_elf_obj`.
+
+Completion check:
+
+- AArch64 object-byte scalar scan cases emit valid ELF objects and the
+  existing AArch64 asm external return smokes remain green.
+
+## Step 4: Restore Scan Candidate Proof
+
+Goal: prove the original Step 2 object-route scan candidates now pass without
+expected-failure labels or asm fallback.
+
+Actions:
+
+- Run the original blocked scan proof command with the restored candidate names.
+- Confirm object selectors are independently selectable through
+  `backend_obj_runtime_.*` and `backend_cli_.*obj`.
+- Keep child-333 baseline object tests and nearby asm-route tests selected.
+- Record result counts and any remaining blockers in `todo.md`.
+
+Completion check:
+
+- The previously blocked object scan expansion passes, or remaining failures
+  are split into focused follow-up ideas with exact ownership.
+
+## Step 5: Hand Back To Object Route Scan
+
+Goal: decide whether this focused child has unblocked idea 334 enough to resume
+scan/default-readiness work.
+
+Actions:
+
+- Summarize supported scalar object-route expansion and proof commands.
+- Record remaining unsupported object features that still belong outside this
   child.
-- For distinct backend semantic or target feature gaps, create focused
-  follow-up ideas under `ideas/open/` with concrete acceptance and reviewer
-  reject signals.
+- Ask the plan owner to close this child or switch back to idea 334 when the
+  source idea is satisfied.
 
 Completion check:
 
-- Scan results are stable and diagnosable, and unresolved failures are either
-  fixed or recorded as focused follow-up ideas.
-
-## Step 4: Preserve Dual-Route And Runtime Proof
-
-Goal: show object-route scan growth did not make asm-route proof meaningless.
-
-Actions:
-
-- Run representative asm-route and object-route tests together.
-- Keep RV64 object runtime smoke and AArch64 object byte proof selected where
-  relevant.
-- Add a narrow dual-route proof if the scan helper changes shared selection or
-  output-form wiring.
-- Record commands, labels, and result counts in `todo.md`.
-
-Completion check:
-
-- Object-route and asm-route proof remain independently selectable, and the
-  combined proof passes or has documented, owned follow-up gaps.
-
-## Step 5: Default-Readiness Recommendation
-
-Goal: decide whether object output should become the default backend route or
-remain an explicit dual-route option.
-
-Actions:
-
-- Review scan coverage, unresolved follow-up ideas, unsupported combinations,
-  and asm-route coexistence proof.
-- Record the recommendation with concrete dates, commands, result counts, and
-  rationale.
-- If default switching is not ready, state the blocking feature gaps and the
-  selectors that should remain canonical for object-route proof.
-- If default switching is ready, prepare a narrow follow-up plan for the actual
-  default change rather than making it silently in this scan step.
-
-Completion check:
-
-- `todo.md` and, if closing, the source idea record the recommendation and the
-  evidence behind it. The supervisor can ask the plan owner to close, split, or
-  activate the next focused follow-up.
+- `todo.md` clearly tells the supervisor whether idea 334 can resume, and with
+  which object scan selectors/proof command.
