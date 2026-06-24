@@ -756,7 +756,8 @@ std::string helper_style_rv64_insn_d_template_text() {
 prepare::PreparedBirModule make_prepared_inline_asm_insn_r_module(
     std::string asm_text = ".insn r 0x33, 0, 0, %0, %1, %2",
     bool complete_carrier = true,
-    bool tied_first_input = false) {
+    bool tied_first_input = false,
+    bool structured_metadata = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile.arch = c4c::TargetArch::Riscv64;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -797,6 +798,14 @@ prepare::PreparedBirModule make_prepared_inline_asm_insn_r_module(
                                           std::size_t{1}),
           },
   };
+  if (structured_metadata) {
+    call.inline_asm->insn_r = bir::InlineAsmInsnRMetadata{
+        .opcode = 0x33,
+        .funct3 = 0,
+        .funct7 = 0,
+        .operand_indices = {0, 1, 2},
+    };
+  }
 
   bir::Block entry{
       .label = "entry",
@@ -918,6 +927,75 @@ prepare::PreparedBirModule make_prepared_inline_asm_insn_r_module(
                 },
         });
   }
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_inline_asm_insn_r_readwrite_module(
+    std::string asm_text = ".insn r 0x33, 0, 0, %0, %0, %1",
+    bool structured_metadata = true) {
+  auto prepared = make_prepared_inline_asm_insn_r_module(std::move(asm_text));
+  auto& call =
+      std::get<bir::CallInst>(prepared.module.functions[0].blocks[0].insts[0]);
+  call.args = {bir::Value::named(bir::TypeKind::I32, "%lhs"),
+               bir::Value::named(bir::TypeKind::I32, "%rhs")};
+  call.arg_types = {bir::TypeKind::I32, bir::TypeKind::I32};
+  call.inline_asm->constraints = "+r,r";
+  call.inline_asm->operands =
+      {
+          inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                      0,
+                                      "+r",
+                                      std::size_t{0},
+                                      std::size_t{0}),
+          inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                      1,
+                                      "r",
+                                      std::size_t{1}),
+      };
+  if (structured_metadata) {
+    call.inline_asm->insn_r = bir::InlineAsmInsnRMetadata{
+        .opcode = 0x33,
+        .funct3 = 0,
+        .funct7 = 0,
+        .operand_indices = {0, 0, 1},
+    };
+  } else {
+    call.inline_asm->insn_r = std::nullopt;
+  }
+
+  auto& carrier = prepared.inline_asm_carriers.functions[0].carriers[0];
+  carrier.asm_text = call.inline_asm->asm_text;
+  carrier.constraints = "+r,r";
+  carrier.operands =
+      {
+          prepare::PreparedInlineAsmOperand{
+              .kind = bir::InlineAsmOperandKind::RegisterOutput,
+              .constraint_index = 0,
+              .constraint = "+r",
+              .arg_index = std::size_t{0},
+              .output_index = std::size_t{0},
+              .value = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+              .value_name = prepared.names.value_names.find("%lhs"),
+              .home = rv64_gpr_home(2,
+                                    prepared.names.function_names.find("main"),
+                                    prepared.names.value_names.find("%lhs"),
+                                    "t0",
+                                    5),
+          },
+          prepare::PreparedInlineAsmOperand{
+              .kind = bir::InlineAsmOperandKind::RegisterInput,
+              .constraint_index = 1,
+              .constraint = "r",
+              .arg_index = std::size_t{1},
+              .value = bir::Value::named(bir::TypeKind::I32, "%rhs"),
+              .value_name = prepared.names.value_names.find("%rhs"),
+              .home = rv64_gpr_home(3,
+                                    prepared.names.function_names.find("main"),
+                                    prepared.names.value_names.find("%rhs"),
+                                    "t2",
+                                    7),
+          },
+      };
   return prepared;
 }
 
@@ -1697,6 +1775,28 @@ int builds_prepared_inline_asm_insn_r_object() {
   return 0;
 }
 
+int builds_structured_prepared_inline_asm_insn_r_object_without_text_reparse() {
+  const auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x80, 7, 127, raw, tokens, ignored",
+      true,
+      false,
+      true);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected structured RV64 inline-asm .insn r object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  if (text == nullptr || text->bytes.size() != 12) {
+    return fail("expected structured inline-asm .insn r object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x007302b3 ||
+      read_u32(text->bytes, 4) != 0x00028513 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected structured .insn r metadata to encode add t0, t1, t2");
+  }
+  return 0;
+}
+
 int builds_prepared_inline_asm_insn_r_tied_input_object() {
   const auto prepared = make_prepared_inline_asm_insn_r_module(
       ".insn r 0x33, 0, 0, %0, %1, %2",
@@ -1714,6 +1814,24 @@ int builds_prepared_inline_asm_insn_r_tied_input_object() {
       read_u32(text->bytes, 4) != 0x00028513 ||
       read_u32(text->bytes, 8) != 0x00008067) {
     return fail("expected tied .insn r add t0, t0, t2 followed by return move");
+  }
+  return 0;
+}
+
+int builds_structured_prepared_inline_asm_insn_r_readwrite_object() {
+  const auto prepared = make_prepared_inline_asm_insn_r_readwrite_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected structured RV64 read-write .insn r object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  if (text == nullptr || text->bytes.size() != 12) {
+    return fail("expected structured read-write .insn r object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x007282b3 ||
+      read_u32(text->bytes, 4) != 0x00028513 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected structured read-write .insn r add t0, t0, t2");
   }
   return 0;
 }
@@ -1852,6 +1970,21 @@ int rejects_prepared_inline_asm_insn_r_without_complete_carrier() {
       false);
   if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
     return fail("expected inline-asm .insn r object path to require complete carrier");
+  }
+  return 0;
+}
+
+int rejects_structured_prepared_inline_asm_insn_r_bad_operand_metadata_object() {
+  auto prepared = make_prepared_inline_asm_insn_r_module(
+      ".insn r 0x33, 0, 0, %0, %1, %2",
+      true,
+      false,
+      true);
+  auto& call =
+      std::get<bir::CallInst>(prepared.module.functions[0].blocks[0].insts[0]);
+  call.inline_asm->insn_r->operand_indices = {0, 1, 99};
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected structured .insn r object path to reject bad operand metadata");
   }
   return 0;
 }
@@ -2556,11 +2689,14 @@ int main() {
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_inline_asm_insn_r_object();
+  status |= builds_structured_prepared_inline_asm_insn_r_object_without_text_reparse();
   status |= builds_prepared_inline_asm_insn_r_tied_input_object();
+  status |= builds_structured_prepared_inline_asm_insn_r_readwrite_object();
   status |= substitutes_prepared_rv64_vector_inline_asm_base_registers();
   status |= substitutes_prepared_rv64_mixed_scalar_vector_inline_asm_registers();
   status |= substitutes_prepared_rv64_tied_vector_inline_asm_base_register();
   status |= rejects_prepared_inline_asm_insn_r_without_complete_carrier();
+  status |= rejects_structured_prepared_inline_asm_insn_r_bad_operand_metadata_object();
   status |= rejects_prepared_inline_asm_non_insn_r_object();
   status |= rejects_prepared_inline_asm_insn_r_extra_field_object();
   status |= rejects_prepared_inline_asm_insn_r_missing_field_object();

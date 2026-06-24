@@ -251,17 +251,8 @@ std::optional<std::uint32_t> parse_rv64_insn_u32(std::string_view text,
 
 std::optional<std::uint32_t> rv64_register_number_for_inline_asm_operand(
     const c4c::backend::prepare::PreparedInlineAsmCarrier& carrier,
-    std::string_view token) {
-  token = trim_ascii(token);
-  if (token.size() < 2 || (token.front() != '%' && token.front() != '$')) {
-    return std::nullopt;
-  }
-  token.remove_prefix(1);
-  std::size_t operand_index = 0;
-  const char* const begin = token.data();
-  const char* const end = token.data() + token.size();
-  const auto [ptr, ec] = std::from_chars(begin, end, operand_index);
-  if (ec != std::errc{} || ptr != end || operand_index >= carrier.operands.size()) {
+    std::size_t operand_index) {
+  if (operand_index >= carrier.operands.size()) {
     return std::nullopt;
   }
 
@@ -308,6 +299,24 @@ std::optional<std::uint32_t> rv64_register_number_for_inline_asm_operand(
   return std::nullopt;
 }
 
+std::optional<std::uint32_t> rv64_register_number_for_inline_asm_operand_token(
+    const c4c::backend::prepare::PreparedInlineAsmCarrier& carrier,
+    std::string_view token) {
+  token = trim_ascii(token);
+  if (token.size() < 2 || (token.front() != '%' && token.front() != '$')) {
+    return std::nullopt;
+  }
+  token.remove_prefix(1);
+  std::size_t operand_index = 0;
+  const char* const begin = token.data();
+  const char* const end = token.data() + token.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, operand_index);
+  if (ec != std::errc{} || ptr != end) {
+    return std::nullopt;
+  }
+  return rv64_register_number_for_inline_asm_operand(carrier, operand_index);
+}
+
 std::optional<std::vector<std::string_view>> split_rv64_insn_fields(
     std::string_view text,
     std::size_t expected_count) {
@@ -346,6 +355,23 @@ std::optional<RiscvEncodedFragment> fragment_for_rv64_insn_r_inline_asm(
     return std::nullopt;
   }
 
+  if (call.inline_asm->insn_r.has_value()) {
+    const auto& insn = *call.inline_asm->insn_r;
+    const auto rd =
+        rv64_register_number_for_inline_asm_operand(*carrier, insn.operand_indices[0]);
+    const auto rs1 =
+        rv64_register_number_for_inline_asm_operand(*carrier, insn.operand_indices[1]);
+    const auto rs2 =
+        rv64_register_number_for_inline_asm_operand(*carrier, insn.operand_indices[2]);
+    if (!rd.has_value() || !rs1.has_value() || !rs2.has_value()) {
+      return std::nullopt;
+    }
+    RiscvEncodedFragment fragment;
+    append_le32(fragment.bytes,
+                encode_r_type(insn.opcode, *rd, insn.funct3, *rs1, *rs2, insn.funct7));
+    return fragment;
+  }
+
   std::string_view text = trim_ascii(call.inline_asm->asm_text);
   constexpr std::string_view prefix = ".insn r";
   if (text.size() < prefix.size() || text.substr(0, prefix.size()) != prefix ||
@@ -364,9 +390,9 @@ std::optional<RiscvEncodedFragment> fragment_for_rv64_insn_r_inline_asm(
   const auto opcode = parse_rv64_insn_u32((*fields)[0], 0x7f);
   const auto funct3 = parse_rv64_insn_u32((*fields)[1], 0x7);
   const auto funct7 = parse_rv64_insn_u32((*fields)[2], 0x7f);
-  const auto rd = rv64_register_number_for_inline_asm_operand(*carrier, (*fields)[3]);
-  const auto rs1 = rv64_register_number_for_inline_asm_operand(*carrier, (*fields)[4]);
-  const auto rs2 = rv64_register_number_for_inline_asm_operand(*carrier, (*fields)[5]);
+  const auto rd = rv64_register_number_for_inline_asm_operand_token(*carrier, (*fields)[3]);
+  const auto rs1 = rv64_register_number_for_inline_asm_operand_token(*carrier, (*fields)[4]);
+  const auto rs2 = rv64_register_number_for_inline_asm_operand_token(*carrier, (*fields)[5]);
   if (!opcode.has_value() || !funct3.has_value() || !funct7.has_value() ||
       !rd.has_value() || !rs1.has_value() || !rs2.has_value()) {
     return std::nullopt;
