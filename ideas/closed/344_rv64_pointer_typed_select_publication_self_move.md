@@ -47,6 +47,16 @@ template string plan into unrelated codegen work.
 - A broader CTest run can be used by the supervisor as fresh proof for the
   previously blocked consteval inline asm template string close review.
 
+## Completion Note
+
+Closed after `f28e8ae44 Skip RV64 edge publication self moves` repaired the
+prepared edge-publication path by skipping same-register publication moves
+while preserving real differing-register moves. Close-gate regression proof
+compared full-suite canonical logs: `test_before.log` captured the pre-fix
+`backend_codegen_route_riscv64_pointer_typed_select_publication` failure at
+`3344/3345`, and `test_after.log` captured the post-fix full-suite pass at
+`3345/3345`. No forbidden-snippet expectation was weakened.
+
 ## Reviewer Reject Signals
 
 - The route removes `mv t0, t0` only by weakening or deleting the forbidden
