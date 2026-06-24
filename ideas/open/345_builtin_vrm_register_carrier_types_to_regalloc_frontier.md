@@ -58,10 +58,12 @@ authors can `typedef` these builtin carriers into their own ISA-facing names.
   disassembly, or linker behavior.
 - Do not model vector element types, lane counts, or memory layout semantics.
 - Do not add load/store intrinsics for a specific vector ISA.
-- Do not make the VRM builtin types part of the ordinary C ABI yet. Function
-  parameters, returns, globals, and general memory storage may remain rejected
-  or explicitly unsupported unless the route proves a narrow, coherent local
-  representation.
+- Do not make the VRM builtin types part of any ordinary C ABI. Non-expanded
+  function calls must not pass or return VRM values. Any function that appears
+  to take VRM values as arguments must be inline/template-expanded before the
+  backend handoff; if it is not expanded, compilation must report an error.
+- Do not support globals or general memory storage for VRM carriers in this
+  idea. Keep the first surface local/inline-asm-only.
 
 ## Suggested Route
 
@@ -83,7 +85,15 @@ authors can `typedef` these builtin carriers into their own ISA-facing names.
    - Keep the representation target-neutral: it means "vector register group
      width M", not "EV vector value".
 
-4. Publish pre-regalloc classification metadata.
+4. Reject non-expanded call boundaries.
+   - A VRM value must not appear in a real call ABI argument or return slot.
+   - Inline/template functions may mention VRM parameters only if the frontend
+     expands them away before LIR/BIR call lowering.
+   - If a non-expanded function declaration, call, function pointer call, or
+     return value would carry a VRM type, diagnose it instead of inventing a
+     target calling convention.
+
+5. Publish pre-regalloc classification metadata.
    - Before regalloc placement, VRM values should classify as
      `PreparedRegisterClass::Vector`.
    - The default contiguous width should come from the source type:
@@ -91,7 +101,7 @@ authors can `typedef` these builtin carriers into their own ISA-facing names.
    - Inline asm constraint overrides may still validate or reinforce the same
      width, but they should not be the only source of vector identity.
 
-5. Validate the frontier.
+6. Validate the frontier.
    - Stop at the regalloc frontier with prepared/liveness/prealloc dumps or
      tests that prove the value is ready to be allocated as a vector group.
    - Leave final allocation, substitution, and object-byte proof to the next
@@ -119,6 +129,8 @@ typedef __c4c_builtin_vrm2 user_vec_pair;
 - An inline asm smoke before final allocation can form a prepared inline asm
   carrier without reporting scalar/vector class incompatibility for matching
   VRM operands.
+- A non-expanded function call carrying VRM values is rejected. This is a hard
+  semantic rule, not a missing target feature.
 - A negative scalar case still rejects or reports incompatibility:
 
 ```c
@@ -131,16 +143,35 @@ asm volatile("" : : "VRM2"(x));
 ```c
 typedef __c4c_builtin_vrm2 my_vrm2;
 
-void use(my_vrm2 a, my_vrm2 b) {
+void use(void) {
+  my_vrm2 a;
+  my_vrm2 b;
   my_vrm2 out;
   asm volatile("" : "=VRM2"(out) : "VRM2"(a), "VRM2"(b));
 }
 ```
 
-If function parameters are not part of the first supported ABI surface, the
-same proof can use locals or frontend-supported temporary values instead. The
-important proof is that the source type becomes a vector-register-group value
-before register allocation.
+Inline or template helper functions may use VRM parameters only if they are
+expanded before call lowering. If the compiler cannot prove expansion happened,
+the correct behavior is a diagnostic rather than a fallback call ABI.
+
+```c++
+template <class V>
+inline void helper(V a, V b) {
+  V out;
+  asm volatile("" : "=VRM2"(out) : "VRM2"(a), "VRM2"(b));
+}
+
+void caller(void) {
+  my_vrm2 a;
+  my_vrm2 b;
+  helper<my_vrm2>(a, b);  // OK only after template/inline expansion.
+}
+```
+
+The important proof is that the source type becomes a vector-register-group
+value before register allocation without ever crossing a real function-call
+boundary.
 
 ## Reviewer Reject Signals
 
@@ -154,6 +185,10 @@ before register allocation.
   type lowering remains absent.
 - The implementation special-cases one test spelling instead of adding a
   durable builtin type representation.
+- The route invents, assumes, or silently falls back to an RV64 vector calling
+  convention for VRM parameters or returns.
+- A function with VRM parameters reaches backend call lowering without being
+  expanded and does not produce a diagnostic.
 - The idea drifts into `.insn.d` encoding, EV instruction design, linker,
   relocation, or disassembler work before the VRM type chain is proven.
 
@@ -163,5 +198,6 @@ before register allocation.
   source-to-object proof for `.insn.d`.
 - Add full regalloc allocation/substitution proof for `VRM1/2/4/8`, including
   aligned contiguous spans.
-- Define optional ABI and memory rules for passing, returning, loading, or
-  storing VRM carrier values if user code needs those semantics.
+- Define target-neutral pseudo spill/reload and explicit load/store intrinsic
+  rules for VRM carrier values if user code needs memory traffic. Do not route
+  this through ordinary function-call ABI.
