@@ -3659,6 +3659,75 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_carrier_module() {
       module, target, prepare::PrepareOptions{});
 }
 
+prepare::PreparedBirModule prepare_rv64_inline_asm_vector_impossible_carrier_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  const c4c::TargetProfile target = riscv_target_profile();
+  const auto i32_arg_abi = *prepare::infer_call_arg_abi(target, bir::TypeKind::I32);
+
+  bir::Function function;
+  function.name = "rv64_inline_asm_vector_impossible_carrier_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  bir::CallInst inline_asm;
+  inline_asm.callee = "llvm.inline_asm";
+  inline_asm.return_type = bir::TypeKind::Void;
+  inline_asm.inline_asm = bir::InlineAsmMetadata{
+      .asm_text = "vpressure",
+      .constraints = "",
+      .side_effects = true,
+  };
+
+  for (std::size_t index = 0; index < 33; ++index) {
+    const std::string param_name = "p" + std::to_string(index);
+    const std::string value_name = "v" + std::to_string(index);
+    function.params.push_back(bir::Param{
+        .type = bir::TypeKind::I32,
+        .name = param_name,
+        .size_bytes = 4,
+        .align_bytes = 4,
+    });
+    entry.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, value_name),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, param_name),
+        .rhs = bir::Value::named(bir::TypeKind::I32, param_name),
+    });
+    inline_asm.args.push_back(bir::Value::named(bir::TypeKind::I32, value_name));
+    inline_asm.arg_types.push_back(bir::TypeKind::I32);
+    inline_asm.arg_abi.push_back(i32_arg_abi);
+    if (!inline_asm.inline_asm->constraints.empty()) {
+      inline_asm.inline_asm->constraints += ",";
+    }
+    inline_asm.inline_asm->constraints += "VR";
+    inline_asm.inline_asm->operands.push_back(inline_asm_operand(
+        bir::InlineAsmOperandKind::RegisterInput,
+        index,
+        "VR",
+        index,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        bir::InlineAsmRegisterClass::Vector,
+        1));
+  }
+
+  entry.insts.push_back(std::move(inline_asm));
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "v0"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, target, prepare::PrepareOptions{});
+}
+
 prepare::PreparedBirModule prepare_inline_asm_fail_closed_dump_module() {
   bir::Module module;
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -4056,6 +4125,37 @@ int rv64_inline_asm_carriers_preserve_vector_register_group_facts() {
   if (!expect_not_contains(dump,
                            "tied_input_output_home_incompatible_register_class",
                            "RV64 tied vector register-class diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int rv64_inline_asm_impossible_vector_allocation_diagnoses_missing_home() {
+  const auto prepared = prepare_rv64_inline_asm_vector_impossible_carrier_module();
+  const auto* function_carriers = find_inline_asm_carriers(
+      prepared, "rv64_inline_asm_vector_impossible_carrier_contract");
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 1) {
+    std::cerr << "[FAIL] expected one impossible RV64 vector inline asm carrier\n";
+    return EXIT_FAILURE;
+  }
+  const auto& carrier = function_carriers->carriers.front();
+  if (carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Missing ||
+      carrier.missing_required_facts.size() != 1 ||
+      carrier.missing_required_facts.front().find("_requires_register_home") ==
+          std::string::npos) {
+    std::cerr << "[FAIL] impossible RV64 vector inline asm allocation should fail closed with a register-home diagnostic\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string dump = prepare::print(prepared);
+  if (!expect_contains(dump,
+                       "missing fact=inst#33:operand32_requires_register_home",
+                       "impossible RV64 vector inline asm missing carrier fact")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "_requires_register_home",
+                       "impossible RV64 vector inline asm register-home diagnostic")) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
@@ -5409,6 +5509,11 @@ int main() {
   }
   if (const int status =
           rv64_inline_asm_carriers_preserve_vector_register_group_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          rv64_inline_asm_impossible_vector_allocation_diagnoses_missing_home();
       status != 0) {
     return status;
   }

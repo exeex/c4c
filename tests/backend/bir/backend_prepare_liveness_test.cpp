@@ -210,6 +210,27 @@ void set_register_group_override(prepare::PreparedBirModule& prepared,
   });
 }
 
+bir::InlineAsmOperandMetadata inline_asm_register_operand(
+    bir::InlineAsmOperandKind kind,
+    std::size_t constraint_index,
+    std::string constraint,
+    std::optional<std::size_t> arg_index = std::nullopt,
+    std::optional<std::size_t> output_index = std::nullopt,
+    std::optional<std::size_t> tied_output_index = std::nullopt,
+    bir::InlineAsmRegisterClass register_class = bir::InlineAsmRegisterClass::None,
+    std::size_t register_group_width = 1) {
+  return bir::InlineAsmOperandMetadata{
+      .kind = kind,
+      .constraint_index = constraint_index,
+      .constraint = std::move(constraint),
+      .arg_index = arg_index,
+      .output_index = output_index,
+      .tied_output_index = tied_output_index,
+      .register_class = register_class,
+      .register_group_width = register_group_width,
+  };
+}
+
 const bir::Function* find_module_function(const prepare::PreparedBirModule& prepared,
                                           std::string_view function_name) {
   for (const auto& function : prepared.module.functions) {
@@ -4204,6 +4225,206 @@ prepare::PreparedBirModule prepare_vector_grouped_cross_call_module_with_regallo
   return std::move(regalloc_planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_rv64_inline_asm_vector_group_allocation_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  const c4c::TargetProfile target = riscv_target_profile();
+  const auto i32_arg_abi = *prepare::infer_call_arg_abi(target, bir::TypeKind::I32);
+  const bir::CallResultAbiInfo i32_result_abi{
+      .type = bir::TypeKind::I32,
+      .primary_class = bir::AbiValueClass::Integer,
+  };
+
+  bir::Function function;
+  function.name = "rv64_inline_asm_vector_group_allocation";
+  function.return_type = bir::TypeKind::I32;
+  for (std::string_view name : {"m2", "m4", "m1", "rw", "tie"}) {
+    function.params.push_back(bir::Param{
+        .type = bir::TypeKind::I32,
+        .name = std::string(name),
+        .size_bytes = 4,
+        .align_bytes = 4,
+    });
+  }
+
+  auto entry = make_block(module, "entry");
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "m2"),
+               bir::Value::named(bir::TypeKind::I32, "m4"),
+               bir::Value::named(bir::TypeKind::I32, "m1")},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi, i32_arg_abi, i32_arg_abi},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "vgroup %0, %1, %2",
+          .constraints = "VRM2,VRM4,VR",
+          .side_effects = true,
+          .operands = {
+              inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                          0,
+                                          "VRM2",
+                                          std::size_t{0},
+                                          std::nullopt,
+                                          std::nullopt,
+                                          bir::InlineAsmRegisterClass::Vector,
+                                          2),
+              inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                          1,
+                                          "VRM4",
+                                          std::size_t{1},
+                                          std::nullopt,
+                                          std::nullopt,
+                                          bir::InlineAsmRegisterClass::Vector,
+                                          4),
+              inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                          2,
+                                          "VR",
+                                          std::size_t{2},
+                                          std::nullopt,
+                                          std::nullopt,
+                                          bir::InlineAsmRegisterClass::Vector,
+                                          1),
+          },
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "rw"),
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "rw")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "vrw %0",
+          .constraints = "+VRM2",
+          .side_effects = true,
+          .operands = {inline_asm_register_operand(
+              bir::InlineAsmOperandKind::RegisterOutput,
+              0,
+              "+VRM2",
+              std::size_t{0},
+              std::size_t{0},
+              std::nullopt,
+              bir::InlineAsmRegisterClass::Vector,
+              2)},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tie"),
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "tie")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "vtie %0",
+          .constraints = "=VRM4,0",
+          .side_effects = true,
+          .operands = {
+              inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                          0,
+                                          "=VRM4",
+                                          std::nullopt,
+                                          std::size_t{0},
+                                          std::nullopt,
+                                          bir::InlineAsmRegisterClass::Vector,
+                                          4),
+              inline_asm_register_operand(bir::InlineAsmOperandKind::TiedInput,
+                                          1,
+                                          "0",
+                                          std::size_t{0},
+                                          std::nullopt,
+                                          std::size_t{0}),
+          },
+      },
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "out"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "rw"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "tie"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "out"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, target, prepare::PrepareOptions{});
+}
+
+prepare::PreparedBirModule prepare_rv64_inline_asm_vector_impossible_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  const c4c::TargetProfile target = riscv_target_profile();
+  const auto i32_arg_abi = *prepare::infer_call_arg_abi(target, bir::TypeKind::I32);
+
+  bir::Function function;
+  function.name = "rv64_inline_asm_vector_impossible";
+  function.return_type = bir::TypeKind::I32;
+
+  auto entry = make_block(module, "entry");
+  bir::CallInst inline_asm;
+  inline_asm.callee = "llvm.inline_asm";
+  inline_asm.return_type = bir::TypeKind::Void;
+  inline_asm.inline_asm = bir::InlineAsmMetadata{
+      .asm_text = "vpressure",
+      .constraints = "",
+      .side_effects = true,
+  };
+
+  for (std::size_t index = 0; index < 33; ++index) {
+    const std::string param_name = "p" + std::to_string(index);
+    const std::string value_name = "v" + std::to_string(index);
+    function.params.push_back(bir::Param{
+        .type = bir::TypeKind::I32,
+        .name = param_name,
+        .size_bytes = 4,
+        .align_bytes = 4,
+    });
+    entry.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, value_name),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, param_name),
+        .rhs = bir::Value::named(bir::TypeKind::I32, param_name),
+    });
+    inline_asm.args.push_back(bir::Value::named(bir::TypeKind::I32, value_name));
+    inline_asm.arg_types.push_back(bir::TypeKind::I32);
+    inline_asm.arg_abi.push_back(i32_arg_abi);
+    if (!inline_asm.inline_asm->constraints.empty()) {
+      inline_asm.inline_asm->constraints += ",";
+    }
+    inline_asm.inline_asm->constraints += "VR";
+    inline_asm.inline_asm->operands.push_back(inline_asm_register_operand(
+        bir::InlineAsmOperandKind::RegisterInput,
+        index,
+        "VR",
+        index,
+        std::nullopt,
+        std::nullopt,
+        bir::InlineAsmRegisterClass::Vector,
+        1));
+  }
+
+  entry.insts.push_back(std::move(inline_asm));
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "v0"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, target, prepare::PrepareOptions{});
+}
+
 prepare::PreparedBirModule prepare_general_grouped_cross_call_module_with_regalloc() {
   bir::Module module;
 
@@ -5091,20 +5312,19 @@ int check_grouped_evicted_value_spill_ops(const prepare::PreparedBirModule& prep
     return fail("expected grouped spill fixture to seed LMUL=16 vector widths");
   }
 
+  const auto caller_m16_spans = prepare::caller_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 16);
   const auto grouped_spill_it = std::find_if(
       function->spill_reload_ops.begin(),
       function->spill_reload_ops.end(),
-      [](const prepare::PreparedSpillReloadOp& op) {
+      [&caller_m16_spans](const prepare::PreparedSpillReloadOp& op) {
         return op.op_kind == prepare::PreparedSpillReloadOpKind::Spill &&
                op.register_bank == prepare::PreparedRegisterBank::Vreg &&
-               op.register_name == std::optional<std::string>{"v0"} &&
                op.contiguous_width == 16 &&
-               op.occupied_register_names.size() == 16 &&
-               op.occupied_register_names.front() == "v0" &&
-               op.occupied_register_names.back() == "v15";
+               contains_register_span(caller_m16_spans, op.occupied_register_names);
       });
   if (grouped_spill_it == function->spill_reload_ops.end()) {
-    return fail("expected an LMUL=16 grouped spill to publish the only legal caller span");
+    return fail("expected an LMUL=16 grouped spill to publish a legal full-width caller span");
   }
 
   const auto* spilled_value = grouped_spill_it->value_id == local0->value_id ? local0
@@ -6754,6 +6974,13 @@ int check_vector_span_candidate_legality() {
           std::vector<std::string>{"v0", "v1", "v2", "v3"}) {
     return fail("expected LMUL=4 vector candidates to occupy four contiguous units from the base");
   }
+  if (m2_spans.size() != 8 || m2_spans.back().register_name != "v14" ||
+      m2_spans.back().occupied_register_names != std::vector<std::string>{"v14", "v15"} ||
+      callee_m2_spans.size() != 8 || callee_m2_spans.back().register_name != "v30" ||
+      callee_m2_spans.back().occupied_register_names != std::vector<std::string>{"v30", "v31"} ||
+      m4_spans.size() != 4 || m4_spans.back().register_name != "v12") {
+    return fail("expected disjoint RV64 caller/callee vector candidates to cover aligned bases through v31");
+  }
   if (callee_m2_spans[0].register_name != "v16" ||
       callee_m2_spans[0].occupied_register_names != std::vector<std::string>{"v16", "v17"}) {
     return fail("expected callee vector candidates to start from the disjoint callee pool");
@@ -6866,6 +7093,107 @@ int check_vector_grouped_linear_scan(const prepare::PreparedBirModule& prepared)
       spans_overlap(m4->assigned_register->occupied_register_names,
                     m1->assigned_register->occupied_register_names)) {
     return fail("expected grouped vector assignments to avoid occupied units across widths");
+  }
+
+  return 0;
+}
+
+int check_rv64_inline_asm_vector_group_allocation(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* regalloc =
+      find_regalloc_function(prepared, "rv64_inline_asm_vector_group_allocation");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for RV64 inline asm vector group allocation");
+  }
+
+  const auto* m2 = find_regalloc_value(prepared, *regalloc, "m2");
+  const auto* m4 = find_regalloc_value(prepared, *regalloc, "m4");
+  const auto* m1 = find_regalloc_value(prepared, *regalloc, "m1");
+  const auto* rw = find_regalloc_value(prepared, *regalloc, "rw");
+  const auto* tie = find_regalloc_value(prepared, *regalloc, "tie");
+  if (m2 == nullptr || m4 == nullptr || m1 == nullptr || rw == nullptr || tie == nullptr) {
+    return fail("expected RV64 inline asm vector operands to appear in regalloc output");
+  }
+  for (const auto* value : {m2, m4, m1, rw, tie}) {
+    if (value->register_class != prepare::PreparedRegisterClass::Vector ||
+        !value->assigned_register.has_value()) {
+      return fail("expected RV64 inline asm vector operands to receive vector registers");
+    }
+  }
+  if (m2->register_group_width != 2 || m4->register_group_width != 4 ||
+      m1->register_group_width != 1 || rw->register_group_width != 2 ||
+      tie->register_group_width != 4) {
+    return fail("expected RV64 inline asm VR/VRM2/VRM4 metadata to seed group widths");
+  }
+
+  const auto caller_m2_spans = prepare::caller_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 2);
+  const auto caller_m4_spans = prepare::caller_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 4);
+  const auto caller_m1_spans = prepare::caller_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 1);
+  auto any_m2_spans = caller_m2_spans;
+  const auto callee_m2_spans = prepare::callee_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 2);
+  any_m2_spans.insert(any_m2_spans.end(), callee_m2_spans.begin(), callee_m2_spans.end());
+  auto any_m4_spans = caller_m4_spans;
+  const auto callee_m4_spans = prepare::callee_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 4);
+  any_m4_spans.insert(any_m4_spans.end(), callee_m4_spans.begin(), callee_m4_spans.end());
+  if (m2->assigned_register->contiguous_width != 2 ||
+      !contains_register_span(caller_m2_spans, m2->assigned_register->occupied_register_names) ||
+      m4->assigned_register->contiguous_width != 4 ||
+      !contains_register_span(caller_m4_spans, m4->assigned_register->occupied_register_names) ||
+      m1->assigned_register->contiguous_width != 1 ||
+      !contains_register_span(caller_m1_spans, m1->assigned_register->occupied_register_names)) {
+    return fail("expected RV64 inline asm vector operands to use legal aligned caller spans");
+  }
+  if (spans_overlap(m2->assigned_register->occupied_register_names,
+                    m4->assigned_register->occupied_register_names) ||
+      spans_overlap(m2->assigned_register->occupied_register_names,
+                    m1->assigned_register->occupied_register_names) ||
+      spans_overlap(m4->assigned_register->occupied_register_names,
+                    m1->assigned_register->occupied_register_names)) {
+    return fail("expected untied RV64 inline asm vector operands to reserve full non-overlapping groups");
+  }
+  if (rw->assigned_register->contiguous_width != 2 ||
+      !contains_register_span(any_m2_spans, rw->assigned_register->occupied_register_names) ||
+      tie->assigned_register->contiguous_width != 4 ||
+      !contains_register_span(any_m4_spans, tie->assigned_register->occupied_register_names)) {
+    return fail("expected read-write and tied RV64 inline asm operands to keep grouped vector homes");
+  }
+
+  return 0;
+}
+
+int check_rv64_inline_asm_vector_impossible_allocation(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* regalloc = find_regalloc_function(prepared, "rv64_inline_asm_vector_impossible");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for impossible RV64 inline asm vector allocation");
+  }
+
+  std::size_t assigned_vector_registers = 0;
+  std::size_t stack_vector_operands = 0;
+  for (std::size_t index = 0; index < 33; ++index) {
+    const std::string value_name = "v" + std::to_string(index);
+    const auto* value = find_regalloc_value(prepared, *regalloc, value_name);
+    if (value == nullptr || value->register_class != prepare::PreparedRegisterClass::Vector ||
+        value->register_group_width != 1) {
+      return fail("expected impossible RV64 inline asm fixture to publish vector register seeds");
+    }
+    if (value->assigned_register.has_value()) {
+      ++assigned_vector_registers;
+      continue;
+    }
+    if (value->assigned_stack_slot.has_value()) {
+      ++stack_vector_operands;
+      continue;
+    }
+    return fail("expected impossible RV64 inline asm fixture to assign register or stack fallback");
+  }
+  if (assigned_vector_registers != 32 || stack_vector_operands != 1) {
+    return fail("expected RV64 inline asm vector pressure to allow 32 registers and diagnose one impossible operand");
   }
 
   return 0;
@@ -7548,6 +7876,20 @@ int main() {
   }
   const auto vector_grouped_cross_call_prepared = prepare_vector_grouped_cross_call_module_with_regalloc();
   if (const int rc = check_vector_grouped_cross_call(vector_grouped_cross_call_prepared); rc != 0) {
+    return rc;
+  }
+  const auto rv64_inline_asm_vector_group_prepared =
+      prepare_rv64_inline_asm_vector_group_allocation_module();
+  if (const int rc =
+          check_rv64_inline_asm_vector_group_allocation(rv64_inline_asm_vector_group_prepared);
+      rc != 0) {
+    return rc;
+  }
+  const auto rv64_inline_asm_vector_impossible_prepared =
+      prepare_rv64_inline_asm_vector_impossible_module();
+  if (const int rc = check_rv64_inline_asm_vector_impossible_allocation(
+          rv64_inline_asm_vector_impossible_prepared);
+      rc != 0) {
     return rc;
   }
   const auto general_grouped_cross_call_prepared = prepare_general_grouped_cross_call_module_with_regalloc();

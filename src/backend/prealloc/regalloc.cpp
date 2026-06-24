@@ -680,17 +680,21 @@ void BirPreAlloc::run_regalloc() {
           continue;
         }
 
+        auto remaining_active_assignments = active_assignments;
+        remaining_active_assignments.erase(remaining_active_assignments.begin() + *eviction_index);
+        const auto replacement_register =
+            choose_register_span(remaining_active_assignments, candidate_spans);
+        if (!replacement_register.has_value()) {
+          continue;
+        }
+
         auto& evicted_value = regalloc_function.values[active_assignments[*eviction_index].value_index];
         spill_points[active_assignments[*eviction_index].value_index] = value.live_interval->start_point;
         value.assigned_register = PreparedPhysicalRegisterAssignment{
             .reg_class = value.register_class,
-            .register_name = active_assignments[*eviction_index].register_name,
-            .contiguous_width =
-                regalloc_function.values[active_assignments[*eviction_index].value_index]
-                    .assigned_register->contiguous_width,
-            .occupied_register_names =
-                regalloc_function.values[active_assignments[*eviction_index].value_index]
-                    .assigned_register->occupied_register_names,
+            .register_name = replacement_register->register_name,
+            .contiguous_width = replacement_register->contiguous_width,
+            .occupied_register_names = replacement_register->occupied_register_names,
         };
         value.allocation_status = PreparedAllocationStatus::AssignedRegister;
 
