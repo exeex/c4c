@@ -46,6 +46,14 @@ constexpr std::uint32_t encode_s_type(std::uint32_t opcode, std::uint32_t funct3
          ((imm & 0x1fu) << 7) | (opcode & 0x7fu);
 }
 
+constexpr std::uint32_t encode_r_type(std::uint32_t opcode, std::uint32_t rd,
+                                      std::uint32_t funct3, std::uint32_t rs1,
+                                      std::uint32_t rs2, std::uint32_t funct7) {
+  return ((funct7 & 0x7fu) << 25) | ((rs2 & 0x1fu) << 20) |
+         ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
+         ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
+}
+
 void append_le32(std::vector<std::uint8_t>& bytes, std::uint32_t word) {
   bytes.push_back(static_cast<std::uint8_t>(word & 0xffu));
   bytes.push_back(static_cast<std::uint8_t>((word >> 8) & 0xffu));
@@ -383,6 +391,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
   RiscvEncodedFragment fragment;
   switch (binary.opcode) {
     case c4c::backend::bir::BinaryOpcode::Add:
+      if (lhs_register.has_value() && rhs_register.has_value()) {
+        append_le32(fragment.bytes,
+                    encode_r_type(0x33,
+                                  *destination,
+                                  0,
+                                  *lhs_register,
+                                  *rhs_register,
+                                  0));
+        return fragment;
+      }
       if (lhs_register.has_value() && rhs_immediate.has_value() &&
           fits_signed_12_bit_immediate(*rhs_immediate)) {
         append_le32(fragment.bytes,

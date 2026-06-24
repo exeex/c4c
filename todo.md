@@ -8,33 +8,30 @@ Current Step Title: Add RV64 Scalar Prepared Object Support
 
 ## Just Finished
 
-- Step 2 extended RV64 prepared object emission for the simple same-module
-  scalar call shape needed by `return_add.c`.
-- `src/backend/mir/riscv/codegen/object_emission.cpp` now supports GPR-backed
-  parameter homes, register/immediate `Add` and `Sub` fragments, small
-  immediate call argument setup, direct call relocation with a nonzero fragment
-  offset, call result register moves, register-valued returns, and a minimal
-  call frame that saves/restores `ra` for functions containing calls.
-- The implementation remains target-owned and fail-closed: it still requires
-  small imm12 integer immediates, GPR register homes, direct fixed-arity calls,
-  no outgoing stack argument area, no memory return, and no local/frame-slot or
-  global/data object support.
+- Step 2 restored and proved the RV64 `two_arg_helper.c` object runtime scan
+  case.
+- The existing scalar call support handled multiple small immediate GPR call
+  args in `main`; proof exposed one real callee-side gap for `add_pair`: the
+  body uses register-register `bir.add i32 %p.x, %p.y` with params homed in
+  `a0` and `a1`.
+- `src/backend/mir/riscv/codegen/object_emission.cpp` now has a minimal RV64
+  R-type encoder and emits register-register `add` for GPR-backed prepared
+  scalar values. Other binary op families remain unsupported unless already
+  covered by the previous register/immediate slice.
 - `tests/backend/mir/backend_riscv_object_emission_test.cpp` now covers the
-  prepared `add_three`/`main` shape directly, including parameter in `a0`,
-  immediate arg `2`, result from `a0` to `t0`, `ra` frame setup, and same-module
-  call relocation placement.
+  two-arg prepared object shape directly, including `add t0, a0, a1`, immediate
+  args `5`/`7`, direct same-module call relocation placement, and the object
+  text layout.
 - `tests/backend/CMakeLists.txt` restored
-  `backend_obj_runtime_rv64_return_add`; it links the compiler-produced `.o`
-  and runs under qemu with expected return code 5.
+  `backend_obj_runtime_rv64_two_arg_helper`; it links the compiler-produced
+  `.o` and runs under qemu with expected return code 12.
 
 ## Suggested Next
 
-- Continue Step 2 with the next RV64 scalar call candidate,
-  `two_arg_helper.c`, by extending the same prepared-call path to multiple
-  small immediate GPR args and proving/restoring only
-  `backend_obj_runtime_rv64_two_arg_helper` if it falls out cleanly.
-- If the supervisor chooses to leave further RV64 widening for later, Step 3's
-  next small AArch64 packet remains selected move-immediate plus immediate
+- Continue Step 2 only if the supervisor wants the next RV64 candidate:
+  inspect/prove `local_temp.c`, which is blocked on explicit frame-slot
+  load/store support rather than scalar call support.
+- Otherwise move to Step 3: AArch64 selected move-immediate plus immediate
   `Add`/`Sub` object encoding for `return_add_sub_chain.c`.
 
 ## Watchouts
@@ -46,15 +43,15 @@ Current Step Title: Add RV64 Scalar Prepared Object Support
   stdout, and object semantic-BIR mode out of this focused child.
 - `local_temp.c` remains out of scope until RV64 object emission has explicit
   frame-slot load/store support.
-- `two_arg_helper.c` is not restored in this packet; restore it only after a
-  focused proof confirms the multi-arg prepared call shape.
+- `two_arg_helper.c` is now restored and green; do not broaden this result to
+  local/frame-slot argument variants without a separate proof.
 - AArch64 object emission is unchanged in this packet; its next small candidate
   is still `return_add_sub_chain.c`, not the frame/call-heavy `return_add.c`.
 
 ## Proof
 
 - Passed:
-  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_riscv_object_emission|backend_cli_riscv64_return_zero_writes_elf_obj|backend_obj_runtime_rv64_return_zero|backend_obj_runtime_rv64_return_add|backend_obj_runtime_rv64_return_add_sub_chain|backend_rv64_runtime_return_add|backend_rv64_runtime_return_add_sub_chain)$' --output-on-failure) > test_after.log 2>&1`
-- Result: 7/7 tests passed.
+  `set -o pipefail; (cmake --build --preset default && ctest --test-dir build -R '^(backend_riscv_object_emission|backend_obj_runtime_rv64_return_add|backend_obj_runtime_rv64_two_arg_helper|backend_rv64_runtime_two_arg_helper)$' --output-on-failure) > test_after.log 2>&1`
+- Result: 4/4 tests passed.
 - Proof log: `test_after.log`.
 - Passed: `git diff --check`.
