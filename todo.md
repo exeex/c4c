@@ -1,49 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/330_native_object_model_and_emission_api.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Compiler-Facing Construction Helpers
+Current Step ID: 4
+Current Step Title: Add Minimal Relocatable ELF Serialization
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 implementation completed: added compiler-facing construction helpers
-for the shared native object model under `c4c::backend::mir::object`.
+Step 4 implementation completed: added minimal shared relocatable ELF
+serialization for modules built through the native object model.
 
-The helper surface now lets target-like clients:
+The shared writer now emits ELF64 little-endian relocatable objects from an
+explicit target config, including:
 
-- create or find sections by stable id or name.
-- append initialized bytes, reserve uninitialized bytes, and apply alignment.
-- bind labels at explicit offsets or the current section offset.
-- publish defined symbols and undefined symbols through deterministic lookup.
-- attach numeric symbol and label relocation records with signed addends.
+- ELF header target machine and flags.
+- initialized and NOBITS section headers from object model sections.
+- `.rela.*` relocation sections grouped by target section.
+- `.symtab` with local symbols before globals and stable model symbol ids.
+- `.strtab` and `.shstrtab` string tables.
 
-No ELF serialization, target-specific relocation enum, instruction encoding,
-`--codegen obj`, parser dependency, or RV64/AArch64 object emission was added.
+Focused coverage now validates ELF structure, section names and types, symbol
+ordering, undefined extern symbols, relocation links, numeric relocation types,
+and signed addends.
+
+No instruction encoding, target-specific relocation enum, parser dependency,
+`--codegen obj`, target object emission, runtime/CLI wiring, or c-testsuite
+route work was added.
 
 ## Suggested Next
 
-Execute Step 4 as the next bounded shared-model slice: add the minimal
-relocatable ELF writer/config records needed to serialize modules already built
-through these helpers, without adding target instruction encoding or CLI route
-wiring.
+Execute the next bounded child-330 slice by adding any missing shared writer
+contract polish the supervisor wants before RV64 target children consume the
+object model, or move lifecycle to the first target-specific object emission
+child if this shared API surface is sufficient.
 
 ## Watchouts
 
 - Do not implement RV64 or AArch64 object emission in child 330.
 - Do not add `--codegen obj` CLI behavior in child 330.
 - Do not make the compiler object path depend on printed `.s` parsing.
-- Keep target-specific relocation names and fixup semantics out of shared model
-  helpers; shared relocation records currently store numeric target-chosen type
-  values only.
-- Step 3 helper semantics currently update an existing named symbol when it is
-  later defined after being declared undefined; later writer work should
-  preserve stable symbol ids.
-- `align_section` pads initialized sections only when `bytes.size()` matches
-  `size_bytes`; reserved sections grow by size without gaining bytes.
-- `clang-format` is not installed in this environment; C++ formatting was
-  adjusted manually.
+- The shared writer intentionally supports only ELF64 little-endian today;
+  unsupported config variants return `std::nullopt`.
+- Shared relocation records still store numeric target-chosen ELF relocation
+  values only. Target-specific relocation names and fixup semantics remain for
+  later RV64/AArch64 children.
+- Label-based relocation addends are serialized as the recorded signed addend
+  plus the bound label offset.
+- The writer does not synthesize target section symbols; it serializes symbols
+  explicitly present in the object model.
 
 ## Proof
 

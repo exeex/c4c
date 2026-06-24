@@ -1,3 +1,4 @@
+#include "src/backend/mir/object/elf_writer.hpp"
 #include "src/backend/mir/object/model.hpp"
 
 #include <cstdint>
@@ -9,6 +10,49 @@
 namespace {
 
 namespace object = c4c::backend::mir::object;
+
+constexpr std::uint32_t SHT_SYMTAB = 2;
+constexpr std::uint32_t SHT_STRTAB = 3;
+constexpr std::uint32_t SHT_RELA = 4;
+constexpr std::uint32_t SHT_NOBITS = 8;
+
+std::uint16_t read_u16(const std::vector<std::uint8_t>& bytes,
+                       std::size_t offset) {
+  return static_cast<std::uint16_t>(bytes[offset]) |
+         (static_cast<std::uint16_t>(bytes[offset + 1]) << 8);
+}
+
+std::uint32_t read_u32(const std::vector<std::uint8_t>& bytes,
+                       std::size_t offset) {
+  return static_cast<std::uint32_t>(bytes[offset]) |
+         (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
+         (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
+         (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
+}
+
+std::uint64_t read_u64(const std::vector<std::uint8_t>& bytes,
+                       std::size_t offset) {
+  std::uint64_t value = 0;
+  for (int shift = 0; shift < 64; shift += 8) {
+    value |= static_cast<std::uint64_t>(bytes[offset + shift / 8]) << shift;
+  }
+  return value;
+}
+
+std::int64_t read_i64(const std::vector<std::uint8_t>& bytes,
+                      std::size_t offset) {
+  return static_cast<std::int64_t>(read_u64(bytes, offset));
+}
+
+std::string read_c_string(const std::vector<std::uint8_t>& bytes,
+                          std::size_t offset) {
+  std::string value;
+  while (offset < bytes.size() && bytes[offset] != 0) {
+    value.push_back(static_cast<char>(bytes[offset]));
+    ++offset;
+  }
+  return value;
+}
 
 int fail(const char* message) {
   std::cerr << message << "\n";
@@ -333,6 +377,99 @@ int helpers_construct_target_like_module() {
   return 0;
 }
 
+int serializes_minimal_relocatable_elf() {
+  const auto module = sample_module();
+  const auto image = object::write_relocatable_elf(
+      module, object::RelocatableElfConfig{.machine = 243, .flags = 0x5});
+  if (!image.has_value()) {
+    return fail("expected ELF writer to accept explicit ELF64 little-endian config");
+  }
+
+  const auto& bytes = image->bytes;
+  if (bytes.size() < 64 || bytes[0] != 0x7f || bytes[1] != 'E' ||
+      bytes[2] != 'L' || bytes[3] != 'F' || bytes[4] != 2 ||
+      bytes[5] != 1 || read_u16(bytes, 16) != 1 ||
+      read_u16(bytes, 18) != 243 || read_u32(bytes, 48) != 0x5) {
+    return fail("expected ELF64 relocatable header with target config");
+  }
+
+  const auto section_header_offset =
+      static_cast<std::size_t>(read_u64(bytes, 40));
+  const auto section_entry_size = read_u16(bytes, 58);
+  const auto section_count = read_u16(bytes, 60);
+  const auto shstr_index = read_u16(bytes, 62);
+  if (section_entry_size != 64 || section_count != 8 || shstr_index != 7) {
+    return fail("expected standard section header table shape");
+  }
+
+  const auto shstr_header = section_header_offset + shstr_index * 64;
+  const auto shstr_offset = static_cast<std::size_t>(read_u64(bytes, shstr_header + 24));
+
+  auto section_name = [&](std::uint16_t index) {
+    const auto header = section_header_offset + index * 64;
+    return read_c_string(bytes, shstr_offset + read_u32(bytes, header));
+  };
+  auto section_type_at = [&](std::uint16_t index) {
+    return read_u32(bytes, section_header_offset + index * 64 + 4);
+  };
+  auto section_offset_at = [&](std::uint16_t index) {
+    return static_cast<std::size_t>(
+        read_u64(bytes, section_header_offset + index * 64 + 24));
+  };
+  auto section_size_at = [&](std::uint16_t index) {
+    return read_u64(bytes, section_header_offset + index * 64 + 32);
+  };
+
+  if (section_name(1) != ".text" || section_name(2) != ".data" ||
+      section_name(3) != ".bss" || section_name(4) != ".rela.text" ||
+      section_name(5) != ".symtab" || section_name(6) != ".strtab" ||
+      section_name(7) != ".shstrtab") {
+    return fail("expected ELF writer to publish standard and relocation sections");
+  }
+  if (section_type_at(3) != SHT_NOBITS || section_size_at(3) != 16 ||
+      section_type_at(4) != SHT_RELA || section_size_at(4) != 48 ||
+      section_type_at(5) != SHT_SYMTAB || section_size_at(5) != 120 ||
+      section_type_at(6) != SHT_STRTAB) {
+    return fail("expected bss, rela, symtab, and string-table section metadata");
+  }
+
+  const auto rela_header = section_header_offset + 4 * 64;
+  if (read_u32(bytes, rela_header + 40) != 5 ||
+      read_u32(bytes, rela_header + 44) != 1 || read_u64(bytes, rela_header + 56) != 24) {
+    return fail("expected relocation section to link symtab and target text");
+  }
+
+  const auto symtab_header = section_header_offset + 5 * 64;
+  if (read_u32(bytes, symtab_header + 40) != 6 ||
+      read_u32(bytes, symtab_header + 44) != 3 || read_u64(bytes, symtab_header + 56) != 24) {
+    return fail("expected symtab to link strtab and mark first global symbol");
+  }
+
+  const auto strtab_offset = section_offset_at(6);
+  const auto symtab_offset = section_offset_at(5);
+  const auto helper_name = read_c_string(bytes, strtab_offset + read_u32(bytes, symtab_offset + 24));
+  const auto bss_name = read_c_string(bytes, strtab_offset + read_u32(bytes, symtab_offset + 48));
+  const auto main_name = read_c_string(bytes, strtab_offset + read_u32(bytes, symtab_offset + 72));
+  const auto extern_name =
+      read_c_string(bytes, strtab_offset + read_u32(bytes, symtab_offset + 96));
+  if (helper_name != "helper" || bss_name != ".bss" || main_name != "main" ||
+      extern_name != "extern_func" || read_u16(bytes, symtab_offset + 96 + 6) != 0) {
+    return fail("expected local symbols before globals and undefined extern");
+  }
+
+  const auto rela_offset = section_offset_at(4);
+  if (read_u64(bytes, rela_offset) != 2 ||
+      read_u64(bytes, rela_offset + 8) != ((std::uint64_t{4} << 32) | 26) ||
+      read_i64(bytes, rela_offset + 16) != -4 ||
+      read_u64(bytes, rela_offset + 24) != 8 ||
+      read_u64(bytes, rela_offset + 32) != ((std::uint64_t{3} << 32) | 17) ||
+      read_i64(bytes, rela_offset + 40) != 12) {
+    return fail("expected numeric relocation entries with ELF symbol indices");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -351,5 +488,8 @@ int main() {
   if (int rc = records_target_neutral_names(); rc != 0) {
     return rc;
   }
-  return helpers_construct_target_like_module();
+  if (int rc = helpers_construct_target_like_module(); rc != 0) {
+    return rc;
+  }
+  return serializes_minimal_relocatable_elf();
 }
