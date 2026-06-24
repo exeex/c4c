@@ -12,9 +12,12 @@
 
 namespace {
 
+namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64 = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
+namespace bir = c4c::backend::bir;
 namespace object = c4c::backend::mir::object;
+namespace prepare = c4c::backend::prepare;
 
 constexpr std::uint32_t R_AARCH64_ADR_PREL_PG_HI21 = 275;
 constexpr std::uint32_t R_AARCH64_ADD_ABS_LO12_NC = 277;
@@ -141,6 +144,98 @@ aarch64::InstructionRecord machine_direct_call(std::string_view callee) {
   return aarch64::make_call_instruction(aarch64::CallInstructionRecord{
       .direct_callee_label = callee,
   });
+}
+
+aarch64::RegisterOperand w_register(unsigned index,
+                                     prepare::PreparedValueId value_id,
+                                     c4c::ValueNameId value_name,
+                                     aarch64::RegisterOperandRole role) {
+  return aarch64::RegisterOperand{
+      .reg = aarch64_abi::w_register(static_cast<std::uint8_t>(index)),
+      .role = role,
+      .value_id = value_id,
+      .value_name = value_name,
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = aarch64_abi::RegisterView::W,
+      .contiguous_width = 1,
+      .occupied_registers = {"w0"},
+  };
+}
+
+aarch64::ImmediateOperand signed_i32_immediate(std::int64_t value,
+                                               prepare::PreparedValueId value_id) {
+  return aarch64::ImmediateOperand{
+      .kind = aarch64::ImmediateKind::SignedInteger,
+      .type = bir::TypeKind::I32,
+      .signed_value = value,
+      .unsigned_value = static_cast<std::uint64_t>(value),
+      .source_value_id = value_id,
+  };
+}
+
+aarch64::InstructionRecord machine_move_immediate_w0(std::int64_t value) {
+  return aarch64::InstructionRecord{
+      .family = aarch64::InstructionFamily::CallBoundary,
+      .surface = aarch64::RecordSurfaceKind::MachineInstructionNode,
+      .opcode = aarch64::MachineOpcode::CallBoundaryMove,
+      .selection =
+          aarch64::MachineNodeStatusRecord{
+              .status = aarch64::MachineNodeSelectionStatus::Selected,
+          },
+      .payload =
+          aarch64::CallBoundaryMoveInstructionRecord{
+              .move =
+                  prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{1},
+                      .to_value_id = prepare::PreparedValueId{1},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "object_test_immediate_return",
+                  },
+              .source_immediate =
+                  signed_i32_immediate(value, prepare::PreparedValueId{1}),
+              .destination_register =
+                  w_register(0,
+                             prepare::PreparedValueId{1},
+                             c4c::ValueNameId{1},
+                             aarch64::RegisterOperandRole::CallAbi),
+          },
+  };
+}
+
+aarch64::InstructionRecord machine_alu_immediate_w0(
+    aarch64::ScalarAluOperationKind operation,
+    bir::BinaryOpcode opcode,
+    std::int64_t immediate,
+    prepare::PreparedValueId result_id) {
+  return aarch64::make_scalar_instruction(aarch64::make_scalar_alu_instruction_record(
+      aarch64::ScalarAluRecord{
+          .surface = aarch64::RecordSurfaceKind::RecordOnly,
+          .operation = operation,
+          .source_binary_opcode = opcode,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = result_id,
+          .result_value_name = c4c::ValueNameId{2},
+          .result_type = bir::TypeKind::I32,
+          .result_register =
+              w_register(0,
+                         result_id,
+                         c4c::ValueNameId{2},
+                         aarch64::RegisterOperandRole::StoragePlan),
+          .lhs =
+              aarch64::make_register_operand(w_register(
+                  0,
+                  prepare::PreparedValueId{10},
+                  c4c::ValueNameId{3},
+                  aarch64::RegisterOperandRole::StoragePlan)),
+          .rhs = aarch64::make_immediate_operand(
+              signed_i32_immediate(immediate, prepare::PreparedValueId{11})),
+          .supported_integer_operation = true,
+      }));
 }
 
 aarch64::InstructionRecord unsupported_machine_scalar() {
@@ -414,6 +509,50 @@ int builds_external_machine_direct_call_object() {
   return 0;
 }
 
+int builds_selected_scalar_immediate_machine_object() {
+  const auto function = machine_function({
+      machine_instruction(machine_move_immediate_w0(2)),
+      machine_instruction(machine_alu_immediate_w0(
+          aarch64::ScalarAluOperationKind::Add,
+          bir::BinaryOpcode::Add,
+          3,
+          prepare::PreparedValueId{2})),
+      machine_instruction(machine_alu_immediate_w0(
+          aarch64::ScalarAluOperationKind::Sub,
+          bir::BinaryOpcode::Sub,
+          1,
+          prepare::PreparedValueId{3})),
+      machine_instruction(machine_return()),
+  });
+
+  const auto result = aarch64::build_aarch64_text_object_module({
+      aarch64::Aarch64MachineObjectFunction{
+          .name = "return_add_sub_chain",
+          .global = true,
+          .function = &function,
+      },
+  });
+  if (!result.ok()) {
+    return fail("expected selected scalar immediate machine records to emit object module");
+  }
+
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* symbol = object::find_symbol(*result.module, "return_add_sub_chain");
+  if (text == nullptr || text->size_bytes != 16 ||
+      !has_bytes(*text,
+                 {0x40, 0x00, 0x80, 0x52,
+                  0x00, 0x0c, 0x00, 0x11,
+                  0x00, 0x04, 0x00, 0x51,
+                  0xc0, 0x03, 0x5f, 0xd6}) ||
+      symbol == nullptr ||
+      symbol->section != std::optional<object::SectionId>{text->id} ||
+      symbol->value != 0 || symbol->size_bytes != 16 ||
+      !result.module->relocations.empty()) {
+    return fail("expected MOVZ/ADD/SUB/RET scalar object bytes with no relocations");
+  }
+  return 0;
+}
+
 int rejects_unsupported_machine_records_without_text_fallback() {
   const auto function = machine_function({
       machine_instruction(unsupported_machine_scalar()),
@@ -672,6 +811,10 @@ int main() {
     return status;
   }
   if (const int status = builds_external_machine_direct_call_object();
+      status != 0) {
+    return status;
+  }
+  if (const int status = builds_selected_scalar_immediate_machine_object();
       status != 0) {
     return status;
   }

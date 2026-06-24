@@ -64,6 +64,131 @@ bool is_selected_machine_instruction(const InstructionRecord& instruction) {
          instruction.selection.status == MachineNodeSelectionStatus::Selected;
 }
 
+std::optional<abi::RegisterView> gpr_instruction_view(
+    const RegisterOperand& reg) {
+  if (reg.reg.bank != abi::RegisterBank::GeneralPurpose ||
+      reg.reg.index > 30 ||
+      (reg.reg.view != abi::RegisterView::X && reg.reg.view != abi::RegisterView::W)) {
+    return std::nullopt;
+  }
+  if (reg.expected_view == abi::RegisterView::W ||
+      reg.expected_view == abi::RegisterView::X) {
+    return *reg.expected_view;
+  }
+  return reg.reg.view;
+}
+
+std::optional<std::uint8_t> gpr_encoding_index(const RegisterOperand& reg,
+                                               abi::RegisterView view) {
+  const auto instruction_view = gpr_instruction_view(reg);
+  if (!instruction_view.has_value() || *instruction_view != view) {
+    return std::nullopt;
+  }
+  return reg.reg.index;
+}
+
+std::optional<std::uint64_t> unsigned_immediate_value(
+    const ImmediateOperand& immediate) {
+  switch (immediate.kind) {
+    case ImmediateKind::SignedInteger:
+      if (immediate.signed_value < 0) {
+        return std::nullopt;
+      }
+      return static_cast<std::uint64_t>(immediate.signed_value);
+    case ImmediateKind::UnsignedInteger:
+      return immediate.unsigned_value;
+    case ImmediateKind::Boolean:
+      return immediate.unsigned_value != 0 ? 1u : 0u;
+    case ImmediateKind::NullPointer:
+      return 0u;
+  }
+  return std::nullopt;
+}
+
+std::optional<Aarch64EncodedFragment> move_immediate_fragment(
+    const RegisterOperand& destination,
+    const ImmediateOperand& immediate) {
+  const auto view = gpr_instruction_view(destination);
+  if (!view.has_value()) {
+    return std::nullopt;
+  }
+  const auto rd = gpr_encoding_index(destination, *view);
+  const auto value = unsigned_immediate_value(immediate);
+  if (!rd.has_value() || !value.has_value() || *value > 0xffffu) {
+    return std::nullopt;
+  }
+
+  const std::uint32_t base =
+      *view == abi::RegisterView::X ? 0xd2800000u : 0x52800000u;
+  Aarch64EncodedFragment fragment;
+  append_le32(fragment.bytes,
+              base |
+                  (static_cast<std::uint32_t>(*value) << 5u) |
+                  static_cast<std::uint32_t>(*rd));
+  return fragment;
+}
+
+std::optional<Aarch64EncodedFragment> scalar_add_sub_immediate_fragment(
+    const ScalarAluRecord& alu) {
+  if (!alu.result_register.has_value() ||
+      (alu.operation != ScalarAluOperationKind::Add &&
+       alu.operation != ScalarAluOperationKind::Sub) ||
+      !alu.supported_integer_operation) {
+    return std::nullopt;
+  }
+
+  const auto* lhs_register = std::get_if<RegisterOperand>(&alu.lhs.payload);
+  const auto* lhs_immediate = std::get_if<ImmediateOperand>(&alu.lhs.payload);
+  const auto* rhs = std::get_if<ImmediateOperand>(&alu.rhs.payload);
+  if (alu.rhs.kind != OperandKind::Immediate || rhs == nullptr ||
+      (lhs_register == nullptr && lhs_immediate == nullptr)) {
+    return std::nullopt;
+  }
+
+  const auto view = gpr_instruction_view(*alu.result_register);
+  if (!view.has_value()) {
+    return std::nullopt;
+  }
+  const auto rd = gpr_encoding_index(*alu.result_register, *view);
+  const auto immediate = unsigned_immediate_value(*rhs);
+  if (!rd.has_value() || !immediate.has_value() ||
+      *immediate > 0xfffu) {
+    return std::nullopt;
+  }
+
+  Aarch64EncodedFragment fragment;
+  std::uint8_t rn = *rd;
+  if (lhs_register != nullptr) {
+    const auto encoded_lhs = gpr_encoding_index(*lhs_register, *view);
+    if (!encoded_lhs.has_value()) {
+      return std::nullopt;
+    }
+    rn = *encoded_lhs;
+  } else {
+    const auto lhs_value = unsigned_immediate_value(*lhs_immediate);
+    if (!lhs_value.has_value() || *lhs_value > 0xffffu) {
+      return std::nullopt;
+    }
+    const std::uint32_t mov_base =
+        *view == abi::RegisterView::X ? 0xd2800000u : 0x52800000u;
+    append_le32(fragment.bytes,
+                mov_base |
+                    (static_cast<std::uint32_t>(*lhs_value) << 5u) |
+                    static_cast<std::uint32_t>(*rd));
+  }
+
+  const std::uint32_t base =
+      alu.operation == ScalarAluOperationKind::Add
+          ? (*view == abi::RegisterView::X ? 0x91000000u : 0x11000000u)
+          : (*view == abi::RegisterView::X ? 0xd1000000u : 0x51000000u);
+  append_le32(fragment.bytes,
+              base |
+                  (static_cast<std::uint32_t>(*immediate) << 10u) |
+                  (static_cast<std::uint32_t>(rn) << 5u) |
+                  static_cast<std::uint32_t>(*rd));
+  return fragment;
+}
+
 void add_diagnostic(std::vector<Aarch64ObjectEmissionDiagnostic>& diagnostics,
                     Aarch64ObjectEmissionDiagnosticKind kind,
                     std::string function_name,
@@ -97,6 +222,44 @@ std::optional<Aarch64EncodedFragment> fragment_for_machine_instruction(
 
   if (std::holds_alternative<ReturnInstructionRecord>(instruction.payload)) {
     return make_aarch64_return_fragment();
+  }
+
+  if (const auto* move =
+          std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.payload)) {
+    if (instruction.opcode == MachineOpcode::CallBoundaryMove &&
+        move->source_immediate.has_value() &&
+        move->destination_register.has_value()) {
+      if (auto fragment = move_immediate_fragment(*move->destination_register,
+                                                  *move->source_immediate);
+          fragment.has_value()) {
+        return fragment;
+      }
+    }
+    add_diagnostic(diagnostics,
+                   Aarch64ObjectEmissionDiagnosticKind::UnsupportedInstruction,
+                   function_name,
+                   block_index,
+                   instruction_index,
+                   "AArch64 object emission supports only selected immediate GPR call-boundary moves");
+    return std::nullopt;
+  }
+
+  if (const auto* scalar =
+          std::get_if<ScalarInstructionRecord>(&instruction.payload)) {
+    if (scalar->scalar_alu.has_value()) {
+      if (auto fragment =
+              scalar_add_sub_immediate_fragment(*scalar->scalar_alu);
+          fragment.has_value()) {
+        return fragment;
+      }
+    }
+    add_diagnostic(diagnostics,
+                   Aarch64ObjectEmissionDiagnosticKind::UnsupportedInstruction,
+                   function_name,
+                   block_index,
+                   instruction_index,
+                   "AArch64 object emission supports only selected immediate add/sub scalar instructions");
+    return std::nullopt;
   }
 
   if (const auto* call = std::get_if<CallInstructionRecord>(&instruction.payload)) {
