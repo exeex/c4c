@@ -44,8 +44,7 @@ AssembleResult assemble(const AssembleRequest& request) {
       if (!supports_emittable_slice(statements)) {
         result.error =
             "riscv64 built-in assembler object emission currently supports only the "
-            "minimal prepared-LIR return-add handoff and the bounded single-object "
-            "jal-helper relocation handoff";
+            "minimal prepared-LIR return-add handoff";
       } else {
         result.error = "failed to emit riscv64 ELF relocatable object";
       }
