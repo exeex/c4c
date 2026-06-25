@@ -154,7 +154,7 @@ struct InlineAsmVectorConstraintFacts {
   if (!facts.is_vector_looking) {
     return facts;
   }
-  if (body == "VR") {
+  if (body == "VR" || body == "VRM1") {
     facts.supported = true;
     facts.group_width = 1;
   } else if (body == "VRM2") {
@@ -163,8 +163,32 @@ struct InlineAsmVectorConstraintFacts {
   } else if (body == "VRM4") {
     facts.supported = true;
     facts.group_width = 4;
+  } else if (body == "VRM8") {
+    facts.supported = true;
+    facts.group_width = 8;
   }
   return facts;
+}
+
+[[nodiscard]] std::optional<bir::TypeKind> inline_asm_vrm_type_for_group_width(
+    std::size_t group_width) {
+  switch (group_width) {
+    case 1:
+      return bir::TypeKind::Vrm1;
+    case 2:
+      return bir::TypeKind::Vrm2;
+    case 4:
+      return bir::TypeKind::Vrm4;
+    case 8:
+      return bir::TypeKind::Vrm8;
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] bool inline_asm_type_is_vrm(bir::TypeKind type) {
+  return type == bir::TypeKind::Vrm1 || type == bir::TypeKind::Vrm2 ||
+         type == bir::TypeKind::Vrm4 || type == bir::TypeKind::Vrm8;
 }
 
 [[nodiscard]] bool inline_asm_template_modifier_is_supported(char modifier,
@@ -2289,12 +2313,65 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .return_type = bir::TypeKind::Void,
         .inline_asm = make_inline_asm_metadata(inline_asm),
     };
+    const auto inline_asm_output_vrm_type = [&]() -> std::optional<bir::TypeKind> {
+      if (!lowered_call.inline_asm.has_value()) {
+        return std::nullopt;
+      }
+      for (const auto& operand : lowered_call.inline_asm->operands) {
+        if (operand.kind != bir::InlineAsmOperandKind::RegisterOutput ||
+            operand.output_index.value_or(std::numeric_limits<std::size_t>::max()) != 0 ||
+            operand.register_class != bir::InlineAsmRegisterClass::Vector) {
+          continue;
+        }
+        return inline_asm_vrm_type_for_group_width(operand.register_group_width);
+      }
+      return std::nullopt;
+    };
+    const auto lowered_vrm_producer_type =
+        [&](std::string_view value_name) -> std::optional<bir::TypeKind> {
+      for (auto inst_it = lowered_insts->rbegin(); inst_it != lowered_insts->rend();
+           ++inst_it) {
+        const auto* load = std::get_if<bir::LoadLocalInst>(&*inst_it);
+        if (load == nullptr || load->result.kind != bir::Value::Kind::Named ||
+            load->result.name != value_name) {
+          continue;
+        }
+        if (inline_asm_type_is_vrm(load->result.type)) {
+          return load->result.type;
+        }
+        return std::nullopt;
+      }
+      return std::nullopt;
+    };
+    const auto inline_asm_arg_vrm_type =
+        [&](std::size_t arg_index, std::string_view value_name) -> std::optional<bir::TypeKind> {
+      if (!lowered_call.inline_asm.has_value()) {
+        return std::nullopt;
+      }
+      for (const auto& operand : lowered_call.inline_asm->operands) {
+        if (operand.arg_index != arg_index ||
+            operand.register_class != bir::InlineAsmRegisterClass::Vector) {
+          continue;
+        }
+        const auto expected = inline_asm_vrm_type_for_group_width(
+            operand.register_group_width);
+        const auto produced = lowered_vrm_producer_type(value_name);
+        if (expected.has_value() && produced == expected) {
+          return produced;
+        }
+        return std::nullopt;
+      }
+      return std::nullopt;
+    };
 
     if (return_type_text != "void") {
       if (inline_asm.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
         return fail_runtime_family("inline-asm placeholder family");
       }
-      const auto lowered_type = lower_scalar_or_function_pointer_type(return_type_text);
+      auto lowered_type = lower_scalar_or_function_pointer_type(return_type_text);
+      if (const auto vrm_type = inline_asm_output_vrm_type(); vrm_type.has_value()) {
+        lowered_type = *vrm_type;
+      }
       if (!lowered_type.has_value()) {
         return fail_runtime_family("inline-asm placeholder family");
       }
@@ -2321,11 +2398,20 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
           lowered_arg_types.clear();
           break;
         }
-        const auto arg_type = lower_scalar_or_function_pointer_type(parsed_operand->type_text);
+        auto arg_type = lower_scalar_or_function_pointer_type(parsed_operand->type_text);
         if (!arg_type.has_value()) {
           lowered_args.clear();
           lowered_arg_types.clear();
           break;
+        }
+        if (parsed_operand->operand.kind() ==
+            c4c::codegen::lir::LirOperandKind::SsaValue) {
+          if (const auto vrm_type =
+                  inline_asm_arg_vrm_type(lowered_args.size(),
+                                          parsed_operand->operand.str());
+              vrm_type.has_value()) {
+            arg_type = *vrm_type;
+          }
         }
         const auto lowered_arg =
             BirFunctionLowerer::lower_value(parsed_operand->operand, *arg_type, value_aliases);
@@ -2344,6 +2430,11 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
       }
     }
 
+    if (lowered_call.result.has_value() &&
+        lowered_call.result->kind == bir::Value::Kind::Named &&
+        inline_asm_type_is_vrm(lowered_call.result->type)) {
+      value_aliases_[lowered_call.result->name] = *lowered_call.result;
+    }
     lowered_insts->push_back(std::move(lowered_call));
     return true;
   };

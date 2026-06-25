@@ -986,6 +986,9 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
       }
       if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(
               &block.insts[instruction_index])) {
+        if (c4c::backend::bir::is_vrm_register_type(store->value.type)) {
+          continue;
+        }
         auto fragment = fragment_for_prepared_store_local(
             prepared.stack_layout,
             prepared.names,
@@ -1003,6 +1006,9 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
       }
       if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(
               &block.insts[instruction_index])) {
+        if (c4c::backend::bir::is_vrm_register_type(load->result.type)) {
+          continue;
+        }
         auto fragment = fragment_for_prepared_load_local(
             prepared.stack_layout,
             prepared.names,
@@ -1184,12 +1190,19 @@ std::optional<std::string> substitute_positional_riscv_inline_asm_operands(
 std::optional<std::size_t> parse_positional_inline_asm_placeholder(
     std::string_view token) {
   token = trim_ascii(token);
-  if (token.size() < 2 || token.front() != '%') {
+  if (token.size() < 2 || (token.front() != '%' && token.front() != '$')) {
     return std::nullopt;
   }
   token.remove_prefix(1);
   if (token.empty() || token.front() == '[' || token.front() == 'c') {
     return std::nullopt;
+  }
+  if (token.front() == '{') {
+    if (token.size() < 3 || token.back() != '}') {
+      return std::nullopt;
+    }
+    token.remove_prefix(1);
+    token.remove_suffix(1);
   }
   std::size_t operand_index = 0;
   const char* const begin = token.data();

@@ -94,7 +94,8 @@ endfunction()
 
 function(c4c_add_backend_codegen_object_test test_name)
   set(options)
-  set(one_value_args SRC TARGET_TRIPLE OUT_OBJECT EXPECTED_MACHINE_LE CASE_TIMEOUT_SEC)
+  set(one_value_args SRC TARGET_TRIPLE OUT_OBJECT EXPECTED_MACHINE_LE EXPECTED_HEX_CONTAINS
+                     CASE_TIMEOUT_SEC)
   set(multi_value_args LABELS)
   cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
@@ -118,6 +119,7 @@ function(c4c_add_backend_codegen_object_test test_name)
             -DTARGET_TRIPLE=${ARG_TARGET_TRIPLE}
             -DOUT_OBJECT=${ARG_OUT_OBJECT}
             -DEXPECTED_MACHINE_LE=${ARG_EXPECTED_MACHINE_LE}
+            "-DEXPECTED_HEX_CONTAINS=${ARG_EXPECTED_HEX_CONTAINS}"
             "-DCASE_TIMEOUT_SEC=${ARG_CASE_TIMEOUT_SEC}"
             -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_codegen_object_case.cmake"
   )
@@ -385,6 +387,17 @@ c4c_add_backend_codegen_object_test(
   EXPECTED_MACHINE_LE f300
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 object output_contract dual-route cli
+)
+
+c4c_add_backend_codegen_object_test(
+  backend_cli_riscv64_vrm_insn_d_source_obj
+  SRC "${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_vrm_insn_d_source.o"
+  EXPECTED_MACHINE_LE f300
+  EXPECTED_HEX_CONTAINS "0a0320080b0300001305000067800000"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object inline_asm vrm insn_d cli
 )
 
 c4c_add_backend_codegen_object_test(

@@ -47,4 +47,12 @@ if(NOT machine_le STREQUAL "${EXPECTED_MACHINE_LE}")
     "[BACKEND_OBJ_BAD_MACHINE] ${OUT_OBJECT} machine=${machine_le} expected=${EXPECTED_MACHINE_LE}")
 endif()
 
+if(DEFINED EXPECTED_HEX_CONTAINS AND NOT "${EXPECTED_HEX_CONTAINS}" STREQUAL "")
+  string(FIND "${output_hex}" "${EXPECTED_HEX_CONTAINS}" expected_hex_offset)
+  if(expected_hex_offset EQUAL -1)
+    message(FATAL_ERROR
+      "[BACKEND_OBJ_MISSING_BYTES] ${OUT_OBJECT} did not contain ${EXPECTED_HEX_CONTAINS}")
+  endif()
+endif()
+
 message(STATUS "[PASS][backend-obj] ${SRC}")

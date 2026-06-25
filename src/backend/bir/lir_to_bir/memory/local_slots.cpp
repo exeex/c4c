@@ -665,7 +665,22 @@ bool BirFunctionLowerer::lower_memory_store_inst(
     }
   };
 
-  const auto value_type = lower_scalar_or_function_pointer_type(store.type_str.str());
+  auto value_type = lower_scalar_or_function_pointer_type(store.type_str.str());
+  if (value_type.has_value() &&
+      store.ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
+      store.val.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+    const auto ptr_it = local_pointer_slots_.find(store.ptr.str());
+    const auto alias_it = value_aliases_.find(store.val.str());
+    if (ptr_it != local_pointer_slots_.end() &&
+        alias_it != value_aliases_.end() &&
+        bir::is_vrm_register_type(alias_it->second.type)) {
+      const auto slot_type_it = local_slot_types_.find(ptr_it->second);
+      if (slot_type_it != local_slot_types_.end() &&
+          slot_type_it->second == alias_it->second.type) {
+        value_type = alias_it->second.type;
+      }
+    }
+  }
   if (!value_type.has_value()) {
     // Step 4 no-id compatibility bridge: local aggregate store lowering owns
     // LirStoreOp::type_str rendered text for aggregate stores. The limitation
