@@ -1,9 +1,29 @@
 # BIR/Prepared Object Consumer Contract Completion
 
-Status: Open
+Status: Closed
 Type: Architecture contract idea
 Related:
 - `ideas/open/356_rv64_object_route_assembler_backed_prepared_text.md`
+
+## Closure Summary
+
+Closed after the Step 5 handoff back to idea 356.
+
+The shared prepared object consumer contract now has focused coverage and
+target consumers can use shared traversal/query/diagnostic helpers instead of
+rediscovering target-independent BIR/prepared semantics locally. The completed
+handoff records that idea 356 remains open for RV64 object-route work around
+target-block preservation, MIR pseudo lowering, assembler-backed encoding,
+labels, fixups, relocations, and executable progress.
+
+Close proof:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(riscv_object_emission|prepared_object_consumer_contract|aarch64_function_traversal|prepare_phi_materialize|prepared_lookup_helper|prepared_printer)$' > test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: passed, 6/6 tests; regression guard passed with no new failures.
 
 ## Problem
 
