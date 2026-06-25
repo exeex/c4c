@@ -1,6 +1,7 @@
 #include "object_emission.hpp"
 
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "rv64_line_assembler.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -412,16 +413,21 @@ std::optional<RiscvEncodedFragment> fragment_for_rv64_insn_d_inline_asm(
       call.callee_value.has_value()) {
     return std::nullopt;
   }
-  const auto shape = classify_prepared_rv64_insn_d_inline_asm(*carrier);
-  if (!shape.has_value()) {
+  const auto substituted = substitute_prepared_riscv_inline_asm_operands(*carrier);
+  if (!substituted.has_value()) {
     return std::nullopt;
   }
-  const auto encoded = encode_rv64_ev_insn_d_inline_asm(*shape);
+  const auto parsed = parse_rv64_asm_line(*substituted);
+  if (!parsed.has_value() ||
+      !std::holds_alternative<Rv64InsnDLine>(*parsed)) {
+    return std::nullopt;
+  }
+  const auto encoded = encode_rv64_asm_line(*parsed);
   if (!encoded.has_value()) {
     return std::nullopt;
   }
   RiscvEncodedFragment fragment;
-  append_le64(fragment.bytes, *encoded);
+  fragment.bytes = *encoded;
   return fragment;
 }
 
