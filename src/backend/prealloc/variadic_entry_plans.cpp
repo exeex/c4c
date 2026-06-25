@@ -467,6 +467,20 @@ aapcs64_variadic_helper_scratch_requirement(PreparedVariadicEntryHelperKind kind
   return VariadicHelperScratchRequirement{};
 }
 
+[[nodiscard]] constexpr VariadicHelperScratchRequirement
+rv64_variadic_helper_scratch_requirement(PreparedVariadicEntryHelperKind kind) {
+  switch (kind) {
+    case PreparedVariadicEntryHelperKind::VaStart:
+    case PreparedVariadicEntryHelperKind::VaArg:
+    case PreparedVariadicEntryHelperKind::VaArgAggregate:
+    case PreparedVariadicEntryHelperKind::VaCopy:
+      return VariadicHelperScratchRequirement{
+          .scratch_register_count = 3,
+      };
+  }
+  return VariadicHelperScratchRequirement{};
+}
+
 void populate_aapcs64_variadic_entry_helper_resource_authority(
     PreparedVariadicEntryPlanFunction& function_plan) {
   if (function_plan.helper_resources.required_helpers.empty()) {
@@ -477,6 +491,28 @@ void populate_aapcs64_variadic_entry_helper_resource_authority(
   std::size_t scratch_stack_bytes = 0;
   for (const auto helper : function_plan.helper_resources.required_helpers) {
     const auto requirement = aapcs64_variadic_helper_scratch_requirement(helper);
+    scratch_register_count =
+        std::max(scratch_register_count, requirement.scratch_register_count);
+    scratch_stack_bytes =
+        std::max(scratch_stack_bytes, requirement.scratch_stack_bytes);
+  }
+  function_plan.helper_resources.scratch_register_count = scratch_register_count;
+  function_plan.helper_resources.scratch_stack_bytes = scratch_stack_bytes;
+  remove_missing_variadic_entry_fact(function_plan,
+                                     "helper_resources.scratch_register_count");
+  remove_missing_variadic_entry_fact(function_plan, "helper_resources.scratch_stack_bytes");
+}
+
+void populate_rv64_variadic_entry_helper_resource_authority(
+    PreparedVariadicEntryPlanFunction& function_plan) {
+  if (function_plan.helper_resources.required_helpers.empty()) {
+    return;
+  }
+
+  std::size_t scratch_register_count = 0;
+  std::size_t scratch_stack_bytes = 0;
+  for (const auto helper : function_plan.helper_resources.required_helpers) {
+    const auto requirement = rv64_variadic_helper_scratch_requirement(helper);
     scratch_register_count =
         std::max(scratch_register_count, requirement.scratch_register_count);
     scratch_stack_bytes =
@@ -1015,6 +1051,7 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
       remove_missing_variadic_entry_fact(function_plan,
                                          "target_abi.variadic_entry_state");
       remove_missing_variadic_entry_fact(function_plan, "target_abi.va_list_layout");
+      populate_rv64_variadic_entry_helper_resource_authority(function_plan);
     } else {
       publish_missing_non_aapcs64_variadic_entry_contract(function_plan);
     }

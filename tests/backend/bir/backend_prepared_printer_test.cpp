@@ -6696,6 +6696,10 @@ int main() {
   };
   if (rv64_helper_family_entry_plan == nullptr ||
       rv64_helper_family_entry_plan->helper_resources.required_helpers.size() != 4 ||
+      rv64_helper_family_entry_plan->helper_resources.scratch_register_count !=
+          std::optional<std::size_t>{3} ||
+      rv64_helper_family_entry_plan->helper_resources.scratch_stack_bytes !=
+          std::optional<std::size_t>{0} ||
       rv64_helper_family_entry_plan->helper_operand_homes.empty() == false ||
       rv64_helper_family_entry_plan->register_save_area.required ||
       !rv64_helper_family_entry_plan->overflow_area.required ||
@@ -6707,8 +6711,8 @@ int main() {
       rv64_helper_family_entry_plan->va_list_layout.fields.size() != 1 ||
       has_rv64_missing_fact("target_abi.variadic_entry_state") ||
       has_rv64_missing_fact("target_abi.va_list_layout") ||
-      !has_rv64_missing_fact("helper_resources.scratch_register_count") ||
-      !has_rv64_missing_fact("helper_resources.scratch_stack_bytes") ||
+      has_rv64_missing_fact("helper_resources.scratch_register_count") ||
+      has_rv64_missing_fact("helper_resources.scratch_stack_bytes") ||
       !has_rv64_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
       !has_rv64_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
       !has_rv64_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
@@ -6728,7 +6732,7 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,
-                       "helper_resources scratch_registers=<unknown> scratch_stack=<unknown> helpers=[va_start,va_arg,va_arg_aggregate,va_copy]",
+                       "helper_resources scratch_registers=3 scratch_stack=0 helpers=[va_start,va_arg,va_arg_aggregate,va_copy]",
                        "RV64 variadic helper-family helper summary")) {
     return EXIT_FAILURE;
   }

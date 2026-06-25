@@ -8150,8 +8150,10 @@ int check_rv64_variadic_entry_helper_missing_contract() {
                      fact) != entry_plan->missing_required_facts.end();
   };
   if (entry_plan->helper_resources.required_helpers.size() != 4 ||
-      entry_plan->helper_resources.scratch_register_count.has_value() ||
-      entry_plan->helper_resources.scratch_stack_bytes.has_value() ||
+      entry_plan->helper_resources.scratch_register_count !=
+          std::optional<std::size_t>{3} ||
+      entry_plan->helper_resources.scratch_stack_bytes !=
+          std::optional<std::size_t>{0} ||
       !entry_plan->helper_operand_homes.empty() ||
       entry_plan->register_save_area.required ||
       !entry_plan->overflow_area.required ||
@@ -8168,8 +8170,8 @@ int check_rv64_variadic_entry_helper_missing_contract() {
   }
   if (has_missing_fact("target_abi.variadic_entry_state") ||
       has_missing_fact("target_abi.va_list_layout") ||
-      !has_missing_fact("helper_resources.scratch_register_count") ||
-      !has_missing_fact("helper_resources.scratch_stack_bytes") ||
+      has_missing_fact("helper_resources.scratch_register_count") ||
+      has_missing_fact("helper_resources.scratch_stack_bytes") ||
       !has_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
       !has_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
       !has_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
