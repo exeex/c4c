@@ -1,8 +1,25 @@
 # RV64 Object Route ABI and Width Edge Coverage
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
+
+## Closure Note
+
+Closed after the Step 5 milestone validation. The five representative cases
+all pass through clang link and qemu:
+
+- `src/20010119-1.c`
+- `src/20001203-1.c`
+- `src/20030216-1.c`
+- `src/20030125-1.c`
+- `src/920410-1.c`
+
+Focused backend proof also passed for
+`backend_riscv_object_emission`,
+`backend_prepare_frame_stack_call_contract`, and
+`backend_prepared_printer`. The close-time regression guard comparing
+`test_before.log` and `test_after.log` passed with 3/3 tests before and after.
 
 ## Goal
 
