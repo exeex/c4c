@@ -71,6 +71,13 @@ C/C++ frontend
   consumer contract.
 - Diagnose which layer rejects each case before repairing that layer.
 - Keep target-owned repairs hook-shaped and semantic-boundary preserving.
+- RV64 object emission must consume the shared prepared object traversal event
+  stream; do not manually scan `control_flow.parallel_copy_bundles` to
+  reconstruct block-entry or pre-terminator copies.
+- Use shared prepared-object classifiers and diagnostics where available,
+  especially `make_prepared_object_function_traversal()`,
+  `classify_prepared_object_move_bundle_consumer(event)`, and
+  `collect_unplaced_prepared_object_parallel_copy_obligations()`.
 - Reuse assembler-backed encoding/fixup/relocation machinery where possible.
 - Preserve inline asm `.insn.d` and `.insn r` object behavior.
 - Reject filename-shaped shortcuts, expectation weakening, target-local CFG
@@ -121,24 +128,42 @@ Completion check:
 - The boundary keeps CFG semantics in BIR/prepared and target-block structure
   in the RV64 route.
 
-## Step 3: Replace the Blanket Multi-Block Rejection for Valid Target Blocks
+## Step 3: Wire RV64 Object Emission to the Shared Traversal Stream
 
-Goal: stop rejecting valid lowered target-block streams solely because the
-prepared function has more than one block.
+Goal: make RV64 object emission consume the shared prepared-object traversal
+event stream before any target-local fragment repair resumes.
 
 Concrete actions:
 
-- Remove or narrow the single-block gate only after the input boundary is
-  explicit.
-- Preserve block labels, branch edges, and target instruction order.
+- Start from `make_prepared_object_function_traversal()` as the ordered source
+  of labels, block-entry copies, instructions, pre-terminator/edge copies, and
+  terminators.
+- For each traversal move event, use
+  `classify_prepared_object_move_bundle_consumer(event)` instead of scanning
+  `control_flow.parallel_copy_bundles` or re-finding bundles in RV64 target
+  code.
+- Use `collect_unplaced_prepared_object_parallel_copy_obligations()` as the
+  fail-closed diagnostic path for move obligations the shared traversal cannot
+  place.
+- Consume shared select, value-home, frame, and move diagnostics/classifiers
+  where they exist before adding RV64-specific target evidence.
+- Preserve block labels, branch edges, and target instruction order from the
+  traversal stream; RV64 must not reconstruct CFG semantics from prepared
+  state.
 - Keep unsupported shapes diagnostic-specific rather than collapsing them into
   coarse prepared-module-shape failure.
+- Do not claim `src/20000113-1.c` progress from the reverted/stashed
+  target-local route.
 
 Completion check:
 
-- Representative valid multi-block streams advance past the old blanket gate.
-- Invalid or unsupported object shapes still fail closed with precise
-  diagnostics.
+- RV64 object emission has a shared-traversal-first integration point.
+- No new RV64 code manually scans `control_flow.parallel_copy_bundles` to
+  reconstruct block-entry or pre-terminator copies.
+- Invalid or unsupported traversal events fail closed through shared
+  diagnostics plus RV64-specific evidence where needed.
+- Any later representative progress is reproven from the accepted route, not
+  inherited from the stashed target-local commits.
 
 ## Step 4: Share Encoding, Label, Fixup, and Relocation Machinery
 

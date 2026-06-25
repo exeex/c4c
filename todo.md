@@ -1,42 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/356_rv64_object_route_assembler_backed_prepared_text.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define the RV64 Target-Block Object Stream Boundary
+Current Step ID: 3
+Current Step Title: Wire RV64 Object Emission to the Shared Traversal Stream
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Re-audit Representative RV64 Object Route Rejections: reran the
-representative RV64 object-route allowlist and recorded the current first
-rejecting layer for each case.
+Route correction after rollback. The target-local RV64 object-route work was
+reverted out of HEAD and preserved in stash for reference only:
 
-| Case | Current allowlist status | First rejecting layer | Key evidence | Audit conclusion |
-| --- | --- | --- | --- | --- |
-| `src/20000113-1.c` | fail | RV64 object emission prepared-function fragment construction | `case.log` reports `[RV64_C4C_OBJ_COMPILE_FAIL]` with `RISC-V backend object route unsupported prepared module shape`; `--dump-prepared-bir` succeeds and shows `foobar` with `frame_size=220`, many `frame_slot` value homes, `consumer_stack_to_stack` move bundles, and prepared CFG blocks `entry`, `logic.rhs.37`, `logic.rhs.end.39`, `logic.skip.38`, `logic.end.40`, `block_1`, `block_2`. The first unsupported body shape is a prepared `load_local` result whose home is a stack slot, while the current object fragment path requires a GPR result for `fragment_for_prepared_load_local`. | Prepared BIR/CFG reaches the handoff; the first blocker is target-owned RV64 object emission support for prepared stack-slot/local memory fragments, not a BIR shape rejection. |
-| `src/20000205-1.c` | pass | none under this allowlist | `case.log` reports `[PASS][rv64-gcc-torture-backend-obj]`; `test_after.log` records `pass src/20000205-1.c`. | Currently passing under the representative allowlist only; do not overclaim broader recursive/multiblock coverage. |
-| `src/20010119-1.c` | pass | none under this allowlist | `case.log` reports `[PASS][rv64-gcc-torture-backend-obj]`; `test_after.log` records `pass src/20010119-1.c`. | Currently passing under the representative allowlist only; do not overclaim broader call or extern coverage. |
-| `src/20030216-1.c` | fail | RV64 object emission module-level global/storage gate | `case.log` reports `[RV64_C4C_OBJ_COMPILE_FAIL]` with `RISC-V backend object route unsupported prepared module shape`; `--dump-prepared-bir` succeeds and the source contains `const double one=1.0`; the current prepared text object module builder returns empty when `prepared.module.globals` or `prepared.module.string_constants` is non-empty. | Prepared BIR reaches the handoff; the first blocker is unsupported prepared global storage for non-i32 floating constant data. |
+- `stash@{1}: wip rv64 object route uncommitted drift before route reset`
+- `stash@{0}: staged rv64 object route commits before route reset`
+
+The rejected route shape directly scanned
+`control_flow.parallel_copy_bundles`, used
+`prepared_object_parallel_copy_event_kind`, and re-found move bundles in RV64
+`object_emission.cpp`. That route is not accepted because it bypassed the
+shared prepared-object traversal/diagnostic contract from idea 359.
+
+Do not claim `src/20000113-1.c` progressed from that route. Any future
+`20000113-1.c` progress must be reproven after RV64 object emission consumes
+the shared traversal stream.
 
 ## Suggested Next
 
-Execute Step 2: define and test the RV64 target-block object stream boundary
-for prepared object emission before removing or narrowing object-route gates.
-Use the Step 1 audit as packet context, especially the `src/20000113-1.c`
-stack-slot/local memory fragment blocker, but keep this packet focused on the
-input contract: what target-block/instruction stream object emission consumes
-and how labels, branch references, call references, and relocations flow
-without reconstructing CFG semantics.
+Execute Step 3: wire RV64 object emission to the shared prepared object
+traversal event stream before any target-local fragment repair resumes.
 
 Narrow packet target:
 
-- inspect the current RV64 prepared object module and object-emission builder
-  surfaces;
-- identify the canonical target-block/instruction stream that object emission
-  should consume;
-- add or update focused boundary diagnostics/tests where the current handoff is
-  ambiguous or too coarse.
+- start from `make_prepared_object_function_traversal()` as the ordered event
+  source;
+- consume traversal labels, block-entry copies, instructions,
+  pre-terminator/edge copies, and terminators in RV64 object emission;
+- classify each move event with
+  `classify_prepared_object_move_bundle_consumer(event)`;
+- report unplaced obligations with
+  `collect_unplaced_prepared_object_parallel_copy_obligations()`;
+- use shared move/select/value-home/frame diagnostics or classifiers where
+  available, adding only RV64-specific target evidence;
+- explicitly avoid scanning `control_flow.parallel_copy_bundles` in RV64 to
+  reconstruct block-entry/pre-terminator copies.
 
 Narrow proof command:
 
@@ -46,9 +52,12 @@ CASE_TIMEOUT_SEC=20 ALLOWLIST=/tmp/rv64-multiblock-allowlist.txt scripts/check_p
 
 ## Watchouts
 
-- `20000113-1.c` is the next best blocker because it is target-owned and
-  exercises prepared stack/local memory plus existing block labels; keep the
-  repair semantic-boundary preserving.
+- `20000113-1.c` progress from the stashed route is intentionally not accepted.
+  Reprove any progress only through the shared-traversal-first route.
+- Do not manually scan `control_flow.parallel_copy_bundles` from RV64 object
+  emission to reconstruct copy placement.
+- Do not use `prepared_object_parallel_copy_event_kind` or target-local bundle
+  search as a replacement for shared traversal/classifier APIs.
 - `20030216-1.c` is a separate prepared global-storage/data blocker; do not
   mix float/global data support into the stack-slot object-fragment packet.
 - The two passing cases are only current allowlist passes. Do not use them as
@@ -58,12 +67,5 @@ CASE_TIMEOUT_SEC=20 ALLOWLIST=/tmp/rv64-multiblock-allowlist.txt scripts/check_p
 
 ## Proof
 
-Ran the supervisor-selected proof:
-
-```sh
-CASE_TIMEOUT_SEC=20 ALLOWLIST=/tmp/rv64-multiblock-allowlist.txt scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log 2>&1 || true
-```
-
-Result: completed with expected nonzero scan result captured by `|| true`;
-`test_after.log` records 4 total, 2 passed, 2 failed. Log path:
-`test_after.log`.
+Not run for route-reset rewrite. This is lifecycle/plan correction only after
+the rejected RV64 target-local route was moved to stash.
