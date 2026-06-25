@@ -101,6 +101,19 @@ object::SymbolBinding binding_for_function(const RiscvObjectFunction& function) 
                          : object::SymbolBinding::Local;
 }
 
+object::SymbolKind symbol_kind_for_fixup_target(
+    RiscvObjectFixupTargetKind kind) {
+  switch (kind) {
+    case RiscvObjectFixupTargetKind::Function:
+      return object::SymbolKind::Function;
+    case RiscvObjectFixupTargetKind::Object:
+      return object::SymbolKind::Object;
+    case RiscvObjectFixupTargetKind::NoType:
+      return object::SymbolKind::NoType;
+  }
+  return object::SymbolKind::NoType;
+}
+
 struct PreparedObjectCompare {
   c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Eq;
   c4c::backend::bir::Value lhs;
@@ -1174,6 +1187,151 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_frame_address_material
   return fragment;
 }
 
+std::optional<std::pair<std::string, RiscvObjectFixupTargetKind>>
+prepared_direct_global_materialization_symbol(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedAddressMaterialization& materialization) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (materialization.kind != prepare::PreparedAddressMaterializationKind::DirectGlobal ||
+      materialization.address_space != bir::AddressSpace::Default ||
+      materialization.is_thread_local || materialization.has_tls_address_space ||
+      materialization.address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::Direct ||
+      !materialization.symbol_name.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::string_view prepared_symbol =
+      prepare::prepared_link_name(prepared.names, *materialization.symbol_name);
+  if (prepared_symbol.empty()) {
+    return std::nullopt;
+  }
+
+  for (const auto& global : prepared.module.globals) {
+    std::string global_label = global.name;
+    if (global.link_name_id != c4c::kInvalidLinkName) {
+      const std::string_view spelling =
+          prepared.module.names.link_names.spelling(global.link_name_id);
+      if (!spelling.empty()) {
+        global_label = std::string{spelling};
+      }
+    }
+    if (global_label == prepared_symbol) {
+      return std::pair<std::string, RiscvObjectFixupTargetKind>{
+          std::string{prepared_symbol}, RiscvObjectFixupTargetKind::Object};
+    }
+  }
+
+  for (const auto& function : prepared.module.functions) {
+    if (function.name == prepared_symbol) {
+      return std::pair<std::string, RiscvObjectFixupTargetKind>{
+          std::string{prepared_symbol}, RiscvObjectFixupTargetKind::Function};
+    }
+  }
+
+  return std::pair<std::string, RiscvObjectFixupTargetKind>{
+      std::string{prepared_symbol}, RiscvObjectFixupTargetKind::Object};
+}
+
+std::optional<std::pair<std::string, RiscvObjectFixupTargetKind>>
+prepared_address_materialization_symbol(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedAddressMaterialization& materialization) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (materialization.kind ==
+      prepare::PreparedAddressMaterializationKind::DirectGlobal) {
+    return prepared_direct_global_materialization_symbol(prepared, materialization);
+  }
+  if (materialization.kind ==
+          prepare::PreparedAddressMaterializationKind::StringConstant &&
+      materialization.address_space == bir::AddressSpace::Default &&
+      !materialization.is_thread_local && !materialization.has_tls_address_space &&
+      materialization.text_name.has_value()) {
+    const std::string_view label =
+        prepared.names.texts.lookup(*materialization.text_name);
+    if (!label.empty()) {
+      return std::pair<std::string, RiscvObjectFixupTargetKind>{
+          std::string{label}, RiscvObjectFixupTargetKind::Object};
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_symbol_address_materialization(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::BinaryInst& binary) {
+  if (lookups == nullptr ||
+      binary.opcode != c4c::backend::bir::BinaryOpcode::Add ||
+      binary.result.type != c4c::backend::bir::TypeKind::Ptr ||
+      binary.result.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto destination = gpr_register_number_for_value(names, lookups, binary.result);
+  if (!destination.has_value()) {
+    return std::nullopt;
+  }
+  const auto result_value_name = names.value_names.find(binary.result.name);
+  if (result_value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+
+  std::vector<const c4c::backend::prepare::PreparedAddressMaterialization*>
+      materialization_candidates;
+  if (const auto* materializations =
+          c4c::backend::prepare::find_indexed_prepared_address_materializations(
+              &lookups->address_materializations,
+              block_label)) {
+    materialization_candidates = *materializations;
+  } else {
+    for (const auto& entry : lookups->address_materializations.materializations_by_block) {
+      materialization_candidates.insert(materialization_candidates.end(),
+                                        entry.second.begin(),
+                                        entry.second.end());
+    }
+  }
+
+  const c4c::backend::prepare::PreparedAddressMaterialization* selected = nullptr;
+  for (const auto* materialization : materialization_candidates) {
+    if (materialization == nullptr ||
+        materialization->inst_index != instruction_index ||
+        materialization->result_value_name != result_value_name) {
+      continue;
+    }
+    if (!prepared_address_materialization_symbol(prepared, *materialization).has_value()) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return std::nullopt;
+    }
+    selected = materialization;
+  }
+  if (selected == nullptr) {
+    return std::nullopt;
+  }
+  auto symbol = prepared_address_materialization_symbol(prepared, *selected);
+  if (!symbol.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::string auipc_label = ".Lpcrel_hi_" +
+                                  std::to_string(selected->function_name) + "_" +
+                                  std::to_string(selected->block_label) + "_" +
+                                  std::to_string(selected->inst_index);
+  return make_rv64_pcrel_address_fragment(*destination,
+                                           std::move(symbol->first),
+                                           auipc_label,
+                                           symbol->second,
+                                           selected->byte_offset);
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -1857,6 +2015,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
       if (auto fragment = fragment_for_prepared_frame_address_materialization(
               prepared.stack_layout,
+              prepared.names,
+              &lookups,
+              prepared_block_label,
+              instruction_index,
+              *binary);
+          fragment.has_value()) {
+        return fragment;
+      }
+      if (auto fragment = fragment_for_prepared_symbol_address_materialization(
+              prepared,
               prepared.names,
               &lookups,
               prepared_block_label,
@@ -2775,9 +2943,28 @@ RiscvEncodedFragment make_rv64_direct_call_fragment(std::string callee_name) {
 
 RiscvEncodedFragment make_rv64_pcrel_address_fragment(
     std::string symbol_name, std::string auipc_label_name) {
+  return make_rv64_pcrel_address_fragment(
+      5,
+      std::move(symbol_name),
+      std::move(auipc_label_name),
+      RiscvObjectFixupTargetKind::Function);
+}
+
+RiscvEncodedFragment make_rv64_pcrel_address_fragment(
+    std::uint32_t destination_register,
+    std::string symbol_name,
+    std::string auipc_label_name,
+    RiscvObjectFixupTargetKind target_kind,
+    std::int64_t addend) {
   RiscvEncodedFragment fragment;
-  append_le32(fragment.bytes, encode_u_type(0x17, 5, 0));       // auipc t0, 0
-  append_le32(fragment.bytes, encode_i_type(0x13, 5, 0, 5, 0));  // addi t0, t0, 0
+  append_le32(fragment.bytes,
+              encode_u_type(0x17, destination_register, 0));  // auipc rd, 0
+  append_le32(fragment.bytes,
+              encode_i_type(0x13,
+                            destination_register,
+                            0,
+                            destination_register,
+                            0));  // addi rd, rd, 0
   fragment.labels.push_back(RiscvObjectLabel{
       .offset_bytes = 0,
       .name = auipc_label_name,
@@ -2785,12 +2972,14 @@ RiscvEncodedFragment make_rv64_pcrel_address_fragment(
   fragment.fixups.push_back(RiscvObjectFixup{
       .offset_bytes = 0,
       .kind = RiscvObjectFixupKind::PcrelHi20,
+      .target_kind = target_kind,
       .symbol_name = std::move(symbol_name),
-      .addend = 0,
+      .addend = addend,
   });
   fragment.fixups.push_back(RiscvObjectFixup{
       .offset_bytes = 4,
       .kind = RiscvObjectFixupKind::PcrelLo12I,
+      .target_kind = RiscvObjectFixupTargetKind::NoType,
       .symbol_name = std::move(auipc_label_name),
       .addend = 0,
   });
@@ -2878,7 +3067,7 @@ std::optional<object::ObjectModule> build_rv64_text_object_module(
               module,
               fixup.symbol_name,
               object::SymbolBinding::Global,
-              object::SymbolKind::Function);
+              symbol_kind_for_fixup_target(fixup.target_kind));
           target_symbol = undefined.id;
           symbols_by_name.emplace(undefined.name, undefined.id);
         }
@@ -3041,8 +3230,9 @@ std::optional<std::string> append_rv64_prepared_data_objects(
     const c4c::backend::prepare::PreparedBirModule& prepared) {
   for (const auto& constant : prepared.module.string_constants) {
     const auto label = rv64_prepared_object_text_label(prepared.module, constant);
+    const auto* existing = object::find_symbol(object_module, label);
     if (label.empty() || constant.align_bytes == 0 ||
-        object::find_symbol(object_module, label) != nullptr) {
+        (existing != nullptr && !object::is_undefined_symbol(*existing))) {
       return "unsupported_global_data: RV64 object route cannot emit prepared string constant symbol";
     }
 
@@ -3089,8 +3279,9 @@ std::optional<std::string> append_rv64_prepared_data_objects(
       continue;
     }
 
+    const auto* existing = object::find_symbol(object_module, label);
     if (global.align_bytes == 0 ||
-        object::find_symbol(object_module, label) != nullptr) {
+        (existing != nullptr && !object::is_undefined_symbol(*existing))) {
       return "unsupported_global_data: RV64 object route cannot emit prepared global symbol";
     }
 

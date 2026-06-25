@@ -20,9 +20,17 @@ enum class RiscvObjectFixupKind {
   Jal,
 };
 
+enum class RiscvObjectFixupTargetKind {
+  Function,
+  Object,
+  NoType,
+};
+
 struct RiscvObjectFixup {
   std::uint64_t offset_bytes = 0;
   RiscvObjectFixupKind kind = RiscvObjectFixupKind::CallPlt;
+  RiscvObjectFixupTargetKind target_kind =
+      RiscvObjectFixupTargetKind::Function;
   std::string symbol_name;
   std::int64_t addend = 0;
 };
@@ -102,6 +110,13 @@ rv64_relocatable_elf_config();
 
 [[nodiscard]] RiscvEncodedFragment make_rv64_pcrel_address_fragment(
     std::string symbol_name, std::string auipc_label_name);
+
+[[nodiscard]] RiscvEncodedFragment make_rv64_pcrel_address_fragment(
+    std::uint32_t destination_register,
+    std::string symbol_name,
+    std::string auipc_label_name,
+    RiscvObjectFixupTargetKind target_kind,
+    std::int64_t addend = 0);
 
 [[nodiscard]] std::optional<c4c::backend::mir::object::ObjectModule>
 build_rv64_text_object_module(const std::vector<RiscvObjectFunction>& functions);

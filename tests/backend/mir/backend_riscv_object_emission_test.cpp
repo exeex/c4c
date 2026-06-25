@@ -320,6 +320,122 @@ prepare::PreparedBirModule make_prepared_direct_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_symbol_address_module(
+    prepare::PreparedAddressMaterializationKind kind,
+    std::string symbol_name) {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto result_name = prepared.names.value_names.intern("%addr");
+  const auto link_name = prepared.names.link_names.intern(symbol_name);
+  const auto text_name = prepared.names.texts.intern(symbol_name);
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result = bir::Value::named(bir::TypeKind::Ptr, "%addr"),
+                  .operand_type = bir::TypeKind::Ptr,
+                  .lhs = bir::Value::immediate_i64(0),
+                  .rhs = bir::Value::immediate_i64(0),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .address_materializations =
+          {
+              prepare::PreparedAddressMaterialization{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .kind = kind,
+                  .result_value_name = result_name,
+                  .symbol_name = kind ==
+                                           prepare::PreparedAddressMaterializationKind::
+                                               DirectGlobal
+                                       ? std::optional<c4c::LinkNameId>{link_name}
+                                       : std::nullopt,
+                  .text_name = kind ==
+                                        prepare::PreparedAddressMaterializationKind::
+                                            StringConstant
+                                    ? std::optional<c4c::TextId>{text_name}
+                                    : std::nullopt,
+                  .address_materialization_policy =
+                      kind == prepare::PreparedAddressMaterializationKind::DirectGlobal
+                          ? bir::GlobalAddressMaterializationPolicy::Direct
+                          : bir::GlobalAddressMaterializationPolicy::Unspecified,
+              },
+          },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_string_address_module() {
+  auto prepared = make_prepared_symbol_address_module(
+      prepare::PreparedAddressMaterializationKind::StringConstant,
+      ".LC0");
+  const auto text_name = prepared.module.names.texts.intern(".LC0");
+  prepared.module.string_constants.push_back(bir::StringConstant{
+      .name = ".LC0",
+      .name_id = text_name,
+      .bytes = "abc",
+      .align_bytes = 1,
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_global_address_module() {
+  auto prepared = make_prepared_symbol_address_module(
+      prepare::PreparedAddressMaterializationKind::DirectGlobal,
+      "global_i32");
+  const auto link_name = prepared.module.names.link_names.intern("global_i32");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "global_i32",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::I32,
+      .is_constant = true,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(7),
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_rematerialized_return_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -3727,6 +3843,87 @@ int emits_prepared_constant_f64_global_object_storage() {
   return 0;
 }
 
+int emits_prepared_string_address_relocations_to_object_symbol() {
+  const auto prepared = make_prepared_string_address_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit string address materialization");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* rodata = object::find_section(*module, ".rodata");
+  const auto* string_symbol = object::find_symbol(*module, ".LC0");
+  const auto* auipc_label = object::find_symbol(*module, ".Lpcrel_hi_1_1_0");
+  if (text == nullptr || rodata == nullptr || string_symbol == nullptr ||
+      auipc_label == nullptr) {
+    return fail("expected text, rodata, string symbol, and AUIPC-site label");
+  }
+  if (text->bytes.size() < 8 || text->bytes[0] != 0x17 ||
+      text->bytes[1] != 0x05 || text->bytes[4] != 0x13 ||
+      text->bytes[5] != 0x05) {
+    return fail("expected prepared string address materialization into a0");
+  }
+  if (string_symbol->binding != object::SymbolBinding::Local ||
+      string_symbol->kind != object::SymbolKind::Object ||
+      string_symbol->section != std::optional<object::SectionId>{rodata->id} ||
+      string_symbol->value != 0 || string_symbol->size_bytes != 4) {
+    return fail("expected string address relocation target to be a defined object");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 0 ||
+      module->relocations[0].type != R_RISCV_PCREL_HI20 ||
+      module->relocations[0].symbol != string_symbol->id ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 4 ||
+      module->relocations[1].type != R_RISCV_PCREL_LO12_I ||
+      module->relocations[1].symbol != auipc_label->id) {
+    return fail("expected prepared string address PC-relative relocation pair");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize string address relocations");
+  }
+  return 0;
+}
+
+int emits_prepared_global_address_relocations_to_object_symbol() {
+  const auto prepared = make_prepared_global_address_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit global address materialization");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* rodata = object::find_section(*module, ".rodata");
+  const auto* global_symbol = object::find_symbol(*module, "global_i32");
+  const auto* auipc_label = object::find_symbol(*module, ".Lpcrel_hi_1_1_0");
+  if (text == nullptr || rodata == nullptr || global_symbol == nullptr ||
+      auipc_label == nullptr) {
+    return fail("expected text, rodata, global symbol, and AUIPC-site label");
+  }
+  if (global_symbol->binding != object::SymbolBinding::Global ||
+      global_symbol->kind != object::SymbolKind::Object ||
+      global_symbol->section != std::optional<object::SectionId>{rodata->id} ||
+      global_symbol->value != 0 || global_symbol->size_bytes != 4) {
+    return fail("expected global address relocation target to be a defined object");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 0 ||
+      module->relocations[0].type != R_RISCV_PCREL_HI20 ||
+      module->relocations[0].symbol != global_symbol->id ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 4 ||
+      module->relocations[1].type != R_RISCV_PCREL_LO12_I ||
+      module->relocations[1].symbol != auipc_label->id) {
+    return fail("expected prepared global address PC-relative relocation pair");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize global address relocations");
+  }
+  return 0;
+}
+
 int serializes_rv64_relocatable_elf_contract() {
   const auto module = make_minimal_call_module();
   if (!module.has_value()) {
@@ -4096,6 +4293,8 @@ int main() {
   status |= emits_prepared_linear_i8_global_object_storage();
   status |= emits_prepared_zero_global_bss_storage();
   status |= emits_prepared_constant_f64_global_object_storage();
+  status |= emits_prepared_string_address_relocations_to_object_symbol();
+  status |= emits_prepared_global_address_relocations_to_object_symbol();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
   status |= writes_prepared_rv64_relocatable_elf_object_file();
