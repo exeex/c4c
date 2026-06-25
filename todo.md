@@ -8,36 +8,64 @@ Current Step Title: Route Simple Call and FPR ABI Edges
 
 ## Just Finished
 
-Completed Plan Step 4 producer-side RV64 FPR ABI identity publication for fixed
-formal register homes.
+Completed Plan Step 4 classification for `src/20030125-1.c` after the
+producer-side RV64 FPR formal ABI identity slice.
 
-`target_register_profile` now exposes an ABI-placement-to-target-register
-identity helper for RV64 call argument/result slots, mapping ABI slot 0 to the
-physical `a0`/`fa0` register index 10 rather than treating ABI slot numbers as
-physical indices. `value_homes.cpp` uses that helper when publishing fixed
-formal ABI register homes, so RV64 hard-float formals passed in `fa*` registers
-carry `PreparedTargetRegisterIdentity` alongside their diagnostic register
-spelling.
+The representative still does not reach first object instruction emission.
+`--codegen obj` fails during object-route prepared-shape admission with:
 
-Focused coverage in `backend_prepare_frame_stack_call_contract_test` proves a
-hard-float RV64 `F32` formal home is `register fa0` with
-`target_arch=Riscv64`, `bank=Fpr`, `register_class=Float`, and
-`physical_index=10`. No object-emission raw register-name parsing was added.
+```text
+[RV64_C4C_OBJ_COMPILE_FAIL]
+error: --codegen obj failed: RISC-V backend object route unsupported
+prepared module shape: unsupported_param_home: RV64 object route requires
+all parameters in supported GPR homes
+```
+
+Prepared BIR reaches the expected call/cast shape before that gate:
+`@t`, `@q`, and `@q1` each take `float %p.a`, perform
+`bir.fpext float %p.a to double`, call `sin`/`floor`, and then either
+`bir.fptrunc` or return the double result. Their call plans use FPR
+source/result banks, but the fixed formal homes still appear as FPR register
+parameter homes that the object-route gate rejects:
+
+```text
+prepared.func @t
+  home %p.a value_id=0 kind=register reg=a0
+...
+prepared.func @q
+  home %p.a value_id=4 kind=register reg=a0
+...
+prepared.func @q1
+  home %p.a value_id=8 kind=register reg=a0
+...
+prepared.func @floor
+  home %p.a value_id=11 kind=register reg=a0
+...
+prepared.func @sin
+  home %p.a value_id=14 kind=register reg=a0
+```
+
+The first boundary is therefore object-route admission/support for prepared
+RV64 hard-float parameter homes, not an emitted `fpext`, `fptrunc`, call, or
+return instruction.
 
 ## Suggested Next
 
-Re-run the representative object route for `src/20030125-1.c` and classify the
-next first failing instruction now that RV64 FPR formal parameter homes publish
-authoritative target register identity.
+Route prepared RV64 hard-float formal parameter homes through the object-route
+shape gate using the published target register identity, then rerun
+`src/20030125-1.c` to expose the first real instruction-lowering boundary.
 
 ## Watchouts
 
 - Treat `src/20030125-1.c` as a representative only. The semantic class is
   prepared FPR cast/call ABI lowering, not testcase-specific math folding.
-- The producer-side formal home contract is now in place for hard-float RV64
-  ABI registers. If the same cast still fails, inspect whether the prepared
-  module is using a hard-float target profile and whether the source home has
-  the new identity before changing object emission.
+- The current failure is earlier than cast/call lowering: the object route still
+  rejects FPR parameter homes with `unsupported_param_home` and the wording says
+  only GPR homes are supported.
+- The prepared dump prints FPR formal homes as `reg=a0`/`units=a0` even while
+  `bank=fpr`; do not add string parsing of that spelling in object emission.
+  The next slice should consume the prepared target-register identity or improve
+  its publication/printing if the identity is absent at the object gate.
 - Do not broaden the cast type matrix. The representative still only needs
   `FPExt F32 -> F64` and already-covered `FPTrunc F64 -> F32`.
 - Preserve the object route's reliance on prepared register facts. Do not add
@@ -47,10 +75,20 @@ authoritative target register identity.
 
 ## Proof
 
-Delegated proof passed:
+Delegated proof failed as the expected classification source:
 
 ```sh
-cmake --build build --target backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log
+tmp=$(mktemp); printf 'src/20030125-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEOUT_SEC=20 STOP_ON_FAILURE=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log; rc=$?; rm -f "$tmp"; exit $rc
+```
+
+Result: `src/20030125-1.c` failed at object compile with
+`unsupported_param_home: RV64 object route requires all parameters in supported
+GPR homes`.
+
+Supplemental classification command:
+
+```sh
+./build/c4cll -I tests/c/external/gcc_torture --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20030125-1.c
 ```
 
 Proof logs:
