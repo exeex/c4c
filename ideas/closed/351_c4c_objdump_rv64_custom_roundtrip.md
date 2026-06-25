@@ -87,3 +87,10 @@ First supported object/disassembly subset:
 - The printer emits syntax that `c4c-as` cannot reassemble.
 - The roundtrip uses external objdump/as as the source of truth.
 - Unsupported bytes are silently skipped.
+
+## Closure Note
+
+Closed after proving the supported c4c-produced RV64 relocatable object route:
+`c4c-objdump` prints canonical `.s`, `c4c-as` reassembles it, repeated
+`a.o -> a.s -> b.o -> b.s` roundtrip output is stable, EV64 `.insn.d` bytes
+decode explicitly, and unsupported bytes fail closed.
