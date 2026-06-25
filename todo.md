@@ -8,23 +8,37 @@ Current Step Title: Route Simple Call and FPR ABI Edges
 
 ## Just Finished
 
-Completed Plan Step 4 RV64 object-route FPR cast boundary repair for the
-prepared formal-parameter path.
+Completed Plan Step 4 RV64 object-route boundary classification for
+`src/20030125-1.c` after the FPR formal cast repair.
 
-Prepared RV64 FPR values allocated into normal caller/callee-saved FPR homes now
-publish structured target register identity from prepared placement metadata, so
-the object route can lower `%t0 = bir.fpext float %p.a to double` when `%p.a`
-is the formal `fa0` home and `%t0` is the prepared `ft0` FPR home. Focused
-coverage now proves the prepared `%t0` identity and the object bytes for
-`fcvt.d.s ft0, fa0, rne` without adding raw FPR register-name parsing or
-broadening the supported cast opcode/type matrix.
+Fresh representative proof moved past the former `unsupported_floating_cast`
+edge and now stops at:
+
+```text
+error: --codegen obj failed: RISC-V backend object route unsupported
+prepared module shape: unsupported_instruction_fragment: BIR instruction
+requires unsupported RV64 object lowering
+```
+
+The first identifiable unsupported prepared instruction is in `@t`, entry block
+instruction index 1:
+
+```text
+%t1 = bir.call double sin(double %t0)
+```
+
+Prepared context for that call is `wrapper_kind=same_module`, callee `sin`,
+one FPR argument from prepared register `ft0` to ABI register `fa0`, and an FPR
+result from ABI register `fa0` to prepared callee-saved register `fs1`.
+This classifies the next boundary as RV64 object-route direct-call lowering for
+prepared FPR call arguments/results, not the preceding `fpext` cast.
 
 ## Suggested Next
 
-Classify the next `src/20030125-1.c` RV64 object-route boundary after the FPR
-cast repair. A supplemental rerun moved past `unsupported_floating_cast` and now
-reports `unsupported_instruction_fragment: BIR instruction requires unsupported
-RV64 object lowering`, likely at the following call/result boundary.
+Extend RV64 object-route direct-call lowering to handle prepared FPR
+register-to-register call arguments and FPR register results for simple
+same-module/direct fixed-arity calls, then rerun the same `src/20030125-1.c`
+representative to classify the next boundary.
 
 ## Watchouts
 
@@ -32,13 +46,17 @@ RV64 object lowering`, likely at the following call/result boundary.
   prepared FPR cast/call ABI lowering, not testcase-specific math folding.
 - Admission is intentionally identity-backed for FPR homes. Do not add raw
   `register_name` fallback parsing for FPR spellings in object emission.
-- The new producer identity is limited to known RV64 scalar FPR register
-  placements (`ft0`, `fs1`, `fs2`) and fails closed for unknown placements.
+- The current object-route direct-call fragment already admits
+  `SameModule`/`DirectExternFixedArity`, but its argument/result checks require
+  GPR banks. The first rejected call needs FPR `ft0 -> fa0`, call relocation,
+  and FPR result publication `fa0 -> fs1`.
 
 ## Proof
 
 ```sh
-cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log
+tmp=$(mktemp); printf 'src/20030125-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEOUT_SEC=20 STOP_ON_FAILURE=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log; rc=$?; rm -f "$tmp"; exit $rc
 ```
 
-Result: passed. Proof log: `test_after.log`.
+Result: failed at the expected current boundary for classification. Proof log:
+`test_after.log`; detailed harness log:
+`build/rv64_gcc_c_torture_backend/src_20030125-1.c/case.log`.
