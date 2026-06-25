@@ -363,6 +363,34 @@ prepare::PreparedBirModule make_prepared_variadic_missing_required_facts_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_variadic_helper_free_complete_module() {
+  auto prepared = make_prepared_variadic_return_zero_module();
+  const auto function_name = prepared.names.function_names.find("rv64_variadic");
+  prepared.variadic_entry_plans.functions.push_back(
+      prepare::PreparedVariadicEntryPlanFunction{
+          .function_name = function_name,
+          .overflow_area =
+              prepare::PreparedVariadicEntryOverflowArea{
+                  .required = true,
+                  .base_slot_id = prepare::PreparedFrameSlotId{7},
+                  .base_stack_offset_bytes = std::size_t{64},
+                  .align_bytes = std::size_t{8},
+              },
+          .va_list_layout =
+              prepare::PreparedVariadicVaListLayout{
+                  .required = true,
+                  .size_bytes = std::size_t{8},
+                  .align_bytes = std::size_t{8},
+                  .fields = {prepare::PreparedVariadicVaListField{
+                      .kind = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+                      .offset_bytes = 0,
+                      .size_bytes = 8,
+                  }},
+              },
+      });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_variadic_va_start_module(
     bool include_overflow_area_initial_state = false) {
   prepare::PreparedBirModule prepared;
@@ -3094,6 +3122,12 @@ int preserves_missing_variadic_required_facts_diagnostic() {
       "unsupported_function_admission: variadic functions are not supported by the RV64 object route; missing_required_facts=[target_abi.va_list_layout]");
 }
 
+int rejects_fact_complete_helper_free_variadic_entry_without_runtime_contract() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_variadic_helper_free_complete_module(),
+      "unsupported_function_admission: RV64 helper-free variadic entry lowering remains unsupported without an explicit supported variadic entry runtime contract");
+}
+
 int rejects_fact_complete_variadic_va_start_without_overflow_base_state() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_variadic_va_start_module(),
@@ -4933,6 +4967,7 @@ int main() {
   status |= builds_prepared_scalar_same_module_call_object();
   status |= preserves_missing_variadic_entry_plan_diagnostic();
   status |= preserves_missing_variadic_required_facts_diagnostic();
+  status |= rejects_fact_complete_helper_free_variadic_entry_without_runtime_contract();
   status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
   status |=
       rejects_fact_complete_variadic_va_start_with_overflow_base_state_at_lowering_boundary();

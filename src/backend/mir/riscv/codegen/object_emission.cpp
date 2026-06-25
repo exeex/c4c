@@ -219,20 +219,23 @@ std::optional<std::string> rv64_variadic_function_admission_diagnostic(
     diagnostic += "; missing variadic entry contract facts were not prepared";
     return diagnostic;
   }
-  if (entry_plan->missing_required_facts.empty()) {
-    return std::nullopt;
-  }
-
-  diagnostic += "; missing_required_facts=[";
-  for (std::size_t index = 0; index < entry_plan->missing_required_facts.size();
-       ++index) {
-    if (index != 0) {
-      diagnostic += ", ";
+  if (!entry_plan->missing_required_facts.empty()) {
+    diagnostic += "; missing_required_facts=[";
+    for (std::size_t index = 0; index < entry_plan->missing_required_facts.size();
+         ++index) {
+      if (index != 0) {
+        diagnostic += ", ";
+      }
+      diagnostic += entry_plan->missing_required_facts[index];
     }
-    diagnostic += entry_plan->missing_required_facts[index];
+    diagnostic += "]";
+    return diagnostic;
   }
-  diagnostic += "]";
-  return diagnostic;
+  if (entry_plan->helper_resources.required_helpers.empty()) {
+    return std::string{
+        "unsupported_function_admission: RV64 helper-free variadic entry lowering remains unsupported without an explicit supported variadic entry runtime contract"};
+  }
+  return std::nullopt;
 }
 
 std::string rv64_variadic_helper_unsupported_diagnostic(

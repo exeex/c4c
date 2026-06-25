@@ -8,19 +8,25 @@ Current Step Title: Define the First RV64 `va_start` Lowering Contract
 
 ## Just Finished
 
-Completed `plan.md` Step 2 for the first RV64 `va_start` lowering contract.
-The RV64 object-emission helper boundary now distinguishes:
+Completed a corrective `plan.md` Step 2 contract fix after the hook full-suite
+baseline candidate rejected commit `8278eed3`: the CLI expected-failure case
+`backend_cli_riscv64_variadic_entry_missing_contract_obj` exposed that
+fact-complete helper-free RV64 variadic functions could bypass helper
+diagnostics and fall through to normal object emission.
 
-- complete prepared `VaStart` operand homes that still lack explicit
-  `overflow_area.base_slot_id` or `base_stack_offset_bytes`; these reject with
-  `unsupported_variadic_helper_lowering: RV64 va_start helper requires prepared overflow-area initial base state`
-- complete prepared `VaStart` operand homes with explicit overflow-area base
-  state; these remain at the real lowering boundary,
-  `unsupported_variadic_helper_lowering: RV64 object route does not yet lower va_start helper`
+RV64 object emission now fails closed when a prepared variadic entry plan has
+complete required facts but no prepared helper boundary, with:
 
-Focused RV64 object-emission coverage now builds both prepared-fact variants
-directly in `make_prepared_variadic_va_start_module()` and checks both
-diagnostics through the prepared object module and ELF writer paths.
+`unsupported_function_admission: RV64 helper-free variadic entry lowering remains unsupported without an explicit supported variadic entry runtime contract`
+
+Focused coverage now distinguishes all Step 2 rejection classes:
+
+- missing variadic entry plan
+- missing required variadic entry facts
+- fact-complete helper-free variadic entry with no explicit supported runtime
+  contract
+- complete `VaStart` missing overflow-area initial base state
+- complete `VaStart` with base state still stopped at the lowering boundary
 
 ## Suggested Next
 
@@ -48,6 +54,9 @@ diagnostic for incomplete runtime state.
 - This packet did not change prepared producers, so producer-owned RV64 facts
   still need to supply explicit overflow-area base state before the materialized
   path can become reachable from normal prepared modules.
+- Helper-free fact-complete RV64 variadic entry is intentionally rejected until
+  there is an explicit supported variadic entry/runtime contract; do not treat
+  a helper-free body that emits an object as plan progress.
 
 ## Proof
 
@@ -55,8 +64,9 @@ Proof passed and is preserved in `test_after.log`.
 
 Command:
 
-`cmake --build build --target backend_riscv_object_emission_test backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test -j && ctest --test-dir build -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$' --output-on-failure > test_after.log`
+`cmake --build build --target backend_riscv_object_emission_test backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test c4cll -j && ctest --test-dir build -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_cli_riscv64_variadic_entry_missing_contract_obj)$' --output-on-failure > test_after.log`
 
-Result: all three focused tests passed:
+Result: all four delegated tests passed:
 `backend_riscv_object_emission`, `backend_prepare_frame_stack_call_contract`,
-and `backend_prepared_printer`.
+`backend_prepared_printer`, and
+`backend_cli_riscv64_variadic_entry_missing_contract_obj`.
