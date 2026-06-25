@@ -100,7 +100,7 @@ function(read_elf_text_hex object_path out_var)
   set(${out_var} "${text_hex}" PARENT_SCOPE)
 endfunction()
 
-function(run_objdump_success_case name object_path output_path expected_hex)
+function(run_objdump_success_case name object_path output_path expected_hex expected_decode_count expected_snippets)
   set(roundtrip_object "${WORK_DIR}/${name}.roundtrip.o")
   set(roundtrip_output "${WORK_DIR}/${name}.roundtrip.s")
   file(REMOVE "${output_path}")
@@ -127,12 +127,15 @@ function(run_objdump_success_case name object_path output_path expected_hex)
   expect_contains("${asm_text}" ".text" "C4C_OBJDUMP_TEXT_DIRECTIVE_MISSING")
   expect_contains("${asm_text}" ".globl main" "C4C_OBJDUMP_GLOBAL_MISSING")
   expect_contains("${asm_text}" "main:" "C4C_OBJDUMP_LABEL_MISSING")
-  expect_contains("${asm_text}" ".insn.d 10, 11, v6, v0, v2, v4, 3" "C4C_OBJDUMP_INSN_D_MISSING")
-  expect_contains("${asm_text}" "li a0, 0" "C4C_OBJDUMP_LI_MISSING")
-  expect_contains("${asm_text}" "ret" "C4C_OBJDUMP_RET_MISSING")
-  expect_contains("${objdump_out}" "extracted 16 .text byte(s)" "C4C_OBJDUMP_STDOUT_SIZE_MISSING")
+  string(REPLACE "|" ";" expected_list "${expected_snippets}")
+  foreach(expected_snippet IN LISTS expected_list)
+    expect_contains("${asm_text}" "${expected_snippet}" "C4C_OBJDUMP_ASM_SNIPPET_MISSING")
+  endforeach()
+  string(LENGTH "${expected_hex}" expected_hex_length)
+  math(EXPR expected_byte_count "${expected_hex_length} / 2")
+  expect_contains("${objdump_out}" "extracted ${expected_byte_count} .text byte(s)" "C4C_OBJDUMP_STDOUT_SIZE_MISSING")
   expect_contains("${objdump_out}" "${expected_hex}" "C4C_OBJDUMP_STDOUT_HEX_MISSING")
-  expect_contains("${objdump_out}" "decoded 3 instruction(s)" "C4C_OBJDUMP_STDOUT_DECODE_COUNT_MISSING")
+  expect_contains("${objdump_out}" "decoded ${expected_decode_count} instruction(s)" "C4C_OBJDUMP_STDOUT_DECODE_COUNT_MISSING")
 
   execute_process(
     COMMAND "${C4C_AS}" "${output_path}" -o "${roundtrip_object}"
@@ -182,6 +185,40 @@ function(run_objdump_success_case name object_path output_path expected_hex)
   endif()
 endfunction()
 
+function(run_objdump_asm_success_case name source_text expected_decode_count expected_snippets)
+  set(src "${WORK_DIR}/${name}.input.s")
+  set(object_path "${WORK_DIR}/${name}.o")
+  set(output_path "${WORK_DIR}/${name}.s")
+  file(WRITE "${src}" "${source_text}")
+  file(REMOVE "${object_path}" "${output_path}")
+
+  execute_process(
+    COMMAND "${C4C_AS}" "${src}" -o "${object_path}"
+    TIMEOUT "${CASE_TIMEOUT_SEC}"
+    RESULT_VARIABLE as_rc
+    OUTPUT_VARIABLE as_out
+    ERROR_VARIABLE as_err
+  )
+  if(as_rc MATCHES "timeout")
+    message(FATAL_ERROR "[C4C_OBJDUMP_ASM_SOURCE_TIMEOUT] ${src} exceeded ${CASE_TIMEOUT_SEC}s")
+  endif()
+  if(NOT as_rc EQUAL 0)
+    message(FATAL_ERROR "[C4C_OBJDUMP_ASM_SOURCE_FAIL] ${src}\n${as_out}${as_err}")
+  endif()
+  if(NOT EXISTS "${object_path}")
+    message(FATAL_ERROR "[C4C_OBJDUMP_ASM_OBJECT_MISSING] expected '${object_path}'")
+  endif()
+  read_elf_text_hex("${object_path}" expected_hex)
+  run_objdump_success_case(
+    "${name}"
+    "${object_path}"
+    "${output_path}"
+    "${expected_hex}"
+    "${expected_decode_count}"
+    "${expected_snippets}"
+  )
+endfunction()
+
 function(run_objdump_failure_case name input_path output_path expected_diagnostic)
   file(REMOVE "${output_path}")
   execute_process(
@@ -202,6 +239,37 @@ function(run_objdump_failure_case name input_path output_path expected_diagnosti
   endif()
   set(combined_output "${objdump_out}${objdump_err}")
   expect_contains("${combined_output}" "${expected_diagnostic}" "C4C_OBJDUMP_DIAGNOSTIC_MISSING")
+endfunction()
+
+function(run_objdump_asm_failure_case name source_text expected_diagnostic)
+  set(src "${WORK_DIR}/${name}.input.s")
+  set(object_path "${WORK_DIR}/${name}.o")
+  set(output_path "${WORK_DIR}/${name}.s")
+  file(WRITE "${src}" "${source_text}")
+  file(REMOVE "${object_path}" "${output_path}")
+
+  execute_process(
+    COMMAND "${C4C_AS}" "${src}" -o "${object_path}"
+    TIMEOUT "${CASE_TIMEOUT_SEC}"
+    RESULT_VARIABLE as_rc
+    OUTPUT_VARIABLE as_out
+    ERROR_VARIABLE as_err
+  )
+  if(as_rc MATCHES "timeout")
+    message(FATAL_ERROR "[C4C_OBJDUMP_ASM_FAILURE_SOURCE_TIMEOUT] ${src} exceeded ${CASE_TIMEOUT_SEC}s")
+  endif()
+  if(NOT as_rc EQUAL 0)
+    message(FATAL_ERROR "[C4C_OBJDUMP_ASM_FAILURE_SOURCE_FAIL] ${src}\n${as_out}${as_err}")
+  endif()
+  if(NOT EXISTS "${object_path}")
+    message(FATAL_ERROR "[C4C_OBJDUMP_ASM_FAILURE_OBJECT_MISSING] expected '${object_path}'")
+  endif()
+  run_objdump_failure_case(
+    "${name}"
+    "${object_path}"
+    "${output_path}"
+    "${expected_diagnostic}"
+  )
 endfunction()
 
 set(rv64_object "${WORK_DIR}/rv64_vrm_insn_d_source.o")
@@ -251,6 +319,27 @@ run_objdump_success_case(
   "${rv64_object}"
   "${WORK_DIR}/rv64_vrm_insn_d_source.s"
   "${expected_hex}"
+  3
+  ".insn.d 10, 11, v6, v0, v2, v4, 3|li a0, 0|ret"
+)
+
+run_objdump_asm_success_case(
+  rv64i_step4_non_control_subset
+  ".text\n.globl main\nmain:\n  lui t0, 0x7ffff\n  auipc t1, -0x80000\n  addi t2, zero, -2048\n  slti s1, s0, -1\n  ori s4, s0, 0x7f\n  slli s6, s5, 63\n  srai s8, s6, 63\n  addiw s9, s8, -2048\n  sraiw a0, s10, 31\n  add a1, a0, s1\n  sub a2, a1, s2\n  sraw tp, gp, a4\n  lb a0, -2048(sp)\n  lwu a6, 60(sp)\n  sd a3, 2040(sp)\n  jalr t0, 4(ra)\n  .insn.d 10, 11, v6, v0, v2, v4, 3\n  li a0, 0\n  ret\n"
+  19
+  "lui t0, 524287|auipc t1, -524288|addi t2, zero, -2048|slti s1, s0, -1|ori s4, s0, 127|slli s6, s5, 63|srai s8, s6, 63|addiw s9, s8, -2048|sraiw a0, s10, 31|add a1, a0, s1|sub a2, a1, s2|sraw tp, gp, a4|lb a0, -2048(sp)|lwu a6, 60(sp)|sd a3, 2040(sp)|jalr t0, 4(ra)|.insn.d 10, 11, v6, v0, v2, v4, 3|li a0, 0|ret"
+)
+
+run_objdump_asm_failure_case(
+  branch_bytes_still_closed
+  ".text\n.globl main\nmain:\n  beq a0, a1, done\n  ret\ndone:\n  ret\n"
+  "unsupported RV64 instruction bytes at .text offset 0x0"
+)
+
+run_objdump_asm_failure_case(
+  jal_bytes_still_closed
+  ".text\n.globl main\nmain:\n  jal ra, done\n  ret\ndone:\n  ret\n"
+  "unsupported RV64 instruction bytes at .text offset 0x0"
 )
 
 execute_process(

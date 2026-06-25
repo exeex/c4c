@@ -71,7 +71,26 @@ struct DecodedLi {
 
 struct DecodedRet {};
 
-using DecodedInstruction = std::variant<DecodedInsnD, DecodedLi, DecodedRet>;
+enum class Rv64DecodedFormat {
+  RType,
+  IType,
+  Load,
+  Store,
+  UType,
+  Jalr,
+};
+
+struct DecodedRv64I {
+  Rv64DecodedFormat format = Rv64DecodedFormat::IType;
+  std::string_view mnemonic;
+  std::uint32_t destination = 0;
+  std::uint32_t lhs = 0;
+  std::uint32_t rhs = 0;
+  std::int32_t immediate = 0;
+};
+
+using DecodedInstruction =
+    std::variant<DecodedInsnD, DecodedLi, DecodedRet, DecodedRv64I>;
 
 void print_help(std::ostream& out) {
   out << "Usage:\n"
@@ -452,6 +471,165 @@ std::optional<DecodedRet> decode_ret(std::uint32_t word) {
   return DecodedRet{};
 }
 
+std::int32_t sign_extend(std::uint32_t value, unsigned width) {
+  const auto shift = 32u - width;
+  return static_cast<std::int32_t>(value << shift) >> shift;
+}
+
+std::optional<DecodedRv64I> decode_rv64i(std::uint32_t word) {
+  struct RSpec {
+    std::string_view mnemonic;
+    std::uint32_t opcode;
+    std::uint32_t funct3;
+    std::uint32_t funct7;
+  };
+  struct ISpec {
+    std::string_view mnemonic;
+    std::uint32_t opcode;
+    std::uint32_t funct3;
+  };
+  struct ShiftSpec {
+    std::string_view mnemonic;
+    std::uint32_t opcode;
+    std::uint32_t funct3;
+    std::uint32_t funct7;
+    std::uint32_t max_shamt;
+  };
+  struct LoadStoreSpec {
+    std::string_view mnemonic;
+    std::uint32_t opcode;
+    std::uint32_t funct3;
+  };
+  struct USpec {
+    std::string_view mnemonic;
+    std::uint32_t opcode;
+  };
+
+  constexpr RSpec r_specs[] = {
+      {"add", 0x33, 0, 0x00},  {"sub", 0x33, 0, 0x20},
+      {"sll", 0x33, 1, 0x00},  {"slt", 0x33, 2, 0x00},
+      {"sltu", 0x33, 3, 0x00}, {"xor", 0x33, 4, 0x00},
+      {"srl", 0x33, 5, 0x00},  {"sra", 0x33, 5, 0x20},
+      {"or", 0x33, 6, 0x00},   {"and", 0x33, 7, 0x00},
+      {"addw", 0x3b, 0, 0x00}, {"subw", 0x3b, 0, 0x20},
+      {"sllw", 0x3b, 1, 0x00}, {"srlw", 0x3b, 5, 0x00},
+      {"sraw", 0x3b, 5, 0x20},
+  };
+  constexpr ISpec i_specs[] = {
+      {"addi", 0x13, 0}, {"slti", 0x13, 2},  {"sltiu", 0x13, 3},
+      {"xori", 0x13, 4}, {"ori", 0x13, 6},   {"andi", 0x13, 7},
+      {"addiw", 0x1b, 0},
+  };
+  constexpr ShiftSpec shift_specs[] = {
+      {"slli", 0x13, 1, 0x00, 63}, {"srli", 0x13, 5, 0x00, 63},
+      {"srai", 0x13, 5, 0x20, 63}, {"slliw", 0x1b, 1, 0x00, 31},
+      {"srliw", 0x1b, 5, 0x00, 31}, {"sraiw", 0x1b, 5, 0x20, 31},
+  };
+  constexpr LoadStoreSpec load_specs[] = {
+      {"lb", 0x03, 0},  {"lh", 0x03, 1},  {"lw", 0x03, 2},
+      {"ld", 0x03, 3},  {"lbu", 0x03, 4}, {"lhu", 0x03, 5},
+      {"lwu", 0x03, 6},
+  };
+  constexpr LoadStoreSpec store_specs[] = {
+      {"sb", 0x23, 0},
+      {"sh", 0x23, 1},
+      {"sw", 0x23, 2},
+      {"sd", 0x23, 3},
+  };
+  constexpr USpec u_specs[] = {
+      {"lui", 0x37},
+      {"auipc", 0x17},
+  };
+
+  const auto opcode = word & 0x7fu;
+  const auto rd = (word >> 7) & 0x1fu;
+  const auto funct3 = (word >> 12) & 0x7u;
+  const auto rs1 = (word >> 15) & 0x1fu;
+  const auto rs2 = (word >> 20) & 0x1fu;
+  const auto funct7 = (word >> 25) & 0x7fu;
+
+  for (const auto& spec : r_specs) {
+    if (opcode == spec.opcode && funct3 == spec.funct3 && funct7 == spec.funct7) {
+      return DecodedRv64I{.format = Rv64DecodedFormat::RType,
+                          .mnemonic = spec.mnemonic,
+                          .destination = rd,
+                          .lhs = rs1,
+                          .rhs = rs2};
+    }
+  }
+
+  for (const auto& spec : shift_specs) {
+    if (opcode != spec.opcode || funct3 != spec.funct3) {
+      continue;
+    }
+    const auto imm12 = (word >> 20) & 0xfffu;
+    const auto shamt_mask = spec.max_shamt == 63 ? 0x3fu : 0x1fu;
+    const auto shamt = imm12 & shamt_mask;
+    const auto selector = imm12 & ~shamt_mask;
+    if (selector != (spec.funct7 << 5)) {
+      continue;
+    }
+    if (shamt > spec.max_shamt) {
+      return std::nullopt;
+    }
+    return DecodedRv64I{.format = Rv64DecodedFormat::IType,
+                        .mnemonic = spec.mnemonic,
+                        .destination = rd,
+                        .lhs = rs1,
+                        .immediate = static_cast<std::int32_t>(shamt)};
+  }
+
+  for (const auto& spec : i_specs) {
+    if (opcode == spec.opcode && funct3 == spec.funct3) {
+      return DecodedRv64I{.format = Rv64DecodedFormat::IType,
+                          .mnemonic = spec.mnemonic,
+                          .destination = rd,
+                          .lhs = rs1,
+                          .immediate = static_cast<std::int32_t>(word) >> 20};
+    }
+  }
+
+  if (opcode == 0x67 && funct3 == 0) {
+    return DecodedRv64I{.format = Rv64DecodedFormat::Jalr,
+                        .mnemonic = "jalr",
+                        .destination = rd,
+                        .lhs = rs1,
+                        .immediate = static_cast<std::int32_t>(word) >> 20};
+  }
+
+  for (const auto& spec : load_specs) {
+    if (opcode == spec.opcode && funct3 == spec.funct3) {
+      return DecodedRv64I{.format = Rv64DecodedFormat::Load,
+                          .mnemonic = spec.mnemonic,
+                          .destination = rd,
+                          .lhs = rs1,
+                          .immediate = static_cast<std::int32_t>(word) >> 20};
+    }
+  }
+
+  for (const auto& spec : store_specs) {
+    if (opcode == spec.opcode && funct3 == spec.funct3) {
+      const auto imm12 = ((word >> 25) << 5) | ((word >> 7) & 0x1fu);
+      return DecodedRv64I{.format = Rv64DecodedFormat::Store,
+                          .mnemonic = spec.mnemonic,
+                          .lhs = rs1,
+                          .rhs = rs2,
+                          .immediate = sign_extend(imm12, 12)};
+    }
+  }
+
+  for (const auto& spec : u_specs) {
+    if (opcode == spec.opcode) {
+      return DecodedRv64I{.format = Rv64DecodedFormat::UType,
+                          .mnemonic = spec.mnemonic,
+                          .destination = rd,
+                          .immediate = sign_extend(word >> 12, 20)};
+    }
+  }
+
+  return std::nullopt;
+}
+
 std::optional<std::vector<DecodedInstruction>> decode_text_bytes(
     const std::vector<std::uint8_t>& text_bytes,
     std::string* error) {
@@ -476,6 +654,11 @@ std::optional<std::vector<DecodedInstruction>> decode_text_bytes(
         offset += 4;
         continue;
       }
+      if (auto rv64i = decode_rv64i(word); rv64i.has_value()) {
+        decoded.push_back(*rv64i);
+        offset += 4;
+        continue;
+      }
     }
     if (error != nullptr) {
       std::ostringstream message;
@@ -486,6 +669,19 @@ std::optional<std::vector<DecodedInstruction>> decode_text_bytes(
     return std::nullopt;
   }
   return decoded;
+}
+
+std::string gpr_name(std::uint32_t reg) {
+  constexpr std::string_view names[] = {
+      "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
+      "s0",   "s1", "a0", "a1", "a2", "a3", "a4", "a5",
+      "a6",   "a7", "s2", "s3", "s4", "s5", "s6", "s7",
+      "s8",   "s9", "s10", "s11", "t3", "t4", "t5", "t6",
+  };
+  if (reg < std::size(names)) {
+    return std::string(names[reg]);
+  }
+  return "x" + std::to_string(reg);
 }
 
 std::string instruction_assembly(const DecodedInstruction& instruction) {
@@ -501,9 +697,33 @@ std::string instruction_assembly(const DecodedInstruction& instruction) {
     return out.str();
   }
   if (const auto* li = std::get_if<DecodedLi>(&instruction)) {
-    const auto destination_name =
-        li->destination == 10 ? std::string("a0") : "x" + std::to_string(li->destination);
-    out << "li " << destination_name << ", " << li->immediate;
+    out << "li " << gpr_name(li->destination) << ", " << li->immediate;
+    return out.str();
+  }
+  if (const auto* rv64i = std::get_if<DecodedRv64I>(&instruction)) {
+    out << rv64i->mnemonic << ' ';
+    switch (rv64i->format) {
+      case Rv64DecodedFormat::RType:
+        out << gpr_name(rv64i->destination) << ", " << gpr_name(rv64i->lhs)
+            << ", " << gpr_name(rv64i->rhs);
+        break;
+      case Rv64DecodedFormat::IType:
+        out << gpr_name(rv64i->destination) << ", " << gpr_name(rv64i->lhs)
+            << ", " << rv64i->immediate;
+        break;
+      case Rv64DecodedFormat::Load:
+      case Rv64DecodedFormat::Jalr:
+        out << gpr_name(rv64i->destination) << ", " << rv64i->immediate
+            << '(' << gpr_name(rv64i->lhs) << ')';
+        break;
+      case Rv64DecodedFormat::Store:
+        out << gpr_name(rv64i->rhs) << ", " << rv64i->immediate
+            << '(' << gpr_name(rv64i->lhs) << ')';
+        break;
+      case Rv64DecodedFormat::UType:
+        out << gpr_name(rv64i->destination) << ", " << rv64i->immediate;
+        break;
+    }
     return out.str();
   }
   return "ret";
