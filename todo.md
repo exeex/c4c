@@ -8,49 +8,42 @@ Current Step Title: Milestone Validation and Closure Decision
 
 ## Just Finished
 
-Completed Plan Step 4 representative validation for the simple-call and FPR ABI
-edge packet.
+Completed Plan Step 5 milestone validation for idea 358's RV64 object-route ABI
+and width-edge runbook.
 
-The Step 4 representatives now pass without weakening runtime checks:
-`src/20030125-1.c` passed in the earlier supervisor-run representative proof,
-with the case artifact still recording
-`[PASS][rv64-gcc-torture-backend-obj]`, and `src/20010119-1.c` passed in the
-latest supervisor-run representative proof recorded in `test_after.log`.
+The five-case representative allowlist passed 5/5 in
+`build/agent_state/358_step5_five_case_representatives.log`:
+`src/20010119-1.c`, `src/20001203-1.c`, `src/20030216-1.c`,
+`src/20030125-1.c`, and `src/920410-1.c`.
+
+The focused backend proof also passed 3/3 in `test_after.log`, and the
+regression guard comparing `test_before.log` to `test_after.log` reported
+PASS.
 
 ## Suggested Next
 
-Run Plan Step 5 milestone validation: the five-case representative allowlist
-from `plan.md`, followed by the focused backend proof used by the prior steps.
-Use the results to decide whether idea 358 can close or needs separate
-follow-up ideas for any remaining non-overlapping boundaries.
+Ask the plan owner for the closure decision for
+`ideas/open/358_rv64_object_route_abi_width_edges.md`.
 
 ## Watchouts
 
-- Step 5 should prove all five current targets together:
-  `src/20010119-1.c`, `src/20001203-1.c`, `src/20030216-1.c`,
-  `src/20030125-1.c`, and `src/920410-1.c`.
-- Keep representative validation semantic. Do not convert any remaining
-  boundary into expectation downgrades, skipped runtime checks, or
-  testcase-name matching.
-- If milestone validation exposes a remaining boundary outside idea 358's mixed
-  object-route ABI/width scope, record the split candidate instead of expanding
-  this plan silently.
+- Step 5 validation did not require expectation downgrades, skipped runtime
+  checks, or testcase-name matching.
+- Treat any later non-overlapping RV64 backend boundary as a separate
+  follow-up idea rather than expanding this completed runbook.
 
 ## Proof
 
 No build was required for this todo-only update.
 
-Referenced supervisor-run proof artifacts:
+Referenced supervisor-run proof artifacts and checks:
 
-- `test_after.log`: `src/20010119-1.c` passed, summary `total=1 passed=1
-  failed=0`.
-- `build/rv64_gcc_c_torture_backend/src_20010119-1.c/case.log`: records
-  `[PASS][rv64-gcc-torture-backend-obj]`.
-- `build/rv64_gcc_c_torture_backend/src_20030125-1.c/case.log`: records
-  `[PASS][rv64-gcc-torture-backend-obj]` from the earlier representative
-  proof.
+- `build/agent_state/358_step5_five_case_representatives.log`: five
+  representative cases passed 5/5.
+- `test_after.log`: focused backend proof passed 3/3.
+- Regression guard against `test_before.log` and `test_after.log`: PASS.
 
-Suggested Step 5 proof:
+Completed Step 5 representative proof:
 
 ```sh
 tmp=$(mktemp); printf '%s\n' \
@@ -62,6 +55,8 @@ tmp=$(mktemp); printf '%s\n' \
 CASE_TIMEOUT_SEC=20 ALLOWLIST="$tmp" scripts/check_progress_rv64_gcc_c_torture_backend.sh; \
 rc=$?; rm -f "$tmp"; exit $rc
 ```
+
+Completed focused backend proof:
 
 ```sh
 cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log
