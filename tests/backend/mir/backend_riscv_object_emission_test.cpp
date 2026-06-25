@@ -3571,6 +3571,7 @@ prepare::PreparedBirModule make_prepared_frame_slot_value_arg_call_module() {
   const auto callee_name = prepared.names.function_names.intern("sink");
   const auto main_name = prepared.names.function_names.intern("main");
   const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto byte_name = prepared.names.value_names.intern("%byte");
   const auto spill_name = prepared.names.value_names.intern("%spill");
 
   bir::Block callee_entry{
@@ -3583,9 +3584,13 @@ prepare::PreparedBirModule make_prepared_frame_slot_value_arg_call_module() {
   call.args = {bir::Value::named(bir::TypeKind::I64, "%spill")};
   call.arg_types = {bir::TypeKind::I64};
   call.return_type = bir::TypeKind::Void;
+  bir::CastInst cast;
+  cast.opcode = bir::CastOpcode::SExt;
+  cast.result = bir::Value::named(bir::TypeKind::I64, "%spill");
+  cast.operand = bir::Value::named(bir::TypeKind::I8, "%byte");
   bir::Block main_entry{
       .label = "entry",
-      .insts = {call},
+      .insts = {cast, call},
       .terminator = bir::Terminator{},
       .label_id = block_label,
   };
@@ -3631,26 +3636,34 @@ prepare::PreparedBirModule make_prepared_frame_slot_value_arg_call_module() {
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = main_name,
-      .value_homes = {prepare::PreparedValueHome{
-          .value_id = 1,
-          .function_name = main_name,
-          .value_name = spill_name,
-          .kind = prepare::PreparedValueHomeKind::StackSlot,
-          .slot_id = prepare::PreparedFrameSlotId{2},
-          .offset_bytes = 16,
-          .size_bytes = 8,
-          .align_bytes = 8,
-      }},
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = main_name,
+                  .value_name = spill_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{2},
+                  .offset_bytes = 16,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 3,
+                  .function_name = main_name,
+                  .value_name = byte_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+          },
   });
   prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
       .function_name = main_name,
       .calls = {prepare::PreparedCallPlan{
           .block_index = 0,
-          .instruction_index = 0,
+          .instruction_index = 1,
           .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
           .direct_callee_name = std::string{"sink"},
           .arguments = {prepare::PreparedCallArgumentPlan{
-              .instruction_index = 0,
+              .instruction_index = 1,
               .arg_index = 0,
               .value_bank = prepare::PreparedRegisterBank::Gpr,
               .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
@@ -3674,7 +3687,20 @@ prepare::PreparedBirModule make_prepared_frame_slot_value_arg_call_module() {
           }},
       }},
   });
-  prepared.stack_layout.frame_size_bytes = 24;
+  prepared.frame_plan.functions = {
+      prepare::PreparedFramePlanFunction{
+          .function_name = callee_name,
+          .frame_size_bytes = 0,
+          .frame_alignment_bytes = 1,
+      },
+      prepare::PreparedFramePlanFunction{
+          .function_name = main_name,
+          .frame_size_bytes = 24,
+          .frame_alignment_bytes = 8,
+          .frame_slot_order = {prepare::PreparedFrameSlotId{2}},
+      },
+  };
+  prepared.stack_layout.frame_size_bytes = 1;
   prepared.stack_layout.frame_alignment_bytes = 8;
   prepared.stack_layout.frame_slots = {
       prepare::PreparedFrameSlot{
@@ -4611,10 +4637,13 @@ int builds_prepared_frame_slot_value_arg_call_object() {
       module->relocations[0].symbol != sink->id) {
     return fail("expected frame-slot-value same-module call relocation");
   }
+  const auto store = read_u32(text->bytes, module->relocations[0].offset - 8);
   if (read_u32(text->bytes, main_offset + 0) != 0xfd010113 ||
       read_u32(text->bytes, main_offset + 4) != 0x02113423 ||
+      (store & 0x7fU) != 0x23U || ((store >> 12) & 0x7U) != 3U ||
+      ((store >> 15) & 0x1fU) != 2U || ((store >> 20) & 0x1fU) != 30U ||
       read_u32(text->bytes, module->relocations[0].offset - 4) != 0x01013503) {
-    return fail("expected ld frame-slot payload into a0 before call");
+    return fail("expected frame-slot payload store and reload into a0 before call");
   }
   return 0;
 }
@@ -4656,7 +4685,7 @@ int rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes() {
 
   prepared = make_prepared_frame_slot_value_arg_call_module();
   if (auto* call = std::get_if<bir::CallInst>(
-          &prepared.module.functions[1].blocks[0].insts[0])) {
+          &prepared.module.functions[1].blocks[0].insts[1])) {
     call->arg_types[0] = bir::TypeKind::F32;
   }
   if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
@@ -4664,7 +4693,10 @@ int rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes() {
   }
 
   prepared = make_prepared_frame_slot_value_arg_call_module();
-  prepared.value_locations.functions[1].value_homes[0].align_bytes = 16;
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->source_align_bytes = 16;
   if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
     return 1;
   }
@@ -4683,7 +4715,7 @@ int rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes() {
   prepared.call_plans.functions[0].calls[0].arguments[0].source_stack_offset_bytes =
       2048;
   prepared.stack_layout.frame_slots[0].offset_bytes = 2048;
-  prepared.stack_layout.frame_size_bytes = 2056;
+  prepared.frame_plan.functions[1].frame_size_bytes = 2056;
   if (expect_prepared_rejection_diagnostic(
           prepared,
           "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame") !=

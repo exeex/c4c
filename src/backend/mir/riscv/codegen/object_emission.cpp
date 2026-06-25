@@ -673,11 +673,12 @@ std::uint32_t rv64_temporary_gpr_avoiding(std::uint32_t reserved_register) {
 std::optional<std::int32_t> prepared_stack_slot_home_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedValueHome& home,
-    std::size_t stack_frame_bytes) {
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes = 4) {
   if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
-      !home.slot_id.has_value() || !home.size_bytes.has_value() ||
-      *home.size_bytes != 4 ||
-      (home.align_bytes.has_value() && *home.align_bytes > 4)) {
+      !home.slot_id.has_value() || !home.offset_bytes.has_value() ||
+      (home.size_bytes.has_value() && *home.size_bytes != size_bytes) ||
+      (home.align_bytes.has_value() && *home.align_bytes > size_bytes)) {
     return std::nullopt;
   }
   const auto slot_it =
@@ -687,16 +688,16 @@ std::optional<std::int32_t> prepared_stack_slot_home_offset(
                      return slot.slot_id == *home.slot_id;
                    });
   if (slot_it == stack_layout.frame_slots.end() ||
-      slot_it->size_bytes < *home.size_bytes ||
-      slot_it->align_bytes > 4) {
+      slot_it->size_bytes < size_bytes ||
+      slot_it->align_bytes > size_bytes) {
     return std::nullopt;
   }
   const std::size_t offset = *home.offset_bytes;
   if (slot_it->offset_bytes != offset ||
-      slot_it->size_bytes < *home.size_bytes) {
+      slot_it->size_bytes < size_bytes) {
     return std::nullopt;
   }
-  if (offset > stack_frame_bytes || stack_frame_bytes - offset < *home.size_bytes ||
+  if (offset > stack_frame_bytes || stack_frame_bytes - offset < size_bytes ||
       !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
     return std::nullopt;
   }
@@ -1505,10 +1506,13 @@ void append_rv64_stack_frame_epilogue(RiscvEncodedFragment& fragment,
 
 std::optional<std::size_t> rv64_object_stack_frame_size(
     const c4c::backend::prepare::PreparedAddressingFunction* addressing,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout) {
   const auto addressing_frame_size =
       addressing == nullptr ? std::size_t{0} : addressing->frame_size_bytes;
-  const auto frame_size = std::max(addressing_frame_size, stack_layout.frame_size_bytes);
+  const auto prepared_frame_size =
+      frame_plan == nullptr ? stack_layout.frame_size_bytes : frame_plan->frame_size_bytes;
+  const auto frame_size = std::max(addressing_frame_size, prepared_frame_size);
   if (frame_size == 0) {
     return 0;
   }
@@ -1575,16 +1579,32 @@ std::optional<std::int32_t> prepared_frame_slot_call_argument_offset(
   const auto* source_home =
       prepared_value_home_for_id(lookups, *argument.source_value_id);
   const auto size_bytes = rv64_scalar_memory_size_for_type(argument_type);
+  const auto source_size_bytes =
+      source_home == nullptr
+          ? std::optional<std::size_t>{}
+          : source_home->size_bytes.has_value()
+                ? source_home->size_bytes
+                : argument.source_selection.has_value()
+                      ? argument.source_selection->source_size_bytes
+                      : std::optional<std::size_t>{};
+  const auto source_align_bytes =
+      source_home == nullptr
+          ? std::optional<std::size_t>{}
+          : source_home->align_bytes.has_value()
+                ? source_home->align_bytes
+                : argument.source_selection.has_value()
+                      ? argument.source_selection->source_align_bytes
+                      : std::optional<std::size_t>{};
   if (source_home == nullptr ||
       source_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
       !source_home->slot_id.has_value() ||
       *source_home->slot_id != *argument.source_slot_id ||
       !source_home->offset_bytes.has_value() ||
-      !source_home->size_bytes.has_value() ||
       !size_bytes.has_value() ||
-      *source_home->size_bytes != *size_bytes ||
-      (source_home->align_bytes.has_value() &&
-       *source_home->align_bytes > *size_bytes)) {
+      !source_size_bytes.has_value() ||
+      *source_size_bytes != *size_bytes ||
+      (source_align_bytes.has_value() &&
+       *source_align_bytes > *size_bytes)) {
     return std::nullopt;
   }
   if (argument.source_stack_offset_bytes.has_value() &&
@@ -2588,6 +2608,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_cast(
   if (!source_bits.has_value() || !result_bits.has_value()) {
     return std::nullopt;
   }
+  const auto size_bytes = rv64_scalar_memory_size_for_type(cast.result.type);
+  if (!size_bytes.has_value()) {
+    return std::nullopt;
+  }
   const auto* destination_home = prepared_value_home_for(names, lookups, cast.result);
   const auto destination =
       destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
@@ -2596,12 +2620,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_cast(
           ? std::nullopt
           : prepared_stack_slot_home_offset(stack_layout,
                                             *destination_home,
-                                            stack_frame_bytes);
+                                            stack_frame_bytes,
+                                            *size_bytes);
   if (!destination.has_value() && !destination_stack_offset.has_value()) {
-    return std::nullopt;
-  }
-  const auto size_bytes = rv64_scalar_memory_size_for_type(cast.result.type);
-  if (destination_stack_offset.has_value() && !size_bytes.has_value()) {
     return std::nullopt;
   }
 
@@ -3720,10 +3741,12 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
       .global = true,
   };
   const auto* addressing = prepare::find_prepared_addressing(prepared, control_flow.function_name);
+  const auto* frame_plan =
+      prepare::find_prepared_frame_plan(prepared, control_flow.function_name);
   const auto* inline_asm_carriers =
       prepare::find_prepared_inline_asm_carriers(prepared, control_flow.function_name);
   const auto stack_frame_bytes =
-      rv64_object_stack_frame_size(addressing, prepared.stack_layout);
+      rv64_object_stack_frame_size(addressing, frame_plan, prepared.stack_layout);
   if (!stack_frame_bytes.has_value()) {
     return make_rv64_prepared_function_rejection(
         "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame");
