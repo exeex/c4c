@@ -415,6 +415,22 @@ c4c_set_backend_test_labels(
   riscv64 asm cli c4c_as parser
 )
 
+add_test(
+  NAME backend_c4c_objdump_extract_suite
+  COMMAND "${CMAKE_COMMAND}"
+          -DC4C_OBJDUMP=$<TARGET_FILE:c4c-objdump>
+          -DC4CLL=$<TARGET_FILE:c4cll>
+          -DSOURCE_CASE=${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c
+          -DAARCH64_SOURCE_CASE=${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c
+          -DWORK_DIR=${BACKEND_TEST_BINARY_ROOT}/c4c_objdump_suite
+          -DCASE_TIMEOUT_SEC=10
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_c4c_objdump_extract_suite.cmake"
+)
+c4c_set_backend_test_labels(
+  backend_c4c_objdump_extract_suite
+  riscv64 objdump cli c4c_objdump extractor
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_vrm_insn_d_source_asm
   SRC "${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c"
