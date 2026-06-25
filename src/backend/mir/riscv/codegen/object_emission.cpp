@@ -889,7 +889,84 @@ const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for_id(
   return it == lookups->value_homes.homes_by_id.end() ? nullptr : it->second;
 }
 
+bool prepared_bir_value_has_name(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Value& value,
+    c4c::ValueNameId value_name) {
+  return value.kind == c4c::backend::bir::Value::Kind::Named &&
+         !value.name.empty() && names.value_names.find(value.name) == value_name;
+}
+
+std::optional<c4c::backend::bir::TypeKind> prepared_bir_value_type_for_name(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function& function,
+    c4c::ValueNameId value_name) {
+  if (value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  for (const auto& param : function.params) {
+    if (names.value_names.find(param.name) == value_name) {
+      return param.type;
+    }
+  }
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, binary->result, value_name)) {
+          return binary->result.type;
+        }
+      } else if (const auto* select =
+                     std::get_if<c4c::backend::bir::SelectInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, select->result, value_name)) {
+          return select->result.type;
+        }
+      } else if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, cast->result, value_name)) {
+          return cast->result.type;
+        }
+      } else if (const auto* phi = std::get_if<c4c::backend::bir::PhiInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, phi->result, value_name)) {
+          return phi->result.type;
+        }
+      } else if (const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst)) {
+        if (call->result.has_value() &&
+            prepared_bir_value_has_name(names, *call->result, value_name)) {
+          return call->result->type;
+        }
+        for (const auto& lane : call->result_lanes) {
+          if (prepared_bir_value_has_name(names, lane, value_name)) {
+            return lane.type;
+          }
+        }
+      } else if (const auto* load =
+                     std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, load->result, value_name)) {
+          return load->result.type;
+        }
+      } else if (const auto* load =
+                     std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, load->result, value_name)) {
+          return load->result.type;
+        }
+      }
+    }
+    if (block.terminator.value.has_value() &&
+        prepared_bir_value_has_name(names, *block.terminator.value, value_name)) {
+      return block.terminator.value->type;
+    }
+    for (const auto& lane : block.terminator.return_lanes) {
+      if (prepared_bir_value_has_name(names, lane, value_name)) {
+        return lane.type;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
+    const c4c::TargetProfile& target_profile,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
   RiscvEncodedFragment fragment;
@@ -904,21 +981,32 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     }
 
     std::optional<std::uint32_t> destination;
+    std::optional<std::uint32_t> fpr_destination;
     if (move.destination_register_name.has_value()) {
       destination = rv64_register_number(*move.destination_register_name);
     } else if (move.destination_kind ==
                prepare::PreparedMoveDestinationKind::Value) {
       const auto* destination_home =
           prepared_value_home_for_id(lookups, move.to_value_id);
-      destination = destination_home == nullptr
-                        ? std::nullopt
-                        : gpr_register_number_for_home(*destination_home);
+      if (destination_home != nullptr) {
+        destination = gpr_register_number_for_home(*destination_home);
+        fpr_destination = fpr_register_number_for_home(*destination_home);
+      }
+    } else if (move.destination_register_placement.has_value() &&
+               move.destination_register_placement->bank ==
+                   prepare::PreparedRegisterBank::Fpr &&
+               move.destination_register_placement->contiguous_width == 1) {
+      fpr_destination = fpr_register_number_for_abi_placement(
+          target_profile, *move.destination_register_placement);
     }
-    if (!destination.has_value()) {
+    if (!destination.has_value() && !fpr_destination.has_value()) {
       return std::nullopt;
     }
 
     if (move.source_immediate_i32.has_value()) {
+      if (!destination.has_value()) {
+        return std::nullopt;
+      }
       if (!fits_signed_12_bit_immediate(*move.source_immediate_i32)) {
         return std::nullopt;
       }
@@ -938,6 +1026,17 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
         return std::nullopt;
       }
       append_rv64_load_immediate(fragment, *destination, *source_home->immediate_i32);
+      continue;
+    }
+
+    if (fpr_destination.has_value()) {
+      const auto source = fpr_register_number_for_home(*source_home);
+      const auto type =
+          prepared_bir_value_type_for_name(names, function, source_home->value_name);
+      if (!source.has_value() || !type.has_value() ||
+          !append_rv64_fpr_move(fragment, *fpr_destination, *source, *type)) {
+        return std::nullopt;
+      }
       continue;
     }
 
@@ -1587,6 +1686,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Terminator& terminator,
+    std::size_t block_index,
     bool restore_return_address,
     std::size_t stack_frame_bytes) {
   if (terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -1602,6 +1702,29 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
     }
     append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
     return fragment;
+  }
+  if ((terminator.value->type == c4c::backend::bir::TypeKind::F32 ||
+       terminator.value->type == c4c::backend::bir::TypeKind::F64) &&
+      terminator.value->kind == c4c::backend::bir::Value::Kind::Named &&
+      !terminator.value->name.empty() && lookups != nullptr) {
+    const auto value_name = names.value_names.find(terminator.value->name);
+    const auto value_id_it = lookups->value_homes.value_ids.find(value_name);
+    if (value_name != c4c::kInvalidValueName &&
+        value_id_it != lookups->value_homes.value_ids.end() &&
+        prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+            &lookups->move_bundles,
+            nullptr,
+            block_index,
+            value_id_it->second,
+            prepare::PreparedRegisterBank::Fpr) != nullptr) {
+      if (restore_return_address) {
+        append_rv64_call_frame_epilogue(fragment, stack_frame_bytes);
+      } else {
+        append_rv64_stack_frame_epilogue(fragment, stack_frame_bytes);
+      }
+      append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
+      return fragment;
+    }
   }
   if (!append_rv64_move_value_to_register(fragment,
                                           10,
@@ -2901,6 +3024,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Block& block,
     c4c::BlockLabelId block_label_id,
+    std::size_t block_index,
     std::string_view function_name,
     const std::unordered_map<std::string, PreparedObjectCompare>& compares,
     bool restore_return_address,
@@ -2911,6 +3035,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
                                           names,
                                           lookups,
                                           block.terminator,
+                                          block_index,
                                           restore_return_address,
                                           stack_frame_bytes);
     case c4c::backend::bir::TerminatorKind::Branch: {
@@ -3414,7 +3539,11 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
             };
           }
           auto fragment =
-              fragment_for_prepared_move_bundle(&lookups, *classification.move_bundle);
+              fragment_for_prepared_move_bundle(prepared.target_profile,
+                                                prepared.names,
+                                                *function,
+                                                &lookups,
+                                                *classification.move_bundle);
           if (!fragment.has_value()) {
             return make_rv64_prepared_function_rejection(
                 "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves");
@@ -3482,6 +3611,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                &lookups,
                                                *block,
                                                prepared_block_label,
+                                               event.block_index,
                                                function_name,
                                                compares,
                                                has_call,
@@ -3562,6 +3692,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                          &lookups,
                                          block,
                                          prepared_block_label,
+                                         block_index,
                                          function_name,
                                          compares,
                                          has_call,

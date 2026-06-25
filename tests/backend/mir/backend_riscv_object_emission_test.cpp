@@ -1448,6 +1448,85 @@ prepare::PreparedBirModule make_prepared_unsupported_floating_cast_module() {
                                        bir::TypeKind::F64);
 }
 
+prepare::PreparedBirModule make_prepared_before_return_fpr_abi_move_module(
+    bir::TypeKind return_type) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("fpr_return_move");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto result_name = prepared.names.value_names.intern("%ret");
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.value = bir::Value::named(return_type, "%ret");
+  const std::size_t return_size =
+      return_type == bir::TypeKind::F64 ? 8
+      : return_type == bir::TypeKind::F128 ? 16
+                                           : 4;
+  prepared.module.functions.push_back(bir::Function{
+      .name = "fpr_return_move",
+      .return_type = return_type,
+      .return_size_bytes = return_size,
+      .return_align_bytes = return_size,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              make_fpr_home(function_name, result_name, 1, "ft0", 0),
+          },
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeReturn,
+              .block_index = 0,
+              .instruction_index = 0,
+              .moves = {prepare::PreparedMoveResolution{
+                  .from_value_id = 1,
+                  .to_value_id = 1,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_contiguous_width = 1,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .destination_register_placement =
+                      prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Fpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                          .slot_index = 0,
+                          .contiguous_width = 1,
+                      },
+              }},
+          }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_before_return_fpr_f32_abi_move_module() {
+  return make_prepared_before_return_fpr_abi_move_module(bir::TypeKind::F32);
+}
+
+prepare::PreparedBirModule make_prepared_before_return_fpr_f64_abi_move_module() {
+  return make_prepared_before_return_fpr_abi_move_module(bir::TypeKind::F64);
+}
+
+prepare::PreparedBirModule make_prepared_before_return_fpr_f128_abi_move_module() {
+  return make_prepared_before_return_fpr_abi_move_module(bir::TypeKind::F128);
+}
+
 prepare::PreparedBirModule make_prepared_global_load_module(bool publish_access = true) {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -4821,6 +4900,102 @@ int builds_prepared_formal_fpr_fpext_to_ft0_object() {
   return 0;
 }
 
+int builds_prepared_before_return_fpr_f32_abi_move_object() {
+  const auto prepared = make_prepared_before_return_fpr_f32_abi_move_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared before-return F32 FPR ABI move object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "fpr_return_move");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared before-return FPR move object to publish text/function");
+  }
+  if (text->bytes.size() != 8 || function->size_bytes != 8) {
+    return fail("expected prepared before-return FPR move text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x20000553 ||
+      read_u32(text->bytes, 4) != 0x00008067) {
+    return fail("expected fmv.s fa0, ft0 followed by ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared before-return FPR move object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_before_return_fpr_f64_abi_move_object() {
+  const auto prepared = make_prepared_before_return_fpr_f64_abi_move_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared before-return F64 FPR ABI move object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "fpr_return_move");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared before-return FPR move object to publish text/function");
+  }
+  if (text->bytes.size() != 8 || function->size_bytes != 8) {
+    return fail("expected prepared before-return FPR move text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x22000553 ||
+      read_u32(text->bytes, 4) != 0x00008067) {
+    return fail("expected fmv.d fa0, ft0 followed by ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared before-return FPR move object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes() {
+  auto prepared = make_prepared_before_return_fpr_f32_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .uses_cycle_temp_source = true;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_fpr_f32_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_contiguous_width = 2;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_fpr_f32_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_stack_offset_bytes = 0;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_fpr_f128_abi_move_module();
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves") !=
+      0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int rejects_unsupported_prepared_floating_cast_with_precise_diagnostic() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_unsupported_floating_cast_module(),
@@ -5652,6 +5827,9 @@ int main() {
   status |= builds_prepared_fpr_fpext_object();
   status |= builds_prepared_fpr_fptrunc_object();
   status |= builds_prepared_formal_fpr_fpext_to_ft0_object();
+  status |= builds_prepared_before_return_fpr_f32_abi_move_object();
+  status |= builds_prepared_before_return_fpr_f64_abi_move_object();
+  status |= rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes();
   status |= rejects_unsupported_prepared_floating_cast_with_precise_diagnostic();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= emits_prepared_writable_i32_global_object_storage();
