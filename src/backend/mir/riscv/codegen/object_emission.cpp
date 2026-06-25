@@ -646,6 +646,30 @@ std::optional<std::uint32_t> gpr_register_number_for_value(
   return home == nullptr ? std::nullopt : gpr_register_number_for_home(*home);
 }
 
+std::optional<std::uint32_t> gpr_register_number_for_value_name(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::ValueNameId value_name) {
+  if (lookups == nullptr || value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto value_id_it = lookups->value_homes.value_ids.find(value_name);
+  if (value_id_it == lookups->value_homes.value_ids.end()) {
+    return std::nullopt;
+  }
+  const auto home_it = lookups->value_homes.homes_by_id.find(value_id_it->second);
+  if (home_it == lookups->value_homes.homes_by_id.end() ||
+      home_it->second == nullptr) {
+    return std::nullopt;
+  }
+  return gpr_register_number_for_home(*home_it->second);
+}
+
+std::uint32_t rv64_temporary_gpr_avoiding(std::uint32_t reserved_register) {
+  constexpr std::uint32_t t1 = 6;
+  constexpr std::uint32_t t2 = 7;
+  return reserved_register == t1 ? t2 : t1;
+}
+
 std::optional<std::int32_t> prepared_stack_slot_home_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedValueHome& home,
@@ -1866,6 +1890,33 @@ std::optional<std::int32_t> prepared_frame_slot_absolute_offset(
   return static_cast<std::int32_t>(offset);
 }
 
+std::optional<std::pair<std::uint32_t, std::int32_t>>
+prepared_pointer_value_base_offset(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t size_bytes) {
+  if (access == nullptr ||
+      access->address_space != c4c::backend::bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind !=
+          c4c::backend::prepare::PreparedAddressBaseKind::PointerValue ||
+      !access->address.pointer_value_name.has_value() ||
+      !access->address.can_use_base_plus_offset ||
+      access->address.size_bytes != size_bytes ||
+      access->address.align_bytes > size_bytes ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return std::nullopt;
+  }
+  const auto base_register =
+      gpr_register_number_for_value_name(lookups, *access->address.pointer_value_name);
+  if (!base_register.has_value()) {
+    return std::nullopt;
+  }
+  return std::pair<std::uint32_t, std::int32_t>{
+      *base_register,
+      static_cast<std::int32_t>(access->address.byte_offset)};
+}
+
 std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type) {
   switch (type) {
@@ -2164,7 +2215,29 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
                                           stack_frame_bytes,
                                           *size_bytes);
   if (!offset.has_value()) {
-    return std::nullopt;
+    const auto pointer_base =
+        prepared_pointer_value_base_offset(lookups, access, *size_bytes);
+    if (!pointer_base.has_value()) {
+      return std::nullopt;
+    }
+    const std::uint32_t value_register =
+        rv64_temporary_gpr_avoiding(pointer_base->first);
+    RiscvEncodedFragment fragment;
+    if (!append_rv64_move_value_to_register(fragment,
+                                            value_register,
+                                            stack_layout,
+                                            names,
+                                            lookups,
+                                            store.value,
+                                            stack_frame_bytes) ||
+        !append_rv64_store_register_to_base(fragment,
+                                           value_register,
+                                           pointer_base->first,
+                                           pointer_base->second,
+                                           *size_bytes)) {
+      return std::nullopt;
+    }
+    return fragment;
   }
   RiscvEncodedFragment fragment;
   if (!append_rv64_move_value_to_register(fragment,
@@ -2199,7 +2272,38 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
                                           stack_frame_bytes,
                                           *size_bytes);
   if (!offset.has_value()) {
-    return std::nullopt;
+    const auto pointer_base =
+        prepared_pointer_value_base_offset(lookups, access, *size_bytes);
+    if (!pointer_base.has_value()) {
+      return std::nullopt;
+    }
+    const auto destination = gpr_register_number_for_value(names, lookups, load.result);
+    const auto destination_offset =
+        prepared_stack_slot_home_offset_for_value(stack_layout,
+                                                  names,
+                                                  lookups,
+                                                  load.result,
+                                                  stack_frame_bytes);
+    if (!destination.has_value() && !destination_offset.has_value()) {
+      return std::nullopt;
+    }
+    const std::uint32_t destination_register = destination.value_or(6);
+    RiscvEncodedFragment fragment;
+    if (!append_rv64_load_base_to_register(fragment,
+                                          destination_register,
+                                          pointer_base->first,
+                                          pointer_base->second,
+                                          *size_bytes)) {
+      return std::nullopt;
+    }
+    if (destination_offset.has_value() &&
+        !append_rv64_store_register_to_stack(fragment,
+                                            destination_register,
+                                            *destination_offset,
+                                            *size_bytes)) {
+      return std::nullopt;
+    }
+    return fragment;
   }
   const auto destination = gpr_register_number_for_value(names, lookups, load.result);
   RiscvEncodedFragment fragment;
@@ -3423,9 +3527,11 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                              access,
                                              stack_frame_bytes,
                                              *size_bytes)
+             .has_value() &&
+        !prepared_pointer_value_base_offset(&lookups, access, *size_bytes)
              .has_value()) {
       return std::string{
-          "unsupported_local_memory_access: RV64 object route requires prepared frame-slot base-plus-offset local memory addressing"};
+          "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"};
     }
     return std::nullopt;
   };
