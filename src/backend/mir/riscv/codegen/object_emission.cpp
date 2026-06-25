@@ -1990,6 +1990,58 @@ bool prepared_object_traversal_is_complete_bir_stream(
   return !traversal.empty();
 }
 
+std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
+    const c4c::backend::prepare::PreparedFunctionLookups& lookups,
+    c4c::BlockLabelId prepared_block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::Inst& inst) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  const auto local_memory_diagnostic =
+      [&](const std::optional<std::size_t>& size_bytes,
+          const prepare::PreparedMemoryAccess* access) -> std::optional<std::string> {
+    if (!size_bytes.has_value()) {
+      return std::string{
+          "unsupported_local_memory_access: RV64 object route supports only 32-bit and 64-bit prepared local memory accesses"};
+    }
+    if (access == nullptr || access->address_space != bir::AddressSpace::Default ||
+        access->is_volatile ||
+        access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+        !access->address.frame_slot_id.has_value() ||
+        !access->address.can_use_base_plus_offset ||
+        access->address.size_bytes != *size_bytes ||
+        access->address.align_bytes > *size_bytes ||
+        access->address.byte_offset < 0 ||
+        !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+      return std::string{
+          "unsupported_local_memory_access: RV64 object route requires prepared frame-slot base-plus-offset local memory addressing"};
+    }
+    return std::nullopt;
+  };
+
+  if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst)) {
+    return local_memory_diagnostic(
+        rv64_scalar_memory_size_for_type(store->value.type),
+        prepared_memory_access_for_instruction(&lookups,
+                                               prepared_block_label,
+                                               instruction_index));
+  }
+  if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst)) {
+    return local_memory_diagnostic(
+        rv64_scalar_memory_size_for_type(load->result.type),
+        prepared_memory_access_for_instruction(&lookups,
+                                               prepared_block_label,
+                                               instruction_index));
+  }
+  if (std::get_if<bir::LoadGlobalInst>(&inst) != nullptr ||
+      std::get_if<bir::StoreGlobalInst>(&inst) != nullptr) {
+    return std::string{
+        "unsupported_global_data: RV64 object route does not lower prepared global memory instructions"};
+  }
+  return std::nullopt;
+}
+
 RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow) {
@@ -2138,6 +2190,14 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                            compares,
                                                            *stack_frame_bytes);
           if (!fragment.has_value()) {
+            if (auto diagnostic =
+                    diagnose_unsupported_prepared_instruction_fragment(
+                        lookups,
+                        prepared_block_label,
+                        event.instruction_index,
+                        *event.instruction)) {
+              return make_rv64_prepared_function_rejection(std::move(*diagnostic));
+            }
             return make_rv64_prepared_function_rejection(
                 "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
           }
@@ -2202,6 +2262,14 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                        compares,
                                                        *stack_frame_bytes);
       if (!fragment.has_value()) {
+        if (auto diagnostic =
+                diagnose_unsupported_prepared_instruction_fragment(
+                    lookups,
+                    prepared_block_label,
+                    instruction_index,
+                    block.insts[instruction_index])) {
+          return make_rv64_prepared_function_rejection(std::move(*diagnostic));
+        }
         return make_rv64_prepared_function_rejection(
             "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
       }

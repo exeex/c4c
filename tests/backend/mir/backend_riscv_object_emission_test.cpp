@@ -81,6 +81,31 @@ int fail(const std::string& message) {
   return 1;
 }
 
+int expect_prepared_rejection_diagnostic(
+    const prepare::PreparedBirModule& prepared,
+    const std::string& expected_diagnostic) {
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (result.ok() || result.module.has_value()) {
+    return fail("expected prepared RV64 object path to reject");
+  }
+  if (result.prepared_consumer_category.has_value()) {
+    return fail("expected RV64-local diagnostic rather than shared category");
+  }
+  if (result.diagnostic != expected_diagnostic) {
+    return fail("expected prepared RV64 object diagnostic `" +
+                expected_diagnostic + "`, got `" + result.diagnostic + "`");
+  }
+  const auto image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(prepared);
+  if (image.ok() || image.image.has_value() ||
+      image.prepared_consumer_category.has_value() ||
+      image.diagnostic != expected_diagnostic) {
+    return fail("expected prepared RV64 ELF writer to preserve RV64-local diagnostic");
+  }
+  return 0;
+}
+
 std::optional<object::ObjectModule> make_minimal_call_module() {
   return rv64::build_rv64_text_object_module({
       rv64::RiscvObjectFunction{
@@ -753,6 +778,111 @@ prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
                   },
               },
           },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_i16_local_store_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto slot_name = prepared.names.slot_names.intern("%lv.half");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%lv.half",
+                  .slot_id = slot_name,
+                  .value = bir::Value::immediate_i16(7),
+                  .align_bytes = 2,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .local_slots = {bir::LocalSlot{
+          .name = "%lv.half",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::I16,
+          .size_bytes = 2,
+          .align_bytes = 2,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 2,
+      .frame_alignment_bytes = 2,
+      .accesses = {prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 0,
+          .address = prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+              .frame_slot_id = prepare::PreparedFrameSlotId{0},
+              .byte_offset = 0,
+              .size_bytes = 2,
+              .align_bytes = 2,
+              .can_use_base_plus_offset = true,
+          },
+      }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_global_load_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto result_name = prepared.names.value_names.intern("%g");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadGlobalInst{
+                  .result = bir::Value::named(bir::TypeKind::I32, "%g"),
+                  .global_name = "g",
+                  .align_bytes = 4,
+              },
+          },
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%g");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 1,
+          .function_name = function_name,
+          .value_name = result_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"a0"},
+      }},
   });
   return prepared;
 }
@@ -3380,6 +3510,32 @@ int rejects_prepared_inline_asm_insn_d_object() {
   return 0;
 }
 
+int rejects_prepared_string_constants_with_stable_bucket() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto text_name = prepared.module.names.texts.intern(".LC0");
+  prepared.module.string_constants.push_back(bir::StringConstant{
+      .name = ".LC0",
+      .name_id = text_name,
+      .bytes = "hello",
+      .align_bytes = 1,
+  });
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "module_string_constants: RV64 object route does not emit prepared string constants");
+}
+
+int rejects_prepared_global_memory_instruction_with_stable_bucket() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_global_load_module(),
+      "unsupported_global_data: RV64 object route does not lower prepared global memory instructions");
+}
+
+int rejects_prepared_i16_local_memory_with_stable_bucket() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_i16_local_store_module(),
+      "unsupported_local_memory_access: RV64 object route supports only 32-bit and 64-bit prepared local memory accesses");
+}
+
 int rejects_prepared_data_without_asm_fallback() {
   auto prepared = make_prepared_direct_call_module();
   prepared.module.globals.push_back(bir::Global{
@@ -3389,10 +3545,9 @@ int rejects_prepared_data_without_asm_fallback() {
       .align_bytes = 4,
       .initializer = bir::Value::immediate_i32(1),
   });
-  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
-    return fail("expected prepared RV64 object path to reject unsupported globals");
-  }
-  return 0;
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_global_data: RV64 object route supports only constant scalar global objects");
 }
 
 int emits_prepared_constant_f64_global_object_storage() {
@@ -3794,6 +3949,9 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_d_named_operand_shape();
   status |= rejects_prepared_inline_asm_insn_d_template_modifier_shape();
   status |= rejects_prepared_inline_asm_insn_d_object();
+  status |= rejects_prepared_string_constants_with_stable_bucket();
+  status |= rejects_prepared_global_memory_instruction_with_stable_bucket();
+  status |= rejects_prepared_i16_local_memory_with_stable_bucket();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= emits_prepared_constant_f64_global_object_storage();
   status |= serializes_rv64_relocatable_elf_contract();
