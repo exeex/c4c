@@ -10,6 +10,12 @@ Add RV64 object emission support for prepared module data: globals, string
 constants, data sections, symbol definitions, and code/data relocations needed
 by generated RV64 object files.
 
+This idea owns target object data sections, ELF symbols, and relocations only
+for data that is already represented in the prepared module contract. If string
+literals, globals, initializer bytes, alignments, or address-use semantics are
+missing upstream, that is a separate BIR/LIR prepared-data contract problem and
+must not be patched inside RV64 object emission.
+
 ## Why This Exists
 
 The prepared-shape classification found `448` primary failures rejected before
@@ -22,19 +28,27 @@ globals or string constants. This is the largest non-CFG blocker:
 ## In Scope
 
 - Emit `.rodata`/data-equivalent object sections for string constants and
-  supported global initializers.
+  supported global initializers already described by prepared module data.
 - Define data symbols with stable binding, size, alignment, and section
-  placement.
+  placement from prepared-module metadata.
 - Support code references to global/string addresses through RV64 relocation
-  records compatible with the existing ELF writer.
+  records compatible with the existing ELF writer when the prepared contract
+  already exposes the symbol/address reference.
 - Keep behavior compatible with clang RV64 linking and qemu execution.
 - Add representative tests that exercise both string constants and mutable
   globals.
+- When missing upstream representation is discovered, create or route to a
+  BIR/LIR data-initializer contract idea instead of inventing that
+  representation inside RV64 object emission.
 
 ## Out of Scope
 
 - Full C aggregate initializer completion beyond what prepared BIR already
   represents.
+- Defining missing prepared-module string/global/initializer representation.
+- Scanning C/LIR/BIR in RV64 object emission to infer data initializers,
+  symbol lifetimes, or address-use semantics that the prepared module did not
+  publish.
 - Linker relaxation support beyond the relocations needed for correctness.
 - Disassembler pretty-printing.
 - Default full-CTest inclusion for the heavy gcc torture scan.
@@ -48,7 +62,9 @@ globals or string constants. This is the largest non-CFG blocker:
 
 ## Suspected Stage
 
-RV64 object module construction and ELF relocation/section emission.
+RV64 object module construction and ELF relocation/section emission for
+prepared data that already exists. Missing prepared data representation is an
+upstream BIR/LIR contract stage, not this target-emission idea.
 
 ## Proof Command
 
@@ -83,6 +99,9 @@ CASE_TIMEOUT_SEC=20 scripts/check_progress_rv64_gcc_c_torture_backend.sh
 - Generated object files contain valid ELF sections, symbols, and relocations
   for referenced data.
 - Existing object tests and c4c-as/c4c-objdump roundtrip tests remain green.
+- If a representative case lacks prepared data representation, it is routed to
+  an upstream BIR/LIR data-init idea with a precise diagnostic instead of being
+  locally patched in RV64 object emission.
 
 ## Reviewer Reject Signals
 
@@ -91,8 +110,9 @@ CASE_TIMEOUT_SEC=20 scripts/check_progress_rv64_gcc_c_torture_backend.sh
   work in one binary layout.
 - Reject if mutable globals are treated as read-only or string data is emitted
   without correct symbol/relocation semantics.
+- Reject if RV64 object emission invents initializer bytes, symbol semantics,
+  or global/string address meaning that the prepared module did not provide.
 - Reject if the repair bypasses the internal object model in a way that cannot
   support later data kinds.
 - Reject if the heavy scan appears greener only because cases are skipped or
   downgraded.
-

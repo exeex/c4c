@@ -6,11 +6,10 @@ Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md
 
 ## Goal
 
-Repair the smaller but semantically important RV64 prepared-object edge
-buckets that remain after the main architecture and data-section work:
-general call shapes, non-i32 local memory widths, variadic/vararg entries,
-declaration control-flow entries, FPR ABI values, and unusual local-memory
-homes.
+Route and repair the smaller but semantically important prepared-object edge
+buckets after the shared BIR/prepared consumer contract is complete. This idea
+must split edge buckets by layer instead of treating all of them as RV64 object
+emission work.
 
 ## Why This Exists
 
@@ -28,15 +27,29 @@ These are not enough to drive the architecture alone, but they are real
 backend coverage requirements once the object route can handle multi-block
 text and module data.
 
+Layer routing after idea 359:
+
+- Variadic/vararg and `va_arg` semantics are upstream LIR/BIR/prepared
+  contract work, not RV64 object emission. They are split to
+  `ideas/open/360_lir_bir_vararg_va_arg_contract_completion.md`.
+- Non-i32/pointer local memory width, unusual local-memory homes, and
+  declaration-control-flow entries depend on the shared consumer contract from
+  359 before target emission should repair them.
+- FPR/simple call ABI may remain a later target ABI emission follow-up only
+  where BIR/prepared already models the required semantics.
+
 ## In Scope
 
 - Handle declaration/control-flow entries without attempting to emit a function
-  body for undefined declarations.
+  body for undefined declarations, after 359 defines the prepared traversal and
+  declaration/terminator contract consumed by targets.
 - Extend local memory load/store width handling for i8/i16/i64/pointer homes
-  according to prepared memory metadata.
-- Add targeted RV64 ABI lowering for simple FPR and variadic/vararg shapes
-  that prepared BIR already models.
-- Improve general call-shape handling without weakening call correctness.
+  according to prepared memory metadata and value-home transfer plans supplied
+  by 359.
+- Add targeted RV64 ABI lowering for simple FPR and ordinary call shapes only
+  where prepared BIR already models the required call/value semantics.
+- Improve general call-shape handling without weakening call correctness, and
+  without inventing missing call/argument semantics in target object emission.
 - Add representative tests and classify any residual unsupported shape with
   structured diagnostics.
 
@@ -44,8 +57,12 @@ text and module data.
 
 - Replacing the whole object-route architecture; that belongs to
   `ideas/open/356_rv64_object_route_assembler_backed_prepared_text.md`.
+- Completing the shared prepared object consumer contract; that belongs to
+  `ideas/open/359_bir_prepared_object_consumer_contract_completion.md`.
 - Data-section/global/string support; that belongs to
   `ideas/open/357_rv64_object_route_data_sections_globals_strings.md`.
+- Variadic/vararg and `va_arg` LIR/BIR/prepared semantics; that belongs to
+  `ideas/open/360_lir_bir_vararg_va_arg_contract_completion.md`.
 - Full vector ABI support.
 - Passing all GCC torture cases by expectation changes.
 
@@ -53,16 +70,24 @@ text and module data.
 
 - `src/20010119-1.c`: general call lowering shape.
 - `src/20001203-1.c`: i64/i8 local stack memory stores.
-- `src/20030914-2.c`: byval/vararg-adjacent aggregate entry shape.
-- `src/920908-1.c`: vararg family.
 - `src/20030216-1.c`: declaration control-flow entry.
 - `src/20030125-1.c`: FPR/floating-point value shape.
 - `src/920410-1.c`: local memory addressing/home edge.
 
+Routed out to idea 360:
+
+- `src/20030914-2.c`: byval/vararg-adjacent aggregate entry shape.
+- `src/920908-1.c`: vararg family.
+
 ## Suspected Stage
 
-RV64 prepared object emission, ABI lowering, local memory emission, and
-prepared control-flow admission.
+Mixed by bucket:
+
+- local memory width/home and declaration entries: shared 359 consumer contract
+  first, then target emission;
+- simple call/FPR ABI: later target ABI emission only where prepared semantics
+  already exist;
+- vararg/va_arg: upstream LIR/BIR/prepared contract in idea 360.
 
 ## Proof Command
 
@@ -78,8 +103,6 @@ with:
 ```text
 src/20010119-1.c
 src/20001203-1.c
-src/20030914-2.c
-src/920908-1.c
 src/20030216-1.c
 src/20030125-1.c
 src/920410-1.c
@@ -95,21 +118,25 @@ CASE_TIMEOUT_SEC=20 scripts/check_progress_rv64_gcc_c_torture_backend.sh
 
 - Each representative case either executes correctly through clang link and
   qemu or moves to a later structured unsupported bucket.
+- Vararg/va_arg cases are no longer treated as RV64 object-emission repair
+  scope; they are routed to idea 360.
 - Local memory widths are selected from semantic/prepared memory metadata, not
   testcase names.
 - Undefined declarations are represented as symbols/declarations rather than
   emitted as empty text functions.
-- Any vararg/FPR support follows RV64 ABI facts intentionally documented in the
-  implementation or tests.
+- Any FPR/simple call support follows RV64 ABI facts intentionally documented in
+  the implementation or tests and only consumes prepared semantics already
+  provided upstream.
 
 ## Reviewer Reject Signals
 
 - Reject if the implementation hard-codes listed testcase names or source
   patterns.
-- Reject if vararg/FPR behavior is guessed without reference to prepared ABI
-  metadata.
+- Reject if vararg/va_arg behavior is implemented in RV64 object emission
+  instead of routed through idea 360.
+- Reject if FPR/simple-call behavior is guessed without reference to prepared
+  ABI metadata.
 - Reject if non-i32 local memory is handled by truncating/widening silently
   instead of emitting correct load/store width semantics.
 - Reject if declaration handling drops needed undefined symbols.
 - Reject if scan progress is claimed from skipped or weakened runtime checks.
-

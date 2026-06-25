@@ -10,6 +10,13 @@ Replace the coarse RV64 object-route `unsupported prepared module shape`
 diagnostic with structured rejection reasons that identify the failing prepared
 module/function/instruction family.
 
+Diagnostics must be layered. Shared prepared-object rejection taxonomy,
+consumer scheduling, value-home transfer classification, select-carrier
+classification, and frame-ownership diagnostics belong to
+`ideas/open/359_bir_prepared_object_consumer_contract_completion.md`. This idea
+only owns RV64-side consumption of that taxonomy and target-specific evidence
+once the shared contract exists.
+
 ## Why This Exists
 
 The RV64 gcc torture backend scan found `1012` failures collapsed into one
@@ -26,16 +33,21 @@ Relevant code:
 
 ## In Scope
 
-- Introduce a structured RV64 prepared-object rejection result, or an
-  equivalent diagnostic collector, instead of returning bare `std::nullopt`.
+- Introduce or consume a structured RV64 prepared-object rejection result, or
+  an equivalent diagnostic collector, instead of returning bare
+  `std::nullopt`.
 - Preserve the current user-facing failure mode while appending actionable
   details such as `module_data_string_constants`,
   `multi_block_control_flow`, `unsupported_binary_opcode`,
   `local_memory_width`, or `declaration_control_flow_entry`.
 - Add narrow diagnostics tests that prove representative prepared-shape cases
   report stable buckets.
-- Keep diagnostics semantic and stage-oriented; do not classify by torture
-  testcase name.
+- Keep diagnostics semantic, stage-oriented, and layered. RV64 diagnostics may
+  name target-specific evidence, but they must not become the only place where
+  shared BIR/prepared semantic categories are defined.
+- Consume shared taxonomy produced by 359 when classifying block-entry copies,
+  select carriers, value-home transfers, frame ownership, and missing prepared
+  contract pieces.
 
 ## Out of Scope
 
@@ -43,6 +55,9 @@ Relevant code:
 - Weakening the RV64 gcc torture runner.
 - Marking prepared-shape cases unsupported.
 - Rewriting BIR/MIR lowering semantics.
+- Defining the shared prepared-object consumer contract; that belongs to 359.
+- Building a target-only semantic classifier that scans prepared BIR in RV64
+  object emission to rediscover CFG/data-flow facts.
 
 ## Representative Cases
 
@@ -54,7 +69,11 @@ Relevant code:
 
 ## Suspected Stage
 
-RV64 prepared object admission and object emission diagnostics.
+Layered prepared-object diagnostics:
+
+- shared BIR/prepared taxonomy and consumer-contract diagnostics in 359,
+- RV64 prepared object admission and object-emission diagnostics only for
+  target-specific evidence and unsupported target hooks.
 
 ## Proof Command
 
@@ -80,15 +99,20 @@ not only the old generic message.
 - Existing passing RV64 object runtime cases still pass.
 - The generic message may remain as a prefix, but it must no longer be the only
   actionable diagnostic.
+- RV64 diagnostic code consumes or mirrors the shared 359 taxonomy instead of
+  inventing a divergent target-only semantic classifier.
 
 ## Reviewer Reject Signals
 
 - Reject if the implementation maps testcase names directly to buckets.
 - Reject if diagnostics are produced only by the gcc torture script rather than
   the backend/object route.
+- Reject if RV64 object emission defines shared BIR/prepared concepts that
+  should belong to 359.
+- Reject if this idea is presented as capability repair rather than diagnostic
+  layering and evidence.
 - Reject if existing passing object cases regress.
 - Reject if the change hides the failure by downgrading tests, changing the
   runner contract, or removing `--codegen obj` coverage.
 - Reject if the exact old failure mode is merely renamed without identifying
   the failing module/function/instruction shape.
-

@@ -137,3 +137,33 @@ Generated child ideas:
 - `ideas/open/356_rv64_object_route_assembler_backed_prepared_text.md`
 - `ideas/open/357_rv64_object_route_data_sections_globals_strings.md`
 - `ideas/open/358_rv64_object_route_abi_width_edges.md`
+
+## Layer-Routing Update After 359
+
+Idea 359 (`ideas/open/359_bir_prepared_object_consumer_contract_completion.md`)
+is now the active upstream prerequisite for the prepared-object consumer
+contract. It pauses direct execution of 356 until the shared BIR/prepared
+contract is clear enough that target object emission does not absorb CFG,
+publication, select-carrier, value-home, or frame ownership semantics.
+
+The original child split should be read with explicit layer boundaries:
+
+- 355 owns diagnostics layering. Shared prepared-object rejection taxonomy and
+  consumer-contract diagnostics belong with 359; RV64 diagnostics should only
+  consume that taxonomy and append target-specific evidence.
+- 356 remains the RV64 object-route architecture continuation after 359. It
+  must not make MIR/assembler/object emission reconstruct BIR-owned CFG or
+  data-flow semantics.
+- 357 owns RV64 ELF data sections, symbols, and relocations only for data that
+  is already represented by the prepared module contract. Missing
+  string/global/initializer representation is upstream BIR/LIR work, not RV64
+  object-emission work.
+- 358 is a mixed edge bucket and must route each edge by layer. Vararg/va_arg
+  belongs to a separate LIR/BIR contract idea, while local memory homes,
+  declaration-control-flow entries, and value-home width edges depend on 359
+  before target emission repairs continue.
+
+Additional upstream child ideas created by this layer split are part of this
+umbrella's closure condition. This umbrella should not close until those
+upstream children are either closed or intentionally superseded, in addition to
+the original 355/356/357/358 child set.
