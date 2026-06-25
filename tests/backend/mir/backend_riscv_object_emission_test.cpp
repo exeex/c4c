@@ -1839,8 +1839,8 @@ int builds_structured_prepared_inline_asm_insn_r_readwrite_object() {
 int substitutes_prepared_rv64_vector_inline_asm_base_registers() {
   prepare::PreparedInlineAsmCarrier carrier{
       .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete,
-      .asm_text = "vcombo %0, %1, %2",
-      .constraints = "VR,VRM2,VRM4",
+      .asm_text = "vcombo %0, %1, %2, %3, %4",
+      .constraints = "VR,VRM1,VRM2,VRM4,VRM8",
       .side_effects = true,
       .operands =
           {
@@ -1856,27 +1856,45 @@ int substitutes_prepared_rv64_vector_inline_asm_base_registers() {
               prepare::PreparedInlineAsmOperand{
                   .kind = bir::InlineAsmOperandKind::RegisterInput,
                   .constraint_index = 1,
-                  .constraint = "VRM2",
+                  .constraint = "VRM1",
                   .arg_index = std::size_t{1},
                   .register_class = bir::InlineAsmRegisterClass::Vector,
-                  .register_group_width = 2,
-                  .home = rv64_vector_home(2, {}, {}, "v4", 4),
+                  .register_group_width = 1,
+                  .home = rv64_vector_home(2, {}, {}, "v5", 5),
               },
               prepare::PreparedInlineAsmOperand{
                   .kind = bir::InlineAsmOperandKind::RegisterInput,
                   .constraint_index = 2,
-                  .constraint = "VRM4",
+                  .constraint = "VRM2",
                   .arg_index = std::size_t{2},
                   .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 2,
+                  .home = rv64_vector_home(3, {}, {}, "v6", 6),
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterInput,
+                  .constraint_index = 3,
+                  .constraint = "VRM4",
+                  .arg_index = std::size_t{3},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
                   .register_group_width = 4,
-                  .home = rv64_vector_home(3, {}, {}, "v8", 8),
+                  .home = rv64_vector_home(4, {}, {}, "v8", 8),
+              },
+              prepare::PreparedInlineAsmOperand{
+                  .kind = bir::InlineAsmOperandKind::RegisterInput,
+                  .constraint_index = 4,
+                  .constraint = "VRM8",
+                  .arg_index = std::size_t{4},
+                  .register_class = bir::InlineAsmRegisterClass::Vector,
+                  .register_group_width = 8,
+                  .home = rv64_vector_home(5, {}, {}, "v16", 16),
               },
           },
   };
 
   const auto substituted = rv64::substitute_prepared_riscv_inline_asm_operands(carrier);
-  if (!substituted.has_value() || *substituted != "vcombo v3, v4, v8") {
-    return fail("expected RV64 VR/VRM2/VRM4 substitution to print selected base vector registers");
+  if (!substituted.has_value() || *substituted != "vcombo v3, v5, v6, v8, v16") {
+    return fail("expected RV64 VR/VRM1/VRM2/VRM4/VRM8 substitution to print selected base vector registers");
   }
   return 0;
 }
@@ -1927,21 +1945,21 @@ int substitutes_prepared_rv64_mixed_scalar_vector_inline_asm_registers() {
 }
 
 int substitutes_prepared_rv64_tied_vector_inline_asm_base_register() {
-  const auto shared_home = rv64_vector_home(1, {}, {}, "v16", 16);
+  const auto shared_home = rv64_vector_home(1, {}, {}, "v24", 24);
   prepare::PreparedInlineAsmCarrier carrier{
       .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete,
       .asm_text = "vtie %0, %1",
-      .constraints = "=VRM4,0",
+      .constraints = "=VRM8,0",
       .side_effects = true,
       .operands =
           {
               prepare::PreparedInlineAsmOperand{
                   .kind = bir::InlineAsmOperandKind::RegisterOutput,
                   .constraint_index = 0,
-                  .constraint = "=VRM4",
+                  .constraint = "=VRM8",
                   .output_index = std::size_t{0},
                   .register_class = bir::InlineAsmRegisterClass::Vector,
-                  .register_group_width = 4,
+                  .register_group_width = 8,
               },
               prepare::PreparedInlineAsmOperand{
                   .kind = bir::InlineAsmOperandKind::TiedInput,
@@ -1950,7 +1968,7 @@ int substitutes_prepared_rv64_tied_vector_inline_asm_base_register() {
                   .arg_index = std::size_t{0},
                   .tied_output_index = std::size_t{0},
                   .register_class = bir::InlineAsmRegisterClass::Vector,
-                  .register_group_width = 4,
+                  .register_group_width = 8,
                   .home = shared_home,
               },
           },
@@ -1958,8 +1976,8 @@ int substitutes_prepared_rv64_tied_vector_inline_asm_base_register() {
   };
 
   const auto substituted = rv64::substitute_prepared_riscv_inline_asm_operands(carrier);
-  if (!substituted.has_value() || *substituted != "vtie v16, v16") {
-    return fail("expected tied RV64 VRM4 substitution to print the shared base vector register");
+  if (!substituted.has_value() || *substituted != "vtie v24, v24") {
+    return fail("expected tied RV64 VRM8 substitution to print the shared base vector register");
   }
   return 0;
 }

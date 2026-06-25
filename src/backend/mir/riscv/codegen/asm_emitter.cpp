@@ -54,6 +54,11 @@ bool is_all_digits(std::string_view text) {
          });
 }
 
+bool is_rv_vector_register_constraint(std::string_view constraint) {
+  return constraint == "VR" || constraint == "VRM1" || constraint == "VRM2" ||
+         constraint == "VRM4" || constraint == "VRM8";
+}
+
 std::string append_uint(std::string out, std::size_t value) {
   out += std::to_string(value);
   return out;
@@ -106,7 +111,7 @@ RvConstraint classify_rv_constraint(std::string_view constraint) {
   if (c == "f") return {RvConstraintKind::FpReg};
   if (c == "I" || c == "i" || c == "n") return {RvConstraintKind::Immediate};
   if (c == "J" || c == "rJ") return {RvConstraintKind::ZeroOrReg};
-  if (c == "VR" || c == "VRM2" || c == "VRM4") return {RvConstraintKind::VectorReg};
+  if (is_rv_vector_register_constraint(c)) return {RvConstraintKind::VectorReg};
 
   if (c == "a0" || c == "a1" || c == "a2" || c == "a3" || c == "a4" || c == "a5" ||
       c == "a6" || c == "a7" || c == "ra" || c == "t0" || c == "t1" || c == "t2" ||

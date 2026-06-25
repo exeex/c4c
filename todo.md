@@ -1,42 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/348_vrm_regalloc_mir_and_rv64_assembler_bridge.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Target-Neutral Spill/Reload Pseudo Contract
+Current Step ID: 4
+Current Step Title: RV64 Inline Asm MIR Operand Substitution
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3: Target-Neutral Spill/Reload Pseudo Contract. Prepared
-spill/reload pseudo records now carry value id, source value name when known,
-register bank/class, base register name, contiguous width, occupied register
-names, slot id/offset, register placement when already published, and a
-structured spill-slot placement derived from slot id/offset when needed.
-Focused coverage proves grouped vector, general, and float spill/reload records
-remain structured prepared data and that the prepared printer exposes those
-fields without adding target assembly load/store text.
+Completed Step 4: RV64 Inline Asm MIR Operand Substitution. RV64 inline-asm
+constraint classification and prepared operand substitution now accept the full
+`VR`/`VRM1`/`VRM2`/`VRM4`/`VRM8` vector-register family. Focused object-route
+coverage proves grouped vector operands substitute only their base `vN`
+register, tied `VRM8` operands reuse the same base register, scalar/vector
+mixed operands keep their own homes, and scalar `.insn r` object-route
+expectations remain closed to vector homes.
 
 ## Suggested Next
 
-Delegate Step 4: connect the target-neutral spill/reload pseudo contract to the
-next MIR/RV64 handoff point without rendering final target load/store assembly
-in the prepared layer.
+Delegate the next coherent RV64 bridge packet: connect the prepared substitution
+and `.insn.d` shape facts to the next MIR/object emission handoff without
+weakening scalar `.insn r` encoder constraints or adding VRM function-call ABI
+behavior.
 
 ## Watchouts
 
 - Do not add any VRM function-call ABI behavior.
 - Do not downgrade supported-path expectations to unsupported.
-- Float grouped spill authority currently publishes source value, bank/class,
-  width, occupied registers, and structured spill-slot placement, but not a
-  register placement unless the upstream allocator already provides one.
-- Spill/reload records intentionally remain target-neutral pseudo data; target
-  load/store or custom vector memory instruction rendering belongs to a later
-  lowering packet.
+- The `.insn r` object encoder remains intentionally GPR-only; vector support in
+  this slice is prepared template substitution and `.insn.d` carrier handling.
+- Scalar integer values still fail vector-register carrier compatibility through
+  the existing `backend_prepare_liveness` negative fixture.
+- Grouped vector substitution deliberately uses the assigned base register name,
+  not occupied-register list rendering.
 
 ## Proof
 
 Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepared_printer|backend_prepare_frame_stack_call_contract)$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_liveness)$'`
 
 Proof log: `test_after.log`.

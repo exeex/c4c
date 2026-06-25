@@ -52,6 +52,11 @@ bool is_ascii_digits(std::string_view text) {
          });
 }
 
+bool is_rv_vector_register_constraint(std::string_view constraint) {
+  return constraint == "VR" || constraint == "VRM1" || constraint == "VRM2" ||
+         constraint == "VRM4" || constraint == "VRM8";
+}
+
 std::size_t parse_decimal(std::string_view text) {
   std::size_t value = 0;
   for (char ch : text) {
@@ -73,7 +78,7 @@ RvConstraintKind classify_rv_constraint(std::string_view constraint) {
   if (c == "f") return {RvConstraintKind::Tag::FpReg};
   if (c == "I" || c == "i" || c == "n") return {RvConstraintKind::Tag::Immediate};
   if (c == "J" || c == "rJ") return {RvConstraintKind::Tag::ZeroOrReg};
-  if (c == "VR" || c == "VRM2" || c == "VRM4") {
+  if (is_rv_vector_register_constraint(c)) {
     return {RvConstraintKind::Tag::VectorReg};
   }
 

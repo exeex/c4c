@@ -1072,10 +1072,14 @@ bool is_decimal_inline_asm_tie(std::string_view constraint) {
          });
 }
 
+bool is_rv64_vector_substitution_constraint(std::string_view constraint) {
+  return constraint == "VR" || constraint == "VRM1" || constraint == "VRM2" ||
+         constraint == "VRM4" || constraint == "VRM8";
+}
+
 bool is_supported_rv64_substitution_register_constraint(std::string_view constraint) {
   constraint = strip_inline_asm_register_constraint(constraint);
-  return constraint == "r" || constraint == "VR" || constraint == "VRM2" ||
-         constraint == "VRM4";
+  return constraint == "r" || is_rv64_vector_substitution_constraint(constraint);
 }
 
 const prepare::PreparedValueHome* substitution_home_for_operand(
