@@ -8128,6 +8128,60 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
   return 0;
 }
 
+int check_non_aapcs64_variadic_entry_missing_contract() {
+  const auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      make_aapcs64_variadic_entry_helper_family_frame_module(),
+      riscv_target_profile(),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+  const auto function_id =
+      prepared.names.function_names.find("aapcs64_variadic_entry_helper_family_frame_contract");
+  const auto* entry_plan = prepare::find_prepared_variadic_entry_plan(prepared, function_id);
+  if (entry_plan == nullptr) {
+    return fail("non-AAPCS64 variadic missing contract: missing entry plan");
+  }
+  const auto has_missing_fact = [&](std::string_view fact) {
+    return std::find(entry_plan->missing_required_facts.begin(),
+                     entry_plan->missing_required_facts.end(),
+                     fact) != entry_plan->missing_required_facts.end();
+  };
+  if (entry_plan->helper_resources.required_helpers.size() != 4 ||
+      entry_plan->helper_resources.scratch_register_count.has_value() ||
+      entry_plan->helper_resources.scratch_stack_bytes.has_value() ||
+      !entry_plan->helper_operand_homes.empty() ||
+      entry_plan->register_save_area.required ||
+      entry_plan->overflow_area.required ||
+      entry_plan->va_list_layout.required) {
+    return fail("non-AAPCS64 variadic missing contract: placeholder plan gained concrete ABI facts");
+  }
+  if (!has_missing_fact("target_abi.variadic_entry_state") ||
+      !has_missing_fact("target_abi.va_list_layout") ||
+      !has_missing_fact("helper_resources.scratch_register_count") ||
+      !has_missing_fact("helper_resources.scratch_stack_bytes") ||
+      !has_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
+      !has_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
+      !has_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
+      !has_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
+      !has_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||
+      !has_missing_fact("helper_operand_homes.va_arg_aggregate.source_va_list") ||
+      !has_missing_fact(
+          "helper_operand_homes.va_arg_aggregate.aggregate_destination_payload") ||
+      !has_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ||
+      !has_missing_fact("helper_operand_homes.va_copy.destination_va_list") ||
+      !has_missing_fact("helper_operand_homes.va_copy.source_va_list")) {
+    return fail("non-AAPCS64 variadic missing contract: missing explicit helper or ABI boundary facts");
+  }
+  if (has_missing_fact("rv64") ||
+      has_missing_fact("aapcs64_variadic_entry_helper_family_frame_contract")) {
+    return fail("non-AAPCS64 variadic missing contract: missing facts became target or testcase shaped");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -8289,6 +8343,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_aapcs64_variadic_entry_helper_family_frame_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_non_aapcs64_variadic_entry_missing_contract(); rc != 0) {
     return rc;
   }
   return EXIT_SUCCESS;

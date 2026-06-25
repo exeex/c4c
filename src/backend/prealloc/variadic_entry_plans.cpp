@@ -455,6 +455,65 @@ void populate_aapcs64_variadic_entry_helper_resource_authority(
   remove_missing_variadic_entry_fact(function_plan, "helper_resources.scratch_stack_bytes");
 }
 
+void publish_missing_non_aapcs64_variadic_entry_contract(
+    PreparedVariadicEntryPlanFunction& function_plan) {
+  append_missing_variadic_entry_fact(function_plan,
+                                     "target_abi.variadic_entry_state");
+  append_missing_variadic_entry_fact(function_plan, "target_abi.va_list_layout");
+
+  if (function_plan.helper_resources.required_helpers.empty()) {
+    return;
+  }
+
+  append_missing_variadic_entry_fact(function_plan,
+                                     "helper_resources.scratch_register_count");
+  append_missing_variadic_entry_fact(function_plan,
+                                     "helper_resources.scratch_stack_bytes");
+
+  for (const auto helper : function_plan.helper_resources.required_helpers) {
+    switch (helper) {
+      case PreparedVariadicEntryHelperKind::VaStart:
+        append_missing_variadic_entry_fact(
+            function_plan,
+            "helper_operand_homes.va_start.destination_va_list");
+        append_missing_variadic_entry_fact(
+            function_plan,
+            "helper_operand_homes.va_start.destination_va_list_address");
+        break;
+      case PreparedVariadicEntryHelperKind::VaArg:
+        append_missing_variadic_entry_fact(
+            function_plan,
+            "helper_operand_homes.va_arg.source_va_list");
+        append_missing_variadic_entry_fact(
+            function_plan,
+            "helper_operand_homes.va_arg.scalar_result");
+        append_missing_variadic_entry_fact(
+            function_plan,
+            "helper_operand_homes.va_arg.scalar_access_plan");
+        break;
+      case PreparedVariadicEntryHelperKind::VaArgAggregate:
+        append_missing_variadic_entry_fact(
+            function_plan,
+            "helper_operand_homes.va_arg_aggregate.source_va_list");
+        append_missing_variadic_entry_fact(
+            function_plan,
+            "helper_operand_homes.va_arg_aggregate.aggregate_destination_payload");
+        append_missing_variadic_entry_fact(
+            function_plan,
+            "helper_operand_homes.va_arg_aggregate.aggregate_access_plan");
+        break;
+      case PreparedVariadicEntryHelperKind::VaCopy:
+        append_missing_variadic_entry_fact(
+            function_plan,
+            "helper_operand_homes.va_copy.destination_va_list");
+        append_missing_variadic_entry_fact(
+            function_plan,
+            "helper_operand_homes.va_copy.source_va_list");
+        break;
+    }
+  }
+}
+
 [[nodiscard]] std::optional<PreparedValueHome> prepared_home_for_named_value(
     PreparedNameTables& names,
     const PreparedValueLocationFunction* value_locations,
@@ -916,6 +975,8 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
       attach_aapcs64_variadic_entry_storage_authority(prepared, function_plan);
       populate_aapcs64_variadic_entry_helper_operand_home_authority(
           prepared, function, function_plan);
+    } else {
+      publish_missing_non_aapcs64_variadic_entry_contract(function_plan);
     }
 
     prepared.variadic_entry_plans.functions.push_back(std::move(function_plan));
