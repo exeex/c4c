@@ -1,8 +1,27 @@
 # RV64 Prepared Object Shape Diagnostics
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
+
+## Closure Notes
+
+Closed after the active runbook completed Steps 1-4. The RV64 object route now
+surfaces prepared-shape diagnostics through backend/object-route output, focused
+tests cover representative buckets, and the RV64 GCC torture backend scan can
+be bucketed from case logs without `--dump-prepared-bir`.
+
+Close proof:
+
+- Step 4 scan proof: `CASE_TIMEOUT_SEC=20 MAX_CASES=0
+  scripts/check_progress_rv64_gcc_c_torture_backend.sh` completed with
+  `total=1467 passed=70 failed=1397`, with representative logs exposing
+  `module_string_constants`, `unsupported_global_data`, and
+  `unsupported_local_memory_access`; watched `src/20000113-1.c` and
+  `src/20030216-1.c` passed.
+- Close regression gate: full-suite `test_before.log` and `test_after.log`
+  both reported `3352/3352` tests passing; the monotonic guard passed with
+  `--allow-non-decreasing-passed` because the baseline was already fully green.
 
 ## Goal
 
