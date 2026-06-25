@@ -488,30 +488,30 @@ std::optional<std::vector<DecodedInstruction>> decode_text_bytes(
   return decoded;
 }
 
-std::string instruction_report(const DecodedInstruction& instruction) {
+std::string instruction_assembly(const DecodedInstruction& instruction) {
   std::ostringstream out;
   if (const auto* insn_d = std::get_if<DecodedInsnD>(&instruction)) {
-    out << ".insn.d major=" << insn_d->major
-        << " operation=" << insn_d->operation
-        << " destination=v" << insn_d->destination
-        << " lhs=v" << insn_d->lhs
-        << " rhs=v" << insn_d->rhs
-        << " accumulator=v" << insn_d->accumulator
-        << " dtype=" << insn_d->dtype;
+    out << ".insn.d " << insn_d->major
+        << ", " << insn_d->operation
+        << ", v" << insn_d->destination
+        << ", v" << insn_d->lhs
+        << ", v" << insn_d->rhs
+        << ", v" << insn_d->accumulator
+        << ", " << insn_d->dtype;
     return out.str();
   }
   if (const auto* li = std::get_if<DecodedLi>(&instruction)) {
     const auto destination_name =
         li->destination == 10 ? std::string("a0") : "x" + std::to_string(li->destination);
-    out << "li destination=" << destination_name << " immediate=" << li->immediate;
+    out << "li " << destination_name << ", " << li->immediate;
     return out.str();
   }
   return "ret";
 }
 
-bool write_extraction_stub(const ExtractedObject& object,
-                           const std::vector<DecodedInstruction>& decoded,
-                           const std::string& output_path) {
+bool write_canonical_assembly(const ExtractedObject& object,
+                              const std::vector<DecodedInstruction>& decoded,
+                              const std::string& output_path) {
   std::ofstream output(output_path, std::ios::trunc);
   if (!output) {
     std::cerr << "c4c-objdump: error: failed to open output file '" << output_path << "'\n";
@@ -519,14 +519,9 @@ bool write_extraction_stub(const ExtractedObject& object,
   }
   output << ".text\n"
          << ".globl " << object.function_name << '\n'
-         << object.function_name << ":\n"
-         << "  # c4c-objdump: extracted " << object.text_bytes.size()
-         << " .text byte(s)\n"
-         << "  # c4c-objdump: text-bytes " << hex_bytes(object.text_bytes) << '\n'
-         << "  # c4c-objdump: decoded " << decoded.size() << " instruction(s)\n";
-  for (std::size_t index = 0; index < decoded.size(); ++index) {
-    output << "  # c4c-objdump: insn[" << index << "] "
-           << instruction_report(decoded[index]) << '\n';
+         << object.function_name << ":\n";
+  for (const auto& instruction : decoded) {
+    output << "  " << instruction_assembly(instruction) << '\n';
   }
   if (!output) {
     std::cerr << "c4c-objdump: error: failed to write output file '" << output_path << "'\n";
@@ -582,7 +577,7 @@ int main(int argc, char** argv) {
               << decode_error << '\n';
     return 1;
   }
-  if (!write_extraction_stub(*object, *decoded, options->output_path)) {
+  if (!write_canonical_assembly(*object, *decoded, options->output_path)) {
     return 1;
   }
 

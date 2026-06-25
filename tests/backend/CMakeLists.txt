@@ -419,6 +419,7 @@ add_test(
   NAME backend_c4c_objdump_extract_suite
   COMMAND "${CMAKE_COMMAND}"
           -DC4C_OBJDUMP=$<TARGET_FILE:c4c-objdump>
+          -DC4C_AS=$<TARGET_FILE:c4c-as>
           -DC4CLL=$<TARGET_FILE:c4cll>
           -DSOURCE_CASE=${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c
           -DAARCH64_SOURCE_CASE=${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c
