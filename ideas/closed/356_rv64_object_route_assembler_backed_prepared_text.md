@@ -1,6 +1,6 @@
 # RV64 Object Route With BIR-Owned CFG and Shared Encoding
 
-Status: Open
+Status: Closed
 Type: Architecture repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -153,3 +153,27 @@ CASE_TIMEOUT_SEC=20 scripts/check_progress_rv64_gcc_c_torture_backend.sh
   branch edges to make object emission succeed.
 - Reject if proof relies on expectation weakening instead of executable RV64
   link-and-qemu correctness.
+
+## Closure Notes
+
+Closed after Step 5 representative proof reached 4/4 for
+`src/20000113-1.c`, `src/20000205-1.c`, `src/20010119-1.c`, and
+`src/20030216-1.c`. The accepted route kept BIR/prepared ownership of CFG and
+data-flow semantics, used the shared prepared traversal stream, and retired the
+duplicate staged RV64 assembler minimal JAL object branch.
+
+The Step 4 ownership audit classified the RV64 object fragment/fixup/module
+builder as the low-level object concern, `c4c-as.cpp` local label resolution as
+textual assembler-local, and the old `assembler/elf_writer.cpp` minimal JAL
+relocation slice as duplicate production machinery to remove. The duplicate
+path was removed before closure.
+
+Milestone RV64 gcc torture backend scan result recorded by the supervisor:
+`total=1467 passed=70 failed=1397`. Current case logs show the successor
+generic `prepared module shape` bucket reduced from the parent classification's
+`1012` failures to `942` remaining failures. Remaining globals, strings, ABI,
+width, and other prepared-shape families stay with their separate open ideas.
+
+Close gate: full CTest regression guard passed in non-decreasing mode using
+canonical `test_before.log` and `test_after.log`; both logs reported
+`passed=3352 failed=0 total=3352`.
