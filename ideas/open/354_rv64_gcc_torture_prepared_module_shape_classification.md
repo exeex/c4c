@@ -183,10 +183,13 @@ Step 3 evidence:
 
 New follow-up child ideas:
 
-- `ideas/open/368_rv64_object_route_frame_slot_base_offset_memory.md`
+- `ideas/closed/368_rv64_object_route_frame_slot_base_offset_memory.md`
 - `ideas/open/369_rv64_object_route_terminator_fragment_lowering.md`
 - `ideas/open/370_rv64_object_route_byval_aggregate_param_homes.md`
 - `ideas/open/371_rv64_object_route_aggregate_va_arg_helper_lowering.md`
+- `ideas/open/372_rv64_object_route_frame_slot_address_call_args.md`
+- `ideas/open/373_rv64_object_route_frame_slot_value_call_args.md`
+- `ideas/open/374_rv64_object_route_non_register_param_homes.md`
 
 These follow-ups intentionally keep the residual buckets outside this
 classification umbrella's implementation scope. Idea 354 remains open until

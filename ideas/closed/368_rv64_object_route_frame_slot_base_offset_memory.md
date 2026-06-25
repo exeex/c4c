@@ -1,6 +1,6 @@
 # RV64 Object Route Frame-Slot Base-Offset Local Memory
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -80,6 +80,29 @@ and must not be silently absorbed here.
   repair, and all listed representatives are rerun and recorded.
 - Existing focused backend object-emission and prepared-contract coverage
   remains green.
+
+## Closure Note
+
+Closed after two semantic RV64 object-route memory repairs:
+
+- direct frame-slot subobject base-plus-offset loads/stores
+- pointer-value scalar local-memory loads/stores when the pointer source is
+  already available in a GPR and prepared metadata proves width, alignment,
+  offset, volatility, and address-space facts
+
+Focused backend coverage now proves supported and fail-closed memory forms, and
+the representative rerun in
+`build/agent_state/368_step3_representatives_after_pointer.log` shows all three
+listed cases moved off the previous local-memory diagnostic. None pass yet, but
+their remaining failures are outside this idea's memory-addressing owner:
+
+- `src/20000217-1.c`: local frame-slot address call arguments, owned by
+  `ideas/open/372_rv64_object_route_frame_slot_address_call_args.md`
+- `src/20000121-1.c`: frame-slot value call-argument publication, split to
+  `ideas/open/373_rv64_object_route_frame_slot_value_call_args.md`
+- `src/va-arg-13.c`: unsupported non-register parameter home before later
+  frame-slot-address and aggregate `va_arg` owners, split to
+  `ideas/open/374_rv64_object_route_non_register_param_homes.md`
 
 ## Reviewer Reject Signals
 
