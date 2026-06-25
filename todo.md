@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/362_rv64_scalar_vararg_and_variadic_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Consume or Precisely Diagnose Scalar `va_arg`
+Current Step ID: 3
+Current Step Title: Consume or Precisely Diagnose `va_copy`
 
 # Current Packet
 
