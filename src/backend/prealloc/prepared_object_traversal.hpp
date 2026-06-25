@@ -32,6 +32,21 @@ enum class PreparedObjectSelectConsumerKind {
   MalformedPreparedJoinTransferCarrier,
 };
 
+enum class PreparedObjectValueHomeConsumerStatus {
+  Available,
+  MissingValue,
+  NonNamedValue,
+  MissingNames,
+  MissingValueLocations,
+  MissingPreparedValueName,
+  MissingPreparedValueHome,
+  AmbiguousPreparedValueHome,
+  ConflictingPreparedValueId,
+  ConflictingPreparedValueHomeLookup,
+  UnsupportedValueHomeKind,
+  IncompleteValueHome,
+};
+
 [[nodiscard]] constexpr std::string_view prepared_object_traversal_event_kind_name(
     PreparedObjectTraversalEventKind kind) {
   switch (kind) {
@@ -74,6 +89,38 @@ enum class PreparedObjectSelectConsumerKind {
   return "unknown";
 }
 
+[[nodiscard]] constexpr std::string_view
+prepared_object_value_home_consumer_status_name(
+    PreparedObjectValueHomeConsumerStatus status) {
+  switch (status) {
+    case PreparedObjectValueHomeConsumerStatus::Available:
+      return "available";
+    case PreparedObjectValueHomeConsumerStatus::MissingValue:
+      return "missing_value";
+    case PreparedObjectValueHomeConsumerStatus::NonNamedValue:
+      return "non_named_value";
+    case PreparedObjectValueHomeConsumerStatus::MissingNames:
+      return "missing_names";
+    case PreparedObjectValueHomeConsumerStatus::MissingValueLocations:
+      return "missing_value_locations";
+    case PreparedObjectValueHomeConsumerStatus::MissingPreparedValueName:
+      return "missing_prepared_value_name";
+    case PreparedObjectValueHomeConsumerStatus::MissingPreparedValueHome:
+      return "missing_prepared_value_home";
+    case PreparedObjectValueHomeConsumerStatus::AmbiguousPreparedValueHome:
+      return "ambiguous_prepared_value_home";
+    case PreparedObjectValueHomeConsumerStatus::ConflictingPreparedValueId:
+      return "conflicting_prepared_value_id";
+    case PreparedObjectValueHomeConsumerStatus::ConflictingPreparedValueHomeLookup:
+      return "conflicting_prepared_value_home_lookup";
+    case PreparedObjectValueHomeConsumerStatus::UnsupportedValueHomeKind:
+      return "unsupported_value_home_kind";
+    case PreparedObjectValueHomeConsumerStatus::IncompleteValueHome:
+      return "incomplete_value_home";
+  }
+  return "unknown";
+}
+
 struct PreparedObjectTraversalEvent {
   PreparedObjectTraversalEventKind kind = PreparedObjectTraversalEventKind::Label;
   std::size_t block_index = 0;
@@ -101,6 +148,23 @@ struct PreparedObjectSelectConsumerClassification {
   PreparedJoinTransferCarrierKind carrier_kind = PreparedJoinTransferCarrierKind::None;
 };
 
+struct PreparedObjectValueHomeConsumerQuery {
+  const PreparedNameTables* names = nullptr;
+  const PreparedRegallocFunction* regalloc = nullptr;
+  const PreparedValueLocationFunction* value_locations = nullptr;
+  const PreparedValueHomeLookups* value_home_lookups = nullptr;
+  const bir::Value* value = nullptr;
+};
+
+struct PreparedObjectValueHomeConsumerClassification {
+  PreparedObjectValueHomeConsumerStatus status =
+      PreparedObjectValueHomeConsumerStatus::MissingValue;
+  const PreparedValueHome* home = nullptr;
+  ValueNameId value_name = kInvalidValueName;
+  PreparedValueId value_id = 0;
+  PreparedValueHomeKind home_kind = PreparedValueHomeKind::None;
+};
+
 [[nodiscard]] std::optional<PreparedObjectTraversalEventKind>
 prepared_object_parallel_copy_event_kind(
     const PreparedParallelCopyBundle& parallel_copy_bundle);
@@ -115,6 +179,18 @@ classify_prepared_object_select_consumer(
     BlockLabelId block_label,
     const bir::Inst& instruction,
     bool require_prepared_join_transfer = false);
+
+[[nodiscard]] PreparedObjectValueHomeConsumerClassification
+classify_prepared_object_value_home_consumer(
+    const PreparedObjectValueHomeConsumerQuery& query);
+
+[[nodiscard]] PreparedObjectValueHomeConsumerClassification
+classify_prepared_object_value_home_consumer(
+    const PreparedNameTables& names,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::Value& value,
+    const PreparedRegallocFunction* regalloc = nullptr,
+    const PreparedValueHomeLookups* value_home_lookups = nullptr);
 
 [[nodiscard]] std::vector<PreparedObjectTraversalEvent>
 make_prepared_object_function_traversal(

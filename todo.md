@@ -8,24 +8,27 @@ Current Step Title: Implement Shared Traversal and Query Helpers
 
 ## Just Finished
 
-Step 3 extended the shared prepared object-consumer helper surface in
-`src/backend/prealloc/prepared_object_traversal.{hpp,cpp}` with
-`classify_prepared_object_select_consumer`. The target-independent query
-classifies BIR instructions/selects as non-selects, ordinary selects to emit,
-prepared select-materialization join-transfer carriers to consume through the
-published edge/block-entry transfer contract, or fail-closed missing,
-ambiguous, unsupported, and malformed prepared-contract statuses.
+Step 3 added the target-independent prepared object value-home consumer query
+`classify_prepared_object_value_home_consumer` in
+`src/backend/prealloc/prepared_object_traversal.{hpp,cpp}`. The helper resolves
+named BIR values through prepared names, value-location homes, optional regalloc
+identity, and optional value-home lookup indexes, then returns an authoritative
+home or precise fail-closed statuses for missing names/locations/homes,
+ambiguous homes, conflicting ids/lookups, unsupported home kind, or incomplete
+home payloads.
 
-`backend_prepared_object_consumer_contract` now covers ordinary-select vs
-required-carrier-missing behavior, matching select-materialized join-transfer
-classification, duplicate/ambiguous join transfers, unsupported non-select
-carrier kinds, and malformed select-materialization edge indexes.
+`backend_prepared_object_consumer_contract` now covers the new status names,
+available classifications for register, stack-slot, rematerializable-immediate,
+and pointer-base-plus-offset homes, plus missing prepared value names, missing
+homes, ambiguous homes, `None` homes as unsupported, and incomplete register
+homes.
 
 ## Suggested Next
 
-Continue Step 3 by adding the next shared prepared object-consumer query that
-target backends need before connection, likely value-home or move-bundle
-planning over the traversal events and select/join-transfer classification.
+Continue Step 3 by adding the next shared prepared object-consumer query for
+move-bundle planning over traversal events, or delegate a target-connection
+packet that consumes the select and value-home helpers without reopening
+target-local CFG/value-home reconstruction.
 
 ## Watchouts
 
@@ -47,6 +50,10 @@ planning over the traversal events and select/join-transfer classification.
   non-select carrier kinds, and incomplete select-materialization edge indexes
   as fail-closed statuses instead of falling back to target-local
   reconstruction.
+- The value-home consumer helper treats duplicate prepared homes, conflicting
+  lookup indexes, `None` homes, and incomplete register/stack/immediate/pointer
+  homes as fail-closed statuses; target consumers should not fall back to local
+  value-home discovery when one of those statuses appears.
 - RV64 `object_emission.cpp` remains untouched; target consumers should only be
   connected after shared tests and hooks cover the needed contract.
 

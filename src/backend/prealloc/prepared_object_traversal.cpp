@@ -52,6 +52,78 @@ namespace {
          false_transfer.successor_label == join_transfer.join_block_label;
 }
 
+[[nodiscard]] bool prepared_object_value_home_is_complete(
+    const PreparedValueHome& home) {
+  switch (home.kind) {
+    case PreparedValueHomeKind::Register:
+      return home.register_name.has_value();
+    case PreparedValueHomeKind::StackSlot:
+      return home.offset_bytes.has_value();
+    case PreparedValueHomeKind::RematerializableImmediate:
+      return home.immediate_i32.has_value() || home.immediate_f128.has_value();
+    case PreparedValueHomeKind::PointerBasePlusOffset:
+      return (home.pointer_base_value_name.has_value() ||
+              home.pointer_base_symbol_name.has_value()) &&
+             home.pointer_byte_delta.has_value();
+    case PreparedValueHomeKind::None:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] bool prepared_object_value_home_kind_is_supported(
+    PreparedValueHomeKind kind) {
+  switch (kind) {
+    case PreparedValueHomeKind::Register:
+    case PreparedValueHomeKind::StackSlot:
+    case PreparedValueHomeKind::RematerializableImmediate:
+    case PreparedValueHomeKind::PointerBasePlusOffset:
+      return true;
+    case PreparedValueHomeKind::None:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] bool prepared_object_regalloc_value_id_agrees(
+    const PreparedRegallocFunction* regalloc,
+    ValueNameId value_name,
+    PreparedValueId value_id) {
+  if (regalloc == nullptr) {
+    return true;
+  }
+
+  const PreparedRegallocValue* match = nullptr;
+  for (const auto& value : regalloc->values) {
+    if (value.value_name != value_name) {
+      continue;
+    }
+    if (match != nullptr) {
+      return false;
+    }
+    match = &value;
+  }
+  return match == nullptr || match->value_id == value_id;
+}
+
+[[nodiscard]] bool prepared_object_value_home_lookup_agrees(
+    const PreparedValueHomeLookups* value_home_lookups,
+    const PreparedValueHome& home) {
+  if (value_home_lookups == nullptr) {
+    return true;
+  }
+
+  const auto value_id_it = value_home_lookups->value_ids.find(home.value_name);
+  if (value_id_it == value_home_lookups->value_ids.end() ||
+      value_id_it->second != home.value_id) {
+    return false;
+  }
+
+  const auto home_it = value_home_lookups->homes_by_id.find(home.value_id);
+  return home_it != value_home_lookups->homes_by_id.end() &&
+         home_it->second == &home;
+}
+
 [[nodiscard]] bool prepared_move_bundle_matches_parallel_copy(
     const PreparedMoveBundle& move_bundle,
     const PreparedParallelCopyBundle& parallel_copy_bundle,
@@ -296,6 +368,112 @@ PreparedObjectSelectConsumerClassification classify_prepared_object_select_consu
           .block_label = block_label,
           .instruction = &instruction,
           .require_prepared_join_transfer = require_prepared_join_transfer,
+      });
+}
+
+PreparedObjectValueHomeConsumerClassification
+classify_prepared_object_value_home_consumer(
+    const PreparedObjectValueHomeConsumerQuery& query) {
+  PreparedObjectValueHomeConsumerClassification result;
+  if (query.value == nullptr) {
+    return result;
+  }
+
+  if (query.value->kind != bir::Value::Kind::Named || query.value->name.empty()) {
+    result.status = PreparedObjectValueHomeConsumerStatus::NonNamedValue;
+    return result;
+  }
+
+  if (query.names == nullptr) {
+    result.status = PreparedObjectValueHomeConsumerStatus::MissingNames;
+    return result;
+  }
+
+  result.value_name = query.names->value_names.find(query.value->name);
+  if (result.value_name == kInvalidValueName) {
+    result.status =
+        PreparedObjectValueHomeConsumerStatus::MissingPreparedValueName;
+    return result;
+  }
+
+  if (query.value_locations == nullptr) {
+    result.status =
+        PreparedObjectValueHomeConsumerStatus::MissingValueLocations;
+    return result;
+  }
+
+  const PreparedValueHome* match = nullptr;
+  for (const auto& home : query.value_locations->value_homes) {
+    if (home.value_name != result.value_name) {
+      continue;
+    }
+    if (match != nullptr) {
+      result.status =
+          PreparedObjectValueHomeConsumerStatus::AmbiguousPreparedValueHome;
+      return result;
+    }
+    match = &home;
+  }
+  if (match == nullptr) {
+    result.status =
+        PreparedObjectValueHomeConsumerStatus::MissingPreparedValueHome;
+    return result;
+  }
+
+  for (const auto& home : query.value_locations->value_homes) {
+    if (home.value_id == match->value_id && &home != match) {
+      result.status =
+          PreparedObjectValueHomeConsumerStatus::ConflictingPreparedValueId;
+      return result;
+    }
+  }
+
+  result.home = match;
+  result.value_id = match->value_id;
+  result.home_kind = match->kind;
+
+  if (!prepared_object_regalloc_value_id_agrees(
+          query.regalloc, result.value_name, result.value_id)) {
+    result.status =
+        PreparedObjectValueHomeConsumerStatus::ConflictingPreparedValueId;
+    return result;
+  }
+
+  if (!prepared_object_value_home_lookup_agrees(query.value_home_lookups, *match)) {
+    result.status =
+        PreparedObjectValueHomeConsumerStatus::ConflictingPreparedValueHomeLookup;
+    return result;
+  }
+
+  if (!prepared_object_value_home_kind_is_supported(match->kind)) {
+    result.status =
+        PreparedObjectValueHomeConsumerStatus::UnsupportedValueHomeKind;
+    return result;
+  }
+
+  if (!prepared_object_value_home_is_complete(*match)) {
+    result.status = PreparedObjectValueHomeConsumerStatus::IncompleteValueHome;
+    return result;
+  }
+
+  result.status = PreparedObjectValueHomeConsumerStatus::Available;
+  return result;
+}
+
+PreparedObjectValueHomeConsumerClassification
+classify_prepared_object_value_home_consumer(
+    const PreparedNameTables& names,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::Value& value,
+    const PreparedRegallocFunction* regalloc,
+    const PreparedValueHomeLookups* value_home_lookups) {
+  return classify_prepared_object_value_home_consumer(
+      PreparedObjectValueHomeConsumerQuery{
+          .names = &names,
+          .regalloc = regalloc,
+          .value_locations = value_locations,
+          .value_home_lookups = value_home_lookups,
+          .value = &value,
       });
 }
 

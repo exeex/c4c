@@ -24,6 +24,7 @@ struct Fixture {
   c4c::BlockLabelId predecessor_label = 10;
   c4c::BlockLabelId consumer_label = 20;
   c4c::BlockLabelId exit_label = 30;
+  prepare::PreparedNameTables names;
   prepare::PreparedControlFlowFunction control_flow;
   prepare::PreparedValueLocationFunction locations;
   bir::Function bir_function;
@@ -81,6 +82,18 @@ prepare::PreparedJoinTransfer select_materialization_join_transfer(
       },
       .source_true_transfer_index = 0,
       .source_false_transfer_index = 1,
+  };
+}
+
+prepare::PreparedValueHome value_home(Fixture& fixture,
+                                      std::string_view value_name,
+                                      prepare::PreparedValueId value_id,
+                                      prepare::PreparedValueHomeKind kind) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = fixture.function_name,
+      .value_name = fixture.names.value_names.intern(value_name),
+      .kind = kind,
   };
 }
 
@@ -333,6 +346,28 @@ int verify_select_consumer_kind_names() {
              : 1;
 }
 
+int verify_value_home_consumer_status_names() {
+  return expect(
+             prepare::prepared_object_value_home_consumer_status_name(
+                 prepare::PreparedObjectValueHomeConsumerStatus::Available) ==
+                     "available" &&
+                 prepare::prepared_object_value_home_consumer_status_name(
+                     prepare::PreparedObjectValueHomeConsumerStatus::
+                         MissingPreparedValueHome) ==
+                     "missing_prepared_value_home" &&
+                 prepare::prepared_object_value_home_consumer_status_name(
+                     prepare::PreparedObjectValueHomeConsumerStatus::
+                         AmbiguousPreparedValueHome) ==
+                     "ambiguous_prepared_value_home" &&
+                 prepare::prepared_object_value_home_consumer_status_name(
+                     prepare::PreparedObjectValueHomeConsumerStatus::
+                         UnsupportedValueHomeKind) ==
+                     "unsupported_value_home_kind",
+             "prepared object value-home consumer status names should remain stable")
+             ? 0
+             : 1;
+}
+
 int verify_real_select_vs_required_missing_carrier_classification() {
   auto fixture = make_fixture();
   fixture.bir_function.blocks[1].insts.push_back(select_inst("%ordinary"));
@@ -452,6 +487,170 @@ int verify_ambiguous_and_unsupported_select_carrier_classification() {
   return 0;
 }
 
+int verify_supported_value_home_consumer_classification() {
+  auto fixture = make_fixture();
+  auto reg_home = value_home(
+      fixture, "%reg", 401, prepare::PreparedValueHomeKind::Register);
+  reg_home.register_name = "r.prepared";
+  fixture.locations.value_homes.push_back(std::move(reg_home));
+
+  auto stack_home = value_home(
+      fixture, "%stack", 402, prepare::PreparedValueHomeKind::StackSlot);
+  stack_home.slot_id = prepare::PreparedFrameSlotId{7};
+  stack_home.offset_bytes = std::size_t{32};
+  stack_home.size_bytes = std::size_t{4};
+  stack_home.align_bytes = std::size_t{4};
+  fixture.locations.value_homes.push_back(std::move(stack_home));
+
+  auto immediate_home =
+      value_home(fixture,
+                 "%imm",
+                 403,
+                 prepare::PreparedValueHomeKind::RematerializableImmediate);
+  immediate_home.immediate_i32 = 42;
+  fixture.locations.value_homes.push_back(std::move(immediate_home));
+
+  const auto base_name = fixture.names.value_names.intern("%base");
+  auto pointer_home =
+      value_home(fixture,
+                 "%ptr",
+                 404,
+                 prepare::PreparedValueHomeKind::PointerBasePlusOffset);
+  pointer_home.pointer_base_value_name = base_name;
+  pointer_home.pointer_byte_delta = 16;
+  fixture.locations.value_homes.push_back(std::move(pointer_home));
+
+  const auto lookups =
+      prepare::make_prepared_value_home_lookups(&fixture.locations);
+  const auto query = [&](std::string value_name) {
+    const auto value = bir::Value::named(bir::TypeKind::I32, std::move(value_name));
+    return prepare::classify_prepared_object_value_home_consumer(
+        fixture.names, &fixture.locations, value, nullptr, &lookups);
+  };
+
+  const auto reg = query("%reg");
+  const auto stack = query("%stack");
+  const auto immediate = query("%imm");
+  const auto pointer = query("%ptr");
+  if (!expect(reg.status ==
+                  prepare::PreparedObjectValueHomeConsumerStatus::Available &&
+              reg.home == &fixture.locations.value_homes[0] &&
+              reg.home_kind == prepare::PreparedValueHomeKind::Register,
+              "register value home should classify as a supported prepared object home") ||
+      !expect(stack.status ==
+                  prepare::PreparedObjectValueHomeConsumerStatus::Available &&
+              stack.home == &fixture.locations.value_homes[1] &&
+              stack.home_kind == prepare::PreparedValueHomeKind::StackSlot,
+              "stack-slot value home should classify as a supported prepared object home") ||
+      !expect(immediate.status ==
+                  prepare::PreparedObjectValueHomeConsumerStatus::Available &&
+              immediate.home == &fixture.locations.value_homes[2] &&
+              immediate.home_kind ==
+                  prepare::PreparedValueHomeKind::RematerializableImmediate,
+              "rematerializable immediate home should classify as a supported prepared object home") ||
+      !expect(pointer.status ==
+                  prepare::PreparedObjectValueHomeConsumerStatus::Available &&
+              pointer.home == &fixture.locations.value_homes[3] &&
+              pointer.home_kind ==
+                  prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+              "pointer base-plus-offset home should classify as a supported prepared object home")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_value_home_consumer_missing_and_unsupported_statuses() {
+  auto missing_name_fixture = make_fixture();
+  const auto unknown_value = bir::Value::named(bir::TypeKind::I32, "%unknown");
+  const auto missing_name = prepare::classify_prepared_object_value_home_consumer(
+      missing_name_fixture.names,
+      &missing_name_fixture.locations,
+      unknown_value);
+  if (!expect(missing_name.status == prepare::
+                                       PreparedObjectValueHomeConsumerStatus::
+                                           MissingPreparedValueName,
+              "value-home query should distinguish missing prepared value names")) {
+    return 1;
+  }
+
+  auto missing_home_fixture = make_fixture();
+  missing_home_fixture.names.value_names.intern("%missing.home");
+  const auto missing_home_value =
+      bir::Value::named(bir::TypeKind::I32, "%missing.home");
+  const auto missing_home = prepare::classify_prepared_object_value_home_consumer(
+      missing_home_fixture.names,
+      &missing_home_fixture.locations,
+      missing_home_value);
+  if (!expect(missing_home.status == prepare::
+                                       PreparedObjectValueHomeConsumerStatus::
+                                           MissingPreparedValueHome,
+              "value-home query should distinguish missing prepared homes")) {
+    return 1;
+  }
+
+  auto ambiguous_fixture = make_fixture();
+  auto ambiguous_a = value_home(
+      ambiguous_fixture, "%ambiguous", 501, prepare::PreparedValueHomeKind::Register);
+  ambiguous_a.register_name = "r.a";
+  ambiguous_fixture.locations.value_homes.push_back(std::move(ambiguous_a));
+  auto ambiguous_b = value_home(
+      ambiguous_fixture, "%ambiguous", 502, prepare::PreparedValueHomeKind::Register);
+  ambiguous_b.register_name = "r.b";
+  ambiguous_fixture.locations.value_homes.push_back(std::move(ambiguous_b));
+  const auto ambiguous_value =
+      bir::Value::named(bir::TypeKind::I32, "%ambiguous");
+  const auto ambiguous = prepare::classify_prepared_object_value_home_consumer(
+      ambiguous_fixture.names,
+      &ambiguous_fixture.locations,
+      ambiguous_value);
+  if (!expect(ambiguous.status == prepare::
+                                      PreparedObjectValueHomeConsumerStatus::
+                                          AmbiguousPreparedValueHome,
+              "duplicate prepared homes for one value name should fail closed")) {
+    return 1;
+  }
+
+  auto unsupported_fixture = make_fixture();
+  unsupported_fixture.locations.value_homes.push_back(
+      value_home(unsupported_fixture,
+                 "%none",
+                 601,
+                 prepare::PreparedValueHomeKind::None));
+  const auto none_value = bir::Value::named(bir::TypeKind::I32, "%none");
+  const auto unsupported = prepare::classify_prepared_object_value_home_consumer(
+      unsupported_fixture.names,
+      &unsupported_fixture.locations,
+      none_value);
+  if (!expect(unsupported.status == prepare::
+                                       PreparedObjectValueHomeConsumerStatus::
+                                           UnsupportedValueHomeKind,
+              "none homes should not be consumed as concrete prepared object homes")) {
+    return 1;
+  }
+
+  auto incomplete_fixture = make_fixture();
+  incomplete_fixture.locations.value_homes.push_back(
+      value_home(incomplete_fixture,
+                 "%incomplete.reg",
+                 701,
+                 prepare::PreparedValueHomeKind::Register));
+  const auto incomplete_value =
+      bir::Value::named(bir::TypeKind::I32, "%incomplete.reg");
+  const auto incomplete = prepare::classify_prepared_object_value_home_consumer(
+      incomplete_fixture.names,
+      &incomplete_fixture.locations,
+      incomplete_value);
+  if (!expect(incomplete.status == prepare::
+                                      PreparedObjectValueHomeConsumerStatus::
+                                          IncompleteValueHome,
+              "incomplete register homes should fail closed before target consumption")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -459,6 +658,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto result = verify_select_consumer_kind_names(); result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result = verify_value_home_consumer_status_names(); result != 0) {
     return EXIT_FAILURE;
   }
   if (const auto result = verify_canonical_consumer_schedule(); result != 0) {
@@ -480,6 +682,15 @@ int main() {
   }
   if (const auto result =
           verify_ambiguous_and_unsupported_select_carrier_classification();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result = verify_supported_value_home_consumer_classification();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result =
+          verify_value_home_consumer_missing_and_unsupported_statuses();
       result != 0) {
     return EXIT_FAILURE;
   }
