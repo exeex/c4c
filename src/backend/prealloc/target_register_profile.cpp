@@ -92,6 +92,22 @@ template <std::size_t N>
   return PreparedRegisterBank::None;
 }
 
+[[nodiscard]] PreparedRegisterClass register_class_from_bank(PreparedRegisterBank bank) {
+  switch (bank) {
+    case PreparedRegisterBank::Gpr:
+      return PreparedRegisterClass::General;
+    case PreparedRegisterBank::Fpr:
+      return PreparedRegisterClass::Float;
+    case PreparedRegisterBank::Vreg:
+      return PreparedRegisterClass::Vector;
+    case PreparedRegisterBank::AggregateAddress:
+      return PreparedRegisterClass::AggregateAddress;
+    case PreparedRegisterBank::None:
+      return PreparedRegisterClass::None;
+  }
+  return PreparedRegisterClass::None;
+}
+
 [[nodiscard]] PreparedRegisterBank register_bank_from_arg_abi(const bir::CallArgAbiInfo& abi) {
   if (is_float_abi_class(abi.primary_class)) {
     if (abi.type == bir::TypeKind::F128) {
@@ -565,6 +581,36 @@ std::optional<PreparedRegisterPlacement> call_result_destination_register_placem
       .slot_index = 0,
       .contiguous_width = std::max<std::size_t>(contiguous_width, 1),
   };
+}
+
+std::optional<PreparedTargetRegisterIdentity> target_register_identity_for_abi_register_placement(
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegisterPlacement& placement) {
+  if ((placement.pool != PreparedRegisterSlotPool::CallArgument &&
+       placement.pool != PreparedRegisterSlotPool::CallResult) ||
+      placement.contiguous_width == 0) {
+    return std::nullopt;
+  }
+
+  switch (target_profile.arch) {
+    case c4c::TargetArch::Riscv64: {
+      if (placement.bank != PreparedRegisterBank::Gpr &&
+          placement.bank != PreparedRegisterBank::Fpr) {
+        return std::nullopt;
+      }
+      if (placement.slot_index >= 8) {
+        return std::nullopt;
+      }
+      return PreparedTargetRegisterIdentity{
+          .target_arch = c4c::TargetArch::Riscv64,
+          .bank = placement.bank,
+          .register_class = register_class_from_bank(placement.bank),
+          .physical_index = 10 + placement.slot_index,
+      };
+    }
+    default:
+      return std::nullopt;
+  }
 }
 
 std::vector<PreparedRegisterCandidateSpan> caller_saved_register_spans(

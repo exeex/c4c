@@ -33,6 +33,11 @@ namespace c4c::backend::prepare {
     const bir::CallResultAbiInfo& abi,
     std::size_t contiguous_width = 1);
 
+[[nodiscard]] std::optional<PreparedTargetRegisterIdentity>
+target_register_identity_for_abi_register_placement(
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegisterPlacement& placement);
+
 [[nodiscard]] std::vector<PreparedRegisterCandidateSpan> caller_saved_register_spans(
     const c4c::TargetProfile& target_profile,
     PreparedRegisterClass reg_class,

@@ -336,6 +336,16 @@ prepare::PreparedBirModule prepare_riscv_module(const bir::Module& module) {
   return prepare::prepare_semantic_bir_module_with_options(module, riscv_target_profile(), options);
 }
 
+prepare::PreparedBirModule prepare_riscv_float_abi_module(const bir::Module& module) {
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, c4c::target_profile_from_triple("riscv64gc-unknown-linux-gnu"), options);
+}
+
 prepare::PreparedBirModule prepare_aarch64_module(const bir::Module& module) {
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -3152,6 +3162,69 @@ bir::Module make_aarch64_scalar_parameter_subtract_module() {
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
   return module;
+}
+
+bir::Module make_riscv_fpr_formal_identity_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64gc-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "riscv_fpr_formal_identity_contract";
+  function.return_type = bir::TypeKind::F64;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "%p.a",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::FPExt,
+      .result = bir::Value::named(bir::TypeKind::F64, "%t0"),
+      .operand = bir::Value::named(bir::TypeKind::F32, "%p.a"),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::F64, "%t0")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int check_riscv_fpr_formal_home_publishes_target_identity() {
+  const auto prepared =
+      prepare_riscv_float_abi_module(make_riscv_fpr_formal_identity_contract_module());
+  const auto* locations =
+      prepare::find_prepared_value_location_function(
+          prepared, "riscv_fpr_formal_identity_contract");
+  const auto* home = locations == nullptr
+                         ? nullptr
+                         : prepare::find_prepared_value_home(
+                               prepared.names, *locations, "%p.a");
+  if (home == nullptr) {
+    return fail("rv64 FPR formal identity contract: missing prepared formal home");
+  }
+  if (home->kind != prepare::PreparedValueHomeKind::Register ||
+      home->register_name != std::optional<std::string>{"fa0"} ||
+      !home->target_register_identity.has_value()) {
+    return fail("rv64 FPR formal identity contract: formal did not publish FPR register identity");
+  }
+  const auto& identity = *home->target_register_identity;
+  if (identity.target_arch != c4c::TargetArch::Riscv64 ||
+      identity.bank != prepare::PreparedRegisterBank::Fpr ||
+      identity.register_class != prepare::PreparedRegisterClass::Float ||
+      identity.physical_index != 10) {
+    return fail("rv64 FPR formal identity contract: formal identity did not name physical fa0");
+  }
+  return 0;
 }
 
 int check_aarch64_scalar_parameter_homes_and_storage_contract() {
@@ -8363,6 +8436,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_aarch64_formal_preservation_source_endpoint_contract();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_riscv_fpr_formal_home_publishes_target_identity();
       rc != 0) {
     return rc;
   }

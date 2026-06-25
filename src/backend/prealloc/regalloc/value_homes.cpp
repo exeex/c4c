@@ -310,13 +310,19 @@ PreparedValueHome classify_prepared_value_home(
       }
       const auto abi_register_index =
           fixed_formal_abi_register_index(target_profile, *function, param_index);
-      if (const auto register_name =
-              abi_register_index.has_value()
-                  ? call_arg_destination_register_name(target_profile, *param.abi, *abi_register_index)
-                  : std::nullopt;
-          register_name.has_value()) {
+      const auto register_name =
+          abi_register_index.has_value()
+              ? call_arg_destination_register_name(target_profile, *param.abi, *abi_register_index)
+              : std::nullopt;
+      if (register_name.has_value()) {
         home.kind = PreparedValueHomeKind::Register;
         home.register_name = *register_name;
+        if (const auto placement = call_arg_destination_register_placement(
+                target_profile, *param.abi, *abi_register_index);
+            placement.has_value()) {
+          home.target_register_identity =
+              target_register_identity_for_abi_register_placement(target_profile, *placement);
+        }
       }
       return home;
     }
