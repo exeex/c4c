@@ -564,14 +564,14 @@ c4c_add_backend_codegen_object_failure_test(
   LABELS x86 object unsupported cli
 )
 
-c4c_add_backend_codegen_object_failure_test(
+c4c_add_backend_codegen_object_test(
   backend_cli_riscv64_unsupported_global_diagnostic_obj
   SRC "${BACKEND_CASE_ROOT}/riscv64_zero_aggregate_global_storage.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_unsupported_global.o"
-  EXPECTED_DIAGNOSTICS "error: --codegen obj failed|RISC-V backend object route unsupported prepared module shape"
+  EXPECTED_MACHINE_LE f300
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 object unsupported global cli
+  LABELS riscv64 object global cli
 )
 
 c4c_add_backend_codegen_object_failure_test(

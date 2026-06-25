@@ -95,7 +95,7 @@ bir::Module make_return_zero_module(std::string target_triple) {
   return module;
 }
 
-bir::Module make_rv64_global_object_unsupported_module() {
+bir::Module make_rv64_global_object_module() {
   auto module = make_return_zero_module("riscv64-linux-gnu");
   const auto link_name = module.names.link_names.intern("global_i32");
   module.globals.push_back(bir::Global{
@@ -563,15 +563,16 @@ int backend_facade_rejects_unsupported_object_target() {
   return 0;
 }
 
-int backend_facade_rejects_unsupported_rv64_object_feature_without_asm_fallback() {
-  const auto module = make_rv64_global_object_unsupported_module();
+int backend_facade_emits_rv64_object_bytes_with_global_data() {
+  const auto module = make_rv64_global_object_module();
   const auto result = backend::emit_module_object(
       backend::BackendModuleInput(module),
       backend::BackendOptions{});
-  if (result.ok() || !result.bytes.empty() ||
-      !contains(result.diagnostic,
-                "RISC-V backend object route unsupported prepared module shape")) {
-    return fail("expected RV64 object facade to reject globals without asm fallback");
+  if (!result.ok() || !result.diagnostic.empty()) {
+    return fail("expected RV64 object facade to emit globals without asm fallback");
+  }
+  if (!has_elf_header_for_machine(result.bytes, 243)) {
+    return fail("expected backend facade RV64 global object bytes to be ELF64/RISC-V");
   }
   return 0;
 }
@@ -621,8 +622,7 @@ int main() {
   if (int rc = backend_facade_rejects_unsupported_object_target(); rc != 0) {
     return rc;
   }
-  if (int rc = backend_facade_rejects_unsupported_rv64_object_feature_without_asm_fallback();
-      rc != 0) {
+  if (int rc = backend_facade_emits_rv64_object_bytes_with_global_data(); rc != 0) {
     return rc;
   }
   return backend_facade_preserves_existing_asm_text_api();
