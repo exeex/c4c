@@ -26,8 +26,21 @@ Representatives:
 - `src/va-arg-13.c`
 
 This is no longer an opaque prepared-module-shape failure. It is a target
-object-emission memory-addressing gap for prepared stack slots whose access
-needs a base frame slot plus a nonzero or subobject offset.
+object-emission memory-addressing gap whose shared diagnostic has covered both
+direct frame-slot accesses and pointer-value local-memory accesses.
+
+## Route Correction
+
+After a focused implementation admitted direct frame-slot subobject offset
+composition, the representative rerun still produced `total=3 passed=0
+failed=3` with the same diagnostic. That focused slice is retained as useful
+RV64 object-route capability, but it is not representative progress for this
+source idea.
+
+The active plan now treats pointer-value local-memory loads/stores as the next
+in-scope owner for idea 368. Frame-slot address call-argument materialization
+is split into `ideas/open/372_rv64_object_route_frame_slot_address_call_args.md`
+and must not be silently absorbed here.
 
 ## In Scope
 
@@ -37,6 +50,9 @@ needs a base frame slot plus a nonzero or subobject offset.
   local memory accesses.
 - Implement semantic RV64 object lowering for the first supportable load/store
   width and offset forms.
+- Implement semantic RV64 object lowering for supportable pointer-value
+  local-memory loads/stores when prepared metadata proves the pointer register,
+  width, alignment, offset, and address-space facts.
 - Keep unsupported diagnostics precise for offset, width, alignment, aggregate,
   or address materialization shapes that remain outside this idea.
 - Add focused backend tests for supported and fail-closed local memory forms.
@@ -46,6 +62,8 @@ needs a base frame slot plus a nonzero or subobject offset.
 
 - Broad aggregate `va_arg` helper lowering, even when `src/va-arg-13.c` is one
   representative for this memory-addressing boundary.
+- Frame-slot address call-argument materialization; use
+  `ideas/open/372_rv64_object_route_frame_slot_address_call_args.md`.
 - Byval aggregate parameter homes.
 - General terminator lowering or control-flow rewrites.
 - Inferring memory layout from source syntax instead of consuming prepared
@@ -55,7 +73,7 @@ needs a base frame slot plus a nonzero or subobject offset.
 ## Acceptance Criteria
 
 - Focused RV64 object-emission tests prove supported frame-slot base-plus-offset
-  local memory loads/stores.
+  and pointer-value local memory loads/stores.
 - Unsupported local memory shapes keep a precise diagnostic instead of falling
   back to the generic prepared-module-shape error.
 - At least one representative advances because of the semantic memory-addressing
