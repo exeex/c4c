@@ -243,6 +243,12 @@ run_success_case(
   "assembled 8 instruction line(s)"
   "6308b5006392a5006344b500e3dea5fe6366b500e3faa5fe6780000067800000"
 )
+run_success_case(
+  rv64i_step3_local_jal_labels
+  ".text\n.globl main\nmain:\n  jal ra, forward\nback:\n  jal zero, done\nforward:\n  jal t0, back\n  ret\ndone:\n  ret\n"
+  "assembled 5 instruction line(s)"
+  "ef0080006f00c000eff2dfff6780000067800000"
+)
 run_failure_case(
   instruction_outside_text
   "li a0, 0\n.text\nret\n"
@@ -259,9 +265,9 @@ run_failure_case(
   "undefined local branch label 'external_target'"
 )
 run_failure_case(
-  jal_label_fixup_still_unsupported
+  jal_undefined_label_still_closed
   ".text\n.globl main\nmain:\n  jal x1, target\n"
-  "unsupported RV64 instruction 'jal x1, target'"
+  "undefined local jump label 'target'"
 )
 run_failure_case(
   unsupported_extension_still_closed

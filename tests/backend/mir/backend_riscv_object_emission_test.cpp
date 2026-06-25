@@ -2066,6 +2066,26 @@ int encodes_rv64_line_core_canonical_subset() {
   return 0;
 }
 
+int rejects_rv64_line_core_out_of_range_jal_immediate() {
+  const rv64::Rv64AsmRegister ra{
+      .bank = rv64::Rv64AsmRegisterBank::Gpr,
+      .physical_index = 1,
+  };
+  for (const std::int64_t immediate : {
+           static_cast<std::int64_t>(1 << 20),
+           static_cast<std::int64_t>(-(1 << 20) - 2),
+       }) {
+    const auto line = rv64::Rv64AsmLine{rv64::Rv64JumpLine{
+        .destination = ra,
+        .immediate = immediate,
+    }};
+    if (rv64::encode_rv64_asm_line(line).has_value()) {
+      return fail("expected RV64 line encoder to reject out-of-range jal immediate");
+    }
+  }
+  return 0;
+}
+
 int parses_substituted_prepared_inline_asm_insn_d_with_line_core() {
   const auto carrier = make_prepared_insn_d_carrier();
   const auto substituted = rv64::substitute_prepared_riscv_inline_asm_operands(carrier);
@@ -2858,6 +2878,7 @@ int main() {
   status |= parses_rv64_line_core_canonical_subset();
   status |= rejects_rv64_line_core_malformed_subset();
   status |= encodes_rv64_line_core_canonical_subset();
+  status |= rejects_rv64_line_core_out_of_range_jal_immediate();
   status |= parses_substituted_prepared_inline_asm_insn_d_with_line_core();
   status |= rejects_prepared_inline_asm_insn_r_without_complete_carrier();
   status |= rejects_structured_prepared_inline_asm_insn_r_bad_operand_metadata_object();

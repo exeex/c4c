@@ -291,8 +291,8 @@ std::optional<ParseResult> parse_assembly_file(const std::string& path) {
 }
 
 #if C4C_ENABLE_BACKEND
-std::optional<ParseResult> resolve_local_branch_labels(ParseResult parsed,
-                                                       const std::string& path) {
+std::optional<ParseResult> resolve_local_control_flow_labels(ParseResult parsed,
+                                                             const std::string& path) {
   std::unordered_map<std::string, std::uint64_t> labels_by_name;
   labels_by_name.reserve(parsed.labels.size());
   for (const auto& label : parsed.labels) {
@@ -300,26 +300,52 @@ std::optional<ParseResult> resolve_local_branch_labels(ParseResult parsed,
   }
 
   for (auto& instruction : parsed.instructions) {
-    auto* branch =
-        std::get_if<c4c::backend::riscv::codegen::Rv64BranchLine>(&instruction.parsed);
-    if (branch == nullptr) {
+    if (auto* branch =
+            std::get_if<c4c::backend::riscv::codegen::Rv64BranchLine>(
+                &instruction.parsed);
+        branch != nullptr) {
+      const std::string target_label = branch->target_label;
+      const auto target = labels_by_name.find(target_label);
+      if (target == labels_by_name.end()) {
+        std::cerr << "c4c-as: error: " << path << ':' << instruction.line_number
+                  << ": undefined local branch label '" << target_label << "'\n";
+        return std::nullopt;
+      }
+      branch->immediate = static_cast<std::int64_t>(target->second) -
+                          static_cast<std::int64_t>(instruction.offset_bytes);
+      branch->target_label.clear();
+      const auto encoded =
+          c4c::backend::riscv::codegen::encode_rv64_asm_line(instruction.parsed);
+      if (!encoded.has_value()) {
+        std::cerr << "c4c-as: error: " << path << ':' << instruction.line_number
+                  << ": branch target '" << target_label
+                  << "' is out of range or misaligned\n";
+        return std::nullopt;
+      }
+
       continue;
     }
-    const std::string target_label = branch->target_label;
+
+    auto* jump =
+        std::get_if<c4c::backend::riscv::codegen::Rv64JumpLine>(&instruction.parsed);
+    if (jump == nullptr) {
+      continue;
+    }
+    const std::string target_label = jump->target_label;
     const auto target = labels_by_name.find(target_label);
     if (target == labels_by_name.end()) {
       std::cerr << "c4c-as: error: " << path << ':' << instruction.line_number
-                << ": undefined local branch label '" << target_label << "'\n";
+                << ": undefined local jump label '" << target_label << "'\n";
       return std::nullopt;
     }
-    branch->immediate = static_cast<std::int64_t>(target->second) -
-                        static_cast<std::int64_t>(instruction.offset_bytes);
-    branch->target_label.clear();
+    jump->immediate = static_cast<std::int64_t>(target->second) -
+                      static_cast<std::int64_t>(instruction.offset_bytes);
+    jump->target_label.clear();
     const auto encoded =
         c4c::backend::riscv::codegen::encode_rv64_asm_line(instruction.parsed);
     if (!encoded.has_value()) {
       std::cerr << "c4c-as: error: " << path << ':' << instruction.line_number
-                << ": branch target '" << target_label
+                << ": jump target '" << target_label
                 << "' is out of range or misaligned\n";
       return std::nullopt;
     }
@@ -472,7 +498,7 @@ int main(int argc, char** argv) {
   }
 
 #if C4C_ENABLE_BACKEND
-  const auto resolved = resolve_local_branch_labels(*parsed, options->input_path);
+  const auto resolved = resolve_local_control_flow_labels(*parsed, options->input_path);
   if (!resolved.has_value()) {
     return 1;
   }

@@ -46,6 +46,14 @@ constexpr std::uint32_t encode_b_type(std::uint32_t opcode, std::uint32_t funct3
          (((imm >> 11) & 0x1u) << 7) | (opcode & 0x7fu);
 }
 
+constexpr std::uint32_t encode_j_type(std::uint32_t opcode, std::uint32_t rd,
+                                      std::int32_t imm21) {
+  const auto imm = static_cast<std::uint32_t>(imm21);
+  return (((imm >> 20) & 0x1u) << 31) | (((imm >> 1) & 0x3ffu) << 21) |
+         (((imm >> 11) & 0x1u) << 20) | (((imm >> 12) & 0xffu) << 12) |
+         ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
+}
+
 constexpr std::uint32_t encode_u_type(std::uint32_t opcode, std::uint32_t rd,
                                       std::int32_t imm20) {
   return ((static_cast<std::uint32_t>(imm20) & 0xfffffu) << 12) |
@@ -189,6 +197,10 @@ bool fits_signed_20_bit_immediate(std::int64_t value) {
 
 bool fits_branch_immediate(std::int64_t value) {
   return value >= -4096 && value <= 4094 && value % 2 == 0;
+}
+
+bool fits_jump_immediate(std::int64_t value) {
+  return value >= -(1 << 20) && value <= ((1 << 20) - 2) && value % 2 == 0;
 }
 
 bool fits_unsigned_shift_immediate(std::int64_t value, std::uint32_t max_value) {
@@ -609,6 +621,22 @@ std::optional<Rv64AsmLine> parse_rv64i_line(std::string_view line) {
                                       .target_label = std::string(target)}};
   }
 
+  if (mnemonic == "jal") {
+    const auto fields = split_fields(operands, 2);
+    if (!fields.has_value()) {
+      return std::nullopt;
+    }
+    const auto rd = parse_gpr((*fields)[0]);
+    const auto target = trim_ascii((*fields)[1]);
+    if (!rd.has_value() || !is_valid_symbol(target)) {
+      return std::nullopt;
+    }
+    return Rv64AsmLine{Rv64JumpLine{
+        .destination = *rd,
+        .target_label = std::string(target),
+    }};
+  }
+
   if (mnemonic == "jalr") {
     const auto fields = split_fields(operands, 2);
     if (!fields.has_value()) {
@@ -764,6 +792,18 @@ std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
                               static_cast<std::int32_t>(branch->immediate)));
     return bytes;
   }
+  if (const auto* jump = std::get_if<Rv64JumpLine>(&line)) {
+    const auto rd = register_field(jump->destination, Rv64AsmRegisterBank::Gpr);
+    if (!jump->target_label.empty() || !rd.has_value() ||
+        !fits_jump_immediate(jump->immediate)) {
+      return std::nullopt;
+    }
+    append_le32(bytes,
+                encode_j_type(0x6f,
+                              *rd,
+                              static_cast<std::int32_t>(jump->immediate)));
+    return bytes;
+  }
   return std::nullopt;
 }
 
@@ -774,7 +814,8 @@ std::optional<std::uint64_t> rv64_asm_line_size_bytes(const Rv64AsmLine& line) {
   if (std::holds_alternative<Rv64LiLine>(line) ||
       std::holds_alternative<Rv64RetLine>(line) ||
       std::holds_alternative<Rv64ILine>(line) ||
-      std::holds_alternative<Rv64BranchLine>(line)) {
+      std::holds_alternative<Rv64BranchLine>(line) ||
+      std::holds_alternative<Rv64JumpLine>(line)) {
     return 4;
   }
   return std::nullopt;

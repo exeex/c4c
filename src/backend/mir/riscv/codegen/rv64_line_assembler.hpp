@@ -45,6 +45,12 @@ struct Rv64BranchLine {
   std::string target_label;
 };
 
+struct Rv64JumpLine {
+  Rv64AsmRegister destination;
+  std::int64_t immediate = 0;
+  std::string target_label;
+};
+
 enum class Rv64IFormat {
   RType,
   IType,
@@ -64,7 +70,12 @@ struct Rv64ILine {
 };
 
 using Rv64AsmLine =
-    std::variant<Rv64InsnDLine, Rv64LiLine, Rv64RetLine, Rv64ILine, Rv64BranchLine>;
+    std::variant<Rv64InsnDLine,
+                 Rv64LiLine,
+                 Rv64RetLine,
+                 Rv64ILine,
+                 Rv64BranchLine,
+                 Rv64JumpLine>;
 
 [[nodiscard]] std::optional<Rv64AsmLine> parse_rv64_asm_line(
     std::string_view line);

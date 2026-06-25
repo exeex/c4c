@@ -9,37 +9,32 @@ Current Step Title: Add Label, Branch, Jump, And Relocation Support
 ## Just Finished
 
 Step 3 - Add Label, Branch, Jump, And Relocation Support: completed the bounded
-local B-type branch-label slice for `c4c-as`. The shared RV64 line assembler now
-parses and encodes `beq`, `bne`, `blt`, `bge`, `bltu`, and `bgeu` as B-type
-instructions, while `c4c-as` records text offsets for labels/instructions,
-resolves same-file text labels to PC-relative branch byte offsets, rejects
-undefined branch targets, and rejects out-of-range or misaligned branch offsets.
-The object path now preserves non-global local text labels as local object
-symbols while keeping the `.globl` function label anchored at the first text
-instruction.
+local `jal rd, label` slice for `c4c-as`. The shared RV64 line assembler now
+parses symbolic `jal` as a J-type jump line, sizes it as one 32-bit
+instruction, and encodes it only after the symbolic target is resolved.
+`c4c-as` now resolves same-file local jump labels to PC-relative JAL byte
+offsets, rejects undefined jump targets, and rejects out-of-range or misaligned
+jump offsets with focused fast line-assembler coverage while preserving the
+existing local branch, non-label RV64I, and EV64 behavior.
 
 ## Suggested Next
 
-Continue Step 3 with a bounded `jal` local-label slice in `c4c-as`: parse and
-encode same-file `jal rd, label` targets with range/alignment checks, keep
-external relocation forms fail-closed, and add focused byte-level tests before
-touching broader relocation/object semantics.
+Continue Step 3 with a bounded external relocation/fixup design slice for jump
+and call-shaped forms, or hand off to Step 4 objdump decode coverage if the
+supervisor wants the broad roundtrip contract to advance beyond the current
+dump1 fail-closed boundary first.
 
 ## Watchouts
 
-- Current unsupported assembler gaps are `jal` label targets and external
-  relocation/fixup semantics; the broad corpus now advances past B-type branch
-  labels and still fails closed at the first unsupported `jal` label use without
-  writing an object.
-- c4c-objdump does not yet decode full RV64I, so the roundtrip contract must
-  remain fail-closed until Step 3 and Step 4 support land.
-- `backend_rv64_roundtrip_contract` currently passes by requiring the broad
-  corpus to fail closed at pass1 without writing an object. When assembler
-  support expands, the same script is already structured to continue through
-  objdump/as/objdump/as and assert text/object stability.
-- Keep unsupported extensions, unsupported directives, `jal` labels, and
-  external branch/jump targets fail-closed; do not use external assembler or
-  objdump output as the source of truth.
+- Current unsupported assembler gaps are external relocation/fixup semantics;
+  same-file local B-type branches and `jal rd, label` now assemble.
+- c4c-objdump does not yet decode full RV64I, so
+  `backend_rv64_roundtrip_contract` now accepts a fail-closed dump1 rejection
+  with no partial dumped text. When objdump support expands, the same script
+  continues through objdump/as/objdump/as and asserts text/object stability.
+- Keep unsupported extensions, unsupported directives, and external branch/jump
+  targets fail-closed; do not use external assembler or objdump output as the
+  source of truth.
 
 ## Proof
 
