@@ -16,6 +16,11 @@ if(NOT DEFINED CASE_TIMEOUT_SEC OR "${CASE_TIMEOUT_SEC}" STREQUAL "")
   set(CASE_TIMEOUT_SEC 10)
 endif()
 
+find_program(PYTHON3_EXECUTABLE NAMES python3 python)
+if(NOT PYTHON3_EXECUTABLE)
+  message(FATAL_ERROR "python3 or python is required for c4c-objdump binary fixture patching")
+endif()
+
 file(MAKE_DIRECTORY "${WORK_DIR}")
 
 function(expect_contains haystack needle tag)
@@ -50,8 +55,13 @@ function(run_objdump_success_case name object_path output_path expected_hex)
   expect_contains("${asm_text}" "main:" "C4C_OBJDUMP_LABEL_MISSING")
   expect_contains("${asm_text}" "c4c-objdump: extracted 16 .text byte(s)" "C4C_OBJDUMP_SIZE_MISSING")
   expect_contains("${asm_text}" "c4c-objdump: text-bytes ${expected_hex}" "C4C_OBJDUMP_HEX_MISSING")
+  expect_contains("${asm_text}" "c4c-objdump: decoded 3 instruction(s)" "C4C_OBJDUMP_DECODE_COUNT_MISSING")
+  expect_contains("${asm_text}" "insn[0] .insn.d major=10 operation=11 destination=v6 lhs=v0 rhs=v2 accumulator=v4 dtype=3" "C4C_OBJDUMP_INSN_D_DECODE_MISSING")
+  expect_contains("${asm_text}" "insn[1] li destination=a0 immediate=0" "C4C_OBJDUMP_LI_DECODE_MISSING")
+  expect_contains("${asm_text}" "insn[2] ret" "C4C_OBJDUMP_RET_DECODE_MISSING")
   expect_contains("${objdump_out}" "extracted 16 .text byte(s)" "C4C_OBJDUMP_STDOUT_SIZE_MISSING")
   expect_contains("${objdump_out}" "${expected_hex}" "C4C_OBJDUMP_STDOUT_HEX_MISSING")
+  expect_contains("${objdump_out}" "decoded 3 instruction(s)" "C4C_OBJDUMP_STDOUT_DECODE_COUNT_MISSING")
 endfunction()
 
 function(run_objdump_failure_case name input_path output_path expected_diagnostic)
@@ -78,9 +88,11 @@ endfunction()
 
 set(rv64_object "${WORK_DIR}/rv64_vrm_insn_d_source.o")
 set(aarch64_object "${WORK_DIR}/aarch64_return_zero_smoke.o")
+set(unsupported_rv64_object "${WORK_DIR}/rv64_unsupported_instruction.o")
 set(malformed_input "${WORK_DIR}/malformed.bin")
 set(expected_hex "0a0320080b0300001305000067800000")
-file(REMOVE "${rv64_object}" "${aarch64_object}")
+set(unsupported_hex "0a0320080b0300001305000000000000")
+file(REMOVE "${rv64_object}" "${aarch64_object}" "${unsupported_rv64_object}")
 
 execute_process(
   COMMAND "${C4CLL}" --codegen obj --target riscv64-linux-gnu "${SOURCE_CASE}" -o "${rv64_object}"
@@ -121,6 +133,38 @@ run_objdump_success_case(
   "${rv64_object}"
   "${WORK_DIR}/rv64_vrm_insn_d_source.s"
   "${expected_hex}"
+)
+
+execute_process(
+  COMMAND "${PYTHON3_EXECUTABLE}" -c [=[
+import sys
+src, dst, expected_hex, replacement_hex = sys.argv[1:]
+data = open(src, "rb").read()
+expected = bytes.fromhex(expected_hex)
+replacement = bytes.fromhex(replacement_hex)
+if data.count(expected) != 1:
+    raise SystemExit("expected canonical .text byte string exactly once")
+open(dst, "wb").write(data.replace(expected, replacement, 1))
+]=] "${rv64_object}" "${unsupported_rv64_object}" "${expected_hex}" "${unsupported_hex}"
+  TIMEOUT "${CASE_TIMEOUT_SEC}"
+  RESULT_VARIABLE patch_rc
+  OUTPUT_VARIABLE patch_out
+  ERROR_VARIABLE patch_err
+)
+if(patch_rc MATCHES "timeout")
+  message(FATAL_ERROR "[C4C_OBJDUMP_UNSUPPORTED_PATCH_TIMEOUT] exceeded ${CASE_TIMEOUT_SEC}s")
+endif()
+if(NOT patch_rc EQUAL 0)
+  message(FATAL_ERROR "[C4C_OBJDUMP_UNSUPPORTED_PATCH_FAIL]\n${patch_out}${patch_err}")
+endif()
+if(NOT EXISTS "${unsupported_rv64_object}")
+  message(FATAL_ERROR "[C4C_OBJDUMP_UNSUPPORTED_OBJECT_MISSING] expected '${unsupported_rv64_object}'")
+endif()
+run_objdump_failure_case(
+  unsupported_instruction
+  "${unsupported_rv64_object}"
+  "${WORK_DIR}/rv64_unsupported_instruction.s"
+  "unsupported RV64 instruction bytes at .text offset 0xc"
 )
 
 file(WRITE "${malformed_input}" "this is not an ELF object\n")

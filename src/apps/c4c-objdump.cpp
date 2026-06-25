@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -53,6 +54,25 @@ struct ExtractedObject {
   std::vector<std::uint8_t> text_bytes;
 };
 
+struct DecodedInsnD {
+  std::uint32_t major = 0;
+  std::uint32_t operation = 0;
+  std::uint32_t destination = 0;
+  std::uint32_t lhs = 0;
+  std::uint32_t rhs = 0;
+  std::uint32_t accumulator = 0;
+  std::uint32_t dtype = 0;
+};
+
+struct DecodedLi {
+  std::uint32_t destination = 0;
+  std::int32_t immediate = 0;
+};
+
+struct DecodedRet {};
+
+using DecodedInstruction = std::variant<DecodedInsnD, DecodedLi, DecodedRet>;
+
 void print_help(std::ostream& out) {
   out << "Usage:\n"
       << "  c4c-objdump [options] <input.o>\n\n"
@@ -61,8 +81,8 @@ void print_help(std::ostream& out) {
       << "  --version        Print version information\n"
       << "  -o <path>        Output assembly path\n\n"
       << "Status:\n"
-      << "  extracts the supported RV64 relocatable ELF .text envelope; instruction\n"
-      << "  decoding is not implemented yet\n";
+      << "  extracts the supported RV64 relocatable ELF .text envelope and reports\n"
+      << "  the initial supported decoder output\n";
 }
 
 std::optional<CliOptions> parse_cli(int argc, char** argv) {
@@ -151,6 +171,21 @@ std::uint64_t read_u64(const std::vector<std::uint8_t>& bytes, std::size_t offse
     value |= static_cast<std::uint64_t>(bytes[offset++]) << shift;
   }
   return value;
+}
+
+std::uint32_t read_u32_at(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
+  return static_cast<std::uint32_t>(bytes[offset]) |
+         (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
+         (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
+         (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
+}
+
+std::uint64_t read_u64_at(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
+  std::uint64_t word = 0;
+  for (int shift = 0; shift < 64; shift += 8) {
+    word |= static_cast<std::uint64_t>(bytes[offset++]) << shift;
+  }
+  return word;
 }
 
 std::optional<std::string> read_string_at(const std::vector<std::uint8_t>& bytes,
@@ -375,7 +410,107 @@ std::optional<ExtractedObject> extract_supported_rv64_object(
                          .text_bytes = std::vector<std::uint8_t>(text_begin, text_end)};
 }
 
+std::optional<DecodedInsnD> decode_insn_d(std::uint64_t word) {
+  const auto major = static_cast<std::uint32_t>(word & 0x7fu);
+  if (major != 10) {
+    return std::nullopt;
+  }
+  return DecodedInsnD{
+      .major = major,
+      .operation = static_cast<std::uint32_t>((word >> 32) & 0xffu),
+      .destination = static_cast<std::uint32_t>((word >> 7) & 0x1fu),
+      .lhs = static_cast<std::uint32_t>((word >> 15) & 0x1fu),
+      .rhs = static_cast<std::uint32_t>((word >> 20) & 0x1fu),
+      .accumulator = static_cast<std::uint32_t>((word >> 25) & 0x1fu),
+      .dtype = static_cast<std::uint32_t>((word >> 40) & 0xffffu),
+  };
+}
+
+std::optional<DecodedLi> decode_li(std::uint32_t word) {
+  const auto opcode = word & 0x7fu;
+  const auto destination = (word >> 7) & 0x1fu;
+  const auto funct3 = (word >> 12) & 0x7u;
+  const auto source = (word >> 15) & 0x1fu;
+  const auto immediate = static_cast<std::int32_t>(word) >> 20;
+  if (opcode != 0x13 || destination != 10 || funct3 != 0 || source != 0 ||
+      immediate != 0) {
+    return std::nullopt;
+  }
+  return DecodedLi{.destination = destination, .immediate = immediate};
+}
+
+std::optional<DecodedRet> decode_ret(std::uint32_t word) {
+  const auto opcode = word & 0x7fu;
+  const auto destination = (word >> 7) & 0x1fu;
+  const auto funct3 = (word >> 12) & 0x7u;
+  const auto source = (word >> 15) & 0x1fu;
+  const auto immediate = static_cast<std::int32_t>(word) >> 20;
+  if (opcode != 0x67 || destination != 0 || funct3 != 0 || source != 1 ||
+      immediate != 0) {
+    return std::nullopt;
+  }
+  return DecodedRet{};
+}
+
+std::optional<std::vector<DecodedInstruction>> decode_text_bytes(
+    const std::vector<std::uint8_t>& text_bytes,
+    std::string* error) {
+  std::vector<DecodedInstruction> decoded;
+  for (std::size_t offset = 0; offset < text_bytes.size();) {
+    if (offset + 8 <= text_bytes.size()) {
+      if (auto insn = decode_insn_d(read_u64_at(text_bytes, offset)); insn.has_value()) {
+        decoded.push_back(*insn);
+        offset += 8;
+        continue;
+      }
+    }
+    if (offset + 4 <= text_bytes.size()) {
+      const auto word = read_u32_at(text_bytes, offset);
+      if (auto li = decode_li(word); li.has_value()) {
+        decoded.push_back(*li);
+        offset += 4;
+        continue;
+      }
+      if (auto ret = decode_ret(word); ret.has_value()) {
+        decoded.push_back(*ret);
+        offset += 4;
+        continue;
+      }
+    }
+    if (error != nullptr) {
+      std::ostringstream message;
+      message << "unsupported RV64 instruction bytes at .text offset 0x"
+              << std::hex << offset;
+      *error = message.str();
+    }
+    return std::nullopt;
+  }
+  return decoded;
+}
+
+std::string instruction_report(const DecodedInstruction& instruction) {
+  std::ostringstream out;
+  if (const auto* insn_d = std::get_if<DecodedInsnD>(&instruction)) {
+    out << ".insn.d major=" << insn_d->major
+        << " operation=" << insn_d->operation
+        << " destination=v" << insn_d->destination
+        << " lhs=v" << insn_d->lhs
+        << " rhs=v" << insn_d->rhs
+        << " accumulator=v" << insn_d->accumulator
+        << " dtype=" << insn_d->dtype;
+    return out.str();
+  }
+  if (const auto* li = std::get_if<DecodedLi>(&instruction)) {
+    const auto destination_name =
+        li->destination == 10 ? std::string("a0") : "x" + std::to_string(li->destination);
+    out << "li destination=" << destination_name << " immediate=" << li->immediate;
+    return out.str();
+  }
+  return "ret";
+}
+
 bool write_extraction_stub(const ExtractedObject& object,
+                           const std::vector<DecodedInstruction>& decoded,
                            const std::string& output_path) {
   std::ofstream output(output_path, std::ios::trunc);
   if (!output) {
@@ -387,7 +522,12 @@ bool write_extraction_stub(const ExtractedObject& object,
          << object.function_name << ":\n"
          << "  # c4c-objdump: extracted " << object.text_bytes.size()
          << " .text byte(s)\n"
-         << "  # c4c-objdump: text-bytes " << hex_bytes(object.text_bytes) << '\n';
+         << "  # c4c-objdump: text-bytes " << hex_bytes(object.text_bytes) << '\n'
+         << "  # c4c-objdump: decoded " << decoded.size() << " instruction(s)\n";
+  for (std::size_t index = 0; index < decoded.size(); ++index) {
+    output << "  # c4c-objdump: insn[" << index << "] "
+           << instruction_report(decoded[index]) << '\n';
+  }
   if (!output) {
     std::cerr << "c4c-objdump: error: failed to write output file '" << output_path << "'\n";
     return false;
@@ -434,13 +574,22 @@ int main(int argc, char** argv) {
               << parse_error << '\n';
     return 1;
   }
-  if (!write_extraction_stub(*object, options->output_path)) {
+
+  std::string decode_error;
+  const auto decoded = decode_text_bytes(object->text_bytes, &decode_error);
+  if (!decoded.has_value()) {
+    std::cerr << "c4c-objdump: error: " << options->input_path << ": "
+              << decode_error << '\n';
+    return 1;
+  }
+  if (!write_extraction_stub(*object, *decoded, options->output_path)) {
     return 1;
   }
 
   std::cout << "c4c-objdump: extracted " << object->text_bytes.size()
             << " .text byte(s) from " << options->input_path
             << " symbol " << object->function_name << " into "
-            << options->output_path << ": " << hex_bytes(object->text_bytes) << '\n';
+            << options->output_path << ": " << hex_bytes(object->text_bytes)
+            << "; decoded " << decoded->size() << " instruction(s)\n";
   return 0;
 }
