@@ -18,7 +18,9 @@ constexpr std::uint16_t kEmRiscv = 243;
 constexpr std::uint32_t kShtSymtab = 2;
 constexpr std::uint32_t kShtRela = 4;
 constexpr std::uint64_t kShfExecinstr = 0x4;
+constexpr std::uint8_t kStbLocal = 0;
 constexpr std::uint8_t kStbGlobal = 1;
+constexpr std::uint8_t kSttNoType = 0;
 constexpr std::uint8_t kSttFunc = 2;
 constexpr std::uint16_t kShnUndef = 0;
 constexpr std::uint16_t kElf64Shentsize = 64;
@@ -49,9 +51,15 @@ struct Symbol {
   std::uint64_t size = 0;
 };
 
+struct ObjectLabel {
+  std::string name;
+  std::uint64_t offset = 0;
+};
+
 struct ExtractedObject {
   std::string function_name;
   std::vector<std::uint8_t> text_bytes;
+  std::vector<ObjectLabel> local_labels;
 };
 
 struct DecodedInsnD {
@@ -78,6 +86,8 @@ enum class Rv64DecodedFormat {
   Store,
   UType,
   Jalr,
+  Branch,
+  Jal,
 };
 
 struct DecodedRv64I {
@@ -87,10 +97,16 @@ struct DecodedRv64I {
   std::uint32_t lhs = 0;
   std::uint32_t rhs = 0;
   std::int32_t immediate = 0;
+  std::string target_label;
 };
 
 using DecodedInstruction =
     std::variant<DecodedInsnD, DecodedLi, DecodedRet, DecodedRv64I>;
+
+struct DecodedLine {
+  std::uint64_t offset = 0;
+  DecodedInstruction instruction;
+};
 
 void print_help(std::ostream& out) {
   out << "Usage:\n"
@@ -423,10 +439,34 @@ std::optional<ExtractedObject> extract_supported_rv64_object(
     return std::nullopt;
   }
 
+  std::vector<ObjectLabel> local_labels;
+  for (const auto& symbol : *symbols) {
+    const auto binding = static_cast<std::uint8_t>(symbol.info >> 4);
+    const auto type = static_cast<std::uint8_t>(symbol.info & 0x0f);
+    if (binding != kStbLocal || type != kSttNoType ||
+        symbol.section_index != text_index || symbol.name.empty() ||
+        symbol.value > text->size ||
+        symbol.name == function->name) {
+      continue;
+    }
+    local_labels.push_back(ObjectLabel{
+        .name = symbol.name,
+        .offset = symbol.value,
+    });
+  }
+  std::sort(local_labels.begin(), local_labels.end(),
+            [](const ObjectLabel& lhs, const ObjectLabel& rhs) {
+              if (lhs.offset != rhs.offset) {
+                return lhs.offset < rhs.offset;
+              }
+              return lhs.name < rhs.name;
+            });
+
   const auto text_begin = bytes.begin() + static_cast<std::ptrdiff_t>(text->offset);
   const auto text_end = text_begin + static_cast<std::ptrdiff_t>(text->size);
   return ExtractedObject{.function_name = function->name,
-                         .text_bytes = std::vector<std::uint8_t>(text_begin, text_end)};
+                         .text_bytes = std::vector<std::uint8_t>(text_begin, text_end),
+                         .local_labels = std::move(local_labels)};
 }
 
 std::optional<DecodedInsnD> decode_insn_d(std::uint64_t word) {
@@ -504,6 +544,10 @@ std::optional<DecodedRv64I> decode_rv64i(std::uint32_t word) {
     std::string_view mnemonic;
     std::uint32_t opcode;
   };
+  struct BranchSpec {
+    std::string_view mnemonic;
+    std::uint32_t funct3;
+  };
 
   constexpr RSpec r_specs[] = {
       {"add", 0x33, 0, 0x00},  {"sub", 0x33, 0, 0x20},
@@ -539,6 +583,14 @@ std::optional<DecodedRv64I> decode_rv64i(std::uint32_t word) {
   constexpr USpec u_specs[] = {
       {"lui", 0x37},
       {"auipc", 0x17},
+  };
+  constexpr BranchSpec branch_specs[] = {
+      {"beq", 0},
+      {"bne", 1},
+      {"blt", 4},
+      {"bge", 5},
+      {"bltu", 6},
+      {"bgeu", 7},
   };
 
   const auto opcode = word & 0x7fu;
@@ -597,6 +649,34 @@ std::optional<DecodedRv64I> decode_rv64i(std::uint32_t word) {
                         .immediate = static_cast<std::int32_t>(word) >> 20};
   }
 
+  if (opcode == 0x6f) {
+    const auto imm21 = ((word >> 31) << 20) |
+                       (((word >> 21) & 0x3ffu) << 1) |
+                       (((word >> 20) & 0x1u) << 11) |
+                       (((word >> 12) & 0xffu) << 12);
+    return DecodedRv64I{.format = Rv64DecodedFormat::Jal,
+                        .mnemonic = "jal",
+                        .destination = rd,
+                        .immediate = sign_extend(imm21, 21)};
+  }
+
+  if (opcode == 0x63) {
+    for (const auto& spec : branch_specs) {
+      if (funct3 != spec.funct3) {
+        continue;
+      }
+      const auto imm13 = ((word >> 31) << 12) |
+                         (((word >> 25) & 0x3fu) << 5) |
+                         (((word >> 8) & 0xfu) << 1) |
+                         (((word >> 7) & 0x1u) << 11);
+      return DecodedRv64I{.format = Rv64DecodedFormat::Branch,
+                          .mnemonic = spec.mnemonic,
+                          .lhs = rs1,
+                          .rhs = rs2,
+                          .immediate = sign_extend(imm13, 13)};
+    }
+  }
+
   for (const auto& spec : load_specs) {
     if (opcode == spec.opcode && funct3 == spec.funct3) {
       return DecodedRv64I{.format = Rv64DecodedFormat::Load,
@@ -630,14 +710,41 @@ std::optional<DecodedRv64I> decode_rv64i(std::uint32_t word) {
   return std::nullopt;
 }
 
-std::optional<std::vector<DecodedInstruction>> decode_text_bytes(
-    const std::vector<std::uint8_t>& text_bytes,
+std::optional<std::string> label_for_offset(const ExtractedObject& object,
+                                            std::uint64_t offset) {
+  if (offset == 0) {
+    return object.function_name;
+  }
+  for (const auto& label : object.local_labels) {
+    if (label.offset == offset) {
+      return label.name;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::uint64_t> relative_target_offset(std::uint64_t current_offset,
+                                                    std::int32_t immediate,
+                                                    std::uint64_t text_size) {
+  const auto signed_target =
+      static_cast<std::int64_t>(current_offset) + static_cast<std::int64_t>(immediate);
+  if (signed_target < 0 ||
+      static_cast<std::uint64_t>(signed_target) > text_size) {
+    return std::nullopt;
+  }
+  return static_cast<std::uint64_t>(signed_target);
+}
+
+std::optional<std::vector<DecodedLine>> decode_text_bytes(
+    const ExtractedObject& object,
     std::string* error) {
-  std::vector<DecodedInstruction> decoded;
+  const auto& text_bytes = object.text_bytes;
+  std::vector<DecodedLine> decoded;
   for (std::size_t offset = 0; offset < text_bytes.size();) {
     if (offset + 8 <= text_bytes.size()) {
       if (auto insn = decode_insn_d(read_u64_at(text_bytes, offset)); insn.has_value()) {
-        decoded.push_back(*insn);
+        decoded.push_back(DecodedLine{.offset = static_cast<std::uint64_t>(offset),
+                                      .instruction = *insn});
         offset += 8;
         continue;
       }
@@ -645,17 +752,47 @@ std::optional<std::vector<DecodedInstruction>> decode_text_bytes(
     if (offset + 4 <= text_bytes.size()) {
       const auto word = read_u32_at(text_bytes, offset);
       if (auto li = decode_li(word); li.has_value()) {
-        decoded.push_back(*li);
+        decoded.push_back(DecodedLine{.offset = static_cast<std::uint64_t>(offset),
+                                      .instruction = *li});
         offset += 4;
         continue;
       }
       if (auto ret = decode_ret(word); ret.has_value()) {
-        decoded.push_back(*ret);
+        decoded.push_back(DecodedLine{.offset = static_cast<std::uint64_t>(offset),
+                                      .instruction = *ret});
         offset += 4;
         continue;
       }
       if (auto rv64i = decode_rv64i(word); rv64i.has_value()) {
-        decoded.push_back(*rv64i);
+        if (rv64i->format == Rv64DecodedFormat::Branch ||
+            rv64i->format == Rv64DecodedFormat::Jal) {
+          const auto target =
+              relative_target_offset(static_cast<std::uint64_t>(offset),
+                                     rv64i->immediate,
+                                     text_bytes.size());
+          if (!target.has_value()) {
+            if (error != nullptr) {
+              std::ostringstream message;
+              message << "unsupported RV64 control-flow target at .text offset 0x"
+                      << std::hex << offset;
+              *error = message.str();
+            }
+            return std::nullopt;
+          }
+          auto label = label_for_offset(object, *target);
+          if (!label.has_value()) {
+            if (error != nullptr) {
+              std::ostringstream message;
+              message << "unsupported RV64 control-flow target without label at .text offset 0x"
+                      << std::hex << offset;
+              *error = message.str();
+            }
+            return std::nullopt;
+          }
+          rv64i->target_label = std::move(*label);
+        }
+        decoded.push_back(DecodedLine{.offset = static_cast<std::uint64_t>(offset),
+                                      .instruction = *rv64i});
         offset += 4;
         continue;
       }
@@ -667,6 +804,25 @@ std::optional<std::vector<DecodedInstruction>> decode_text_bytes(
       *error = message.str();
     }
     return std::nullopt;
+  }
+  for (const auto& label : object.local_labels) {
+    if (label.offset == text_bytes.size()) {
+      continue;
+    }
+    const auto label_on_instruction =
+        std::any_of(decoded.begin(), decoded.end(), [&](const DecodedLine& line) {
+          return line.offset == label.offset;
+        });
+    if (!label_on_instruction) {
+      if (error != nullptr) {
+        std::ostringstream message;
+        message << "unsupported RV64 label '" << label.name
+                << "' at non-instruction .text offset 0x" << std::hex
+                << label.offset;
+        *error = message.str();
+      }
+      return std::nullopt;
+    }
   }
   return decoded;
 }
@@ -723,6 +879,13 @@ std::string instruction_assembly(const DecodedInstruction& instruction) {
       case Rv64DecodedFormat::UType:
         out << gpr_name(rv64i->destination) << ", " << rv64i->immediate;
         break;
+      case Rv64DecodedFormat::Branch:
+        out << gpr_name(rv64i->lhs) << ", " << gpr_name(rv64i->rhs)
+            << ", " << rv64i->target_label;
+        break;
+      case Rv64DecodedFormat::Jal:
+        out << gpr_name(rv64i->destination) << ", " << rv64i->target_label;
+        break;
     }
     return out.str();
   }
@@ -730,7 +893,7 @@ std::string instruction_assembly(const DecodedInstruction& instruction) {
 }
 
 bool write_canonical_assembly(const ExtractedObject& object,
-                              const std::vector<DecodedInstruction>& decoded,
+                              const std::vector<DecodedLine>& decoded,
                               const std::string& output_path) {
   std::ofstream output(output_path, std::ios::trunc);
   if (!output) {
@@ -740,8 +903,19 @@ bool write_canonical_assembly(const ExtractedObject& object,
   output << ".text\n"
          << ".globl " << object.function_name << '\n'
          << object.function_name << ":\n";
-  for (const auto& instruction : decoded) {
-    output << "  " << instruction_assembly(instruction) << '\n';
+  auto next_label = object.local_labels.begin();
+  for (const auto& line : decoded) {
+    while (next_label != object.local_labels.end() &&
+           next_label->offset == line.offset) {
+      output << next_label->name << ":\n";
+      ++next_label;
+    }
+    output << "  " << instruction_assembly(line.instruction) << '\n';
+  }
+  while (next_label != object.local_labels.end() &&
+         next_label->offset == object.text_bytes.size()) {
+    output << next_label->name << ":\n";
+    ++next_label;
   }
   if (!output) {
     std::cerr << "c4c-objdump: error: failed to write output file '" << output_path << "'\n";
@@ -791,7 +965,7 @@ int main(int argc, char** argv) {
   }
 
   std::string decode_error;
-  const auto decoded = decode_text_bytes(object->text_bytes, &decode_error);
+  const auto decoded = decode_text_bytes(*object, &decode_error);
   if (!decoded.has_value()) {
     std::cerr << "c4c-objdump: error: " << options->input_path << ": "
               << decode_error << '\n';

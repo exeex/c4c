@@ -330,16 +330,75 @@ run_objdump_asm_success_case(
   "lui t0, 524287|auipc t1, -524288|addi t2, zero, -2048|slti s1, s0, -1|ori s4, s0, 127|slli s6, s5, 63|srai s8, s6, 63|addiw s9, s8, -2048|sraiw a0, s10, 31|add a1, a0, s1|sub a2, a1, s2|sraw tp, gp, a4|lb a0, -2048(sp)|lwu a6, 60(sp)|sd a3, 2040(sp)|jalr t0, 4(ra)|.insn.d 10, 11, v6, v0, v2, v4, 3|li a0, 0|ret"
 )
 
-run_objdump_asm_failure_case(
-  branch_bytes_still_closed
-  ".text\n.globl main\nmain:\n  beq a0, a1, done\n  ret\ndone:\n  ret\n"
-  "unsupported RV64 instruction bytes at .text offset 0x0"
+run_objdump_asm_success_case(
+  rv64i_step4_control_flow_subset
+  ".text\n.globl main\nmain:\n  beq a0, a1, .Ldone\n  bne a0, a1, main\n.Ldone:\n  jal ra, .Lexit\n  blt a0, a1, .Ldone\n  bge a0, a1, .Lexit\n.Lexit:\n  bltu a0, a1, .Ldone\n  bgeu a0, a1, .Lexit\n  ret\n"
+  8
+  "beq a0, a1, .Ldone|bne a0, a1, main|.Ldone:|jal ra, .Lexit|blt a0, a1, .Ldone|bge a0, a1, .Lexit|.Lexit:|bltu a0, a1, .Ldone|bgeu a0, a1, .Lexit|ret"
 )
 
-run_objdump_asm_failure_case(
-  jal_bytes_still_closed
-  ".text\n.globl main\nmain:\n  jal ra, done\n  ret\ndone:\n  ret\n"
-  "unsupported RV64 instruction bytes at .text offset 0x0"
+set(control_untruthful_source "${WORK_DIR}/rv64i_control_untruthful.input.s")
+set(control_truthful_object "${WORK_DIR}/rv64i_control_truthful.o")
+set(control_untruthful_object "${WORK_DIR}/rv64i_control_untruthful.o")
+set(control_untruthful_output "${WORK_DIR}/rv64i_control_untruthful.s")
+file(WRITE "${control_untruthful_source}" ".text\n.globl main\nmain:\n  beq a0, a1, .Llabel\n.Llabel:\n  ret\n  ret\n")
+file(REMOVE "${control_truthful_object}" "${control_untruthful_object}" "${control_untruthful_output}")
+execute_process(
+  COMMAND "${C4C_AS}" "${control_untruthful_source}" -o "${control_truthful_object}"
+  TIMEOUT "${CASE_TIMEOUT_SEC}"
+  RESULT_VARIABLE control_as_rc
+  OUTPUT_VARIABLE control_as_out
+  ERROR_VARIABLE control_as_err
+)
+if(control_as_rc MATCHES "timeout")
+  message(FATAL_ERROR "[C4C_OBJDUMP_CONTROL_SOURCE_TIMEOUT] ${control_untruthful_source} exceeded ${CASE_TIMEOUT_SEC}s")
+endif()
+if(NOT control_as_rc EQUAL 0)
+  message(FATAL_ERROR "[C4C_OBJDUMP_CONTROL_SOURCE_FAIL] ${control_untruthful_source}\n${control_as_out}${control_as_err}")
+endif()
+execute_process(
+  COMMAND "${PYTHON3_EXECUTABLE}" -c [=[
+import sys
+src, dst = sys.argv[1:]
+data = bytearray(open(src, "rb").read())
+
+def encode_b_type(funct3, rs1, rs2, imm):
+    imm &= 0x1fff
+    return (
+        ((imm >> 12) & 1) << 31
+        | ((imm >> 5) & 0x3f) << 25
+        | (rs2 & 0x1f) << 20
+        | (rs1 & 0x1f) << 15
+        | (funct3 & 7) << 12
+        | ((imm >> 1) & 0xf) << 8
+        | ((imm >> 11) & 1) << 7
+        | 0x63
+    ).to_bytes(4, "little")
+
+original = encode_b_type(0, 10, 11, 4)
+patched = encode_b_type(0, 10, 11, 8)
+offset = data.find(original)
+if offset < 0:
+    raise SystemExit("expected original branch bytes not found")
+data[offset:offset + 4] = patched
+open(dst, "wb").write(data)
+]=] "${control_truthful_object}" "${control_untruthful_object}"
+  TIMEOUT "${CASE_TIMEOUT_SEC}"
+  RESULT_VARIABLE control_patch_rc
+  OUTPUT_VARIABLE control_patch_out
+  ERROR_VARIABLE control_patch_err
+)
+if(control_patch_rc MATCHES "timeout")
+  message(FATAL_ERROR "[C4C_OBJDUMP_CONTROL_PATCH_TIMEOUT] exceeded ${CASE_TIMEOUT_SEC}s")
+endif()
+if(NOT control_patch_rc EQUAL 0)
+  message(FATAL_ERROR "[C4C_OBJDUMP_CONTROL_PATCH_FAIL]\n${control_patch_out}${control_patch_err}")
+endif()
+run_objdump_failure_case(
+  branch_target_without_label
+  "${control_untruthful_object}"
+  "${control_untruthful_output}"
+  "unsupported RV64 control-flow target without label at .text offset 0x0"
 )
 
 execute_process(

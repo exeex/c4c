@@ -9,33 +9,36 @@ Current Step Title: Generalize RV64 Objdump Decoding And Canonical Printing
 ## Just Finished
 
 Step 4 - Generalize RV64 Objdump Decoding And Canonical Printing: completed a
-bounded non-control RV64I decode/print slice for `c4c-objdump`. The app now
-field-decodes and canonically prints U-type `lui`/`auipc`, I-type
-arithmetic/logical, RV64/RV64W shift immediates, R-type and word R-type
-arithmetic/logical, loads, stores, and label-free non-`ret` `jalr`, while
-preserving the existing EV64 `.insn.d`, `li`, and `ret` canonical output.
-Focused objdump tests now assemble representative source with `c4c-as`, verify
-the dumped canonical text, reassemble it, and prove text/object stability for
-that subset. Branch and `jal` bytes remain fail-closed in objdump.
+bounded control-flow RV64I decode/print slice for `c4c-objdump`. The app now
+retains local `.text` label symbols from supported objects, field-decodes
+B-type `beq`/`bne`/`blt`/`bge`/`bltu`/`bgeu` and J-type `jal`, and prints
+canonical label operands only when the target offset is backed by the global
+entry label or a preserved local label. It emits preserved local labels at
+instruction boundaries so dumped text can be reassembled, and fails closed for
+control-flow targets or labels that are not truthful/reassemblable. Existing
+non-control RV64I, EV64 `.insn.d`, `li`, and `ret` output is preserved.
+Focused objdump tests now cover branch/`jal` text stability, object byte
+stability, and an untruthful patched control-flow object. The broad RV64I plus
+EV64 roundtrip contract now reaches full `input.s -> pass1.o -> pass1.s ->
+pass2.o -> pass2.s -> pass3.o` stability for the committed corpus.
 
 ## Suggested Next
 
-Continue Step 4 with a bounded control-flow objdump slice: decode local
-B-type branches and `jal` into stable canonical labels or documented numeric
-PC-relative form, then advance the broad roundtrip contract beyond its current
-dump1 fail-closed boundary if the printed form can be reassembled truthfully.
+Continue Step 4 by deciding whether any remaining objdump canonicalization gaps
+inside the current RV64I plus EV64 corpus need cleanup, or hand the runbook to
+plan-owner/reviewer for Step 4 acceptance if the supervisor treats the full
+corpus roundtrip as sufficient.
 
 ## Watchouts
 
-- c4c-objdump still intentionally rejects B-type branch and J-type `jal`
-  instruction bytes, so `backend_rv64_roundtrip_contract` still passes by
-  accepting the honest dump1 fail-closed boundary with no partial dumped text.
-- Generic `jalr` is decoded, but the existing `jalr zero, 0(ra)` pseudo remains
-  canonicalized as `ret`; tests cover a distinct `jalr t0, 4(ra)` form for the
-  generic path.
-- External relocation/fixup semantics are still unsupported; do not print
-  symbolic targets unless the object truthfully carries the information needed
-  to reassemble them.
+- External relocation/fixup semantics remain unsupported and still fail closed
+  through the existing `.text` relocation rejection; this slice only supports
+  local same-file branch/`jal` targets backed by existing object labels.
+- `jalr zero, 0(ra)` remains canonicalized as `ret`; generic non-`ret` `jalr`
+  remains covered by the non-control Step 4 slice.
+- `c4c-objdump` deliberately does not fabricate labels for arbitrary numeric
+  PC-relative targets. If a target lacks a global/local symbol at that offset,
+  dumping fails rather than printing unreassemblable text.
 
 ## Proof
 
