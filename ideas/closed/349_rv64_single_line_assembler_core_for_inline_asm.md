@@ -100,3 +100,9 @@ object path must prove it consumes the same parseable line text.
 - The proof only checks a fixture-built prepared module and skips source-level
   inline asm.
 - Tests are weakened around object bytes or `.s` text output.
+
+## Completion Note
+
+Closed after adding the RV64 single-line parser/encoder, routing `.insn.d`
+inline asm object emission through substituted canonical text and the shared
+line core, and validating the backend subset with `319/319` passing tests.
