@@ -167,3 +167,29 @@ Additional upstream child ideas created by this layer split are part of this
 umbrella's closure condition. This umbrella should not close until those
 upstream children are either closed or intentionally superseded, in addition to
 the original 355/356/357/358 child set.
+
+## Step 4 Closure Decision
+
+Closure is deferred after the Step 3 representative refresh on 2026-06-25.
+The original generated child chain through 367 is closed, and the refresh no
+longer shows opaque unclassified prepared-module-shape failures, but it does
+show residual structured RV64 object-route buckets without open lifecycle
+owners.
+
+Step 3 evidence:
+
+- `build/agent_state/354_step3_representative_refresh.log`
+- `total=18 passed=11 failed=7`
+
+New follow-up child ideas:
+
+- `ideas/open/368_rv64_object_route_frame_slot_base_offset_memory.md`
+- `ideas/open/369_rv64_object_route_terminator_fragment_lowering.md`
+- `ideas/open/370_rv64_object_route_byval_aggregate_param_homes.md`
+- `ideas/open/371_rv64_object_route_aggregate_va_arg_helper_lowering.md`
+
+These follow-ups intentionally keep the residual buckets outside this
+classification umbrella's implementation scope. Idea 354 remains open until
+the new follow-up children are closed or intentionally superseded and a final
+closure review confirms the child set covers the dominant prepared-module-shape
+failures without testcase overfit.
