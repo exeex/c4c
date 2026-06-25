@@ -41,6 +41,9 @@ BackendAbiKind backend_abi_from_triple(TargetArch arch, std::string_view triple)
     case TargetArch::Aarch64:
       return BackendAbiKind::Aapcs64;
     case TargetArch::Riscv64:
+      if (triple == "riscv64-linux-gnu") {
+        return BackendAbiKind::RiscvLp64D;
+      }
       if (triple_contains(triple, "lp64d") || triple_contains(triple, "riscv64gc")) {
         return BackendAbiKind::RiscvLp64D;
       }

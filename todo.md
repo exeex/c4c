@@ -8,37 +8,20 @@ Current Step Title: Route Simple Call and FPR ABI Edges
 
 ## Just Finished
 
-Completed Plan Step 4 classification rerun for RV64 object-route representative
-`src/20030125-1.c` after FPR formal parameter-home admission.
+Completed Plan Step 4 producer-side RV64 FPR ABI edge repair for the
+`riscv64-linux-gnu` representative path.
 
-The case still fails, but it has moved past parameter-home admission. The first
-reported diagnostic is:
-
-```text
-error: --codegen obj failed: RISC-V backend object route unsupported
-prepared module shape: unsupported_floating_cast: RV64 object route
-supports only prepared F32-to-F64 and F64-to-F32 FPR register casts
-```
-
-Prepared context from `--dump-prepared-bir --target riscv64-linux-gnu` shows the
-next boundary in `@t` at entry instruction 0:
-
-```text
-%t0 = bir.fpext float %p.a to double
-storage %p.a register bank=fpr reg=a0
-storage %t0 register bank=fpr placement=fpr:caller_saved#0/w1 reg=ft0
-move before instruction 0: %p.a -> %t0 placement=fpr:caller_saved#0/w1
-```
-
-`@q` has the same F32-to-F64 call-argument cast shape for `floor`, and `@t`/`@q`
-also contain the already intended F64-to-F32 return truncation after the call.
+`target_profile_from_triple("riscv64-linux-gnu")` now resolves the backend ABI
+to `RiscvLp64D`, matching the Linux GNU representative/sysroot hard-float
+route. The existing prepared FPR formal-home identity contract now also runs
+for `riscv64-linux-gnu` and proves `%p.a` publishes `fa0` plus the authoritative
+FPR target register identity instead of a raw `a0` spelling.
 
 ## Suggested Next
 
-Teach the RV64 object route to admit and encode the prepared FPR register
-floating-cast path where the source is an identity-backed FPR formal home and
-the destination is a prepared FPR register value, then rerun
-`src/20030125-1.c` to expose the next call/result boundary.
+Rerun `src/20030125-1.c` through the RV64 object-route representative command
+to confirm the prepared dump now shows the FPR formal home as `fa0` and to
+identify the next call/result boundary after this profile fix.
 
 ## Watchouts
 
@@ -46,20 +29,14 @@ the destination is a prepared FPR register value, then rerun
   prepared FPR cast/call ABI lowering, not testcase-specific math folding.
 - Admission is intentionally identity-backed for FPR homes. Do not add raw
   `register_name` fallback parsing for FPR spellings in object emission.
-- Do not broaden the cast type matrix. The representative still only needs
-  `FPExt F32 -> F64` from formal/caller-saved FPR homes and already-covered
-  `FPTrunc F64 -> F32`.
-- Floating calls, libm behavior, and stack-slot FPR materialization remain
-  outside this classification packet. A separate `--codegen asm` observation
-  reaches `unsupported_external_call function='floor' callee='abort'`, so the
-  object-route cast rejection is the earlier object-specific boundary.
+- This slice intentionally leaves explicit `riscv64-unknown-linux-gnu` soft
+  profile behavior unchanged; only the `riscv64-linux-gnu` Linux GNU
+  representative path was promoted to LP64D.
 
 ## Proof
 
 ```sh
-tmp=$(mktemp); printf 'src/20030125-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEOUT_SEC=20 STOP_ON_FAILURE=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log; rc=$?; rm -f "$tmp"; exit $rc
+cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log
 ```
 
-Result: failed as expected for classification. Proof log: `test_after.log`.
-Per-case log:
-`build/rv64_gcc_c_torture_backend/src_20030125-1.c/case.log`.
+Result: passed. Proof log: `test_after.log`.

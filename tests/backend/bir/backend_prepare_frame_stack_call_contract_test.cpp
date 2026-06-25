@@ -336,14 +336,16 @@ prepare::PreparedBirModule prepare_riscv_module(const bir::Module& module) {
   return prepare::prepare_semantic_bir_module_with_options(module, riscv_target_profile(), options);
 }
 
-prepare::PreparedBirModule prepare_riscv_float_abi_module(const bir::Module& module) {
+prepare::PreparedBirModule prepare_riscv_float_abi_module(
+    const bir::Module& module,
+    std::string_view target_triple = "riscv64gc-unknown-linux-gnu") {
   prepare::PrepareOptions options;
   options.run_legalize = true;
   options.run_stack_layout = true;
   options.run_liveness = true;
   options.run_regalloc = true;
   return prepare::prepare_semantic_bir_module_with_options(
-      module, c4c::target_profile_from_triple("riscv64gc-unknown-linux-gnu"), options);
+      module, c4c::target_profile_from_triple(target_triple), options);
 }
 
 prepare::PreparedBirModule prepare_aarch64_module(const bir::Module& module) {
@@ -3164,9 +3166,9 @@ bir::Module make_aarch64_scalar_parameter_subtract_module() {
   return module;
 }
 
-bir::Module make_riscv_fpr_formal_identity_contract_module() {
+bir::Module make_riscv_fpr_formal_identity_contract_module(std::string_view target_triple) {
   bir::Module module;
-  module.target_triple = "riscv64gc-unknown-linux-gnu";
+  module.target_triple = std::string(target_triple);
 
   bir::Function function;
   function.name = "riscv_fpr_formal_identity_contract";
@@ -3199,9 +3201,10 @@ bir::Module make_riscv_fpr_formal_identity_contract_module() {
   return module;
 }
 
-int check_riscv_fpr_formal_home_publishes_target_identity() {
+int check_riscv_fpr_formal_home_publishes_target_identity(std::string_view target_triple) {
   const auto prepared =
-      prepare_riscv_float_abi_module(make_riscv_fpr_formal_identity_contract_module());
+      prepare_riscv_float_abi_module(
+          make_riscv_fpr_formal_identity_contract_module(target_triple), target_triple);
   const auto* locations =
       prepare::find_prepared_value_location_function(
           prepared, "riscv_fpr_formal_identity_contract");
@@ -8439,7 +8442,13 @@ int main() {
       rc != 0) {
     return rc;
   }
-  if (const int rc = check_riscv_fpr_formal_home_publishes_target_identity();
+  if (const int rc = check_riscv_fpr_formal_home_publishes_target_identity(
+          "riscv64gc-unknown-linux-gnu");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_riscv_fpr_formal_home_publishes_target_identity(
+          "riscv64-linux-gnu");
       rc != 0) {
     return rc;
   }
