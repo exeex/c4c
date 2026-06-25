@@ -3566,6 +3566,128 @@ prepare::PreparedBirModule make_prepared_local_register_arg_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_frame_slot_value_arg_call_module() {
+  prepare::PreparedBirModule prepared;
+  const auto callee_name = prepared.names.function_names.intern("sink");
+  const auto main_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto spill_name = prepared.names.value_names.intern("%spill");
+
+  bir::Block callee_entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+
+  bir::CallInst call;
+  call.callee = "sink";
+  call.args = {bir::Value::named(bir::TypeKind::I64, "%spill")};
+  call.arg_types = {bir::TypeKind::I64};
+  call.return_type = bir::TypeKind::Void;
+  bir::Block main_entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "sink",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = {bir::Param{
+          .type = bir::TypeKind::I64,
+          .name = "%p.x",
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+      .blocks = {std::move(callee_entry)},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(main_entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = callee_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = main_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = callee_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 2,
+          .function_name = callee_name,
+          .value_name = prepared.names.value_names.intern("%p.x"),
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"a0"},
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = main_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 1,
+          .function_name = main_name,
+          .value_name = spill_name,
+          .kind = prepare::PreparedValueHomeKind::StackSlot,
+          .slot_id = prepare::PreparedFrameSlotId{2},
+          .offset_bytes = 16,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = main_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+          .direct_callee_name = std::string{"sink"},
+          .arguments = {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 0,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+              .source_value_id = prepare::PreparedValueId{1},
+              .source_slot_id = prepare::PreparedFrameSlotId{2},
+              .source_stack_offset_bytes = 16,
+              .destination_register_name = std::string{"a0"},
+              .destination_contiguous_width = 1,
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_selection = prepare::PreparedCallArgumentSourceSelection{
+                  .kind =
+                      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+                  .source_value_id = prepare::PreparedValueId{1},
+                  .source_value_name = spill_name,
+                  .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .source_slot_id = prepare::PreparedFrameSlotId{2},
+                  .source_stack_offset_bytes = 16,
+                  .source_size_bytes = 8,
+                  .source_align_bytes = 8,
+              },
+          }},
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 24;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{2},
+          .function_name = main_name,
+          .offset_bytes = 16,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  };
+  return prepared;
+}
+
 int records_minimal_text_and_call_relocation() {
   const auto module = make_minimal_call_module();
   if (!module.has_value()) {
@@ -4461,6 +4583,114 @@ int builds_prepared_local_register_arg_call_object() {
       module->relocations[0].symbol != callee->id) {
     return fail("expected local/register-arg same-module call relocation");
   }
+  return 0;
+}
+
+int builds_prepared_frame_slot_value_arg_call_object() {
+  const auto prepared = make_prepared_frame_slot_value_arg_call_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared frame-slot-value arg call RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* sink = object::find_symbol(*module, "sink");
+  const auto* main = object::find_symbol(*module, "main");
+  if (text == nullptr || sink == nullptr || main == nullptr) {
+    return fail("expected frame-slot-value arg call object to publish text/functions");
+  }
+  if (sink->section != main->section || sink->section != text->id ||
+      sink->size_bytes == 0 || main->size_bytes == 0 ||
+      main->value < sink->value + sink->size_bytes) {
+    return fail("expected frame-slot-value arg call object text layout");
+  }
+  const std::size_t main_offset = main->value;
+  if (module->relocations.size() != 1 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset < main_offset + 4 ||
+      module->relocations[0].type != R_RISCV_CALL_PLT ||
+      module->relocations[0].symbol != sink->id) {
+    return fail("expected frame-slot-value same-module call relocation");
+  }
+  if (read_u32(text->bytes, main_offset + 0) != 0xfd010113 ||
+      read_u32(text->bytes, main_offset + 4) != 0x02113423 ||
+      read_u32(text->bytes, module->relocations[0].offset - 4) != 0x01013503) {
+    return fail("expected ld frame-slot payload into a0 before call");
+  }
+  return 0;
+}
+
+int expect_frame_slot_value_arg_call_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+}
+
+int rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes() {
+  auto prepared = make_prepared_frame_slot_value_arg_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0].source_selection->kind =
+      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress;
+  if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_value_arg_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0].source_slot_id =
+      std::nullopt;
+  if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_value_arg_call_module();
+  prepared.value_locations.functions[1].value_homes[0].slot_id = std::nullopt;
+  if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_value_arg_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0].destination_register_bank =
+      prepare::PreparedRegisterBank::Fpr;
+  if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_value_arg_call_module();
+  if (auto* call = std::get_if<bir::CallInst>(
+          &prepared.module.functions[1].blocks[0].insts[0])) {
+    call->arg_types[0] = bir::TypeKind::F32;
+  }
+  if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_value_arg_call_module();
+  prepared.value_locations.functions[1].value_homes[0].align_bytes = 16;
+  if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_value_arg_call_module();
+  prepared.value_locations.functions[1].value_homes[0].offset_bytes = 32;
+  prepared.call_plans.functions[0].calls[0].arguments[0].source_stack_offset_bytes =
+      32;
+  prepared.stack_layout.frame_slots[0].offset_bytes = 32;
+  if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_value_arg_call_module();
+  prepared.value_locations.functions[1].value_homes[0].offset_bytes = 2048;
+  prepared.call_plans.functions[0].calls[0].arguments[0].source_stack_offset_bytes =
+      2048;
+  prepared.stack_layout.frame_slots[0].offset_bytes = 2048;
+  prepared.stack_layout.frame_size_bytes = 2056;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame") !=
+      0) {
+    return 1;
+  }
+
   return 0;
 }
 
@@ -6366,6 +6596,8 @@ int main() {
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= skips_published_prepared_join_transfer_select_carrier_object();
   status |= builds_prepared_local_register_arg_call_object();
+  status |= builds_prepared_frame_slot_value_arg_call_object();
+  status |= rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes();
   status |= builds_prepared_inline_asm_insn_r_object();
   status |= builds_structured_prepared_inline_asm_insn_r_object_without_text_reparse();
   status |= builds_prepared_inline_asm_insn_r_tied_input_object();
