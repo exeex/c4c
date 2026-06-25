@@ -1,10 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 
-foreach(v C4C_AS WORK_DIR)
+foreach(v C4C_AS C4CLL SOURCE_CASE WORK_DIR)
   if(NOT DEFINED ${v} OR "${${v}}" STREQUAL "")
     message(FATAL_ERROR "Missing required -D${v}=...")
   endif()
 endforeach()
+
+if(NOT EXISTS "${SOURCE_CASE}")
+  message(FATAL_ERROR "[C4C_AS_SOURCE_CASE_MISSING] ${SOURCE_CASE}")
+endif()
 
 if(NOT DEFINED CASE_TIMEOUT_SEC OR "${CASE_TIMEOUT_SEC}" STREQUAL "")
   set(CASE_TIMEOUT_SEC 10)
@@ -117,6 +121,67 @@ function(run_success_case name source_text expected_stdout expected_text_hex)
   endif()
 endfunction()
 
+function(run_source_equivalence_case name asm_source_text source_case expected_text_hex)
+  set(as_src "${WORK_DIR}/${name}.s")
+  set(as_object "${WORK_DIR}/${name}.c4c-as.o")
+  set(source_object "${WORK_DIR}/${name}.source.o")
+  file(WRITE "${as_src}" "${asm_source_text}")
+  file(REMOVE "${as_object}" "${source_object}")
+
+  execute_process(
+    COMMAND "${C4C_AS}" "${as_src}" -o "${as_object}"
+    TIMEOUT "${CASE_TIMEOUT_SEC}"
+    RESULT_VARIABLE as_rc
+    OUTPUT_VARIABLE as_out
+    ERROR_VARIABLE as_err
+  )
+  if(as_rc MATCHES "timeout")
+    message(FATAL_ERROR "[C4C_AS_TIMEOUT] ${as_src} exceeded ${CASE_TIMEOUT_SEC}s")
+  endif()
+  if(NOT as_rc EQUAL 0)
+    message(FATAL_ERROR "[C4C_AS_PARSE_FAIL] ${as_src}\n${as_out}${as_err}")
+  endif()
+  if(NOT EXISTS "${as_object}")
+    message(FATAL_ERROR
+      "[C4C_AS_OBJECT_MISSING] expected c4c-as to write '${as_object}'")
+  endif()
+
+  execute_process(
+    COMMAND "${C4CLL}" --codegen obj --target riscv64-linux-gnu "${source_case}" -o "${source_object}"
+    TIMEOUT "${CASE_TIMEOUT_SEC}"
+    RESULT_VARIABLE source_rc
+    OUTPUT_VARIABLE source_out
+    ERROR_VARIABLE source_err
+  )
+  if(source_rc MATCHES "timeout")
+    message(FATAL_ERROR
+      "[C4C_AS_SOURCE_ROUTE_TIMEOUT] ${source_case} exceeded ${CASE_TIMEOUT_SEC}s")
+  endif()
+  if(NOT source_rc EQUAL 0)
+    message(FATAL_ERROR
+      "[C4C_AS_SOURCE_ROUTE_FAIL] ${source_case}\n${source_out}${source_err}")
+  endif()
+  if(NOT EXISTS "${source_object}")
+    message(FATAL_ERROR
+      "[C4C_AS_SOURCE_OBJECT_MISSING] expected c4cll to write '${source_object}'")
+  endif()
+
+  read_elf_text_hex("${as_object}" as_text_hex)
+  read_elf_text_hex("${source_object}" source_text_hex)
+  if(NOT as_text_hex STREQUAL expected_text_hex)
+    message(FATAL_ERROR
+      "[C4C_AS_EQ_AS_TEXT_BYTES] expected '${expected_text_hex}', got '${as_text_hex}'")
+  endif()
+  if(NOT source_text_hex STREQUAL expected_text_hex)
+    message(FATAL_ERROR
+      "[C4C_AS_EQ_SOURCE_TEXT_BYTES] expected '${expected_text_hex}', got '${source_text_hex}'")
+  endif()
+  if(NOT as_text_hex STREQUAL source_text_hex)
+    message(FATAL_ERROR
+      "[C4C_AS_SOURCE_EQ_TEXT_BYTES] c4c-as='${as_text_hex}' source='${source_text_hex}'")
+  endif()
+endfunction()
+
 function(run_failure_case name source_text expected_diagnostics)
   set(src "${WORK_DIR}/${name}.s")
   set(out_object "${WORK_DIR}/${name}.o")
@@ -158,6 +223,12 @@ run_success_case(
   canonical_text_bytes
   ".text\n.globl main\nmain:\n  .insn.d 10, 11, v6, v0, v2, v4, 3\n  li a0, 0\n  ret\n"
   "text byte(s): 0a0320080b0300001305000067800000"
+  "0a0320080b0300001305000067800000"
+)
+run_source_equivalence_case(
+  source_route_equivalence
+  ".text\n.globl main\nmain:\n  .insn.d 10, 11, v6, v0, v2, v4, 3\n  li a0, 0\n  ret\n"
+  "${SOURCE_CASE}"
   "0a0320080b0300001305000067800000"
 )
 run_failure_case(

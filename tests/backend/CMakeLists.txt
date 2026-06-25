@@ -404,6 +404,8 @@ add_test(
   NAME backend_c4c_as_parse_suite
   COMMAND "${CMAKE_COMMAND}"
           -DC4C_AS=$<TARGET_FILE:c4c-as>
+          -DC4CLL=$<TARGET_FILE:c4cll>
+          -DSOURCE_CASE=${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c
           -DWORK_DIR=${BACKEND_TEST_BINARY_ROOT}/c4c_as_suite
           -DCASE_TIMEOUT_SEC=10
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_c4c_as_parse_suite.cmake"
