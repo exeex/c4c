@@ -25,6 +25,8 @@ constexpr std::uint32_t SHT_SYMTAB = 2;
 constexpr std::uint32_t R_RISCV_CALL_PLT = 19;
 constexpr std::uint32_t R_RISCV_PCREL_HI20 = 23;
 constexpr std::uint32_t R_RISCV_PCREL_LO12_I = 24;
+constexpr std::uint32_t R_RISCV_BRANCH = 16;
+constexpr std::uint32_t R_RISCV_JAL = 17;
 constexpr std::uint16_t SHN_UNDEF = 0;
 
 std::uint16_t read_u16(const std::vector<std::uint8_t>& bytes,
@@ -754,6 +756,274 @@ prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
   return prepared;
 }
 
+prepare::PreparedValueHome rv64_stack_slot_home(
+    prepare::PreparedValueId value_id,
+    c4c::FunctionNameId function_name,
+    c4c::ValueNameId value_name,
+    prepare::PreparedFrameSlotId slot_id,
+    std::size_t offset_bytes);
+
+prepare::PreparedValueHome rv64_gpr_home(prepare::PreparedValueId value_id,
+                                         c4c::FunctionNameId function_name,
+                                         c4c::ValueNameId value_name,
+                                         std::string register_name,
+                                         std::size_t physical_index);
+
+prepare::PreparedBirModule make_prepared_stack_slot_scalar_flow_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto slot_name = prepared.names.slot_names.intern("%lv.x");
+  const auto loaded_name = prepared.names.value_names.intern("%loaded");
+  const auto sum_name = prepared.names.value_names.intern("%sum");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%lv.x",
+                  .slot_id = slot_name,
+                  .value = bir::Value::immediate_i32(5),
+                  .align_bytes = 4,
+              },
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+                  .slot_name = "%lv.x",
+                  .slot_id = slot_name,
+                  .align_bytes = 4,
+              },
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Add,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+                  .operand_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+                  .rhs = bir::Value::immediate_i32(7),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%sum");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .local_slots = {bir::LocalSlot{
+          .name = "%lv.x",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{0},
+          .function_name = function_name,
+          .offset_bytes = 0,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{1},
+          .function_name = function_name,
+          .offset_bytes = 4,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{2},
+          .function_name = function_name,
+          .offset_bytes = 8,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_stack_slot_home(1,
+                                   function_name,
+                                   loaded_name,
+                                   prepare::PreparedFrameSlotId{1},
+                                   4),
+              rv64_stack_slot_home(2,
+                                   function_name,
+                                   sum_name,
+                                   prepare::PreparedFrameSlotId{2},
+                                   8),
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 12,
+      .frame_alignment_bytes = 4,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{0},
+                      .byte_offset = 0,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .result_value_name = loaded_name,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{0},
+                      .byte_offset = 0,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+          },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_join_transfer_select_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto true_predecessor = prepared.names.block_labels.intern("pred.true");
+  const auto false_predecessor = prepared.names.block_labels.intern("pred.false");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto false_name = prepared.names.value_names.intern("%fallback");
+  const auto result_name = prepared.names.value_names.intern("%selected");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::SelectInst{
+                  .predicate = bir::BinaryOpcode::Ne,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%selected"),
+                  .compare_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+                  .rhs = bir::Value::immediate_i32(1),
+                  .true_value = bir::Value::immediate_i32(1),
+                  .false_value =
+                      bir::Value::named(bir::TypeKind::I32, "%fallback"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%selected");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+      .join_transfers =
+          {
+              prepare::PreparedJoinTransfer{
+                  .function_name = function_name,
+                  .join_block_label = block_label,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%selected"),
+                  .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+                  .carrier_kind =
+                      prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+                  .incomings =
+                      {
+                          bir::PhiIncoming{
+                              .label = "pred.true",
+                              .value = bir::Value::immediate_i32(1),
+                              .label_id = true_predecessor,
+                          },
+                          bir::PhiIncoming{
+                              .label = "pred.false",
+                              .value =
+                                  bir::Value::named(bir::TypeKind::I32, "%fallback"),
+                              .label_id = false_predecessor,
+                          },
+                      },
+                  .edge_transfers =
+                      {
+                          prepare::PreparedEdgeValueTransfer{
+                              .predecessor_label = true_predecessor,
+                              .successor_label = block_label,
+                              .incoming_value = bir::Value::immediate_i32(1),
+                              .destination_value =
+                                  bir::Value::named(bir::TypeKind::I32, "%selected"),
+                          },
+                          prepare::PreparedEdgeValueTransfer{
+                              .predecessor_label = false_predecessor,
+                              .successor_label = block_label,
+                              .incoming_value =
+                                  bir::Value::named(bir::TypeKind::I32, "%fallback"),
+                              .destination_value =
+                                  bir::Value::named(bir::TypeKind::I32, "%selected"),
+                          },
+                      },
+                  .source_branch_block_label = block_label,
+                  .source_true_transfer_index = std::size_t{0},
+                  .source_false_transfer_index = std::size_t{1},
+                  .source_true_incoming_label = true_predecessor,
+                  .source_false_incoming_label = false_predecessor,
+              },
+          },
+  });
+  prepared.stack_layout.frame_size_bytes = 4;
+  prepared.stack_layout.frame_alignment_bytes = 4;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{3},
+          .function_name = function_name,
+          .offset_bytes = 0,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, lhs_name, "t0", 5),
+              rv64_gpr_home(2, function_name, false_name, "t1", 6),
+              rv64_stack_slot_home(3,
+                                   function_name,
+                                   result_name,
+                                   prepare::PreparedFrameSlotId{3},
+                                   0),
+          },
+  });
+  return prepared;
+}
+
 bir::InlineAsmOperandMetadata inline_asm_register_operand(
     bir::InlineAsmOperandKind kind,
     std::size_t constraint_index,
@@ -788,6 +1058,24 @@ prepare::PreparedValueHome rv64_gpr_home(prepare::PreparedValueId value_id,
           .register_class = prepare::PreparedRegisterClass::General,
           .physical_index = physical_index,
       },
+  };
+}
+
+prepare::PreparedValueHome rv64_stack_slot_home(
+    prepare::PreparedValueId value_id,
+    c4c::FunctionNameId function_name,
+    c4c::ValueNameId value_name,
+    prepare::PreparedFrameSlotId slot_id,
+    std::size_t offset_bytes) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = slot_id,
+      .offset_bytes = offset_bytes,
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
   };
 }
 
@@ -1884,6 +2172,89 @@ int builds_prepared_scalar_local_frame_object() {
   }
   if (!module->relocations.empty()) {
     return fail("expected scalar local object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_stack_slot_scalar_flow_object() {
+  const auto prepared = make_prepared_stack_slot_scalar_flow_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared stack-slot scalar flow RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared stack-slot scalar object to publish text/main");
+  }
+  if (text->bytes.size() != 48 || text->size_bytes != 48 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 48) {
+    return fail("expected prepared stack-slot scalar object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00500313 ||
+      read_u32(text->bytes, 8) != 0x00612023 ||
+      read_u32(text->bytes, 12) != 0x00012303 ||
+      read_u32(text->bytes, 16) != 0x00612223 ||
+      read_u32(text->bytes, 20) != 0x00412e03 ||
+      read_u32(text->bytes, 24) != 0x00700e93 ||
+      read_u32(text->bytes, 28) != 0x01de0f33 ||
+      read_u32(text->bytes, 32) != 0x01e12423 ||
+      read_u32(text->bytes, 36) != 0x00812503 ||
+      read_u32(text->bytes, 40) != 0x01010113 ||
+      read_u32(text->bytes, 44) != 0x00008067) {
+    return fail("expected load/store through prepared stack-slot value homes");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected stack-slot scalar flow object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_join_transfer_select_materialization_object() {
+  const auto prepared = make_prepared_join_transfer_select_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared join-transfer select RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  const auto* true_label = object::find_symbol(*module, ".Lmain_entry_select_0_true");
+  const auto* end_label = object::find_symbol(*module, ".Lmain_entry_select_0_end");
+  if (text == nullptr || main_symbol == nullptr || true_label == nullptr ||
+      end_label == nullptr) {
+    return fail("expected prepared select object to publish text/main/select labels");
+  }
+  if (text->bytes.size() != 44 || text->size_bytes != 44 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 44 ||
+      true_label->value != 24 || end_label->value != 28) {
+    return fail("expected prepared select materialization object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00028e13 ||
+      read_u32(text->bytes, 8) != 0x00100e93 ||
+      read_u32(text->bytes, 12) != 0x01de1063 ||
+      read_u32(text->bytes, 16) != 0x00030f13 ||
+      read_u32(text->bytes, 20) != 0x0000006f ||
+      read_u32(text->bytes, 24) != 0x00100f13 ||
+      read_u32(text->bytes, 28) != 0x01e12023 ||
+      read_u32(text->bytes, 32) != 0x00012503 ||
+      read_u32(text->bytes, 36) != 0x01010113 ||
+      read_u32(text->bytes, 40) != 0x00008067) {
+    return fail("expected prepared select compare/branch/materialize/store sequence");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 12 ||
+      module->relocations[0].type != R_RISCV_BRANCH ||
+      module->relocations[0].symbol != true_label->id ||
+      module->relocations[0].addend != 0 ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 20 ||
+      module->relocations[1].type != R_RISCV_JAL ||
+      module->relocations[1].symbol != end_label->id ||
+      module->relocations[1].addend != 0) {
+    return fail("expected prepared select local branch/jump relocations");
   }
   return 0;
 }
@@ -3045,6 +3416,8 @@ int main() {
   status |= builds_prepared_scalar_same_module_call_object();
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= builds_prepared_scalar_local_frame_object();
+  status |= builds_prepared_stack_slot_scalar_flow_object();
+  status |= builds_prepared_join_transfer_select_materialization_object();
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_inline_asm_insn_r_object();
   status |= builds_structured_prepared_inline_asm_insn_r_object_without_text_reparse();

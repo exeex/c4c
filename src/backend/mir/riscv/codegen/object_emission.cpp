@@ -167,7 +167,9 @@ std::optional<std::uint32_t> rv64_register_number(std::string_view name) {
 
 std::optional<std::uint32_t> gpr_register_number_for_home(
     const c4c::backend::prepare::PreparedValueHome& home) {
-  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+  if ((home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register &&
+       home.kind !=
+           c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset) ||
       !home.register_name.has_value()) {
     return std::nullopt;
   }
@@ -233,6 +235,95 @@ std::optional<std::uint32_t> gpr_register_number_for_value(
     const c4c::backend::bir::Value& value) {
   const auto* home = prepared_value_home_for(names, lookups, value);
   return home == nullptr ? std::nullopt : gpr_register_number_for_home(*home);
+}
+
+std::optional<std::int32_t> prepared_stack_slot_home_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedValueHome& home,
+    std::size_t stack_frame_bytes) {
+  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+      !home.slot_id.has_value() || !home.size_bytes.has_value() ||
+      *home.size_bytes != 4 ||
+      (home.align_bytes.has_value() && *home.align_bytes > 4)) {
+    return std::nullopt;
+  }
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const c4c::backend::prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *home.slot_id;
+                   });
+  if (slot_it == stack_layout.frame_slots.end() ||
+      slot_it->size_bytes < *home.size_bytes ||
+      slot_it->align_bytes > 4) {
+    return std::nullopt;
+  }
+  const std::size_t offset = *home.offset_bytes;
+  if (slot_it->offset_bytes != offset ||
+      slot_it->size_bytes < *home.size_bytes) {
+    return std::nullopt;
+  }
+  if (offset > stack_frame_bytes || stack_frame_bytes - offset < *home.size_bytes ||
+      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
+    return std::nullopt;
+  }
+  return static_cast<std::int32_t>(offset);
+}
+
+std::optional<std::int32_t> prepared_stack_slot_home_offset_for_value(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes) {
+  const auto* home = prepared_value_home_for(names, lookups, value);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+  return prepared_stack_slot_home_offset(stack_layout, *home, stack_frame_bytes);
+}
+
+std::optional<std::uint32_t> rv64_load_store_funct3_for_size(std::size_t size_bytes) {
+  switch (size_bytes) {
+    case 4:
+      return 2;
+    case 8:
+      return 3;
+    default:
+      return std::nullopt;
+  }
+}
+
+bool append_rv64_store_register_to_stack(RiscvEncodedFragment& fragment,
+                                         std::uint32_t source_register,
+                                         std::int32_t offset,
+                                         std::size_t size_bytes = 4) {
+  if (!fits_signed_12_bit_immediate(offset)) {
+    return false;
+  }
+  const auto funct3 = rv64_load_store_funct3_for_size(size_bytes);
+  if (!funct3.has_value()) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_s_type(0x23, *funct3, 2, source_register, offset));
+  return true;
+}
+
+bool append_rv64_load_stack_to_register(RiscvEncodedFragment& fragment,
+                                        std::uint32_t destination_register,
+                                        std::int32_t offset,
+                                        std::size_t size_bytes = 4) {
+  if (!fits_signed_12_bit_immediate(offset)) {
+    return false;
+  }
+  const auto funct3 = rv64_load_store_funct3_for_size(size_bytes);
+  if (!funct3.has_value()) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_i_type(0x03, destination_register, *funct3, 2, offset));
+  return true;
 }
 
 void append_rv64_move(RiscvEncodedFragment& fragment,
@@ -330,9 +421,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
 bool append_rv64_move_value_to_register(
     RiscvEncodedFragment& fragment,
     std::uint32_t destination,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::bir::Value& value) {
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes) {
   const auto immediate = integer_immediate_for_value(names, lookups, value);
   if (immediate.has_value()) {
     if (!fits_signed_12_bit_immediate(*immediate)) {
@@ -342,11 +435,20 @@ bool append_rv64_move_value_to_register(
     return true;
   }
   const auto source = gpr_register_number_for_value(names, lookups, value);
-  if (!source.has_value()) {
-    return false;
+  if (source.has_value()) {
+    append_rv64_move(fragment, destination, *source);
+    return true;
   }
-  append_rv64_move(fragment, destination, *source);
-  return true;
+  const auto stack_offset =
+      prepared_stack_slot_home_offset_for_value(stack_layout,
+                                                names,
+                                                lookups,
+                                                value,
+                                                stack_frame_bytes);
+  if (stack_offset.has_value()) {
+    return append_rv64_load_stack_to_register(fragment, destination, *stack_offset);
+  }
+  return false;
 }
 
 std::optional<std::uint32_t> rv64_branch_funct3(
@@ -694,11 +796,15 @@ void append_rv64_stack_frame_epilogue(RiscvEncodedFragment& fragment,
 }
 
 std::optional<std::size_t> rv64_object_stack_frame_size(
-    const c4c::backend::prepare::PreparedAddressingFunction* addressing) {
-  if (addressing == nullptr || addressing->frame_size_bytes == 0) {
+    const c4c::backend::prepare::PreparedAddressingFunction* addressing,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout) {
+  const auto addressing_frame_size =
+      addressing == nullptr ? std::size_t{0} : addressing->frame_size_bytes;
+  const auto frame_size = std::max(addressing_frame_size, stack_layout.frame_size_bytes);
+  if (frame_size == 0) {
     return 0;
   }
-  const auto aligned = ((addressing->frame_size_bytes + 15) / 16) * 16;
+  const auto aligned = ((frame_size + 15) / 16) * 16;
   return fits_signed_12_bit_immediate(static_cast<std::int64_t>(aligned))
              ? std::optional<std::size_t>{aligned}
              : std::nullopt;
@@ -862,6 +968,7 @@ const c4c::backend::prepare::PreparedInlineAsmCarrier* find_prepared_inline_asm_
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Terminator& terminator,
@@ -881,19 +988,14 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
     append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
     return fragment;
   }
-  const auto immediate =
-      integer_immediate_for_value(names, lookups, *terminator.value);
-  if (immediate.has_value()) {
-    if (!fits_signed_12_bit_immediate(*immediate)) {
-      return std::nullopt;
-    }
-    append_rv64_load_immediate(fragment, 10, *immediate);
-  } else {
-    const auto source = gpr_register_number_for_value(names, lookups, *terminator.value);
-    if (!source.has_value()) {
-      return std::nullopt;
-    }
-    append_rv64_move(fragment, 10, *source);
+  if (!append_rv64_move_value_to_register(fragment,
+                                          10,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          *terminator.value,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
   }
   if (restore_return_address) {
     append_rv64_call_frame_epilogue(fragment, stack_frame_bytes);
@@ -921,14 +1023,16 @@ prepared_memory_access_for_instruction(
 std::optional<std::int32_t> prepared_frame_slot_absolute_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
-    std::size_t stack_frame_bytes) {
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes = 4) {
   if (access == nullptr || access->address_space != c4c::backend::bir::AddressSpace::Default ||
       access->is_volatile ||
       access->address.base_kind !=
           c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
       !access->address.frame_slot_id.has_value() ||
-      !access->address.can_use_base_plus_offset || access->address.size_bytes != 4 ||
-      access->address.align_bytes > 4 ||
+      !access->address.can_use_base_plus_offset ||
+      access->address.size_bytes != size_bytes ||
+      access->address.align_bytes > size_bytes ||
       access->address.byte_offset < 0 ||
       !fits_signed_12_bit_immediate(access->address.byte_offset)) {
     return std::nullopt;
@@ -948,11 +1052,105 @@ std::optional<std::int32_t> prepared_frame_slot_absolute_offset(
   }
   const auto offset =
       slot_offset + static_cast<std::size_t>(access->address.byte_offset);
-  if (offset > stack_frame_bytes || stack_frame_bytes - offset < 4 ||
+  if (offset > stack_frame_bytes || stack_frame_bytes - offset < size_bytes ||
       !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
     return std::nullopt;
   }
   return static_cast<std::int32_t>(offset);
+}
+
+std::optional<std::size_t> rv64_scalar_memory_size_for_type(
+    c4c::backend::bir::TypeKind type) {
+  switch (type) {
+    case c4c::backend::bir::TypeKind::I32:
+      return std::size_t{4};
+    case c4c::backend::bir::TypeKind::I64:
+    case c4c::backend::bir::TypeKind::Ptr:
+      return std::size_t{8};
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_frame_address_materialization(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::BinaryInst& binary) {
+  if (binary.opcode != c4c::backend::bir::BinaryOpcode::Add ||
+      binary.result.type != c4c::backend::bir::TypeKind::Ptr ||
+      binary.result.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto destination = gpr_register_number_for_value(names, lookups, binary.result);
+  if (!destination.has_value()) {
+    return std::nullopt;
+  }
+  const auto result_value_name = names.value_names.find(binary.result.name);
+  if (result_value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  if (lookups == nullptr) {
+    return std::nullopt;
+  }
+  std::vector<const c4c::backend::prepare::PreparedAddressMaterialization*>
+      materialization_candidates;
+  if (const auto* materializations =
+          c4c::backend::prepare::find_indexed_prepared_address_materializations(
+              &lookups->address_materializations,
+              block_label)) {
+    materialization_candidates = *materializations;
+  } else {
+    for (const auto& entry : lookups->address_materializations.materializations_by_block) {
+      materialization_candidates.insert(materialization_candidates.end(),
+                                        entry.second.begin(),
+                                        entry.second.end());
+    }
+  }
+  const c4c::backend::prepare::PreparedAddressMaterialization* selected = nullptr;
+  for (const auto* materialization : materialization_candidates) {
+    if (materialization == nullptr ||
+        materialization->inst_index != instruction_index ||
+        materialization->kind !=
+            c4c::backend::prepare::PreparedAddressMaterializationKind::FrameSlot ||
+        materialization->result_value_name != result_value_name ||
+        !materialization->frame_slot_id.has_value() ||
+        materialization->byte_offset < 0 ||
+        materialization->address_space != c4c::backend::bir::AddressSpace::Default) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return std::nullopt;
+    }
+    selected = materialization;
+  }
+  if (selected == nullptr) {
+    return std::nullopt;
+  }
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const c4c::backend::prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *selected->frame_slot_id;
+                   });
+  if (slot_it == stack_layout.frame_slots.end() ||
+      selected->byte_offset < static_cast<std::int64_t>(slot_it->offset_bytes)) {
+    return std::nullopt;
+  }
+  const auto offset = static_cast<std::size_t>(selected->byte_offset);
+  if (!fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
+    return std::nullopt;
+  }
+  RiscvEncodedFragment fragment;
+  append_le32(fragment.bytes,
+              encode_i_type(0x13,
+                            *destination,
+                            0,
+                            2,
+                            static_cast<std::int32_t>(offset)));  // addi rd, sp, off
+  return fragment;
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
@@ -962,23 +1160,31 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     const c4c::backend::bir::StoreLocalInst& store,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t stack_frame_bytes) {
+  const auto size_bytes = rv64_scalar_memory_size_for_type(store.value.type);
+  if (!size_bytes.has_value()) {
+    return std::nullopt;
+  }
   const auto offset =
-      prepared_frame_slot_absolute_offset(stack_layout, access, stack_frame_bytes);
+      prepared_frame_slot_absolute_offset(stack_layout,
+                                          access,
+                                          stack_frame_bytes,
+                                          *size_bytes);
   if (!offset.has_value()) {
     return std::nullopt;
   }
-  const auto immediate = integer_immediate_for_value(names, lookups, store.value);
-  if (!immediate.has_value() || !fits_signed_12_bit_immediate(*immediate)) {
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_move_value_to_register(fragment,
+                                          6,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          store.value,
+                                          stack_frame_bytes)) {
     return std::nullopt;
   }
-  RiscvEncodedFragment fragment;
-  append_rv64_load_immediate(fragment, 6, *immediate);  // t1
-  append_le32(fragment.bytes,
-              encode_s_type(0x23,
-                            2,
-                            2,
-                            6,
-                            *offset));
+  if (!append_rv64_store_register_to_stack(fragment, 6, *offset, *size_bytes)) {
+    return std::nullopt;
+  }
   return fragment;
 }
 
@@ -989,37 +1195,66 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
     const c4c::backend::bir::LoadLocalInst& load,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t stack_frame_bytes) {
+  const auto size_bytes = rv64_scalar_memory_size_for_type(load.result.type);
+  if (!size_bytes.has_value()) {
+    return std::nullopt;
+  }
   const auto offset =
-      prepared_frame_slot_absolute_offset(stack_layout, access, stack_frame_bytes);
+      prepared_frame_slot_absolute_offset(stack_layout,
+                                          access,
+                                          stack_frame_bytes,
+                                          *size_bytes);
   if (!offset.has_value()) {
     return std::nullopt;
   }
   const auto destination = gpr_register_number_for_value(names, lookups, load.result);
-  if (!destination.has_value()) {
+  RiscvEncodedFragment fragment;
+  if (destination.has_value()) {
+    if (!append_rv64_load_stack_to_register(fragment,
+                                           *destination,
+                                           *offset,
+                                           *size_bytes)) {
+      return std::nullopt;
+    }
+    return fragment;
+  }
+  const auto destination_offset =
+      prepared_stack_slot_home_offset_for_value(stack_layout,
+                                                names,
+                                                lookups,
+                                                load.result,
+                                                stack_frame_bytes);
+  if (!destination_offset.has_value() ||
+      !append_rv64_load_stack_to_register(fragment, 6, *offset, *size_bytes) ||
+      !append_rv64_store_register_to_stack(fragment, 6, *destination_offset)) {
     return std::nullopt;
   }
-  RiscvEncodedFragment fragment;
-  append_le32(fragment.bytes,
-              encode_i_type(0x03,
-                            *destination,
-                            2,
-                            2,
-                            *offset));
   return fragment;
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::bir::BinaryInst& binary) {
+    const c4c::backend::bir::BinaryInst& binary,
+    std::size_t stack_frame_bytes) {
   if (binary.result.type != c4c::backend::bir::TypeKind::I32 &&
       binary.result.type != c4c::backend::bir::TypeKind::I64) {
     return std::nullopt;
   }
-  const auto destination = gpr_register_number_for_value(names, lookups, binary.result);
-  if (!destination.has_value()) {
+  const auto destination_home = prepared_value_home_for(names, lookups, binary.result);
+  const auto destination =
+      destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
+  const auto destination_stack_offset =
+      destination_home == nullptr
+          ? std::nullopt
+          : prepared_stack_slot_home_offset(stack_layout,
+                                            *destination_home,
+                                            stack_frame_bytes);
+  if (!destination.has_value() && !destination_stack_offset.has_value()) {
     return std::nullopt;
   }
+  const std::uint32_t destination_register = destination.value_or(30);
 
   const auto lhs_register = gpr_register_number_for_value(names, lookups, binary.lhs);
   const auto rhs_register = gpr_register_number_for_value(names, lookups, binary.rhs);
@@ -1027,39 +1262,48 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
   const auto rhs_immediate = integer_immediate_for_value(names, lookups, binary.rhs);
 
   RiscvEncodedFragment fragment;
+  auto finish = [&]() -> std::optional<RiscvEncodedFragment> {
+    if (destination_stack_offset.has_value() &&
+        !append_rv64_store_register_to_stack(fragment,
+                                            destination_register,
+                                            *destination_stack_offset)) {
+      return std::nullopt;
+    }
+    return fragment;
+  };
   switch (binary.opcode) {
     case c4c::backend::bir::BinaryOpcode::Add:
       if (lhs_register.has_value() && rhs_register.has_value()) {
         append_le32(fragment.bytes,
                     encode_r_type(0x33,
-                                  *destination,
+                                  destination_register,
                                   0,
                                   *lhs_register,
                                   *rhs_register,
                                   0));
-        return fragment;
+        return finish();
       }
       if (lhs_register.has_value() && rhs_immediate.has_value() &&
           fits_signed_12_bit_immediate(*rhs_immediate)) {
         append_le32(fragment.bytes,
                     encode_i_type(0x13,
-                                  *destination,
+                                  destination_register,
                                   0,
                                   *lhs_register,
                                   static_cast<std::int32_t>(*rhs_immediate)));
-        return fragment;
+        return finish();
       }
       if (rhs_register.has_value() && lhs_immediate.has_value() &&
           fits_signed_12_bit_immediate(*lhs_immediate)) {
         append_le32(fragment.bytes,
                     encode_i_type(0x13,
-                                  *destination,
+                                  destination_register,
                                   0,
                                   *rhs_register,
                                   static_cast<std::int32_t>(*lhs_immediate)));
-        return fragment;
+        return finish();
       }
-      return std::nullopt;
+      break;
     case c4c::backend::bir::BinaryOpcode::Sub:
       if (lhs_register.has_value() && rhs_immediate.has_value() &&
           *rhs_immediate != std::numeric_limits<std::int64_t>::min()) {
@@ -1067,104 +1311,274 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
         if (fits_signed_12_bit_immediate(negated)) {
           append_le32(fragment.bytes,
                       encode_i_type(0x13,
-                                    *destination,
+                                    destination_register,
                                     0,
                                     *lhs_register,
                                     static_cast<std::int32_t>(negated)));
-          return fragment;
+          return finish();
         }
       }
-      return std::nullopt;
+      break;
     case c4c::backend::bir::BinaryOpcode::And:
       if (lhs_register.has_value() && rhs_register.has_value()) {
         append_le32(fragment.bytes,
                     encode_r_type(0x33,
-                                  *destination,
+                                  destination_register,
                                   7,
                                   *lhs_register,
                                   *rhs_register,
                                   0));
-        return fragment;
+        return finish();
       }
       if (lhs_register.has_value() && rhs_immediate.has_value() &&
           fits_signed_12_bit_immediate(*rhs_immediate)) {
         append_le32(fragment.bytes,
                     encode_i_type(0x13,
-                                  *destination,
+                                  destination_register,
                                   7,
                                   *lhs_register,
                                   static_cast<std::int32_t>(*rhs_immediate)));
-        return fragment;
+        return finish();
       }
       if (rhs_register.has_value() && lhs_immediate.has_value() &&
           fits_signed_12_bit_immediate(*lhs_immediate)) {
         append_le32(fragment.bytes,
                     encode_i_type(0x13,
-                                  *destination,
+                                  destination_register,
                                   7,
                                   *rhs_register,
                                   static_cast<std::int32_t>(*lhs_immediate)));
-        return fragment;
+        return finish();
       }
-      return std::nullopt;
+      break;
     case c4c::backend::bir::BinaryOpcode::Xor:
       if (lhs_register.has_value() && rhs_register.has_value()) {
         append_le32(fragment.bytes,
                     encode_r_type(0x33,
-                                  *destination,
+                                  destination_register,
                                   4,
                                   *lhs_register,
                                   *rhs_register,
                                   0));
-        return fragment;
+        return finish();
       }
       if (lhs_register.has_value() && rhs_immediate.has_value() &&
           fits_signed_12_bit_immediate(*rhs_immediate)) {
         append_le32(fragment.bytes,
                     encode_i_type(0x13,
-                                  *destination,
+                                  destination_register,
                                   4,
                                   *lhs_register,
                                   static_cast<std::int32_t>(*rhs_immediate)));
-        return fragment;
+        return finish();
       }
       if (rhs_register.has_value() && lhs_immediate.has_value() &&
           fits_signed_12_bit_immediate(*lhs_immediate)) {
         append_le32(fragment.bytes,
                     encode_i_type(0x13,
-                                  *destination,
+                                  destination_register,
                                   4,
                                   *rhs_register,
                                   static_cast<std::int32_t>(*lhs_immediate)));
-        return fragment;
+        return finish();
       }
-      return std::nullopt;
+      break;
     case c4c::backend::bir::BinaryOpcode::Eq:
     case c4c::backend::bir::BinaryOpcode::Ne:
       if (!append_rv64_move_value_to_register(fragment,
                                              28,
+                                             stack_layout,
                                              names,
                                              lookups,
-                                             binary.lhs) ||
+                                             binary.lhs,
+                                             stack_frame_bytes) ||
           !append_rv64_move_value_to_register(fragment,
                                              29,
+                                             stack_layout,
                                              names,
                                              lookups,
-                                             binary.rhs)) {
+                                             binary.rhs,
+                                             stack_frame_bytes)) {
         return std::nullopt;
       }
-      append_le32(fragment.bytes, encode_r_type(0x33, *destination, 4, 28, 29, 0));
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 4, 28, 29, 0));
       if (binary.opcode == c4c::backend::bir::BinaryOpcode::Eq) {
         append_le32(fragment.bytes,
-                    encode_i_type(0x13, *destination, 3, *destination, 1));
+                    encode_i_type(0x13,
+                                  destination_register,
+                                  3,
+                                  destination_register,
+                                  1));
       } else {
         append_le32(fragment.bytes,
-                    encode_r_type(0x33, *destination, 3, 0, *destination, 0));
+                    encode_r_type(0x33,
+                                  destination_register,
+                                  3,
+                                  0,
+                                  destination_register,
+                                  0));
       }
-      return fragment;
+      return finish();
+    default:
+      break;
+  }
+  if (!append_rv64_move_value_to_register(fragment,
+                                          28,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          binary.lhs,
+                                          stack_frame_bytes) ||
+      !append_rv64_move_value_to_register(fragment,
+                                          29,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          binary.rhs,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  switch (binary.opcode) {
+    case c4c::backend::bir::BinaryOpcode::Add:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 0, 28, 29, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Sub:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 0, 28, 29, 0x20));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::And:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 7, 28, 29, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Or:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 6, 28, 29, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Xor:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 4, 28, 29, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Shl:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 1, 28, 29, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::LShr:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 5, 28, 29, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Mul:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 0, 28, 29, 1));
+      return finish();
     default:
       return std::nullopt;
   }
+}
+
+std::string rv64_select_local_label(std::string_view function_name,
+                                    std::string_view block_label,
+                                    std::size_t instruction_index,
+                                    std::string_view suffix) {
+  return riscv_local_block_label(function_name,
+                                 std::string(block_label) + "_select_" +
+                                     std::to_string(instruction_index) + "_" +
+                                     std::string(suffix));
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::SelectInst& select,
+    std::size_t stack_frame_bytes) {
+  if (select.result.type != c4c::backend::bir::TypeKind::I32 &&
+      select.result.type != c4c::backend::bir::TypeKind::I64) {
+    return std::nullopt;
+  }
+  const auto funct3 = rv64_branch_funct3(select.predicate);
+  if (!funct3.has_value()) {
+    return std::nullopt;
+  }
+  const auto size_bytes = rv64_scalar_memory_size_for_type(select.result.type);
+  if (!size_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto* destination_home = prepared_value_home_for(names, lookups, select.result);
+  const auto destination =
+      destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
+  const auto destination_stack_offset =
+      destination_home == nullptr
+          ? std::nullopt
+          : prepared_stack_slot_home_offset(stack_layout,
+                                            *destination_home,
+                                            stack_frame_bytes);
+  if (!destination.has_value() && !destination_stack_offset.has_value()) {
+    return std::nullopt;
+  }
+  const std::uint32_t destination_register = destination.value_or(30);
+  const std::string true_label =
+      rv64_select_local_label(function_name, block_label, instruction_index, "true");
+  const std::string end_label =
+      rv64_select_local_label(function_name, block_label, instruction_index, "end");
+
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_move_value_to_register(fragment,
+                                          28,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          select.lhs,
+                                          stack_frame_bytes) ||
+      !append_rv64_move_value_to_register(fragment,
+                                          29,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          select.rhs,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  append_rv64_local_branch(fragment, *funct3, 28, 29, true_label);
+  if (!append_rv64_move_value_to_register(fragment,
+                                          destination_register,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          select.false_value,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  append_rv64_local_jump(fragment, end_label);
+  fragment.labels.push_back(RiscvObjectLabel{
+      .offset_bytes = fragment.bytes.size(),
+      .name = true_label,
+  });
+  if (!append_rv64_move_value_to_register(fragment,
+                                          destination_register,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          select.true_value,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  fragment.labels.push_back(RiscvObjectLabel{
+      .offset_bytes = fragment.bytes.size(),
+      .name = end_label,
+  });
+  if (destination_stack_offset.has_value() &&
+      !append_rv64_store_register_to_stack(fragment,
+                                          destination_register,
+                                          *destination_stack_offset,
+                                          *size_bytes)) {
+    return std::nullopt;
+  }
+  return fragment;
 }
 
 bool prepared_param_homes_supported(
@@ -1256,21 +1670,35 @@ bool terminator_uses_value_as_condition(
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_compare_branch(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     c4c::backend::bir::BinaryOpcode opcode,
     const c4c::backend::bir::Value& lhs,
     const c4c::backend::bir::Value& rhs,
     std::string true_label,
-    std::string false_label) {
+    std::string false_label,
+    std::size_t stack_frame_bytes) {
   const auto funct3 = rv64_branch_funct3(opcode);
   if (!funct3.has_value()) {
     return std::nullopt;
   }
 
   RiscvEncodedFragment fragment;
-  if (!append_rv64_move_value_to_register(fragment, 28, names, lookups, lhs) ||
-      !append_rv64_move_value_to_register(fragment, 29, names, lookups, rhs)) {
+  if (!append_rv64_move_value_to_register(fragment,
+                                          28,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          lhs,
+                                          stack_frame_bytes) ||
+      !append_rv64_move_value_to_register(fragment,
+                                          29,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          rhs,
+                                          stack_frame_bytes)) {
     return std::nullopt;
   }
   append_rv64_local_branch(fragment, *funct3, 28, 29, std::move(true_label));
@@ -1291,7 +1719,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
     std::size_t stack_frame_bytes) {
   switch (block.terminator.kind) {
     case c4c::backend::bir::TerminatorKind::Return:
-      return fragment_for_prepared_return(names,
+      return fragment_for_prepared_return(prepared.stack_layout,
+                                          names,
                                           lookups,
                                           block.terminator,
                                           restore_return_address,
@@ -1340,13 +1769,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
           branch_condition->predicate.has_value() &&
           branch_condition->lhs.has_value() &&
           branch_condition->rhs.has_value()) {
-        return fragment_for_prepared_compare_branch(names,
+        return fragment_for_prepared_compare_branch(prepared.stack_layout,
+                                                    names,
                                                     lookups,
                                                     *branch_condition->predicate,
                                                     *branch_condition->lhs,
                                                     *branch_condition->rhs,
                                                     true_asm_label,
-                                                    false_asm_label);
+                                                    false_asm_label,
+                                                    stack_frame_bytes);
       }
 
       if (block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named) {
@@ -1356,13 +1787,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
       if (compare_it == compares.end()) {
         return std::nullopt;
       }
-      return fragment_for_prepared_compare_branch(names,
+      return fragment_for_prepared_compare_branch(prepared.stack_layout,
+                                                  names,
                                                   lookups,
                                                   compare_it->second.opcode,
                                                   compare_it->second.lhs,
                                                   compare_it->second.rhs,
                                                   true_asm_label,
-                                                  false_asm_label);
+                                                  false_asm_label,
+                                                  stack_frame_bytes);
     }
   }
   return std::nullopt;
@@ -1375,6 +1808,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     const c4c::backend::prepare::PreparedInlineAsmCarrierFunction* inline_asm_carriers,
     const c4c::backend::bir::Block& block,
     c4c::BlockLabelId prepared_block_label,
+    std::string_view function_name,
     std::size_t block_index,
     std::size_t instruction_index,
     const c4c::backend::bir::Inst& inst,
@@ -1383,6 +1817,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
   const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
   if (call == nullptr) {
     if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+      if (auto fragment = fragment_for_prepared_frame_address_materialization(
+              prepared.stack_layout,
+              prepared.names,
+              &lookups,
+              prepared_block_label,
+              instruction_index,
+              *binary);
+          fragment.has_value()) {
+        return fragment;
+      }
       if (c4c::backend::bir::is_compare_opcode(binary->opcode) &&
           binary->result.kind == c4c::backend::bir::Value::Kind::Named) {
         compares[binary->result.name] = PreparedObjectCompare{
@@ -1394,9 +1838,39 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
           return RiscvEncodedFragment{};
         }
       }
-      auto fragment = fragment_for_prepared_binary(prepared.names, &lookups, *binary);
+      auto fragment = fragment_for_prepared_binary(prepared.stack_layout,
+                                                   prepared.names,
+                                                   &lookups,
+                                                   *binary,
+                                                   stack_frame_bytes);
       if (fragment.has_value()) {
         return fragment;
+      }
+    }
+    if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&inst)) {
+      const auto classification =
+          prepare::classify_prepared_object_select_consumer(&control_flow,
+                                                            prepared_block_label,
+                                                            inst);
+      if (prepare::diagnose_prepared_object_consumer(classification).has_value()) {
+        return std::nullopt;
+      }
+      if (classification.kind ==
+              prepare::PreparedObjectSelectConsumerKind::OrdinarySelect ||
+          classification.kind ==
+              prepare::PreparedObjectSelectConsumerKind::PreparedJoinTransferCarrier) {
+        auto fragment = fragment_for_prepared_select(prepared.stack_layout,
+                                                     prepared.names,
+                                                     &lookups,
+                                                     function_name,
+                                                     bir_block_label_spelling(prepared.module,
+                                                                              block),
+                                                     instruction_index,
+                                                     *select,
+                                                     stack_frame_bytes);
+        if (fragment.has_value()) {
+          return fragment;
+        }
       }
     }
     if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
@@ -1497,7 +1971,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   const auto* addressing = prepare::find_prepared_addressing(prepared, control_flow.function_name);
   const auto* inline_asm_carriers =
       prepare::find_prepared_inline_asm_carriers(prepared, control_flow.function_name);
-  const auto stack_frame_bytes = rv64_object_stack_frame_size(addressing);
+  const auto stack_frame_bytes =
+      rv64_object_stack_frame_size(addressing, prepared.stack_layout);
   if (!stack_frame_bytes.has_value()) {
     return {};
   }
@@ -1579,12 +2054,24 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
           if (event.instruction == nullptr) {
             return {};
           }
+          const auto select_classification =
+              prepare::classify_prepared_object_select_consumer(&control_flow,
+                                                                prepared_block_label,
+                                                                *event.instruction);
+          if (auto diagnostic =
+                  prepare::diagnose_prepared_object_consumer(select_classification)) {
+            return RiscvPreparedObjectFunctionResult{
+                .prepared_consumer_category = diagnostic->category,
+                .diagnostic = std::move(diagnostic->message),
+            };
+          }
           auto fragment = fragment_for_prepared_instruction(prepared,
                                                            control_flow,
                                                            lookups,
                                                            inline_asm_carriers,
                                                            *block,
                                                            prepared_block_label,
+                                                           function_name,
                                                            event.block_index,
                                                            event.instruction_index,
                                                            *event.instruction,
@@ -1645,6 +2132,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                        inline_asm_carriers,
                                                        block,
                                                        prepared_block_label,
+                                                       function_name,
                                                        block_index,
                                                        instruction_index,
                                                        block.insts[instruction_index],
