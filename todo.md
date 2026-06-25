@@ -1,67 +1,70 @@
 Status: Active
 Source Idea Path: ideas/open/368_rv64_object_route_frame_slot_base_offset_memory.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Admit Pointer-Value Scalar Accesses
+Current Step ID: 3
+Current Step Title: Rerun Representatives and Route Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 2 (`Admit Pointer-Value Scalar Accesses`) is implemented for the
-first supportable RV64 prepared pointer-value local-memory shape, including the
-supervisor-found store temporary collision case.
+Plan Step 3 (`Rerun Representatives and Route Residuals`) reran the three
+idea-368 representatives after pointer-value local-memory support.
 
-Completed in this packet:
+Result: `total=3 passed=0 failed=3`.
 
-- Added RV64 object emission support for prepared local load/store accesses
-  whose address base is `PointerValue`, whose pointer source has a GPR home,
-  whose byte offset is RV64 12-bit encodable, and whose metadata is scalar,
-  default-address-space, nonvolatile, base-plus-offset, and not over-aligned.
-- Fixed pointer-value stores so the temporary used for the stored value does
-  not clobber the pointer base register when the base pointer already lives in
-  `t1`/`x6`.
-- Preserved the existing direct frame-slot local-memory path and extended the
-  local-memory diagnostic to describe the two supported address families.
-- Added focused object-emission coverage for an i16 pointer-value store/load
-  through `%p + 2`, an explicit `t1`/`x6` base collision fixture, plus
-  fail-closed neighbors for missing pointer metadata, missing pointer register,
-  out-of-range offset, bad alignment, non-default address space, volatile
-  access, dynamic/non-base-plus-offset access, mismatched/aggregate-sized
-  metadata, and unsupported scalar type.
+- `src/20000217-1.c`: failed, but advanced off
+  `unsupported_local_memory_access` to generic unsupported instruction
+  lowering. Follow-up inspection showed `showbug` pointer-value local accesses
+  are no longer the reported blocker; `main` carries local-frame-address call
+  arguments for `%lv.x` and `%lv.y`, so this residual belongs with idea 372,
+  not more pointer-value local memory work.
+- `src/20000121-1.c`: failed, but advanced off
+  `unsupported_local_memory_access` to generic unsupported instruction
+  lowering. Follow-up inspection showed the `doit` pointer-value i8 load from
+  `%p.id` is no longer the reported blocker; the next visible boundary is a
+  frame-slot-value call-argument publication for spilled `%t1`, not an
+  in-scope pointer-value memory blocker.
+- `src/va-arg-13.c`: failed at `unsupported_param_home: RV64 object route
+  requires all parameters in supported GPR or prepared FPR register homes`.
+  Follow-up inspection still found the expected `dummy` pointer-value accesses
+  and later frame-slot-address call arguments for `%t7` and `%t14`, but the
+  current object-route stop is the parameter-home boundary before those later
+  owners.
 
 ## Suggested Next
 
-Run Plan Step 3 against the three representatives:
-
-- `src/20000217-1.c`
-- `src/20000121-1.c`
-- `src/va-arg-13.c`
-
-Record whether each representative now passes, still fails on in-scope
-pointer-value local memory, or advances to the frame-slot address
-call-argument owner in idea 372.
+Run Plan Step 4 closure or handoff decision for idea 368. The representative
+rerun shows semantic pointer-value local-memory repair moved all three cases
+off the old local-memory diagnostic, but no representative passes yet.
 
 ## Watchouts
 
-- Do not expand idea 368 into call-argument address materialization. If a
-  representative advances to `missing_frame_slot_arg_publication` or a similar
-  call argument boundary, hand it to idea 372.
+- Do not add another idea-368 pointer-value local-memory packet based on these
+  three representatives; the current residuals are call-argument publication
+  or parameter-home boundaries.
+- Route `src/20000217-1.c` local-frame-address call arguments to idea 372.
+- Decide whether the `src/20000121-1.c` frame-slot-value call-argument
+  publication needs a separate child idea or belongs to an existing call
+  publication route.
+- Treat `src/va-arg-13.c` as currently stopped at parameter-home support before
+  its later frame-slot-address and `va_arg` helper boundaries.
 - Do not implement aggregate `va_arg`, byval homes, terminator lowering, or
   source-shape shortcuts from this plan.
-- The shared local-memory diagnostic now names both admitted address families;
-  inspect prepared facts before assigning any remaining failure to this plan.
-- Put analysis logs under `build/agent_state/`, not root-level canonical logs.
-- Keep `test_after.log` reserved for the supervisor-delegated proof command.
 
 ## Proof
 
-Delegated proof passed and wrote `test_after.log`:
+Delegated representative command wrote
+`build/agent_state/368_step3_representatives_after_pointer.log` and exited
+nonzero because all three selected representatives still fail:
 
-`cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log`
+`tmp=$(mktemp); printf '%s\n' src/20000217-1.c src/20000121-1.c src/va-arg-13.c > "$tmp"; CASE_TIMEOUT_SEC=20 ALLOWLIST="$tmp" scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/368_step3_representatives_after_pointer.log; rc=$?; rm -f "$tmp"; exit $rc`
 
-Fresh result after the store temporary collision fix: 3/3 tests passed:
+Result summary:
 
-- `backend_riscv_object_emission`
-- `backend_prepare_frame_stack_call_contract`
-- `backend_prepared_printer`
+- `src/20000217-1.c`: fail, case log
+  `build/rv64_gcc_c_torture_backend/src_20000217-1.c/case.log`
+- `src/20000121-1.c`: fail, case log
+  `build/rv64_gcc_c_torture_backend/src_20000121-1.c/case.log`
+- `src/va-arg-13.c`: fail, case log
+  `build/rv64_gcc_c_torture_backend/src_va-arg-13.c/case.log`
