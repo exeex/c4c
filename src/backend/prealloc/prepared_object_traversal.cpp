@@ -124,6 +124,38 @@ namespace {
          home_it->second == &home;
 }
 
+[[nodiscard]] bool prepared_object_event_kind_can_consume_move_bundle(
+    PreparedObjectTraversalEventKind kind) {
+  switch (kind) {
+    case PreparedObjectTraversalEventKind::BlockEntryCopies:
+    case PreparedObjectTraversalEventKind::PreTerminatorCopies:
+      return true;
+    case PreparedObjectTraversalEventKind::Label:
+    case PreparedObjectTraversalEventKind::Instruction:
+    case PreparedObjectTraversalEventKind::Terminator:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] bool prepared_object_non_parallel_copy_move_phase_matches_event(
+    const PreparedObjectTraversalEvent& event,
+    const PreparedMoveBundle& move_bundle) {
+  switch (event.kind) {
+    case PreparedObjectTraversalEventKind::BlockEntryCopies:
+      return move_bundle.phase == PreparedMovePhase::BlockEntry &&
+             move_bundle.instruction_index == 0;
+    case PreparedObjectTraversalEventKind::PreTerminatorCopies:
+      return move_bundle.phase == PreparedMovePhase::BeforeReturn &&
+             move_bundle.instruction_index == event.instruction_index;
+    case PreparedObjectTraversalEventKind::Label:
+    case PreparedObjectTraversalEventKind::Instruction:
+    case PreparedObjectTraversalEventKind::Terminator:
+      return false;
+  }
+  return false;
+}
+
 [[nodiscard]] bool prepared_move_bundle_matches_parallel_copy(
     const PreparedMoveBundle& move_bundle,
     const PreparedParallelCopyBundle& parallel_copy_bundle,
@@ -475,6 +507,104 @@ classify_prepared_object_value_home_consumer(
           .value_home_lookups = value_home_lookups,
           .value = &value,
       });
+}
+
+PreparedObjectMoveBundleConsumerClassification
+classify_prepared_object_move_bundle_consumer(
+    const PreparedObjectMoveBundleConsumerQuery& query) {
+  PreparedObjectMoveBundleConsumerClassification result;
+  if (query.event == nullptr) {
+    return result;
+  }
+
+  const auto& event = *query.event;
+  result.event = &event;
+  result.event_kind = event.kind;
+  result.block_index = event.block_index;
+  result.instruction_index = event.instruction_index;
+
+  if (!prepared_object_event_kind_can_consume_move_bundle(event.kind)) {
+    result.status =
+        PreparedObjectMoveBundleConsumerStatus::UnsupportedEventKind;
+    return result;
+  }
+
+  if (event.move_bundle == nullptr) {
+    result.status = PreparedObjectMoveBundleConsumerStatus::MissingMoveBundle;
+    return result;
+  }
+
+  const auto& move_bundle = *event.move_bundle;
+  result.move_bundle = &move_bundle;
+  result.parallel_copy_bundle = event.parallel_copy_bundle;
+  result.phase = move_bundle.phase;
+  result.move_count = move_bundle.moves.size();
+
+  if (move_bundle.moves.empty()) {
+    result.status = PreparedObjectMoveBundleConsumerStatus::EmptyMoveBundle;
+    return result;
+  }
+
+  if (event.parallel_copy_bundle != nullptr) {
+    if (move_bundle.authority_kind !=
+        PreparedMoveAuthorityKind::OutOfSsaParallelCopy) {
+      result.status = PreparedObjectMoveBundleConsumerStatus::
+          UnsupportedParallelCopyMoveBundleAuthority;
+      return result;
+    }
+
+    const auto expected_kind =
+        prepared_object_parallel_copy_event_kind(*event.parallel_copy_bundle);
+    if (!expected_kind.has_value()) {
+      result.status = PreparedObjectMoveBundleConsumerStatus::
+          UnsupportedParallelCopyExecutionSite;
+      return result;
+    }
+    if (*expected_kind != event.kind) {
+      result.status = PreparedObjectMoveBundleConsumerStatus::
+          MismatchedParallelCopyExecutionSite;
+      return result;
+    }
+    if (!prepared_move_bundle_matches_parallel_copy(
+            move_bundle, *event.parallel_copy_bundle, event.block_index)) {
+      result.status = PreparedObjectMoveBundleConsumerStatus::
+          MismatchedParallelCopyMoveBundle;
+      return result;
+    }
+
+    result.status = PreparedObjectMoveBundleConsumerStatus::Available;
+    return result;
+  }
+
+  if (move_bundle.authority_kind ==
+      PreparedMoveAuthorityKind::OutOfSsaParallelCopy) {
+    result.status =
+        PreparedObjectMoveBundleConsumerStatus::MissingParallelCopyBundle;
+    return result;
+  }
+
+  if (move_bundle.block_index != event.block_index) {
+    result.status =
+        PreparedObjectMoveBundleConsumerStatus::MismatchedMoveBundleBlock;
+    return result;
+  }
+
+  if (!prepared_object_non_parallel_copy_move_phase_matches_event(event,
+                                                                 move_bundle)) {
+    result.status =
+        PreparedObjectMoveBundleConsumerStatus::MismatchedMoveBundlePhase;
+    return result;
+  }
+
+  result.status = PreparedObjectMoveBundleConsumerStatus::Available;
+  return result;
+}
+
+PreparedObjectMoveBundleConsumerClassification
+classify_prepared_object_move_bundle_consumer(
+    const PreparedObjectTraversalEvent& event) {
+  return classify_prepared_object_move_bundle_consumer(
+      PreparedObjectMoveBundleConsumerQuery{.event = &event});
 }
 
 std::vector<PreparedObjectTraversalEvent> make_prepared_object_function_traversal(

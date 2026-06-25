@@ -368,6 +368,40 @@ int verify_value_home_consumer_status_names() {
              : 1;
 }
 
+int verify_move_bundle_consumer_status_names() {
+  return expect(
+             prepare::prepared_object_move_bundle_consumer_status_name(
+                 prepare::PreparedObjectMoveBundleConsumerStatus::Available) ==
+                     "available" &&
+                 prepare::prepared_object_move_bundle_consumer_status_name(
+                     prepare::PreparedObjectMoveBundleConsumerStatus::
+                         MissingMoveBundle) ==
+                     "missing_move_bundle" &&
+                 prepare::prepared_object_move_bundle_consumer_status_name(
+                     prepare::PreparedObjectMoveBundleConsumerStatus::
+                         MissingParallelCopyBundle) ==
+                     "missing_parallel_copy_bundle" &&
+                 prepare::prepared_object_move_bundle_consumer_status_name(
+                     prepare::PreparedObjectMoveBundleConsumerStatus::
+                         MismatchedParallelCopyExecutionSite) ==
+                     "mismatched_parallel_copy_execution_site",
+             "prepared object move-bundle consumer status names should remain stable")
+             ? 0
+             : 1;
+}
+
+const prepare::PreparedObjectTraversalEvent* find_event(
+    const std::vector<prepare::PreparedObjectTraversalEvent>& traversal,
+    prepare::PreparedObjectTraversalEventKind kind,
+    std::size_t block_index) {
+  for (const auto& event : traversal) {
+    if (event.kind == kind && event.block_index == block_index) {
+      return &event;
+    }
+  }
+  return nullptr;
+}
+
 int verify_real_select_vs_required_missing_carrier_classification() {
   auto fixture = make_fixture();
   fixture.bir_function.blocks[1].insts.push_back(select_inst("%ordinary"));
@@ -481,6 +515,162 @@ int verify_ambiguous_and_unsupported_select_carrier_classification() {
                   prepare::PreparedObjectSelectConsumerKind::
                       MalformedPreparedJoinTransferCarrier,
               "select-materialized join transfer with invalid edge indexes should fail closed")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_move_bundle_consumer_available_classification() {
+  auto fixture = make_fixture();
+  fixture.locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = fixture.function_name,
+      .phase = prepare::PreparedMovePhase::BeforeReturn,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+      .block_index = 2,
+      .moves = {prepare::PreparedMoveResolution{
+          .from_value_id = 801,
+          .to_value_id = 802,
+          .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+          .destination_storage_kind =
+              prepare::PreparedMoveStorageKind::Register,
+          .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+          .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+      }},
+  });
+
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  const auto* block_entry = find_event(
+      traversal, prepare::PreparedObjectTraversalEventKind::BlockEntryCopies, 1);
+  const auto* predecessor_terminator = find_event(
+      traversal, prepare::PreparedObjectTraversalEventKind::PreTerminatorCopies, 1);
+  const auto* before_return = find_event(
+      traversal, prepare::PreparedObjectTraversalEventKind::PreTerminatorCopies, 2);
+  if (!expect(block_entry != nullptr && predecessor_terminator != nullptr &&
+                  before_return != nullptr,
+              "move-bundle consumer test should find traversal move events")) {
+    return 1;
+  }
+
+  const auto block_entry_classification =
+      prepare::classify_prepared_object_move_bundle_consumer(*block_entry);
+  const auto predecessor_terminator_classification =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          *predecessor_terminator);
+  const auto before_return_classification =
+      prepare::classify_prepared_object_move_bundle_consumer(*before_return);
+  if (!expect(block_entry_classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::Available &&
+              block_entry_classification.move_bundle ==
+                  &fixture.locations.move_bundles[0] &&
+              block_entry_classification.parallel_copy_bundle ==
+                  &fixture.control_flow.parallel_copy_bundles[0] &&
+              block_entry_classification.phase ==
+                  prepare::PreparedMovePhase::BlockEntry &&
+              block_entry_classification.move_count == 1,
+              "successor-entry move bundle should classify as available") ||
+      !expect(predecessor_terminator_classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::Available &&
+              predecessor_terminator_classification.move_bundle ==
+                  &fixture.locations.move_bundles[1] &&
+              predecessor_terminator_classification.parallel_copy_bundle ==
+                  &fixture.control_flow.parallel_copy_bundles[1] &&
+              predecessor_terminator_classification.phase ==
+                  prepare::PreparedMovePhase::BlockEntry,
+              "predecessor-terminator edge copy should classify through traversal placement") ||
+      !expect(before_return_classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::Available &&
+              before_return_classification.move_bundle ==
+                  &fixture.locations.move_bundles[2] &&
+              before_return_classification.parallel_copy_bundle == nullptr &&
+              before_return_classification.phase ==
+                  prepare::PreparedMovePhase::BeforeReturn,
+              "ordinary before-return move bundle should classify as available")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_move_bundle_consumer_fail_closed_statuses() {
+  auto fixture = make_fixture();
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  const auto* label = find_event(
+      traversal, prepare::PreparedObjectTraversalEventKind::Label, 1);
+  const auto* block_entry = find_event(
+      traversal, prepare::PreparedObjectTraversalEventKind::BlockEntryCopies, 1);
+  if (!expect(label != nullptr && block_entry != nullptr,
+              "move-bundle fail-closed test should find label and copy events")) {
+    return 1;
+  }
+
+  const auto unsupported =
+      prepare::classify_prepared_object_move_bundle_consumer(*label);
+  auto missing_bundle_event = *block_entry;
+  missing_bundle_event.move_bundle = nullptr;
+  const auto missing_bundle =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          missing_bundle_event);
+  auto missing_parallel_copy_event = *block_entry;
+  missing_parallel_copy_event.parallel_copy_bundle = nullptr;
+  const auto missing_parallel_copy =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          missing_parallel_copy_event);
+  auto mismatched_execution_event = *block_entry;
+  mismatched_execution_event.parallel_copy_bundle =
+      &fixture.control_flow.parallel_copy_bundles[1];
+  const auto mismatched_execution =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          mismatched_execution_event);
+  auto critical_edge_event = *block_entry;
+  critical_edge_event.parallel_copy_bundle =
+      &fixture.control_flow.parallel_copy_bundles[2];
+  const auto critical_edge =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          critical_edge_event);
+
+  if (!expect(unsupported.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      UnsupportedEventKind,
+              "non-copy traversal events should not classify as move-bundle consumers") ||
+      !expect(missing_bundle.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      MissingMoveBundle,
+              "copy traversal events without a prepared bundle should fail closed") ||
+      !expect(missing_parallel_copy.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      MissingParallelCopyBundle,
+              "out-of-ssa copy bundles without a prepared parallel-copy owner should fail closed") ||
+      !expect(mismatched_execution.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      MismatchedParallelCopyExecutionSite,
+              "parallel-copy owners placed at the wrong traversal site should fail closed") ||
+      !expect(critical_edge.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      UnsupportedParallelCopyExecutionSite,
+              "critical-edge copy bundles should not be silently consumed from a block event")) {
+    return 1;
+  }
+
+  auto empty_fixture = make_fixture();
+  empty_fixture.locations.move_bundles.front().moves.clear();
+  const auto empty_traversal = prepare::make_prepared_object_function_traversal(
+      empty_fixture.control_flow, &empty_fixture.locations, &empty_fixture.bir_function);
+  const auto* empty_block_entry = find_event(
+      empty_traversal,
+      prepare::PreparedObjectTraversalEventKind::BlockEntryCopies,
+      1);
+  const auto empty =
+      empty_block_entry == nullptr
+          ? prepare::PreparedObjectMoveBundleConsumerClassification{}
+          : prepare::classify_prepared_object_move_bundle_consumer(
+                *empty_block_entry);
+  if (!expect(empty.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      EmptyMoveBundle,
+              "empty move bundles should fail closed before target consumption")) {
     return 1;
   }
 
@@ -663,6 +853,9 @@ int main() {
   if (const auto result = verify_value_home_consumer_status_names(); result != 0) {
     return EXIT_FAILURE;
   }
+  if (const auto result = verify_move_bundle_consumer_status_names(); result != 0) {
+    return EXIT_FAILURE;
+  }
   if (const auto result = verify_canonical_consumer_schedule(); result != 0) {
     return EXIT_FAILURE;
   }
@@ -691,6 +884,15 @@ int main() {
   }
   if (const auto result =
           verify_value_home_consumer_missing_and_unsupported_statuses();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result = verify_move_bundle_consumer_available_classification();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result =
+          verify_move_bundle_consumer_fail_closed_statuses();
       result != 0) {
     return EXIT_FAILURE;
   }

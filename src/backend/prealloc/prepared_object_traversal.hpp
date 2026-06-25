@@ -47,6 +47,21 @@ enum class PreparedObjectValueHomeConsumerStatus {
   IncompleteValueHome,
 };
 
+enum class PreparedObjectMoveBundleConsumerStatus {
+  Available,
+  MissingEvent,
+  UnsupportedEventKind,
+  MissingMoveBundle,
+  EmptyMoveBundle,
+  MismatchedMoveBundlePhase,
+  MismatchedMoveBundleBlock,
+  MissingParallelCopyBundle,
+  UnsupportedParallelCopyExecutionSite,
+  MismatchedParallelCopyExecutionSite,
+  MismatchedParallelCopyMoveBundle,
+  UnsupportedParallelCopyMoveBundleAuthority,
+};
+
 [[nodiscard]] constexpr std::string_view prepared_object_traversal_event_kind_name(
     PreparedObjectTraversalEventKind kind) {
   switch (kind) {
@@ -121,6 +136,39 @@ prepared_object_value_home_consumer_status_name(
   return "unknown";
 }
 
+[[nodiscard]] constexpr std::string_view
+prepared_object_move_bundle_consumer_status_name(
+    PreparedObjectMoveBundleConsumerStatus status) {
+  switch (status) {
+    case PreparedObjectMoveBundleConsumerStatus::Available:
+      return "available";
+    case PreparedObjectMoveBundleConsumerStatus::MissingEvent:
+      return "missing_event";
+    case PreparedObjectMoveBundleConsumerStatus::UnsupportedEventKind:
+      return "unsupported_event_kind";
+    case PreparedObjectMoveBundleConsumerStatus::MissingMoveBundle:
+      return "missing_move_bundle";
+    case PreparedObjectMoveBundleConsumerStatus::EmptyMoveBundle:
+      return "empty_move_bundle";
+    case PreparedObjectMoveBundleConsumerStatus::MismatchedMoveBundlePhase:
+      return "mismatched_move_bundle_phase";
+    case PreparedObjectMoveBundleConsumerStatus::MismatchedMoveBundleBlock:
+      return "mismatched_move_bundle_block";
+    case PreparedObjectMoveBundleConsumerStatus::MissingParallelCopyBundle:
+      return "missing_parallel_copy_bundle";
+    case PreparedObjectMoveBundleConsumerStatus::UnsupportedParallelCopyExecutionSite:
+      return "unsupported_parallel_copy_execution_site";
+    case PreparedObjectMoveBundleConsumerStatus::MismatchedParallelCopyExecutionSite:
+      return "mismatched_parallel_copy_execution_site";
+    case PreparedObjectMoveBundleConsumerStatus::MismatchedParallelCopyMoveBundle:
+      return "mismatched_parallel_copy_move_bundle";
+    case PreparedObjectMoveBundleConsumerStatus::
+        UnsupportedParallelCopyMoveBundleAuthority:
+      return "unsupported_parallel_copy_move_bundle_authority";
+  }
+  return "unknown";
+}
+
 struct PreparedObjectTraversalEvent {
   PreparedObjectTraversalEventKind kind = PreparedObjectTraversalEventKind::Label;
   std::size_t block_index = 0;
@@ -165,6 +213,24 @@ struct PreparedObjectValueHomeConsumerClassification {
   PreparedValueHomeKind home_kind = PreparedValueHomeKind::None;
 };
 
+struct PreparedObjectMoveBundleConsumerQuery {
+  const PreparedObjectTraversalEvent* event = nullptr;
+};
+
+struct PreparedObjectMoveBundleConsumerClassification {
+  PreparedObjectMoveBundleConsumerStatus status =
+      PreparedObjectMoveBundleConsumerStatus::MissingEvent;
+  const PreparedObjectTraversalEvent* event = nullptr;
+  const PreparedMoveBundle* move_bundle = nullptr;
+  const PreparedParallelCopyBundle* parallel_copy_bundle = nullptr;
+  PreparedObjectTraversalEventKind event_kind =
+      PreparedObjectTraversalEventKind::Label;
+  PreparedMovePhase phase = PreparedMovePhase::BeforeInstruction;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::size_t move_count = 0;
+};
+
 [[nodiscard]] std::optional<PreparedObjectTraversalEventKind>
 prepared_object_parallel_copy_event_kind(
     const PreparedParallelCopyBundle& parallel_copy_bundle);
@@ -191,6 +257,14 @@ classify_prepared_object_value_home_consumer(
     const bir::Value& value,
     const PreparedRegallocFunction* regalloc = nullptr,
     const PreparedValueHomeLookups* value_home_lookups = nullptr);
+
+[[nodiscard]] PreparedObjectMoveBundleConsumerClassification
+classify_prepared_object_move_bundle_consumer(
+    const PreparedObjectMoveBundleConsumerQuery& query);
+
+[[nodiscard]] PreparedObjectMoveBundleConsumerClassification
+classify_prepared_object_move_bundle_consumer(
+    const PreparedObjectTraversalEvent& event);
 
 [[nodiscard]] std::vector<PreparedObjectTraversalEvent>
 make_prepared_object_function_traversal(

@@ -8,27 +8,29 @@ Current Step Title: Implement Shared Traversal and Query Helpers
 
 ## Just Finished
 
-Step 3 added the target-independent prepared object value-home consumer query
-`classify_prepared_object_value_home_consumer` in
-`src/backend/prealloc/prepared_object_traversal.{hpp,cpp}`. The helper resolves
-named BIR values through prepared names, value-location homes, optional regalloc
-identity, and optional value-home lookup indexes, then returns an authoritative
-home or precise fail-closed statuses for missing names/locations/homes,
-ambiguous homes, conflicting ids/lookups, unsupported home kind, or incomplete
-home payloads.
+Step 3 added the target-independent prepared object move-bundle consumer query
+`classify_prepared_object_move_bundle_consumer` in
+`src/backend/prealloc/prepared_object_traversal.{hpp,cpp}`. The helper consumes
+prepared traversal events as the schedule authority, returns the prepared move
+bundle and parallel-copy owner when available, and fails closed for non-copy
+events, missing/empty bundles, out-of-ssa bundles without a prepared
+parallel-copy owner, unsupported critical-edge placement, mismatched
+parallel-copy execution sites, mismatched parallel-copy bundle identity, and
+non-parallel bundle phase/block mismatches.
 
 `backend_prepared_object_consumer_contract` now covers the new status names,
-available classifications for register, stack-slot, rematerializable-immediate,
-and pointer-base-plus-offset homes, plus missing prepared value names, missing
-homes, ambiguous homes, `None` homes as unsupported, and incomplete register
-homes.
+available classifications for successor-entry edge copies,
+predecessor-terminator edge copies whose move bundle remains
+`PreparedMovePhase::BlockEntry`, and ordinary before-return move bundles, plus
+focused fail-closed cases for missing bundles, missing parallel-copy owners,
+mismatched execution placement, critical-edge placement, unsupported event
+kinds, and empty bundles.
 
 ## Suggested Next
 
-Continue Step 3 by adding the next shared prepared object-consumer query for
-move-bundle planning over traversal events, or delegate a target-connection
-packet that consumes the select and value-home helpers without reopening
-target-local CFG/value-home reconstruction.
+Continue Step 3 with the next shared contract gap: frame layout ownership or
+diagnostic query coverage before any target-connection packet consumes these
+helpers.
 
 ## Watchouts
 
@@ -54,6 +56,10 @@ target-local CFG/value-home reconstruction.
   lookup indexes, `None` homes, and incomplete register/stack/immediate/pointer
   homes as fail-closed statuses; target consumers should not fall back to local
   value-home discovery when one of those statuses appears.
+- The move-bundle consumer helper treats traversal events as authoritative; a
+  target should consume the returned bundle only when the status is
+  `available`, and should not infer block-entry/pre-terminator placement from
+  `PreparedMovePhase` alone.
 - RV64 `object_emission.cpp` remains untouched; target consumers should only be
   connected after shared tests and hooks cover the needed contract.
 
