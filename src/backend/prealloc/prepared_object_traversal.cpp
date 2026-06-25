@@ -85,6 +85,32 @@ namespace {
   return false;
 }
 
+[[nodiscard]] bool prepared_object_stack_slot_home_is_complete(
+    const PreparedValueHome& home) {
+  return home.slot_id.has_value() && home.offset_bytes.has_value() &&
+         home.size_bytes.has_value() && *home.size_bytes > 0 &&
+         home.align_bytes.has_value() && *home.align_bytes > 0;
+}
+
+[[nodiscard]] const PreparedFrameSlot* find_unique_frame_slot_owner(
+    const PreparedStackLayout& stack_layout,
+    PreparedFrameSlotId slot_id,
+    bool& ambiguous) {
+  const PreparedFrameSlot* match = nullptr;
+  ambiguous = false;
+  for (const auto& frame_slot : stack_layout.frame_slots) {
+    if (frame_slot.slot_id != slot_id) {
+      continue;
+    }
+    if (match != nullptr) {
+      ambiguous = true;
+      return nullptr;
+    }
+    match = &frame_slot;
+  }
+  return match;
+}
+
 [[nodiscard]] bool prepared_object_regalloc_value_id_agrees(
     const PreparedRegallocFunction* regalloc,
     ValueNameId value_name,
@@ -605,6 +631,90 @@ classify_prepared_object_move_bundle_consumer(
     const PreparedObjectTraversalEvent& event) {
   return classify_prepared_object_move_bundle_consumer(
       PreparedObjectMoveBundleConsumerQuery{.event = &event});
+}
+
+PreparedObjectFrameSlotConsumerClassification
+classify_prepared_object_frame_slot_consumer(
+    const PreparedObjectFrameSlotConsumerQuery& query) {
+  PreparedObjectFrameSlotConsumerClassification result;
+  if (query.value_home == nullptr) {
+    return result;
+  }
+
+  const auto& home = *query.value_home;
+  result.value_home = &home;
+
+  if (home.kind != PreparedValueHomeKind::StackSlot) {
+    result.status =
+        PreparedObjectFrameSlotConsumerStatus::UnsupportedValueHomeKind;
+    return result;
+  }
+
+  if (!prepared_object_stack_slot_home_is_complete(home)) {
+    result.status =
+        PreparedObjectFrameSlotConsumerStatus::IncompleteStackSlotHome;
+    return result;
+  }
+
+  result.slot_id = *home.slot_id;
+  result.offset_bytes = *home.offset_bytes;
+  result.size_bytes = *home.size_bytes;
+  result.align_bytes = *home.align_bytes;
+
+  if (query.stack_layout == nullptr) {
+    result.status = PreparedObjectFrameSlotConsumerStatus::MissingStackLayout;
+    return result;
+  }
+
+  bool ambiguous = false;
+  const auto* frame_slot =
+      find_unique_frame_slot_owner(*query.stack_layout, result.slot_id, ambiguous);
+  if (ambiguous) {
+    result.status =
+        PreparedObjectFrameSlotConsumerStatus::AmbiguousFrameSlotOwner;
+    return result;
+  }
+  if (frame_slot == nullptr) {
+    result.status =
+        PreparedObjectFrameSlotConsumerStatus::MissingFrameSlotOwner;
+    return result;
+  }
+  result.frame_slot = frame_slot;
+
+  if (frame_slot->function_name != home.function_name) {
+    result.status =
+        PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotFunction;
+    return result;
+  }
+  if (frame_slot->offset_bytes != result.offset_bytes) {
+    result.status =
+        PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotOffset;
+    return result;
+  }
+  if (frame_slot->size_bytes != result.size_bytes) {
+    result.status =
+        PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotSize;
+    return result;
+  }
+  if (frame_slot->align_bytes != result.align_bytes) {
+    result.status =
+        PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotAlignment;
+    return result;
+  }
+
+  result.status = PreparedObjectFrameSlotConsumerStatus::Available;
+  return result;
+}
+
+PreparedObjectFrameSlotConsumerClassification
+classify_prepared_object_frame_slot_consumer(
+    const PreparedStackLayout& stack_layout,
+    const PreparedValueHome& value_home) {
+  return classify_prepared_object_frame_slot_consumer(
+      PreparedObjectFrameSlotConsumerQuery{
+          .stack_layout = &stack_layout,
+          .value_home = &value_home,
+      });
 }
 
 std::vector<PreparedObjectTraversalEvent> make_prepared_object_function_traversal(

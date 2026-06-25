@@ -8,29 +8,25 @@ Current Step Title: Implement Shared Traversal and Query Helpers
 
 ## Just Finished
 
-Step 3 added the target-independent prepared object move-bundle consumer query
-`classify_prepared_object_move_bundle_consumer` in
+Step 3 added the target-independent prepared object frame-slot ownership query
+`classify_prepared_object_frame_slot_consumer` in
 `src/backend/prealloc/prepared_object_traversal.{hpp,cpp}`. The helper consumes
-prepared traversal events as the schedule authority, returns the prepared move
-bundle and parallel-copy owner when available, and fails closed for non-copy
-events, missing/empty bundles, out-of-ssa bundles without a prepared
-parallel-copy owner, unsupported critical-edge placement, mismatched
-parallel-copy execution sites, mismatched parallel-copy bundle identity, and
-non-parallel bundle phase/block mismatches.
+a prepared stack-slot `PreparedValueHome` plus `PreparedStackLayout`, returns
+the owning `PreparedFrameSlot` and slot layout facts when available, and fails
+closed for missing value homes, non-stack homes, incomplete stack homes, missing
+stack layout, missing or ambiguous frame-slot owners, and frame-slot
+function/offset/size/alignment mismatches.
 
-`backend_prepared_object_consumer_contract` now covers the new status names,
-available classifications for successor-entry edge copies,
-predecessor-terminator edge copies whose move bundle remains
-`PreparedMovePhase::BlockEntry`, and ordinary before-return move bundles, plus
-focused fail-closed cases for missing bundles, missing parallel-copy owners,
-mismatched execution placement, critical-edge placement, unsupported event
-kinds, and empty bundles.
+`backend_prepared_object_consumer_contract` now covers all new frame-slot
+consumer status names, an available stack-home-to-frame-slot classification,
+and the focused fail-closed ownership cases that target consumers need before
+using prepared frame layout authority.
 
 ## Suggested Next
 
-Continue Step 3 with the next shared contract gap: frame layout ownership or
-diagnostic query coverage before any target-connection packet consumes these
-helpers.
+Continue Step 3 with the remaining shared contract gap: precise diagnostic
+query coverage for missing prepared consumer contract pieces before any
+target-connection packet consumes these helpers.
 
 ## Watchouts
 
@@ -60,6 +56,10 @@ helpers.
   target should consume the returned bundle only when the status is
   `available`, and should not infer block-entry/pre-terminator placement from
   `PreparedMovePhase` alone.
+- The frame-slot consumer helper treats prepared stack layout as authoritative;
+  a target should consume stack homes only when the status is `available`, and
+  should not reconstruct slot ownership from offsets or target-local frame
+  scans after a fail-closed status.
 - RV64 `object_emission.cpp` remains untouched; target consumers should only be
   connected after shared tests and hooks cover the needed contract.
 

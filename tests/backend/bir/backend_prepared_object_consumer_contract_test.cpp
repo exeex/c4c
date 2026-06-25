@@ -27,6 +27,7 @@ struct Fixture {
   prepare::PreparedNameTables names;
   prepare::PreparedControlFlowFunction control_flow;
   prepare::PreparedValueLocationFunction locations;
+  prepare::PreparedStackLayout stack_layout;
   bir::Function bir_function;
 };
 
@@ -386,6 +387,56 @@ int verify_move_bundle_consumer_status_names() {
                          MismatchedParallelCopyExecutionSite) ==
                      "mismatched_parallel_copy_execution_site",
              "prepared object move-bundle consumer status names should remain stable")
+             ? 0
+             : 1;
+}
+
+int verify_frame_slot_consumer_status_names() {
+  return expect(
+             prepare::prepared_object_frame_slot_consumer_status_name(
+                 prepare::PreparedObjectFrameSlotConsumerStatus::Available) ==
+                     "available" &&
+                 prepare::prepared_object_frame_slot_consumer_status_name(
+                     prepare::PreparedObjectFrameSlotConsumerStatus::
+                         MissingValueHome) ==
+                     "missing_value_home" &&
+                 prepare::prepared_object_frame_slot_consumer_status_name(
+                     prepare::PreparedObjectFrameSlotConsumerStatus::
+                         UnsupportedValueHomeKind) ==
+                     "unsupported_value_home_kind" &&
+                 prepare::prepared_object_frame_slot_consumer_status_name(
+                     prepare::PreparedObjectFrameSlotConsumerStatus::
+                         IncompleteStackSlotHome) ==
+                     "incomplete_stack_slot_home" &&
+                 prepare::prepared_object_frame_slot_consumer_status_name(
+                     prepare::PreparedObjectFrameSlotConsumerStatus::
+                         MissingStackLayout) ==
+                     "missing_stack_layout" &&
+                 prepare::prepared_object_frame_slot_consumer_status_name(
+                     prepare::PreparedObjectFrameSlotConsumerStatus::
+                         MissingFrameSlotOwner) ==
+                     "missing_frame_slot_owner" &&
+                 prepare::prepared_object_frame_slot_consumer_status_name(
+                     prepare::PreparedObjectFrameSlotConsumerStatus::
+                         AmbiguousFrameSlotOwner) ==
+                     "ambiguous_frame_slot_owner" &&
+                 prepare::prepared_object_frame_slot_consumer_status_name(
+                     prepare::PreparedObjectFrameSlotConsumerStatus::
+                         MismatchedFrameSlotFunction) ==
+                     "mismatched_frame_slot_function" &&
+                 prepare::prepared_object_frame_slot_consumer_status_name(
+                     prepare::PreparedObjectFrameSlotConsumerStatus::
+                         MismatchedFrameSlotOffset) ==
+                     "mismatched_frame_slot_offset" &&
+                 prepare::prepared_object_frame_slot_consumer_status_name(
+                     prepare::PreparedObjectFrameSlotConsumerStatus::
+                         MismatchedFrameSlotSize) ==
+                     "mismatched_frame_slot_size" &&
+                 prepare::prepared_object_frame_slot_consumer_status_name(
+                     prepare::PreparedObjectFrameSlotConsumerStatus::
+                         MismatchedFrameSlotAlignment) ==
+                     "mismatched_frame_slot_alignment",
+             "prepared object frame-slot consumer status names should remain stable")
              ? 0
              : 1;
 }
@@ -841,6 +892,182 @@ int verify_value_home_consumer_missing_and_unsupported_statuses() {
   return 0;
 }
 
+prepare::PreparedValueHome stack_slot_value_home(Fixture& fixture,
+                                                 std::string_view value_name,
+                                                 prepare::PreparedValueId value_id,
+                                                 prepare::PreparedFrameSlotId slot_id,
+                                                 std::size_t offset_bytes,
+                                                 std::size_t size_bytes,
+                                                 std::size_t align_bytes) {
+  auto home =
+      value_home(fixture, value_name, value_id, prepare::PreparedValueHomeKind::StackSlot);
+  home.slot_id = slot_id;
+  home.offset_bytes = offset_bytes;
+  home.size_bytes = size_bytes;
+  home.align_bytes = align_bytes;
+  return home;
+}
+
+prepare::PreparedFrameSlot frame_slot(const Fixture& fixture,
+                                      prepare::PreparedFrameSlotId slot_id,
+                                      std::size_t offset_bytes,
+                                      std::size_t size_bytes,
+                                      std::size_t align_bytes) {
+  return prepare::PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = slot_id + 100,
+      .function_name = fixture.function_name,
+      .offset_bytes = offset_bytes,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+  };
+}
+
+int verify_frame_slot_consumer_available_classification() {
+  auto fixture = make_fixture();
+  fixture.locations.value_homes.push_back(
+      stack_slot_value_home(fixture, "%stack.owner", 901, 11, 48, 8, 8));
+  fixture.stack_layout.frame_slots.push_back(frame_slot(fixture, 11, 48, 8, 8));
+
+  const auto classification = prepare::classify_prepared_object_frame_slot_consumer(
+      fixture.stack_layout, fixture.locations.value_homes.front());
+  if (!expect(classification.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::Available &&
+              classification.value_home == &fixture.locations.value_homes.front() &&
+              classification.frame_slot == &fixture.stack_layout.frame_slots.front() &&
+              classification.slot_id == prepare::PreparedFrameSlotId{11} &&
+              classification.offset_bytes == 48 &&
+              classification.size_bytes == 8 &&
+              classification.align_bytes == 8,
+              "stack-slot value home should classify with its prepared frame-slot owner")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_frame_slot_consumer_fail_closed_statuses() {
+  auto fixture = make_fixture();
+  auto available_home =
+      stack_slot_value_home(fixture, "%stack.owner", 901, 11, 48, 8, 8);
+  fixture.stack_layout.frame_slots.push_back(frame_slot(fixture, 11, 48, 8, 8));
+
+  const auto missing_home =
+      prepare::classify_prepared_object_frame_slot_consumer(
+          prepare::PreparedObjectFrameSlotConsumerQuery{
+              .stack_layout = &fixture.stack_layout});
+
+  auto reg_home =
+      value_home(fixture, "%reg", 902, prepare::PreparedValueHomeKind::Register);
+  reg_home.register_name = "r.prepared";
+  const auto unsupported = prepare::classify_prepared_object_frame_slot_consumer(
+      fixture.stack_layout, reg_home);
+
+  auto incomplete_home =
+      stack_slot_value_home(fixture, "%incomplete.stack", 903, 12, 64, 4, 4);
+  incomplete_home.slot_id = std::nullopt;
+  const auto incomplete = prepare::classify_prepared_object_frame_slot_consumer(
+      fixture.stack_layout, incomplete_home);
+
+  const auto missing_layout =
+      prepare::classify_prepared_object_frame_slot_consumer(
+          prepare::PreparedObjectFrameSlotConsumerQuery{.value_home = &available_home});
+
+  auto missing_owner_fixture = make_fixture();
+  const auto missing_owner_home =
+      stack_slot_value_home(missing_owner_fixture, "%missing.owner", 904, 13, 80, 4, 4);
+  const auto missing_owner = prepare::classify_prepared_object_frame_slot_consumer(
+      missing_owner_fixture.stack_layout, missing_owner_home);
+
+  auto ambiguous_fixture = make_fixture();
+  ambiguous_fixture.stack_layout.frame_slots.push_back(
+      frame_slot(ambiguous_fixture, 14, 96, 4, 4));
+  ambiguous_fixture.stack_layout.frame_slots.push_back(
+      frame_slot(ambiguous_fixture, 14, 96, 4, 4));
+  const auto ambiguous_home =
+      stack_slot_value_home(ambiguous_fixture, "%ambiguous.owner", 905, 14, 96, 4, 4);
+  const auto ambiguous = prepare::classify_prepared_object_frame_slot_consumer(
+      ambiguous_fixture.stack_layout, ambiguous_home);
+
+  auto mismatched_function_fixture = make_fixture();
+  mismatched_function_fixture.stack_layout.frame_slots.push_back(
+      frame_slot(mismatched_function_fixture, 15, 112, 8, 8));
+  mismatched_function_fixture.stack_layout.frame_slots.front().function_name = 999;
+  const auto mismatched_function_home = stack_slot_value_home(
+      mismatched_function_fixture, "%mismatched.function", 906, 15, 112, 8, 8);
+  const auto mismatched_function =
+      prepare::classify_prepared_object_frame_slot_consumer(
+          mismatched_function_fixture.stack_layout, mismatched_function_home);
+
+  auto mismatched_offset_fixture = make_fixture();
+  mismatched_offset_fixture.stack_layout.frame_slots.push_back(
+      frame_slot(mismatched_offset_fixture, 16, 128, 8, 8));
+  const auto mismatched_offset_home = stack_slot_value_home(
+      mismatched_offset_fixture, "%mismatched.offset", 907, 16, 136, 8, 8);
+  const auto mismatched_offset =
+      prepare::classify_prepared_object_frame_slot_consumer(
+          mismatched_offset_fixture.stack_layout, mismatched_offset_home);
+
+  auto mismatched_size_fixture = make_fixture();
+  mismatched_size_fixture.stack_layout.frame_slots.push_back(
+      frame_slot(mismatched_size_fixture, 17, 144, 8, 8));
+  const auto mismatched_size_home = stack_slot_value_home(
+      mismatched_size_fixture, "%mismatched.size", 908, 17, 144, 4, 8);
+  const auto mismatched_size = prepare::classify_prepared_object_frame_slot_consumer(
+      mismatched_size_fixture.stack_layout, mismatched_size_home);
+
+  auto mismatched_align_fixture = make_fixture();
+  mismatched_align_fixture.stack_layout.frame_slots.push_back(
+      frame_slot(mismatched_align_fixture, 18, 160, 8, 8));
+  const auto mismatched_align_home = stack_slot_value_home(
+      mismatched_align_fixture, "%mismatched.align", 909, 18, 160, 8, 4);
+  const auto mismatched_align = prepare::classify_prepared_object_frame_slot_consumer(
+      mismatched_align_fixture.stack_layout, mismatched_align_home);
+
+  if (!expect(missing_home.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::MissingValueHome,
+              "frame-slot ownership query should require a prepared value home") ||
+      !expect(unsupported.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::
+                      UnsupportedValueHomeKind,
+              "non-stack homes should not classify as frame-slot consumers") ||
+      !expect(incomplete.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::
+                      IncompleteStackSlotHome,
+              "stack homes without slot layout facts should fail closed") ||
+      !expect(missing_layout.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::MissingStackLayout,
+              "frame-slot ownership query should require prepared stack layout") ||
+      !expect(missing_owner.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::
+                      MissingFrameSlotOwner,
+              "stack homes without a prepared frame-slot owner should fail closed") ||
+      !expect(ambiguous.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::
+                      AmbiguousFrameSlotOwner,
+              "duplicate frame-slot owners should fail closed") ||
+      !expect(mismatched_function.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::
+                      MismatchedFrameSlotFunction,
+              "frame-slot owner from another function should fail closed") ||
+      !expect(mismatched_offset.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::
+                      MismatchedFrameSlotOffset,
+              "frame-slot owner with a different offset should fail closed") ||
+      !expect(mismatched_size.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::
+                      MismatchedFrameSlotSize,
+              "frame-slot owner with a different size should fail closed") ||
+      !expect(mismatched_align.status ==
+                  prepare::PreparedObjectFrameSlotConsumerStatus::
+                      MismatchedFrameSlotAlignment,
+              "frame-slot owner with a different alignment should fail closed")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -854,6 +1081,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto result = verify_move_bundle_consumer_status_names(); result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result = verify_frame_slot_consumer_status_names(); result != 0) {
     return EXIT_FAILURE;
   }
   if (const auto result = verify_canonical_consumer_schedule(); result != 0) {
@@ -884,6 +1114,14 @@ int main() {
   }
   if (const auto result =
           verify_value_home_consumer_missing_and_unsupported_statuses();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result = verify_frame_slot_consumer_available_classification();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result = verify_frame_slot_consumer_fail_closed_statuses();
       result != 0) {
     return EXIT_FAILURE;
   }

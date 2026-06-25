@@ -62,6 +62,20 @@ enum class PreparedObjectMoveBundleConsumerStatus {
   UnsupportedParallelCopyMoveBundleAuthority,
 };
 
+enum class PreparedObjectFrameSlotConsumerStatus {
+  Available,
+  MissingValueHome,
+  UnsupportedValueHomeKind,
+  IncompleteStackSlotHome,
+  MissingStackLayout,
+  MissingFrameSlotOwner,
+  AmbiguousFrameSlotOwner,
+  MismatchedFrameSlotFunction,
+  MismatchedFrameSlotOffset,
+  MismatchedFrameSlotSize,
+  MismatchedFrameSlotAlignment,
+};
+
 [[nodiscard]] constexpr std::string_view prepared_object_traversal_event_kind_name(
     PreparedObjectTraversalEventKind kind) {
   switch (kind) {
@@ -169,6 +183,36 @@ prepared_object_move_bundle_consumer_status_name(
   return "unknown";
 }
 
+[[nodiscard]] constexpr std::string_view
+prepared_object_frame_slot_consumer_status_name(
+    PreparedObjectFrameSlotConsumerStatus status) {
+  switch (status) {
+    case PreparedObjectFrameSlotConsumerStatus::Available:
+      return "available";
+    case PreparedObjectFrameSlotConsumerStatus::MissingValueHome:
+      return "missing_value_home";
+    case PreparedObjectFrameSlotConsumerStatus::UnsupportedValueHomeKind:
+      return "unsupported_value_home_kind";
+    case PreparedObjectFrameSlotConsumerStatus::IncompleteStackSlotHome:
+      return "incomplete_stack_slot_home";
+    case PreparedObjectFrameSlotConsumerStatus::MissingStackLayout:
+      return "missing_stack_layout";
+    case PreparedObjectFrameSlotConsumerStatus::MissingFrameSlotOwner:
+      return "missing_frame_slot_owner";
+    case PreparedObjectFrameSlotConsumerStatus::AmbiguousFrameSlotOwner:
+      return "ambiguous_frame_slot_owner";
+    case PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotFunction:
+      return "mismatched_frame_slot_function";
+    case PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotOffset:
+      return "mismatched_frame_slot_offset";
+    case PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotSize:
+      return "mismatched_frame_slot_size";
+    case PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotAlignment:
+      return "mismatched_frame_slot_alignment";
+  }
+  return "unknown";
+}
+
 struct PreparedObjectTraversalEvent {
   PreparedObjectTraversalEventKind kind = PreparedObjectTraversalEventKind::Label;
   std::size_t block_index = 0;
@@ -231,6 +275,22 @@ struct PreparedObjectMoveBundleConsumerClassification {
   std::size_t move_count = 0;
 };
 
+struct PreparedObjectFrameSlotConsumerQuery {
+  const PreparedStackLayout* stack_layout = nullptr;
+  const PreparedValueHome* value_home = nullptr;
+};
+
+struct PreparedObjectFrameSlotConsumerClassification {
+  PreparedObjectFrameSlotConsumerStatus status =
+      PreparedObjectFrameSlotConsumerStatus::MissingValueHome;
+  const PreparedValueHome* value_home = nullptr;
+  const PreparedFrameSlot* frame_slot = nullptr;
+  PreparedFrameSlotId slot_id = 0;
+  std::size_t offset_bytes = 0;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+};
+
 [[nodiscard]] std::optional<PreparedObjectTraversalEventKind>
 prepared_object_parallel_copy_event_kind(
     const PreparedParallelCopyBundle& parallel_copy_bundle);
@@ -265,6 +325,15 @@ classify_prepared_object_move_bundle_consumer(
 [[nodiscard]] PreparedObjectMoveBundleConsumerClassification
 classify_prepared_object_move_bundle_consumer(
     const PreparedObjectTraversalEvent& event);
+
+[[nodiscard]] PreparedObjectFrameSlotConsumerClassification
+classify_prepared_object_frame_slot_consumer(
+    const PreparedObjectFrameSlotConsumerQuery& query);
+
+[[nodiscard]] PreparedObjectFrameSlotConsumerClassification
+classify_prepared_object_frame_slot_consumer(
+    const PreparedStackLayout& stack_layout,
+    const PreparedValueHome& value_home);
 
 [[nodiscard]] std::vector<PreparedObjectTraversalEvent>
 make_prepared_object_function_traversal(
