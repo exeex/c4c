@@ -6705,6 +6705,8 @@ int main() {
       !rv64_helper_family_entry_plan->overflow_area.required ||
       rv64_helper_family_entry_plan->overflow_area.align_bytes !=
           std::optional<std::size_t>{8} ||
+      !rv64_helper_family_entry_plan->overflow_area.base_slot_id.has_value() ||
+      !rv64_helper_family_entry_plan->overflow_area.base_stack_offset_bytes.has_value() ||
       !rv64_helper_family_entry_plan->va_list_layout.required ||
       rv64_helper_family_entry_plan->va_list_layout.size_bytes !=
           std::optional<std::size_t>{8} ||
@@ -6801,6 +6803,18 @@ int main() {
   if (!expect_contains(rv64_helper_family_dump,
                        "va_list_layout required=yes size=8 align=8 fields=1",
                        "RV64 variadic helper-family va_list layout")) {
+    return EXIT_FAILURE;
+  }
+  const std::string rv64_overflow_area_dump =
+      "overflow_area required=yes base_slot=#" +
+      std::to_string(*rv64_helper_family_entry_plan->overflow_area.base_slot_id) +
+      " base_stack_offset=" +
+      std::to_string(
+          *rv64_helper_family_entry_plan->overflow_area.base_stack_offset_bytes) +
+      " align=8";
+  if (!expect_contains(rv64_helper_family_dump,
+                       rv64_overflow_area_dump,
+                       "RV64 variadic helper-family overflow base slot")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,

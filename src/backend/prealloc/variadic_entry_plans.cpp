@@ -431,6 +431,11 @@ void populate_rv64_variadic_entry_abi_facts(
           .size_bytes = kRv64PointerBytes,
       },
   };
+
+  if (!function_plan.helper_resources.required_helpers.empty()) {
+    append_missing_variadic_entry_fact(function_plan, "overflow_area.base_slot_id");
+    append_missing_variadic_entry_fact(function_plan, "overflow_area.base_stack_offset_bytes");
+  }
 }
 
 [[nodiscard]] constexpr bool is_rv64_backend_abi(c4c::BackendAbiKind backend_abi) {
@@ -1192,6 +1197,34 @@ void attach_aapcs64_variadic_entry_storage_authority(
   remove_missing_variadic_entry_fact(function_plan, "overflow_area.base_stack_offset_bytes");
 }
 
+void attach_rv64_variadic_entry_storage_authority(
+    PreparedBirModule& prepared,
+    PreparedVariadicEntryPlanFunction& function_plan) {
+  if (function_plan.helper_resources.required_helpers.empty() ||
+      !function_plan.overflow_area.required ||
+      !function_plan.overflow_area.align_bytes.has_value()) {
+    return;
+  }
+
+  const PreparedFrameSlot* overflow_base_slot =
+      find_variadic_storage_slot(prepared,
+                                 function_plan.function_name,
+                                 "rv64_variadic_overflow_area_base");
+  if (overflow_base_slot == nullptr) {
+    overflow_base_slot = &append_variadic_storage_slot(
+        prepared,
+        function_plan.function_name,
+        "__rv64_variadic_overflow_area_base",
+        "rv64_variadic_overflow_area_base",
+        0,
+        *function_plan.overflow_area.align_bytes);
+  }
+  function_plan.overflow_area.base_slot_id = overflow_base_slot->slot_id;
+  function_plan.overflow_area.base_stack_offset_bytes = overflow_base_slot->offset_bytes;
+  remove_missing_variadic_entry_fact(function_plan, "overflow_area.base_slot_id");
+  remove_missing_variadic_entry_fact(function_plan, "overflow_area.base_stack_offset_bytes");
+}
+
 }  // namespace
 
 void populate_variadic_entry_plans(PreparedBirModule& prepared) {
@@ -1283,6 +1316,7 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
                                          "target_abi.variadic_entry_state");
       remove_missing_variadic_entry_fact(function_plan, "target_abi.va_list_layout");
       populate_rv64_variadic_entry_helper_resource_authority(function_plan);
+      attach_rv64_variadic_entry_storage_authority(prepared, function_plan);
       populate_rv64_variadic_entry_va_start_operand_home_authority(
           prepared, function, function_plan);
     } else {

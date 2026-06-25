@@ -8158,6 +8158,8 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       entry_plan->register_save_area.required ||
       !entry_plan->overflow_area.required ||
       entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8} ||
+      !entry_plan->overflow_area.base_slot_id.has_value() ||
+      !entry_plan->overflow_area.base_stack_offset_bytes.has_value() ||
       !entry_plan->va_list_layout.required ||
       entry_plan->va_list_layout.size_bytes != std::optional<std::size_t>{8} ||
       entry_plan->va_list_layout.align_bytes != std::optional<std::size_t>{8} ||
@@ -8173,6 +8175,24 @@ int check_rv64_variadic_entry_helper_missing_contract() {
   if (va_start_homes == nullptr ||
       !prepare::has_complete_prepared_variadic_va_start_operand_homes(*va_start_homes)) {
     return fail("RV64 variadic helper missing contract: va_start operand homes were not materialized");
+  }
+  const auto* overflow_base_slot =
+      prepare::find_prepared_frame_slot(prepared.stack_layout,
+                                        *entry_plan->overflow_area.base_slot_id);
+  const auto* overflow_base_object =
+      overflow_base_slot == nullptr
+          ? nullptr
+          : find_stack_object(prepared, "__rv64_variadic_overflow_area_base");
+  if (overflow_base_slot == nullptr ||
+      overflow_base_object == nullptr ||
+      overflow_base_object->object_id != overflow_base_slot->object_id ||
+      overflow_base_object->source_kind != "rv64_variadic_overflow_area_base" ||
+      overflow_base_slot->size_bytes != 0 ||
+      overflow_base_slot->align_bytes != 8 ||
+      overflow_base_slot->offset_bytes !=
+          *entry_plan->overflow_area.base_stack_offset_bytes ||
+      overflow_base_slot->offset_bytes % 8 != 0) {
+    return fail("RV64 variadic helper missing contract: overflow base did not publish frame-slot authority");
   }
   const auto* aggregate_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 3);
