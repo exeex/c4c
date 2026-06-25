@@ -875,6 +875,102 @@ prepare::PreparedBirModule make_prepared_scalar_same_module_call_module() {
   return prepared;
 }
 
+prepare::PreparedValueHome make_fpr_home(c4c::FunctionNameId function_name,
+                                         c4c::ValueNameId value_name,
+                                         prepare::PreparedValueId value_id,
+                                         std::string register_name,
+                                         std::size_t physical_index);
+
+prepare::PreparedBirModule make_prepared_fpr_same_module_call_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("fpr_call");
+  const auto arg_name = prepared.names.value_names.intern("%arg");
+  const auto result_name = prepared.names.value_names.intern("%result");
+
+  bir::CallInst call;
+  call.result = bir::Value::named(bir::TypeKind::F64, "%result");
+  call.callee = "sin";
+  call.args = {bir::Value::named(bir::TypeKind::F64, "%arg")};
+  call.arg_types = {bir::TypeKind::F64};
+  call.return_type = bir::TypeKind::F64;
+  bir::Block entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "fpr_call",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              make_fpr_home(function_name, arg_name, 1, "ft0", 0),
+              make_fpr_home(function_name, result_name, 2, "fs1", 9),
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+          .direct_callee_name = std::string{"sin"},
+          .arguments = {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 0,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Fpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+              .source_value_id = prepare::PreparedValueId{1},
+              .source_register_name = std::string{"ft0"},
+              .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+              .destination_register_name = std::string{"fa0"},
+              .destination_contiguous_width = 1,
+              .destination_register_bank = prepare::PreparedRegisterBank::Fpr,
+              .destination_register_placement =
+                  prepare::PreparedRegisterPlacement{
+                      .bank = prepare::PreparedRegisterBank::Fpr,
+                      .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                      .slot_index = 0,
+                      .contiguous_width = 1,
+                  },
+          }},
+          .result = prepare::PreparedCallResultPlan{
+              .instruction_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Fpr,
+              .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_storage_kind =
+                  prepare::PreparedMoveStorageKind::Register,
+              .destination_value_id = 2,
+              .source_register_name = std::string{"fa0"},
+              .source_contiguous_width = 1,
+              .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+              .destination_register_name = std::string{"fs1"},
+              .destination_contiguous_width = 1,
+              .destination_register_bank = prepare::PreparedRegisterBank::Fpr,
+              .source_register_placement =
+                  prepare::PreparedRegisterPlacement{
+                      .bank = prepare::PreparedRegisterBank::Fpr,
+                      .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                      .slot_index = 0,
+                      .contiguous_width = 1,
+                  },
+          },
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_two_arg_scalar_call_module() {
   prepare::PreparedBirModule prepared;
   const auto callee_name = prepared.names.function_names.intern("add_pair");
@@ -3405,6 +3501,44 @@ int builds_prepared_scalar_same_module_call_object() {
   return 0;
 }
 
+int builds_prepared_fpr_same_module_call_object() {
+  const auto prepared = make_prepared_fpr_same_module_call_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared FPR same-module call RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* caller = object::find_symbol(*module, "fpr_call");
+  const auto* callee = object::find_symbol(*module, "sin");
+  if (text == nullptr || caller == nullptr || callee == nullptr) {
+    return fail("expected prepared FPR call object to publish text/call symbols");
+  }
+  if (text->bytes.size() != 36 || text->size_bytes != 36 ||
+      caller->value != 0 || caller->size_bytes != 36 ||
+      caller->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared FPR call object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00113423 ||
+      read_u32(text->bytes, 8) != 0x22000553 ||
+      read_u32(text->bytes, 12) != 0x00000097 ||
+      read_u32(text->bytes, 16) != 0x000080e7 ||
+      read_u32(text->bytes, 20) != 0x22a504d3 ||
+      read_u32(text->bytes, 24) != 0x00813083 ||
+      read_u32(text->bytes, 28) != 0x01010113 ||
+      read_u32(text->bytes, 32) != 0x00008067) {
+    return fail("expected framed FPR call sequence with ft0/fa0/fs1 moves");
+  }
+  if (module->relocations.size() != 1 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 12 ||
+      module->relocations[0].type != R_RISCV_CALL_PLT ||
+      module->relocations[0].symbol != callee->id) {
+    return fail("expected FPR same-module call relocation at call pair");
+  }
+  return 0;
+}
+
 int preserves_missing_variadic_entry_plan_diagnostic() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_variadic_return_zero_module(),
@@ -5452,6 +5586,7 @@ int main() {
   status |= builds_prepared_successor_entry_copy_from_shared_traversal();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
+  status |= builds_prepared_fpr_same_module_call_object();
   status |= preserves_missing_variadic_entry_plan_diagnostic();
   status |= preserves_missing_variadic_required_facts_diagnostic();
   status |= rejects_incomplete_helper_free_variadic_entry_contract();

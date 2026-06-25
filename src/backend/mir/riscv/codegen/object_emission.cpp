@@ -1,6 +1,7 @@
 #include "object_emission.hpp"
 
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/target_register_profile.hpp"
 #include "prepared_frame_emit.hpp"
 #include "rv64_line_assembler.hpp"
 
@@ -491,6 +492,53 @@ std::optional<std::uint32_t> fpr_register_number_for_home(
     return std::nullopt;
   }
   return static_cast<std::uint32_t>(identity.physical_index);
+}
+
+std::optional<std::uint32_t> fpr_register_number_for_target_identity(
+    const c4c::backend::prepare::PreparedTargetRegisterIdentity& identity) {
+  if (identity.target_arch != c4c::TargetArch::Riscv64 ||
+      identity.bank != c4c::backend::prepare::PreparedRegisterBank::Fpr ||
+      identity.register_class !=
+          c4c::backend::prepare::PreparedRegisterClass::Float ||
+      identity.physical_index > 31) {
+    return std::nullopt;
+  }
+  return static_cast<std::uint32_t>(identity.physical_index);
+}
+
+std::optional<std::uint32_t> fpr_register_number_for_abi_placement(
+    const c4c::TargetProfile& target_profile,
+    const c4c::backend::prepare::PreparedRegisterPlacement& placement) {
+  const auto identity =
+      c4c::backend::prepare::target_register_identity_for_abi_register_placement(
+          target_profile, placement);
+  return identity.has_value() ? fpr_register_number_for_target_identity(*identity)
+                              : std::nullopt;
+}
+
+std::optional<std::uint32_t> rv64_fpr_move_funct7(
+    c4c::backend::bir::TypeKind type) {
+  switch (type) {
+    case c4c::backend::bir::TypeKind::F32:
+      return 0x10;  // fmv.s is fsgnj.s fd, fs, fs
+    case c4c::backend::bir::TypeKind::F64:
+      return 0x11;  // fmv.d is fsgnj.d fd, fs, fs
+    default:
+      return std::nullopt;
+  }
+}
+
+bool append_rv64_fpr_move(RiscvEncodedFragment& fragment,
+                          std::uint32_t destination,
+                          std::uint32_t source,
+                          c4c::backend::bir::TypeKind type) {
+  const auto funct7 = rv64_fpr_move_funct7(type);
+  if (!funct7.has_value()) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_r_type(0x53, destination, 0, source, source, *funct7));
+  return true;
 }
 
 const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for(
@@ -1322,6 +1370,7 @@ bool prepared_pure_instruction_is_rematerialized_immediate(
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     std::string_view function_name,
     std::size_t block_index,
     std::size_t instruction_index,
@@ -1369,8 +1418,38 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
        ++arg_index) {
     const auto& argument = call_plan->arguments[arg_index];
     if (argument.arg_index != arg_index ||
-        argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
         argument.destination_contiguous_width != 1 ||
+        !argument.destination_register_bank.has_value()) {
+      return std::nullopt;
+    }
+    if (*argument.destination_register_bank == prepare::PreparedRegisterBank::Fpr) {
+      if (argument.value_bank != prepare::PreparedRegisterBank::Fpr ||
+          argument.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
+          argument.source_register_bank != prepare::PreparedRegisterBank::Fpr ||
+          !argument.source_value_id.has_value() ||
+          !argument.destination_register_placement.has_value() ||
+          argument.destination_register_placement->bank !=
+              prepare::PreparedRegisterBank::Fpr ||
+          argument.destination_register_placement->contiguous_width != 1) {
+        return std::nullopt;
+      }
+      const auto* source_home =
+          prepared_value_home_for_id(lookups, *argument.source_value_id);
+      const auto source =
+          source_home == nullptr ? std::nullopt : fpr_register_number_for_home(*source_home);
+      const auto destination = fpr_register_number_for_abi_placement(
+          prepared.target_profile, *argument.destination_register_placement);
+      if (!source.has_value() || !destination.has_value() ||
+          arg_index >= call.arg_types.size() ||
+          !append_rv64_fpr_move(fragment,
+                                *destination,
+                                *source,
+                                call.arg_types[arg_index])) {
+        return std::nullopt;
+      }
+      continue;
+    }
+    if (*argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
         !argument.destination_register_name.has_value()) {
       return std::nullopt;
     }
@@ -1439,13 +1518,38 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   }
   if (call_plan->result.has_value()) {
     const auto& result = *call_plan->result;
-    if (result.value_bank != prepare::PreparedRegisterBank::Gpr ||
-        result.source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+    if (result.source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
         result.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-        result.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
-        result.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
         result.source_contiguous_width != 1 ||
-        result.destination_contiguous_width != 1 ||
+        result.destination_contiguous_width != 1) {
+      return std::nullopt;
+    }
+    if (result.source_register_bank == prepare::PreparedRegisterBank::Fpr ||
+        result.destination_register_bank == prepare::PreparedRegisterBank::Fpr) {
+      if (result.value_bank != prepare::PreparedRegisterBank::Fpr ||
+          result.source_register_bank != prepare::PreparedRegisterBank::Fpr ||
+          result.destination_register_bank != prepare::PreparedRegisterBank::Fpr ||
+          !result.source_register_placement.has_value() ||
+          result.source_register_placement->bank != prepare::PreparedRegisterBank::Fpr ||
+          result.source_register_placement->contiguous_width != 1 ||
+          !result.destination_value_id.has_value() || !call.result.has_value()) {
+        return std::nullopt;
+      }
+      const auto source = fpr_register_number_for_abi_placement(
+          prepared.target_profile, *result.source_register_placement);
+      const auto* destination_home =
+          prepared_value_home_for_id(lookups, *result.destination_value_id);
+      const auto destination = destination_home == nullptr
+                                   ? std::nullopt
+                                   : fpr_register_number_for_home(*destination_home);
+      if (!source.has_value() || !destination.has_value() ||
+          !append_rv64_fpr_move(fragment, *destination, *source, call.result->type)) {
+        return std::nullopt;
+      }
+      return fragment;
+    }
+    if (result.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
+        result.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
         !result.source_register_name.has_value() ||
         !result.destination_register_name.has_value()) {
       return std::nullopt;
@@ -3077,6 +3181,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
   const auto* inline_asm_carrier =
       find_prepared_inline_asm_carrier(inline_asm_carriers, block_index, instruction_index);
   return fragment_for_prepared_call(prepared,
+                                    &lookups,
                                     function_name,
                                     block_index,
                                     instruction_index,
