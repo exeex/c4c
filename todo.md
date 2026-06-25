@@ -1,36 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/349_rv64_single_line_assembler_core_for_inline_asm.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Prove Shared Text/Object Compatibility
+Current Step ID: Step 6
+Current Step Title: Broader Validation And Closure Review
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 proved substituted inline asm text is accepted by the same line core.
+Step 6 completed broader backend validation and closure review for idea 349.
 
-- Added a focused unit assertion that the prepared `.insn.d` carrier
-  substitutes to `.insn.d 10, 11, v20, v4, v6, v8, 3`.
-- The test parses that substituted text with `parse_rv64_asm_line(...)` and
-  encodes it with `encode_rv64_asm_line(...)`.
-- The encoded substituted prepared line matches the existing EV64 object word
-  `0x0000030b10620a0a`.
-- Source-level object byte and `.s` route checks stayed green.
+- Ran the broader backend subset after parser, encoder, object-route rewire,
+  and shared text/object compatibility tests.
+- Validation passed: `100% tests passed, 0 tests failed out of 319`.
+- Final route review found no testcase-overfit signal: object bytes and `.s`
+  expectations were preserved, and `.insn.d` object emission now consumes
+  substituted canonical line text through the shared parser/encoder.
 
 ## Suggested Next
 
-Execute Step 6 by running broader validation and deciding whether idea 349 is
-ready for lifecycle closure.
+Call the plan owner to close idea 349 if it accepts that the source idea is
+complete.
 
-Owned files for the next packet should include:
+Closure evidence:
 
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
-- `todo.md`
-
-The next packet should run the broader RV64/backend validation subset chosen by
-the supervisor, inspect the final diff for testcase-overfit, and then call the
-plan owner if the source idea appears complete.
+- the line core parses and encodes `.insn.d`, `li`, and `ret`
+- inline asm object emission substitutes to canonical text before line parsing
+- source-level `.insn.d` object bytes remain
+  `0a0320080b0300001305000067800000`
+- source-level `.s` output remains canonical and parseable
+- malformed line/parser cases fail closed in focused tests
 
 ## Watchouts
 
@@ -48,16 +47,10 @@ plan owner if the source idea appears complete.
 
 ## Proof
 
-Proof passed and was captured in `test_after.log`:
-
-```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_cli_riscv64_vrm_insn_d_source_obj|backend_codegen_route_riscv64_vrm_insn_d_source_asm)$'
-```
-
-Result: 3/3 tests passed.
-
-Suggested broader validation command for Step 6:
+Broader validation passed and was captured in `test_after.log`:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
 ```
+
+Result: 319/319 tests passed.
