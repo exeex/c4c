@@ -60,6 +60,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_local_memory_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_module_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/prepared_scalar_emit.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/riscv/codegen/rv64_line_assembler.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/abi/abi.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/api/api.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/core/core.cpp"

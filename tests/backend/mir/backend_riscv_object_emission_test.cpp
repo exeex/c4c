@@ -1,5 +1,6 @@
 #include "src/backend/mir/object/model.hpp"
 #include "src/backend/mir/riscv/codegen/object_emission.hpp"
+#include "src/backend/mir/riscv/codegen/rv64_line_assembler.hpp"
 #include "src/backend/prealloc/control_flow.hpp"
 #include "src/backend/prealloc/module.hpp"
 
@@ -1982,6 +1983,64 @@ int substitutes_prepared_rv64_tied_vector_inline_asm_base_register() {
   return 0;
 }
 
+int parses_rv64_line_core_canonical_subset() {
+  const auto insn = rv64::parse_rv64_asm_line(
+      ".insn.d 10, 11, v6, v0, v2, v4, 3");
+  const auto* insn_d = insn.has_value()
+                           ? std::get_if<rv64::Rv64InsnDLine>(&*insn)
+                           : nullptr;
+  if (insn_d == nullptr || insn_d->major != 10 || insn_d->operation != 11 ||
+      insn_d->destination.bank != rv64::Rv64AsmRegisterBank::Vector ||
+      insn_d->destination.physical_index != 6 ||
+      insn_d->lhs.physical_index != 0 || insn_d->rhs.physical_index != 2 ||
+      insn_d->accumulator.physical_index != 4 || insn_d->dtype != 3) {
+    return fail("expected RV64 line parser to accept canonical .insn.d fields");
+  }
+
+  const auto li = rv64::parse_rv64_asm_line("li a0, 0");
+  const auto* li_line = li.has_value() ? std::get_if<rv64::Rv64LiLine>(&*li)
+                                       : nullptr;
+  if (li_line == nullptr ||
+      li_line->destination.bank != rv64::Rv64AsmRegisterBank::Gpr ||
+      li_line->destination.physical_index != 10 || li_line->immediate != 0) {
+    return fail("expected RV64 line parser to accept canonical li");
+  }
+
+  const auto ret = rv64::parse_rv64_asm_line("ret");
+  if (!ret.has_value() || !std::holds_alternative<rv64::Rv64RetLine>(*ret)) {
+    return fail("expected RV64 line parser to accept ret");
+  }
+  return 0;
+}
+
+int rejects_rv64_line_core_malformed_subset() {
+  if (rv64::parse_rv64_asm_line(
+          ".insn.d 10, 11, x6, v0, v2, v4, 3")
+          .has_value()) {
+    return fail("expected RV64 line parser to reject non-vector .insn.d register");
+  }
+  if (rv64::parse_rv64_asm_line(
+          ".insn.d 10, 11, v6, v0, v2, v4")
+          .has_value()) {
+    return fail("expected RV64 line parser to reject missing .insn.d field");
+  }
+  if (rv64::parse_rv64_asm_line(
+          ".insn.d 128, 11, v6, v0, v2, v4, 3")
+          .has_value()) {
+    return fail("expected RV64 line parser to reject out-of-range .insn.d namespace");
+  }
+  if (rv64::parse_rv64_asm_line("li v0, 0").has_value()) {
+    return fail("expected RV64 line parser to reject vector destination for li");
+  }
+  if (rv64::parse_rv64_asm_line("li a0, 2048").has_value()) {
+    return fail("expected RV64 line parser to reject out-of-range li immediate");
+  }
+  if (rv64::parse_rv64_asm_line("ret a0").has_value()) {
+    return fail("expected RV64 line parser to reject malformed ret");
+  }
+  return 0;
+}
+
 int rejects_prepared_inline_asm_insn_r_without_complete_carrier() {
   const auto prepared = make_prepared_inline_asm_insn_r_module(
       ".insn r 0x33, 0, 0, %0, %1, %2",
@@ -2750,6 +2809,8 @@ int main() {
   status |= substitutes_prepared_rv64_vector_inline_asm_base_registers();
   status |= substitutes_prepared_rv64_mixed_scalar_vector_inline_asm_registers();
   status |= substitutes_prepared_rv64_tied_vector_inline_asm_base_register();
+  status |= parses_rv64_line_core_canonical_subset();
+  status |= rejects_rv64_line_core_malformed_subset();
   status |= rejects_prepared_inline_asm_insn_r_without_complete_carrier();
   status |= rejects_structured_prepared_inline_asm_insn_r_bad_operand_metadata_object();
   status |= rejects_prepared_inline_asm_non_insn_r_object();
