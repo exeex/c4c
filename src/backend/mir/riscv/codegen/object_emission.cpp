@@ -211,6 +211,13 @@ RiscvPreparedObjectFunctionResult make_rv64_prepared_function_rejection(
 std::optional<std::uint32_t> gpr_register_number_for_home(
     const c4c::backend::prepare::PreparedValueHome& home);
 
+const prepare::PreparedVariadicVaListField*
+rv64_variadic_va_list_overflow_arg_area_field(
+    const prepare::PreparedVariadicEntryPlanFunction& entry_plan);
+
+bool rv64_variadic_helper_free_entry_contract_is_complete(
+    const prepare::PreparedVariadicEntryPlanFunction& entry_plan);
+
 std::optional<std::string> rv64_variadic_function_admission_diagnostic(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name) {
@@ -235,8 +242,11 @@ std::optional<std::string> rv64_variadic_function_admission_diagnostic(
     return diagnostic;
   }
   if (entry_plan->helper_resources.required_helpers.empty()) {
+    if (rv64_variadic_helper_free_entry_contract_is_complete(*entry_plan)) {
+      return std::nullopt;
+    }
     return std::string{
-        "unsupported_function_admission: RV64 helper-free variadic entry lowering remains unsupported without an explicit supported variadic entry runtime contract"};
+        "unsupported_function_admission: RV64 helper-free variadic entry requires a complete one-field overflow-area va_list contract"};
   }
   return std::nullopt;
 }
@@ -269,6 +279,21 @@ rv64_variadic_va_list_overflow_arg_area_field(
     }
   }
   return nullptr;
+}
+
+bool rv64_variadic_helper_free_entry_contract_is_complete(
+    const prepare::PreparedVariadicEntryPlanFunction& entry_plan) {
+  const auto* overflow_arg_area =
+      rv64_variadic_va_list_overflow_arg_area_field(entry_plan);
+  return !entry_plan.register_save_area.required &&
+         entry_plan.overflow_area.required &&
+         entry_plan.overflow_area.align_bytes == std::optional<std::size_t>{8} &&
+         entry_plan.va_list_layout.required &&
+         entry_plan.va_list_layout.size_bytes == std::optional<std::size_t>{8} &&
+         entry_plan.va_list_layout.align_bytes == std::optional<std::size_t>{8} &&
+         entry_plan.va_list_layout.fields.size() == 1 &&
+         overflow_arg_area != nullptr && overflow_arg_area->offset_bytes == 0 &&
+         overflow_arg_area->size_bytes == 8;
 }
 
 std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(

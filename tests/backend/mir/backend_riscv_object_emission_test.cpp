@@ -363,6 +363,27 @@ prepare::PreparedBirModule make_prepared_variadic_missing_required_facts_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_variadic_helper_free_incomplete_contract_module() {
+  auto prepared = make_prepared_variadic_return_zero_module();
+  const auto function_name = prepared.names.function_names.find("rv64_variadic");
+  prepared.variadic_entry_plans.functions.push_back(
+      prepare::PreparedVariadicEntryPlanFunction{
+          .function_name = function_name,
+          .overflow_area =
+              prepare::PreparedVariadicEntryOverflowArea{
+                  .required = true,
+                  .align_bytes = std::size_t{8},
+              },
+          .va_list_layout =
+              prepare::PreparedVariadicVaListLayout{
+                  .required = true,
+                  .size_bytes = std::size_t{8},
+                  .align_bytes = std::size_t{8},
+              },
+      });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_variadic_helper_free_complete_module() {
   auto prepared = make_prepared_variadic_return_zero_module();
   const auto function_name = prepared.names.function_names.find("rv64_variadic");
@@ -372,8 +393,6 @@ prepare::PreparedBirModule make_prepared_variadic_helper_free_complete_module() 
           .overflow_area =
               prepare::PreparedVariadicEntryOverflowArea{
                   .required = true,
-                  .base_slot_id = prepare::PreparedFrameSlotId{7},
-                  .base_stack_offset_bytes = std::size_t{64},
                   .align_bytes = std::size_t{8},
               },
           .va_list_layout =
@@ -3197,10 +3216,36 @@ int preserves_missing_variadic_required_facts_diagnostic() {
       "unsupported_function_admission: variadic functions are not supported by the RV64 object route; missing_required_facts=[target_abi.va_list_layout]");
 }
 
-int rejects_fact_complete_helper_free_variadic_entry_without_runtime_contract() {
+int rejects_incomplete_helper_free_variadic_entry_contract() {
   return expect_prepared_rejection_diagnostic(
-      make_prepared_variadic_helper_free_complete_module(),
-      "unsupported_function_admission: RV64 helper-free variadic entry lowering remains unsupported without an explicit supported variadic entry runtime contract");
+      make_prepared_variadic_helper_free_incomplete_contract_module(),
+      "unsupported_function_admission: RV64 helper-free variadic entry requires a complete one-field overflow-area va_list contract");
+}
+
+int builds_fact_complete_helper_free_variadic_entry_object() {
+  const auto prepared = make_prepared_variadic_helper_free_complete_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected fact-complete helper-free variadic RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "rv64_variadic");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected helper-free variadic object to publish text/function");
+  }
+  if (text->bytes.size() != 8 || text->size_bytes != 8 ||
+      function->value != 0 || function->size_bytes != 8 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected helper-free variadic object return-zero text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00000513 ||
+      read_u32(text->bytes, 4) != 0x00008067) {
+    return fail("expected helper-free variadic object to return zero");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected helper-free variadic object to need no relocations");
+  }
+  return 0;
 }
 
 int rejects_fact_complete_variadic_va_start_without_overflow_base_state() {
@@ -5070,7 +5115,8 @@ int main() {
   status |= builds_prepared_scalar_same_module_call_object();
   status |= preserves_missing_variadic_entry_plan_diagnostic();
   status |= preserves_missing_variadic_required_facts_diagnostic();
-  status |= rejects_fact_complete_helper_free_variadic_entry_without_runtime_contract();
+  status |= rejects_incomplete_helper_free_variadic_entry_contract();
+  status |= builds_fact_complete_helper_free_variadic_entry_object();
   status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
   status |=
       materializes_fact_complete_variadic_va_start_with_overflow_base_state();
