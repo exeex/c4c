@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/356_rv64_object_route_assembler_backed_prepared_text.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Re-audit Representative RV64 Object Route Rejections
+Current Step ID: 2
+Current Step Title: Define the RV64 Target-Block Object Stream Boundary
 
 # Current Packet
 
@@ -21,10 +21,22 @@ rejecting layer for each case.
 
 ## Suggested Next
 
-Execute a narrow target-owned RV64 object-emission packet for `src/20000113-1.c`:
-teach the prepared object fragment path to lower the first unsupported
-prepared stack-slot/local memory shape without reconstructing CFG semantics or
-special-casing the testcase filename.
+Execute Step 2: define and test the RV64 target-block object stream boundary
+for prepared object emission before removing or narrowing object-route gates.
+Use the Step 1 audit as packet context, especially the `src/20000113-1.c`
+stack-slot/local memory fragment blocker, but keep this packet focused on the
+input contract: what target-block/instruction stream object emission consumes
+and how labels, branch references, call references, and relocations flow
+without reconstructing CFG semantics.
+
+Narrow packet target:
+
+- inspect the current RV64 prepared object module and object-emission builder
+  surfaces;
+- identify the canonical target-block/instruction stream that object emission
+  should consume;
+- add or update focused boundary diagnostics/tests where the current handoff is
+  ambiguous or too coarse.
 
 Narrow proof command:
 
