@@ -1,6 +1,6 @@
 # RV64 Object Parameter Home Coverage
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/closed/362_rv64_scalar_vararg_and_variadic_lowering.md`
 
@@ -72,3 +72,28 @@ Representative scan from idea 362:
 
 - `src/20030914-2.c` fails at `unsupported_param_home`
 - case log: `build/rv64_gcc_c_torture_backend/src_20030914-2.c/case.log`
+
+## Closure Note
+
+Closed after focused RV64 object-emission coverage proved the audited
+parameter-home class with a precise diagnostic:
+
+```text
+unsupported_byval_param_home: RV64 object route does not yet lower byval aggregate parameter homes in prepared stack slots
+```
+
+The focused backend subset stayed green before and after closure validation:
+`backend_riscv_object_emission`,
+`backend_prepare_frame_stack_call_contract`, and
+`backend_prepared_printer` all passed.
+
+The representative `src/20030914-2.c` was rerun. It no longer provides a
+direct parameter-home proof in the current route because it stops earlier at:
+
+```text
+unsupported_function_admission: RV64 helper-free variadic entry lowering remains unsupported without an explicit supported variadic entry runtime contract
+```
+
+That earlier admission boundary is out of scope for this parameter-home idea
+and is tracked separately in
+`ideas/open/367_rv64_helper_free_variadic_entry_contract.md`.
