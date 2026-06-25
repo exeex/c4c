@@ -3386,6 +3386,44 @@ int rejects_prepared_data_without_asm_fallback() {
   return 0;
 }
 
+int emits_prepared_constant_f64_global_object_storage() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto link_name = prepared.module.names.link_names.intern("one");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "one",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::F64,
+      .is_constant = true,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer = bir::Value::immediate_f64_bits(0x3ff0000000000000ull),
+  });
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit constant F64 globals");
+  }
+  const auto* rodata = object::find_section(*module, ".rodata");
+  if (rodata == nullptr || rodata->writable || rodata->executable ||
+      rodata->align_bytes != 8 ||
+      rodata->bytes != std::vector<std::uint8_t>{0, 0, 0, 0, 0, 0, 0xf0, 0x3f}) {
+    return fail("expected constant F64 global bytes in read-only data");
+  }
+  const auto* symbol = object::find_symbol(*module, "one");
+  if (symbol == nullptr ||
+      symbol->binding != object::SymbolBinding::Global ||
+      symbol->kind != object::SymbolKind::Object ||
+      symbol->section != std::optional<object::SectionId>{rodata->id} ||
+      symbol->value != 0 || symbol->size_bytes != 8) {
+    return fail("expected constant F64 global object symbol in rodata");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize constant F64 global object");
+  }
+  return 0;
+}
+
 int serializes_rv64_relocatable_elf_contract() {
   const auto module = make_minimal_call_module();
   if (!module.has_value()) {
@@ -3748,6 +3786,7 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_d_template_modifier_shape();
   status |= rejects_prepared_inline_asm_insn_d_object();
   status |= rejects_prepared_data_without_asm_fallback();
+  status |= emits_prepared_constant_f64_global_object_storage();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
   status |= writes_prepared_rv64_relocatable_elf_object_file();

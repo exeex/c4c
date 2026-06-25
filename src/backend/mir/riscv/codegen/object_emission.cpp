@@ -2786,11 +2786,129 @@ std::optional<object::ObjectModule> build_rv64_text_object_module(
   return module;
 }
 
+std::string rv64_prepared_object_global_label(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::bir::Global& global) {
+  if (global.link_name_id != c4c::kInvalidLinkName) {
+    const std::string_view spelling =
+        module.names.link_names.spelling(global.link_name_id);
+    if (!spelling.empty()) {
+      return std::string{spelling};
+    }
+  }
+  return global.name;
+}
+
+void append_unsigned_le_bytes(std::vector<std::uint8_t>& bytes,
+                              std::uint64_t value,
+                              std::size_t size_bytes) {
+  for (std::size_t offset = 0; offset < size_bytes; ++offset) {
+    bytes.push_back(static_cast<std::uint8_t>((value >> (offset * 8)) & 0xffu));
+  }
+}
+
+std::optional<std::vector<std::uint8_t>> rv64_constant_scalar_global_bytes(
+    const c4c::backend::bir::Global& global) {
+  namespace bir = c4c::backend::bir;
+
+  if (global.is_extern || global.is_thread_local || !global.is_constant ||
+      !global.initializer.has_value() ||
+      global.initializer->kind != bir::Value::Kind::Immediate ||
+      global.initializer_symbol_name.has_value() ||
+      global.initializer_symbol_name_id != c4c::kInvalidLinkName ||
+      !global.initializer_elements.empty()) {
+    return std::nullopt;
+  }
+
+  std::size_t expected_size = 0;
+  std::uint64_t payload = 0;
+  switch (global.type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      expected_size = 1;
+      payload =
+          static_cast<std::uint64_t>(global.initializer->immediate) & 0xffu;
+      break;
+    case bir::TypeKind::I16:
+      expected_size = 2;
+      payload =
+          static_cast<std::uint64_t>(global.initializer->immediate) & 0xffffu;
+      break;
+    case bir::TypeKind::I32:
+      expected_size = 4;
+      payload =
+          static_cast<std::uint64_t>(global.initializer->immediate) & 0xffffffffu;
+      break;
+    case bir::TypeKind::I64:
+      expected_size = 8;
+      payload = static_cast<std::uint64_t>(global.initializer->immediate);
+      break;
+    case bir::TypeKind::F32:
+      expected_size = 4;
+      payload = global.initializer->immediate_bits & 0xffffffffu;
+      break;
+    case bir::TypeKind::F64:
+      expected_size = 8;
+      payload = global.initializer->immediate_bits;
+      break;
+    default:
+      return std::nullopt;
+  }
+
+  if (global.size_bytes != expected_size ||
+      global.align_bytes == 0 ||
+      global.align_bytes > expected_size ||
+      global.initializer->type != global.type) {
+    return std::nullopt;
+  }
+
+  std::vector<std::uint8_t> bytes;
+  bytes.reserve(expected_size);
+  append_unsigned_le_bytes(bytes, payload, expected_size);
+  return bytes;
+}
+
+bool append_rv64_prepared_constant_global_objects(
+    object::ObjectModule& object_module,
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  if (prepared.module.globals.empty()) {
+    return true;
+  }
+
+  auto& rodata = object::get_or_create_section(object_module,
+                                               ".rodata",
+                                               object::SectionKind::Data,
+                                               1,
+                                               true,
+                                               false,
+                                               false);
+  bool wrote_global = false;
+  for (const auto& global : prepared.module.globals) {
+    const auto label = rv64_prepared_object_global_label(prepared.module, global);
+    const auto bytes = rv64_constant_scalar_global_bytes(global);
+    if (label.empty() || !bytes.has_value() ||
+        object::find_symbol(object_module, label) != nullptr) {
+      return false;
+    }
+
+    object::align_section(rodata, global.align_bytes, 0);
+    const auto offset = object::append_section_bytes(rodata, *bytes);
+    object::define_symbol(object_module,
+                          label,
+                          object::SymbolBinding::Global,
+                          object::SymbolKind::Object,
+                          rodata.id,
+                          offset,
+                          bytes->size());
+    wrote_global = true;
+  }
+  return wrote_global;
+}
+
 RiscvPreparedObjectModuleResult
 build_rv64_prepared_text_object_module_with_diagnostics(
     const c4c::backend::prepare::PreparedBirModule& prepared) {
-  if (!prepared.module.globals.empty() ||
-      !prepared.module.string_constants.empty()) {
+  if (!prepared.module.string_constants.empty()) {
     return RiscvPreparedObjectModuleResult{};
   }
   std::vector<RiscvObjectFunction> functions;
@@ -2830,6 +2948,9 @@ build_rv64_prepared_text_object_module_with_diagnostics(
   }
   auto module = build_rv64_text_object_module(functions);
   if (!module.has_value()) {
+    return RiscvPreparedObjectModuleResult{};
+  }
+  if (!append_rv64_prepared_constant_global_objects(*module, prepared)) {
     return RiscvPreparedObjectModuleResult{};
   }
   return RiscvPreparedObjectModuleResult{
