@@ -17,9 +17,17 @@ bool is_supported_rv64_runtime_external_callee(std::string_view callee) {
   return callee == "strlen";
 }
 
+bool is_inline_asm_callee(const c4c::backend::prepare::PreparedCallPlan& call) {
+  return call.direct_callee_name == std::optional<std::string>{"llvm.inline_asm"};
+}
+
 std::optional<std::string_view> unsupported_external_call_reason(
     const c4c::backend::prepare::PreparedCallPlan& call) {
   namespace prepare = c4c::backend::prepare;
+
+  if (is_inline_asm_callee(call)) {
+    return std::nullopt;
+  }
 
   switch (call.wrapper_kind) {
     case prepare::PreparedCallWrapperKind::SameModule:

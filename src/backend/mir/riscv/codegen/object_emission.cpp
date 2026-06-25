@@ -1156,15 +1156,25 @@ std::optional<std::string> substitute_positional_riscv_inline_asm_operands(
     const std::vector<std::optional<std::string>>& gcc_operand_registers) {
   std::string result;
   for (std::size_t i = 0; i < text.size(); ++i) {
-    if (text[i] != '%' || i + 1 >= text.size()) {
+    if ((text[i] != '%' && text[i] != '$') || i + 1 >= text.size()) {
       result.push_back(text[i]);
       continue;
     }
 
+    const char marker = text[i];
     ++i;
-    if (text[i] == '%') {
+    if (marker == '%' && text[i] == '%') {
       result.push_back('%');
       continue;
+    }
+
+    bool braced = false;
+    if (text[i] == '{') {
+      braced = true;
+      ++i;
+      if (i >= text.size()) {
+        return std::nullopt;
+      }
     }
 
     if (std::isdigit(static_cast<unsigned char>(text[i])) != 0) {
@@ -1173,15 +1183,24 @@ std::optional<std::string> substitute_positional_riscv_inline_asm_operands(
         num = num * 10 + static_cast<std::size_t>(text[i] - '0');
         ++i;
       }
+      if (braced) {
+        if (i >= text.size() || text[i] != '}') {
+          return std::nullopt;
+        }
+      } else {
+        --i;
+      }
       if (num >= gcc_operand_registers.size() || !gcc_operand_registers[num].has_value()) {
         return std::nullopt;
       }
       result += *gcc_operand_registers[num];
-      --i;
       continue;
     }
 
-    result.push_back('%');
+    result.push_back(marker);
+    if (braced) {
+      result.push_back('{');
+    }
     result.push_back(text[i]);
   }
   return result;
@@ -1339,27 +1358,36 @@ std::optional<std::string> substitute_prepared_riscv_inline_asm_operands(
     operand_count = std::max(operand_count, operand.constraint_index + 1);
   }
 
-  std::vector<std::optional<std::string>> gcc_operand_registers(operand_count);
+  std::vector<std::optional<std::string>> gcc_operands(operand_count);
   for (const auto& operand : carrier.operands) {
-    if (operand.constraint_index >= gcc_operand_registers.size() ||
-        gcc_operand_registers[operand.constraint_index].has_value()) {
+    if (operand.constraint_index >= gcc_operands.size() ||
+        gcc_operands[operand.constraint_index].has_value()) {
       return std::nullopt;
     }
-    const auto* home = substitution_home_for_operand(carrier, operand);
-    if (home == nullptr) {
-      return std::nullopt;
+    if (operand.kind ==
+        c4c::backend::bir::InlineAsmOperandKind::IntegerImmediateInput) {
+      if (!operand.immediate_value.has_value()) {
+        return std::nullopt;
+      }
+      gcc_operands[operand.constraint_index] =
+          std::to_string(*operand.immediate_value);
+    } else {
+      const auto* home = substitution_home_for_operand(carrier, operand);
+      if (home == nullptr) {
+        return std::nullopt;
+      }
+      auto register_name =
+          register_name_for_inline_asm_substitution_home(*home, operand.register_class);
+      if (!register_name.has_value()) {
+        return std::nullopt;
+      }
+      gcc_operands[operand.constraint_index] = std::move(register_name);
     }
-    auto register_name =
-        register_name_for_inline_asm_substitution_home(*home, operand.register_class);
-    if (!register_name.has_value()) {
-      return std::nullopt;
-    }
-    gcc_operand_registers[operand.constraint_index] = std::move(register_name);
   }
 
   return substitute_positional_riscv_inline_asm_operands(
       carrier.asm_text,
-      gcc_operand_registers);
+      gcc_operands);
 }
 
 std::optional<RiscvInsnDInlineAsmShape> classify_prepared_rv64_insn_d_inline_asm(

@@ -6,6 +6,7 @@
 #include "prepared_global_memory_emit.hpp"
 #include "prepared_local_memory_emit.hpp"
 #include "prepared_scalar_emit.hpp"
+#include "object_emission.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -16,6 +17,55 @@
 
 namespace c4c::backend::riscv::codegen {
 namespace {
+
+bool is_vrm_type(c4c::backend::bir::TypeKind type) {
+  namespace bir = c4c::backend::bir;
+  return type == bir::TypeKind::Vrm1 || type == bir::TypeKind::Vrm2 ||
+         type == bir::TypeKind::Vrm4 || type == bir::TypeKind::Vrm8;
+}
+
+bool is_inline_asm_call(const c4c::backend::bir::CallInst& call) {
+  return call.inline_asm.has_value() && call.callee == "llvm.inline_asm" &&
+         !call.is_indirect && !call.callee_value.has_value();
+}
+
+const c4c::backend::prepare::PreparedInlineAsmCarrier* find_prepared_inline_asm_carrier(
+    const c4c::backend::prepare::PreparedInlineAsmCarrierFunction* function_carriers,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  if (function_carriers == nullptr) {
+    return nullptr;
+  }
+  for (const auto& carrier : function_carriers->carriers) {
+    if (carrier.block_index == block_index && carrier.inst_index == instruction_index) {
+      return &carrier;
+    }
+  }
+  return nullptr;
+}
+
+std::optional<std::string> emit_riscv_prepared_inline_asm_text(
+    const c4c::backend::prepare::PreparedInlineAsmCarrierFunction* function_carriers,
+    const c4c::backend::bir::CallInst& call,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  if (!is_inline_asm_call(call)) {
+    return std::nullopt;
+  }
+  const auto* carrier =
+      find_prepared_inline_asm_carrier(function_carriers, block_index, instruction_index);
+  if (carrier == nullptr) {
+    return std::nullopt;
+  }
+  auto substituted = substitute_prepared_riscv_inline_asm_operands(*carrier);
+  if (!substituted.has_value()) {
+    return std::nullopt;
+  }
+  if (substituted->empty()) {
+    return std::string{};
+  }
+  return "    " + *substituted + "\n";
+}
 
 std::optional<std::string_view> riscv_gpr_argument_register(std::size_t index) {
   switch (index) {
@@ -293,10 +343,17 @@ bool append_simple_prepared_bir_function_asm(
       prepared_frame_size = frame_plan->frame_size_bytes;
     }
   }
+  const auto* inline_asm_carriers =
+      function_name_id.has_value()
+          ? c4c::backend::prepare::find_prepared_inline_asm_carriers(
+                prepared,
+                *function_name_id)
+          : nullptr;
   bool saves_return_address = false;
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
-      if (std::holds_alternative<c4c::backend::bir::CallInst>(inst)) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call != nullptr && !is_inline_asm_call(*call)) {
         saves_return_address = true;
         break;
       }
@@ -447,6 +504,18 @@ bool append_simple_prepared_bir_function_asm(
 
       const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
       if (call != nullptr) {
+        if (is_inline_asm_call(*call)) {
+          const auto emitted = emit_riscv_prepared_inline_asm_text(
+              inline_asm_carriers,
+              *call,
+              block_index,
+              instruction_index);
+          if (!emitted.has_value()) {
+            return false;
+          }
+          out += *emitted;
+          continue;
+        }
         const auto emitted = emit_riscv_simple_call(
             prepared,
             *function_name_id,
@@ -462,6 +531,9 @@ bool append_simple_prepared_bir_function_asm(
 
       const auto* store_local = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
       if (store_local != nullptr) {
+        if (is_vrm_type(store_local->value.type)) {
+          continue;
+        }
         const auto emitted = emit_riscv_simple_store_local(
             prepared,
             *function_name_id,
@@ -476,6 +548,9 @@ bool append_simple_prepared_bir_function_asm(
 
       const auto* load_local = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
       if (load_local != nullptr) {
+        if (is_vrm_type(load_local->result.type)) {
+          continue;
+        }
         const auto emitted = emit_riscv_simple_load_local(
             prepared,
             *function_name_id,

@@ -400,6 +400,17 @@ c4c_add_backend_codegen_object_test(
   LABELS riscv64 object inline_asm vrm insn_d cli
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_vrm_insn_d_source_asm
+  SRC "${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_vrm_insn_d_source.s"
+  REQUIRED_SNIPPETS ".globl main|main:|.insn.d 10, 11, v6, v0, v2, v4, 3|li a0, 0|ret"
+  FORBIDDEN_SNIPPETS "llvm.inline_asm|unsupported_external_call"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 asm inline_asm vrm insn_d cli
+)
+
 c4c_add_backend_codegen_object_test(
   backend_cli_aarch64_return_zero_writes_elf_obj
   SRC "${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c"
