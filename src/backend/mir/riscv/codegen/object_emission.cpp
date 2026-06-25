@@ -2050,9 +2050,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_floating_cast(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::CastInst& cast) {
-  if (cast.opcode != c4c::backend::bir::CastOpcode::FPExt ||
-      cast.operand.type != c4c::backend::bir::TypeKind::F32 ||
-      cast.result.type != c4c::backend::bir::TypeKind::F64) {
+  std::optional<std::uint32_t> rs2;
+  std::optional<std::uint32_t> funct7;
+  if (cast.opcode == c4c::backend::bir::CastOpcode::FPExt &&
+      cast.operand.type == c4c::backend::bir::TypeKind::F32 &&
+      cast.result.type == c4c::backend::bir::TypeKind::F64) {
+    rs2 = 0;
+    funct7 = 0x21;  // fcvt.d.s fd, fs, rne
+  } else if (cast.opcode == c4c::backend::bir::CastOpcode::FPTrunc &&
+             cast.operand.type == c4c::backend::bir::TypeKind::F64 &&
+             cast.result.type == c4c::backend::bir::TypeKind::F32) {
+    rs2 = 1;
+    funct7 = 0x20;  // fcvt.s.d fd, fs, rne
+  } else {
     return std::nullopt;
   }
   const auto* destination_home = prepared_value_home_for(names, lookups, cast.result);
@@ -2071,8 +2081,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_floating_cast(
                             *destination,
                             0,
                             *source,
-                            0,
-                            0x21));  // fcvt.d.s fd, fs, rne
+                            *rs2,
+                            *funct7));
   return fragment;
 }
 
@@ -3167,7 +3177,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
     if (rv64_floating_type(cast->operand.type) ||
         rv64_floating_type(cast->result.type)) {
       return std::string{
-          "unsupported_floating_cast: RV64 object route supports only prepared F32-to-F64 FPR register casts"};
+          "unsupported_floating_cast: RV64 object route supports only prepared F32-to-F64 and F64-to-F32 FPR register casts"};
     }
   }
   return std::nullopt;
