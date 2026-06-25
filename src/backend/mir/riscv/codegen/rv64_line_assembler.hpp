@@ -4,6 +4,7 @@
 #include <optional>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace c4c::backend::riscv::codegen {
 
@@ -38,5 +39,8 @@ using Rv64AsmLine = std::variant<Rv64InsnDLine, Rv64LiLine, Rv64RetLine>;
 
 [[nodiscard]] std::optional<Rv64AsmLine> parse_rv64_asm_line(
     std::string_view line);
+
+[[nodiscard]] std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
+    const Rv64AsmLine& line);
 
 }  // namespace c4c::backend::riscv::codegen

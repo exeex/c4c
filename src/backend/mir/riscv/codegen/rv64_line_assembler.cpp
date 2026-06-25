@@ -8,6 +8,27 @@
 namespace c4c::backend::riscv::codegen {
 namespace {
 
+constexpr std::uint32_t encode_i_type(std::uint32_t opcode, std::uint32_t rd,
+                                      std::uint32_t funct3, std::uint32_t rs1,
+                                      std::int32_t imm12) {
+  return ((static_cast<std::uint32_t>(imm12) & 0xfffu) << 20) |
+         ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
+         ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
+}
+
+void append_le32(std::vector<std::uint8_t>& bytes, std::uint32_t word) {
+  bytes.push_back(static_cast<std::uint8_t>(word & 0xffu));
+  bytes.push_back(static_cast<std::uint8_t>((word >> 8) & 0xffu));
+  bytes.push_back(static_cast<std::uint8_t>((word >> 16) & 0xffu));
+  bytes.push_back(static_cast<std::uint8_t>((word >> 24) & 0xffu));
+}
+
+void append_le64(std::vector<std::uint8_t>& bytes, std::uint64_t word) {
+  for (int shift = 0; shift < 64; shift += 8) {
+    bytes.push_back(static_cast<std::uint8_t>((word >> shift) & 0xffu));
+  }
+}
+
 std::string_view trim_ascii(std::string_view text) {
   while (!text.empty() && (text.front() == ' ' || text.front() == '\t' ||
                           text.front() == '\n' || text.front() == '\r')) {
@@ -222,6 +243,35 @@ std::optional<Rv64AsmLine> parse_li(std::string_view line) {
   }};
 }
 
+std::optional<std::uint32_t> register_field(const Rv64AsmRegister& reg,
+                                            Rv64AsmRegisterBank expected_bank) {
+  if (reg.bank != expected_bank || reg.physical_index > 31) {
+    return std::nullopt;
+  }
+  return reg.physical_index;
+}
+
+std::optional<std::uint64_t> encode_insn_d_word(const Rv64InsnDLine& insn) {
+  const auto rd = register_field(insn.destination, Rv64AsmRegisterBank::Vector);
+  const auto rs1 = register_field(insn.lhs, Rv64AsmRegisterBank::Vector);
+  const auto rs2 = register_field(insn.rhs, Rv64AsmRegisterBank::Vector);
+  const auto rs3 = register_field(insn.accumulator, Rv64AsmRegisterBank::Vector);
+  if (insn.major > 0x7f || insn.operation > 0xff || insn.dtype > 0xffff ||
+      !rd.has_value() || !rs1.has_value() || !rs2.has_value() ||
+      !rs3.has_value()) {
+    return std::nullopt;
+  }
+
+  // First supported EV64 shape, matching object_emission.cpp.
+  return static_cast<std::uint64_t>(insn.major) |
+         (static_cast<std::uint64_t>(*rd) << 7) |
+         (static_cast<std::uint64_t>(*rs1) << 15) |
+         (static_cast<std::uint64_t>(*rs2) << 20) |
+         (static_cast<std::uint64_t>(*rs3) << 25) |
+         (static_cast<std::uint64_t>(insn.operation) << 32) |
+         (static_cast<std::uint64_t>(insn.dtype) << 40);
+}
+
 }  // namespace
 
 std::optional<Rv64AsmLine> parse_rv64_asm_line(std::string_view line) {
@@ -236,6 +286,37 @@ std::optional<Rv64AsmLine> parse_rv64_asm_line(std::string_view line) {
     return parsed;
   }
   return parse_li(line);
+}
+
+std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
+    const Rv64AsmLine& line) {
+  std::vector<std::uint8_t> bytes;
+  if (const auto* insn_d = std::get_if<Rv64InsnDLine>(&line)) {
+    const auto word = encode_insn_d_word(*insn_d);
+    if (!word.has_value()) {
+      return std::nullopt;
+    }
+    append_le64(bytes, *word);
+    return bytes;
+  }
+  if (const auto* li = std::get_if<Rv64LiLine>(&line)) {
+    const auto destination = register_field(li->destination, Rv64AsmRegisterBank::Gpr);
+    if (!destination.has_value() || !fits_signed_12_bit_immediate(li->immediate)) {
+      return std::nullopt;
+    }
+    append_le32(bytes,
+                encode_i_type(0x13,
+                              *destination,
+                              0,
+                              0,
+                              static_cast<std::int32_t>(li->immediate)));
+    return bytes;
+  }
+  if (std::holds_alternative<Rv64RetLine>(line)) {
+    append_le32(bytes, encode_i_type(0x67, 0, 0, 1, 0));
+    return bytes;
+  }
+  return std::nullopt;
 }
 
 }  // namespace c4c::backend::riscv::codegen

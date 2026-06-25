@@ -2041,6 +2041,31 @@ int rejects_rv64_line_core_malformed_subset() {
   return 0;
 }
 
+int encodes_rv64_line_core_canonical_subset() {
+  std::vector<std::uint8_t> bytes;
+  for (const std::string_view line : {
+           ".insn.d 10, 11, v6, v0, v2, v4, 3",
+           "li a0, 0",
+           "ret",
+       }) {
+    const auto parsed = rv64::parse_rv64_asm_line(line);
+    if (!parsed.has_value()) {
+      return fail("expected canonical RV64 line to parse before encode");
+    }
+    const auto encoded = rv64::encode_rv64_asm_line(*parsed);
+    if (!encoded.has_value()) {
+      return fail("expected canonical RV64 line to encode");
+    }
+    bytes.insert(bytes.end(), encoded->begin(), encoded->end());
+  }
+  if (bytes.size() != 16 || read_u64(bytes, 0) != 0x0000030b0820030aull ||
+      read_u32(bytes, 8) != 0x00000513 ||
+      read_u32(bytes, 12) != 0x00008067) {
+    return fail("expected RV64 line encoder to preserve canonical object bytes");
+  }
+  return 0;
+}
+
 int rejects_prepared_inline_asm_insn_r_without_complete_carrier() {
   const auto prepared = make_prepared_inline_asm_insn_r_module(
       ".insn r 0x33, 0, 0, %0, %1, %2",
@@ -2811,6 +2836,7 @@ int main() {
   status |= substitutes_prepared_rv64_tied_vector_inline_asm_base_register();
   status |= parses_rv64_line_core_canonical_subset();
   status |= rejects_rv64_line_core_malformed_subset();
+  status |= encodes_rv64_line_core_canonical_subset();
   status |= rejects_prepared_inline_asm_insn_r_without_complete_carrier();
   status |= rejects_structured_prepared_inline_asm_insn_r_bad_operand_metadata_object();
   status |= rejects_prepared_inline_asm_non_insn_r_object();
