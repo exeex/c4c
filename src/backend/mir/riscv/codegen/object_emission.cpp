@@ -1581,6 +1581,23 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
   return fragment;
 }
 
+bool prepared_join_transfer_edge_copies_are_published(
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::prepare::PreparedJoinTransfer& join_transfer) {
+  if (join_transfer.edge_transfers.empty()) {
+    return false;
+  }
+  return std::all_of(
+      join_transfer.edge_transfers.begin(),
+      join_transfer.edge_transfers.end(),
+      [&](const c4c::backend::prepare::PreparedEdgeValueTransfer& edge_transfer) {
+        return c4c::backend::prepare::
+                   find_published_parallel_copy_bundle_for_edge_transfer(
+                       control_flow,
+                       edge_transfer) != nullptr;
+      });
+}
+
 bool prepared_param_homes_supported(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -1854,6 +1871,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                             inst);
       if (prepare::diagnose_prepared_object_consumer(classification).has_value()) {
         return std::nullopt;
+      }
+      if (classification.kind ==
+              prepare::PreparedObjectSelectConsumerKind::PreparedJoinTransferCarrier &&
+          classification.join_transfer != nullptr &&
+          prepared_join_transfer_edge_copies_are_published(control_flow,
+                                                           *classification.join_transfer)) {
+        return RiscvEncodedFragment{};
       }
       if (classification.kind ==
               prepare::PreparedObjectSelectConsumerKind::OrdinarySelect ||

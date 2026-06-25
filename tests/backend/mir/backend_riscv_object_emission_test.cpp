@@ -4,6 +4,7 @@
 #include "src/backend/prealloc/control_flow.hpp"
 #include "src/backend/prealloc/module.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -1019,6 +1020,244 @@ prepare::PreparedBirModule make_prepared_join_transfer_select_module() {
                                    result_name,
                                    prepare::PreparedFrameSlotId{3},
                                    0),
+          },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_join_transfer_select_with_published_copies_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+  const auto true_predecessor = prepared.names.block_labels.intern("pred.true");
+  const auto false_predecessor = prepared.names.block_labels.intern("pred.false");
+  const auto join_label = prepared.names.block_labels.intern("join");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto false_name = prepared.names.value_names.intern("%fallback");
+  const auto result_name = prepared.names.value_names.intern("%selected");
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+      .label_id = entry_label,
+  };
+  entry.terminator.kind = bir::TerminatorKind::CondBranch;
+  entry.terminator.condition = bir::Value::immediate_i1(1);
+  entry.terminator.true_label = "pred.true";
+  entry.terminator.true_label_id = true_predecessor;
+  entry.terminator.false_label = "pred.false";
+  entry.terminator.false_label_id = false_predecessor;
+  bir::Block pred_true{
+      .label = "pred.true",
+      .terminator = bir::Terminator{},
+      .label_id = true_predecessor,
+  };
+  pred_true.terminator.kind = bir::TerminatorKind::Branch;
+  pred_true.terminator.target_label = "join";
+  pred_true.terminator.target_label_id = join_label;
+  bir::Block pred_false{
+      .label = "pred.false",
+      .terminator = bir::Terminator{},
+      .label_id = false_predecessor,
+  };
+  pred_false.terminator.kind = bir::TerminatorKind::Branch;
+  pred_false.terminator.target_label = "join";
+  pred_false.terminator.target_label_id = join_label;
+  bir::Block join{
+      .label = "join",
+      .insts =
+          {
+              bir::SelectInst{
+                  .predicate = bir::BinaryOpcode::Ne,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%selected"),
+                  .compare_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+                  .rhs = bir::Value::immediate_i32(1),
+                  .true_value = bir::Value::immediate_i32(1),
+                  .false_value =
+                      bir::Value::named(bir::TypeKind::I32, "%fallback"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = join_label,
+  };
+  join.terminator.value = bir::Value::named(bir::TypeKind::I32, "%selected");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry),
+                 std::move(pred_true),
+                 std::move(pred_false),
+                 std::move(join)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {
+              prepare::PreparedControlFlowBlock{
+                  .block_label = entry_label,
+                  .terminator_kind = bir::TerminatorKind::CondBranch,
+                  .true_label = true_predecessor,
+                  .false_label = false_predecessor,
+              },
+              prepare::PreparedControlFlowBlock{
+                  .block_label = true_predecessor,
+                  .terminator_kind = bir::TerminatorKind::Branch,
+                  .branch_target_label = join_label,
+              },
+              prepare::PreparedControlFlowBlock{
+                  .block_label = false_predecessor,
+                  .terminator_kind = bir::TerminatorKind::Branch,
+                  .branch_target_label = join_label,
+              },
+              prepare::PreparedControlFlowBlock{
+                  .block_label = join_label,
+                  .terminator_kind = bir::TerminatorKind::Return,
+              },
+          },
+      .join_transfers =
+          {
+              prepare::PreparedJoinTransfer{
+                  .function_name = function_name,
+                  .join_block_label = join_label,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%selected"),
+                  .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+                  .carrier_kind =
+                      prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+                  .incomings =
+                      {
+                          bir::PhiIncoming{
+                              .label = "pred.true",
+                              .value = bir::Value::immediate_i32(1),
+                              .label_id = true_predecessor,
+                          },
+                          bir::PhiIncoming{
+                              .label = "pred.false",
+                              .value =
+                                  bir::Value::named(bir::TypeKind::I32, "%fallback"),
+                              .label_id = false_predecessor,
+                          },
+                      },
+                  .edge_transfers =
+                      {
+                          prepare::PreparedEdgeValueTransfer{
+                              .predecessor_label = true_predecessor,
+                              .successor_label = join_label,
+                              .incoming_value = bir::Value::immediate_i32(1),
+                              .destination_value =
+                                  bir::Value::named(bir::TypeKind::I32, "%selected"),
+                          },
+                          prepare::PreparedEdgeValueTransfer{
+                              .predecessor_label = false_predecessor,
+                              .successor_label = join_label,
+                              .incoming_value =
+                                  bir::Value::named(bir::TypeKind::I32, "%fallback"),
+                              .destination_value =
+                                  bir::Value::named(bir::TypeKind::I32, "%selected"),
+                          },
+                      },
+                  .source_branch_block_label = entry_label,
+                  .source_true_transfer_index = std::size_t{0},
+                  .source_false_transfer_index = std::size_t{1},
+                  .source_true_incoming_label = true_predecessor,
+                  .source_false_incoming_label = false_predecessor,
+              },
+          },
+      .parallel_copy_bundles =
+          {
+              prepare::PreparedParallelCopyBundle{
+                  .predecessor_label = true_predecessor,
+                  .successor_label = join_label,
+                  .execution_site =
+                      prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+                  .execution_block_label = true_predecessor,
+                  .moves = {prepare::PreparedParallelCopyMove{
+                      .join_transfer_index = 0,
+                      .edge_transfer_index = 0,
+                      .source_value = bir::Value::immediate_i32(1),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%selected"),
+                      .carrier_kind =
+                          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+                  }},
+                  .steps = {prepare::PreparedParallelCopyStep{}},
+              },
+              prepare::PreparedParallelCopyBundle{
+                  .predecessor_label = false_predecessor,
+                  .successor_label = join_label,
+                  .execution_site =
+                      prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+                  .execution_block_label = false_predecessor,
+                  .moves = {prepare::PreparedParallelCopyMove{
+                      .join_transfer_index = 0,
+                      .edge_transfer_index = 1,
+                      .source_value =
+                          bir::Value::named(bir::TypeKind::I32, "%fallback"),
+                      .destination_value =
+                          bir::Value::named(bir::TypeKind::I32, "%selected"),
+                      .carrier_kind =
+                          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+                  }},
+                  .steps = {prepare::PreparedParallelCopyStep{}},
+              },
+          },
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, lhs_name, "s1", 9),
+              rv64_gpr_home(2, function_name, false_name, "t1", 6),
+              rv64_gpr_home(3, function_name, result_name, "a0", 10),
+          },
+      .move_bundles =
+          {
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BlockEntry,
+                  .authority_kind =
+                      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  .block_index = 1,
+                  .source_parallel_copy_predecessor_label = true_predecessor,
+                  .source_parallel_copy_successor_label = join_label,
+                  .moves = {prepare::PreparedMoveResolution{
+                      .to_value_id = 3,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .source_immediate_i32 = 1,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  }},
+              },
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BlockEntry,
+                  .authority_kind =
+                      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  .block_index = 2,
+                  .source_parallel_copy_predecessor_label = false_predecessor,
+                  .source_parallel_copy_successor_label = join_label,
+                  .moves = {prepare::PreparedMoveResolution{
+                      .from_value_id = 2,
+                      .to_value_id = 3,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  }},
+              },
           },
   });
   return prepared;
@@ -2259,6 +2498,51 @@ int builds_prepared_join_transfer_select_materialization_object() {
   return 0;
 }
 
+int skips_published_prepared_join_transfer_select_carrier_object() {
+  const auto prepared =
+      make_prepared_join_transfer_select_with_published_copies_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected published-copy prepared join-transfer select RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  const auto* true_copy_label = object::find_symbol(*module, ".Lmain_pred_true");
+  const auto* false_copy_label = object::find_symbol(*module, ".Lmain_pred_false");
+  const auto* join_label = object::find_symbol(*module, ".Lmain_join");
+  const auto* select_true_label = object::find_symbol(*module, ".Lmain_join_select_0_true");
+  const auto* select_end_label = object::find_symbol(*module, ".Lmain_join_select_0_end");
+  if (text == nullptr || main_symbol == nullptr || true_copy_label == nullptr ||
+      false_copy_label == nullptr || join_label == nullptr) {
+    return fail("expected published-copy join object to publish text/main/block labels");
+  }
+  if (select_true_label != nullptr || select_end_label != nullptr) {
+    return fail("expected published-copy join select carrier to avoid local select labels");
+  }
+  bool saw_select_local_relocation = false;
+  for (const auto& relocation : module->relocations) {
+    if (relocation.type != R_RISCV_JAL && relocation.type != R_RISCV_BRANCH) {
+      continue;
+    }
+    const auto symbol_it =
+        std::find_if(module->symbols.begin(),
+                     module->symbols.end(),
+                     [&](const object::SymbolRecord& symbol) {
+                       return symbol.id == relocation.symbol;
+                     });
+    if (symbol_it == module->symbols.end()) {
+      continue;
+    }
+    saw_select_local_relocation =
+        saw_select_local_relocation ||
+        symbol_it->name.find("_select_") != std::string::npos;
+  }
+  if (saw_select_local_relocation) {
+    return fail("expected published-copy join select carrier to need no select relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_local_register_arg_call_object() {
   const auto prepared = make_prepared_local_register_arg_call_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -3418,6 +3702,7 @@ int main() {
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_stack_slot_scalar_flow_object();
   status |= builds_prepared_join_transfer_select_materialization_object();
+  status |= skips_published_prepared_join_transfer_select_carrier_object();
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_inline_asm_insn_r_object();
   status |= builds_structured_prepared_inline_asm_insn_r_object_without_text_reparse();

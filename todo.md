@@ -8,41 +8,34 @@ Current Step Title: Prove Representative Executable Progress
 
 ## Just Finished
 
-Step 5 added semantic RV64 object-emission support for prepared select
-materialization consumers, including the `src/20000113-1.c` block 4
-instruction 4 shape in `logic.end.40`:
-`%t48 = bir.select ne i32 %t33, 1, i32 1, %t44`. The RV64 object route now uses
-`classify_prepared_object_select_consumer` on shared traversal instruction
-events, emits scalar compare/branch materialization for ordinary and prepared
-join-transfer selects, supports register or stack-slot select result homes, and
-returns shared prepared-consumer diagnostics for malformed select carriers.
+Step 5 repaired the `src/20000113-1.c` RV64 object-route runtime mismatch
+without touching the separate `src/20030216-1.c` compile-time blocker. The
+mismatch was a prepared join-transfer select carrier being recomputed in
+`logic.end.40` after `%t43` reused `%t33`'s `s1` home; the recomputed select
+condition read the newer bitfield value instead of the source-branch value and
+sent the c4c binary to `abort`.
 
-Focused coverage now builds a prepared join-transfer select materialization
-object and checks the generated local branch/jump relocations. The existing
-stack/local object-emission support remains intact.
+RV64 object emission now treats a prepared join-transfer select carrier as an
+already-materialized carrier when all of its edge transfers have published
+parallel-copy bundles in the shared traversal stream. Ordinary selects and
+carrier fixtures without published edge-copy bundles keep the existing scalar
+select emission path.
 
-The representative allowlist did not improve yet. `src/20000113-1.c` now gets
-past the previous compile-time unsupported prepared select shape and reaches a
-runtime mismatch: clang exits 0, while the c4c object binary aborts. No next
-unsupported `20000113` object-emission shape was exposed by this proof.
+The representative allowlist improved to 3 passed
+(`src/20000113-1.c`, `src/20000205-1.c`, `src/20010119-1.c`) and 1 failed
+(`src/20030216-1.c`). The remaining failed case still reports
+`[RV64_C4C_OBJ_COMPILE_FAIL]` with `RISC-V backend object route unsupported
+prepared module shape`.
 
 ## Suggested Next
 
-Diagnose the new `src/20000113-1.c` runtime mismatch in the RV64 object route,
-starting from the linked c4c binary path that reaches `abort` after the
-select-materialized short-circuit value.
+Diagnose the remaining `src/20030216-1.c` unsupported prepared module shape as
+a separate Step 5 packet, without folding it into the now-fixed
+`src/20000113-1.c` runtime route.
 
 ## Watchouts
 
-- Do not claim allowlist pass-count progress from this packet: current proof remains
-  2 passed (`src/20000205-1.c`, `src/20010119-1.c`) and 2 failed
-  (`src/20000113-1.c`, `src/20030216-1.c`).
-- `src/20000113-1.c` has changed failure mode from compile-time unsupported
-  prepared select materialization to runtime abort. The select sequence at
-  object offsets `0x3f8-0x408` correctly branches to the generated
-  `.Lfoobar_logic_end_40_select_4_true/end` labels for the prepared BIR shape;
-  the next investigation should compare the preceding bitfield/scalar value
-  feeding the false arm.
+- `src/20000113-1.c` now passes the RV64 object-route allowlist proof.
 - `src/20030216-1.c` remains a separate compile-time unsupported prepared
   module shape and was not diagnosed or claimed here.
 - Keep the route shared-traversal-first; do not scan
@@ -55,13 +48,13 @@ select-materialized short-circuit value.
 
 Ran the delegated proof command:
 
-`cmake --build --preset default && CASE_TIMEOUT_SEC=20 ALLOWLIST=/tmp/rv64-multiblock-allowlist.txt scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log 2>&1 || true`
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^backend_riscv_object_emission$' && CASE_TIMEOUT_SEC=20 ALLOWLIST=/tmp/rv64-multiblock-allowlist.txt scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log 2>&1 || true`
 
-Result: build completed; allowlist remained 2/4 passed and 2/4 failed.
-`src/20000113-1.c` now fails with `[RV64_BACKEND_RUNTIME_MISMATCH]`
-(`clang_exit=0`, `c4c_exit=Subprocess aborted`), while `src/20030216-1.c`
-still fails at compile time with `RISC-V backend object route unsupported
-prepared module shape`. Proof log: `test_after.log`.
+Result: build completed, `backend_riscv_object_emission` passed, and the
+allowlist is now 3/4 passed and 1/4 failed. `src/20000113-1.c` passes.
+`src/20030216-1.c` still fails at compile time with `RISC-V backend object route
+unsupported prepared module shape`. Proof log: `test_after.log`.
 
-Additional focused validation: `ctest --test-dir build --output-on-failure -R
-'^backend_riscv_object_emission$'` passed.
+Additional focused validation before the full allowlist proof:
+`CASE_TIMEOUT_SEC=20 ALLOWLIST=/tmp/rv64-20000113-only.txt VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
+passed `src/20000113-1.c` in isolation.
