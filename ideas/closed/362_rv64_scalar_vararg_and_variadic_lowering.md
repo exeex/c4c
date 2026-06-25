@@ -1,6 +1,6 @@
 # RV64 Scalar Vararg and Variadic Function Lowering
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/closed/361_rv64_vararg_abi_hook_materialization.md`
 
@@ -17,15 +17,15 @@ proof showed that representative cases no longer report the original target-only
 missing facts for variadic entry state, `va_list` layout, `va_start` helper
 resources/homes, or aggregate `va_arg` helper resources/homes.
 
-The remaining failures are distinct:
+The remaining failures were distinct:
 
 - focused scalar `va_arg` missing facts
 - focused `va_copy` missing facts
 - representative torture cases blocked at the broader diagnostic:
   `RV64 object variadic function lowering is not implemented`
 
-Those are larger lowering and runtime-state concerns, not part of the completed
-target hook materialization acceptance criteria.
+Those were larger lowering and runtime-state concerns, not part of the
+completed target hook materialization acceptance criteria.
 
 ## In Scope
 
@@ -66,6 +66,33 @@ target hook materialization acceptance criteria.
 - Representative allowlist outcomes for `src/20030914-2.c` and
   `src/920908-1.c` are rerun and documented.
 - Existing baseline tests for touched backend/prepared surfaces remain green.
+
+## Completion Notes
+
+Closed after Step 5 validation. The plan completed its scalar `va_arg`,
+`va_copy`, and admission-gate milestone:
+
+- scalar integer `va_arg` prepared plans now reach RV64 lowering or receive a
+  precise scalar payload diagnostic
+- `va_copy` prepared operand homes are materialized at the RV64 boundary
+- the broad RV64 variadic admission diagnostic was replaced by a narrower
+  prepared-helper-specific boundary
+- focused backend tests passed for `backend_riscv_object_emission`,
+  `backend_prepare_frame_stack_call_contract`, and `backend_prepared_printer`
+
+Representative RV64 allowlist validation was rerun for `src/20030914-2.c` and
+`src/920908-1.c`. Both remain unsupported, but their residual failures are now
+outside this source idea's completed milestone:
+
+- `src/20030914-2.c`: `unsupported_param_home`, covered by
+  `ideas/open/363_rv64_object_parameter_home_coverage.md`
+- `src/920908-1.c`: `unsupported_variadic_helper_lowering` for `va_start`,
+  covered by `ideas/open/364_rv64_va_start_helper_lowering.md`
+
+Close-time regression guard used matching `test_before.log` and
+`test_after.log` for the focused backend CTest scope plus the same
+representative allowlist scan appended to both logs. The non-decreasing guard
+mode passed for this lifecycle-only close.
 
 ## Reviewer Reject Signals
 
