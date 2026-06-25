@@ -1,51 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Refresh Representative Backend Evidence
+Current Step ID: 4
+Current Step Title: Closure Decision
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 child idea coverage review for the prepared-module-shape
-classification umbrella.
+Completed Step 3 representative backend evidence refresh for the
+prepared-module-shape umbrella.
 
-Coverage matrix:
+Representative refresh command used an 18-case allowlist spanning the original
+classification buckets and later variadic residuals. Log:
+`build/agent_state/354_step3_representative_refresh.log`.
 
-- 355 diagnostics layering: closed; full scan could be bucketed from logs with
-  structured target/object-route diagnostics.
-- 356 multi-block CFG/object-route architecture: closed; representative
-  multi-block/object-route cases passed and the duplicate direct assembler
-  branch was retired.
-- 357 globals/strings/data sections: closed; supported prepared globals and
-  string constants route through ELF data sections, symbols, and relocations,
-  with remaining data-looking gaps explicitly routed outside target inference.
-- 358 ABI/width edges: closed; five mixed representative cases passed through
-  clang link and qemu.
-- 359 shared prepared object consumer contract: closed; target consumers use
-  shared traversal/query/diagnostic helpers instead of rediscovering
-  BIR/prepared semantics.
-- 360 shared vararg/`va_arg` contract: closed; vararg semantics reach target
-  ABI hooks or precise diagnostics.
-- 361 and 362 RV64 variadic follow-ups: closed; residuals were split and
-  tracked instead of expanding the source ideas.
-- 363 through 367 residual variadic/parameter-home follow-ups: closed; no open
-  child blocker remains from the recorded split chain.
+Result: `total=18 passed=11 failed=7`.
+
+Passing representatives:
+
+- multi-block/control-flow and object-route: `src/20000113-1.c`,
+  `src/20000205-1.c`
+- globals/strings/data representatives: `src/20000227-1.c`,
+  `src/20000314-2.c`, `src/20000223-1.c`
+- mixed ABI/width/declaration/FPR/local-memory edge representatives:
+  `src/20010119-1.c`, `src/20001203-1.c`, `src/20030216-1.c`,
+  `src/20030330-1.c`, `src/20030125-1.c`, `src/920410-1.c`
+
+Structured failing representatives:
+
+- `src/20000217-1.c`: `unsupported_local_memory_access` requiring prepared
+  frame-slot base-plus-offset local memory addressing.
+- `src/20000224-1.c`: `unsupported_terminator_fragment`.
+- `src/20000112-1.c`: `unsupported_terminator_fragment`.
+- `src/20000121-1.c`: `unsupported_local_memory_access` requiring prepared
+  frame-slot base-plus-offset local memory addressing.
+- `src/20030914-2.c`: `unsupported_byval_param_home`.
+- `src/920908-1.c`: `unsupported_variadic_helper_lowering` for
+  `va_arg_aggregate`.
+- `src/va-arg-13.c`: `unsupported_local_memory_access` requiring prepared
+  frame-slot base-plus-offset local memory addressing.
 
 ## Suggested Next
 
-Execute Step 3 with a bounded representative backend evidence refresh that
-covers the original classification buckets and recent child closures. Store
-the noncanonical representative log under `build/agent_state/`.
+Execute Step 4 by deciding closure vs. defer/split. Current evidence does not
+show opaque unclassified prepared-shape failures, but it does show residual
+structured RV64 object-route buckets without open follow-up owners.
 
 ## Watchouts
 
-- A full gcc_torture scan is not required unless representative evidence is
-  insufficient for closure confidence.
-- Include representative coverage for dominant original buckets and residual
-  vararg/parameter-home boundaries; do not weaken expectations or skip runtime
-  checks.
+- Do not close idea 354 unless the residual structured buckets are either
+  intentionally non-blocking under the umbrella acceptance criteria or are
+  captured by new follow-up ideas.
+- Candidate follow-up buckets from Step 3 are local memory addressing,
+  unsupported terminator fragments in data/string representatives, byval
+  aggregate parameter homes, and aggregate `va_arg` helper lowering.
+- Do not weaken expectations or skip runtime checks.
 - This is an analysis umbrella; do not make implementation or test contract
   edits from this packet.
 - Put any refreshed classification logs under `build/agent_state/`, not in
@@ -53,10 +63,31 @@ the noncanonical representative log under `build/agent_state/`.
 
 ## Proof
 
-No build required for this analysis-only update.
+Step 3 representative refresh:
 
-Evidence checked:
+```sh
+tmp=$(mktemp); printf '%s\n' \
+  src/20000113-1.c \
+  src/20000205-1.c \
+  src/20000217-1.c \
+  src/20000224-1.c \
+  src/20000227-1.c \
+  src/20000314-2.c \
+  src/20000112-1.c \
+  src/20000121-1.c \
+  src/20000223-1.c \
+  src/20010119-1.c \
+  src/20001203-1.c \
+  src/20030216-1.c \
+  src/20030330-1.c \
+  src/20030125-1.c \
+  src/920410-1.c \
+  src/20030914-2.c \
+  src/920908-1.c \
+  src/va-arg-13.c > "$tmp"; \
+CASE_TIMEOUT_SEC=20 ALLOWLIST="$tmp" scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/354_step3_representative_refresh.log; \
+rc=$?; rm -f "$tmp"; exit $rc
+```
 
-- Closed child idea files 355 through 367 were inspected as needed for the
-  recorded coverage matrix.
-- No generated or residual child from the 354 split chain remains open.
+Result: failed as expected for residual unsupported buckets,
+`total=18 passed=11 failed=7`.
