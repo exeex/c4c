@@ -39,6 +39,51 @@ bir::Inst binary_inst(std::string result, std::string lhs, std::string rhs) {
   };
 }
 
+bir::Inst select_inst(std::string result) {
+  return bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, std::move(result)),
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%cond"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = bir::Value::named(bir::TypeKind::I32, "%true.in"),
+      .false_value = bir::Value::named(bir::TypeKind::I32, "%false.in"),
+  };
+}
+
+prepare::PreparedJoinTransfer select_materialization_join_transfer(
+    const Fixture& fixture,
+    std::string result) {
+  return prepare::PreparedJoinTransfer{
+      .function_name = fixture.function_name,
+      .join_block_label = fixture.consumer_label,
+      .result = bir::Value::named(bir::TypeKind::I32, std::move(result)),
+      .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+      .carrier_kind =
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+      .edge_transfers = {
+          prepare::PreparedEdgeValueTransfer{
+              .predecessor_label = fixture.predecessor_label,
+              .successor_label = fixture.consumer_label,
+              .incoming_value =
+                  bir::Value::named(bir::TypeKind::I32, "%true.in"),
+              .destination_value =
+                  bir::Value::named(bir::TypeKind::I32, "%selected"),
+          },
+          prepare::PreparedEdgeValueTransfer{
+              .predecessor_label = fixture.exit_label,
+              .successor_label = fixture.consumer_label,
+              .incoming_value =
+                  bir::Value::named(bir::TypeKind::I32, "%false.in"),
+              .destination_value =
+                  bir::Value::named(bir::TypeKind::I32, "%selected"),
+          },
+      },
+      .source_true_transfer_index = 0,
+      .source_false_transfer_index = 1,
+  };
+}
+
 Fixture make_fixture() {
   Fixture fixture;
   fixture.control_flow = prepare::PreparedControlFlowFunction{
@@ -266,16 +311,175 @@ int verify_event_kind_names() {
              : 1;
 }
 
+int verify_select_consumer_kind_names() {
+  return expect(
+             prepare::prepared_object_select_consumer_kind_name(
+                 prepare::PreparedObjectSelectConsumerKind::OrdinarySelect) ==
+                     "ordinary_select" &&
+                 prepare::prepared_object_select_consumer_kind_name(
+                     prepare::PreparedObjectSelectConsumerKind::
+                         PreparedJoinTransferCarrier) ==
+                     "prepared_join_transfer_carrier" &&
+                 prepare::prepared_object_select_consumer_kind_name(
+                     prepare::PreparedObjectSelectConsumerKind::
+                         MissingPreparedJoinTransfer) ==
+                     "missing_prepared_join_transfer" &&
+                 prepare::prepared_object_select_consumer_kind_name(
+                     prepare::PreparedObjectSelectConsumerKind::
+                         AmbiguousPreparedJoinTransfer) ==
+                     "ambiguous_prepared_join_transfer",
+             "prepared object select consumer kind names should remain stable")
+             ? 0
+             : 1;
+}
+
+int verify_real_select_vs_required_missing_carrier_classification() {
+  auto fixture = make_fixture();
+  fixture.bir_function.blocks[1].insts.push_back(select_inst("%ordinary"));
+  const auto& select = fixture.bir_function.blocks[1].insts.back();
+  const auto& binary = fixture.bir_function.blocks[1].insts.front();
+
+  const auto ordinary = prepare::classify_prepared_object_select_consumer(
+      &fixture.control_flow, fixture.consumer_label, select);
+  const auto missing = prepare::classify_prepared_object_select_consumer(
+      &fixture.control_flow, fixture.consumer_label, select, true);
+  const auto non_select = prepare::classify_prepared_object_select_consumer(
+      &fixture.control_flow, fixture.consumer_label, binary);
+
+  if (!expect(ordinary.kind ==
+                  prepare::PreparedObjectSelectConsumerKind::OrdinarySelect &&
+              ordinary.select == std::get_if<bir::SelectInst>(&select) &&
+              ordinary.join_transfer == nullptr,
+              "select without a prepared join transfer should remain an ordinary select") ||
+      !expect(missing.kind == prepare::PreparedObjectSelectConsumerKind::
+                                  MissingPreparedJoinTransfer &&
+              missing.select == std::get_if<bir::SelectInst>(&select) &&
+              missing.join_transfer == nullptr,
+              "required prepared select-carrier query should fail closed when the contract is missing") ||
+      !expect(non_select.kind ==
+                  prepare::PreparedObjectSelectConsumerKind::NotSelectInstruction &&
+              non_select.select == nullptr,
+              "non-select instructions should not be classified as selects")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_select_materialized_join_transfer_carrier_classification() {
+  auto fixture = make_fixture();
+  fixture.bir_function.blocks[1].insts.push_back(select_inst("%selected"));
+  fixture.control_flow.join_transfers.push_back(
+      select_materialization_join_transfer(fixture, "%selected"));
+
+  const auto& select = fixture.bir_function.blocks[1].insts.back();
+  const auto classification = prepare::classify_prepared_object_select_consumer(
+      &fixture.control_flow, fixture.consumer_label, select);
+
+  if (!expect(classification.kind == prepare::PreparedObjectSelectConsumerKind::
+                                         PreparedJoinTransferCarrier &&
+              classification.select == std::get_if<bir::SelectInst>(&select) &&
+              classification.join_transfer ==
+                  &fixture.control_flow.join_transfers.front() &&
+              classification.carrier_kind == prepare::
+                                                 PreparedJoinTransferCarrierKind::
+                                                     SelectMaterialization,
+              "matching select-materialized join transfer should classify as a prepared carrier")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_ambiguous_and_unsupported_select_carrier_classification() {
+  auto ambiguous_fixture = make_fixture();
+  ambiguous_fixture.bir_function.blocks[1].insts.push_back(select_inst("%selected"));
+  ambiguous_fixture.control_flow.join_transfers.push_back(
+      select_materialization_join_transfer(ambiguous_fixture, "%selected"));
+  ambiguous_fixture.control_flow.join_transfers.push_back(
+      select_materialization_join_transfer(ambiguous_fixture, "%selected"));
+
+  const auto ambiguous = prepare::classify_prepared_object_select_consumer(
+      &ambiguous_fixture.control_flow,
+      ambiguous_fixture.consumer_label,
+      ambiguous_fixture.bir_function.blocks[1].insts.back());
+  if (!expect(ambiguous.kind == prepare::PreparedObjectSelectConsumerKind::
+                                    AmbiguousPreparedJoinTransfer &&
+              ambiguous.join_transfer == nullptr,
+              "duplicate matching join transfers should fail closed as ambiguous")) {
+    return 1;
+  }
+
+  auto unsupported_fixture = make_fixture();
+  unsupported_fixture.bir_function.blocks[1].insts.push_back(select_inst("%selected"));
+  auto unsupported_transfer =
+      select_materialization_join_transfer(unsupported_fixture, "%selected");
+  unsupported_transfer.carrier_kind =
+      prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot;
+  unsupported_fixture.control_flow.join_transfers.push_back(
+      std::move(unsupported_transfer));
+  const auto unsupported = prepare::classify_prepared_object_select_consumer(
+      &unsupported_fixture.control_flow,
+      unsupported_fixture.consumer_label,
+      unsupported_fixture.bir_function.blocks[1].insts.back());
+  if (!expect(unsupported.kind ==
+                  prepare::PreparedObjectSelectConsumerKind::
+                      UnsupportedPreparedJoinTransferCarrierKind &&
+              unsupported.join_transfer ==
+                  &unsupported_fixture.control_flow.join_transfers.front(),
+              "non-select join-transfer carrier should not be consumed as a select materialization")) {
+    return 1;
+  }
+
+  auto malformed_fixture = make_fixture();
+  malformed_fixture.bir_function.blocks[1].insts.push_back(select_inst("%selected"));
+  auto malformed_transfer =
+      select_materialization_join_transfer(malformed_fixture, "%selected");
+  malformed_transfer.source_false_transfer_index = 7;
+  malformed_fixture.control_flow.join_transfers.push_back(
+      std::move(malformed_transfer));
+  const auto malformed = prepare::classify_prepared_object_select_consumer(
+      &malformed_fixture.control_flow,
+      malformed_fixture.consumer_label,
+      malformed_fixture.bir_function.blocks[1].insts.back());
+  if (!expect(malformed.kind ==
+                  prepare::PreparedObjectSelectConsumerKind::
+                      MalformedPreparedJoinTransferCarrier,
+              "select-materialized join transfer with invalid edge indexes should fail closed")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
   if (const auto result = verify_event_kind_names(); result != 0) {
     return EXIT_FAILURE;
   }
+  if (const auto result = verify_select_consumer_kind_names(); result != 0) {
+    return EXIT_FAILURE;
+  }
   if (const auto result = verify_canonical_consumer_schedule(); result != 0) {
     return EXIT_FAILURE;
   }
   if (const auto result = verify_edge_copy_execution_site_placement();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result =
+          verify_real_select_vs_required_missing_carrier_classification();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result =
+          verify_select_materialized_join_transfer_carrier_classification();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result =
+          verify_ambiguous_and_unsupported_select_carrier_classification();
       result != 0) {
     return EXIT_FAILURE;
   }

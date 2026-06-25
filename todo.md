@@ -1,31 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/359_bir_prepared_object_consumer_contract_completion.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused Shared-Contract Tests
+Current Step ID: 3
+Current Step Title: Implement Shared Traversal and Query Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added focused shared-contract coverage for prepared object-consumer
-traversal and edge-copy placement. The new
-`backend_prepared_object_consumer_contract` test covers the canonical
-`Label -> BlockEntryCopies -> Instruction -> PreTerminatorCopies -> Terminator`
-schedule, successor-entry vs predecessor-terminator edge-copy placement, and
-fail-closed handling for unplaced critical-edge copies.
+Step 3 extended the shared prepared object-consumer helper surface in
+`src/backend/prealloc/prepared_object_traversal.{hpp,cpp}` with
+`classify_prepared_object_select_consumer`. The target-independent query
+classifies BIR instructions/selects as non-selects, ordinary selects to emit,
+prepared select-materialization join-transfer carriers to consume through the
+published edge/block-entry transfer contract, or fail-closed missing,
+ambiguous, unsupported, and malformed prepared-contract statuses.
 
-The minimal shared helper now lives in `src/backend/prealloc` as
-`prepared_object_traversal.{hpp,cpp}`. It is target-independent and returns
-prepared/BIR event records plus matching prepared move-bundle and
-parallel-copy ownership pointers without touching target object emission.
+`backend_prepared_object_consumer_contract` now covers ordinary-select vs
+required-carrier-missing behavior, matching select-materialized join-transfer
+classification, duplicate/ambiguous join transfers, unsupported non-select
+carrier kinds, and malformed select-materialization edge indexes.
 
 ## Suggested Next
 
-Execute Step 3 by extending the shared prepared object-consumer helpers around
-the new traversal surface. The next coherent packet should add the next query
-contract that target consumers need, preferably select/join-transfer
-classification or value-home transfer planning, with focused shared tests first.
+Continue Step 3 by adding the next shared prepared object-consumer query that
+target backends need before connection, likely value-home or move-bundle
+planning over the traversal events and select/join-transfer classification.
 
 ## Watchouts
 
@@ -43,12 +43,16 @@ classification or value-home transfer planning, with focused shared tests first.
 - Critical-edge parallel copies currently return no block event from the shared
   placement helper; a later packet should add an explicit split-edge or
   diagnostic contract before any target tries to emit them.
+- The select classifier intentionally treats duplicate join-transfer rows,
+  non-select carrier kinds, and incomplete select-materialization edge indexes
+  as fail-closed statuses instead of falling back to target-local
+  reconstruction.
 - RV64 `object_emission.cpp` remains untouched; target consumers should only be
   connected after shared tests and hooks cover the needed contract.
 
 ## Proof
 
 Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(prepared_object_consumer_contract|prealloc_block_entry_publications|prepared_lookup_helper|prepared_printer|aarch64_module_skeleton_contract|aarch64_function_traversal)$' > test_after.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(prepared_object_consumer_contract|prepare_phi_materialize|prepared_lookup_helper|prepared_printer)$' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.

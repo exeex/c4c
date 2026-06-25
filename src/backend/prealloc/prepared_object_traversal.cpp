@@ -20,6 +20,38 @@ namespace {
   return std::nullopt;
 }
 
+[[nodiscard]] bool prepared_join_transfer_matches_select(
+    const PreparedJoinTransfer& join_transfer,
+    BlockLabelId block_label,
+    const bir::SelectInst& select) {
+  return block_label != kInvalidBlockLabel &&
+         join_transfer.join_block_label == block_label &&
+         join_transfer.result.kind == bir::Value::Kind::Named &&
+         select.result.kind == bir::Value::Kind::Named &&
+         join_transfer.result.name == select.result.name;
+}
+
+[[nodiscard]] bool prepared_select_materialization_carrier_is_complete(
+    const PreparedJoinTransfer& join_transfer) {
+  if (!join_transfer.source_true_transfer_index.has_value() ||
+      !join_transfer.source_false_transfer_index.has_value()) {
+    return false;
+  }
+
+  const auto true_index = *join_transfer.source_true_transfer_index;
+  const auto false_index = *join_transfer.source_false_transfer_index;
+  if (true_index >= join_transfer.edge_transfers.size() ||
+      false_index >= join_transfer.edge_transfers.size() ||
+      true_index == false_index) {
+    return false;
+  }
+
+  const auto& true_transfer = join_transfer.edge_transfers[true_index];
+  const auto& false_transfer = join_transfer.edge_transfers[false_index];
+  return true_transfer.successor_label == join_transfer.join_block_label &&
+         false_transfer.successor_label == join_transfer.join_block_label;
+}
+
 [[nodiscard]] bool prepared_move_bundle_matches_parallel_copy(
     const PreparedMoveBundle& move_bundle,
     const PreparedParallelCopyBundle& parallel_copy_bundle,
@@ -176,6 +208,95 @@ std::optional<PreparedObjectTraversalEventKind> prepared_object_parallel_copy_ev
       return std::nullopt;
   }
   return std::nullopt;
+}
+
+PreparedObjectSelectConsumerClassification classify_prepared_object_select_consumer(
+    const PreparedObjectSelectConsumerQuery& query) {
+  if (query.instruction == nullptr) {
+    return PreparedObjectSelectConsumerClassification{};
+  }
+
+  const auto* select = std::get_if<bir::SelectInst>(query.instruction);
+  if (select == nullptr) {
+    return PreparedObjectSelectConsumerClassification{};
+  }
+
+  PreparedObjectSelectConsumerClassification result{
+      .kind = PreparedObjectSelectConsumerKind::OrdinarySelect,
+      .select = select,
+  };
+
+  if (select->result.kind != bir::Value::Kind::Named) {
+    result.kind = PreparedObjectSelectConsumerKind::UnsupportedSelectResult;
+    return result;
+  }
+
+  if (query.control_flow == nullptr || query.block_label == kInvalidBlockLabel) {
+    result.kind = query.require_prepared_join_transfer
+                      ? PreparedObjectSelectConsumerKind::MissingPreparedJoinTransfer
+                      : PreparedObjectSelectConsumerKind::OrdinarySelect;
+    return result;
+  }
+
+  const PreparedJoinTransfer* match = nullptr;
+  for (const auto& join_transfer : query.control_flow->join_transfers) {
+    if (!prepared_join_transfer_matches_select(
+            join_transfer, query.block_label, *select)) {
+      continue;
+    }
+    if (match != nullptr) {
+      result.kind = PreparedObjectSelectConsumerKind::AmbiguousPreparedJoinTransfer;
+      result.join_transfer = nullptr;
+      return result;
+    }
+    match = &join_transfer;
+  }
+
+  if (match == nullptr) {
+    result.kind = query.require_prepared_join_transfer
+                      ? PreparedObjectSelectConsumerKind::MissingPreparedJoinTransfer
+                      : PreparedObjectSelectConsumerKind::OrdinarySelect;
+    return result;
+  }
+
+  result.join_transfer = match;
+  result.carrier_kind = effective_prepared_join_transfer_carrier_kind(*match);
+
+  if (match->kind != PreparedJoinTransferKind::PhiEdge) {
+    result.kind =
+        PreparedObjectSelectConsumerKind::UnsupportedPreparedJoinTransferKind;
+    return result;
+  }
+
+  if (result.carrier_kind !=
+      PreparedJoinTransferCarrierKind::SelectMaterialization) {
+    result.kind = PreparedObjectSelectConsumerKind::
+        UnsupportedPreparedJoinTransferCarrierKind;
+    return result;
+  }
+
+  if (!prepared_select_materialization_carrier_is_complete(*match)) {
+    result.kind =
+        PreparedObjectSelectConsumerKind::MalformedPreparedJoinTransferCarrier;
+    return result;
+  }
+
+  result.kind = PreparedObjectSelectConsumerKind::PreparedJoinTransferCarrier;
+  return result;
+}
+
+PreparedObjectSelectConsumerClassification classify_prepared_object_select_consumer(
+    const PreparedControlFlowFunction* control_flow,
+    BlockLabelId block_label,
+    const bir::Inst& instruction,
+    bool require_prepared_join_transfer) {
+  return classify_prepared_object_select_consumer(
+      PreparedObjectSelectConsumerQuery{
+          .control_flow = control_flow,
+          .block_label = block_label,
+          .instruction = &instruction,
+          .require_prepared_join_transfer = require_prepared_join_transfer,
+      });
 }
 
 std::vector<PreparedObjectTraversalEvent> make_prepared_object_function_traversal(
