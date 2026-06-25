@@ -8,20 +8,37 @@ Current Step Title: Declare RV64I Corpus And Canonical Contract
 
 ## Just Finished
 
-Activation only. No executor packet has completed for Step 1 yet.
+Step 1 - Declare RV64I Corpus And Canonical Contract: added a committed
+`tests/backend/rv64/rv64i_ev64_roundtrip_corpus.s` corpus for RV64I plus c4c
+EV64 `.insn.d`, documented the canonical roundtrip contract in
+`tests/backend/rv64/rv64i_ev64_roundtrip_contract.md`, and registered
+`backend_rv64_roundtrip_contract` CTest scaffolding for the intended
+`input.s -> pass1.o -> pass1.s -> pass2.o -> pass2.s -> pass3.o` route.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: declare the RV64I plus c4c EV64 corpus and add
-the initial CTest-compatible roundtrip scaffolding.
+Execute Step 2 from `plan.md`: begin generalizing c4c-as parsing/encoding from
+the current minimal subset toward the committed RV64I plus EV64 corpus.
 
 ## Watchouts
 
-- Do not treat the existing `.insn.d`, `li`, and `ret` subset as completion for
-  this idea.
-- Keep unsupported extensions and directives fail-closed.
-- Do not use external assembler or objdump output as the source of truth.
+- Current unsupported gaps are intentionally recorded in
+  `tests/backend/rv64/rv64i_ev64_roundtrip_contract.md`: c4c-as does not yet
+  parse the full RV64I mnemonic, immediate, label/fixup, branch, jump, and
+  PC-relative surface; c4c-objdump does not yet decode full RV64I.
+- `backend_rv64_roundtrip_contract` currently passes by requiring the broad
+  corpus to fail closed at pass1 without writing an object. When assembler
+  support expands, the same script is already structured to continue through
+  objdump/as/objdump/as and assert text/object stability.
+- Keep unsupported extensions and directives fail-closed; do not use external
+  assembler or objdump output as the source of truth.
 
 ## Proof
 
-Lifecycle activation only; no build or CTest proof required for this packet.
+Passed:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(c4c_as|c4c_objdump|cli_riscv64|rv64)'
+```
+
+Proof log: `test_after.log`.
