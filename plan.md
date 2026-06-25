@@ -1,154 +1,155 @@
-# RV64 gcc_torture Prepared Module Shape Classification Runbook
+# RV64 Object Route Frame-Slot Base-Offset Local Memory Runbook
 
 Status: Active
-Source Idea: ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md
+Source Idea: ideas/open/368_rv64_object_route_frame_slot_base_offset_memory.md
 
 ## Purpose
 
-Finish the RV64 gcc_torture prepared-module-shape umbrella by validating that
-the failure classification, child idea split, and completed downstream repairs
-still satisfy the source idea.
+Repair the RV64 object route for prepared local-memory accesses that need a
+frame-slot base plus subobject or nonzero offset, starting from the residual
+representatives split out of idea 354.
 
 ## Goal
 
-Decide whether idea 354 can close, or identify the smallest remaining
-classification or follow-up gap that prevents closure.
+Admit semantic RV64 object lowering for supportable prepared frame-slot
+base-plus-offset local memory forms while keeping unsupported width, alignment,
+offset, and aggregate shapes fail-closed with precise diagnostics.
 
 ## Core Rule
 
-Treat this as an analysis and lifecycle umbrella. Do not implement lowering
-repairs, weaken gcc_torture expectations, or claim capability progress from
-classification-only edits.
+Use prepared frame-slot and memory metadata as the source of truth. Do not infer
+case-specific layout from gcc_torture source text, hard-code representative
+offsets, or weaken runtime expectations.
 
 ## Read First
 
+- `ideas/open/368_rv64_object_route_frame_slot_base_offset_memory.md`
 - `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
-- `review/354_prepared_shape_classification.md`, if present
-- closed child ideas named by the source idea:
-  - `ideas/closed/355_rv64_prepared_object_shape_diagnostics.md`
-  - `ideas/closed/356_rv64_object_route_assembler_backed_prepared_text.md`
-  - `ideas/closed/357_rv64_object_route_data_sections_globals_strings.md`
-  - `ideas/closed/358_rv64_object_route_abi_width_edges.md`
-  - `ideas/closed/359_bir_prepared_object_consumer_contract_completion.md`
-- current RV64 gcc_torture backend scan artifacts under `build/agent_state/`
-  and `build/rv64_gcc_c_torture_backend/`, when available
+- `build/agent_state/354_step3_representative_refresh.log`, if present
+- prepared-BIR dumps for:
+  - `src/20000217-1.c`
+  - `src/20000121-1.c`
+  - `src/va-arg-13.c`
+- current RV64 object-emission local-memory handling in
+  `src/backend/mir/riscv/codegen/object_emission.cpp`
+- focused backend tests in
+  `tests/backend/mir/backend_riscv_object_emission_test.cpp`
 
 ## Scope
 
-- Reconcile the source idea's acceptance criteria against current artifacts.
-- Confirm that generated child ideas were closed or intentionally superseded.
-- Refresh representative scan evidence only where needed for closure
-  confidence.
-- Produce a clear closure decision for the supervisor.
+- Audit prepared local-memory facts and frame-slot metadata for the three
+  representatives.
+- Define the first supportable RV64 address forms for frame-slot
+  base-plus-offset loads and stores.
+- Implement object-emission support for those forms through prepared metadata.
+- Preserve precise unsupported diagnostics for shapes that remain outside the
+  idea.
+- Add focused backend tests for both admitted and rejected local-memory forms.
+- Rerun all listed representatives and record their outcomes.
 
 ## Non-Goals
 
-- Do not create another broad RV64 object-route implementation plan inside
-  this umbrella.
-- Do not add testcase-shaped shortcuts or case-specific allowlist changes.
-- Do not downgrade gcc_torture runner contracts.
-- Do not edit implementation files or backend tests from this plan.
-- Do not require a full gcc_torture scan unless existing artifacts and a
-  targeted representative rerun are insufficient to decide closure.
+- Do not implement aggregate `va_arg` helper lowering.
+- Do not implement byval aggregate parameter homes.
+- Do not implement general terminator lowering or control-flow rewrites.
+- Do not broaden into source-syntax layout inference.
+- Do not skip, allowlist-filter, or downgrade gcc_torture runtime checks.
 
 ## Working Model
 
-Idea 354 began as a classification umbrella for the dominant
-`RISC-V backend object route unsupported prepared module shape` failure family.
-The source idea already records the classification artifact, bucket counts, and
-child ideas. Since all listed child ideas are now closed, the remaining work is
-to verify that the classification still covers the dominant failure family and
-that no in-scope untriaged prepared-shape bucket remains.
+Idea 354 has already classified this residual bucket as a concrete RV64 object
+route memory-addressing gap, not an opaque prepared-module-shape failure.
+Prepared lowering is expected to expose enough slot identity, offset, width,
+and value facts for target emission to select RV64 stack-relative load/store
+forms where the offset is encodable and the width is supported.
 
 ## Execution Rules
 
-- Prefer existing scan and review artifacts before rerunning heavy scans.
-- When refreshing evidence, use a temporary copied allowlist or `MAX_CASES`
-  only for probes and record that scope in `todo.md`.
-- Preserve root-level canonical logs: `test_before.log` and `test_after.log`
-  are for regression proof; put umbrella analysis logs under
-  `build/agent_state/`.
-- If closure is not justified, update `todo.md` with the exact missing bucket
-  or child idea needed; do not silently expand this runbook.
-- If a new distinct initiative is discovered, write it as a new
-  `ideas/open/*.md` only after confirming it is outside the current umbrella's
-  already generated children.
+- Start from diagnostics and prepared dumps before editing target emission.
+- Keep the first implementation slice narrow: one supportable width and offset
+  family is acceptable if unsupported cases stay explicit.
+- Add focused tests before relying on gcc_torture representatives.
+- Use `test_after.log` only for the delegated proof command selected by the
+  supervisor; put analysis logs under `build/agent_state/`.
+- Escalate to a separate idea if representative progress requires aggregate
+  helper lowering, byval homes, or terminator work instead of local-memory
+  addressing.
 
 ## Steps
 
-### Step 1: Rehydrate Classification Evidence
+### Step 1: Audit Prepared Frame-Slot Memory Facts
 
-Goal: Confirm the original prepared-shape classification artifact and scan
-inputs are available or identify the minimum refresh needed.
-
-Actions:
-
-- Inspect `review/354_prepared_shape_classification.md`, if present.
-- Inspect `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv` and
-  `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`, if present.
-- Check whether the recorded counts and representative buckets in the source
-  idea are traceable to actual logs.
-- If artifacts are missing or stale enough to block closure, record the exact
-  refresh command needed in `todo.md`.
-
-Completion Check:
-
-- `todo.md` states whether the classification evidence is reusable, missing,
-  or requires a bounded refresh before closure.
-
-### Step 2: Verify Child Idea Coverage
-
-Goal: Confirm every generated repair or prerequisite idea from the umbrella is
-closed or intentionally superseded.
+Goal: Identify the exact prepared local-memory shape that triggers
+`unsupported_local_memory_access` in the representatives.
 
 Actions:
 
-- Read the closed child ideas listed in `Read First`.
-- Confirm each child closure covers the bucket or layer boundary assigned by
-  idea 354.
-- Check whether any generated child remains open under `ideas/open/`.
-- If a child closure left a deliberate follow-up outside idea 354, record
-  whether that follow-up blocks this umbrella.
+- Generate or inspect prepared dumps for `src/20000217-1.c`,
+  `src/20000121-1.c`, and `src/va-arg-13.c`.
+- Locate the object-emission rejection path and record which metadata fields
+  are available for slot base, offset, width, alignment, signedness, and access
+  direction.
+- Separate cases that are pure frame-slot base-plus-offset memory accesses from
+  cases blocked first by aggregate helper or other nonlocal-memory work.
 
 Completion Check:
 
-- `todo.md` records a child coverage matrix and any blocker for closure.
+- `todo.md` records the supportable first address form, remaining rejected
+  forms, and the focused proof target for implementation.
 
-### Step 3: Refresh Representative Backend Evidence
+### Step 2: Admit the First Semantic Address Form
 
-Goal: Provide current proof that the repaired buckets no longer leave an
-obvious prepared-module-shape representative failure in the source idea's
-scope.
+Goal: Lower one or more supportable prepared frame-slot base-plus-offset
+load/store forms in the RV64 object route.
 
 Actions:
 
-- Build `c4cll` if needed.
-- Run a representative RV64 gcc_torture backend allowlist that covers the
-  source idea's major buckets and the most recent child closure evidence.
-- Store noncanonical analysis logs under `build/agent_state/`.
-- Keep `test_after.log` only for the supervisor's chosen regression proof if
-  requested.
+- Implement the object-emission path using prepared frame-slot and memory
+  metadata.
+- Check RV64 immediate range and alignment before emitting instructions.
+- Keep unsupported widths, offsets, alignments, aggregates, or missing metadata
+  rejected with precise diagnostics.
+- Add focused object-emission tests for admitted and fail-closed cases.
 
 Completion Check:
 
-- Representative evidence is recorded in `todo.md` with the exact command,
-  pass/fail counts, and any remaining prepared-shape failures.
+- Focused backend object-emission coverage proves the admitted forms and
+  fail-closed diagnostics.
+
+### Step 3: Rerun Representatives
+
+Goal: Prove the local-memory repair advances the residual bucket without
+overfitting a named case.
+
+Actions:
+
+- Rerun `src/20000217-1.c`, `src/20000121-1.c`, and `src/va-arg-13.c` through
+  the RV64 gcc_torture backend runner.
+- Record which representatives pass, advance to a different owner, or still
+  fail on in-scope local-memory addressing.
+- If a representative now blocks on aggregate helper, byval, or terminator
+  work, route that evidence to the existing child idea instead of expanding
+  this plan.
+
+Completion Check:
+
+- `todo.md` records the representative command, pass/fail count, and remaining
+  owner for every listed case.
 
 ### Step 4: Closure Decision
 
-Goal: Decide whether idea 354 satisfies its acceptance criteria.
+Goal: Decide whether idea 368 satisfies its acceptance criteria.
 
 Actions:
 
-- Compare Step 1 through Step 3 evidence against the source idea's
-  `Acceptance` section.
-- If closure is justified, ask the plan owner close flow to archive the idea
-  after running the required regression guard.
-- If closure is not justified, update `todo.md` with the smallest remaining
-  lifecycle action: refresh classification, create one child idea, or mark a
-  named child as intentionally superseded.
+- Compare focused tests and representative evidence against the source idea's
+  acceptance criteria.
+- Confirm all remaining local-memory forms either pass, have precise
+  diagnostics, or are documented as out of scope.
+- Ask the plan-owner close flow to archive idea 368 only if the source idea is
+  actually complete and regression guard passes.
 
 Completion Check:
 
-- The supervisor has a clear close/defer decision with enough evidence to
-  choose the next delegated packet.
+- The supervisor has a clear close/defer decision for idea 368 with proof
+  paths recorded in `todo.md`.
