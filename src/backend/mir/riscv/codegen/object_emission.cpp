@@ -344,6 +344,27 @@ bool append_rv64_store_register_to_stack(RiscvEncodedFragment& fragment,
   return true;
 }
 
+bool append_rv64_store_register_to_base(RiscvEncodedFragment& fragment,
+                                        std::uint32_t source_register,
+                                        std::uint32_t base_register,
+                                        std::int32_t offset,
+                                        std::size_t size_bytes) {
+  if (!fits_signed_12_bit_immediate(offset)) {
+    return false;
+  }
+  const auto funct3 = rv64_load_store_funct3_for_size(size_bytes);
+  if (!funct3.has_value()) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_s_type(0x23,
+                            *funct3,
+                            base_register,
+                            source_register,
+                            offset));
+  return true;
+}
+
 bool append_rv64_load_stack_to_register(RiscvEncodedFragment& fragment,
                                         std::uint32_t destination_register,
                                         std::int32_t offset,
@@ -357,6 +378,27 @@ bool append_rv64_load_stack_to_register(RiscvEncodedFragment& fragment,
   }
   append_le32(fragment.bytes,
               encode_i_type(0x03, destination_register, *funct3, 2, offset));
+  return true;
+}
+
+bool append_rv64_load_base_to_register(RiscvEncodedFragment& fragment,
+                                       std::uint32_t destination_register,
+                                       std::uint32_t base_register,
+                                       std::int32_t offset,
+                                       std::size_t size_bytes) {
+  if (!fits_signed_12_bit_immediate(offset)) {
+    return false;
+  }
+  const auto funct3 = rv64_load_store_funct3_for_size(size_bytes);
+  if (!funct3.has_value()) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_i_type(0x03,
+                            destination_register,
+                            *funct3,
+                            base_register,
+                            offset));
   return true;
 }
 
@@ -1411,6 +1453,190 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
   return fragment;
 }
 
+const c4c::backend::bir::Global* prepared_global_for_access_symbol(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedMemoryAccess& access) {
+  if (!access.address.symbol_name.has_value()) {
+    return nullptr;
+  }
+  const std::string_view symbol =
+      prepare::prepared_link_name(prepared.names, *access.address.symbol_name);
+  if (symbol.empty()) {
+    return nullptr;
+  }
+  for (const auto& global : prepared.module.globals) {
+    std::string global_label = global.name;
+    if (global.link_name_id != c4c::kInvalidLinkName) {
+      const std::string_view spelling =
+          prepared.module.names.link_names.spelling(global.link_name_id);
+      if (!spelling.empty()) {
+        global_label = std::string{spelling};
+      }
+    }
+    if (global_label == symbol) {
+      return &global;
+    }
+  }
+  return nullptr;
+}
+
+bool prepared_global_access_is_supported(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::optional<c4c::ValueNameId> result_value_name,
+    std::optional<c4c::ValueNameId> stored_value_name,
+    std::size_t size_bytes) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (access == nullptr ||
+      access->result_value_name != result_value_name ||
+      access->stored_value_name != stored_value_name ||
+      access->address_space != bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !access->address.symbol_name.has_value() ||
+      access->address.size_bytes != size_bytes ||
+      access->address.align_bytes < size_bytes ||
+      !access->address.can_use_base_plus_offset ||
+      !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    return false;
+  }
+  const auto policy =
+      prepare::prepared_global_symbol_address_policy(access->address,
+                                                     &prepared.target_profile);
+  if (!policy.has_value() ||
+      *policy != bir::GlobalAddressMaterializationPolicy::Direct) {
+    return false;
+  }
+  const auto* global = prepared_global_for_access_symbol(prepared, *access);
+  if (global == nullptr ||
+      access->address.byte_offset < 0 ||
+      static_cast<std::uint64_t>(access->address.byte_offset) > global->size_bytes ||
+      size_bytes > global->size_bytes -
+                       static_cast<std::uint64_t>(access->address.byte_offset)) {
+    return false;
+  }
+  return true;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_load_global(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::LoadGlobalInst& load,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes) {
+  if (load.result.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto size_bytes = rv64_scalar_memory_size_for_type(load.result.type);
+  if (!size_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto result_value_name = names.value_names.find(load.result.name);
+  if (result_value_name == c4c::kInvalidValueName ||
+      !prepared_global_access_is_supported(prepared,
+                                           access,
+                                           result_value_name,
+                                           std::nullopt,
+                                           *size_bytes)) {
+    return std::nullopt;
+  }
+  const std::string_view symbol =
+      prepare::prepared_link_name(prepared.names, *access->address.symbol_name);
+  const auto destination = gpr_register_number_for_value(names, lookups, load.result);
+  const auto destination_offset =
+      prepared_stack_slot_home_offset_for_value(stack_layout,
+                                                names,
+                                                lookups,
+                                                load.result,
+                                                stack_frame_bytes);
+  if (!destination.has_value() && !destination_offset.has_value()) {
+    return std::nullopt;
+  }
+  const std::uint32_t destination_register = destination.value_or(6);
+  RiscvEncodedFragment fragment = make_rv64_pcrel_address_fragment(
+      destination_register,
+      std::string{symbol},
+      ".Lpcrel_hi_global_load_" + std::to_string(access->function_name) + "_" +
+          std::to_string(access->block_label) + "_" +
+          std::to_string(access->inst_index),
+      RiscvObjectFixupTargetKind::Object,
+      0);
+  if (!append_rv64_load_base_to_register(fragment,
+                                        destination_register,
+                                        destination_register,
+                                        static_cast<std::int32_t>(
+                                            access->address.byte_offset),
+                                        *size_bytes)) {
+    return std::nullopt;
+  }
+  if (destination_offset.has_value() &&
+      !append_rv64_store_register_to_stack(fragment,
+                                          destination_register,
+                                          *destination_offset,
+                                          *size_bytes)) {
+    return std::nullopt;
+  }
+  return fragment;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_store_global(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::StoreGlobalInst& store,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes) {
+  const auto size_bytes = rv64_scalar_memory_size_for_type(store.value.type);
+  if (!size_bytes.has_value()) {
+    return std::nullopt;
+  }
+  std::optional<c4c::ValueNameId> stored_value_name;
+  if (store.value.kind == c4c::backend::bir::Value::Kind::Named) {
+    stored_value_name = names.value_names.find(store.value.name);
+    if (*stored_value_name == c4c::kInvalidValueName) {
+      return std::nullopt;
+    }
+  }
+  if (!prepared_global_access_is_supported(prepared,
+                                           access,
+                                           std::nullopt,
+                                           stored_value_name,
+                                           *size_bytes)) {
+    return std::nullopt;
+  }
+  const std::string_view symbol =
+      prepare::prepared_link_name(prepared.names, *access->address.symbol_name);
+  RiscvEncodedFragment fragment = make_rv64_pcrel_address_fragment(
+      5,
+      std::string{symbol},
+      ".Lpcrel_hi_global_store_" + std::to_string(access->function_name) + "_" +
+          std::to_string(access->block_label) + "_" +
+          std::to_string(access->inst_index),
+      RiscvObjectFixupTargetKind::Object,
+      0);
+  if (!append_rv64_move_value_to_register(fragment,
+                                          6,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          store.value,
+                                          stack_frame_bytes) ||
+      !append_rv64_store_register_to_base(fragment,
+                                         6,
+                                         5,
+                                         static_cast<std::int32_t>(
+                                             access->address.byte_offset),
+                                         *size_bytes)) {
+    return std::nullopt;
+  }
+  return fragment;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -2122,6 +2348,38 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
         return fragment;
       }
     }
+    if (const auto* store = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst)) {
+      auto fragment = fragment_for_prepared_store_global(
+          prepared,
+          prepared.stack_layout,
+          prepared.names,
+          &lookups,
+          *store,
+          prepared_memory_access_for_instruction(
+              &lookups,
+              prepared_block_label,
+              instruction_index),
+          stack_frame_bytes);
+      if (fragment.has_value()) {
+        return fragment;
+      }
+    }
+    if (const auto* load = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst)) {
+      auto fragment = fragment_for_prepared_load_global(
+          prepared,
+          prepared.stack_layout,
+          prepared.names,
+          &lookups,
+          *load,
+          prepared_memory_access_for_instruction(
+              &lookups,
+              prepared_block_label,
+              instruction_index),
+          stack_frame_bytes);
+      if (fragment.has_value()) {
+        return fragment;
+      }
+    }
     if (prepared_pure_instruction_is_rematerialized_immediate(prepared.names,
                                                              &lookups,
                                                              inst)) {
@@ -2202,10 +2460,33 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                prepared_block_label,
                                                instruction_index));
   }
-  if (std::get_if<bir::LoadGlobalInst>(&inst) != nullptr ||
-      std::get_if<bir::StoreGlobalInst>(&inst) != nullptr) {
+  if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst)) {
+    const auto access = prepared_memory_access_for_instruction(&lookups,
+                                                               prepared_block_label,
+                                                               instruction_index);
+    const auto size_bytes = rv64_scalar_memory_size_for_type(load->result.type);
+    if (!size_bytes.has_value()) {
+      return std::string{
+          "unsupported_global_data: RV64 object route supports only 32-bit and 64-bit prepared global memory accesses"};
+    }
     return std::string{
-        "unsupported_global_data: RV64 object route does not lower prepared global memory instructions"};
+        access == nullptr
+            ? "unsupported_global_data: RV64 object route requires prepared direct global-symbol base-plus-offset memory addressing"
+            : "unsupported_global_data: RV64 object route requires supported prepared global memory facts"};
+  }
+  if (const auto* store = std::get_if<bir::StoreGlobalInst>(&inst)) {
+    const auto access = prepared_memory_access_for_instruction(&lookups,
+                                                               prepared_block_label,
+                                                               instruction_index);
+    const auto size_bytes = rv64_scalar_memory_size_for_type(store->value.type);
+    if (!size_bytes.has_value()) {
+      return std::string{
+          "unsupported_global_data: RV64 object route supports only 32-bit and 64-bit prepared global memory accesses"};
+    }
+    return std::string{
+        access == nullptr
+            ? "unsupported_global_data: RV64 object route requires prepared direct global-symbol base-plus-offset memory addressing"
+            : "unsupported_global_data: RV64 object route requires supported prepared global memory facts"};
   }
   return std::nullopt;
 }

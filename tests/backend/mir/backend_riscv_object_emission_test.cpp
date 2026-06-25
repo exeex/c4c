@@ -961,10 +961,12 @@ prepare::PreparedBirModule make_prepared_i16_local_store_module() {
   return prepared;
 }
 
-prepare::PreparedBirModule make_prepared_global_load_module() {
+prepare::PreparedBirModule make_prepared_global_load_module(bool publish_access = true) {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
   const auto result_name = prepared.names.value_names.intern("%g");
+  const auto global_name = prepared.names.link_names.intern("g");
 
   bir::Block entry{
       .label = "entry",
@@ -973,13 +975,26 @@ prepare::PreparedBirModule make_prepared_global_load_module() {
               bir::LoadGlobalInst{
                   .result = bir::Value::named(bir::TypeKind::I32, "%g"),
                   .global_name = "g",
+                  .global_name_id = global_name,
                   .align_bytes = 4,
               },
           },
       .terminator = bir::Terminator{},
+      .label_id = block_label,
   };
   entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%g");
 
+  prepared.module.globals.push_back(bir::Global{
+      .name = "g",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::I32,
+      .is_constant = true,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(9),
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
   prepared.module.functions.push_back(bir::Function{
       .name = "main",
       .return_type = bir::TypeKind::I32,
@@ -989,6 +1004,10 @@ prepare::PreparedBirModule make_prepared_global_load_module() {
   });
   prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
       .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
@@ -998,6 +1017,94 @@ prepare::PreparedBirModule make_prepared_global_load_module() {
           .value_name = result_name,
           .kind = prepare::PreparedValueHomeKind::Register,
           .register_name = std::string{"a0"},
+      }},
+  });
+  if (publish_access) {
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_name,
+        .accesses = {prepare::PreparedMemoryAccess{
+            .function_name = function_name,
+            .block_label = block_label,
+            .inst_index = 0,
+            .result_value_name = result_name,
+            .address = prepare::PreparedAddress{
+                .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                .symbol_name = global_name,
+                .global_address_materialization_policy =
+                    bir::GlobalAddressMaterializationPolicy::Direct,
+                .byte_offset = 0,
+                .size_bytes = 4,
+                .align_bytes = 4,
+                .can_use_base_plus_offset = true,
+            },
+        }},
+    });
+  }
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_global_store_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto global_name = prepared.names.link_names.intern("g");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreGlobalInst{
+                  .global_name = "g",
+                  .global_name_id = global_name,
+                  .value = bir::Value::immediate_i32(11),
+                  .align_bytes = 4,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "g",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(1),
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses = {prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 0,
+          .address = prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+              .symbol_name = global_name,
+              .global_address_materialization_policy =
+                  bir::GlobalAddressMaterializationPolicy::Direct,
+              .byte_offset = 0,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .can_use_base_plus_offset = true,
+          },
       }},
   });
   return prepared;
@@ -3662,10 +3769,10 @@ int emits_prepared_string_constant_object_storage() {
   return 0;
 }
 
-int rejects_prepared_global_memory_instruction_with_stable_bucket() {
+int rejects_prepared_global_memory_without_prepared_access() {
   return expect_prepared_rejection_diagnostic(
-      make_prepared_global_load_module(),
-      "unsupported_global_data: RV64 object route does not lower prepared global memory instructions");
+      make_prepared_global_load_module(false),
+      "unsupported_global_data: RV64 object route requires prepared direct global-symbol base-plus-offset memory addressing");
 }
 
 int rejects_prepared_i16_local_memory_with_stable_bucket() {
@@ -3920,6 +4027,93 @@ int emits_prepared_global_address_relocations_to_object_symbol() {
   const auto image = rv64::write_rv64_relocatable_elf_object(*module);
   if (!image.has_value()) {
     return fail("expected RV64 ELF writer to serialize global address relocations");
+  }
+  return 0;
+}
+
+int emits_prepared_global_load_relocations_and_instruction() {
+  const auto prepared = make_prepared_global_load_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit global load");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* rodata = object::find_section(*module, ".rodata");
+  const auto* global_symbol = object::find_symbol(*module, "g");
+  const auto* auipc_label = object::find_symbol(*module, ".Lpcrel_hi_global_load_1_1_0");
+  if (text == nullptr || rodata == nullptr || global_symbol == nullptr ||
+      auipc_label == nullptr) {
+    return fail("expected text, rodata, global symbol, and load AUIPC-site label");
+  }
+  if (text->bytes.size() < 12 ||
+      text->bytes[0] != 0x17 || text->bytes[1] != 0x05 ||
+      text->bytes[4] != 0x13 || text->bytes[5] != 0x05 ||
+      text->bytes[8] != 0x03 || text->bytes[9] != 0x25) {
+    return fail("expected PC-relative address materialization followed by lw");
+  }
+  if (global_symbol->binding != object::SymbolBinding::Global ||
+      global_symbol->kind != object::SymbolKind::Object ||
+      global_symbol->section != std::optional<object::SectionId>{rodata->id}) {
+    return fail("expected global load relocation target to be a defined object");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 0 ||
+      module->relocations[0].type != R_RISCV_PCREL_HI20 ||
+      module->relocations[0].symbol != global_symbol->id ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 4 ||
+      module->relocations[1].type != R_RISCV_PCREL_LO12_I ||
+      module->relocations[1].symbol != auipc_label->id) {
+    return fail("expected prepared global load PC-relative relocation pair");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize global load relocations");
+  }
+  return 0;
+}
+
+int emits_prepared_global_store_relocations_and_instruction() {
+  const auto prepared = make_prepared_global_store_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit global store");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* data = object::find_section(*module, ".data");
+  const auto* global_symbol = object::find_symbol(*module, "g");
+  const auto* auipc_label = object::find_symbol(*module, ".Lpcrel_hi_global_store_1_1_0");
+  if (text == nullptr || data == nullptr || global_symbol == nullptr ||
+      auipc_label == nullptr) {
+    return fail("expected text, data, global symbol, and store AUIPC-site label");
+  }
+  if (text->bytes.size() < 16 ||
+      text->bytes[0] != 0x97 || text->bytes[1] != 0x02 ||
+      text->bytes[4] != 0x93 || text->bytes[5] != 0x82 ||
+      text->bytes[8] != 0x13 || text->bytes[9] != 0x03 ||
+      text->bytes[12] != 0x23 || text->bytes[13] != 0xa0) {
+    return fail("expected PC-relative address materialization, value move, and sw");
+  }
+  if (global_symbol->binding != object::SymbolBinding::Global ||
+      global_symbol->kind != object::SymbolKind::Object ||
+      global_symbol->section != std::optional<object::SectionId>{data->id}) {
+    return fail("expected global store relocation target to be a defined object");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 0 ||
+      module->relocations[0].type != R_RISCV_PCREL_HI20 ||
+      module->relocations[0].symbol != global_symbol->id ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 4 ||
+      module->relocations[1].type != R_RISCV_PCREL_LO12_I ||
+      module->relocations[1].symbol != auipc_label->id) {
+    return fail("expected prepared global store PC-relative relocation pair");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize global store relocations");
   }
   return 0;
 }
@@ -4286,7 +4480,7 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_d_template_modifier_shape();
   status |= rejects_prepared_inline_asm_insn_d_object();
   status |= emits_prepared_string_constant_object_storage();
-  status |= rejects_prepared_global_memory_instruction_with_stable_bucket();
+  status |= rejects_prepared_global_memory_without_prepared_access();
   status |= rejects_prepared_i16_local_memory_with_stable_bucket();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= emits_prepared_writable_i32_global_object_storage();
@@ -4295,6 +4489,8 @@ int main() {
   status |= emits_prepared_constant_f64_global_object_storage();
   status |= emits_prepared_string_address_relocations_to_object_symbol();
   status |= emits_prepared_global_address_relocations_to_object_symbol();
+  status |= emits_prepared_global_load_relocations_and_instruction();
+  status |= emits_prepared_global_store_relocations_and_instruction();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
   status |= writes_prepared_rv64_relocatable_elf_object_file();
