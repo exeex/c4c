@@ -102,8 +102,10 @@ endfunction()
 
 function(run_objdump_success_case name object_path output_path expected_hex)
   set(roundtrip_object "${WORK_DIR}/${name}.roundtrip.o")
+  set(roundtrip_output "${WORK_DIR}/${name}.roundtrip.s")
   file(REMOVE "${output_path}")
   file(REMOVE "${roundtrip_object}")
+  file(REMOVE "${roundtrip_output}")
   execute_process(
     COMMAND "${C4C_OBJDUMP}" "${object_path}" -o "${output_path}"
     TIMEOUT "${CASE_TIMEOUT_SEC}"
@@ -152,6 +154,31 @@ function(run_objdump_success_case name object_path output_path expected_hex)
   if(NOT roundtrip_hex STREQUAL expected_hex)
     message(FATAL_ERROR
       "[C4C_OBJDUMP_ROUNDTRIP_TEXT_BYTES] expected '${expected_hex}', got '${roundtrip_hex}'")
+  endif()
+
+  execute_process(
+    COMMAND "${C4C_OBJDUMP}" "${roundtrip_object}" -o "${roundtrip_output}"
+    TIMEOUT "${CASE_TIMEOUT_SEC}"
+    RESULT_VARIABLE second_objdump_rc
+    OUTPUT_VARIABLE second_objdump_out
+    ERROR_VARIABLE second_objdump_err
+  )
+  if(second_objdump_rc MATCHES "timeout")
+    message(FATAL_ERROR
+      "[C4C_OBJDUMP_SECOND_ROUNDTRIP_TIMEOUT] ${roundtrip_object} exceeded ${CASE_TIMEOUT_SEC}s")
+  endif()
+  if(NOT second_objdump_rc EQUAL 0)
+    message(FATAL_ERROR
+      "[C4C_OBJDUMP_SECOND_ROUNDTRIP_FAIL] ${roundtrip_object}\n${second_objdump_out}${second_objdump_err}")
+  endif()
+  if(NOT EXISTS "${roundtrip_output}")
+    message(FATAL_ERROR "[C4C_OBJDUMP_SECOND_ROUNDTRIP_OUTPUT_MISSING] expected '${roundtrip_output}'")
+  endif()
+
+  file(READ "${roundtrip_output}" roundtrip_asm_text)
+  if(NOT asm_text STREQUAL roundtrip_asm_text)
+    message(FATAL_ERROR
+      "[C4C_OBJDUMP_ROUNDTRIP_ASM_STABILITY] expected '${output_path}' and '${roundtrip_output}' to match exactly")
   endif()
 endfunction()
 
