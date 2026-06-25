@@ -2516,6 +2516,81 @@ prepare::PreparedBirModule make_prepared_mixed_inline_asm_insn_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name =
+      prepared.names.function_names.intern("byval_stack_param");
+  const auto param_name = prepared.names.value_names.intern("%p.pa");
+  const auto object_id = prepare::PreparedObjectId{18};
+  const auto slot_id = prepare::PreparedFrameSlotId{0};
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "byval_stack_param",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .params = {bir::Param{
+          .type = bir::TypeKind::Ptr,
+          .name = "%p.pa",
+          .size_bytes = 72,
+          .align_bytes = 4,
+          .abi = bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 72,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Memory,
+              .passed_in_register = false,
+              .byval_copy = true,
+          },
+          .is_byval = true,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = object_id,
+      .function_name = function_name,
+      .value_name = param_name,
+      .source_kind = "byval_param",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 72,
+      .align_bytes = 4,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = object_id,
+      .function_name = function_name,
+      .offset_bytes = 0,
+      .size_bytes = 72,
+      .align_bytes = 4,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 1,
+          .function_name = function_name,
+          .value_name = param_name,
+          .kind = prepare::PreparedValueHomeKind::StackSlot,
+          .slot_id = slot_id,
+          .offset_bytes = std::size_t{0},
+          .size_bytes = std::size_t{72},
+          .align_bytes = std::size_t{4},
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_local_register_arg_call_module() {
   prepare::PreparedBirModule prepared;
   const auto callee_name = prepared.names.function_names.intern("add_pair");
@@ -3192,6 +3267,12 @@ int builds_prepared_two_arg_scalar_call_object() {
     return fail("expected two-arg same-module call relocation at call pair");
   }
   return 0;
+}
+
+int rejects_byval_stack_slot_param_home_with_precise_diagnostic() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_byval_stack_slot_param_module(),
+      "unsupported_byval_param_home: RV64 object route does not yet lower byval aggregate parameter homes in prepared stack slots");
 }
 
 int builds_prepared_scalar_local_frame_object() {
@@ -4994,6 +5075,7 @@ int main() {
   status |=
       materializes_fact_complete_variadic_va_start_with_overflow_base_state();
   status |= builds_prepared_two_arg_scalar_call_object();
+  status |= rejects_byval_stack_slot_param_home_with_precise_diagnostic();
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_stack_slot_scalar_flow_object();
   status |= builds_prepared_join_transfer_select_materialization_object();

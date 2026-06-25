@@ -2559,21 +2559,26 @@ bool prepared_join_transfer_edge_copies_are_published(
       });
 }
 
-bool prepared_param_homes_supported(
+std::optional<std::string> diagnose_unsupported_prepared_param_homes(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Function& function) {
   for (const auto& param : function.params) {
-    const auto home =
-        gpr_register_number_for_value(names,
-                                      lookups,
-                                      c4c::backend::bir::Value::named(param.type,
-                                                                      param.name));
-    if (!home.has_value()) {
-      return false;
+    const auto value = c4c::backend::bir::Value::named(param.type, param.name);
+    const auto* home = prepared_value_home_for(names, lookups, value);
+    if (home != nullptr && gpr_register_number_for_home(*home).has_value()) {
+      continue;
     }
+    if (param.is_byval && home != nullptr &&
+        home->kind ==
+            c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
+      return std::string{
+          "unsupported_byval_param_home: RV64 object route does not yet lower byval aggregate parameter homes in prepared stack slots"};
+    }
+    return std::string{
+        "unsupported_param_home: RV64 object route requires all parameters in supported GPR homes"};
   }
-  return true;
+  return std::nullopt;
 }
 
 const c4c::backend::bir::Function* find_defined_bir_function(
@@ -3106,9 +3111,9 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
         "unsupported_instruction_fragment: atomic operations are not supported by the RV64 object route");
   }
   const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
-  if (!prepared_param_homes_supported(prepared.names, &lookups, *function)) {
-    return make_rv64_prepared_function_rejection(
-        "unsupported_param_home: RV64 object route requires all parameters in supported GPR homes");
+  if (auto diagnostic =
+          diagnose_unsupported_prepared_param_homes(prepared.names, &lookups, *function)) {
+    return make_rv64_prepared_function_rejection(std::move(*diagnostic));
   }
   RiscvObjectFunction object_function{
       .name = function_name,
