@@ -8,22 +8,21 @@ Current Step Title: Repair Local Memory Width and Home Edges
 
 ## Just Finished
 
-Completed Plan Step 3's local-memory width slice. RV64 object emission now
-accepts 1- and 2-byte scalar local memory widths for prepared frame-slot
-base-plus-offset local accesses, reusing the existing semantic
-`PreparedMemoryAccess` checks instead of testcase matching. The focused i16
-local-store fixture now builds and verifies the emitted `sh` stack-store
-sequence; existing 32- and 64-bit local memory behavior remains covered by the
-same object-emission test binary.
+Completed Plan Step 3's representative validation for `src/20001203-1.c` after
+the local-memory width slice. The temporary allowlist harness now passes this
+case, so the previous `unsupported_local_memory_access` diagnostic is gone and
+no later structured boundary appeared for this representative.
 
 ## Suggested Next
 
-Run the representative validation for the local-memory boundary and decide the
-next Step 3 packet from the new `src/20001203-1.c` result:
+Use the remaining Step 1 audit failure, `src/20030125-1.c`, to choose the next
+ABI-width edge packet. Start by classifying its current generic
+`unsupported_instruction_fragment` into a precise backend boundary before
+changing lowering behavior.
 
-```sh
-tmp=$(mktemp); printf 'src/20001203-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEOUT_SEC=20 STOP_ON_FAILURE=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log; rc=$?; rm -f "$tmp"; exit $rc
-```
+Suggested proof shape for the next classification packet: rerun only
+`src/20030125-1.c` through the same temporary allowlist harness and preserve
+the resulting `test_after.log` plus case log.
 
 ## Watchouts
 
@@ -33,6 +32,8 @@ tmp=$(mktemp); printf 'src/20001203-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEO
   non-negative offset, and signed 12-bit immediate reach.
 - Narrow local loads use the same stack-load helper and therefore encode signed
   `lb`/`lh`; add an explicit load fixture before changing signedness behavior.
+- `src/20001203-1.c` is now green in the representative harness; do not keep
+  expanding this packet around that testcase.
 - `src/20030125-1.c` remains out of scope for this packet and should still be
   classified separately before any FPR or floating-operation implementation.
 
@@ -41,15 +42,16 @@ tmp=$(mktemp); printf 'src/20001203-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEO
 Delegated proof:
 
 ```sh
-cmake --build build --target backend_riscv_object_emission_test && ctest --test-dir build -R '^backend_riscv_object_emission$' --output-on-failure > test_after.log
+tmp=$(mktemp); printf 'src/20001203-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEOUT_SEC=20 STOP_ON_FAILURE=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log; rc=$?; rm -f "$tmp"; exit $rc
 ```
 
-Result: passed, 1/1 focused tests. Proof log: `test_after.log`.
+Result: passed, 1/1 representative case. Proof log: `test_after.log`.
+Case log: `build/rv64_gcc_c_torture_backend/src_20001203-1.c/case.log`.
 
 Additional local check:
 
 ```sh
-git diff --check
+git diff --check -- todo.md
 ```
 
 Result: passed.
