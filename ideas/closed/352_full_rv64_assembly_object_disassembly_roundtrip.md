@@ -143,3 +143,28 @@ encoder/decoder.
   instruction handling.
 - Unknown bytes are silently skipped or printed as valid instructions without
   decoding their fields.
+
+## Closure Notes
+
+Closed on 2026-06-25.
+
+Completion evidence:
+
+- The committed RV64I plus c4c EV64 corpus and contract live under
+  `tests/backend/rv64/`.
+- `backend_rv64_roundtrip_contract` is registered in ordinary CTest and proves
+  `input.s -> pass1.o -> pass1.s -> pass2.o -> pass2.s -> pass3.o`.
+- The roundtrip contract checks both `pass1.s == pass2.s` and
+  `pass2.o == pass3.o` without using an external assembler or objdump as the
+  source of truth.
+- Closure review found the implementation aligned with this idea and found no
+  testcase-overfit or expectation downgrade.
+- Full-suite regression logs `test_before.log` and `test_after.log` both
+  reported 3351/3351 passing tests. The close-time regression guard passed in
+  non-decreasing mode with no new tests over 30 seconds.
+
+Known boundaries retained intentionally:
+
+- Unsupported external control-flow relocation semantics remain fail-closed.
+- Unsupported extensions and directives continue to fail closed with
+  diagnostics rather than being silently accepted.
