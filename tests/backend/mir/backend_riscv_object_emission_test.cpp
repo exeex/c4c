@@ -1205,6 +1205,81 @@ prepare::PreparedBirModule make_prepared_i16_local_store_module() {
   return prepared;
 }
 
+prepare::PreparedValueHome make_fpr_home(c4c::FunctionNameId function_name,
+                                         c4c::ValueNameId value_name,
+                                         prepare::PreparedValueId value_id,
+                                         std::string register_name,
+                                         std::size_t physical_index) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::move(register_name),
+      .target_register_identity =
+          prepare::PreparedTargetRegisterIdentity{
+              .target_arch = c4c::TargetArch::Riscv64,
+              .bank = prepare::PreparedRegisterBank::Fpr,
+              .register_class = prepare::PreparedRegisterClass::Float,
+              .physical_index = physical_index,
+          },
+  };
+}
+
+prepare::PreparedBirModule make_prepared_fpr_fpext_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("fpr_fpext");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("%src");
+  const auto result_name = prepared.names.value_names.intern("%dst");
+
+  bir::CastInst cast;
+  cast.opcode = bir::CastOpcode::FPExt;
+  cast.operand = bir::Value::named(bir::TypeKind::F32, "%src");
+  cast.result = bir::Value::named(bir::TypeKind::F64, "%dst");
+  bir::Block entry{
+      .label = "entry",
+      .insts = {cast},
+      .terminator = bir::Terminator{},
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "fpr_fpext",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              make_fpr_home(function_name, source_name, 1, "fa0", 10),
+              make_fpr_home(function_name, result_name, 2, "fa1", 11),
+          },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_fpr_fptrunc_module() {
+  auto prepared = make_prepared_fpr_fpext_module();
+  auto& function = prepared.module.functions.front();
+  auto& cast = std::get<bir::CastInst>(function.blocks.front().insts.front());
+  cast.opcode = bir::CastOpcode::FPTrunc;
+  cast.operand = bir::Value::named(bir::TypeKind::F64, "%src");
+  cast.result = bir::Value::named(bir::TypeKind::F32, "%dst");
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_global_load_module(bool publish_access = true) {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -4377,6 +4452,38 @@ int builds_prepared_i16_local_store_object() {
   return 0;
 }
 
+int builds_prepared_fpr_fpext_object() {
+  const auto prepared = make_prepared_fpr_fpext_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared FPR fpext RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "fpr_fpext");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared FPR fpext object to publish text/function");
+  }
+  if (text->bytes.size() != 8 || text->size_bytes != 8 ||
+      function->value != 0 || function->size_bytes != 8 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared FPR fpext object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x420505d3 ||
+      read_u32(text->bytes, 4) != 0x00008067) {
+    return fail("expected fcvt.d.s fa1, fa0, rne followed by ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared FPR fpext object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_unsupported_prepared_floating_cast_with_precise_diagnostic() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_fpr_fptrunc_module(),
+      "unsupported_floating_cast: RV64 object route supports only prepared F32-to-F64 FPR register casts");
+}
+
 int rejects_prepared_data_without_asm_fallback() {
   auto prepared = make_prepared_direct_call_module();
   const auto target = prepared.module.names.link_names.intern("target");
@@ -5196,6 +5303,8 @@ int main() {
   status |= emits_prepared_string_constant_object_storage();
   status |= rejects_prepared_global_memory_without_prepared_access();
   status |= builds_prepared_i16_local_store_object();
+  status |= builds_prepared_fpr_fpext_object();
+  status |= rejects_unsupported_prepared_floating_cast_with_precise_diagnostic();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= emits_prepared_writable_i32_global_object_storage();
   status |= emits_prepared_linear_i8_global_object_storage();

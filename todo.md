@@ -8,40 +8,24 @@ Current Step Title: Route Simple Call and FPR ABI Edges
 
 ## Just Finished
 
-Completed Plan Step 4's classification audit for `src/20030125-1.c`. The
-generic `unsupported_instruction_fragment` comes from the first prepared BIR
-instruction in `@t`, block `entry`, instruction index `0`:
+Completed Plan Step 4's first RV64 FPR cast object-route slice. The prepared
+object emitter now lowers `bir.fpext float -> double` when both operand and
+result have explicit RV64 FPR register homes, emitting `fcvt.d.s`. Unsupported
+floating casts now report a structured RV64 diagnostic instead of falling
+through to the generic unsupported-instruction diagnostic.
 
-```text
-%t0 = bir.fpext float %p.a to double
-```
-
-`fragment_for_prepared_instruction()` reaches the `CastInst` path, but
-`fragment_for_prepared_cast()` only handles integer casts because it requires
-`rv64_integer_type_bits()` for both operands. The current diagnostic helper has
-no `CastInst` branch for floating casts, so this falls through to the generic
-unsupported-instruction diagnostic. Prepared facts are present and target
-consumable: `%p.a`, `%t0`, `%t1`, and `%t2` all have FPR register homes; the
-same-module call to `sin` has FPR argument/result ABI plans; and the
-before-instruction, before-call, after-call, and before-return move bundles are
-published.
+Changed files:
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `todo.md`
 
 ## Suggested Next
 
-Implement the first Step 4 FPR object-route packet in
-`src/backend/mir/riscv/codegen/object_emission.cpp` with focused coverage in
-`tests/backend/mir/backend_riscv_object_emission_test.cpp`. The smallest
-coherent slice is to classify or lower prepared FPR casts, starting with
-`bir.fpext float -> double` in FPR register homes and preserving a structured
-diagnostic for still-unsupported floating casts. If lowering `fpext` succeeds,
-expect the same representative to expose the queued `%t2 = bir.fptrunc double
-%t1 to float` boundary before the call/return sequence is fully executable.
-
-Suggested focused proof:
-
-```sh
-cmake --build build --target backend_riscv_object_emission_test && ctest --test-dir build -R '^backend_riscv_object_emission$' --output-on-failure > test_after.log
-```
+Run the representative `src/20030125-1.c` validation to confirm the old
+`bir.fpext` boundary advances. If it exposes the expected
+`bir.fptrunc double -> float` FPR-register boundary, the next coherent Step 4
+implementation packet is prepared FPR `fptrunc` lowering or a deliberately
+narrow structured diagnostic, depending on the supervisor's route choice.
 
 Suggested representative proof after the focused slice:
 
@@ -53,10 +37,10 @@ tmp=$(mktemp); printf 'src/20030125-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEO
 
 - Treat `src/20030125-1.c` as a representative only. The semantic class is
   prepared FPR cast/call ABI lowering, not testcase-specific math folding.
-- This is target-consumable RV64 FPR work, not an upstream prepared-semantics
-  gap: prepared FPR homes, call plans, and move bundles are already published.
-- The first failing instruction is `bir.fpext`; `bir.fptrunc` is the likely
-  next same-family boundary in `@t`/`@q` once `fpext` is handled.
+- This packet intentionally did not implement `fptrunc`, floating calls, libm
+  behavior, or stack-slot FPR materialization.
+- The FPR cast lowerer requires `PreparedTargetRegisterIdentity` to identify
+  RV64 FPR physical registers; it does not infer FPR numbers from names alone.
 - The local-memory address predicate remains intentionally narrow: default
   address space, non-volatile, frame-slot base, published frame-slot id,
   base-plus-offset eligibility, matching access size, compatible alignment,
@@ -73,16 +57,9 @@ tmp=$(mktemp); printf 'src/20030125-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEO
 Delegated proof:
 
 ```sh
-git diff --check -- todo.md
+cmake --build build --target backend_riscv_object_emission_test && ctest --test-dir build -R '^backend_riscv_object_emission$' --output-on-failure > test_after.log
 ```
 
-Result: passed.
+Result: passed, with 1/1 `backend_riscv_object_emission` test passing.
 
-Evidence inspected:
-
-```sh
-./build/c4cll --dump-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20030125-1.c
-./build/c4cll --dump-prepared-bir --target riscv64-linux-gnu --mir-focus-function t tests/c/external/gcc_torture/src/20030125-1.c
-```
-
-Existing representative log: `build/rv64_gcc_c_torture_backend/src_20030125-1.c/case.log`.
+Proof log: `test_after.log`.
