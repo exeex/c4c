@@ -1464,6 +1464,21 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
   return object_function;
 }
 
+std::optional<prepare::PreparedObjectConsumerDiagnostic>
+diagnose_unplaced_parallel_copy_obligations(
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow) {
+  const auto obligations =
+      prepare::collect_unplaced_prepared_object_parallel_copy_obligations(
+          control_flow);
+  for (const auto& obligation : obligations) {
+    auto diagnostic = prepare::diagnose_prepared_object_consumer(obligation);
+    if (diagnostic.has_value()) {
+      return diagnostic;
+    }
+  }
+  return std::nullopt;
+}
+
 std::string_view strip_inline_asm_register_constraint(std::string_view constraint) {
   while (!constraint.empty()) {
     const char ch = constraint.front();
@@ -2046,34 +2061,54 @@ std::optional<object::ObjectModule> build_rv64_text_object_module(
   return module;
 }
 
-std::optional<object::ObjectModule> build_rv64_prepared_text_object_module(
+RiscvPreparedObjectModuleResult
+build_rv64_prepared_text_object_module_with_diagnostics(
     const c4c::backend::prepare::PreparedBirModule& prepared) {
   if (!prepared.module.globals.empty() ||
       !prepared.module.string_constants.empty()) {
-    return std::nullopt;
+    return RiscvPreparedObjectModuleResult{};
   }
   std::vector<RiscvObjectFunction> functions;
   functions.reserve(prepared.control_flow.functions.size());
   for (const auto& control_flow : prepared.control_flow.functions) {
+    if (auto diagnostic =
+            diagnose_unplaced_parallel_copy_obligations(control_flow)) {
+      return RiscvPreparedObjectModuleResult{
+          .prepared_consumer_category = diagnostic->category,
+          .diagnostic = std::move(diagnostic->message),
+      };
+    }
+
     const std::string_view function_name =
         c4c::backend::prepare::prepared_function_name(prepared.names,
                                                       control_flow.function_name);
     if (function_name.empty()) {
-      return std::nullopt;
+      return RiscvPreparedObjectModuleResult{};
     }
     if (find_defined_bir_function(prepared, function_name) == nullptr) {
       continue;
     }
     auto function = prepared_function_to_object_function(prepared, control_flow);
     if (!function.has_value()) {
-      return std::nullopt;
+      return RiscvPreparedObjectModuleResult{};
     }
     functions.push_back(std::move(*function));
   }
   if (functions.empty()) {
-    return std::nullopt;
+    return RiscvPreparedObjectModuleResult{};
   }
-  return build_rv64_text_object_module(functions);
+  auto module = build_rv64_text_object_module(functions);
+  if (!module.has_value()) {
+    return RiscvPreparedObjectModuleResult{};
+  }
+  return RiscvPreparedObjectModuleResult{
+      .module = std::move(*module),
+  };
+}
+
+std::optional<object::ObjectModule> build_rv64_prepared_text_object_module(
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  return build_rv64_prepared_text_object_module_with_diagnostics(prepared).module;
 }
 
 std::optional<object::RelocatableElfImage> write_rv64_relocatable_elf_object(

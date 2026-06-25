@@ -8,23 +8,25 @@ Current Step Title: Connect Target Consumers Through Hooks
 
 ## Just Finished
 
-Step 4 connected AArch64 prepared function traversal to the shared unplaced
-parallel-copy obligation contract. `lower_prepared_functions` now calls
+Step 4 connected RV64 prepared object emission to the shared unplaced
+parallel-copy obligation contract in a hook-shaped diagnostic path.
+`build_rv64_prepared_text_object_module_with_diagnostics(...)` now consults
 `collect_unplaced_prepared_object_parallel_copy_obligations(...)` for each
-prepared function and emits an AArch64 lowering diagnostic carrying the shared
-`UnsupportedParallelCopyExecutionSite` category and shared critical-edge
-obligation message instead of silently ignoring the obligation or rediscovering
-CFG facts locally.
+prepared control-flow function before translating BIR into RV64 text fragments,
+and reports the shared `UnsupportedParallelCopyExecutionSite` category plus the
+shared critical-edge obligation message from
+`diagnose_prepared_object_consumer(...)`.
 
-`backend_aarch64_function_traversal` now proves that an AArch64 prepared
-function with a critical-edge parallel-copy obligation still traverses normally
-and reports the shared target-consumer diagnostic with function/block context.
+`backend_riscv_object_emission` now proves that RV64 prepared object emission
+rejects a critical-edge parallel-copy obligation through the shared
+category/message path, while the legacy optional builder still rejects the shape
+without exposing target-local CFG rediscovery.
 
 ## Suggested Next
 
-Continue Step 4 with the next target hook connection the supervisor selects,
-preferably another narrow target consumer that can use an existing shared
-classification/diagnostic helper without target-local semantic reconstruction.
+Continue Step 4 with the next target consumer the supervisor selects, or move to
+review/closure if AArch64 traversal and RV64 prepared object emission are the
+intended Step 4 target hooks for this runbook.
 
 ## Watchouts
 
@@ -42,10 +44,13 @@ classification/diagnostic helper without target-local semantic reconstruction.
 - Critical-edge parallel copies now have a shared unplaced-obligation
   side-channel; target consumers should query that contract and surface its
   diagnostic instead of rediscovering skipped copy obligations locally.
-- AArch64 now emits the shared critical-edge obligation diagnostic from function
+- AArch64 emits the shared critical-edge obligation diagnostic from function
   traversal, but the public compile wrapper still discards lowering diagnostics;
   direct traversal/module-lowering tests remain the observable proof point for
-  this packet.
+  that packet.
+- RV64 prepared object emission now has a diagnostic-capable builder alongside
+  the legacy optional-return builder; the top-level backend object wrapper still
+  maps optional failure to its existing coarse unsupported-shape message.
 - The select classifier intentionally treats duplicate join-transfer rows,
   non-select carrier kinds, and incomplete select-materialization edge indexes
   as fail-closed statuses instead of falling back to target-local
@@ -66,12 +71,10 @@ classification/diagnostic helper without target-local semantic reconstruction.
   classifier statuses; target code should surface these categories/messages
   instead of converting fail-closed statuses into a coarse prepared-module
   shape failure.
-- RV64 `object_emission.cpp` remains untouched; target consumers should only be
-  connected after shared tests and hooks cover the needed contract.
 
 ## Proof
 
 Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(aarch64_function_traversal|prepared_object_consumer_contract|prepare_phi_materialize|prepared_lookup_helper|prepared_printer)$' > test_after.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(riscv_object_emission|prepared_object_consumer_contract|aarch64_function_traversal|prepare_phi_materialize|prepared_lookup_helper|prepared_printer)$' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.

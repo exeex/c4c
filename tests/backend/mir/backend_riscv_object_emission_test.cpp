@@ -120,6 +120,36 @@ bir::Function make_prepared_return_zero_function(std::string name) {
   };
 }
 
+prepare::PreparedBirModule make_prepared_critical_edge_parallel_copy_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("critical_edge_copy");
+  const auto predecessor = prepared.names.block_labels.intern("pred");
+  const auto successor = prepared.names.block_labels.intern("succ");
+
+  prepared.module.functions.push_back(make_prepared_return_zero_function(
+      "critical_edge_copy"));
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = predecessor,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+      .parallel_copy_bundles =
+          {prepare::PreparedParallelCopyBundle{
+              .predecessor_label = predecessor,
+              .successor_label = successor,
+              .execution_site =
+                  prepare::PreparedParallelCopyExecutionSite::CriticalEdge,
+              .moves = {prepare::PreparedParallelCopyMove{}},
+              .steps = {prepare::PreparedParallelCopyStep{}},
+          }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_direct_call_module() {
   prepare::PreparedBirModule prepared;
   const auto caller_name = prepared.names.function_names.intern("caller");
@@ -1590,6 +1620,29 @@ int builds_prepared_text_object_module_without_call_text() {
   return 0;
 }
 
+int rejects_prepared_critical_edge_parallel_copy_with_shared_diagnostic() {
+  const auto prepared = make_prepared_critical_edge_parallel_copy_module();
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected RV64 object emission to reject critical-edge copies");
+  }
+
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (result.ok() || result.module.has_value()) {
+    return fail("expected diagnostic RV64 object emission result to reject");
+  }
+  if (result.prepared_consumer_category !=
+      prepare::PreparedObjectConsumerDiagnosticCategory::
+          UnsupportedParallelCopyExecutionSite) {
+    return fail("expected shared unsupported parallel-copy execution-site category");
+  }
+  if (result.diagnostic !=
+      "prepared critical-edge parallel-copy obligation has no target-consumable block event") {
+    return fail("expected shared critical-edge parallel-copy diagnostic message");
+  }
+  return 0;
+}
+
 int builds_prepared_rematerialized_nonzero_return_object() {
   const auto prepared = make_prepared_rematerialized_return_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -2863,6 +2916,7 @@ int main() {
   status |= records_same_module_direct_call_symbol();
   status |= records_pcrel_hi_lo_pairing_with_auipc_site_label();
   status |= builds_prepared_text_object_module_without_call_text();
+  status |= rejects_prepared_critical_edge_parallel_copy_with_shared_diagnostic();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
   status |= builds_prepared_two_arg_scalar_call_object();

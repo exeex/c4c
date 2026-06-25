@@ -3,6 +3,7 @@
 #include "mir/object/elf_writer.hpp"
 #include "mir/object/model.hpp"
 #include "../../../prealloc/module.hpp"
+#include "../../../prealloc/prepared_object_traversal.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -41,6 +42,18 @@ struct RiscvObjectFunction {
   std::string name;
   bool global = true;
   std::vector<RiscvEncodedFragment> fragments;
+};
+
+struct RiscvPreparedObjectModuleResult {
+  std::optional<c4c::backend::mir::object::ObjectModule> module;
+  std::optional<c4c::backend::prepare::PreparedObjectConsumerDiagnosticCategory>
+      prepared_consumer_category;
+  std::string diagnostic;
+
+  [[nodiscard]] bool ok() const {
+    return module.has_value() && !prepared_consumer_category.has_value() &&
+           diagnostic.empty();
+  }
 };
 
 enum class RiscvInsnDInlineAsmRegisterBank {
@@ -83,6 +96,10 @@ build_rv64_text_object_module(const std::vector<RiscvObjectFunction>& functions)
 
 [[nodiscard]] std::optional<c4c::backend::mir::object::ObjectModule>
 build_rv64_prepared_text_object_module(
+    const c4c::backend::prepare::PreparedBirModule& prepared);
+
+[[nodiscard]] RiscvPreparedObjectModuleResult
+build_rv64_prepared_text_object_module_with_diagnostics(
     const c4c::backend::prepare::PreparedBirModule& prepared);
 
 [[nodiscard]] std::optional<c4c::backend::mir::object::RelocatableElfImage>
