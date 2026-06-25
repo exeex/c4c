@@ -237,6 +237,12 @@ run_success_case(
   "assembled 17 instruction line(s)"
   "b7f2ff7f17030080930300809324f4ff136af407139bfa03135cfb439b0c0c801b55fd41b3059500338625413bd2e140030501800368c103233cd17e678000000a0320080b030000"
 )
+run_success_case(
+  rv64i_step3_local_branch_labels
+  ".text\n.globl main\nmain:\n  beq a0, a1, forward\n  bne a1, a0, back\nback:\n  blt a0, a1, forward\n  bge a1, a0, back\nforward:\n  bltu a0, a1, done\n  bgeu a1, a0, back\n  ret\ndone:\n  ret\n"
+  "assembled 8 instruction line(s)"
+  "6308b5006392a5006344b500e3dea5fe6366b500e3faa5fe6780000067800000"
+)
 run_failure_case(
   instruction_outside_text
   "li a0, 0\n.text\nret\n"
@@ -248,9 +254,9 @@ run_failure_case(
   "unsupported directive"
 )
 run_failure_case(
-  branch_label_fixup_still_unsupported
-  ".text\n.globl main\nmain:\n  beq a0, a1, target\ntarget:\n  ret\n"
-  "unsupported RV64 instruction 'beq a0, a1, target'"
+  branch_undefined_label_still_closed
+  ".text\n.globl main\nmain:\n  beq a0, a1, external_target\n"
+  "undefined local branch label 'external_target'"
 )
 run_failure_case(
   jal_label_fixup_still_unsupported
@@ -271,6 +277,17 @@ run_failure_case(
   rv64i_shift_range_error
   ".text\n.globl main\nmain:\n  slliw a0, a1, 32\n"
   "unsupported RV64 instruction 'slliw a0, a1, 32'"
+)
+
+set(branch_out_of_range_source ".text\n.globl main\nmain:\n  beq a0, a1, target\n")
+foreach(i RANGE 0 1024)
+  string(APPEND branch_out_of_range_source "  addi zero, zero, 0\n")
+endforeach()
+string(APPEND branch_out_of_range_source "target:\n  ret\n")
+run_failure_case(
+  branch_label_out_of_range
+  "${branch_out_of_range_source}"
+  "branch target 'target' is out of range or misaligned"
 )
 
 message(STATUS "[PASS][c4c-as-suite] ${WORK_DIR}")

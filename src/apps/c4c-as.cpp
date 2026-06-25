@@ -8,6 +8,8 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <unordered_map>
+#include <unordered_set>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -24,10 +26,16 @@ struct CliOptions {
 
 struct ParseResult {
   std::vector<std::string> globals;
-  std::vector<std::string> labels;
+  struct Label {
+    int line_number = 0;
+    std::string name;
+    std::uint64_t offset_bytes = 0;
+  };
+  std::vector<Label> labels;
 #if C4C_ENABLE_BACKEND
   struct Instruction {
     int line_number = 0;
+    std::uint64_t offset_bytes = 0;
     c4c::backend::riscv::codegen::Rv64AsmLine parsed;
   };
   std::vector<Instruction> instructions;
@@ -175,7 +183,9 @@ std::optional<ParseResult> parse_assembly_file(const std::string& path) {
   }
 
   ParseResult result;
+  std::unordered_set<std::string> seen_labels;
   bool in_text = false;
+  std::uint64_t text_offset = 0;
   std::string raw_line;
   int line_number = 0;
   while (std::getline(input, raw_line)) {
@@ -214,7 +224,17 @@ std::optional<ParseResult> parse_assembly_file(const std::string& path) {
                   << ": label outside .text section\n";
         return std::nullopt;
       }
-      result.labels.emplace_back(line.substr(0, colon));
+      const std::string label_name(line.substr(0, colon));
+      if (!seen_labels.insert(label_name).second) {
+        std::cerr << "c4c-as: error: " << path << ':' << line_number
+                  << ": duplicate label '" << label_name << "'\n";
+        return std::nullopt;
+      }
+      result.labels.push_back(ParseResult::Label{
+          .line_number = line_number,
+          .name = label_name,
+          .offset_bytes = text_offset,
+      });
       continue;
     }
 
@@ -245,7 +265,19 @@ std::optional<ParseResult> parse_assembly_file(const std::string& path) {
       return std::nullopt;
     }
 #if C4C_ENABLE_BACKEND
-    result.instructions.push_back(ParseResult::Instruction{line_number, *parsed_instruction});
+    const auto size =
+        c4c::backend::riscv::codegen::rv64_asm_line_size_bytes(*parsed_instruction);
+    if (!size.has_value()) {
+      std::cerr << "c4c-as: error: " << path << ':' << line_number
+                << ": failed to size RV64 instruction\n";
+      return std::nullopt;
+    }
+    result.instructions.push_back(ParseResult::Instruction{
+        .line_number = line_number,
+        .offset_bytes = text_offset,
+        .parsed = *parsed_instruction,
+    });
+    text_offset += *size;
 #else
     result.instructions.emplace_back(line);
 #endif
@@ -257,6 +289,44 @@ std::optional<ParseResult> parse_assembly_file(const std::string& path) {
   }
   return result;
 }
+
+#if C4C_ENABLE_BACKEND
+std::optional<ParseResult> resolve_local_branch_labels(ParseResult parsed,
+                                                       const std::string& path) {
+  std::unordered_map<std::string, std::uint64_t> labels_by_name;
+  labels_by_name.reserve(parsed.labels.size());
+  for (const auto& label : parsed.labels) {
+    labels_by_name.emplace(label.name, label.offset_bytes);
+  }
+
+  for (auto& instruction : parsed.instructions) {
+    auto* branch =
+        std::get_if<c4c::backend::riscv::codegen::Rv64BranchLine>(&instruction.parsed);
+    if (branch == nullptr) {
+      continue;
+    }
+    const std::string target_label = branch->target_label;
+    const auto target = labels_by_name.find(target_label);
+    if (target == labels_by_name.end()) {
+      std::cerr << "c4c-as: error: " << path << ':' << instruction.line_number
+                << ": undefined local branch label '" << target_label << "'\n";
+      return std::nullopt;
+    }
+    branch->immediate = static_cast<std::int64_t>(target->second) -
+                        static_cast<std::int64_t>(instruction.offset_bytes);
+    branch->target_label.clear();
+    const auto encoded =
+        c4c::backend::riscv::codegen::encode_rv64_asm_line(instruction.parsed);
+    if (!encoded.has_value()) {
+      std::cerr << "c4c-as: error: " << path << ':' << instruction.line_number
+                << ": branch target '" << target_label
+                << "' is out of range or misaligned\n";
+      return std::nullopt;
+    }
+  }
+  return parsed;
+}
+#endif
 
 std::optional<std::vector<std::uint8_t>> assemble_text_bytes(const ParseResult& parsed,
                                                             const std::string& path) {
@@ -291,15 +361,22 @@ std::optional<c4c::backend::riscv::codegen::RiscvObjectFunction> build_object_fu
               << ": supported RV64 object subset requires exactly one .globl symbol\n";
     return std::nullopt;
   }
-  if (parsed.labels.size() != 1) {
+  const ParseResult::Label* global_label = nullptr;
+  for (const auto& label : parsed.labels) {
+    if (label.name == parsed.globals.front()) {
+      global_label = &label;
+      break;
+    }
+  }
+  if (global_label == nullptr) {
     std::cerr << "c4c-as: error: " << path
-              << ": supported RV64 object subset requires exactly one text label\n";
+              << ": .globl symbol '" << parsed.globals.front()
+              << "' does not match any text label\n";
     return std::nullopt;
   }
-  if (parsed.globals.front() != parsed.labels.front()) {
+  if (global_label->offset_bytes != 0) {
     std::cerr << "c4c-as: error: " << path << ": .globl symbol '"
-              << parsed.globals.front() << "' does not match text label '"
-              << parsed.labels.front() << "'\n";
+              << parsed.globals.front() << "' must label the first text instruction\n";
     return std::nullopt;
   }
   if (text_bytes.empty()) {
@@ -310,6 +387,15 @@ std::optional<c4c::backend::riscv::codegen::RiscvObjectFunction> build_object_fu
 
   c4c::backend::riscv::codegen::RiscvEncodedFragment fragment;
   fragment.bytes = text_bytes;
+  for (const auto& label : parsed.labels) {
+    if (label.name == parsed.globals.front()) {
+      continue;
+    }
+    fragment.labels.push_back(c4c::backend::riscv::codegen::RiscvObjectLabel{
+        .offset_bytes = label.offset_bytes,
+        .name = label.name,
+    });
+  }
   return c4c::backend::riscv::codegen::RiscvObjectFunction{
       .name = parsed.globals.front(),
       .global = true,
@@ -385,17 +471,26 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  const auto text_bytes = assemble_text_bytes(*parsed, options->input_path);
+#if C4C_ENABLE_BACKEND
+  const auto resolved = resolve_local_branch_labels(*parsed, options->input_path);
+  if (!resolved.has_value()) {
+    return 1;
+  }
+#else
+  const auto& resolved = parsed;
+#endif
+
+  const auto text_bytes = assemble_text_bytes(*resolved, options->input_path);
   if (!text_bytes.has_value()) {
     return 1;
   }
 
 #if C4C_ENABLE_BACKEND
-  if (!write_object_file(*parsed, *text_bytes, options->input_path, options->output_path)) {
+  if (!write_object_file(*resolved, *text_bytes, options->input_path, options->output_path)) {
     return 1;
   }
 
-  std::cout << "c4c-as: assembled " << parsed->instructions.size()
+  std::cout << "c4c-as: assembled " << resolved->instructions.size()
             << " instruction line(s) from " << options->input_path << " into "
             << text_bytes->size() << " text byte(s): " << hex_bytes(*text_bytes)
             << "; wrote RV64 relocatable object "

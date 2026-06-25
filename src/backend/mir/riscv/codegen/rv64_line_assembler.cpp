@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cctype>
 #include <limits>
 #include <string_view>
 #include <utility>
@@ -33,6 +34,16 @@ constexpr std::uint32_t encode_s_type(std::uint32_t opcode, std::uint32_t funct3
   return ((imm >> 5) << 25) | ((rs2 & 0x1fu) << 20) |
          ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
          ((imm & 0x1fu) << 7) | (opcode & 0x7fu);
+}
+
+constexpr std::uint32_t encode_b_type(std::uint32_t opcode, std::uint32_t funct3,
+                                      std::uint32_t rs1, std::uint32_t rs2,
+                                      std::int32_t imm13) {
+  const auto imm = static_cast<std::uint32_t>(imm13);
+  return (((imm >> 12) & 0x1u) << 31) | (((imm >> 5) & 0x3fu) << 25) |
+         ((rs2 & 0x1fu) << 20) | ((rs1 & 0x1fu) << 15) |
+         ((funct3 & 0x7u) << 12) | (((imm >> 1) & 0xfu) << 8) |
+         (((imm >> 11) & 0x1u) << 7) | (opcode & 0x7fu);
 }
 
 constexpr std::uint32_t encode_u_type(std::uint32_t opcode, std::uint32_t rd,
@@ -176,6 +187,10 @@ bool fits_signed_20_bit_immediate(std::int64_t value) {
   return value >= -(1 << 19) && value <= ((1 << 19) - 1);
 }
 
+bool fits_branch_immediate(std::int64_t value) {
+  return value >= -4096 && value <= 4094 && value % 2 == 0;
+}
+
 bool fits_unsigned_shift_immediate(std::int64_t value, std::uint32_t max_value) {
   return value >= 0 && value <= max_value;
 }
@@ -235,6 +250,28 @@ std::optional<Rv64AsmRegister> parse_gpr(std::string_view token) {
       .bank = Rv64AsmRegisterBank::Gpr,
       .physical_index = *number,
   };
+}
+
+bool is_symbol_start(char c) {
+  const auto uc = static_cast<unsigned char>(c);
+  return std::isalpha(uc) != 0 || c == '_' || c == '.' || c == '$';
+}
+
+bool is_symbol_continue(char c) {
+  const auto uc = static_cast<unsigned char>(c);
+  return std::isalnum(uc) != 0 || c == '_' || c == '.' || c == '$';
+}
+
+bool is_valid_symbol(std::string_view symbol) {
+  if (symbol.empty() || !is_symbol_start(symbol.front())) {
+    return false;
+  }
+  for (const char c : symbol.substr(1)) {
+    if (!is_symbol_continue(c)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 std::optional<Rv64AsmRegister> parse_vector_register(std::string_view token) {
@@ -343,6 +380,11 @@ struct Rv64USpec {
   std::uint32_t opcode;
 };
 
+struct Rv64BSpec {
+  std::string_view mnemonic;
+  std::uint32_t funct3;
+};
+
 template <typename Spec, std::size_t Count>
 const Spec* find_spec(std::string_view mnemonic, const Spec (&specs)[Count]) {
   for (const auto& spec : specs) {
@@ -414,6 +456,10 @@ std::optional<Rv64AsmLine> parse_rv64i_line(std::string_view line) {
   constexpr Rv64USpec u_specs[] = {
       {"lui", 0x37},
       {"auipc", 0x17},
+  };
+  constexpr Rv64BSpec b_specs[] = {
+      {"beq", 0},  {"bne", 1},  {"blt", 4},
+      {"bge", 5},  {"bltu", 6}, {"bgeu", 7},
   };
 
   const auto parts = split_mnemonic(line);
@@ -543,6 +589,24 @@ std::optional<Rv64AsmLine> parse_rv64i_line(std::string_view line) {
                                  .opcode = spec->opcode,
                                  .destination = *rd,
                                  .immediate = *immediate}};
+  }
+
+  if (const auto* spec = find_spec(mnemonic, b_specs)) {
+    const auto fields = split_fields(operands, 3);
+    if (!fields.has_value()) {
+      return std::nullopt;
+    }
+    const auto rs1 = parse_gpr((*fields)[0]);
+    const auto rs2 = parse_gpr((*fields)[1]);
+    const auto target = trim_ascii((*fields)[2]);
+    if (!rs1.has_value() || !rs2.has_value() || !is_valid_symbol(target)) {
+      return std::nullopt;
+    }
+    return Rv64AsmLine{Rv64BranchLine{.opcode = 0x63,
+                                      .funct3 = spec->funct3,
+                                      .lhs = *rs1,
+                                      .rhs = *rs2,
+                                      .target_label = std::string(target)}};
   }
 
   if (mnemonic == "jalr") {
@@ -684,6 +748,34 @@ std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
                                          static_cast<std::int32_t>(rv64i->immediate)));
         return bytes;
     }
+  }
+  if (const auto* branch = std::get_if<Rv64BranchLine>(&line)) {
+    const auto rs1 = register_field(branch->lhs, Rv64AsmRegisterBank::Gpr);
+    const auto rs2 = register_field(branch->rhs, Rv64AsmRegisterBank::Gpr);
+    if (!branch->target_label.empty() || !rs1.has_value() || !rs2.has_value() ||
+        !fits_branch_immediate(branch->immediate)) {
+      return std::nullopt;
+    }
+    append_le32(bytes,
+                encode_b_type(branch->opcode,
+                              branch->funct3,
+                              *rs1,
+                              *rs2,
+                              static_cast<std::int32_t>(branch->immediate)));
+    return bytes;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::uint64_t> rv64_asm_line_size_bytes(const Rv64AsmLine& line) {
+  if (std::holds_alternative<Rv64InsnDLine>(line)) {
+    return 8;
+  }
+  if (std::holds_alternative<Rv64LiLine>(line) ||
+      std::holds_alternative<Rv64RetLine>(line) ||
+      std::holds_alternative<Rv64ILine>(line) ||
+      std::holds_alternative<Rv64BranchLine>(line)) {
+    return 4;
   }
   return std::nullopt;
 }

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
@@ -35,6 +36,15 @@ struct Rv64LiLine {
 
 struct Rv64RetLine {};
 
+struct Rv64BranchLine {
+  std::uint32_t opcode = 0;
+  std::uint32_t funct3 = 0;
+  Rv64AsmRegister lhs;
+  Rv64AsmRegister rhs;
+  std::int64_t immediate = 0;
+  std::string target_label;
+};
+
 enum class Rv64IFormat {
   RType,
   IType,
@@ -54,12 +64,15 @@ struct Rv64ILine {
 };
 
 using Rv64AsmLine =
-    std::variant<Rv64InsnDLine, Rv64LiLine, Rv64RetLine, Rv64ILine>;
+    std::variant<Rv64InsnDLine, Rv64LiLine, Rv64RetLine, Rv64ILine, Rv64BranchLine>;
 
 [[nodiscard]] std::optional<Rv64AsmLine> parse_rv64_asm_line(
     std::string_view line);
 
 [[nodiscard]] std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
+    const Rv64AsmLine& line);
+
+[[nodiscard]] std::optional<std::uint64_t> rv64_asm_line_size_bytes(
     const Rv64AsmLine& line);
 
 }  // namespace c4c::backend::riscv::codegen
