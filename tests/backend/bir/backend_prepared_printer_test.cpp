@@ -7850,6 +7850,7 @@ int main() {
           : std::string(prepare::prepared_value_name(grouped_spill_reload_prepared.names,
                                                      grouped_spill_value->value_name));
   if (grouped_spill_value == nullptr ||
+      grouped_spill_it->source_value_name != grouped_spill_value->value_name ||
       !grouped_spill_it->slot_id.has_value() || !grouped_spill_it->stack_offset_bytes.has_value() ||
       !grouped_spill_it->register_placement.has_value() ||
       !grouped_spill_it->spill_slot_placement.has_value()) {
@@ -7860,11 +7861,12 @@ int main() {
   if (!expect_contains(grouped_spill_reload_dump,
                        "spill_reload kind=spill value_id=" +
                            std::to_string(grouped_spill_it->value_id) +
-                           " value=" + grouped_spill_value_name + " block_index=" +
+                           " value=" + grouped_spill_value_name +
+                           " source_value=" + grouped_spill_value_name + " block_index=" +
                            std::to_string(grouped_spill_it->block_index) +
                            " inst_index=" +
                            std::to_string(grouped_spill_it->instruction_index) +
-                           " bank=vreg " +
+                           " bank=vreg class=vector " +
                            register_placement_text(grouped_spill_it->register_placement) +
                            " " + spill_slot_placement_text(grouped_spill_it->spill_slot_placement) +
                            " reg=v0 width=16 units=v0,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15 slot_id=#" +
@@ -7875,9 +7877,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(grouped_spill_reload_dump,
-                       "spill_reload kind=reload value_id=" +
+                           "spill_reload kind=reload value_id=" +
                            std::to_string(grouped_spill_it->value_id) + " value=" +
-                           grouped_spill_value_name,
+                           grouped_spill_value_name + " source_value=" + grouped_spill_value_name,
                        "grouped reload detail")) {
     return EXIT_FAILURE;
   }
@@ -7914,6 +7916,7 @@ int main() {
           : std::string(prepare::prepared_value_name(general_grouped_spill_reload_prepared.names,
                                                      general_spill_value->value_name));
   if (general_spill_value == nullptr || general_storage_carry == nullptr ||
+      general_spill_it->source_value_name != general_spill_value->value_name ||
       !general_spill_it->slot_id.has_value() ||
       !general_spill_it->stack_offset_bytes.has_value() ||
       !general_spill_it->register_placement.has_value() ||
@@ -7927,11 +7930,12 @@ int main() {
   if (!expect_contains(general_grouped_spill_reload_dump,
                        "spill_reload kind=spill value_id=" +
                            std::to_string(general_spill_it->value_id) +
-                           " value=" + general_spill_value_name + " block_index=" +
+                           " value=" + general_spill_value_name +
+                           " source_value=" + general_spill_value_name + " block_index=" +
                            std::to_string(general_spill_it->block_index) +
                            " inst_index=" +
                            std::to_string(general_spill_it->instruction_index) +
-                           " bank=gpr " +
+                           " bank=gpr class=general " +
                            register_placement_text(general_spill_it->register_placement) +
                            " " + spill_slot_placement_text(general_spill_it->spill_slot_placement) +
                            " reg=s1 width=2 units=s1,s2 slot_id=#" +
@@ -7942,9 +7946,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(general_grouped_spill_reload_dump,
-                       "spill_reload kind=reload value_id=" +
+                           "spill_reload kind=reload value_id=" +
                            std::to_string(general_spill_it->value_id) + " value=" +
-                           general_spill_value_name,
+                           general_spill_value_name + " source_value=" + general_spill_value_name,
                        "grouped general reload detail")) {
     return EXIT_FAILURE;
   }
@@ -7992,6 +7996,7 @@ int main() {
           : std::string(prepare::prepared_value_name(float_grouped_spill_reload_prepared.names,
                                                      float_spill_value->value_name));
   if (float_spill_value == nullptr || float_storage_carry == nullptr ||
+      float_spill_it->source_value_name != float_spill_value->value_name ||
       !float_spill_it->slot_id.has_value() || !float_spill_it->stack_offset_bytes.has_value() ||
       !float_spill_it->register_placement.has_value() ||
       !float_spill_it->spill_slot_placement.has_value() ||
@@ -8004,11 +8009,12 @@ int main() {
   if (!expect_contains(float_grouped_spill_reload_dump,
                        "spill_reload kind=spill value_id=" +
                            std::to_string(float_spill_it->value_id) +
-                           " value=" + float_spill_value_name + " block_index=" +
+                           " value=" + float_spill_value_name +
+                           " source_value=" + float_spill_value_name + " block_index=" +
                            std::to_string(float_spill_it->block_index) +
                            " inst_index=" +
                            std::to_string(float_spill_it->instruction_index) +
-                           " bank=fpr " +
+                           " bank=fpr class=float " +
                            register_placement_text(float_spill_it->register_placement) +
                            " " + spill_slot_placement_text(float_spill_it->spill_slot_placement) +
                            " reg=fs1 width=2 units=fs1,fs2 slot_id=#" +
@@ -8019,9 +8025,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(float_grouped_spill_reload_dump,
-                       "spill_reload kind=reload value_id=" +
+                           "spill_reload kind=reload value_id=" +
                            std::to_string(float_spill_it->value_id) + " value=" +
-                           float_spill_value_name,
+                           float_spill_value_name + " source_value=" + float_spill_value_name,
                        "grouped float reload detail")) {
     return EXIT_FAILURE;
   }

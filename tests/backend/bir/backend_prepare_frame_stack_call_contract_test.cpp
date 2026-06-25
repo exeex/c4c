@@ -6619,11 +6619,15 @@ int check_x86_consumer_surface_reads_grouped_spill_reload_authority() {
         return op.op_kind == prepare::PreparedSpillReloadOpKind::Reload &&
                op.value_id == spill_it->value_id &&
                op.register_bank == spill_it->register_bank &&
+               op.register_class == spill_it->register_class &&
                op.register_name == spill_it->register_name &&
                op.contiguous_width == spill_it->contiguous_width &&
                op.occupied_register_names == spill_it->occupied_register_names &&
                op.slot_id == spill_it->slot_id &&
-               op.stack_offset_bytes == spill_it->stack_offset_bytes;
+               op.stack_offset_bytes == spill_it->stack_offset_bytes &&
+               op.source_value_name == spill_it->source_value_name &&
+               op.register_placement == spill_it->register_placement &&
+               op.spill_slot_placement == spill_it->spill_slot_placement;
       });
   if (reload_it == consumed.regalloc->spill_reload_ops.end()) {
     return fail(
@@ -6633,6 +6637,7 @@ int check_x86_consumer_surface_reads_grouped_spill_reload_authority() {
   const auto* spill_value = find_regalloc_value(*consumed.regalloc, spill_it->value_id);
   if (spill_value == nullptr || !spill_it->slot_id.has_value() || !spill_it->stack_offset_bytes.has_value() ||
       !spill_value->assigned_stack_slot.has_value() ||
+      spill_it->source_value_name != spill_value->value_name ||
       spill_value->assigned_stack_slot->slot_id != *spill_it->slot_id ||
       spill_value->assigned_stack_slot->offset_bytes != *spill_it->stack_offset_bytes) {
     return fail(
@@ -6642,9 +6647,12 @@ int check_x86_consumer_surface_reads_grouped_spill_reload_authority() {
       spill_value->assigned_register.has_value() || !spill_value->spill_register_authority.has_value() ||
       spill_value->spill_register_authority->register_name != spill_it->register_name ||
       spill_value->spill_register_authority->reg_class != prepare::PreparedRegisterClass::Vector ||
+      spill_it->register_class != prepare::PreparedRegisterClass::Vector ||
       spill_value->spill_register_authority->contiguous_width != spill_it->contiguous_width ||
       spill_value->spill_register_authority->occupied_register_names !=
-          spill_it->occupied_register_names) {
+          spill_it->occupied_register_names ||
+      spill_value->spill_register_authority->placement != spill_it->register_placement ||
+      spill_value->assigned_stack_slot->placement != spill_it->spill_slot_placement) {
     return fail(
         "x86 consumer surface contract: grouped spill/reload fixture lost published spill-register authority for the grouped stack-assigned value");
   }
@@ -6703,11 +6711,15 @@ int check_x86_consumer_surface_reads_general_grouped_spill_reload_authority() {
         return op.op_kind == prepare::PreparedSpillReloadOpKind::Reload &&
                op.value_id == spill_it->value_id &&
                op.register_bank == spill_it->register_bank &&
+               op.register_class == spill_it->register_class &&
                op.register_name == spill_it->register_name &&
                op.contiguous_width == spill_it->contiguous_width &&
                op.occupied_register_names == spill_it->occupied_register_names &&
                op.slot_id == spill_it->slot_id &&
-               op.stack_offset_bytes == spill_it->stack_offset_bytes;
+               op.stack_offset_bytes == spill_it->stack_offset_bytes &&
+               op.source_value_name == spill_it->source_value_name &&
+               op.register_placement == spill_it->register_placement &&
+               op.spill_slot_placement == spill_it->spill_slot_placement;
       });
   if (reload_it == consumed.regalloc->spill_reload_ops.end()) {
     return fail(
@@ -6717,6 +6729,7 @@ int check_x86_consumer_surface_reads_general_grouped_spill_reload_authority() {
   const auto* spill_value = find_regalloc_value(*consumed.regalloc, spill_it->value_id);
   if (spill_value == nullptr || !spill_it->slot_id.has_value() || !spill_it->stack_offset_bytes.has_value() ||
       !spill_value->assigned_stack_slot.has_value() ||
+      spill_it->source_value_name != spill_value->value_name ||
       spill_value->assigned_stack_slot->slot_id != *spill_it->slot_id ||
       spill_value->assigned_stack_slot->offset_bytes != *spill_it->stack_offset_bytes ||
       carry->slot_id != spill_it->slot_id ||
@@ -6728,9 +6741,12 @@ int check_x86_consumer_surface_reads_general_grouped_spill_reload_authority() {
       spill_value->assigned_register.has_value() || !spill_value->spill_register_authority.has_value() ||
       spill_value->spill_register_authority->register_name != spill_it->register_name ||
       spill_value->spill_register_authority->reg_class != prepare::PreparedRegisterClass::General ||
+      spill_it->register_class != prepare::PreparedRegisterClass::General ||
       spill_value->spill_register_authority->contiguous_width != spill_it->contiguous_width ||
       spill_value->spill_register_authority->occupied_register_names !=
-          spill_it->occupied_register_names) {
+          spill_it->occupied_register_names ||
+      spill_value->spill_register_authority->placement != spill_it->register_placement ||
+      spill_value->assigned_stack_slot->placement != spill_it->spill_slot_placement) {
     return fail(
         "x86 consumer surface contract: grouped general spill/reload fixture lost published spill-register authority for the grouped stack-assigned value");
   }
@@ -6789,11 +6805,15 @@ int check_x86_consumer_surface_reads_float_grouped_spill_reload_authority() {
         return op.op_kind == prepare::PreparedSpillReloadOpKind::Reload &&
                op.value_id == spill_it->value_id &&
                op.register_bank == spill_it->register_bank &&
+               op.register_class == spill_it->register_class &&
                op.register_name == spill_it->register_name &&
                op.contiguous_width == spill_it->contiguous_width &&
                op.occupied_register_names == spill_it->occupied_register_names &&
                op.slot_id == spill_it->slot_id &&
-               op.stack_offset_bytes == spill_it->stack_offset_bytes;
+               op.stack_offset_bytes == spill_it->stack_offset_bytes &&
+               op.source_value_name == spill_it->source_value_name &&
+               op.register_placement == spill_it->register_placement &&
+               op.spill_slot_placement == spill_it->spill_slot_placement;
       });
   if (reload_it == consumed.regalloc->spill_reload_ops.end()) {
     return fail(
@@ -6803,6 +6823,7 @@ int check_x86_consumer_surface_reads_float_grouped_spill_reload_authority() {
   const auto* spill_value = find_regalloc_value(*consumed.regalloc, spill_it->value_id);
   if (spill_value == nullptr || !spill_it->slot_id.has_value() || !spill_it->stack_offset_bytes.has_value() ||
       !spill_value->assigned_stack_slot.has_value() ||
+      spill_it->source_value_name != spill_value->value_name ||
       spill_value->assigned_stack_slot->slot_id != *spill_it->slot_id ||
       spill_value->assigned_stack_slot->offset_bytes != *spill_it->stack_offset_bytes ||
       carry->slot_id != spill_it->slot_id ||
@@ -6814,9 +6835,12 @@ int check_x86_consumer_surface_reads_float_grouped_spill_reload_authority() {
       spill_value->assigned_register.has_value() || !spill_value->spill_register_authority.has_value() ||
       spill_value->spill_register_authority->register_name != spill_it->register_name ||
       spill_value->spill_register_authority->reg_class != prepare::PreparedRegisterClass::Float ||
+      spill_it->register_class != prepare::PreparedRegisterClass::Float ||
       spill_value->spill_register_authority->contiguous_width != spill_it->contiguous_width ||
       spill_value->spill_register_authority->occupied_register_names !=
-          spill_it->occupied_register_names) {
+          spill_it->occupied_register_names ||
+      spill_value->spill_register_authority->placement != spill_it->register_placement ||
+      spill_value->assigned_stack_slot->placement != spill_it->spill_slot_placement) {
     return fail(
         "x86 consumer surface contract: grouped float spill/reload fixture lost published spill-register authority for the grouped stack-assigned value");
   }

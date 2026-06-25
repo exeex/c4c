@@ -5366,7 +5366,8 @@ int check_grouped_evicted_value_spill_ops(const prepare::PreparedBirModule& prep
                                                                                   : nullptr;
   if (spilled_value == nullptr || spilled_value->allocation_status !=
                                       prepare::PreparedAllocationStatus::AssignedStackSlot ||
-      !spilled_value->assigned_stack_slot.has_value() || spilled_value->assigned_register.has_value()) {
+      !spilled_value->assigned_stack_slot.has_value() || spilled_value->assigned_register.has_value() ||
+      !spilled_value->spill_register_authority.has_value()) {
     return fail("expected the grouped spilled value to fall back to a real stack slot");
   }
 
@@ -5377,6 +5378,8 @@ int check_grouped_evicted_value_spill_ops(const prepare::PreparedBirModule& prep
       continue;
     }
     if (op.register_bank != prepare::PreparedRegisterBank::Vreg ||
+        op.register_class != prepare::PreparedRegisterClass::Vector ||
+        op.source_value_name != spilled_value->value_name ||
         op.register_name != std::optional<std::string>{"v0"} || op.contiguous_width != 16 ||
         op.occupied_register_names.size() != 16 || op.occupied_register_names.front() != "v0" ||
         op.occupied_register_names.back() != "v15" ||
@@ -5384,6 +5387,14 @@ int check_grouped_evicted_value_spill_ops(const prepare::PreparedBirModule& prep
         op.stack_offset_bytes !=
             std::optional<std::size_t>{spilled_value->assigned_stack_slot->offset_bytes}) {
       return fail("expected grouped spill/reload ops to publish vector span and stack-slot authority");
+    }
+    if (!op.register_placement.has_value() ||
+        op.register_placement != spilled_value->spill_register_authority->placement) {
+      return fail("expected grouped spill/reload ops to publish structured vector register placement");
+    }
+    if (!op.spill_slot_placement.has_value() ||
+        op.spill_slot_placement != spilled_value->assigned_stack_slot->placement) {
+      return fail("expected grouped spill/reload ops to publish structured vector spill slot placement");
     }
     if (op.op_kind == prepare::PreparedSpillReloadOpKind::Spill) {
       ++spill_count;
@@ -5476,6 +5487,8 @@ int check_general_grouped_evicted_value_spill_ops(const prepare::PreparedBirModu
       continue;
     }
     if (op.register_bank != prepare::PreparedRegisterBank::Gpr ||
+        op.register_class != prepare::PreparedRegisterClass::General ||
+        op.source_value_name != carry->value_name ||
         op.register_name != std::optional<std::string>{"s1"} || op.contiguous_width != 2 ||
         op.occupied_register_names != std::vector<std::string>{"s1", "s2"} ||
         op.slot_id != std::optional<prepare::PreparedFrameSlotId>{carry->assigned_stack_slot->slot_id} ||
@@ -5483,9 +5496,12 @@ int check_general_grouped_evicted_value_spill_ops(const prepare::PreparedBirModu
             std::optional<std::size_t>{carry->assigned_stack_slot->offset_bytes}) {
       return fail("expected grouped general spill/reload ops to publish span and stack-slot authority");
     }
+    if (!op.register_placement.has_value() ||
+        op.register_placement != carry->spill_register_authority->placement) {
+      return fail("expected grouped general spill/reload ops to publish structured register placement");
+    }
     if (!op.spill_slot_placement.has_value() ||
-        op.spill_slot_placement->slot_id != carry->assigned_stack_slot->slot_id ||
-        op.spill_slot_placement->offset_bytes != carry->assigned_stack_slot->offset_bytes) {
+        op.spill_slot_placement != carry->assigned_stack_slot->placement) {
       return fail("expected grouped general spill/reload ops to publish structured spill slot placement");
     }
     if (op.op_kind == prepare::PreparedSpillReloadOpKind::Spill) {
@@ -5549,7 +5565,6 @@ int check_float_grouped_evicted_value_spill_ops(const prepare::PreparedBirModule
           grouped_spill_it->occupied_register_names) {
     return fail("expected the grouped float spilled value to keep truthful spill-register authority");
   }
-
   int spill_count = 0;
   int reload_count = 0;
   for (const auto& op : function->spill_reload_ops) {
@@ -5557,12 +5572,19 @@ int check_float_grouped_evicted_value_spill_ops(const prepare::PreparedBirModule
       continue;
     }
     if (op.register_bank != prepare::PreparedRegisterBank::Fpr ||
+        op.register_class != prepare::PreparedRegisterClass::Float ||
+        op.source_value_name != carry->value_name ||
         op.register_name != std::optional<std::string>{"fs1"} || op.contiguous_width != 2 ||
         op.occupied_register_names != std::vector<std::string>{"fs1", "fs2"} ||
         op.slot_id != std::optional<prepare::PreparedFrameSlotId>{carry->assigned_stack_slot->slot_id} ||
         op.stack_offset_bytes !=
             std::optional<std::size_t>{carry->assigned_stack_slot->offset_bytes}) {
       return fail("expected grouped float spill/reload ops to publish span and stack-slot authority");
+    }
+    if (!op.spill_slot_placement.has_value() ||
+        op.spill_slot_placement->slot_id != carry->assigned_stack_slot->slot_id ||
+        op.spill_slot_placement->offset_bytes != carry->assigned_stack_slot->offset_bytes) {
+      return fail("expected grouped float spill/reload ops to publish structured spill slot placement");
     }
     if (op.op_kind == prepare::PreparedSpillReloadOpKind::Spill) {
       ++spill_count;

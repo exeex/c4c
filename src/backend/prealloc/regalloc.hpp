@@ -233,10 +233,12 @@ struct PreparedAbiBinding {
 
 struct PreparedSpillReloadOp {
   PreparedValueId value_id = 0;
+  ValueNameId source_value_name = kInvalidValueName;
   PreparedSpillReloadOpKind op_kind = PreparedSpillReloadOpKind::Spill;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   PreparedRegisterBank register_bank = PreparedRegisterBank::None;
+  PreparedRegisterClass register_class = PreparedRegisterClass::None;
   std::optional<std::string> register_name;
   std::size_t contiguous_width = 1;
   std::vector<std::string> occupied_register_names;

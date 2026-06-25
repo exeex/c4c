@@ -85,9 +85,11 @@ void append_regalloc(std::ostringstream& out, const PreparedBirModule& module) {
       if (const auto* value = find_regalloc_value(function, op.value_id); value != nullptr) {
         out << " value=" << maybe_value_name(module.names, value->value_name);
       }
+      out << " source_value=" << maybe_value_name(module.names, op.source_value_name);
       out << " block_index=" << op.block_index
           << " inst_index=" << op.instruction_index
-          << " bank=" << prepared_register_bank_name(op.register_bank);
+          << " bank=" << prepared_register_bank_name(op.register_bank)
+          << " class=" << prepared_register_class_name(op.register_class);
       append_register_placement(out, "placement", op.register_placement);
       append_spill_slot_placement(out, "spill_slot", op.spill_slot_placement);
       if (op.register_name.has_value()) {
