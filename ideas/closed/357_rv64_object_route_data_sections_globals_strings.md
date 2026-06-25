@@ -1,6 +1,6 @@
 # RV64 Object Route Data Sections for Globals and Strings
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -116,3 +116,29 @@ CASE_TIMEOUT_SEC=20 scripts/check_progress_rv64_gcc_c_torture_backend.sh
   support later data kinds.
 - Reject if the heavy scan appears greener only because cases are skipped or
   downgraded.
+
+## Closure Notes
+
+Closed after the Step 5 milestone validation for idea 357. RV64 object emission
+now consumes supported prepared globals and string constants through target
+object data sections, ELF data symbols, and code/data relocation records instead
+of rejecting the blanket `prepared.module.globals/string_constants` shape.
+
+Focused object validation passed for the present object/data tests:
+`backend_cli_riscv64_unsupported_global_diagnostic_obj`,
+`backend_object_model_records`, and `backend_riscv_object_emission`. The full
+RV64 gcc torture backend milestone scan completed with `total=1467 passed=145
+failed=1322`. Representative cases `src/20000223-1.c` and `src/20000227-1.c`
+passed; `src/20000112-1.c` and `src/20000224-1.c` routed to the later
+`unsupported_terminator_fragment` bucket, not to data section, global symbol,
+string constant, or relocation failures.
+
+Remaining data-looking failures are outside this RV64 object-emission scope and
+are intentionally left to follow-up layer owners under the open 354 umbrella:
+44 `unsupported_global_data` object-route residuals and 52 upstream LIR-to-BIR
+global/string publication gaps. Representative follow-up shapes include missing
+prepared global memory facts, wider or non-linear prepared global storage,
+direct global-symbol base-plus-offset memory addressing, non-byte-addressable
+string-pool support, and broader LIR-to-BIR global publication. These must not
+be repaired by making RV64 object emission infer facts that the prepared module
+did not publish.
