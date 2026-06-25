@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/352_full_rv64_assembly_object_disassembly_roundtrip.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Generalize RV64 Assembly Parsing And Encoding
+Current Step ID: 3
+Current Step Title: Add Label, Branch, Jump, And Relocation Support
 
 # Current Packet
 
