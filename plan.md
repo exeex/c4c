@@ -41,6 +41,13 @@ relocations, and ELF construction, not high-level control-flow recovery.
   pseudo lowering, and RV64 object emission.
 - Shared RV64 instruction encoding, labels, fixups, relocations, and ELF
   object construction where that avoids duplicate direct encoding paths.
+- Pre-existing RV64 fixup/relocation/label paths that must be audited before
+  this idea can close:
+  - `RiscvObjectFixup` / `RiscvEncodedFragment` /
+    `build_rv64_text_object_module` in the RV64 object-emission path,
+  - `c4c-as.cpp::resolve_local_control_flow_labels`,
+  - `src/backend/mir/riscv/assembler/elf_writer.cpp` minimal/pending
+    relocation path.
 
 ## Non-Goals
 
@@ -52,6 +59,8 @@ relocations, and ELF construction, not high-level control-flow recovery.
 - Do not require the heavy gcc torture scan in default full CTest.
 - Do not fold broad ABI or width cleanup into this idea unless it is required
   to prove the representative object-route architecture.
+- Do not leave a second production RV64 fixup/relocation path unreviewed when
+  closing this idea.
 
 ## Working Model
 
@@ -165,22 +174,44 @@ Completion check:
 - Any later representative progress is reproven from the accepted route, not
   inherited from the stashed target-local commits.
 
-## Step 4: Share Encoding, Label, Fixup, and Relocation Machinery
+## Step 4: Audit RV64 Fixup, Relocation, and Label Ownership
 
-Goal: avoid a second RV64 encoding path while enabling object emission for
-branch/call-bearing target streams.
+Goal: classify every pre-existing RV64 fixup/relocation/label path before
+sharing or extending any machinery.
 
 Concrete actions:
 
-- Reuse `c4c-as` / internal assembler encoding and range-checking machinery
-  where the current architecture allows it.
-- Route labels, fixups, and relocations through shared low-level machinery
-  instead of duplicating CFG or text parsing.
+- Audit `RiscvObjectFixup`, `RiscvEncodedFragment`, and
+  `build_rv64_text_object_module` in the RV64 object-emission path. Classify
+  which responsibilities are valid low-level object concerns: bytes, ELF
+  relocations, symbol references, range checks, and final section placement.
+- Audit `c4c-as.cpp::resolve_local_control_flow_labels`. Decide explicitly
+  whether it remains a textual-assembly local-label parser concern or should
+  share lower-level label/fixup machinery with object emission.
+- Audit `src/backend/mir/riscv/assembler/elf_writer.cpp`, including its
+  minimal historical ELF/fixup path and pending relocation structures. Decide
+  whether it is dead/legacy, assembler-local, or a duplicate production path
+  that must be unified/removed before closure.
+- Classify each path as exactly one of:
+  - low-level object concern,
+  - textual assembler local-label concern,
+  - duplicate path to unify or remove,
+  - misplaced prepared/BIR semantic reconstruction.
+- If the missing piece belongs to prepared traversal, move/select/value-home,
+  frame, or diagnostics, stop and route it to a 359 follow-up/reopen instead
+  of patching RV64/MIR locally.
+- Only after the audit, reuse or unify `c4c-as` / internal assembler encoding
+  and range-checking machinery where the current architecture supports it.
 - Keep assembler responsibilities limited to machine encoding, label offset
   fixups, immediate checks, and relocation records.
 
 Completion check:
 
+- `todo.md` contains an ownership table for the three concrete surfaces above.
+- No unreviewed second production fixup/relocation path remains in scope for
+  356 closure.
+- Any path that reconstructs CFG, edge-copy placement, or prepared data-flow
+  semantics is routed back to a 359 follow-up/reopen before 356 continues.
 - RV64 object emission can encode representative labels and branch/call
   relocations from the target-block stream.
 - Existing assembler, objdump, inline asm, and curated RV64 object tests remain
@@ -219,6 +250,10 @@ Completion check:
 - The full gcc torture backend scan shows a real reduction in
   `multi_block_control_flow` or its successor structured diagnostic bucket
   before this idea is closed.
+- The Step 4 fixup/relocation/label ownership audit is complete, with
+  accepted low-level object responsibilities separated from textual assembler
+  local-label parsing, duplicate paths to unify/remove, and misplaced
+  BIR/prepared semantic reconstruction.
 
 ## Validation Ladder
 
@@ -229,6 +264,9 @@ Completion check:
   proof with `CASE_TIMEOUT_SEC=20`.
 - Milestone or closure packets: run affected baselines plus the full RV64 gcc
   torture backend scan.
+- Closure is blocked until the Step 4 RV64 fixup/relocation/label ownership
+  audit is recorded and all duplicate or misplaced production paths have an
+  accepted resolution.
 
 ## Reviewer Reject Signals
 
@@ -240,6 +278,14 @@ Completion check:
 - Reject asking the assembler to understand loops, switches, if/else
   structure, liveness, or inline-asm operand relationships.
 - Reject labels or relocations that work only for one known CFG shape.
+- Reject closing 356 while a second production RV64 fixup/relocation path
+  exists unreviewed.
+- Reject using RV64 fixups/relocations to hide CFG, edge-copy placement,
+  select-carrier, value-home, frame, or diagnostic semantics that belong to
+  the shared prepared-object contract from 359.
+- Reject treating `c4c-as.cpp::resolve_local_control_flow_labels` or the
+  `riscv/assembler/elf_writer.cpp` minimal/pending relocation path as
+  production object-route machinery without explicit ownership review.
 - Reject routes that silently drop blocks, calls, declarations, or branch
   edges to make object emission succeed.
 - Reject proof based on expectation weakening instead of executable RV64

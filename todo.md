@@ -44,6 +44,21 @@ Narrow packet target:
 - explicitly avoid scanning `control_flow.parallel_copy_bundles` in RV64 to
   reconstruct block-entry/pre-terminator copies.
 
+Step 4 / close-gate reminder:
+
+- before 356 can close, audit pre-existing RV64 fixup/relocation/label paths:
+  - `RiscvObjectFixup` / `RiscvEncodedFragment` /
+    `build_rv64_text_object_module`,
+  - `c4c-as.cpp::resolve_local_control_flow_labels`,
+  - `src/backend/mir/riscv/assembler/elf_writer.cpp` minimal/pending
+    relocation path;
+- classify each path as a low-level object concern, textual assembler
+  local-label concern, duplicate path to unify/remove, or misplaced
+  prepared/BIR semantic reconstruction;
+- if a missing piece belongs to prepared traversal, move/select/value-home,
+  frame, or diagnostics, route it to a 359 follow-up/reopen before continuing
+  356.
+
 Narrow proof command:
 
 ```sh
@@ -58,6 +73,16 @@ CASE_TIMEOUT_SEC=20 ALLOWLIST=/tmp/rv64-multiblock-allowlist.txt scripts/check_p
   emission to reconstruct copy placement.
 - Do not use `prepared_object_parallel_copy_event_kind` or target-local bundle
   search as a replacement for shared traversal/classifier APIs.
+- Do not close 356 while a second production RV64 fixup/relocation path exists
+  unreviewed.
+- Do not use RV64 fixups/relocations to hide CFG, edge-copy placement,
+  select-carrier, value-home, frame, or diagnostic semantics that belong to
+  the shared prepared-object contract from 359.
+- `c4c-as.cpp::resolve_local_control_flow_labels` may be a valid textual
+  assembler concern, but Step 4 must explicitly decide whether it shares
+  low-level machinery with object emission or remains assembler-local.
+- `src/backend/mir/riscv/assembler/elf_writer.cpp` minimal/pending relocation
+  code must not become the second production object route without review.
 - `20030216-1.c` is a separate prepared global-storage/data blocker; do not
   mix float/global data support into the stack-slot object-fragment packet.
 - The two passing cases are only current allowlist passes. Do not use them as
