@@ -2699,6 +2699,60 @@ prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_fpr_formal_param_home_module(
+    bool publish_target_identity) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("fpr_formal_param_home");
+  const auto param_name = prepared.names.value_names.intern("%p.a");
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "fpr_formal_param_home",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = {bir::Param{
+          .type = bir::TypeKind::F32,
+          .name = "%p.a",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+
+  prepare::PreparedValueHome home{
+      .value_id = 1,
+      .function_name = function_name,
+      .value_name = param_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"fa0"},
+  };
+  if (publish_target_identity) {
+    home.target_register_identity = prepare::PreparedTargetRegisterIdentity{
+        .target_arch = c4c::TargetArch::Riscv64,
+        .bank = prepare::PreparedRegisterBank::Fpr,
+        .register_class = prepare::PreparedRegisterClass::Float,
+        .physical_index = 10,
+    };
+  }
+  prepared.value_locations.functions.push_back(
+      prepare::PreparedValueLocationFunction{
+          .function_name = function_name,
+          .value_homes = {std::move(home)},
+      });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_local_register_arg_call_module() {
   prepare::PreparedBirModule prepared;
   const auto callee_name = prepared.names.function_names.intern("add_pair");
@@ -3407,6 +3461,37 @@ int rejects_byval_stack_slot_param_home_with_precise_diagnostic() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_byval_stack_slot_param_module(),
       "unsupported_byval_param_home: RV64 object route does not yet lower byval aggregate parameter homes in prepared stack slots");
+}
+
+int builds_prepared_fpr_formal_param_home_with_target_identity_object() {
+  const auto prepared = make_prepared_fpr_formal_param_home_module(true);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail(
+        "expected prepared FPR formal parameter home with target identity to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "fpr_formal_param_home");
+  if (text == nullptr || function == nullptr) {
+    return fail(
+        "expected prepared FPR formal parameter object to publish text/function");
+  }
+  if (text->bytes.size() != 4 || text->size_bytes != 4 ||
+      function->value != 0 || function->size_bytes != 4 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared FPR formal parameter object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00008067) {
+    return fail("expected prepared FPR formal parameter object to emit ret");
+  }
+  return 0;
+}
+
+int rejects_raw_fpr_formal_param_home_without_target_identity() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_fpr_formal_param_home_module(false),
+      "unsupported_param_home: RV64 object route requires all parameters in "
+      "supported GPR or prepared FPR register homes");
 }
 
 int builds_prepared_scalar_local_frame_object() {
@@ -5292,6 +5377,8 @@ int main() {
       materializes_fact_complete_variadic_va_start_with_overflow_base_state();
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= rejects_byval_stack_slot_param_home_with_precise_diagnostic();
+  status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();
+  status |= rejects_raw_fpr_formal_param_home_without_target_identity();
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_stack_slot_scalar_flow_object();
   status |= builds_prepared_join_transfer_select_materialization_object();

@@ -2665,7 +2665,9 @@ std::optional<std::string> diagnose_unsupported_prepared_param_homes(
   for (const auto& param : function.params) {
     const auto value = c4c::backend::bir::Value::named(param.type, param.name);
     const auto* home = prepared_value_home_for(names, lookups, value);
-    if (home != nullptr && gpr_register_number_for_home(*home).has_value()) {
+    if (home != nullptr &&
+        (gpr_register_number_for_home(*home).has_value() ||
+         fpr_register_number_for_home(*home).has_value())) {
       continue;
     }
     if (param.is_byval && home != nullptr &&
@@ -2675,7 +2677,7 @@ std::optional<std::string> diagnose_unsupported_prepared_param_homes(
           "unsupported_byval_param_home: RV64 object route does not yet lower byval aggregate parameter homes in prepared stack slots"};
     }
     return std::string{
-        "unsupported_param_home: RV64 object route requires all parameters in supported GPR homes"};
+        "unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes"};
   }
   return std::nullopt;
 }
