@@ -107,3 +107,33 @@ case logs to:
 
 Then drill into the `prepared-module-shape` subset and split it further by the
 prepared BIR/MIR/module feature that caused object-route rejection.
+
+## Analysis Handoff
+
+Classification artifact:
+
+- `review/354_prepared_shape_classification.md`
+
+The `1012` prepared-shape failures were classified from existing scan logs and
+per-case `--dump-prepared-bir` output. Primary buckets:
+
+- `540` multi-block control flow
+- `378` globals or non-string global addresses
+- `70` string constants / string data addresses
+- `11` general call lowering shape
+- `6` non-i32 or pointer local memory width
+- `3` variadic or vararg entry/call shape
+- `2` declaration control-flow entries
+- `1` floating-point or FPR ABI value
+- `1` local memory addressing/home shape
+
+Architecture-level conclusion: the RV64 object route currently has a narrow
+direct prepared-object encoder while a broader prepared RV64 asm emitter exists
+separately. Repair work should avoid growing two independent lowering surfaces.
+
+Generated child ideas:
+
+- `ideas/open/355_rv64_prepared_object_shape_diagnostics.md`
+- `ideas/open/356_rv64_object_route_assembler_backed_prepared_text.md`
+- `ideas/open/357_rv64_object_route_data_sections_globals_strings.md`
+- `ideas/open/358_rv64_object_route_abi_width_edges.md`
