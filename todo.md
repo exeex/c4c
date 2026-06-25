@@ -8,13 +8,26 @@ Current Step Title: Inspect Existing Test Surfaces
 
 ## Just Finished
 
-Lifecycle activation created the active runbook and execution-state skeleton
-for Step 1.
+Step 1 inspected the existing c-testsuite and backend RV64 roundtrip test
+surfaces. The smallest next route is a backend CMake-script runner invoked
+directly first, with opt-in CMake target wiring deferred to Step 3.
 
 ## Suggested Next
 
-Inspect existing c-testsuite and backend RV64 roundtrip test surfaces, then
-update this file with the selected Step 2 integration route and proof command.
+Step 2: Add the per-case roundtrip runner as
+`tests/backend/cmake/run_rv64_c_testsuite_asm_roundtrip_scan.cmake`, with a
+small explicit initial allowlist such as
+`tests/backend/rv64/rv64_c_testsuite_asm_roundtrip_allowlist.txt` if the runner
+needs a scan-specific manifest. Owned files for the next executor packet:
+`tests/backend/cmake/run_rv64_c_testsuite_asm_roundtrip_scan.cmake`,
+optionally `tests/backend/rv64/rv64_c_testsuite_asm_roundtrip_allowlist.txt`,
+and `todo.md`.
+
+Narrow proof command for Step 2:
+
+```sh
+cmake --build build --target c4cll c4c-as c4c-objdump && cmake -DC4CLL="$PWD/build/c4cll" -DC4C_AS="$PWD/build/c4c-as" -DC4C_OBJDUMP="$PWD/build/c4c-objdump" -DROOT="$PWD" -DC_TESTSUITE_ROOT="$PWD/tests/c/external/c-testsuite" -DALLOWLIST="$PWD/tests/backend/rv64/rv64_c_testsuite_asm_roundtrip_allowlist.txt" -DWORK_DIR="$PWD/build/rv64_c_testsuite_asm_roundtrip_scan" -DCASE_TIMEOUT_SEC=10 -P "$PWD/tests/backend/cmake/run_rv64_c_testsuite_asm_roundtrip_scan.cmake" >test_after.log 2>&1
+```
 
 ## Watchouts
 
@@ -23,7 +36,14 @@ update this file with the selected Step 2 integration route and proof command.
   rewrite unsupported lines.
 - The scan must use `c4cll --codegen asm`, `c4c-as`, and `c4c-objdump`; do not
   substitute external assembler or objdump tools as the source of truth.
+- Reuse the RV64 contract script's pass naming and comparisons:
+  `pass1.s == pass2.s` and `pass2.o == pass3.o`.
+- Reuse c-testsuite allowlist parsing conventions: strip blank/comment lines
+  and treat entries as paths relative to `tests/c/external/c-testsuite/`.
+- Keep Step 2 as direct runner proof only; do not register default CTest
+  membership until the explicit opt-in integration step.
 
 ## Proof
 
-Lifecycle-only activation. No build proof required yet.
+Read-only inspection plus this `todo.md` update. No build proof was required
+for the planning-inspection packet, and no `test_after.log` was produced.
