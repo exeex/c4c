@@ -93,3 +93,22 @@ c4c-as input.s -o output.o
 - The proof relies on external `as` for custom instruction encoding.
 - Symbol size or `.text` bytes differ from the c4c object route without an
   explicit reason.
+
+## Closure Notes
+
+Closed after Step 5 because the accepted implementation satisfies the source
+idea's first-file-subset contract:
+
+- `c4c-as <input.s> -o <output.o>` parses `.text`, `.globl`, labels, comments,
+  and blank lines for the canonical one-function RV64 surface.
+- instruction handling calls the RV64 line parser and encoder from idea 349
+  rather than duplicating `.insn.d`, `li`, or `ret` operand parsing.
+- output is a relocatable RV64 ELF object built through the existing RV64
+  object writer route.
+- focused proof covers canonical `.text` bytes, source-route equivalence
+  against `c4cll --codegen obj --target riscv64-linux-gnu`, and fail-closed
+  unsupported syntax.
+
+Out-of-scope assembler surfaces such as extra sections, relocation
+expressions, multiple functions, alignment, and full GNU assembler
+compatibility remain outside this idea.
