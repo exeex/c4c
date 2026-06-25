@@ -1287,6 +1287,64 @@ prepare::PreparedBirModule make_prepared_fpr_fptrunc_module() {
                                        bir::TypeKind::F32);
 }
 
+prepare::PreparedBirModule make_prepared_formal_fpr_fpext_to_ft0_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("formal_fpr_fpext_to_ft0");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("%p.a");
+  const auto result_name = prepared.names.value_names.intern("%t0");
+
+  bir::CastInst cast;
+  cast.opcode = bir::CastOpcode::FPExt;
+  cast.operand = bir::Value::named(bir::TypeKind::F32, "%p.a");
+  cast.result = bir::Value::named(bir::TypeKind::F64, "%t0");
+  bir::Block entry{
+      .label = "entry",
+      .insts = {cast},
+      .terminator = bir::Terminator{},
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "formal_fpr_fpext_to_ft0",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = {bir::Param{
+          .type = bir::TypeKind::F32,
+          .name = "%p.a",
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .abi = bir::CallArgAbiInfo{
+              .type = bir::TypeKind::F32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Sse,
+              .passed_in_register = true,
+          },
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              make_fpr_home(function_name, source_name, 1, "fa0", 10),
+              make_fpr_home(function_name, result_name, 2, "ft0", 0),
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_unsupported_floating_cast_module() {
   return make_prepared_fpr_cast_module("unsupported_floating_cast",
                                        bir::CastOpcode::FPExt,
@@ -4603,6 +4661,32 @@ int builds_prepared_fpr_fptrunc_object() {
   return 0;
 }
 
+int builds_prepared_formal_fpr_fpext_to_ft0_object() {
+  const auto prepared = make_prepared_formal_fpr_fpext_to_ft0_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared formal FPR fpext to ft0 RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "formal_fpr_fpext_to_ft0");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared formal FPR fpext object to publish text/function");
+  }
+  if (text->bytes.size() != 8 || text->size_bytes != 8 ||
+      function->value != 0 || function->size_bytes != 8 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared formal FPR fpext object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x42050053 ||
+      read_u32(text->bytes, 4) != 0x00008067) {
+    return fail("expected fcvt.d.s ft0, fa0, rne followed by ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared formal FPR fpext object to need no relocations");
+  }
+  return 0;
+}
+
 int rejects_unsupported_prepared_floating_cast_with_precise_diagnostic() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_unsupported_floating_cast_module(),
@@ -5432,6 +5516,7 @@ int main() {
   status |= builds_prepared_i16_local_store_object();
   status |= builds_prepared_fpr_fpext_object();
   status |= builds_prepared_fpr_fptrunc_object();
+  status |= builds_prepared_formal_fpr_fpext_to_ft0_object();
   status |= rejects_unsupported_prepared_floating_cast_with_precise_diagnostic();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= emits_prepared_writable_i32_global_object_storage();

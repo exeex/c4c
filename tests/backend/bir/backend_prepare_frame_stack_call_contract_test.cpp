@@ -3212,6 +3212,10 @@ int check_riscv_fpr_formal_home_publishes_target_identity(std::string_view targe
                          ? nullptr
                          : prepare::find_prepared_value_home(
                                prepared.names, *locations, "%p.a");
+  const auto* result_home = locations == nullptr
+                                ? nullptr
+                                : prepare::find_prepared_value_home(
+                                      prepared.names, *locations, "%t0");
   if (home == nullptr) {
     return fail("rv64 FPR formal identity contract: missing prepared formal home");
   }
@@ -3226,6 +3230,21 @@ int check_riscv_fpr_formal_home_publishes_target_identity(std::string_view targe
       identity.register_class != prepare::PreparedRegisterClass::Float ||
       identity.physical_index != 10) {
     return fail("rv64 FPR formal identity contract: formal identity did not name physical fa0");
+  }
+  if (result_home == nullptr) {
+    return fail("rv64 FPR formal identity contract: missing prepared FPExt result home");
+  }
+  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
+      result_home->register_name != std::optional<std::string>{"ft0"} ||
+      !result_home->target_register_identity.has_value()) {
+    return fail("rv64 FPR formal identity contract: FPExt result did not publish FPR register identity");
+  }
+  const auto& result_identity = *result_home->target_register_identity;
+  if (result_identity.target_arch != c4c::TargetArch::Riscv64 ||
+      result_identity.bank != prepare::PreparedRegisterBank::Fpr ||
+      result_identity.register_class != prepare::PreparedRegisterClass::Float ||
+      result_identity.physical_index != 0) {
+    return fail("rv64 FPR formal identity contract: FPExt result identity did not name physical ft0");
   }
   return 0;
 }

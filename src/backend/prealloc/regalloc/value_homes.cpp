@@ -229,6 +229,49 @@ namespace {
   return results;
 }
 
+[[nodiscard]] std::optional<PreparedTargetRegisterIdentity>
+riscv_fpr_identity_for_assigned_register(
+    const c4c::TargetProfile& target_profile,
+    const PreparedPhysicalRegisterAssignment& assignment) {
+  if (target_profile.arch != c4c::TargetArch::Riscv64 ||
+      assignment.reg_class != PreparedRegisterClass::Float ||
+      !assignment.placement.has_value() ||
+      assignment.placement->bank != PreparedRegisterBank::Fpr ||
+      assignment.placement->contiguous_width != 1) {
+    return std::nullopt;
+  }
+
+  std::optional<std::size_t> physical_index;
+  switch (assignment.placement->pool) {
+    case PreparedRegisterSlotPool::CallerSaved:
+      if (assignment.placement->slot_index == 0) {
+        physical_index = 0;  // ft0
+      }
+      break;
+    case PreparedRegisterSlotPool::CalleeSaved:
+      if (assignment.placement->slot_index == 0) {
+        physical_index = 9;  // fs1
+      } else if (assignment.placement->slot_index == 1) {
+        physical_index = 18;  // fs2
+      }
+      break;
+    case PreparedRegisterSlotPool::None:
+    case PreparedRegisterSlotPool::CallArgument:
+    case PreparedRegisterSlotPool::CallResult:
+    case PreparedRegisterSlotPool::ReservedScratch:
+      break;
+  }
+  if (!physical_index.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedTargetRegisterIdentity{
+      .target_arch = c4c::TargetArch::Riscv64,
+      .bank = PreparedRegisterBank::Fpr,
+      .register_class = PreparedRegisterClass::Float,
+      .physical_index = *physical_index,
+  };
+}
+
 }  // namespace
 
 PreparedValueHome classify_prepared_value_home(
@@ -414,6 +457,8 @@ PreparedValueHome classify_prepared_value_home(
   if (value.assigned_register.has_value()) {
     home.kind = PreparedValueHomeKind::Register;
     home.register_name = value.assigned_register->register_name;
+    home.target_register_identity =
+        riscv_fpr_identity_for_assigned_register(target_profile, *value.assigned_register);
     return home;
   }
   if (value.assigned_stack_slot.has_value()) {

@@ -8,20 +8,23 @@ Current Step Title: Route Simple Call and FPR ABI Edges
 
 ## Just Finished
 
-Completed Plan Step 4 producer-side RV64 FPR ABI edge repair for the
-`riscv64-linux-gnu` representative path.
+Completed Plan Step 4 RV64 object-route FPR cast boundary repair for the
+prepared formal-parameter path.
 
-`target_profile_from_triple("riscv64-linux-gnu")` now resolves the backend ABI
-to `RiscvLp64D`, matching the Linux GNU representative/sysroot hard-float
-route. The existing prepared FPR formal-home identity contract now also runs
-for `riscv64-linux-gnu` and proves `%p.a` publishes `fa0` plus the authoritative
-FPR target register identity instead of a raw `a0` spelling.
+Prepared RV64 FPR values allocated into normal caller/callee-saved FPR homes now
+publish structured target register identity from prepared placement metadata, so
+the object route can lower `%t0 = bir.fpext float %p.a to double` when `%p.a`
+is the formal `fa0` home and `%t0` is the prepared `ft0` FPR home. Focused
+coverage now proves the prepared `%t0` identity and the object bytes for
+`fcvt.d.s ft0, fa0, rne` without adding raw FPR register-name parsing or
+broadening the supported cast opcode/type matrix.
 
 ## Suggested Next
 
-Rerun `src/20030125-1.c` through the RV64 object-route representative command
-to confirm the prepared dump now shows the FPR formal home as `fa0` and to
-identify the next call/result boundary after this profile fix.
+Classify the next `src/20030125-1.c` RV64 object-route boundary after the FPR
+cast repair. A supplemental rerun moved past `unsupported_floating_cast` and now
+reports `unsupported_instruction_fragment: BIR instruction requires unsupported
+RV64 object lowering`, likely at the following call/result boundary.
 
 ## Watchouts
 
@@ -29,9 +32,8 @@ identify the next call/result boundary after this profile fix.
   prepared FPR cast/call ABI lowering, not testcase-specific math folding.
 - Admission is intentionally identity-backed for FPR homes. Do not add raw
   `register_name` fallback parsing for FPR spellings in object emission.
-- This slice intentionally leaves explicit `riscv64-unknown-linux-gnu` soft
-  profile behavior unchanged; only the `riscv64-linux-gnu` Linux GNU
-  representative path was promoted to LP64D.
+- The new producer identity is limited to known RV64 scalar FPR register
+  placements (`ft0`, `fs1`, `fs2`) and fails closed for unknown placements.
 
 ## Proof
 
