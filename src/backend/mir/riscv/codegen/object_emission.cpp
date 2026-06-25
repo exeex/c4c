@@ -3403,10 +3403,12 @@ bool prepared_object_traversal_is_complete_bir_stream(
 }
 
 std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedFunctionLookups& lookups,
     c4c::BlockLabelId prepared_block_label,
     std::size_t instruction_index,
-    const c4c::backend::bir::Inst& inst) {
+    const c4c::backend::bir::Inst& inst,
+    std::size_t stack_frame_bytes) {
   namespace bir = c4c::backend::bir;
   namespace prepare = c4c::backend::prepare;
 
@@ -3417,15 +3419,11 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
       return std::string{
           "unsupported_local_memory_access: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared local memory accesses"};
     }
-    if (access == nullptr || access->address_space != bir::AddressSpace::Default ||
-        access->is_volatile ||
-        access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
-        !access->address.frame_slot_id.has_value() ||
-        !access->address.can_use_base_plus_offset ||
-        access->address.size_bytes != *size_bytes ||
-        access->address.align_bytes > *size_bytes ||
-        access->address.byte_offset < 0 ||
-        !fits_signed_12_bit_immediate(access->address.byte_offset)) {
+    if (!prepared_frame_slot_absolute_offset(stack_layout,
+                                             access,
+                                             stack_frame_bytes,
+                                             *size_bytes)
+             .has_value()) {
       return std::string{
           "unsupported_local_memory_access: RV64 object route requires prepared frame-slot base-plus-offset local memory addressing"};
     }
@@ -3660,10 +3658,12 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
             }
             if (auto diagnostic =
                     diagnose_unsupported_prepared_instruction_fragment(
+                        prepared.stack_layout,
                         lookups,
                         prepared_block_label,
                         event.instruction_index,
-                        *event.instruction)) {
+                        *event.instruction,
+                        *stack_frame_bytes)) {
               return make_rv64_prepared_function_rejection(std::move(*diagnostic));
             }
             return make_rv64_prepared_function_rejection(
@@ -3742,10 +3742,12 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
         }
         if (auto diagnostic =
                 diagnose_unsupported_prepared_instruction_fragment(
+                    prepared.stack_layout,
                     lookups,
                     prepared_block_label,
                     instruction_index,
-                    block.insts[instruction_index])) {
+                    block.insts[instruction_index],
+                    *stack_frame_bytes)) {
           return make_rv64_prepared_function_rejection(std::move(*diagnostic));
         }
         return make_rv64_prepared_function_rejection(

@@ -1238,6 +1238,122 @@ prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_scalar_local_subobject_frame_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto slot_name = prepared.names.slot_names.intern("%lv.member");
+  const auto result_name = prepared.names.value_names.intern("%t0");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%lv.member",
+                  .slot_id = slot_name,
+                  .value = bir::Value::immediate_i32(5),
+                  .align_bytes = 4,
+              },
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+                  .slot_name = "%lv.member",
+                  .slot_id = slot_name,
+                  .align_bytes = 4,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%t0");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .local_slots = {bir::LocalSlot{
+          .name = "%lv.member",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{0},
+          .function_name = function_name,
+          .offset_bytes = 0,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{1},
+          .function_name = function_name,
+          .offset_bytes = 8,
+          .size_bytes = 8,
+          .align_bytes = 4,
+      },
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 8,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{1},
+                      .byte_offset = 4,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .result_value_name = result_name,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{1},
+                      .byte_offset = 4,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_i16_local_store_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -3839,6 +3955,105 @@ int builds_prepared_scalar_local_frame_object() {
   return 0;
 }
 
+int builds_prepared_scalar_local_subobject_frame_object() {
+  const auto prepared = make_prepared_scalar_local_subobject_frame_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared scalar local subobject RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared scalar local subobject object to publish text/main");
+  }
+  if (text->bytes.size() != 28 || text->size_bytes != 28 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 28) {
+    return fail("expected prepared scalar local subobject object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00500313 ||
+      read_u32(text->bytes, 8) != 0x00612623 ||
+      read_u32(text->bytes, 12) != 0x00c12283 ||
+      read_u32(text->bytes, 16) != 0x00028513 ||
+      read_u32(text->bytes, 20) != 0x01010113 ||
+      read_u32(text->bytes, 24) != 0x00008067) {
+    return fail("expected stack-frame sw/lw scalar local subobject sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected scalar local subobject object to need no relocations");
+  }
+  return 0;
+}
+
+int expect_scalar_local_subobject_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_local_memory_access: RV64 object route requires prepared frame-slot base-plus-offset local memory addressing");
+}
+
+int rejects_prepared_scalar_local_subobject_fail_closed_shapes() {
+  auto prepared = make_prepared_scalar_local_subobject_frame_module();
+  prepared.addressing.functions[0].accesses[0].address.frame_slot_id = std::nullopt;
+  if (expect_scalar_local_subobject_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_local_subobject_frame_module();
+  prepared.addressing.functions[0].accesses[0].address.base_kind =
+      prepare::PreparedAddressBaseKind::PointerValue;
+  if (expect_scalar_local_subobject_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_local_subobject_frame_module();
+  prepared.addressing.functions[0].accesses[0].address.byte_offset = -1;
+  if (expect_scalar_local_subobject_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_local_subobject_frame_module();
+  prepared.addressing.functions[0].accesses[0].address.byte_offset = 8;
+  if (expect_scalar_local_subobject_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_local_subobject_frame_module();
+  prepared.addressing.functions[0].accesses[0].address.align_bytes = 8;
+  if (expect_scalar_local_subobject_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_local_subobject_frame_module();
+  prepared.addressing.functions[0].accesses[0].is_volatile = true;
+  if (expect_scalar_local_subobject_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_local_subobject_frame_module();
+  prepared.addressing.functions[0].accesses[0].address_space = bir::AddressSpace::Tls;
+  if (expect_scalar_local_subobject_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_local_subobject_frame_module();
+  auto* store =
+      std::get_if<bir::StoreLocalInst>(&prepared.module.functions[0].blocks[0].insts[0]);
+  if (store == nullptr) {
+    return fail("expected mutable subobject fixture store");
+  }
+  store->value = bir::Value::immediate_f32_bits(0);
+  prepared.addressing.functions[0].accesses[0].address.size_bytes = 4;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_local_memory_access: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared local memory accesses") !=
+      0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int builds_prepared_stack_slot_scalar_flow_object() {
   const auto prepared = make_prepared_stack_slot_scalar_flow_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -5898,6 +6113,8 @@ int main() {
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();
   status |= rejects_raw_fpr_formal_param_home_without_target_identity();
   status |= builds_prepared_scalar_local_frame_object();
+  status |= builds_prepared_scalar_local_subobject_frame_object();
+  status |= rejects_prepared_scalar_local_subobject_fail_closed_shapes();
   status |= builds_prepared_stack_slot_scalar_flow_object();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= skips_published_prepared_join_transfer_select_carrier_object();
