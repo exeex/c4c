@@ -1,59 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/364_rv64_va_start_helper_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define the First RV64 `va_start` Lowering Contract
+Current Step ID: 3
+Current Step Title: Materialize or Precisely Diagnose `va_start`
 
 # Current Packet
 
 ## Just Finished
 
-Completed a corrective `plan.md` Step 2 contract fix after the hook full-suite
-baseline candidate rejected commit `8278eed3`: the CLI expected-failure case
-`backend_cli_riscv64_variadic_entry_missing_contract_obj` exposed that
-fact-complete helper-free RV64 variadic functions could bypass helper
-diagnostics and fall through to normal object emission.
+Completed `plan.md` Step 3 materialization for the first supportable prepared
+RV64 `VaStart` path: complete operand homes plus explicit
+`overflow_area.base_slot_id` and `base_stack_offset_bytes`.
 
-RV64 object emission now fails closed when a prepared variadic entry plan has
-complete required facts but no prepared helper boundary, with:
+RV64 object emission now consumes the prepared `VaStart` helper at the exact
+block/instruction site, computes the prepared initial overflow pointer from
+`sp + base_stack_offset_bytes`, and stores it through the prepared
+`destination_va_list_address` GPR into the RV64 `va_list` overflow-arg-area
+field. The focused explicit-state fixture now emits real object bytes:
+`addi t1, sp, 64; sd t1, 0(a1); addi a0, zero, 0; ret`.
 
-`unsupported_function_admission: RV64 helper-free variadic entry lowering remains unsupported without an explicit supported variadic entry runtime contract`
+The existing precise rejection for complete operand homes without explicit
+overflow-area base state is preserved:
 
-Focused coverage now distinguishes all Step 2 rejection classes:
+`unsupported_variadic_helper_lowering: RV64 va_start helper requires prepared overflow-area initial base state`
 
-- missing variadic entry plan
-- missing required variadic entry facts
-- fact-complete helper-free variadic entry with no explicit supported runtime
-  contract
-- complete `VaStart` missing overflow-area initial base state
-- complete `VaStart` with base state still stopped at the lowering boundary
+Helper-free variadic entry rejection and generic unsupported-helper diagnostics
+remain outside the materialized path.
 
 ## Suggested Next
 
-Implement `plan.md` Step 3 as a narrow materialization packet for the prepared
-`VaStart` path that has complete operand homes and explicit overflow-area base
-state. The packet should store the initial overflow pointer into the RV64
-`va_list` overflow-arg-area field and preserve the precise missing-base-state
-diagnostic for incomplete runtime state.
+Run `plan.md` Step 4 representative and baseline validation. Suggested packet:
+exercise the representative RV64 allowlist case `src/920908-1.c`, record
+whether it now reaches a later boundary or succeeds, and decide whether any
+remaining failure belongs to this idea or a separate open idea.
 
 ## Watchouts
 
 - Treat `src/920908-1.c` as a representative signal, not an implementation key.
-- Do not reopen scalar `va_arg`, `va_copy`, external variadic call lowering, or
-  general parameter-home expansion as part of this packet.
-- Do not infer `va_start` semantics from the BIR call shape in the RV64 target
-  route. The target route should consume `PreparedVariadicEntryHelperOperandHomes`
-  and entry-plan runtime facts.
-- `destination_va_list` can be a current value home while
-  `destination_va_list_address` is a materialized stack-slot home for the
-  addressable `va_list` object. The object route must be explicit about which
-  home it stores into.
-- RV64 `va_list` layout is only the overflow pointer. Materializing
-  `va_start` requires a pointer to the first unnamed stack argument, not just
-  the destination `va_list` slot.
-- This packet did not change prepared producers, so producer-owned RV64 facts
-  still need to supply explicit overflow-area base state before the materialized
-  path can become reachable from normal prepared modules.
+- This packet did not edit producer files. Normal prepared RV64 modules may
+  still lack `overflow_area.base_slot_id` and `base_stack_offset_bytes`; that
+  remains a producer/runtime-state gap rather than an object-emission fallback.
+- The materialized object path is intentionally narrow: RV64 single-field
+  `va_list`, supported overflow-arg-area field, prepared va_list address in a
+  GPR, and signed-12-bit overflow-base/field offsets.
+- Do not broaden Step 4 into scalar `va_arg`, `va_copy`, aggregate `va_arg`,
+  external variadic calls, or general parameter-home coverage.
 - Helper-free fact-complete RV64 variadic entry is intentionally rejected until
   there is an explicit supported variadic entry/runtime contract; do not treat
   a helper-free body that emits an object as plan progress.

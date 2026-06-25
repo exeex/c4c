@@ -3134,11 +3134,33 @@ int rejects_fact_complete_variadic_va_start_without_overflow_base_state() {
       "unsupported_variadic_helper_lowering: RV64 va_start helper requires prepared overflow-area initial base state");
 }
 
-int rejects_fact_complete_variadic_va_start_with_overflow_base_state_at_lowering_boundary() {
-  return expect_prepared_rejection_diagnostic(
-      make_prepared_variadic_va_start_module(
-          true /*include_overflow_area_initial_state*/),
-      "unsupported_variadic_helper_lowering: RV64 object route does not yet lower va_start helper");
+int materializes_fact_complete_variadic_va_start_with_overflow_base_state() {
+  const auto prepared = make_prepared_variadic_va_start_module(
+      true /*include_overflow_area_initial_state*/);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared va_start RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "rv64_va_start");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared va_start object to publish text/function");
+  }
+  if (text->bytes.size() != 16 || text->size_bytes != 16 ||
+      function->value != 0 || function->size_bytes != 16 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared va_start object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x04010313 ||
+      read_u32(text->bytes, 4) != 0x0065b023 ||
+      read_u32(text->bytes, 8) != 0x00000513 ||
+      read_u32(text->bytes, 12) != 0x00008067) {
+    return fail("expected va_start to store sp+64 into the overflow-area va_list field");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected materialized va_start helper to need no relocations");
+  }
+  return 0;
 }
 
 int builds_prepared_two_arg_scalar_call_object() {
@@ -4970,7 +4992,7 @@ int main() {
   status |= rejects_fact_complete_helper_free_variadic_entry_without_runtime_contract();
   status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
   status |=
-      rejects_fact_complete_variadic_va_start_with_overflow_base_state_at_lowering_boundary();
+      materializes_fact_complete_variadic_va_start_with_overflow_base_state();
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_stack_slot_scalar_flow_object();

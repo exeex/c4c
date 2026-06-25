@@ -208,6 +208,9 @@ RiscvPreparedObjectFunctionResult make_rv64_prepared_function_rejection(
   };
 }
 
+std::optional<std::uint32_t> gpr_register_number_for_home(
+    const c4c::backend::prepare::PreparedValueHome& home);
+
 std::optional<std::string> rv64_variadic_function_admission_diagnostic(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name) {
@@ -257,6 +260,46 @@ std::optional<std::string> rv64_variadic_va_start_runtime_state_diagnostic(
   return std::nullopt;
 }
 
+const prepare::PreparedVariadicVaListField*
+rv64_variadic_va_list_overflow_arg_area_field(
+    const prepare::PreparedVariadicEntryPlanFunction& entry_plan) {
+  for (const auto& field : entry_plan.va_list_layout.fields) {
+    if (field.kind == prepare::PreparedVariadicVaListFieldKind::OverflowArgArea) {
+      return &field;
+    }
+  }
+  return nullptr;
+}
+
+std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(
+    const prepare::PreparedVariadicEntryPlanFunction& entry_plan,
+    const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (auto diagnostic = rv64_variadic_va_start_runtime_state_diagnostic(entry_plan)) {
+    return diagnostic;
+  }
+  const auto* overflow_field =
+      rv64_variadic_va_list_overflow_arg_area_field(entry_plan);
+  if (overflow_field == nullptr || overflow_field->size_bytes != 8 ||
+      !fits_signed_12_bit_immediate(
+          static_cast<std::int64_t>(overflow_field->offset_bytes))) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_start helper requires a supported overflow-arg-area va_list field"};
+  }
+  if (!homes.destination_va_list_address.has_value() ||
+      homes.destination_va_list_address->kind !=
+          prepare::PreparedValueHomeKind::Register ||
+      !gpr_register_number_for_home(*homes.destination_va_list_address).has_value()) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home"};
+  }
+  if (!fits_signed_12_bit_immediate(
+          static_cast<std::int64_t>(*entry_plan.overflow_area.base_stack_offset_bytes))) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_start helper overflow-area initial base offset exceeds RV64 immediate range"};
+  }
+  return std::nullopt;
+}
+
 std::optional<std::string> diagnose_unsupported_prepared_variadic_helper_fragment(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
@@ -296,9 +339,11 @@ std::optional<std::string> diagnose_unsupported_prepared_variadic_helper_fragmen
     return diagnostic;
   }
   if (*helper == prepare::PreparedVariadicEntryHelperKind::VaStart) {
-    if (auto diagnostic = rv64_variadic_va_start_runtime_state_diagnostic(*entry_plan)) {
+    if (auto diagnostic =
+            rv64_variadic_va_start_materialization_diagnostic(*entry_plan, *homes)) {
       return diagnostic;
     }
+    return std::nullopt;
   }
   return rv64_variadic_helper_unsupported_diagnostic(*helper);
 }
@@ -684,6 +729,60 @@ void append_rv64_load_immediate(RiscvEncodedFragment& fragment,
                             0,
                             0,
                             static_cast<std::int32_t>(immediate)));
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_start(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const c4c::backend::bir::CallInst& call) {
+  const auto helper = prepare::prepared_variadic_entry_helper_kind_for_call(call);
+  if (!helper.has_value() ||
+      *helper != prepare::PreparedVariadicEntryHelperKind::VaStart) {
+    return std::nullopt;
+  }
+  const auto* entry_plan =
+      prepare::find_prepared_variadic_entry_plan(prepared, function_name);
+  if (entry_plan == nullptr) {
+    return std::nullopt;
+  }
+  const auto* homes = prepare::find_prepared_variadic_entry_helper_operand_homes(
+      *entry_plan,
+      block_index,
+      instruction_index);
+  if (homes == nullptr || homes->helper != *helper ||
+      !prepare::has_complete_prepared_variadic_va_start_operand_homes(*homes) ||
+      rv64_variadic_va_start_materialization_diagnostic(*entry_plan, *homes)) {
+    return std::nullopt;
+  }
+
+  const auto* overflow_field =
+      rv64_variadic_va_list_overflow_arg_area_field(*entry_plan);
+  const auto destination =
+      gpr_register_number_for_home(*homes->destination_va_list_address);
+  if (overflow_field == nullptr || !destination.has_value()) {
+    return std::nullopt;
+  }
+
+  constexpr std::uint32_t scratch = 6;  // t1
+  RiscvEncodedFragment fragment;
+  append_le32(fragment.bytes,
+              encode_i_type(0x13,
+                            scratch,
+                            0,
+                            2,
+                            static_cast<std::int32_t>(
+                                *entry_plan->overflow_area.base_stack_offset_bytes)));
+  if (!append_rv64_store_register_to_base(
+          fragment,
+          scratch,
+          *destination,
+          static_cast<std::int32_t>(overflow_field->offset_bytes),
+          overflow_field->size_bytes)) {
+    return std::nullopt;
+  }
+  return fragment;
 }
 
 const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for_id(
@@ -2855,6 +2954,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     return std::nullopt;
   }
 
+  if (auto fragment =
+          fragment_for_prepared_variadic_va_start(prepared,
+                                                  control_flow.function_name,
+                                                  block_index,
+                                                  instruction_index,
+                                                  *call)) {
+    return fragment;
+  }
+
   const auto* call_plan = prepare::find_indexed_prepared_call_plan(
       &lookups.call_plans,
       prepare::find_prepared_call_plans(prepared, control_flow.function_name),
@@ -3024,7 +3132,11 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                            [](const c4c::backend::bir::Inst& inst) {
                              const auto* call =
                                  std::get_if<c4c::backend::bir::CallInst>(&inst);
-                             return call != nullptr && !call->inline_asm.has_value();
+                             return call != nullptr &&
+                                    !call->inline_asm.has_value() &&
+                                    !prepare::prepared_variadic_entry_helper_kind_for_call(
+                                         *call)
+                                         .has_value();
                            });
   }
   if (has_call) {
