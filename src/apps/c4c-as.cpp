@@ -1,4 +1,5 @@
 #if C4C_ENABLE_BACKEND
+#include "mir/riscv/codegen/object_emission.hpp"
 #include "mir/riscv/codegen/rv64_line_assembler.hpp"
 #endif
 
@@ -11,6 +12,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -42,8 +44,8 @@ void print_help(std::ostream& out) {
       << "  --version        Print version information\n"
       << "  -o <path>        Output object path\n\n"
       << "Status:\n"
-      << "  assembles the initial RV64 .text instruction subset into text bytes;\n"
-      << "  relocatable object emission is not implemented yet\n";
+      << "  assembles the initial RV64 .text instruction subset into a relocatable\n"
+      << "  RV64 ELF object\n";
 }
 
 std::string_view trim_ascii(std::string_view text) {
@@ -279,6 +281,80 @@ std::optional<std::vector<std::uint8_t>> assemble_text_bytes(const ParseResult& 
 #endif
 }
 
+#if C4C_ENABLE_BACKEND
+std::optional<c4c::backend::riscv::codegen::RiscvObjectFunction> build_object_function(
+    const ParseResult& parsed,
+    const std::vector<std::uint8_t>& text_bytes,
+    const std::string& path) {
+  if (parsed.globals.size() != 1) {
+    std::cerr << "c4c-as: error: " << path
+              << ": supported RV64 object subset requires exactly one .globl symbol\n";
+    return std::nullopt;
+  }
+  if (parsed.labels.size() != 1) {
+    std::cerr << "c4c-as: error: " << path
+              << ": supported RV64 object subset requires exactly one text label\n";
+    return std::nullopt;
+  }
+  if (parsed.globals.front() != parsed.labels.front()) {
+    std::cerr << "c4c-as: error: " << path << ": .globl symbol '"
+              << parsed.globals.front() << "' does not match text label '"
+              << parsed.labels.front() << "'\n";
+    return std::nullopt;
+  }
+  if (text_bytes.empty()) {
+    std::cerr << "c4c-as: error: " << path
+              << ": supported RV64 object subset requires at least one instruction\n";
+    return std::nullopt;
+  }
+
+  c4c::backend::riscv::codegen::RiscvEncodedFragment fragment;
+  fragment.bytes = text_bytes;
+  return c4c::backend::riscv::codegen::RiscvObjectFunction{
+      .name = parsed.globals.front(),
+      .global = true,
+      .fragments = {std::move(fragment)},
+  };
+}
+
+bool write_object_file(const ParseResult& parsed,
+                       const std::vector<std::uint8_t>& text_bytes,
+                       const std::string& input_path,
+                       const std::string& output_path) {
+  const auto function = build_object_function(parsed, text_bytes, input_path);
+  if (!function.has_value()) {
+    return false;
+  }
+  const auto module =
+      c4c::backend::riscv::codegen::build_rv64_text_object_module({*function});
+  if (!module.has_value()) {
+    std::cerr << "c4c-as: error: " << input_path
+              << ": failed to build RV64 object module\n";
+    return false;
+  }
+  const auto image =
+      c4c::backend::riscv::codegen::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    std::cerr << "c4c-as: error: " << input_path
+              << ": failed to write RV64 relocatable ELF object\n";
+    return false;
+  }
+
+  std::ofstream output(output_path, std::ios::binary | std::ios::trunc);
+  if (!output) {
+    std::cerr << "c4c-as: error: failed to open output file '" << output_path << "'\n";
+    return false;
+  }
+  output.write(reinterpret_cast<const char*>(image->bytes.data()),
+               static_cast<std::streamsize>(image->bytes.size()));
+  if (!output) {
+    std::cerr << "c4c-as: error: failed to write output file '" << output_path << "'\n";
+    return false;
+  }
+  return true;
+}
+#endif
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -314,10 +390,19 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+#if C4C_ENABLE_BACKEND
+  if (!write_object_file(*parsed, *text_bytes, options->input_path, options->output_path)) {
+    return 1;
+  }
+
   std::cout << "c4c-as: assembled " << parsed->instructions.size()
             << " instruction line(s) from " << options->input_path << " into "
             << text_bytes->size() << " text byte(s): " << hex_bytes(*text_bytes)
-            << "; relocatable object emission is not implemented yet for "
+            << "; wrote RV64 relocatable object "
             << options->output_path << '\n';
   return 0;
+#else
+  std::cerr << "c4c-as: error: backend support is disabled; cannot write RV64 object\n";
+  return 1;
+#endif
 }
