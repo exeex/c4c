@@ -50,6 +50,22 @@ set_target_properties(c4cll PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+add_executable(c4c-as
+    "${PROJECT_SOURCE_DIR}/src/apps/c4c-as.cpp"
+)
+set_target_properties(c4c-as PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_executable(c4c-objdump
+    "${PROJECT_SOURCE_DIR}/src/apps/c4c-objdump.cpp"
+)
+set_target_properties(c4c-objdump PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
 
 
 
