@@ -8,25 +8,25 @@ Current Step Title: Implement Shared Traversal and Query Helpers
 
 ## Just Finished
 
-Step 3 added the target-independent prepared object frame-slot ownership query
-`classify_prepared_object_frame_slot_consumer` in
-`src/backend/prealloc/prepared_object_traversal.{hpp,cpp}`. The helper consumes
-a prepared stack-slot `PreparedValueHome` plus `PreparedStackLayout`, returns
-the owning `PreparedFrameSlot` and slot layout facts when available, and fails
-closed for missing value homes, non-stack homes, incomplete stack homes, missing
-stack layout, missing or ambiguous frame-slot owners, and frame-slot
-function/offset/size/alignment mismatches.
+Step 3 added the target-independent prepared object consumer diagnostic query
+`diagnose_prepared_object_consumer` in
+`src/backend/prealloc/prepared_object_traversal.{hpp,cpp}`. The helper maps
+the existing select, value-home, move-bundle, and frame-slot consumer
+classifications/statuses into precise shared diagnostic categories and
+messages, returns no diagnostic for consumable states, and keeps fail-closed
+missing-contract explanations out of target-local emission code.
 
-`backend_prepared_object_consumer_contract` now covers all new frame-slot
-consumer status names, an available stack-home-to-frame-slot classification,
-and the focused fail-closed ownership cases that target consumers need before
-using prepared frame layout authority.
+`backend_prepared_object_consumer_contract` now covers diagnostic category-name
+stability plus representative shared diagnostics for missing prepared select
+join-transfer authority, missing prepared value-home authority, missing
+prepared move-bundle authority, and missing prepared frame-slot owner authority.
 
 ## Suggested Next
 
-Continue Step 3 with the remaining shared contract gap: precise diagnostic
-query coverage for missing prepared consumer contract pieces before any
-target-connection packet consumes these helpers.
+Continue Step 3 by deciding whether the shared prepared object traversal/query
+surface is complete enough for a target-connection packet, or whether one more
+shared-only packet should add convenience wrappers around combined
+classification-plus-diagnostic query flows.
 
 ## Watchouts
 
@@ -60,6 +60,10 @@ target-connection packet consumes these helpers.
   a target should consume stack homes only when the status is `available`, and
   should not reconstruct slot ownership from offsets or target-local frame
   scans after a fail-closed status.
+- The new consumer diagnostic helper intentionally mirrors existing shared
+  classifier statuses; target code should surface these categories/messages
+  instead of converting fail-closed statuses into a coarse prepared-module
+  shape failure.
 - RV64 `object_emission.cpp` remains untouched; target consumers should only be
   connected after shared tests and hooks cover the needed contract.
 

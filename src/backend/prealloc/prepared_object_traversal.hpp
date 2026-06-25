@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -66,6 +67,47 @@ enum class PreparedObjectFrameSlotConsumerStatus {
   Available,
   MissingValueHome,
   UnsupportedValueHomeKind,
+  IncompleteStackSlotHome,
+  MissingStackLayout,
+  MissingFrameSlotOwner,
+  AmbiguousFrameSlotOwner,
+  MismatchedFrameSlotFunction,
+  MismatchedFrameSlotOffset,
+  MismatchedFrameSlotSize,
+  MismatchedFrameSlotAlignment,
+};
+
+enum class PreparedObjectConsumerDiagnosticCategory {
+  MissingPreparedJoinTransfer,
+  AmbiguousPreparedJoinTransfer,
+  UnsupportedSelectResult,
+  UnsupportedPreparedJoinTransferKind,
+  UnsupportedPreparedJoinTransferCarrierKind,
+  MalformedPreparedJoinTransferCarrier,
+  MissingValue,
+  NonNamedValue,
+  MissingNames,
+  MissingValueLocations,
+  MissingPreparedValueName,
+  MissingPreparedValueHome,
+  AmbiguousPreparedValueHome,
+  ConflictingPreparedValueId,
+  ConflictingPreparedValueHomeLookup,
+  UnsupportedValueHomeKind,
+  IncompleteValueHome,
+  MissingEvent,
+  UnsupportedEventKind,
+  MissingMoveBundle,
+  EmptyMoveBundle,
+  MismatchedMoveBundlePhase,
+  MismatchedMoveBundleBlock,
+  MissingParallelCopyBundle,
+  UnsupportedParallelCopyExecutionSite,
+  MismatchedParallelCopyExecutionSite,
+  MismatchedParallelCopyMoveBundle,
+  UnsupportedParallelCopyMoveBundleAuthority,
+  MissingFrameSlotValueHome,
+  UnsupportedFrameSlotValueHomeKind,
   IncompleteStackSlotHome,
   MissingStackLayout,
   MissingFrameSlotOwner,
@@ -213,6 +255,96 @@ prepared_object_frame_slot_consumer_status_name(
   return "unknown";
 }
 
+[[nodiscard]] constexpr std::string_view
+prepared_object_consumer_diagnostic_category_name(
+    PreparedObjectConsumerDiagnosticCategory category) {
+  switch (category) {
+    case PreparedObjectConsumerDiagnosticCategory::MissingPreparedJoinTransfer:
+      return "missing_prepared_join_transfer";
+    case PreparedObjectConsumerDiagnosticCategory::AmbiguousPreparedJoinTransfer:
+      return "ambiguous_prepared_join_transfer";
+    case PreparedObjectConsumerDiagnosticCategory::UnsupportedSelectResult:
+      return "unsupported_select_result";
+    case PreparedObjectConsumerDiagnosticCategory::
+        UnsupportedPreparedJoinTransferKind:
+      return "unsupported_prepared_join_transfer_kind";
+    case PreparedObjectConsumerDiagnosticCategory::
+        UnsupportedPreparedJoinTransferCarrierKind:
+      return "unsupported_prepared_join_transfer_carrier_kind";
+    case PreparedObjectConsumerDiagnosticCategory::MalformedPreparedJoinTransferCarrier:
+      return "malformed_prepared_join_transfer_carrier";
+    case PreparedObjectConsumerDiagnosticCategory::MissingValue:
+      return "missing_value";
+    case PreparedObjectConsumerDiagnosticCategory::NonNamedValue:
+      return "non_named_value";
+    case PreparedObjectConsumerDiagnosticCategory::MissingNames:
+      return "missing_names";
+    case PreparedObjectConsumerDiagnosticCategory::MissingValueLocations:
+      return "missing_value_locations";
+    case PreparedObjectConsumerDiagnosticCategory::MissingPreparedValueName:
+      return "missing_prepared_value_name";
+    case PreparedObjectConsumerDiagnosticCategory::MissingPreparedValueHome:
+      return "missing_prepared_value_home";
+    case PreparedObjectConsumerDiagnosticCategory::AmbiguousPreparedValueHome:
+      return "ambiguous_prepared_value_home";
+    case PreparedObjectConsumerDiagnosticCategory::ConflictingPreparedValueId:
+      return "conflicting_prepared_value_id";
+    case PreparedObjectConsumerDiagnosticCategory::
+        ConflictingPreparedValueHomeLookup:
+      return "conflicting_prepared_value_home_lookup";
+    case PreparedObjectConsumerDiagnosticCategory::UnsupportedValueHomeKind:
+      return "unsupported_value_home_kind";
+    case PreparedObjectConsumerDiagnosticCategory::IncompleteValueHome:
+      return "incomplete_value_home";
+    case PreparedObjectConsumerDiagnosticCategory::MissingEvent:
+      return "missing_event";
+    case PreparedObjectConsumerDiagnosticCategory::UnsupportedEventKind:
+      return "unsupported_event_kind";
+    case PreparedObjectConsumerDiagnosticCategory::MissingMoveBundle:
+      return "missing_move_bundle";
+    case PreparedObjectConsumerDiagnosticCategory::EmptyMoveBundle:
+      return "empty_move_bundle";
+    case PreparedObjectConsumerDiagnosticCategory::MismatchedMoveBundlePhase:
+      return "mismatched_move_bundle_phase";
+    case PreparedObjectConsumerDiagnosticCategory::MismatchedMoveBundleBlock:
+      return "mismatched_move_bundle_block";
+    case PreparedObjectConsumerDiagnosticCategory::MissingParallelCopyBundle:
+      return "missing_parallel_copy_bundle";
+    case PreparedObjectConsumerDiagnosticCategory::
+        UnsupportedParallelCopyExecutionSite:
+      return "unsupported_parallel_copy_execution_site";
+    case PreparedObjectConsumerDiagnosticCategory::
+        MismatchedParallelCopyExecutionSite:
+      return "mismatched_parallel_copy_execution_site";
+    case PreparedObjectConsumerDiagnosticCategory::MismatchedParallelCopyMoveBundle:
+      return "mismatched_parallel_copy_move_bundle";
+    case PreparedObjectConsumerDiagnosticCategory::
+        UnsupportedParallelCopyMoveBundleAuthority:
+      return "unsupported_parallel_copy_move_bundle_authority";
+    case PreparedObjectConsumerDiagnosticCategory::MissingFrameSlotValueHome:
+      return "missing_frame_slot_value_home";
+    case PreparedObjectConsumerDiagnosticCategory::UnsupportedFrameSlotValueHomeKind:
+      return "unsupported_frame_slot_value_home_kind";
+    case PreparedObjectConsumerDiagnosticCategory::IncompleteStackSlotHome:
+      return "incomplete_stack_slot_home";
+    case PreparedObjectConsumerDiagnosticCategory::MissingStackLayout:
+      return "missing_stack_layout";
+    case PreparedObjectConsumerDiagnosticCategory::MissingFrameSlotOwner:
+      return "missing_frame_slot_owner";
+    case PreparedObjectConsumerDiagnosticCategory::AmbiguousFrameSlotOwner:
+      return "ambiguous_frame_slot_owner";
+    case PreparedObjectConsumerDiagnosticCategory::MismatchedFrameSlotFunction:
+      return "mismatched_frame_slot_function";
+    case PreparedObjectConsumerDiagnosticCategory::MismatchedFrameSlotOffset:
+      return "mismatched_frame_slot_offset";
+    case PreparedObjectConsumerDiagnosticCategory::MismatchedFrameSlotSize:
+      return "mismatched_frame_slot_size";
+    case PreparedObjectConsumerDiagnosticCategory::MismatchedFrameSlotAlignment:
+      return "mismatched_frame_slot_alignment";
+  }
+  return "unknown";
+}
+
 struct PreparedObjectTraversalEvent {
   PreparedObjectTraversalEventKind kind = PreparedObjectTraversalEventKind::Label;
   std::size_t block_index = 0;
@@ -291,6 +423,12 @@ struct PreparedObjectFrameSlotConsumerClassification {
   std::size_t align_bytes = 0;
 };
 
+struct PreparedObjectConsumerDiagnostic {
+  PreparedObjectConsumerDiagnosticCategory category =
+      PreparedObjectConsumerDiagnosticCategory::MissingValue;
+  std::string message;
+};
+
 [[nodiscard]] std::optional<PreparedObjectTraversalEventKind>
 prepared_object_parallel_copy_event_kind(
     const PreparedParallelCopyBundle& parallel_copy_bundle);
@@ -334,6 +472,22 @@ classify_prepared_object_frame_slot_consumer(
 classify_prepared_object_frame_slot_consumer(
     const PreparedStackLayout& stack_layout,
     const PreparedValueHome& value_home);
+
+[[nodiscard]] std::optional<PreparedObjectConsumerDiagnostic>
+diagnose_prepared_object_consumer(
+    const PreparedObjectSelectConsumerClassification& classification);
+
+[[nodiscard]] std::optional<PreparedObjectConsumerDiagnostic>
+diagnose_prepared_object_consumer(
+    const PreparedObjectValueHomeConsumerClassification& classification);
+
+[[nodiscard]] std::optional<PreparedObjectConsumerDiagnostic>
+diagnose_prepared_object_consumer(
+    const PreparedObjectMoveBundleConsumerClassification& classification);
+
+[[nodiscard]] std::optional<PreparedObjectConsumerDiagnostic>
+diagnose_prepared_object_consumer(
+    const PreparedObjectFrameSlotConsumerClassification& classification);
 
 [[nodiscard]] std::vector<PreparedObjectTraversalEvent>
 make_prepared_object_function_traversal(

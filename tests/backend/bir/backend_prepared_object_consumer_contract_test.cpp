@@ -441,6 +441,27 @@ int verify_frame_slot_consumer_status_names() {
              : 1;
 }
 
+int verify_consumer_diagnostic_category_names() {
+  return expect(
+             prepare::prepared_object_consumer_diagnostic_category_name(
+                 prepare::PreparedObjectConsumerDiagnosticCategory::
+                     MissingPreparedJoinTransfer) ==
+                     "missing_prepared_join_transfer" &&
+                 prepare::prepared_object_consumer_diagnostic_category_name(
+                     prepare::PreparedObjectConsumerDiagnosticCategory::
+                         MissingPreparedValueHome) ==
+                     "missing_prepared_value_home" &&
+                 prepare::prepared_object_consumer_diagnostic_category_name(
+                     prepare::PreparedObjectConsumerDiagnosticCategory::
+                         MissingMoveBundle) == "missing_move_bundle" &&
+                 prepare::prepared_object_consumer_diagnostic_category_name(
+                     prepare::PreparedObjectConsumerDiagnosticCategory::
+                         MissingFrameSlotOwner) == "missing_frame_slot_owner",
+             "prepared object consumer diagnostic category names should remain stable")
+             ? 0
+             : 1;
+}
+
 const prepare::PreparedObjectTraversalEvent* find_event(
     const std::vector<prepare::PreparedObjectTraversalEvent>& traversal,
     prepare::PreparedObjectTraversalEventKind kind,
@@ -480,6 +501,40 @@ int verify_real_select_vs_required_missing_carrier_classification() {
                   prepare::PreparedObjectSelectConsumerKind::NotSelectInstruction &&
               non_select.select == nullptr,
               "non-select instructions should not be classified as selects")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_select_consumer_diagnostic_query() {
+  auto fixture = make_fixture();
+  fixture.bir_function.blocks[1].insts.push_back(select_inst("%ordinary"));
+
+  const auto missing = prepare::classify_prepared_object_select_consumer(
+      &fixture.control_flow,
+      fixture.consumer_label,
+      fixture.bir_function.blocks[1].insts.back(),
+      true);
+  const auto diagnostic = prepare::diagnose_prepared_object_consumer(missing);
+  if (!expect(diagnostic.has_value(),
+              "missing prepared select carrier should build a shared diagnostic") ||
+      !expect(diagnostic->category ==
+                  prepare::PreparedObjectConsumerDiagnosticCategory::
+                      MissingPreparedJoinTransfer,
+              "missing prepared select carrier diagnostic category mismatch") ||
+      !expect(diagnostic->message ==
+                  "prepared select carrier is missing required join-transfer authority",
+              "missing prepared select carrier diagnostic message mismatch")) {
+    return 1;
+  }
+
+  const auto ordinary = prepare::classify_prepared_object_select_consumer(
+      &fixture.control_flow,
+      fixture.consumer_label,
+      fixture.bir_function.blocks[1].insts.back());
+  if (!expect(!prepare::diagnose_prepared_object_consumer(ordinary).has_value(),
+              "ordinary selects should not produce missing-contract diagnostics")) {
     return 1;
   }
 
@@ -728,6 +783,40 @@ int verify_move_bundle_consumer_fail_closed_statuses() {
   return 0;
 }
 
+int verify_move_bundle_consumer_diagnostic_query() {
+  auto fixture = make_fixture();
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  const auto* block_entry = find_event(
+      traversal, prepare::PreparedObjectTraversalEventKind::BlockEntryCopies, 1);
+  if (!expect(block_entry != nullptr,
+              "move-bundle diagnostic test should find a copy event")) {
+    return 1;
+  }
+
+  auto missing_bundle_event = *block_entry;
+  missing_bundle_event.move_bundle = nullptr;
+  const auto missing_bundle =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          missing_bundle_event);
+
+  const auto diagnostic =
+      prepare::diagnose_prepared_object_consumer(missing_bundle);
+  if (!expect(diagnostic.has_value(),
+              "missing prepared move bundle should build a shared diagnostic") ||
+      !expect(diagnostic->category ==
+                  prepare::PreparedObjectConsumerDiagnosticCategory::
+                      MissingMoveBundle,
+              "missing prepared move-bundle diagnostic category mismatch") ||
+      !expect(diagnostic->message ==
+                  "prepared copy traversal event is missing move-bundle authority",
+              "missing prepared move-bundle diagnostic message mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int verify_supported_value_home_consumer_classification() {
   auto fixture = make_fixture();
   auto reg_home = value_home(
@@ -886,6 +975,31 @@ int verify_value_home_consumer_missing_and_unsupported_statuses() {
                                       PreparedObjectValueHomeConsumerStatus::
                                           IncompleteValueHome,
               "incomplete register homes should fail closed before target consumption")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_value_home_consumer_diagnostic_query() {
+  auto fixture = make_fixture();
+  fixture.names.value_names.intern("%missing.home");
+  const auto missing_home_value =
+      bir::Value::named(bir::TypeKind::I32, "%missing.home");
+  const auto missing_home = prepare::classify_prepared_object_value_home_consumer(
+      fixture.names, &fixture.locations, missing_home_value);
+
+  const auto diagnostic =
+      prepare::diagnose_prepared_object_consumer(missing_home);
+  if (!expect(diagnostic.has_value(),
+              "missing prepared value home should build a shared diagnostic") ||
+      !expect(diagnostic->category ==
+                  prepare::PreparedObjectConsumerDiagnosticCategory::
+                      MissingPreparedValueHome,
+              "missing prepared value-home diagnostic category mismatch") ||
+      !expect(diagnostic->message ==
+                  "prepared value-home consumer is missing prepared value-home authority",
+              "missing prepared value-home diagnostic message mismatch")) {
     return 1;
   }
 
@@ -1068,6 +1182,30 @@ int verify_frame_slot_consumer_fail_closed_statuses() {
   return 0;
 }
 
+int verify_frame_slot_consumer_diagnostic_query() {
+  auto fixture = make_fixture();
+  const auto missing_owner_home =
+      stack_slot_value_home(fixture, "%missing.owner", 904, 13, 80, 4, 4);
+  const auto missing_owner = prepare::classify_prepared_object_frame_slot_consumer(
+      fixture.stack_layout, missing_owner_home);
+
+  const auto diagnostic =
+      prepare::diagnose_prepared_object_consumer(missing_owner);
+  if (!expect(diagnostic.has_value(),
+              "missing prepared frame-slot owner should build a shared diagnostic") ||
+      !expect(diagnostic->category ==
+                  prepare::PreparedObjectConsumerDiagnosticCategory::
+                      MissingFrameSlotOwner,
+              "missing prepared frame-slot owner diagnostic category mismatch") ||
+      !expect(diagnostic->message ==
+                  "prepared stack-slot home is missing frame-slot owner authority",
+              "missing prepared frame-slot owner diagnostic message mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -1086,6 +1224,10 @@ int main() {
   if (const auto result = verify_frame_slot_consumer_status_names(); result != 0) {
     return EXIT_FAILURE;
   }
+  if (const auto result = verify_consumer_diagnostic_category_names();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
   if (const auto result = verify_canonical_consumer_schedule(); result != 0) {
     return EXIT_FAILURE;
   }
@@ -1095,6 +1237,10 @@ int main() {
   }
   if (const auto result =
           verify_real_select_vs_required_missing_carrier_classification();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result = verify_select_consumer_diagnostic_query();
       result != 0) {
     return EXIT_FAILURE;
   }
@@ -1117,11 +1263,19 @@ int main() {
       result != 0) {
     return EXIT_FAILURE;
   }
+  if (const auto result = verify_value_home_consumer_diagnostic_query();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
   if (const auto result = verify_frame_slot_consumer_available_classification();
       result != 0) {
     return EXIT_FAILURE;
   }
   if (const auto result = verify_frame_slot_consumer_fail_closed_statuses();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result = verify_frame_slot_consumer_diagnostic_query();
       result != 0) {
     return EXIT_FAILURE;
   }
@@ -1131,6 +1285,10 @@ int main() {
   }
   if (const auto result =
           verify_move_bundle_consumer_fail_closed_statuses();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result = verify_move_bundle_consumer_diagnostic_query();
       result != 0) {
     return EXIT_FAILURE;
   }

@@ -1,6 +1,7 @@
 #include "prepared_object_traversal.hpp"
 
 #include <algorithm>
+#include <utility>
 
 namespace c4c::backend::prepare {
 
@@ -323,6 +324,15 @@ void append_before_return_move_events(std::vector<PreparedObjectTraversalEvent>&
         .move_bundle = &move_bundle,
     });
   }
+}
+
+[[nodiscard]] PreparedObjectConsumerDiagnostic make_consumer_diagnostic(
+    PreparedObjectConsumerDiagnosticCategory category,
+    std::string message) {
+  return PreparedObjectConsumerDiagnostic{
+      .category = category,
+      .message = std::move(message),
+  };
 }
 
 }  // namespace
@@ -715,6 +725,211 @@ classify_prepared_object_frame_slot_consumer(
           .stack_layout = &stack_layout,
           .value_home = &value_home,
       });
+}
+
+std::optional<PreparedObjectConsumerDiagnostic> diagnose_prepared_object_consumer(
+    const PreparedObjectSelectConsumerClassification& classification) {
+  switch (classification.kind) {
+    case PreparedObjectSelectConsumerKind::NotSelectInstruction:
+    case PreparedObjectSelectConsumerKind::OrdinarySelect:
+    case PreparedObjectSelectConsumerKind::PreparedJoinTransferCarrier:
+      return std::nullopt;
+    case PreparedObjectSelectConsumerKind::MissingPreparedJoinTransfer:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingPreparedJoinTransfer,
+          "prepared select carrier is missing required join-transfer authority");
+    case PreparedObjectSelectConsumerKind::AmbiguousPreparedJoinTransfer:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::AmbiguousPreparedJoinTransfer,
+          "prepared select carrier matched multiple join-transfer authorities");
+    case PreparedObjectSelectConsumerKind::UnsupportedSelectResult:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::UnsupportedSelectResult,
+          "prepared select carrier requires a named select result");
+    case PreparedObjectSelectConsumerKind::UnsupportedPreparedJoinTransferKind:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              UnsupportedPreparedJoinTransferKind,
+          "prepared select carrier requires phi-edge join-transfer authority");
+    case PreparedObjectSelectConsumerKind::
+        UnsupportedPreparedJoinTransferCarrierKind:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              UnsupportedPreparedJoinTransferCarrierKind,
+          "prepared select carrier uses an unsupported join-transfer carrier");
+    case PreparedObjectSelectConsumerKind::MalformedPreparedJoinTransferCarrier:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              MalformedPreparedJoinTransferCarrier,
+          "prepared select carrier is missing complete materialization edge facts");
+  }
+  return std::nullopt;
+}
+
+std::optional<PreparedObjectConsumerDiagnostic> diagnose_prepared_object_consumer(
+    const PreparedObjectValueHomeConsumerClassification& classification) {
+  switch (classification.status) {
+    case PreparedObjectValueHomeConsumerStatus::Available:
+      return std::nullopt;
+    case PreparedObjectValueHomeConsumerStatus::MissingValue:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingValue,
+          "prepared value-home consumer query is missing a value operand");
+    case PreparedObjectValueHomeConsumerStatus::NonNamedValue:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::NonNamedValue,
+          "prepared value-home consumer requires a named value operand");
+    case PreparedObjectValueHomeConsumerStatus::MissingNames:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingNames,
+          "prepared value-home consumer is missing prepared name tables");
+    case PreparedObjectValueHomeConsumerStatus::MissingValueLocations:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingValueLocations,
+          "prepared value-home consumer is missing value-location authority");
+    case PreparedObjectValueHomeConsumerStatus::MissingPreparedValueName:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingPreparedValueName,
+          "prepared value-home consumer cannot find the prepared value name");
+    case PreparedObjectValueHomeConsumerStatus::MissingPreparedValueHome:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingPreparedValueHome,
+          "prepared value-home consumer is missing prepared value-home authority");
+    case PreparedObjectValueHomeConsumerStatus::AmbiguousPreparedValueHome:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::AmbiguousPreparedValueHome,
+          "prepared value-home consumer found multiple prepared homes for one value");
+    case PreparedObjectValueHomeConsumerStatus::ConflictingPreparedValueId:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::ConflictingPreparedValueId,
+          "prepared value-home consumer found conflicting prepared value ids");
+    case PreparedObjectValueHomeConsumerStatus::
+        ConflictingPreparedValueHomeLookup:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              ConflictingPreparedValueHomeLookup,
+          "prepared value-home lookup disagrees with value-home authority");
+    case PreparedObjectValueHomeConsumerStatus::UnsupportedValueHomeKind:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::UnsupportedValueHomeKind,
+          "prepared value-home consumer found an unsupported value-home kind");
+    case PreparedObjectValueHomeConsumerStatus::IncompleteValueHome:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::IncompleteValueHome,
+          "prepared value-home consumer found incomplete value-home facts");
+  }
+  return std::nullopt;
+}
+
+std::optional<PreparedObjectConsumerDiagnostic> diagnose_prepared_object_consumer(
+    const PreparedObjectMoveBundleConsumerClassification& classification) {
+  switch (classification.status) {
+    case PreparedObjectMoveBundleConsumerStatus::Available:
+      return std::nullopt;
+    case PreparedObjectMoveBundleConsumerStatus::MissingEvent:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingEvent,
+          "prepared move-bundle consumer query is missing a traversal event");
+    case PreparedObjectMoveBundleConsumerStatus::UnsupportedEventKind:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::UnsupportedEventKind,
+          "prepared move-bundle consumer requires a copy traversal event");
+    case PreparedObjectMoveBundleConsumerStatus::MissingMoveBundle:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingMoveBundle,
+          "prepared copy traversal event is missing move-bundle authority");
+    case PreparedObjectMoveBundleConsumerStatus::EmptyMoveBundle:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::EmptyMoveBundle,
+          "prepared move-bundle authority contains no moves");
+    case PreparedObjectMoveBundleConsumerStatus::MismatchedMoveBundlePhase:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MismatchedMoveBundlePhase,
+          "prepared move-bundle phase does not match its traversal event");
+    case PreparedObjectMoveBundleConsumerStatus::MismatchedMoveBundleBlock:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MismatchedMoveBundleBlock,
+          "prepared move-bundle block does not match its traversal event");
+    case PreparedObjectMoveBundleConsumerStatus::MissingParallelCopyBundle:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingParallelCopyBundle,
+          "prepared out-of-SSA move bundle is missing parallel-copy authority");
+    case PreparedObjectMoveBundleConsumerStatus::
+        UnsupportedParallelCopyExecutionSite:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              UnsupportedParallelCopyExecutionSite,
+          "prepared parallel-copy authority has no target-consumable block event");
+    case PreparedObjectMoveBundleConsumerStatus::
+        MismatchedParallelCopyExecutionSite:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              MismatchedParallelCopyExecutionSite,
+          "prepared parallel-copy authority is attached to the wrong traversal site");
+    case PreparedObjectMoveBundleConsumerStatus::
+        MismatchedParallelCopyMoveBundle:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              MismatchedParallelCopyMoveBundle,
+          "prepared move-bundle authority does not match its parallel-copy owner");
+    case PreparedObjectMoveBundleConsumerStatus::
+        UnsupportedParallelCopyMoveBundleAuthority:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              UnsupportedParallelCopyMoveBundleAuthority,
+          "prepared parallel-copy event requires out-of-SSA move-bundle authority");
+  }
+  return std::nullopt;
+}
+
+std::optional<PreparedObjectConsumerDiagnostic> diagnose_prepared_object_consumer(
+    const PreparedObjectFrameSlotConsumerClassification& classification) {
+  switch (classification.status) {
+    case PreparedObjectFrameSlotConsumerStatus::Available:
+      return std::nullopt;
+    case PreparedObjectFrameSlotConsumerStatus::MissingValueHome:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingFrameSlotValueHome,
+          "prepared frame-slot consumer query is missing a value-home authority");
+    case PreparedObjectFrameSlotConsumerStatus::UnsupportedValueHomeKind:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              UnsupportedFrameSlotValueHomeKind,
+          "prepared frame-slot consumer requires a stack-slot value home");
+    case PreparedObjectFrameSlotConsumerStatus::IncompleteStackSlotHome:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::IncompleteStackSlotHome,
+          "prepared stack-slot home is missing complete frame-slot facts");
+    case PreparedObjectFrameSlotConsumerStatus::MissingStackLayout:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingStackLayout,
+          "prepared frame-slot consumer is missing stack-layout authority");
+    case PreparedObjectFrameSlotConsumerStatus::MissingFrameSlotOwner:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MissingFrameSlotOwner,
+          "prepared stack-slot home is missing frame-slot owner authority");
+    case PreparedObjectFrameSlotConsumerStatus::AmbiguousFrameSlotOwner:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::AmbiguousFrameSlotOwner,
+          "prepared stack-slot home matched multiple frame-slot owners");
+    case PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotFunction:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MismatchedFrameSlotFunction,
+          "prepared frame-slot owner belongs to a different function");
+    case PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotOffset:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MismatchedFrameSlotOffset,
+          "prepared frame-slot owner offset disagrees with stack-slot home");
+    case PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotSize:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MismatchedFrameSlotSize,
+          "prepared frame-slot owner size disagrees with stack-slot home");
+    case PreparedObjectFrameSlotConsumerStatus::MismatchedFrameSlotAlignment:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::MismatchedFrameSlotAlignment,
+          "prepared frame-slot owner alignment disagrees with stack-slot home");
+  }
+  return std::nullopt;
 }
 
 std::vector<PreparedObjectTraversalEvent> make_prepared_object_function_traversal(
