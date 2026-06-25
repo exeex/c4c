@@ -1,6 +1,6 @@
 # RV64 Helper-Free Variadic Entry Contract
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/closed/363_rv64_object_parameter_home_coverage.md`
 
@@ -69,4 +69,16 @@ variadic entry admission/runtime-contract work, not to parameter-home coverage.
 
 ```text
 unsupported_function_admission: RV64 helper-free variadic entry lowering remains unsupported without an explicit supported variadic entry runtime contract
+```
+
+## Closure Note
+
+Closed after positive RV64 helper-free variadic entry admission was implemented
+for fact-complete entries and focused backend coverage stayed green. The
+representative `src/20030914-2.c` no longer stops at the helper-free variadic
+entry admission diagnostic; it now reaches the out-of-scope byval aggregate
+parameter-home boundary from idea 363:
+
+```text
+unsupported_byval_param_home: RV64 object route does not yet lower byval aggregate parameter homes in prepared stack slots
 ```
