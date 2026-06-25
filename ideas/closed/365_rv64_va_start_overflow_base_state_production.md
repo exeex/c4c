@@ -1,6 +1,6 @@
 # RV64 `va_start` Overflow Base-State Production
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/closed/364_rv64_va_start_helper_lowering.md`
 
@@ -89,3 +89,21 @@ Representative validation from idea 364:
   `unsupported_variadic_helper_lowering: RV64 va_start helper requires prepared overflow-area initial base state`
 - case log:
   `build/rv64_gcc_c_torture_backend/src_920908-1.c/case.log`
+
+## Closure Note
+
+Closed after Step 3 validation/classification. RV64 prepared variadic entry
+state now publishes the explicit overflow-area initial base state for
+supportable helper-bearing entries, including the base slot and prepared stack
+offset consumed by `va_start` lowering.
+
+Focused backend prepared-contract, prepared-printer, and RV64 object-emission
+tests passed. The representative `src/920908-1.c` case was rerun and advanced
+past the original missing overflow-area base-state diagnostic. Its remaining
+failure is the later destination-address boundary:
+
+`unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home`
+
+That residual is outside this focused overflow-base-state producer milestone
+and is tracked separately in
+`ideas/open/366_rv64_va_start_destination_va_list_gpr_home.md`.
