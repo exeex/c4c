@@ -8154,7 +8154,7 @@ int check_rv64_variadic_entry_helper_missing_contract() {
           std::optional<std::size_t>{3} ||
       entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
-      !entry_plan->helper_operand_homes.empty() ||
+      entry_plan->helper_operand_homes.size() != 1 ||
       entry_plan->register_save_area.required ||
       !entry_plan->overflow_area.required ||
       entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8} ||
@@ -8168,12 +8168,18 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       entry_plan->va_list_layout.fields.front().size_bytes != 8) {
     return fail("RV64 variadic helper missing contract: target ABI facts were not published");
   }
+  const auto* va_start_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 0);
+  if (va_start_homes == nullptr ||
+      !prepare::has_complete_prepared_variadic_va_start_operand_homes(*va_start_homes)) {
+    return fail("RV64 variadic helper missing contract: va_start operand homes were not materialized");
+  }
   if (has_missing_fact("target_abi.variadic_entry_state") ||
       has_missing_fact("target_abi.va_list_layout") ||
       has_missing_fact("helper_resources.scratch_register_count") ||
       has_missing_fact("helper_resources.scratch_stack_bytes") ||
-      !has_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
-      !has_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
+      has_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
+      has_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
       !has_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
       !has_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
       !has_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||

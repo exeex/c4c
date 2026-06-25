@@ -6700,7 +6700,7 @@ int main() {
           std::optional<std::size_t>{3} ||
       rv64_helper_family_entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
-      rv64_helper_family_entry_plan->helper_operand_homes.empty() == false ||
+      rv64_helper_family_entry_plan->helper_operand_homes.size() != 1 ||
       rv64_helper_family_entry_plan->register_save_area.required ||
       !rv64_helper_family_entry_plan->overflow_area.required ||
       rv64_helper_family_entry_plan->overflow_area.align_bytes !=
@@ -6713,8 +6713,8 @@ int main() {
       has_rv64_missing_fact("target_abi.va_list_layout") ||
       has_rv64_missing_fact("helper_resources.scratch_register_count") ||
       has_rv64_missing_fact("helper_resources.scratch_stack_bytes") ||
-      !has_rv64_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
-      !has_rv64_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
+      has_rv64_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
+      has_rv64_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
       !has_rv64_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
       !has_rv64_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
       !has_rv64_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||
@@ -6726,6 +6726,15 @@ int main() {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not publish target ABI facts while preserving explicit missing helper facts\n";
     return EXIT_FAILURE;
   }
+  const auto* rv64_va_start_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *rv64_helper_family_entry_plan, 0, 0);
+  if (rv64_va_start_homes == nullptr ||
+      !prepare::has_complete_prepared_variadic_va_start_operand_homes(
+          *rv64_va_start_homes)) {
+    std::cerr << "[FAIL] RV64 variadic helper-family carrier did not materialize va_start operand homes\n";
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(rv64_helper_family_dump,
                        "va_list_layout required=yes size=8 align=8 fields=1",
                        "RV64 variadic helper-family va_list layout")) {
@@ -6734,6 +6743,11 @@ int main() {
   if (!expect_contains(rv64_helper_family_dump,
                        "helper_resources scratch_registers=3 scratch_stack=0 helpers=[va_start,va_arg,va_arg_aggregate,va_copy]",
                        "RV64 variadic helper-family helper summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(rv64_helper_family_dump,
+                       "helper_operand kind=va_start block=0 inst=0 dst_va_list=ap:",
+                       "RV64 variadic va_start operand homes")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,

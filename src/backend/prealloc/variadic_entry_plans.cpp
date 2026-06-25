@@ -233,15 +233,20 @@ find_aapcs64_hfa_va_arg_lane_destination_homes(
 }
 
 [[nodiscard]] std::string variadic_va_start_destination_source_kind(
+    std::string_view abi_tag,
     const PreparedValueHome& destination) {
-  std::string source_kind = "aapcs64_variadic_va_start_destination.";
+  std::string source_kind(abi_tag);
+  source_kind += "_variadic_va_start_destination.";
   source_kind += std::to_string(destination.value_name);
   return source_kind;
 }
 
 [[nodiscard]] std::string variadic_va_start_destination_slot_name(
+    std::string_view abi_tag,
     const PreparedValueHome& destination) {
-  std::string slot_name = "__aapcs64_variadic_va_start_destination_";
+  std::string slot_name = "__";
+  slot_name += abi_tag;
+  slot_name += "_variadic_va_start_destination_";
   slot_name += std::to_string(destination.value_name);
   return slot_name;
 }
@@ -289,6 +294,7 @@ PreparedFrameSlot& append_variadic_storage_slot(PreparedBirModule& prepared,
 [[nodiscard]] std::optional<PreparedValueHome> materialize_va_start_destination_home(
     PreparedBirModule& prepared,
     const PreparedVariadicEntryPlanFunction& function_plan,
+    std::string_view abi_tag,
     const PreparedValueHome& destination) {
   if (!function_plan.va_list_layout.size_bytes.has_value() ||
       !function_plan.va_list_layout.align_bytes.has_value()) {
@@ -296,12 +302,12 @@ PreparedFrameSlot& append_variadic_storage_slot(PreparedBirModule& prepared,
   }
 
   const std::string source_kind =
-      variadic_va_start_destination_source_kind(destination);
+      variadic_va_start_destination_source_kind(abi_tag, destination);
   const PreparedFrameSlot* slot =
       find_variadic_storage_slot(prepared, function_plan.function_name, source_kind);
   if (slot == nullptr) {
     const std::string slot_name =
-        variadic_va_start_destination_slot_name(destination);
+        variadic_va_start_destination_slot_name(abi_tag, destination);
     slot = &append_variadic_storage_slot(prepared,
                                          function_plan.function_name,
                                          slot_name,
@@ -781,13 +787,14 @@ void require_variadic_helper_operand_home(
     const PreparedVariadicEntryHelperOperandHomes& homes,
     const std::optional<PreparedValueHome>& home,
     std::string_view fact_suffix) {
-  if (home.has_value()) {
-    return;
-  }
   std::string fact = "helper_operand_homes.";
   fact += prepared_variadic_entry_helper_kind_name(homes.helper);
   fact += ".";
   fact += fact_suffix;
+  if (home.has_value()) {
+    remove_missing_variadic_entry_fact(function_plan, fact);
+    return;
+  }
   append_missing_variadic_entry_fact(function_plan, fact);
 }
 
@@ -826,7 +833,10 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
             if (homes.destination_va_list.has_value()) {
               homes.destination_va_list_address =
                   materialize_va_start_destination_home(
-                      prepared, function_plan, *homes.destination_va_list);
+                      prepared,
+                      function_plan,
+                      "aapcs64",
+                      *homes.destination_va_list);
             }
           }
           require_variadic_helper_operand_home(function_plan,
@@ -908,6 +918,56 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
       }
 
       function_plan.helper_operand_homes.push_back(std::move(homes));
+    }
+  }
+}
+
+void populate_rv64_variadic_entry_va_start_operand_home_authority(
+    PreparedBirModule& prepared,
+    const bir::Function& function,
+    PreparedVariadicEntryPlanFunction& function_plan) {
+  const auto* value_locations =
+      find_prepared_value_location_function(prepared, function_plan.function_name);
+
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+         ++instruction_index) {
+      const auto* call = std::get_if<bir::CallInst>(&block.insts[instruction_index]);
+      if (call == nullptr) {
+        continue;
+      }
+      const auto helper_kind = prepared_variadic_entry_helper_kind_for_call(*call);
+      if (helper_kind != PreparedVariadicEntryHelperKind::VaStart) {
+        continue;
+      }
+
+      PreparedVariadicEntryHelperOperandHomes homes{
+          .helper = PreparedVariadicEntryHelperKind::VaStart,
+          .block_index = block_index,
+          .instruction_index = instruction_index,
+      };
+      if (!call->args.empty()) {
+        homes.destination_va_list =
+            prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
+        if (homes.destination_va_list.has_value()) {
+          homes.destination_va_list_address =
+              materialize_va_start_destination_home(
+                  prepared, function_plan, "rv64", *homes.destination_va_list);
+        }
+      }
+
+      require_variadic_helper_operand_home(function_plan,
+                                           homes,
+                                           homes.destination_va_list,
+                                           "destination_va_list");
+      require_variadic_helper_operand_home(function_plan,
+                                           homes,
+                                           homes.destination_va_list_address,
+                                           "destination_va_list_address");
+      if (has_complete_prepared_variadic_va_start_operand_homes(homes)) {
+        function_plan.helper_operand_homes.push_back(std::move(homes));
+      }
     }
   }
 }
@@ -1052,6 +1112,8 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
                                          "target_abi.variadic_entry_state");
       remove_missing_variadic_entry_fact(function_plan, "target_abi.va_list_layout");
       populate_rv64_variadic_entry_helper_resource_authority(function_plan);
+      populate_rv64_variadic_entry_va_start_operand_home_authority(
+          prepared, function, function_plan);
     } else {
       publish_missing_non_aapcs64_variadic_entry_contract(function_plan);
     }
