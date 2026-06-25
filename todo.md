@@ -8,71 +8,43 @@ Current Step Title: Wire RV64 Object Emission to the Shared Traversal Stream
 
 ## Just Finished
 
-Route correction after rollback. The target-local RV64 object-route work was
-reverted out of HEAD and preserved in stash for reference only:
+Step 3 traversal repair completed. RV64 prepared object emission now uses the
+shared traversal emitter only when the traversal is a complete BIR-backed event
+stream; prepared control-flow streams with unmapped BIR blocks fall back to the
+existing block-driven object-emission path instead of failing at the coarse
+prepared-module-shape rejection.
 
-- `stash@{1}: wip rv64 object route uncommitted drift before route reset`
-- `stash@{0}: staged rv64 object route commits before route reset`
+The traversal move consumer now lowers prepared register-to-register moves when
+the destination is either a normal value home or an explicit prepared ABI
+register, covering existing `before_return` register moves without scanning
+parallel-copy bundles or adding testcase-specific handling. Unsupported stack,
+cycle-temp, non-register, and non-move shapes still fail closed.
 
-The rejected route shape directly scanned
-`control_flow.parallel_copy_bundles`, used
-`prepared_object_parallel_copy_event_kind`, and re-found move bundles in RV64
-`object_emission.cpp`. That route is not accepted because it bypassed the
-shared prepared-object traversal/diagnostic contract from idea 359.
+This packet eliminated the remaining Step 3 regressions by also lowering the
+general prepared move-bundle shape where the source is a rematerializable i32
+immediate and the destination is a prepared GPR, including `function_return_abi`
+destinations such as `a0`. The failing cases all used that shared
+`before_return` move shape, so the fix is semantic move handling rather than
+testcase branching.
 
-Do not claim `src/20000113-1.c` progressed from that route. Any future
-`20000113-1.c` progress must be reproven after RV64 object emission consumes
-the shared traversal stream.
+The successor-entry traversal-copy object-emission unit test still proves the
+shared traversal copy path, and `backend_obj_runtime_rv64_return_add` no longer
+regresses.
 
 ## Suggested Next
 
-Execute Step 3: wire RV64 object emission to the shared prepared object
-traversal event stream before any target-local fragment repair resumes.
-
-Narrow packet target:
-
-- start from `make_prepared_object_function_traversal()` as the ordered event
-  source;
-- consume traversal labels, block-entry copies, instructions,
-  pre-terminator/edge copies, and terminators in RV64 object emission;
-- classify each move event with
-  `classify_prepared_object_move_bundle_consumer(event)`;
-- report unplaced obligations with
-  `collect_unplaced_prepared_object_parallel_copy_obligations()`;
-- use shared move/select/value-home/frame diagnostics or classifiers where
-  available, adding only RV64-specific target evidence;
-- explicitly avoid scanning `control_flow.parallel_copy_bundles` in RV64 to
-  reconstruct block-entry/pre-terminator copies.
-
-Step 4 / close-gate reminder:
-
-- before 356 can close, audit pre-existing RV64 fixup/relocation/label paths:
-  - `RiscvObjectFixup` / `RiscvEncodedFragment` /
-    `build_rv64_text_object_module`,
-  - `c4c-as.cpp::resolve_local_control_flow_labels`,
-  - `src/backend/mir/riscv/assembler/elf_writer.cpp` minimal/pending
-    relocation path;
-- classify each path as a low-level object concern, textual assembler
-  local-label concern, duplicate path to unify/remove, or misplaced
-  prepared/BIR semantic reconstruction;
-- if a missing piece belongs to prepared traversal, move/select/value-home,
-  frame, or diagnostics, route it to a 359 follow-up/reopen before continuing
-  356.
-
-Narrow proof command:
-
-```sh
-CASE_TIMEOUT_SEC=20 ALLOWLIST=/tmp/rv64-multiblock-allowlist.txt scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log 2>&1 || true
-```
+Next packet should run the supervisor-selected broader RV64 object-route guard
+or continue with Step 4 object-route audit if the broader guard stays green.
 
 ## Watchouts
 
-- `20000113-1.c` progress from the stashed route is intentionally not accepted.
-  Reprove any progress only through the shared-traversal-first route.
-- Do not manually scan `control_flow.parallel_copy_bundles` from RV64 object
-  emission to reconstruct copy placement.
-- Do not use `prepared_object_parallel_copy_event_kind` or target-local bundle
-  search as a replacement for shared traversal/classifier APIs.
+- The current traversal move lowering covers prepared GPR register moves from
+  GPR homes or rematerializable i32 immediates. Stack-slot, cycle-temp,
+  non-register, non-i32 immediate, and non-move prepared move operations should
+  get targeted diagnostics or semantic lowering in later packets.
+- `object_emission.cpp` does not scan `control_flow.parallel_copy_bundles` and
+  does not call `prepared_object_parallel_copy_event_kind`; keep that boundary.
+- No progress is claimed from the reverted/stashed target-local route.
 - Do not close 356 while a second production RV64 fixup/relocation path exists
   unreviewed.
 - Do not use RV64 fixups/relocations to hide CFG, edge-copy placement,
@@ -92,5 +64,14 @@ CASE_TIMEOUT_SEC=20 ALLOWLIST=/tmp/rv64-multiblock-allowlist.txt scripts/check_p
 
 ## Proof
 
-Not run for route-reset rewrite. This is lifecycle/plan correction only after
-the rejected RV64 target-local route was moved to stash.
+Ran:
+
+```sh
+cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^backend_obj_runtime_rv64_cts_00002$|^backend_obj_runtime_rv64_cts_00012$|^backend_obj_runtime_rv64_return_add_sub_chain$|^backend_riscv_object_emission$' > test_after.log 2>&1
+```
+
+Build was green. CTest result in `test_after.log`: 4/4 passed
+(`backend_obj_runtime_rv64_cts_00002`,
+`backend_obj_runtime_rv64_cts_00012`,
+`backend_obj_runtime_rv64_return_add_sub_chain`,
+`backend_riscv_object_emission`).

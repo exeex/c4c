@@ -150,6 +150,108 @@ prepare::PreparedBirModule make_prepared_critical_edge_parallel_copy_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_successor_entry_copy_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("entry_copy");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+  const auto exit_label = prepared.names.block_labels.intern("exit");
+  const auto source_name = prepared.names.value_names.intern("%x");
+  const auto destination_name = prepared.names.value_names.intern("%y");
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.kind = bir::TerminatorKind::Branch;
+  entry.terminator.target_label = "exit";
+  bir::Block exit{
+      .label = "exit",
+      .terminator = bir::Terminator{},
+  };
+  exit.terminator.value = bir::Value::named(bir::TypeKind::I32, "%y");
+  prepared.module.functions.push_back(bir::Function{
+      .name = "entry_copy",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry), std::move(exit)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {
+              prepare::PreparedControlFlowBlock{
+                  .block_label = entry_label,
+                  .terminator_kind = bir::TerminatorKind::Branch,
+                  .branch_target_label = exit_label,
+              },
+              prepare::PreparedControlFlowBlock{
+                  .block_label = exit_label,
+                  .terminator_kind = bir::TerminatorKind::Return,
+              },
+          },
+      .parallel_copy_bundles =
+          {prepare::PreparedParallelCopyBundle{
+              .predecessor_label = entry_label,
+              .successor_label = exit_label,
+              .execution_site =
+                  prepare::PreparedParallelCopyExecutionSite::SuccessorEntry,
+              .execution_block_label = exit_label,
+              .moves = {prepare::PreparedParallelCopyMove{
+                  .source_value = bir::Value::named(bir::TypeKind::I32, "%x"),
+                  .destination_value =
+                      bir::Value::named(bir::TypeKind::I32, "%y"),
+              }},
+              .steps = {prepare::PreparedParallelCopyStep{}},
+          }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = source_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = destination_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+          },
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind =
+                  prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 1,
+              .source_parallel_copy_predecessor_label = entry_label,
+              .source_parallel_copy_successor_label = exit_label,
+              .moves = {prepare::PreparedMoveResolution{
+                  .from_value_id = 1,
+                  .to_value_id = 2,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .authority_kind =
+                      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              }},
+          }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_direct_call_module() {
   prepare::PreparedBirModule prepared;
   const auto caller_name = prepared.names.function_names.intern("caller");
@@ -1643,6 +1745,27 @@ int rejects_prepared_critical_edge_parallel_copy_with_shared_diagnostic() {
   return 0;
 }
 
+int builds_prepared_successor_entry_copy_from_shared_traversal() {
+  const auto prepared = make_prepared_successor_entry_copy_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected RV64 object emission to accept successor-entry copy");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "entry_copy");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected successor-entry copy object to publish text/function");
+  }
+  if (text->bytes.size() != 12 || function->size_bytes != 12) {
+    return fail("expected branch, traversal copy, and return fragments");
+  }
+  if (text->bytes[4] != 0x13 || text->bytes[5] != 0x85 ||
+      text->bytes[6] != 0x02 || text->bytes[7] != 0x00) {
+    return fail("expected traversal successor-entry copy to emit mv a0, t0");
+  }
+  return 0;
+}
+
 int builds_prepared_rematerialized_nonzero_return_object() {
   const auto prepared = make_prepared_rematerialized_return_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -2917,6 +3040,7 @@ int main() {
   status |= records_pcrel_hi_lo_pairing_with_auipc_site_label();
   status |= builds_prepared_text_object_module_without_call_text();
   status |= rejects_prepared_critical_edge_parallel_copy_with_shared_diagnostic();
+  status |= builds_prepared_successor_entry_copy_from_shared_traversal();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
   status |= builds_prepared_two_arg_scalar_call_object();

@@ -107,6 +107,13 @@ struct PreparedObjectCompare {
   c4c::backend::bir::Value rhs;
 };
 
+struct RiscvPreparedObjectFunctionResult {
+  std::optional<RiscvObjectFunction> function;
+  std::optional<prepare::PreparedObjectConsumerDiagnosticCategory>
+      prepared_consumer_category;
+  std::string diagnostic;
+};
+
 struct RiscvLaidOutFragment {
   const RiscvEncodedFragment* fragment = nullptr;
   std::uint64_t section_offset = 0;
@@ -247,6 +254,77 @@ void append_rv64_load_immediate(RiscvEncodedFragment& fragment,
                             0,
                             0,
                             static_cast<std::int32_t>(immediate)));
+}
+
+const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for_id(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::backend::prepare::PreparedValueId value_id) {
+  if (lookups == nullptr) {
+    return nullptr;
+  }
+  const auto it = lookups->value_homes.homes_by_id.find(value_id);
+  return it == lookups->value_homes.homes_by_id.end() ? nullptr : it->second;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
+  RiscvEncodedFragment fragment;
+  for (const auto& move : move_bundle.moves) {
+    if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+        move.destination_storage_kind !=
+            prepare::PreparedMoveStorageKind::Register ||
+        move.uses_cycle_temp_source || move.destination_contiguous_width != 1 ||
+        move.destination_occupied_register_names.size() > 1 ||
+        move.destination_stack_offset_bytes.has_value()) {
+      return std::nullopt;
+    }
+
+    std::optional<std::uint32_t> destination;
+    if (move.destination_register_name.has_value()) {
+      destination = rv64_register_number(*move.destination_register_name);
+    } else if (move.destination_kind ==
+               prepare::PreparedMoveDestinationKind::Value) {
+      const auto* destination_home =
+          prepared_value_home_for_id(lookups, move.to_value_id);
+      destination = destination_home == nullptr
+                        ? std::nullopt
+                        : gpr_register_number_for_home(*destination_home);
+    }
+    if (!destination.has_value()) {
+      return std::nullopt;
+    }
+
+    if (move.source_immediate_i32.has_value()) {
+      if (!fits_signed_12_bit_immediate(*move.source_immediate_i32)) {
+        return std::nullopt;
+      }
+      append_rv64_load_immediate(fragment, *destination, *move.source_immediate_i32);
+      continue;
+    }
+
+    const auto* source_home =
+        prepared_value_home_for_id(lookups, move.from_value_id);
+    if (source_home == nullptr) {
+      return std::nullopt;
+    }
+    if (source_home->kind ==
+            prepare::PreparedValueHomeKind::RematerializableImmediate &&
+        source_home->immediate_i32.has_value()) {
+      if (!fits_signed_12_bit_immediate(*source_home->immediate_i32)) {
+        return std::nullopt;
+      }
+      append_rv64_load_immediate(fragment, *destination, *source_home->immediate_i32);
+      continue;
+    }
+
+    const auto source = gpr_register_number_for_home(*source_home);
+    if (!source.has_value()) {
+      return std::nullopt;
+    }
+    append_rv64_move(fragment, *destination, *source);
+  }
+  return fragment;
 }
 
 bool append_rv64_move_value_to_register(
@@ -1290,7 +1368,110 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
   return std::nullopt;
 }
 
-std::optional<RiscvObjectFunction> prepared_function_to_object_function(
+std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::prepare::PreparedFunctionLookups& lookups,
+    const c4c::backend::prepare::PreparedInlineAsmCarrierFunction* inline_asm_carriers,
+    const c4c::backend::bir::Block& block,
+    c4c::BlockLabelId prepared_block_label,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const c4c::backend::bir::Inst& inst,
+    std::unordered_map<std::string, PreparedObjectCompare>& compares,
+    std::size_t stack_frame_bytes) {
+  const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+  if (call == nullptr) {
+    if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+      if (c4c::backend::bir::is_compare_opcode(binary->opcode) &&
+          binary->result.kind == c4c::backend::bir::Value::Kind::Named) {
+        compares[binary->result.name] = PreparedObjectCompare{
+            .opcode = binary->opcode,
+            .lhs = binary->lhs,
+            .rhs = binary->rhs,
+        };
+        if (terminator_uses_value_as_condition(block, binary->result)) {
+          return RiscvEncodedFragment{};
+        }
+      }
+      auto fragment = fragment_for_prepared_binary(prepared.names, &lookups, *binary);
+      if (fragment.has_value()) {
+        return fragment;
+      }
+    }
+    if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
+      if (c4c::backend::bir::is_vrm_register_type(store->value.type)) {
+        return RiscvEncodedFragment{};
+      }
+      auto fragment = fragment_for_prepared_store_local(
+          prepared.stack_layout,
+          prepared.names,
+          &lookups,
+          *store,
+          prepared_memory_access_for_instruction(
+              &lookups,
+              prepared_block_label,
+              instruction_index),
+          stack_frame_bytes);
+      if (fragment.has_value()) {
+        return fragment;
+      }
+    }
+    if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
+      if (c4c::backend::bir::is_vrm_register_type(load->result.type)) {
+        return RiscvEncodedFragment{};
+      }
+      auto fragment = fragment_for_prepared_load_local(
+          prepared.stack_layout,
+          prepared.names,
+          &lookups,
+          *load,
+          prepared_memory_access_for_instruction(
+              &lookups,
+              prepared_block_label,
+              instruction_index),
+          stack_frame_bytes);
+      if (fragment.has_value()) {
+        return fragment;
+      }
+    }
+    if (prepared_pure_instruction_is_rematerialized_immediate(prepared.names,
+                                                             &lookups,
+                                                             inst)) {
+      return RiscvEncodedFragment{};
+    }
+    return std::nullopt;
+  }
+
+  const auto* call_plan = prepare::find_indexed_prepared_call_plan(
+      &lookups.call_plans,
+      prepare::find_prepared_call_plans(prepared, control_flow.function_name),
+      block_index,
+      instruction_index);
+  const auto* inline_asm_carrier =
+      find_prepared_inline_asm_carrier(inline_asm_carriers, block_index, instruction_index);
+  return fragment_for_prepared_call(call_plan, inline_asm_carrier, *call);
+}
+
+bool prepared_object_traversal_is_complete_bir_stream(
+    const std::vector<prepare::PreparedObjectTraversalEvent>& traversal) {
+  for (const auto& event : traversal) {
+    if (event.bir_block == nullptr) {
+      return false;
+    }
+    if (event.kind == prepare::PreparedObjectTraversalEventKind::Instruction &&
+        event.instruction == nullptr) {
+      return false;
+    }
+    if (event.kind == prepare::PreparedObjectTraversalEventKind::Terminator &&
+        event.terminator == nullptr) {
+      return false;
+    }
+  }
+  return !traversal.empty();
+}
+
+RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow) {
   namespace prepare = c4c::backend::prepare;
@@ -1298,16 +1479,16 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
   const std::string function_name(
       prepare::prepared_function_name(prepared.names, control_flow.function_name));
   if (function_name.empty()) {
-    return std::nullopt;
+    return {};
   }
   const auto* function = find_defined_bir_function(prepared, function_name);
   if (function == nullptr || function->is_variadic ||
       !function->atomic_operations.empty()) {
-    return std::nullopt;
+    return {};
   }
   const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
   if (!prepared_param_homes_supported(prepared.names, &lookups, *function)) {
-    return std::nullopt;
+    return {};
   }
   RiscvObjectFunction object_function{
       .name = function_name,
@@ -1318,7 +1499,7 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
       prepare::find_prepared_inline_asm_carriers(prepared, control_flow.function_name);
   const auto stack_frame_bytes = rv64_object_stack_frame_size(addressing);
   if (!stack_frame_bytes.has_value()) {
-    return std::nullopt;
+    return {};
   }
 
   bool has_call = false;
@@ -1336,7 +1517,7 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
     const auto call_frame_size = rv64_call_frame_size(*stack_frame_bytes);
     if (!fits_signed_12_bit_immediate(static_cast<std::int64_t>(call_frame_size)) ||
         !fits_signed_12_bit_immediate(rv64_call_frame_ra_offset(*stack_frame_bytes))) {
-      return std::nullopt;
+      return {};
     }
     object_function.fragments.push_back(
         make_rv64_call_frame_prologue_fragment(*stack_frame_bytes));
@@ -1346,6 +1527,100 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
   }
 
   std::unordered_map<std::string, PreparedObjectCompare> compares;
+  const auto* value_locations =
+      prepare::find_prepared_value_location_function(prepared,
+                                                     control_flow.function_name);
+  const auto traversal = control_flow.blocks.empty()
+                             ? std::vector<prepare::PreparedObjectTraversalEvent>{}
+                             : prepare::make_prepared_object_function_traversal(
+                                   control_flow, value_locations, function);
+  if (prepared_object_traversal_is_complete_bir_stream(traversal)) {
+    for (const auto& event : traversal) {
+      const auto* block = event.bir_block;
+      const auto block_label_id = prepared_block_label_id_for(
+          prepared.module.names,
+          prepared.names,
+          *block);
+      const auto prepared_block_label =
+          block_label_id.value_or(c4c::kInvalidBlockLabel);
+
+      switch (event.kind) {
+        case prepare::PreparedObjectTraversalEventKind::Label: {
+          const std::string block_label =
+              bir_block_label_spelling(prepared.module, *block);
+          auto label_fragment = make_rv64_block_label_fragment(
+              riscv_local_block_label(function_name, block_label));
+          if (!label_fragment.has_value()) {
+            return {};
+          }
+          object_function.fragments.push_back(std::move(*label_fragment));
+          break;
+        }
+        case prepare::PreparedObjectTraversalEventKind::BlockEntryCopies:
+        case prepare::PreparedObjectTraversalEventKind::PreTerminatorCopies: {
+          const auto classification =
+              prepare::classify_prepared_object_move_bundle_consumer(event);
+          if (auto diagnostic =
+                  prepare::diagnose_prepared_object_consumer(classification)) {
+            return RiscvPreparedObjectFunctionResult{
+                .prepared_consumer_category = diagnostic->category,
+                .diagnostic = std::move(diagnostic->message),
+            };
+          }
+          auto fragment =
+              fragment_for_prepared_move_bundle(&lookups, *classification.move_bundle);
+          if (!fragment.has_value()) {
+            return {};
+          }
+          object_function.fragments.push_back(std::move(*fragment));
+          break;
+        }
+        case prepare::PreparedObjectTraversalEventKind::Instruction: {
+          if (event.instruction == nullptr) {
+            return {};
+          }
+          auto fragment = fragment_for_prepared_instruction(prepared,
+                                                           control_flow,
+                                                           lookups,
+                                                           inline_asm_carriers,
+                                                           *block,
+                                                           prepared_block_label,
+                                                           event.block_index,
+                                                           event.instruction_index,
+                                                           *event.instruction,
+                                                           compares,
+                                                           *stack_frame_bytes);
+          if (!fragment.has_value()) {
+            return {};
+          }
+          object_function.fragments.push_back(std::move(*fragment));
+          break;
+        }
+        case prepare::PreparedObjectTraversalEventKind::Terminator: {
+          auto terminator_fragment =
+              fragment_for_prepared_terminator(prepared,
+                                               control_flow,
+                                               prepared.names,
+                                               &lookups,
+                                               *block,
+                                               prepared_block_label,
+                                               function_name,
+                                               compares,
+                                               has_call,
+                                               *stack_frame_bytes);
+          if (!terminator_fragment.has_value()) {
+            return {};
+          }
+          object_function.fragments.push_back(std::move(*terminator_fragment));
+          break;
+        }
+      }
+    }
+    return RiscvPreparedObjectFunctionResult{
+        .function = std::move(object_function),
+    };
+  }
+
   for (std::size_t block_index = 0; block_index < function->blocks.size(); ++block_index) {
     const auto& block = function->blocks[block_index];
     const auto block_label_id = prepared_block_label_id_for(
@@ -1358,89 +1633,25 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
     auto label_fragment = make_rv64_block_label_fragment(
         riscv_local_block_label(function_name, block_label));
     if (!label_fragment.has_value()) {
-      return std::nullopt;
+      return {};
     }
     object_function.fragments.push_back(std::move(*label_fragment));
 
     for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
          ++instruction_index) {
-      const auto& inst = block.insts[instruction_index];
-      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
-      if (call == nullptr) {
-        if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
-          if (c4c::backend::bir::is_compare_opcode(binary->opcode) &&
-              binary->result.kind == c4c::backend::bir::Value::Kind::Named) {
-            compares[binary->result.name] = PreparedObjectCompare{
-                .opcode = binary->opcode,
-                .lhs = binary->lhs,
-                .rhs = binary->rhs,
-            };
-            if (terminator_uses_value_as_condition(block, binary->result)) {
-              continue;
-            }
-          }
-          auto fragment = fragment_for_prepared_binary(prepared.names, &lookups, *binary);
-          if (fragment.has_value()) {
-            object_function.fragments.push_back(std::move(*fragment));
-            continue;
-          }
-        }
-        if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
-          if (c4c::backend::bir::is_vrm_register_type(store->value.type)) {
-            continue;
-          }
-          auto fragment = fragment_for_prepared_store_local(
-              prepared.stack_layout,
-              prepared.names,
-              &lookups,
-              *store,
-              prepared_memory_access_for_instruction(
-                  &lookups,
-                  prepared_block_label,
-                  instruction_index),
-              *stack_frame_bytes);
-          if (fragment.has_value()) {
-            object_function.fragments.push_back(std::move(*fragment));
-            continue;
-          }
-        }
-        if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
-          if (c4c::backend::bir::is_vrm_register_type(load->result.type)) {
-            continue;
-          }
-          auto fragment = fragment_for_prepared_load_local(
-              prepared.stack_layout,
-              prepared.names,
-              &lookups,
-              *load,
-              prepared_memory_access_for_instruction(
-                  &lookups,
-                  prepared_block_label,
-                  instruction_index),
-              *stack_frame_bytes);
-          if (fragment.has_value()) {
-            object_function.fragments.push_back(std::move(*fragment));
-            continue;
-          }
-        }
-        if (prepared_pure_instruction_is_rematerialized_immediate(prepared.names,
-                                                                 &lookups,
-                                                                 inst)) {
-          continue;
-        }
-        return std::nullopt;
-      }
-
-      const auto* call_plan = prepare::find_indexed_prepared_call_plan(
-          &lookups.call_plans,
-          prepare::find_prepared_call_plans(prepared, control_flow.function_name),
-          block_index,
-          instruction_index);
-      const auto* inline_asm_carrier =
-          find_prepared_inline_asm_carrier(inline_asm_carriers, block_index, instruction_index);
-      auto fragment = fragment_for_prepared_call(call_plan, inline_asm_carrier, *call);
+      auto fragment = fragment_for_prepared_instruction(prepared,
+                                                       control_flow,
+                                                       lookups,
+                                                       inline_asm_carriers,
+                                                       block,
+                                                       prepared_block_label,
+                                                       block_index,
+                                                       instruction_index,
+                                                       block.insts[instruction_index],
+                                                       compares,
+                                                       *stack_frame_bytes);
       if (!fragment.has_value()) {
-        return std::nullopt;
+        return {};
       }
       object_function.fragments.push_back(std::move(*fragment));
     }
@@ -1457,11 +1668,13 @@ std::optional<RiscvObjectFunction> prepared_function_to_object_function(
                                          has_call,
                                          *stack_frame_bytes);
     if (!terminator_fragment.has_value()) {
-      return std::nullopt;
+      return {};
     }
     object_function.fragments.push_back(std::move(*terminator_fragment));
   }
-  return object_function;
+  return RiscvPreparedObjectFunctionResult{
+      .function = std::move(object_function),
+  };
 }
 
 std::optional<prepare::PreparedObjectConsumerDiagnostic>
@@ -2089,10 +2302,16 @@ build_rv64_prepared_text_object_module_with_diagnostics(
       continue;
     }
     auto function = prepared_function_to_object_function(prepared, control_flow);
-    if (!function.has_value()) {
+    if (function.prepared_consumer_category.has_value()) {
+      return RiscvPreparedObjectModuleResult{
+          .prepared_consumer_category = function.prepared_consumer_category,
+          .diagnostic = std::move(function.diagnostic),
+      };
+    }
+    if (!function.function.has_value()) {
       return RiscvPreparedObjectModuleResult{};
     }
-    functions.push_back(std::move(*function));
+    functions.push_back(std::move(*function.function));
   }
   if (functions.empty()) {
     return RiscvPreparedObjectModuleResult{};
