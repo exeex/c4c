@@ -575,6 +575,16 @@ c4c_add_backend_codegen_object_test(
 )
 
 c4c_add_backend_codegen_object_failure_test(
+  backend_cli_riscv64_variadic_entry_missing_contract_obj
+  SRC "${BACKEND_CASE_ROOT}/riscv64_variadic_entry_missing_contract.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_variadic_entry_missing_contract.o"
+  EXPECTED_DIAGNOSTICS "unsupported_function_admission: variadic functions are not supported by the RV64 object route|missing_required_facts=|target_abi.variadic_entry_state|target_abi.va_list_layout"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object variadic missing_contract cli
+)
+
+c4c_add_backend_codegen_object_failure_test(
   backend_cli_riscv64_requires_output_path_obj
   SRC "${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c"
   TARGET_TRIPLE riscv64-linux-gnu

@@ -208,6 +208,30 @@ RiscvPreparedObjectFunctionResult make_rv64_prepared_function_rejection(
   };
 }
 
+std::string rv64_variadic_function_admission_diagnostic(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name) {
+  std::string diagnostic =
+      "unsupported_function_admission: variadic functions are not supported by the RV64 object route";
+  const auto* entry_plan =
+      prepare::find_prepared_variadic_entry_plan(prepared, function_name);
+  if (entry_plan == nullptr || entry_plan->missing_required_facts.empty()) {
+    diagnostic += "; missing variadic entry contract facts were not prepared";
+    return diagnostic;
+  }
+
+  diagnostic += "; missing_required_facts=[";
+  for (std::size_t index = 0; index < entry_plan->missing_required_facts.size();
+       ++index) {
+    if (index != 0) {
+      diagnostic += ", ";
+    }
+    diagnostic += entry_plan->missing_required_facts[index];
+  }
+  diagnostic += "]";
+  return diagnostic;
+}
+
 RiscvPreparedObjectModuleResult make_rv64_prepared_module_rejection(
     std::string diagnostic) {
   return RiscvPreparedObjectModuleResult{
@@ -2865,7 +2889,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   }
   if (function->is_variadic) {
     return make_rv64_prepared_function_rejection(
-        "unsupported_function_admission: variadic functions are not supported by the RV64 object route");
+        rv64_variadic_function_admission_diagnostic(prepared,
+                                                    control_flow.function_name));
   }
   if (!function->atomic_operations.empty()) {
     return make_rv64_prepared_function_rejection(
