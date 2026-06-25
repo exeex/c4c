@@ -1043,6 +1043,108 @@ prepare::PreparedBirModule make_prepared_global_load_module(bool publish_access 
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_global_i8_zext_load_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto load_name = prepared.names.value_names.intern("%byte");
+  const auto zext_name = prepared.names.value_names.intern("%wide");
+  const auto global_name = prepared.names.link_names.intern("bytes");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::LoadGlobalInst{
+                  .result = bir::Value::named(bir::TypeKind::I8, "%byte"),
+                  .global_name = "bytes",
+                  .global_name_id = global_name,
+                  .byte_offset = 1,
+                  .align_bytes = 1,
+              },
+              bir::CastInst{
+                  .opcode = bir::CastOpcode::ZExt,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%wide"),
+                  .operand = bir::Value::named(bir::TypeKind::I8, "%byte"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%wide");
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "bytes",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::I8,
+      .is_constant = true,
+      .size_bytes = 3,
+      .align_bytes = 1,
+      .initializer_elements =
+          {
+              bir::Value::immediate_i8(0),
+              bir::Value::immediate_i8(static_cast<std::int8_t>(0xff)),
+              bir::Value::immediate_i8(0),
+          },
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = load_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = zext_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses = {prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 0,
+          .result_value_name = load_name,
+          .address = prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+              .symbol_name = global_name,
+              .global_address_materialization_policy =
+                  bir::GlobalAddressMaterializationPolicy::Direct,
+              .byte_offset = 1,
+              .size_bytes = 1,
+              .align_bytes = 1,
+              .can_use_base_plus_offset = true,
+          },
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_global_store_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -1103,6 +1205,73 @@ prepare::PreparedBirModule make_prepared_global_store_module() {
               .byte_offset = 0,
               .size_bytes = 4,
               .align_bytes = 4,
+              .can_use_base_plus_offset = true,
+          },
+      }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_global_i16_store_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto global_name = prepared.names.link_names.intern("h");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreGlobalInst{
+                  .global_name = "h",
+                  .global_name_id = global_name,
+                  .value = bir::Value::immediate_i16(7),
+                  .align_bytes = 2,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "h",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::I16,
+      .size_bytes = 2,
+      .align_bytes = 2,
+      .initializer = bir::Value::immediate_i16(1),
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses = {prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 0,
+          .address = prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+              .symbol_name = global_name,
+              .global_address_materialization_policy =
+                  bir::GlobalAddressMaterializationPolicy::Direct,
+              .byte_offset = 0,
+              .size_bytes = 2,
+              .align_bytes = 2,
               .can_use_base_plus_offset = true,
           },
       }},
@@ -4074,6 +4243,42 @@ int emits_prepared_global_load_relocations_and_instruction() {
   return 0;
 }
 
+int emits_prepared_global_i8_load_and_zext_instruction() {
+  const auto prepared = make_prepared_global_i8_zext_load_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit byte global load and zext");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* rodata = object::find_section(*module, ".rodata");
+  const auto* global_symbol = object::find_symbol(*module, "bytes");
+  if (text == nullptr || rodata == nullptr || global_symbol == nullptr) {
+    return fail("expected text, rodata, and byte global symbol");
+  }
+  if (text->bytes.size() < 20) {
+    return fail("expected PC-relative address materialization, byte load, and zext");
+  }
+  const auto load = read_u32(text->bytes, 8);
+  const auto zext = read_u32(text->bytes, 16);
+  if ((load & 0x7fU) != 0x03U || ((load >> 12) & 0x7U) != 0U) {
+    return fail("expected prepared byte global load to encode lb");
+  }
+  if ((zext & 0x7fU) != 0x13U || ((zext >> 12) & 0x7U) != 7U ||
+      ((zext >> 20) & 0xfffU) != 0xffU) {
+    return fail("expected prepared byte global load consumer to encode zext mask");
+  }
+  if (global_symbol->binding != object::SymbolBinding::Global ||
+      global_symbol->kind != object::SymbolKind::Object ||
+      global_symbol->section != std::optional<object::SectionId>{rodata->id}) {
+    return fail("expected byte global load relocation target to be a defined object");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize byte global load");
+  }
+  return 0;
+}
+
 int emits_prepared_global_store_relocations_and_instruction() {
   const auto prepared = make_prepared_global_store_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -4114,6 +4319,37 @@ int emits_prepared_global_store_relocations_and_instruction() {
   const auto image = rv64::write_rv64_relocatable_elf_object(*module);
   if (!image.has_value()) {
     return fail("expected RV64 ELF writer to serialize global store relocations");
+  }
+  return 0;
+}
+
+int emits_prepared_global_i16_store_instruction() {
+  const auto prepared = make_prepared_global_i16_store_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit halfword global store");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* data = object::find_section(*module, ".data");
+  const auto* global_symbol = object::find_symbol(*module, "h");
+  if (text == nullptr || data == nullptr || global_symbol == nullptr) {
+    return fail("expected text, data, and halfword global symbol");
+  }
+  if (text->bytes.size() < 16) {
+    return fail("expected PC-relative address materialization, value move, and sh");
+  }
+  const auto store = read_u32(text->bytes, 12);
+  if ((store & 0x7fU) != 0x23U || ((store >> 12) & 0x7U) != 1U) {
+    return fail("expected prepared halfword global store to encode sh");
+  }
+  if (global_symbol->binding != object::SymbolBinding::Global ||
+      global_symbol->kind != object::SymbolKind::Object ||
+      global_symbol->section != std::optional<object::SectionId>{data->id}) {
+    return fail("expected halfword global store relocation target to be a defined object");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize halfword global store");
   }
   return 0;
 }
@@ -4490,7 +4726,9 @@ int main() {
   status |= emits_prepared_string_address_relocations_to_object_symbol();
   status |= emits_prepared_global_address_relocations_to_object_symbol();
   status |= emits_prepared_global_load_relocations_and_instruction();
+  status |= emits_prepared_global_i8_load_and_zext_instruction();
   status |= emits_prepared_global_store_relocations_and_instruction();
+  status |= emits_prepared_global_i16_store_instruction();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
   status |= writes_prepared_rv64_relocatable_elf_object_file();
