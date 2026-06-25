@@ -6700,7 +6700,7 @@ int main() {
           std::optional<std::size_t>{3} ||
       rv64_helper_family_entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
-      rv64_helper_family_entry_plan->helper_operand_homes.size() != 3 ||
+      rv64_helper_family_entry_plan->helper_operand_homes.size() != 5 ||
       rv64_helper_family_entry_plan->register_save_area.required ||
       !rv64_helper_family_entry_plan->overflow_area.required ||
       rv64_helper_family_entry_plan->overflow_area.align_bytes !=
@@ -6715,9 +6715,10 @@ int main() {
       has_rv64_missing_fact("helper_resources.scratch_stack_bytes") ||
       has_rv64_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
       has_rv64_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
-      !has_rv64_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
-      !has_rv64_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
-      !has_rv64_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||
+      has_rv64_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
+      has_rv64_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
+      has_rv64_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||
+      !has_rv64_missing_fact("target_abi.va_arg.scalar_payload_abi") ||
       has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.source_va_list") ||
       has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_destination_payload") ||
       has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ||
@@ -6739,9 +6740,30 @@ int main() {
   const auto* rv64_aggregate_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(
           *rv64_helper_family_entry_plan, 0, 3);
+  const auto* rv64_scalar_i32_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *rv64_helper_family_entry_plan, 0, 1);
+  const auto* rv64_scalar_f64_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *rv64_helper_family_entry_plan, 0, 2);
   const auto* rv64_hfa_shaped_aggregate_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(
           *rv64_helper_family_entry_plan, 0, 4);
+  if (rv64_scalar_i32_homes == nullptr ||
+      !rv64_scalar_i32_homes->scalar_access_plan.has_value() ||
+      rv64_scalar_i32_homes->scalar_access_plan->source_class !=
+          prepare::PreparedVariadicScalarVaArgSourceClass::OverflowArgArea ||
+      rv64_scalar_i32_homes->scalar_access_plan->source_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      rv64_scalar_i32_homes->scalar_access_plan->source_slot_size_bytes !=
+          std::optional<std::size_t>{4} ||
+      rv64_scalar_i32_homes->scalar_access_plan->progression_stride_bytes !=
+          std::optional<std::size_t>{4} ||
+      rv64_scalar_f64_homes == nullptr ||
+      rv64_scalar_f64_homes->scalar_access_plan.has_value()) {
+    std::cerr << "[FAIL] RV64 variadic helper-family carrier did not consume or precisely diagnose scalar va_arg plans\n";
+    return EXIT_FAILURE;
+  }
   if (rv64_aggregate_homes == nullptr ||
       !rv64_aggregate_homes->aggregate_access_plan.has_value() ||
       rv64_aggregate_homes->aggregate_access_plan->source_class !=
@@ -6784,6 +6806,33 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,
+                       "helper_operand kind=va_arg block=0 inst=1",
+                       "RV64 variadic scalar i32 va_arg operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          rv64_helper_family_dump,
+          "scalar_access_plan=source_class=overflow_arg_area:type=i32:size=4:align=4",
+          "RV64 variadic scalar i32 va_arg access plan")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          rv64_helper_family_dump,
+          "source_field=overflow_arg_area@0:source_slot=4:progression_field=overflow_arg_area@0:progression_stride=4:overflow_source_field=overflow_arg_area@0:overflow_stride=4",
+          "RV64 variadic scalar i32 va_arg overflow coordinates")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(rv64_helper_family_dump,
+                       "helper_operand kind=va_arg block=0 inst=2",
+                       "RV64 variadic unsupported scalar f64 va_arg operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(rv64_helper_family_dump,
+                       "scalar_access_plan=<none>",
+                       "RV64 variadic unsupported scalar f64 va_arg access plan")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(rv64_helper_family_dump,
                        "helper_operand kind=va_arg_aggregate block=0 inst=3",
                        "RV64 variadic aggregate va_arg operand homes")) {
     return EXIT_FAILURE;
@@ -6806,8 +6855,8 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,
-                       "missing fact=helper_operand_homes.va_arg.scalar_access_plan",
-                       "RV64 scalar va_arg missing access-plan fact")) {
+                       "missing fact=target_abi.va_arg.scalar_payload_abi",
+                       "RV64 scalar va_arg payload ABI diagnostic fact")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(

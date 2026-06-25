@@ -8154,7 +8154,7 @@ int check_rv64_variadic_entry_helper_missing_contract() {
           std::optional<std::size_t>{3} ||
       entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
-      entry_plan->helper_operand_homes.size() != 2 ||
+      entry_plan->helper_operand_homes.size() != 4 ||
       entry_plan->register_save_area.required ||
       !entry_plan->overflow_area.required ||
       entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8} ||
@@ -8176,6 +8176,10 @@ int check_rv64_variadic_entry_helper_missing_contract() {
   }
   const auto* aggregate_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 3);
+  const auto* va_arg_i32_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 1);
+  const auto* va_arg_f64_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 2);
   if (aggregate_homes == nullptr ||
       !aggregate_homes->aggregate_destination_payload.has_value() ||
       !aggregate_homes->source_va_list.has_value() ||
@@ -8212,9 +8216,10 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       has_missing_fact("helper_resources.scratch_stack_bytes") ||
       has_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
       has_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
-      !has_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
-      !has_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
-      !has_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||
+      has_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
+      has_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
+      has_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||
+      !has_missing_fact("target_abi.va_arg.scalar_payload_abi") ||
       has_missing_fact("helper_operand_homes.va_arg_aggregate.source_va_list") ||
       has_missing_fact(
           "helper_operand_homes.va_arg_aggregate.aggregate_destination_payload") ||
@@ -8227,6 +8232,41 @@ int check_rv64_variadic_entry_helper_missing_contract() {
   if (has_missing_fact("rv64") ||
       has_missing_fact("aapcs64_variadic_entry_helper_family_frame_contract")) {
     return fail("RV64 variadic helper missing contract: missing facts became target or testcase shaped");
+  }
+  if (va_arg_i32_homes == nullptr ||
+      !va_arg_i32_homes->source_va_list.has_value() ||
+      !va_arg_i32_homes->scalar_result.has_value() ||
+      !va_arg_i32_homes->scalar_access_plan.has_value() ||
+      va_arg_i32_homes->scalar_access_plan->source_class !=
+          prepare::PreparedVariadicScalarVaArgSourceClass::OverflowArgArea ||
+      va_arg_i32_homes->scalar_access_plan->value_size_bytes != 4 ||
+      va_arg_i32_homes->scalar_access_plan->value_align_bytes != 4 ||
+      va_arg_i32_homes->scalar_access_plan->source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea} ||
+      va_arg_i32_homes->scalar_access_plan->source_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      va_arg_i32_homes->scalar_access_plan->source_slot_size_bytes !=
+          std::optional<std::size_t>{4} ||
+      va_arg_i32_homes->scalar_access_plan->progression_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea} ||
+      va_arg_i32_homes->scalar_access_plan->progression_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      va_arg_i32_homes->scalar_access_plan->progression_stride_bytes !=
+          std::optional<std::size_t>{4} ||
+      va_arg_i32_homes->scalar_access_plan->overflow_source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea} ||
+      va_arg_i32_homes->scalar_access_plan->overflow_source_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      va_arg_i32_homes->scalar_access_plan->overflow_stride_bytes !=
+          std::optional<std::size_t>{4} ||
+      va_arg_f64_homes == nullptr ||
+      !va_arg_f64_homes->source_va_list.has_value() ||
+      !va_arg_f64_homes->scalar_result.has_value() ||
+      va_arg_f64_homes->scalar_access_plan.has_value()) {
+    return fail("RV64 variadic helper missing contract: scalar va_arg facts were not consumed or precisely diagnosed");
   }
   return 0;
 }

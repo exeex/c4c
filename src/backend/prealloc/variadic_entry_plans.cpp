@@ -683,6 +683,52 @@ make_aapcs64_scalar_va_arg_access_plan(
   return plan;
 }
 
+[[nodiscard]] std::optional<PreparedVariadicScalarVaArgAccessPlan>
+make_rv64_scalar_va_arg_access_plan(
+    const PreparedVariadicEntryPlanFunction& function_plan,
+    const PreparedVariadicEntryHelperOperandHomes& homes,
+    const bir::CallInst& call) {
+  if (!homes.scalar_result.has_value() || !homes.source_va_list.has_value()) {
+    return std::nullopt;
+  }
+  if (!call.va_arg_payload_abi.has_value()) {
+    return std::nullopt;
+  }
+  const auto& abi = *call.va_arg_payload_abi;
+  if (abi.primary_class != bir::AbiValueClass::Integer ||
+      abi.size_bytes == 0 ||
+      abi.align_bytes == 0 ||
+      abi.sret_pointer) {
+    return std::nullopt;
+  }
+
+  const std::size_t payload_stride_bytes =
+      align_prepared_offset(abi.size_bytes, abi.align_bytes);
+  PreparedVariadicScalarVaArgAccessPlan plan{
+      .source_class = PreparedVariadicScalarVaArgSourceClass::OverflowArgArea,
+      .value_type = abi.type,
+      .value_size_bytes = abi.size_bytes,
+      .value_align_bytes = abi.align_bytes,
+      .result_home = homes.scalar_result,
+      .source_field = PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .source_slot_size_bytes = payload_stride_bytes,
+      .progression_field = PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .progression_stride_bytes = payload_stride_bytes,
+      .overflow_source_field = PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .overflow_stride_bytes = payload_stride_bytes,
+  };
+
+  if (const auto overflow_field = find_variadic_va_list_field(
+          function_plan.va_list_layout, PreparedVariadicVaListFieldKind::OverflowArgArea);
+      overflow_field.has_value()) {
+    plan.source_field_offset_bytes = overflow_field->offset_bytes;
+    plan.progression_field_offset_bytes = overflow_field->offset_bytes;
+    plan.overflow_source_field_offset_bytes = overflow_field->offset_bytes;
+  }
+
+  return plan;
+}
+
 [[nodiscard]] std::optional<PreparedVariadicAggregateVaArgAccessPlan>
 make_overflow_aggregate_va_arg_access_plan(
     const PreparedVariadicEntryPlanFunction& function_plan,
@@ -984,6 +1030,7 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
       }
       const auto helper_kind = prepared_variadic_entry_helper_kind_for_call(*call);
       if (helper_kind != PreparedVariadicEntryHelperKind::VaStart &&
+          helper_kind != PreparedVariadicEntryHelperKind::VaArg &&
           helper_kind != PreparedVariadicEntryHelperKind::VaArgAggregate) {
         continue;
       }
@@ -1017,6 +1064,36 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
             function_plan.helper_operand_homes.push_back(std::move(homes));
           }
           break;
+        case PreparedVariadicEntryHelperKind::VaArg:
+          if (call->result.has_value()) {
+            homes.scalar_result =
+                prepared_home_for_named_value(prepared.names, value_locations, *call->result);
+          }
+          if (!call->args.empty()) {
+            homes.source_va_list =
+                prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
+          }
+          require_variadic_helper_operand_home(
+              function_plan, homes, homes.scalar_result, "scalar_result");
+          require_variadic_helper_operand_home(
+              function_plan, homes, homes.source_va_list, "source_va_list");
+          homes.scalar_access_plan =
+              make_rv64_scalar_va_arg_access_plan(function_plan, homes, *call);
+          if (has_complete_prepared_variadic_scalar_va_arg_access_plan(homes)) {
+            remove_missing_variadic_entry_fact(
+                function_plan, "helper_operand_homes.va_arg.scalar_access_plan");
+          } else if (homes.scalar_result.has_value() &&
+                     homes.source_va_list.has_value()) {
+            remove_missing_variadic_entry_fact(
+                function_plan, "helper_operand_homes.va_arg.scalar_access_plan");
+            append_missing_variadic_entry_fact(function_plan,
+                                               "target_abi.va_arg.scalar_payload_abi");
+          } else {
+            append_missing_variadic_entry_fact(
+                function_plan, "helper_operand_homes.va_arg.scalar_access_plan");
+          }
+          function_plan.helper_operand_homes.push_back(std::move(homes));
+          break;
         case PreparedVariadicEntryHelperKind::VaArgAggregate:
           populate_aggregate_va_arg_operand_homes(
               prepared, value_locations, *call, homes);
@@ -1043,7 +1120,6 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
                 "helper_operand_homes.va_arg_aggregate.aggregate_access_plan");
           }
           break;
-        case PreparedVariadicEntryHelperKind::VaArg:
         case PreparedVariadicEntryHelperKind::VaCopy:
           break;
       }
