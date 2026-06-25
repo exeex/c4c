@@ -1,182 +1,164 @@
-# LIR/BIR Vararg and va_arg Contract Completion Runbook
+# RV64 Vararg ABI Hook Materialization Runbook
 
 Status: Active
-Source Idea: ideas/open/360_lir_bir_vararg_va_arg_contract_completion.md
+Source Idea: ideas/open/361_rv64_vararg_abi_hook_materialization.md
 
 ## Purpose
 
-Complete the shared LIR/BIR/prepared contract for variadic functions,
-vararg entry state, and `va_arg` consumption before any target object emitter
-tries to lower those shapes directly.
+Consume the shared vararg contract from idea 360 in RV64 target ABI code and
+materialize the explicit hook facts needed by representative variadic cases.
 
 ## Goal
 
-Define, implement, and test a target-independent vararg contract that gives
-target backends explicit vararg entry and `va_arg` plans or precise unsupported
-diagnostics.
+Implement narrow RV64 target ABI hook/materialization support for variadic
+entry state, `va_list` layout, helper resources, and aggregate `va_arg`
+operand homes, or report more specific target ABI diagnostics where support is
+still intentionally missing.
 
 ## Core Rule
 
-Do not implement vararg semantics directly in RV64 object emission as a
-shortcut. Target code may only consume explicit prepared vararg/value-home
-information or report a structured unsupported diagnostic.
+RV64 target code may only consume prepared vararg facts emitted by the shared
+contract. Do not infer vararg semantics from source, testcase names, LIR, or
+BIR shape inside object emission.
 
 ## Read First
 
-- `ideas/open/360_lir_bir_vararg_va_arg_contract_completion.md`
-- frontend representation for variadic function signatures and `va_*`
-  builtins
-- LIR, BIR, and prepared-module representations for calls, arguments,
-  locals, value homes, and unsupported diagnostics
-- representative tests around `src/920908-1.c` and `src/20030914-2.c`
+- `ideas/open/361_rv64_vararg_abi_hook_materialization.md`
+- `ideas/closed/360_lir_bir_vararg_va_arg_contract_completion.md`
+- RV64 object-admission diagnostics for `target_abi.*`,
+  `helper_resources.*`, and `helper_operand_homes.*`
+- representative case logs for `src/20030914-2.c` and `src/920908-1.c`
 
 ## Current Scope
 
-- Audit how variadic identity and `va_*` operations move through frontend,
-  LIR, BIR, and prepared representations.
-- Define the shared contract for vararg entry state and `va_arg` consumption.
-- Add focused tests for the shared contract and diagnostic path.
-- Leave RV64-specific ABI materialization to a later target hook slice unless
-  the shared contract requires a narrow hook boundary.
+- RV64 variadic entry state and `va_list` layout.
+- RV64 helper resources for `va_start` and aggregate `va_arg`.
+- Backend/prepared tests that prove hook publication, consumption, and precise
+  unsupported diagnostics.
+- Representative RV64 allowlist proof for `src/20030914-2.c` and
+  `src/920908-1.c`.
 
 ## Non-Goals
 
-- Do not complete RV64-specific vararg object emission before the shared
-  contract exists.
-- Do not improve GCC torture scan counts by expectation downgrades, skips, or
-  testcase-name filtering.
-- Do not broaden into globals/data sections, FPR ABI expansion, vector ABI, or
-  unrelated instruction coverage.
-- Do not hide `va_arg` behind an opaque blob with no target ABI hook boundary.
+- Do not change the shared vararg contract unless a real upstream defect is
+  found and routed to a separate idea.
+- Do not improve torture scan counts through skips, expectation downgrades, or
+  testcase filtering.
+- Do not broaden into RV64 globals, vector ABI, unrelated FPR ABI, or generic
+  instruction coverage.
+- Do not hide unsupported aggregate varargs behind generic prepared-object
+  rejection.
 
 ## Working Model
 
-The shared pipeline should expose enough information for target backends to
-answer these questions without re-inspecting source or guessing ABI state:
-
-- which functions are variadic;
-- where fixed argument homes end and variable argument state begins;
-- how `va_start`, `va_arg`, `va_copy`, and `va_end` are represented;
-- which layer owns argument-save-area and overflow-area layout;
-- what value-home or target hook plan each `va_arg` consumes;
-- how unsupported argument classes or aggregate varargs are diagnosed.
+Idea 360 made the pipeline publish explicit prepared vararg facts. This plan
+starts at the RV64 target boundary and turns those facts into either concrete
+ABI materialization or precise target-level diagnostics.
 
 ## Execution Rules
 
-- Keep changes semantic and layer-correct; no named torture-case shortcuts.
-- Prefer focused contract tests before relying on full RV64 gcc torture scans.
-- When adding unsupported handling, make diagnostics precise enough to
-  distinguish missing shared vararg contract from missing target ABI emission.
-- Keep each implementation packet small enough for build proof plus the
-  relevant narrow tests.
-- Escalate to broader validation after shared representation changes land
-  across more than one compiler layer.
+- Keep each packet narrow enough for build proof plus focused backend tests.
+- Prefer adding a structured diagnostic over guessing an ABI location.
+- Preserve non-vararg RV64 object-route behavior.
+- Treat `src/20030914-2.c` and `src/920908-1.c` as representatives, not
+  implementation keys.
+- Escalate validation after hook changes affect shared RV64 admission paths.
 
 ## Steps
 
-### Step 1. Audit Current Vararg Representation
+### Step 1. Audit RV64 Vararg Target Requirements
 
-Goal: map how variadic functions and `va_*` operations are currently
-represented from frontend through prepared output.
-
-Primary targets:
-
-- frontend parse/sema lowering for variadic signatures and `va_*` forms
-- LIR call/function/argument representation
-- BIR function entry, locals, value homes, calls, and unsupported diagnostics
-- prepared-module emission and object-consumer admission checks
+Goal: map each current object-admission missing fact to the RV64 target code
+that should materialize or diagnose it.
 
 Concrete actions:
 
-- Inspect existing code and tests for variadic function signatures,
-  `va_start`, `va_arg`, `va_copy`, `va_end`, and `va_list`.
-- Run narrow probes for existing representative tests or minimal cases that
-  isolate each operation.
-- Record the first missing or ambiguous contract boundary in `todo.md`.
+- Reproduce or inspect the current representative logs for `src/20030914-2.c`
+  and `src/920908-1.c`.
+- Identify the RV64 admission/hook surfaces that consume
+  `target_abi.variadic_entry_state`, `target_abi.va_list_layout`,
+  `helper_resources.*`, and `helper_operand_homes.*`.
+- Record the first implementation boundary and any tests that already cover it
+  in `todo.md`.
 
 Completion check:
 
-- The next executor can name the current representation for variadic identity,
-  fixed argument homes, vararg state, each `va_*` operation, and the first
-  layer that loses required information.
+- The next executor can name the exact RV64 target hook or admission site for
+  each missing fact and the narrow proof command for the first implementation
+  packet.
 
-### Step 2. Define the Shared Vararg Contract
+### Step 2. Materialize Variadic Entry State and `va_list` Layout
 
-Goal: introduce or document the target-independent contract that prepared
-consumers should receive for vararg entry and `va_arg` consumption.
+Goal: add the narrow RV64 ABI support needed for prepared consumers to receive
+or diagnose variadic entry state and `va_list` layout explicitly.
 
 Concrete actions:
 
-- Define the data carried for variadic function entry, fixed argument homes,
-  variable argument state, and unsupported argument classes.
-- Define the target ABI hook boundary for materializing or diagnosing each
-  `va_arg`.
-- Keep unsupported diagnostics structured and layer-specific.
-- Add focused tests that assert the contract shape without requiring RV64
-  object emission to guess source semantics.
+- Implement the minimal RV64 target hook changes for variadic entry state.
+- Implement the minimal RV64 `va_list` layout publication or a precise
+  structured unsupported diagnostic.
+- Add focused backend tests for the publication and unsupported paths.
 
 Completion check:
 
-- Tests prove that prepared consumers receive explicit vararg plans or precise
-  diagnostics, and no RV64 object-emission code is needed to infer shared
-  vararg semantics.
+- Focused backend tests prove the RV64 target facts are no longer missing for
+  the simple representative path, and non-vararg admission behavior remains
+  green.
 
-### Step 3. Wire Contract Through LIR, BIR, and Prepared Output
+### Step 3. Materialize `va_start` Helper Resources and Operand Homes
 
-Goal: carry the contract through the compiler layers that currently own
-function entry, calls, locals, and value-home planning.
+Goal: consume prepared `va_start` facts and provide the helper resources and
+destination homes RV64 needs without source-shape inference.
 
 Concrete actions:
 
-- Implement the minimal representation and lowering changes needed for the
-  contract from Step 2.
-- Preserve existing non-vararg behavior.
-- Add regression tests for fixed arguments, simple variadic calls, `va_start`,
-  `va_arg`, `va_copy`, `va_end`, and unsupported vararg forms where supported
-  by the current frontend.
+- Add target hook support for required scratch register and scratch stack
+  resource facts.
+- Materialize `va_start.destination_va_list` and
+  `va_start.destination_va_list_address` from prepared state.
+- Add focused tests that distinguish materialized homes from precise
+  unsupported diagnostics.
 
 Completion check:
 
-- Narrow compiler tests pass for the touched frontend/LIR/BIR/prepared
-  surfaces, and representative vararg cases progress to either a target ABI
-  hook requirement or a precise upstream diagnostic.
+- `va_start` helper-resource and destination-home diagnostics either disappear
+  for covered paths or become more specific target ABI diagnostics.
 
-### Step 4. Confirm RV64 Boundary Without Target-Layer Overfit
+### Step 4. Materialize or Diagnose Aggregate `va_arg` Operand Homes
 
-Goal: verify that RV64 object emission consumes only explicit prepared vararg
-information or reports a structured target-hook requirement.
+Goal: handle aggregate `va_arg` operand homes at the RV64 target boundary using
+prepared facts.
 
 Concrete actions:
 
-- Probe `src/920908-1.c` and `src/20030914-2.c` through the RV64 gcc torture
-  backend runner or narrower equivalent.
-- Ensure any remaining failure is classified as a shared-contract diagnostic,
-  a target ABI hook requirement, or a separate unsupported aggregate/argument
-  class.
-- Do not add testcase-specific RV64 lowering.
+- Inspect the prepared aggregate `va_arg` access plan and payload homes.
+- Materialize `source_va_list`, `aggregate_destination_payload`, and
+  `aggregate_access_plan` where RV64 support is narrow and clear.
+- Report precise target ABI diagnostics for unsupported aggregate classes.
+- Add focused tests for both materialized and unsupported aggregate paths.
 
 Completion check:
 
-- The representative cases no longer fail as generic prepared-object shape
-  rejections for missing shared vararg semantics, or the residual diagnostic
-  precisely names the target hook/unsupported class still needed.
+- `src/920908-1.c` no longer reports the original aggregate operand-home
+  missing facts, or the residual failure identifies a narrower unsupported
+  RV64 aggregate vararg class.
 
 ### Step 5. Milestone Validation and Handoff
 
-Goal: prove the shared vararg contract is stable enough for later target ABI
-  emission work.
+Goal: prove the RV64 vararg target hook work is stable enough to return to the
+broader RV64 object-route backlog.
 
 Concrete actions:
 
-- Run the narrow build and test subset covering every touched layer.
-- Run the representative RV64 torture allowlist subset for:
-  - `src/920908-1.c`
+- Run build proof and the focused backend tests touched by this plan.
+- Run the representative RV64 allowlist for:
   - `src/20030914-2.c`
-- Document any remaining target-specific ABI work in `todo.md`; create a new
-  open idea only if the remaining work is a distinct initiative.
+  - `src/920908-1.c`
+- Document any residual target ABI gaps in `todo.md` and create a separate
+  idea only if the remaining work is outside this target vararg hook scope.
 
 Completion check:
 
-- Baseline tests for touched layers are green, representative cases have
-  structured outcomes, and follow-up target work is clearly separated from the
-  completed shared contract.
+- The focused backend tests are green, representative outcomes are improved or
+  more precisely classified, and no progress depends on testcase-name
+  matching or expectation downgrades.

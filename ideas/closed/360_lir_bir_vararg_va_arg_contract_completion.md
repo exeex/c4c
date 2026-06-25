@@ -1,6 +1,6 @@
 # LIR/BIR Vararg and va_arg Contract Completion
 
-Status: Open
+Status: Closed
 Type: Upstream contract idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/open/358_rv64_object_route_abi_width_edges.md`
@@ -81,6 +81,20 @@ variadic-call entry behavior more precisely than the torture cases.
   or fail with a precise upstream vararg-contract diagnostic.
 - Existing baseline tests for touched frontend/LIR/BIR/prepared surfaces remain
   green.
+
+## Closure Note
+
+Closed 2026-06-25 after the shared LIR/BIR/prepared contract published
+explicit non-AAPCS64 missing facts and RV64 object admission surfaced the
+remaining requirements as structured target ABI facts. Milestone validation
+proved the focused touched-layer CTest subset at 7/7 and the RV64 allowlist
+cases `src/920908-1.c` and `src/20030914-2.c` reached structured object
+admission outcomes rather than losing shared vararg semantics earlier.
+
+Remaining work is target-specific RV64 ABI hook/materialization for variadic
+entry state, `va_list` layout, helper resources, and aggregate `va_arg`
+operand homes. That work is outside this shared-contract idea and is tracked
+by `ideas/open/361_rv64_vararg_abi_hook_materialization.md`.
 
 ## Reviewer Reject Signals
 

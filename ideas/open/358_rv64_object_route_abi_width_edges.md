@@ -31,7 +31,9 @@ Layer routing after idea 359:
 
 - Variadic/vararg and `va_arg` semantics are upstream LIR/BIR/prepared
   contract work, not RV64 object emission. They are split to
-  `ideas/open/360_lir_bir_vararg_va_arg_contract_completion.md`.
+  `ideas/closed/360_lir_bir_vararg_va_arg_contract_completion.md`; remaining
+  RV64 target hook/materialization work is tracked by
+  `ideas/open/361_rv64_vararg_abi_hook_materialization.md`.
 - Non-i32/pointer local memory width, unusual local-memory homes, and
   declaration-control-flow entries depend on the shared consumer contract from
   359 before target emission should repair them.
@@ -62,7 +64,9 @@ Layer routing after idea 359:
 - Data-section/global/string support; that belongs to
   `ideas/open/357_rv64_object_route_data_sections_globals_strings.md`.
 - Variadic/vararg and `va_arg` LIR/BIR/prepared semantics; that belongs to
-  `ideas/open/360_lir_bir_vararg_va_arg_contract_completion.md`.
+  `ideas/closed/360_lir_bir_vararg_va_arg_contract_completion.md`. Remaining
+  RV64 target hook/materialization work belongs to
+  `ideas/open/361_rv64_vararg_abi_hook_materialization.md`.
 - Full vector ABI support.
 - Passing all GCC torture cases by expectation changes.
 
@@ -74,7 +78,7 @@ Layer routing after idea 359:
 - `src/20030125-1.c`: FPR/floating-point value shape.
 - `src/920410-1.c`: local memory addressing/home edge.
 
-Routed out to idea 360:
+Routed out of this mixed-edge idea:
 
 - `src/20030914-2.c`: byval/vararg-adjacent aggregate entry shape.
 - `src/920908-1.c`: vararg family.
@@ -87,7 +91,8 @@ Mixed by bucket:
   first, then target emission;
 - simple call/FPR ABI: later target ABI emission only where prepared semantics
   already exist;
-- vararg/va_arg: upstream LIR/BIR/prepared contract in idea 360.
+- vararg/va_arg: upstream LIR/BIR/prepared contract closed in idea 360;
+  remaining RV64 target hook/materialization work lives in idea 361.
 
 ## Proof Command
 
@@ -118,8 +123,9 @@ CASE_TIMEOUT_SEC=20 scripts/check_progress_rv64_gcc_c_torture_backend.sh
 
 - Each representative case either executes correctly through clang link and
   qemu or moves to a later structured unsupported bucket.
-- Vararg/va_arg cases are no longer treated as RV64 object-emission repair
-  scope; they are routed to idea 360.
+- Vararg/va_arg shared-contract cases are no longer treated as this mixed
+  RV64 object-emission repair scope; shared contract work is closed in idea 360
+  and remaining target hook work is routed to idea 361.
 - Local memory widths are selected from semantic/prepared memory metadata, not
   testcase names.
 - Undefined declarations are represented as symbols/declarations rather than
@@ -132,8 +138,9 @@ CASE_TIMEOUT_SEC=20 scripts/check_progress_rv64_gcc_c_torture_backend.sh
 
 - Reject if the implementation hard-codes listed testcase names or source
   patterns.
-- Reject if vararg/va_arg behavior is implemented in RV64 object emission
-  instead of routed through idea 360.
+- Reject if shared vararg/va_arg behavior is implemented in RV64 object
+  emission instead of consuming the idea 360 contract or routing target hook
+  work through idea 361.
 - Reject if FPR/simple-call behavior is guessed without reference to prepared
   ABI metadata.
 - Reject if non-i32 local memory is handled by truncating/widening silently
