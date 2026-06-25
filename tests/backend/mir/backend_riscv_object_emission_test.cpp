@@ -1528,6 +1528,49 @@ prepare::PreparedBirModule make_prepared_before_return_fpr_f128_abi_move_module(
   return make_prepared_before_return_fpr_abi_move_module(bir::TypeKind::F128);
 }
 
+prepare::PreparedBirModule make_prepared_fpr_immediate_return_module(
+    bir::TypeKind return_type,
+    std::uint64_t immediate_bits) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("fpr_immediate_return");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+
+  bir::Value return_value = bir::Value::immediate_f128_bits(immediate_bits, 0);
+  std::size_t return_size = 16;
+  if (return_type == bir::TypeKind::F32) {
+    return_value =
+        bir::Value::immediate_f32_bits(static_cast<std::uint32_t>(immediate_bits));
+    return_size = 4;
+  } else if (return_type == bir::TypeKind::F64) {
+    return_value = bir::Value::immediate_f64_bits(immediate_bits);
+    return_size = 8;
+  }
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.value = return_value;
+  prepared.module.functions.push_back(bir::Function{
+      .name = "fpr_immediate_return",
+      .return_type = return_type,
+      .return_size_bytes = return_size,
+      .return_align_bytes = return_size,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_global_load_module(bool publish_access = true) {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -5008,6 +5051,75 @@ int rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes() {
   return 0;
 }
 
+int builds_prepared_fpr_immediate_return_objects() {
+  auto prepared =
+      make_prepared_fpr_immediate_return_module(bir::TypeKind::F32, 1);
+  auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared F32 immediate-return RV64 object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "fpr_immediate_return");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared F32 immediate-return object to publish text/function");
+  }
+  if (text->bytes.size() != 12 || function->size_bytes != 12 ||
+      read_u32(text->bytes, 0) != 0x00100293 ||
+      read_u32(text->bytes, 4) != 0xf0028553 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected addi t0, zero, 1; fmv.w.x fa0, t0; ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared F32 immediate-return object to need no relocations");
+  }
+
+  prepared = make_prepared_fpr_immediate_return_module(bir::TypeKind::F64, 7);
+  module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared F64 immediate-return RV64 object to build");
+  }
+  text = object::find_section(*module, ".text");
+  function = object::find_symbol(*module, "fpr_immediate_return");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared F64 immediate-return object to publish text/function");
+  }
+  if (text->bytes.size() != 12 || function->size_bytes != 12 ||
+      read_u32(text->bytes, 0) != 0x00700293 ||
+      read_u32(text->bytes, 4) != 0xf2028553 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected addi t0, zero, 7; fmv.d.x fa0, t0; ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared F64 immediate-return object to need no relocations");
+  }
+
+  return 0;
+}
+
+int rejects_prepared_fpr_immediate_return_fail_closed_shapes() {
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_fpr_immediate_return_module(bir::TypeKind::F128, 0),
+          "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering") !=
+      0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_fpr_immediate_return_module(bir::TypeKind::F32, 0x3f800000u),
+          "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering") !=
+      0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_fpr_immediate_return_module(
+              bir::TypeKind::F64,
+              0x3ff0000000000000ull),
+          "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering") !=
+      0) {
+    return 1;
+  }
+  return 0;
+}
+
 int rejects_unsupported_prepared_floating_cast_with_precise_diagnostic() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_unsupported_floating_cast_module(),
@@ -5842,6 +5954,8 @@ int main() {
   status |= builds_prepared_before_return_fpr_f32_abi_move_object();
   status |= builds_prepared_before_return_fpr_f64_abi_move_object();
   status |= rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes();
+  status |= builds_prepared_fpr_immediate_return_objects();
+  status |= rejects_prepared_fpr_immediate_return_fail_closed_shapes();
   status |= rejects_unsupported_prepared_floating_cast_with_precise_diagnostic();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= emits_prepared_writable_i32_global_object_storage();

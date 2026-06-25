@@ -8,24 +8,22 @@ Current Step Title: Route Simple Call and FPR ABI Edges
 
 ## Just Finished
 
-Completed Plan Step 4 prepared FPR ABI move-bundle destination resolution.
+Completed Plan Step 4 prepared FPR immediate return lowering.
 
-The RV64 prepared move-bundle emitter now treats a raw destination
-`register_name` as a GPR hint and, when it does not resolve to a GPR, still
-uses the prepared FPR ABI placement/identity to choose the target FPR. This
-accepts prepared `before_return` ABI moves with `destination_register_name=fa0`
-plus `destination_register_placement=fpr:call_result#0/w1` without adding raw
-FPR-name parsing to object emission.
+The RV64 prepared return emitter now accepts immediate F32/F64 return values
+whose published bit pattern fits the current 12-bit immediate materializer. It
+loads the bit pattern into `t0`, moves it to the hard-float return register with
+`fmv.w.x fa0, t0` or `fmv.d.x fa0, t0`, then emits the normal return sequence.
 
-The focused object-emission regression now matches that real prepared shape for
-the F32/F64 return move fixture and keeps raw `fa0` without a prepared placement
-fail-closed with the shared unsupported move-bundle diagnostic.
+The focused object-emission regression covers F32/F64 immediate return objects
+and keeps unsupported shapes fail-closed: F128 immediate returns and F32/F64 bit
+patterns outside the current materializable range still reject through the
+shared unsupported terminator diagnostic.
 
 ## Suggested Next
 
 Rerun the representative `src/20030125-1.c` RV64 backend progress proof to find
-the next object-route boundary after the prepared FPR return ABI move and
-placement-backed `fa0` destination resolution.
+the next object-route boundary after prepared FPR immediate return lowering.
 
 ## Watchouts
 
@@ -34,12 +32,12 @@ placement-backed `fa0` destination resolution.
 - FPR move-bundle admission remains identity/placement-backed; raw FPR
   `register_name` parsing is still intentionally unsupported in object
   emission.
-- The new terminator skip depends on the prepared before-return FPR ABI move
-  lookup for the same block and source value. If the representative advances,
-  inspect the next `prepared.dump` boundary rather than weakening this guard.
-- The new destination fallback is deliberately gated on prepared FPR placement
-  or value-home identity; keep raw ABI FPR text names rejected unless the
-  preparer publishes target identity facts.
+- Immediate FPR returns are deliberately bounded to bit patterns that fit the
+  existing 12-bit `addi` materializer. Larger constants need a wider semantic
+  integer materializer before this route should admit them.
+- The representative previously included local `floor`/`sinf` stubs returning
+  zero after `abort()`. This slice handles that as typed immediate return
+  lowering, not by matching function names.
 
 ## Proof
 

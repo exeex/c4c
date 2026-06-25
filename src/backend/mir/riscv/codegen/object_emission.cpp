@@ -541,6 +541,31 @@ bool append_rv64_fpr_move(RiscvEncodedFragment& fragment,
   return true;
 }
 
+std::optional<std::uint32_t> rv64_gpr_to_fpr_move_funct7(
+    c4c::backend::bir::TypeKind type) {
+  switch (type) {
+    case c4c::backend::bir::TypeKind::F32:
+      return 0x78;  // fmv.w.x
+    case c4c::backend::bir::TypeKind::F64:
+      return 0x79;  // fmv.d.x
+    default:
+      return std::nullopt;
+  }
+}
+
+bool append_rv64_gpr_to_fpr_move(RiscvEncodedFragment& fragment,
+                                 std::uint32_t destination,
+                                 std::uint32_t source,
+                                 c4c::backend::bir::TypeKind type) {
+  const auto funct7 = rv64_gpr_to_fpr_move_funct7(type);
+  if (!funct7.has_value()) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_r_type(0x53, destination, 0, source, 0, *funct7));
+  return true;
+}
+
 const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -587,6 +612,30 @@ std::optional<std::int64_t> integer_immediate_for_value(
     return std::nullopt;
   }
   return home->immediate_i32;
+}
+
+std::optional<std::int64_t> materializable_fpr_immediate_bits(
+    const c4c::backend::bir::Value& value) {
+  if (value.kind != c4c::backend::bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  std::uint64_t bits = 0;
+  switch (value.type) {
+    case c4c::backend::bir::TypeKind::F32:
+      bits = value.immediate_bits & 0xffffffffu;
+      break;
+    case c4c::backend::bir::TypeKind::F64:
+      bits = value.immediate_bits;
+      break;
+    default:
+      return std::nullopt;
+  }
+  if (bits > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+    return std::nullopt;
+  }
+  const auto immediate = static_cast<std::int64_t>(bits);
+  return fits_signed_12_bit_immediate(immediate) ? std::optional{immediate}
+                                                 : std::nullopt;
 }
 
 std::optional<std::uint32_t> gpr_register_number_for_value(
@@ -1729,6 +1778,22 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
       append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
       return fragment;
     }
+  }
+  if (const auto bits = materializable_fpr_immediate_bits(*terminator.value)) {
+    constexpr std::uint32_t scratch = 5;  // t0
+    constexpr std::uint32_t return_fpr = 10;  // fa0
+    append_rv64_load_immediate(fragment, scratch, *bits);
+    if (!append_rv64_gpr_to_fpr_move(
+            fragment, return_fpr, scratch, terminator.value->type)) {
+      return std::nullopt;
+    }
+    if (restore_return_address) {
+      append_rv64_call_frame_epilogue(fragment, stack_frame_bytes);
+    } else {
+      append_rv64_stack_frame_epilogue(fragment, stack_frame_bytes);
+    }
+    append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
+    return fragment;
   }
   if (!append_rv64_move_value_to_register(fragment,
                                           10,
