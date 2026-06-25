@@ -363,7 +363,8 @@ prepare::PreparedBirModule make_prepared_variadic_missing_required_facts_module(
   return prepared;
 }
 
-prepare::PreparedBirModule make_prepared_variadic_va_start_module() {
+prepare::PreparedBirModule make_prepared_variadic_va_start_module(
+    bool include_overflow_area_initial_state = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -420,6 +421,12 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module() {
           .overflow_area =
               prepare::PreparedVariadicEntryOverflowArea{
                   .required = true,
+                  .base_slot_id = include_overflow_area_initial_state
+                                      ? std::optional<prepare::PreparedFrameSlotId>{7}
+                                      : std::nullopt,
+                  .base_stack_offset_bytes = include_overflow_area_initial_state
+                                                 ? std::optional<std::size_t>{64}
+                                                 : std::nullopt,
                   .align_bytes = std::size_t{8},
               },
           .va_list_layout =
@@ -3087,9 +3094,16 @@ int preserves_missing_variadic_required_facts_diagnostic() {
       "unsupported_function_admission: variadic functions are not supported by the RV64 object route; missing_required_facts=[target_abi.va_list_layout]");
 }
 
-int rejects_fact_complete_variadic_va_start_with_helper_specific_diagnostic() {
+int rejects_fact_complete_variadic_va_start_without_overflow_base_state() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_variadic_va_start_module(),
+      "unsupported_variadic_helper_lowering: RV64 va_start helper requires prepared overflow-area initial base state");
+}
+
+int rejects_fact_complete_variadic_va_start_with_overflow_base_state_at_lowering_boundary() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_variadic_va_start_module(
+          true /*include_overflow_area_initial_state*/),
       "unsupported_variadic_helper_lowering: RV64 object route does not yet lower va_start helper");
 }
 
@@ -4919,7 +4933,9 @@ int main() {
   status |= builds_prepared_scalar_same_module_call_object();
   status |= preserves_missing_variadic_entry_plan_diagnostic();
   status |= preserves_missing_variadic_required_facts_diagnostic();
-  status |= rejects_fact_complete_variadic_va_start_with_helper_specific_diagnostic();
+  status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
+  status |=
+      rejects_fact_complete_variadic_va_start_with_overflow_base_state_at_lowering_boundary();
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_stack_slot_scalar_flow_object();

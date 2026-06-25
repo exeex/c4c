@@ -244,6 +244,16 @@ std::string rv64_variadic_helper_unsupported_diagnostic(
   return diagnostic;
 }
 
+std::optional<std::string> rv64_variadic_va_start_runtime_state_diagnostic(
+    const prepare::PreparedVariadicEntryPlanFunction& entry_plan) {
+  if (!entry_plan.overflow_area.base_slot_id.has_value() ||
+      !entry_plan.overflow_area.base_stack_offset_bytes.has_value()) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_start helper requires prepared overflow-area initial base state"};
+  }
+  return std::nullopt;
+}
+
 std::optional<std::string> diagnose_unsupported_prepared_variadic_helper_fragment(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
@@ -281,6 +291,11 @@ std::optional<std::string> diagnose_unsupported_prepared_variadic_helper_fragmen
     diagnostic += prepare::prepared_variadic_entry_helper_kind_name(*helper);
     diagnostic += " helper operand homes";
     return diagnostic;
+  }
+  if (*helper == prepare::PreparedVariadicEntryHelperKind::VaStart) {
+    if (auto diagnostic = rv64_variadic_va_start_runtime_state_diagnostic(*entry_plan)) {
+      return diagnostic;
+    }
   }
   return rv64_variadic_helper_unsupported_diagnostic(*helper);
 }
