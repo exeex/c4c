@@ -215,8 +215,12 @@ std::string rv64_variadic_function_admission_diagnostic(
       "unsupported_function_admission: variadic functions are not supported by the RV64 object route";
   const auto* entry_plan =
       prepare::find_prepared_variadic_entry_plan(prepared, function_name);
-  if (entry_plan == nullptr || entry_plan->missing_required_facts.empty()) {
+  if (entry_plan == nullptr) {
     diagnostic += "; missing variadic entry contract facts were not prepared";
+    return diagnostic;
+  }
+  if (entry_plan->missing_required_facts.empty()) {
+    diagnostic += "; RV64 object variadic function lowering is not implemented";
     return diagnostic;
   }
 

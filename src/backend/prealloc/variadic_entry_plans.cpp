@@ -408,6 +408,40 @@ void populate_aapcs64_variadic_entry_abi_facts(
   append_missing_variadic_entry_fact(function_plan, "overflow_area.base_stack_offset_bytes");
 }
 
+void populate_rv64_variadic_entry_abi_facts(
+    PreparedVariadicEntryPlanFunction& function_plan) {
+  constexpr std::size_t kRv64PointerBytes = 8;
+
+  function_plan.overflow_area.required = true;
+  function_plan.overflow_area.align_bytes = kRv64PointerBytes;
+
+  function_plan.va_list_layout.required = true;
+  function_plan.va_list_layout.size_bytes = kRv64PointerBytes;
+  function_plan.va_list_layout.align_bytes = kRv64PointerBytes;
+  function_plan.va_list_layout.fields = {
+      PreparedVariadicVaListField{
+          .kind = PreparedVariadicVaListFieldKind::OverflowArgArea,
+          .offset_bytes = 0,
+          .size_bytes = kRv64PointerBytes,
+      },
+  };
+}
+
+[[nodiscard]] constexpr bool is_rv64_backend_abi(c4c::BackendAbiKind backend_abi) {
+  switch (backend_abi) {
+    case c4c::BackendAbiKind::RiscvLp64:
+    case c4c::BackendAbiKind::RiscvLp64F:
+    case c4c::BackendAbiKind::RiscvLp64D:
+      return true;
+    case c4c::BackendAbiKind::Unknown:
+    case c4c::BackendAbiKind::SysV_X86_64:
+    case c4c::BackendAbiKind::SysV_I686:
+    case c4c::BackendAbiKind::Aapcs64:
+      return false;
+  }
+  return false;
+}
+
 struct VariadicHelperScratchRequirement {
   std::size_t scratch_register_count = 0;
   std::size_t scratch_stack_bytes = 0;
@@ -975,6 +1009,12 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
       attach_aapcs64_variadic_entry_storage_authority(prepared, function_plan);
       populate_aapcs64_variadic_entry_helper_operand_home_authority(
           prepared, function, function_plan);
+    } else if (is_rv64_backend_abi(prepared.target_profile.backend_abi)) {
+      populate_rv64_variadic_entry_abi_facts(function_plan);
+      publish_missing_non_aapcs64_variadic_entry_contract(function_plan);
+      remove_missing_variadic_entry_fact(function_plan,
+                                         "target_abi.variadic_entry_state");
+      remove_missing_variadic_entry_fact(function_plan, "target_abi.va_list_layout");
     } else {
       publish_missing_non_aapcs64_variadic_entry_contract(function_plan);
     }

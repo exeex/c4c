@@ -6249,6 +6249,45 @@ int main() {
                        "non-AAPCS64 variadic entry missing va_list contract")) {
     return EXIT_FAILURE;
   }
+  const auto rv64_call_wrapper_prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          call_wrapper_prepared.module,
+          riscv_target_profile(),
+          prepare::PrepareOptions{
+              .run_legalize = true,
+              .run_stack_layout = true,
+              .run_liveness = true,
+              .run_regalloc = true,
+          });
+  const std::string rv64_call_wrapper_dump = prepare::print(rv64_call_wrapper_prepared);
+  const auto rv64_entry_function_id =
+      rv64_call_wrapper_prepared.names.function_names.find("variadic_entry_dump_contract");
+  const auto* rv64_entry_plan =
+      prepare::find_prepared_variadic_entry_plan(rv64_call_wrapper_prepared,
+                                                 rv64_entry_function_id);
+  if (rv64_entry_plan == nullptr ||
+      rv64_entry_plan->helper_resources.required_helpers.empty() == false ||
+      rv64_entry_plan->register_save_area.required ||
+      !rv64_entry_plan->overflow_area.required ||
+      rv64_entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8} ||
+      !rv64_entry_plan->va_list_layout.required ||
+      rv64_entry_plan->va_list_layout.size_bytes != std::optional<std::size_t>{8} ||
+      rv64_entry_plan->va_list_layout.align_bytes != std::optional<std::size_t>{8} ||
+      rv64_entry_plan->va_list_layout.fields.size() != 1 ||
+      !rv64_entry_plan->missing_required_facts.empty()) {
+    std::cerr << "[FAIL] RV64 variadic entry carrier did not publish target ABI entry/layout facts for no-helper entry\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(rv64_call_wrapper_dump,
+                       "va_list_layout required=yes size=8 align=8 fields=1",
+                       "RV64 variadic va_list layout header")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(rv64_call_wrapper_dump,
+                       "field kind=overflow_arg_area offset=0 size=8",
+                       "RV64 variadic va_list overflow field")) {
+    return EXIT_FAILURE;
+  }
   const auto aapcs64_variadic_prepared = prepare_aapcs64_variadic_entry_dump_module();
   const std::string aapcs64_variadic_dump = prepare::print(aapcs64_variadic_prepared);
   const auto aapcs64_function_id =
@@ -6627,11 +6666,11 @@ int main() {
                        "AAPCS64 variadic va_copy operand homes")) {
     return EXIT_FAILURE;
   }
-  auto non_aapcs64_helper_family_prepared =
+  auto rv64_helper_family_prepared =
       prepare_aapcs64_variadic_entry_helper_family_dump_module();
-  non_aapcs64_helper_family_prepared =
+  rv64_helper_family_prepared =
       prepare::prepare_semantic_bir_module_with_options(
-          non_aapcs64_helper_family_prepared.module,
+          rv64_helper_family_prepared.module,
           riscv_target_profile(),
           prepare::PrepareOptions{
               .run_legalize = true,
@@ -6639,64 +6678,74 @@ int main() {
               .run_liveness = true,
               .run_regalloc = true,
           });
-  const std::string non_aapcs64_helper_family_dump =
-      prepare::print(non_aapcs64_helper_family_prepared);
-  const auto non_aapcs64_helper_family_function_id =
-      non_aapcs64_helper_family_prepared.names.function_names.find(
+  const std::string rv64_helper_family_dump =
+      prepare::print(rv64_helper_family_prepared);
+  const auto rv64_helper_family_function_id =
+      rv64_helper_family_prepared.names.function_names.find(
           "aapcs64_variadic_entry_helper_family_dump_contract");
-  const auto* non_aapcs64_helper_family_entry_plan =
+  const auto* rv64_helper_family_entry_plan =
       prepare::find_prepared_variadic_entry_plan(
-          non_aapcs64_helper_family_prepared,
-          non_aapcs64_helper_family_function_id);
-  const auto has_non_aapcs64_missing_fact = [&](std::string_view fact) {
-    return non_aapcs64_helper_family_entry_plan != nullptr &&
-           std::find(non_aapcs64_helper_family_entry_plan->missing_required_facts.begin(),
-                     non_aapcs64_helper_family_entry_plan->missing_required_facts.end(),
+          rv64_helper_family_prepared,
+          rv64_helper_family_function_id);
+  const auto has_rv64_missing_fact = [&](std::string_view fact) {
+    return rv64_helper_family_entry_plan != nullptr &&
+           std::find(rv64_helper_family_entry_plan->missing_required_facts.begin(),
+                     rv64_helper_family_entry_plan->missing_required_facts.end(),
                      fact) !=
-               non_aapcs64_helper_family_entry_plan->missing_required_facts.end();
+               rv64_helper_family_entry_plan->missing_required_facts.end();
   };
-  if (non_aapcs64_helper_family_entry_plan == nullptr ||
-      non_aapcs64_helper_family_entry_plan->helper_resources.required_helpers.size() != 4 ||
-      non_aapcs64_helper_family_entry_plan->helper_operand_homes.empty() == false ||
-      non_aapcs64_helper_family_entry_plan->register_save_area.required ||
-      non_aapcs64_helper_family_entry_plan->overflow_area.required ||
-      non_aapcs64_helper_family_entry_plan->va_list_layout.required ||
-      !has_non_aapcs64_missing_fact("target_abi.variadic_entry_state") ||
-      !has_non_aapcs64_missing_fact("target_abi.va_list_layout") ||
-      !has_non_aapcs64_missing_fact("helper_resources.scratch_register_count") ||
-      !has_non_aapcs64_missing_fact("helper_resources.scratch_stack_bytes") ||
-      !has_non_aapcs64_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
-      !has_non_aapcs64_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
-      !has_non_aapcs64_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
-      !has_non_aapcs64_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
-      !has_non_aapcs64_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||
-      !has_non_aapcs64_missing_fact("helper_operand_homes.va_arg_aggregate.source_va_list") ||
-      !has_non_aapcs64_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_destination_payload") ||
-      !has_non_aapcs64_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ||
-      !has_non_aapcs64_missing_fact("helper_operand_homes.va_copy.destination_va_list") ||
-      !has_non_aapcs64_missing_fact("helper_operand_homes.va_copy.source_va_list")) {
-    std::cerr << "[FAIL] non-AAPCS64 variadic helper-family carrier did not publish explicit missing helper contract facts\n";
+  if (rv64_helper_family_entry_plan == nullptr ||
+      rv64_helper_family_entry_plan->helper_resources.required_helpers.size() != 4 ||
+      rv64_helper_family_entry_plan->helper_operand_homes.empty() == false ||
+      rv64_helper_family_entry_plan->register_save_area.required ||
+      !rv64_helper_family_entry_plan->overflow_area.required ||
+      rv64_helper_family_entry_plan->overflow_area.align_bytes !=
+          std::optional<std::size_t>{8} ||
+      !rv64_helper_family_entry_plan->va_list_layout.required ||
+      rv64_helper_family_entry_plan->va_list_layout.size_bytes !=
+          std::optional<std::size_t>{8} ||
+      rv64_helper_family_entry_plan->va_list_layout.fields.size() != 1 ||
+      has_rv64_missing_fact("target_abi.variadic_entry_state") ||
+      has_rv64_missing_fact("target_abi.va_list_layout") ||
+      !has_rv64_missing_fact("helper_resources.scratch_register_count") ||
+      !has_rv64_missing_fact("helper_resources.scratch_stack_bytes") ||
+      !has_rv64_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
+      !has_rv64_missing_fact("helper_operand_homes.va_start.destination_va_list_address") ||
+      !has_rv64_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
+      !has_rv64_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
+      !has_rv64_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||
+      !has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.source_va_list") ||
+      !has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_destination_payload") ||
+      !has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ||
+      !has_rv64_missing_fact("helper_operand_homes.va_copy.destination_va_list") ||
+      !has_rv64_missing_fact("helper_operand_homes.va_copy.source_va_list")) {
+    std::cerr << "[FAIL] RV64 variadic helper-family carrier did not publish target ABI facts while preserving explicit missing helper facts\n";
     return EXIT_FAILURE;
   }
-  if (!expect_contains(non_aapcs64_helper_family_dump,
+  if (!expect_contains(rv64_helper_family_dump,
+                       "va_list_layout required=yes size=8 align=8 fields=1",
+                       "RV64 variadic helper-family va_list layout")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(rv64_helper_family_dump,
                        "helper_resources scratch_registers=<unknown> scratch_stack=<unknown> helpers=[va_start,va_arg,va_arg_aggregate,va_copy]",
-                       "non-AAPCS64 variadic helper-family helper summary")) {
+                       "RV64 variadic helper-family helper summary")) {
     return EXIT_FAILURE;
   }
-  if (!expect_contains(non_aapcs64_helper_family_dump,
+  if (!expect_contains(rv64_helper_family_dump,
                        "missing fact=helper_operand_homes.va_arg.scalar_access_plan",
-                       "non-AAPCS64 scalar va_arg missing access-plan fact")) {
+                       "RV64 scalar va_arg missing access-plan fact")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(
-          non_aapcs64_helper_family_dump,
+          rv64_helper_family_dump,
           "missing fact=helper_operand_homes.va_arg_aggregate.aggregate_access_plan",
-          "non-AAPCS64 aggregate va_arg missing access-plan fact")) {
+          "RV64 aggregate va_arg missing access-plan fact")) {
     return EXIT_FAILURE;
   }
-  if (!expect_contains(non_aapcs64_helper_family_dump,
+  if (!expect_contains(rv64_helper_family_dump,
                        "missing fact=helper_operand_homes.va_copy.source_va_list",
-                       "non-AAPCS64 va_copy missing operand fact")) {
+                       "RV64 va_copy missing operand fact")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,

@@ -8128,7 +8128,7 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
   return 0;
 }
 
-int check_non_aapcs64_variadic_entry_missing_contract() {
+int check_rv64_variadic_entry_helper_missing_contract() {
   const auto prepared = prepare::prepare_semantic_bir_module_with_options(
       make_aapcs64_variadic_entry_helper_family_frame_module(),
       riscv_target_profile(),
@@ -8142,7 +8142,7 @@ int check_non_aapcs64_variadic_entry_missing_contract() {
       prepared.names.function_names.find("aapcs64_variadic_entry_helper_family_frame_contract");
   const auto* entry_plan = prepare::find_prepared_variadic_entry_plan(prepared, function_id);
   if (entry_plan == nullptr) {
-    return fail("non-AAPCS64 variadic missing contract: missing entry plan");
+    return fail("RV64 variadic helper missing contract: missing entry plan");
   }
   const auto has_missing_fact = [&](std::string_view fact) {
     return std::find(entry_plan->missing_required_facts.begin(),
@@ -8154,12 +8154,20 @@ int check_non_aapcs64_variadic_entry_missing_contract() {
       entry_plan->helper_resources.scratch_stack_bytes.has_value() ||
       !entry_plan->helper_operand_homes.empty() ||
       entry_plan->register_save_area.required ||
-      entry_plan->overflow_area.required ||
-      entry_plan->va_list_layout.required) {
-    return fail("non-AAPCS64 variadic missing contract: placeholder plan gained concrete ABI facts");
+      !entry_plan->overflow_area.required ||
+      entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8} ||
+      !entry_plan->va_list_layout.required ||
+      entry_plan->va_list_layout.size_bytes != std::optional<std::size_t>{8} ||
+      entry_plan->va_list_layout.align_bytes != std::optional<std::size_t>{8} ||
+      entry_plan->va_list_layout.fields.size() != 1 ||
+      entry_plan->va_list_layout.fields.front().kind !=
+          prepare::PreparedVariadicVaListFieldKind::OverflowArgArea ||
+      entry_plan->va_list_layout.fields.front().offset_bytes != 0 ||
+      entry_plan->va_list_layout.fields.front().size_bytes != 8) {
+    return fail("RV64 variadic helper missing contract: target ABI facts were not published");
   }
-  if (!has_missing_fact("target_abi.variadic_entry_state") ||
-      !has_missing_fact("target_abi.va_list_layout") ||
+  if (has_missing_fact("target_abi.variadic_entry_state") ||
+      has_missing_fact("target_abi.va_list_layout") ||
       !has_missing_fact("helper_resources.scratch_register_count") ||
       !has_missing_fact("helper_resources.scratch_stack_bytes") ||
       !has_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
@@ -8173,11 +8181,11 @@ int check_non_aapcs64_variadic_entry_missing_contract() {
       !has_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ||
       !has_missing_fact("helper_operand_homes.va_copy.destination_va_list") ||
       !has_missing_fact("helper_operand_homes.va_copy.source_va_list")) {
-    return fail("non-AAPCS64 variadic missing contract: missing explicit helper or ABI boundary facts");
+    return fail("RV64 variadic helper missing contract: missing explicit helper facts or retained target ABI facts");
   }
   if (has_missing_fact("rv64") ||
       has_missing_fact("aapcs64_variadic_entry_helper_family_frame_contract")) {
-    return fail("non-AAPCS64 variadic missing contract: missing facts became target or testcase shaped");
+    return fail("RV64 variadic helper missing contract: missing facts became target or testcase shaped");
   }
   return 0;
 }
@@ -8345,7 +8353,7 @@ int main() {
   if (const int rc = check_aapcs64_variadic_entry_helper_family_frame_contract(); rc != 0) {
     return rc;
   }
-  if (const int rc = check_non_aapcs64_variadic_entry_missing_contract(); rc != 0) {
+  if (const int rc = check_rv64_variadic_entry_helper_missing_contract(); rc != 0) {
     return rc;
   }
   return EXIT_SUCCESS;
