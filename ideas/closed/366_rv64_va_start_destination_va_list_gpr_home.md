@@ -1,6 +1,6 @@
 # RV64 `va_start` Destination `va_list` GPR Home
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/closed/365_rv64_va_start_overflow_base_state_production.md`
 
@@ -90,3 +90,21 @@ Closure validation from idea 365:
   diagnostic
 - the current residual is:
   `unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home`
+
+## Closure Note
+
+Closed after RV64 `va_start` producer work published the original pointer
+operand as `destination_va_list_address` only when it is available through a
+prepared register home, while preserving the synthetic destination `va_list`
+storage slot as the separate `destination_va_list` fact. Focused backend
+prepared-contract, prepared-printer, and RV64 object-emission coverage stayed
+green under the close-time regression guard.
+
+The representative `src/920908-1.c` case advanced past the old
+destination-address diagnostic:
+
+`unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home`
+
+Its current stop is outside this idea's scope:
+
+`unsupported_variadic_helper_lowering: RV64 object route does not yet lower va_arg_aggregate helper`
