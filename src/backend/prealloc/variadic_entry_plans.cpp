@@ -1031,7 +1031,8 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
       const auto helper_kind = prepared_variadic_entry_helper_kind_for_call(*call);
       if (helper_kind != PreparedVariadicEntryHelperKind::VaStart &&
           helper_kind != PreparedVariadicEntryHelperKind::VaArg &&
-          helper_kind != PreparedVariadicEntryHelperKind::VaArgAggregate) {
+          helper_kind != PreparedVariadicEntryHelperKind::VaArgAggregate &&
+          helper_kind != PreparedVariadicEntryHelperKind::VaCopy) {
         continue;
       }
 
@@ -1121,6 +1122,21 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
           }
           break;
         case PreparedVariadicEntryHelperKind::VaCopy:
+          if (!call->args.empty()) {
+            homes.destination_va_list =
+                prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
+          }
+          if (call->args.size() > 1) {
+            homes.source_va_list =
+                prepared_home_for_named_value(prepared.names, value_locations, call->args[1]);
+          }
+          require_variadic_helper_operand_home(function_plan,
+                                               homes,
+                                               homes.destination_va_list,
+                                               "destination_va_list");
+          require_variadic_helper_operand_home(
+              function_plan, homes, homes.source_va_list, "source_va_list");
+          function_plan.helper_operand_homes.push_back(std::move(homes));
           break;
       }
     }

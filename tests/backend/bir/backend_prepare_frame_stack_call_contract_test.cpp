@@ -8154,7 +8154,7 @@ int check_rv64_variadic_entry_helper_missing_contract() {
           std::optional<std::size_t>{3} ||
       entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
-      entry_plan->helper_operand_homes.size() != 4 ||
+      entry_plan->helper_operand_homes.size() != 5 ||
       entry_plan->register_save_area.required ||
       !entry_plan->overflow_area.required ||
       entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8} ||
@@ -8180,6 +8180,8 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 1);
   const auto* va_arg_f64_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 2);
+  const auto* va_copy_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 4);
   if (aggregate_homes == nullptr ||
       !aggregate_homes->aggregate_destination_payload.has_value() ||
       !aggregate_homes->source_va_list.has_value() ||
@@ -8225,8 +8227,8 @@ int check_rv64_variadic_entry_helper_missing_contract() {
           "helper_operand_homes.va_arg_aggregate.aggregate_destination_payload") ||
       has_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ||
       has_missing_fact("target_abi.va_arg_aggregate.payload_abi") ||
-      !has_missing_fact("helper_operand_homes.va_copy.destination_va_list") ||
-      !has_missing_fact("helper_operand_homes.va_copy.source_va_list")) {
+      has_missing_fact("helper_operand_homes.va_copy.destination_va_list") ||
+      has_missing_fact("helper_operand_homes.va_copy.source_va_list")) {
     return fail("RV64 variadic helper missing contract: missing explicit helper facts or retained target ABI facts");
   }
   if (has_missing_fact("rv64") ||
@@ -8267,6 +8269,10 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       !va_arg_f64_homes->scalar_result.has_value() ||
       va_arg_f64_homes->scalar_access_plan.has_value()) {
     return fail("RV64 variadic helper missing contract: scalar va_arg facts were not consumed or precisely diagnosed");
+  }
+  if (va_copy_homes == nullptr ||
+      !prepare::has_complete_prepared_variadic_va_copy_operand_homes(*va_copy_homes)) {
+    return fail("RV64 variadic helper missing contract: va_copy operand homes were not materialized");
   }
   return 0;
 }

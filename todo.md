@@ -8,34 +8,32 @@ Current Step Title: Consume or Precisely Diagnose `va_copy`
 
 ## Just Finished
 
-Step 2 completed for `plan.md` Step 2.
+Step 3 completed for `plan.md` Step 3.
 
-Implemented RV64 scalar `va_arg` prepared fact consumption in
+Implemented RV64 `va_copy` prepared fact consumption in
 `src/backend/prealloc/variadic_entry_plans.cpp`:
 
-- RV64 now records `VaArg` helper operand homes instead of falling through the
-  helper switch.
-- Integer scalar `va_arg` payloads with source/result homes and explicit
-  payload ABI now get an overflow-arg-area scalar access plan against RV64's
-  single-field `va_list` layout.
-- Operand-complete scalar payloads outside that supported class now drop the
-  old generic missing operand/access-plan facts and publish
-  `target_abi.va_arg.scalar_payload_abi` as the precise remaining target ABI
-  diagnostic.
-- Completed RV64 `VaStart` and overflow `VaArgAggregate` behavior stayed
-  covered by the focused tests.
-- `VaCopy` remains intentionally unimplemented for Step 3; its
-  `helper_operand_homes.va_copy.destination_va_list` and
-  `helper_operand_homes.va_copy.source_va_list` missing facts are still
-  explicit.
+- RV64 now scans `VaCopy` at the same helper operand-home boundary as
+  `VaStart`, scalar `VaArg`, and aggregate `VaArgAggregate`.
+- When both `llvm.va_copy.p0.p0` operands have prepared value homes, RV64
+  records the existing `destination_va_list` and `source_va_list` carrier and
+  removes the old generic missing operand facts.
+- Missing destination/source homes still publish precise
+  `helper_operand_homes.va_copy.*` diagnostics through the shared
+  `require_variadic_helper_operand_home` path.
+- The focused RV64 tests now assert complete `VaCopy` operand homes while
+  preserving the committed RV64 `VaStart`, scalar `VaArg`, and aggregate
+  `VaArgAggregate` behavior.
 
 ## Suggested Next
 
-Delegate Step 3 to consume or precisely diagnose RV64 `va_copy` in
-`src/backend/prealloc/variadic_entry_plans.cpp`: materialize source and
-destination `va_list` homes for RV64's single-field layout where explicit, keep
-unsupported cases as target ABI diagnostics, and leave object-emission
-admission unchanged until copy facts reach the prepared consumer surface.
+Delegate Step 4 to narrow the RV64 object-emission variadic function admission
+gate without changing the prepared producer contracts: inspect the broad
+`RV64 object variadic function lowering is not implemented` path, consume the
+now-complete prepared `VaStart`, scalar `VaArg`, aggregate `VaArgAggregate`,
+and `VaCopy` facts where a minimal supported lowering path is explicit, or
+replace the broad gate with precise unsupported diagnostics for the exact
+remaining lowering class.
 
 Suggested proof command:
 
@@ -45,17 +43,16 @@ cmake --build build --target backend_prepare_frame_stack_call_contract_test back
 
 ## Watchouts
 
-- Do not start with the object-emission admission gate for Step 3: the focused
-  RV64 `va_copy` missing facts still prove the prepared producer boundary is
-  incomplete before target lowering can consume copy facts.
-- Preserve the new RV64 scalar integer `va_arg` overflow plan and the existing
-  aggregate `va_arg` overflow behavior while adding copy handling.
+- The broad RV64 object-route admission gate remains intentionally untouched in
+  this packet; Step 4 owns that lowering/admission work.
+- Preserve the RV64 scalar integer `va_arg` overflow plan, aggregate overflow
+  `va_arg` plan, and the new `VaCopy` operand-home carrier while changing
+  object emission.
 - `target_abi.va_arg.scalar_payload_abi` is now the intended precise diagnostic
   for operand-complete unsupported RV64 scalar payload classes such as the
   fixture's f64/SSE-shaped payload.
-- Treat `src/20030914-2.c` and `src/920908-1.c` as representatives only. Their
-  current failure proves the broad admission gate, not a testcase-shaped scalar
-  or copy fix.
+- Treat `src/20030914-2.c` and `src/920908-1.c` as representatives only; do
+  not implement testcase-shaped shortcuts for Step 4.
 
 ## Proof
 
@@ -67,3 +64,5 @@ cmake --build build --target backend_prepare_frame_stack_call_contract_test back
 
 Result: both `backend_prepare_frame_stack_call_contract` and
 `backend_prepared_printer` passed.
+
+`git diff --check` also passed.
