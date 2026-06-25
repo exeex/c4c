@@ -448,6 +448,21 @@ c4c_set_backend_test_labels(
   riscv64 rv64 asm objdump cli c4c_as c4c_objdump roundtrip contract
 )
 
+add_custom_target(rv64_c_testsuite_asm_roundtrip_scan
+  COMMAND "${CMAKE_COMMAND}"
+          -DC4CLL=$<TARGET_FILE:c4cll>
+          -DC4C_AS=$<TARGET_FILE:c4c-as>
+          -DC4C_OBJDUMP=$<TARGET_FILE:c4c-objdump>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DC_TESTSUITE_ROOT=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite
+          -DALLOWLIST=${BACKEND_TEST_ROOT}/rv64/rv64_c_testsuite_asm_roundtrip_allowlist.txt
+          -DWORK_DIR=${BACKEND_TEST_BINARY_ROOT}/rv64_c_testsuite_asm_roundtrip_scan
+          -DCASE_TIMEOUT_SEC=10
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_rv64_c_testsuite_asm_roundtrip_scan.cmake"
+  DEPENDS c4cll c4c-as c4c-objdump
+  VERBATIM
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_vrm_insn_d_source_asm
   SRC "${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c"
