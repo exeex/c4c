@@ -6700,7 +6700,7 @@ int main() {
           std::optional<std::size_t>{3} ||
       rv64_helper_family_entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
-      rv64_helper_family_entry_plan->helper_operand_homes.size() != 1 ||
+      rv64_helper_family_entry_plan->helper_operand_homes.size() != 3 ||
       rv64_helper_family_entry_plan->register_save_area.required ||
       !rv64_helper_family_entry_plan->overflow_area.required ||
       rv64_helper_family_entry_plan->overflow_area.align_bytes !=
@@ -6718,9 +6718,10 @@ int main() {
       !has_rv64_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
       !has_rv64_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
       !has_rv64_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||
-      !has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.source_va_list") ||
-      !has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_destination_payload") ||
-      !has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ||
+      has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.source_va_list") ||
+      has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_destination_payload") ||
+      has_rv64_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ||
+      !has_rv64_missing_fact("target_abi.va_arg_aggregate.payload_abi") ||
       !has_rv64_missing_fact("helper_operand_homes.va_copy.destination_va_list") ||
       !has_rv64_missing_fact("helper_operand_homes.va_copy.source_va_list")) {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not publish target ABI facts while preserving explicit missing helper facts\n";
@@ -6733,6 +6734,38 @@ int main() {
       !prepare::has_complete_prepared_variadic_va_start_operand_homes(
           *rv64_va_start_homes)) {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not materialize va_start operand homes\n";
+    return EXIT_FAILURE;
+  }
+  const auto* rv64_aggregate_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *rv64_helper_family_entry_plan, 0, 3);
+  const auto* rv64_hfa_shaped_aggregate_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *rv64_helper_family_entry_plan, 0, 4);
+  if (rv64_aggregate_homes == nullptr ||
+      !rv64_aggregate_homes->aggregate_access_plan.has_value() ||
+      rv64_aggregate_homes->aggregate_access_plan->source_class !=
+          prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea ||
+      rv64_aggregate_homes->aggregate_access_plan->payload_size_bytes != 8 ||
+      rv64_aggregate_homes->aggregate_access_plan->payload_align_bytes != 4 ||
+      rv64_aggregate_homes->aggregate_access_plan->source_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      rv64_aggregate_homes->aggregate_access_plan->source_slot_size_bytes !=
+          std::optional<std::size_t>{8} ||
+      rv64_aggregate_homes->aggregate_access_plan->progression_stride_bytes !=
+          std::optional<std::size_t>{8} ||
+      rv64_hfa_shaped_aggregate_homes == nullptr ||
+      !rv64_hfa_shaped_aggregate_homes->aggregate_access_plan.has_value() ||
+      rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->source_class !=
+          prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea ||
+      rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->payload_size_bytes != 4 ||
+      rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->payload_align_bytes != 4 ||
+      rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->source_slot_size_bytes !=
+          std::optional<std::size_t>{4} ||
+      rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->progression_stride_bytes !=
+          std::optional<std::size_t>{4} ||
+      rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->register_save_lane_count.has_value()) {
+    std::cerr << "[FAIL] RV64 variadic helper-family carrier did not materialize aggregate overflow va_arg plans\n";
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,
@@ -6751,14 +6784,36 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,
+                       "helper_operand kind=va_arg_aggregate block=0 inst=3",
+                       "RV64 variadic aggregate va_arg operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          rv64_helper_family_dump,
+          "aggregate_access_plan=source_class=overflow_arg_area:payload_size=8:payload_align=4",
+          "RV64 variadic aggregate va_arg access plan")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          rv64_helper_family_dump,
+          "source_field=overflow_arg_area@0:source_payload_offset=0:source_slot=8:copy_size=8:copy_align=4:progression_field=overflow_arg_area@0:progression_stride=8",
+          "RV64 variadic aggregate va_arg source and progression coordinates")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(rv64_helper_family_dump,
+                       "helper_operand kind=va_arg_aggregate block=0 inst=4",
+                       "RV64 variadic HFA-shaped aggregate va_arg operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(rv64_helper_family_dump,
                        "missing fact=helper_operand_homes.va_arg.scalar_access_plan",
                        "RV64 scalar va_arg missing access-plan fact")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(
           rv64_helper_family_dump,
-          "missing fact=helper_operand_homes.va_arg_aggregate.aggregate_access_plan",
-          "RV64 aggregate va_arg missing access-plan fact")) {
+          "missing fact=target_abi.va_arg_aggregate.payload_abi",
+          "RV64 aggregate va_arg missing payload ABI fact")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,

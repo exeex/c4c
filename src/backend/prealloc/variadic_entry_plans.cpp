@@ -684,12 +684,9 @@ make_aapcs64_scalar_va_arg_access_plan(
 }
 
 [[nodiscard]] std::optional<PreparedVariadicAggregateVaArgAccessPlan>
-make_aapcs64_aggregate_va_arg_access_plan(
-    const PreparedBirModule& prepared,
+make_overflow_aggregate_va_arg_access_plan(
     const PreparedVariadicEntryPlanFunction& function_plan,
     const PreparedVariadicEntryHelperOperandHomes& homes,
-    const bir::Block& block,
-    std::size_t instruction_index,
     const bir::CallInst& call) {
   if (!homes.aggregate_destination_payload.has_value() ||
       !homes.source_va_list.has_value() ||
@@ -725,6 +722,31 @@ make_aapcs64_aggregate_va_arg_access_plan(
       .overflow_stride_bytes = payload_stride_bytes,
   };
 
+  if (const auto overflow_field = find_variadic_va_list_field(
+          function_plan.va_list_layout, PreparedVariadicVaListFieldKind::OverflowArgArea);
+      overflow_field.has_value()) {
+    plan.overflow_source_field_offset_bytes = overflow_field->offset_bytes;
+    plan.source_field_offset_bytes = overflow_field->offset_bytes;
+    plan.progression_field_offset_bytes = overflow_field->offset_bytes;
+  }
+
+  return plan;
+}
+
+[[nodiscard]] std::optional<PreparedVariadicAggregateVaArgAccessPlan>
+make_aapcs64_aggregate_va_arg_access_plan(
+    const PreparedBirModule& prepared,
+    const PreparedVariadicEntryPlanFunction& function_plan,
+    const PreparedVariadicEntryHelperOperandHomes& homes,
+    const bir::Block& block,
+    std::size_t instruction_index,
+    const bir::CallInst& call) {
+  auto plan = make_overflow_aggregate_va_arg_access_plan(function_plan, homes, call);
+  if (!plan.has_value()) {
+    return std::nullopt;
+  }
+  const auto& payload_abi = *call.va_arg_payload_abi;
+
   if (call.va_arg_hfa_lane_count > 0 &&
       call.va_arg_hfa_lane_size_bytes > 0 &&
       function_plan.register_save_area.fp_slot_size_bytes.has_value()) {
@@ -739,19 +761,19 @@ make_aapcs64_aggregate_va_arg_access_plan(
     if (!lane_homes.has_value()) {
       return std::nullopt;
     }
-    plan.source_class = PreparedVariadicAggregateVaArgSourceClass::RegisterSaveArea;
-    plan.source_field = PreparedVariadicVaListFieldKind::FpRegisterSaveArea;
-    plan.source_slot_size_bytes = function_plan.register_save_area.fp_slot_size_bytes;
-    plan.copy_size_bytes = payload_abi.size_bytes;
-    plan.copy_align_bytes = payload_abi.align_bytes;
-    plan.progression_field = PreparedVariadicVaListFieldKind::FpOffset;
-    plan.progression_stride_bytes =
+    plan->source_class = PreparedVariadicAggregateVaArgSourceClass::RegisterSaveArea;
+    plan->source_field = PreparedVariadicVaListFieldKind::FpRegisterSaveArea;
+    plan->source_slot_size_bytes = function_plan.register_save_area.fp_slot_size_bytes;
+    plan->copy_size_bytes = payload_abi.size_bytes;
+    plan->copy_align_bytes = payload_abi.align_bytes;
+    plan->progression_field = PreparedVariadicVaListFieldKind::FpOffset;
+    plan->progression_stride_bytes =
         call.va_arg_hfa_lane_count * *function_plan.register_save_area.fp_slot_size_bytes;
-    plan.register_save_lane_count = call.va_arg_hfa_lane_count;
-    plan.register_save_lane_size_bytes = call.va_arg_hfa_lane_size_bytes;
-    plan.register_save_lane_destination_homes =
+    plan->register_save_lane_count = call.va_arg_hfa_lane_count;
+    plan->register_save_lane_size_bytes = call.va_arg_hfa_lane_size_bytes;
+    plan->register_save_lane_destination_homes =
         std::move(lane_homes->lane_destination_homes);
-    plan.overflow_stride_bytes =
+    plan->overflow_stride_bytes =
         aapcs64_hfa_overflow_stride_bytes(payload_abi.size_bytes,
                                           call.va_arg_hfa_lane_size_bytes);
   }
@@ -759,27 +781,35 @@ make_aapcs64_aggregate_va_arg_access_plan(
   if (const auto overflow_field = find_variadic_va_list_field(
           function_plan.va_list_layout, PreparedVariadicVaListFieldKind::OverflowArgArea);
       overflow_field.has_value()) {
-    plan.overflow_source_field_offset_bytes = overflow_field->offset_bytes;
-    if (plan.source_field == PreparedVariadicVaListFieldKind::OverflowArgArea) {
-      plan.source_field_offset_bytes = overflow_field->offset_bytes;
+    plan->overflow_source_field_offset_bytes = overflow_field->offset_bytes;
+    if (plan->source_field == PreparedVariadicVaListFieldKind::OverflowArgArea) {
+      plan->source_field_offset_bytes = overflow_field->offset_bytes;
     }
-    if (plan.progression_field ==
+    if (plan->progression_field ==
         PreparedVariadicVaListFieldKind::OverflowArgArea) {
-      plan.progression_field_offset_bytes = overflow_field->offset_bytes;
+      plan->progression_field_offset_bytes = overflow_field->offset_bytes;
     }
   }
   if (const auto source_field = find_variadic_va_list_field(
-          function_plan.va_list_layout, *plan.source_field);
+          function_plan.va_list_layout, *plan->source_field);
       source_field.has_value()) {
-    plan.source_field_offset_bytes = source_field->offset_bytes;
+    plan->source_field_offset_bytes = source_field->offset_bytes;
   }
   if (const auto progression_field = find_variadic_va_list_field(
-          function_plan.va_list_layout, *plan.progression_field);
+          function_plan.va_list_layout, *plan->progression_field);
       progression_field.has_value()) {
-    plan.progression_field_offset_bytes = progression_field->offset_bytes;
+    plan->progression_field_offset_bytes = progression_field->offset_bytes;
   }
 
   return plan;
+}
+
+[[nodiscard]] std::optional<PreparedVariadicAggregateVaArgAccessPlan>
+make_rv64_aggregate_va_arg_access_plan(
+    const PreparedVariadicEntryPlanFunction& function_plan,
+    const PreparedVariadicEntryHelperOperandHomes& homes,
+    const bir::CallInst& call) {
+  return make_overflow_aggregate_va_arg_access_plan(function_plan, homes, call);
 }
 
 void require_variadic_helper_operand_home(
@@ -796,6 +826,39 @@ void require_variadic_helper_operand_home(
     return;
   }
   append_missing_variadic_entry_fact(function_plan, fact);
+}
+
+void populate_aggregate_va_arg_operand_homes(
+    PreparedBirModule& prepared,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::CallInst& call,
+    PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (call.args.size() > 1) {
+    homes.aggregate_destination_payload =
+        prepared_home_for_named_value(prepared.names, value_locations, call.args[0]);
+    homes.source_va_list =
+        prepared_home_for_named_value(prepared.names, value_locations, call.args[1]);
+    return;
+  }
+  if (call.result.has_value()) {
+    homes.aggregate_destination_payload =
+        prepared_home_for_named_value(prepared.names, value_locations, *call.result);
+  }
+  if (!call.args.empty()) {
+    homes.source_va_list =
+        prepared_home_for_named_value(prepared.names, value_locations, call.args[0]);
+  }
+}
+
+void require_aggregate_va_arg_operand_homes(
+    PreparedVariadicEntryPlanFunction& function_plan,
+    const PreparedVariadicEntryHelperOperandHomes& homes) {
+  require_variadic_helper_operand_home(function_plan,
+                                       homes,
+                                       homes.aggregate_destination_payload,
+                                       "aggregate_destination_payload");
+  require_variadic_helper_operand_home(
+      function_plan, homes, homes.source_va_list, "source_va_list");
 }
 
 void populate_aapcs64_variadic_entry_helper_operand_home_authority(
@@ -869,27 +932,9 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
           }
           break;
         case PreparedVariadicEntryHelperKind::VaArgAggregate:
-          if (call->args.size() > 1) {
-            homes.aggregate_destination_payload =
-                prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
-            homes.source_va_list =
-                prepared_home_for_named_value(prepared.names, value_locations, call->args[1]);
-          } else {
-            if (call->result.has_value()) {
-              homes.aggregate_destination_payload =
-                  prepared_home_for_named_value(prepared.names, value_locations, *call->result);
-            }
-            if (!call->args.empty()) {
-              homes.source_va_list =
-                  prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
-            }
-          }
-          require_variadic_helper_operand_home(function_plan,
-                                               homes,
-                                               homes.aggregate_destination_payload,
-                                               "aggregate_destination_payload");
-          require_variadic_helper_operand_home(
-              function_plan, homes, homes.source_va_list, "source_va_list");
+          populate_aggregate_va_arg_operand_homes(
+              prepared, value_locations, *call, homes);
+          require_aggregate_va_arg_operand_homes(function_plan, homes);
           homes.aggregate_access_plan =
               make_aapcs64_aggregate_va_arg_access_plan(
                   prepared, function_plan, homes, block, instruction_index, *call);
@@ -938,35 +983,69 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
         continue;
       }
       const auto helper_kind = prepared_variadic_entry_helper_kind_for_call(*call);
-      if (helper_kind != PreparedVariadicEntryHelperKind::VaStart) {
+      if (helper_kind != PreparedVariadicEntryHelperKind::VaStart &&
+          helper_kind != PreparedVariadicEntryHelperKind::VaArgAggregate) {
         continue;
       }
 
       PreparedVariadicEntryHelperOperandHomes homes{
-          .helper = PreparedVariadicEntryHelperKind::VaStart,
+          .helper = *helper_kind,
           .block_index = block_index,
           .instruction_index = instruction_index,
       };
-      if (!call->args.empty()) {
-        homes.destination_va_list =
-            prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
-        if (homes.destination_va_list.has_value()) {
-          homes.destination_va_list_address =
-              materialize_va_start_destination_home(
-                  prepared, function_plan, "rv64", *homes.destination_va_list);
-        }
-      }
 
-      require_variadic_helper_operand_home(function_plan,
-                                           homes,
-                                           homes.destination_va_list,
-                                           "destination_va_list");
-      require_variadic_helper_operand_home(function_plan,
-                                           homes,
-                                           homes.destination_va_list_address,
-                                           "destination_va_list_address");
-      if (has_complete_prepared_variadic_va_start_operand_homes(homes)) {
-        function_plan.helper_operand_homes.push_back(std::move(homes));
+      switch (*helper_kind) {
+        case PreparedVariadicEntryHelperKind::VaStart:
+          if (!call->args.empty()) {
+            homes.destination_va_list =
+                prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
+            if (homes.destination_va_list.has_value()) {
+              homes.destination_va_list_address =
+                  materialize_va_start_destination_home(
+                      prepared, function_plan, "rv64", *homes.destination_va_list);
+            }
+          }
+          require_variadic_helper_operand_home(function_plan,
+                                               homes,
+                                               homes.destination_va_list,
+                                               "destination_va_list");
+          require_variadic_helper_operand_home(function_plan,
+                                               homes,
+                                               homes.destination_va_list_address,
+                                               "destination_va_list_address");
+          if (has_complete_prepared_variadic_va_start_operand_homes(homes)) {
+            function_plan.helper_operand_homes.push_back(std::move(homes));
+          }
+          break;
+        case PreparedVariadicEntryHelperKind::VaArgAggregate:
+          populate_aggregate_va_arg_operand_homes(
+              prepared, value_locations, *call, homes);
+          require_aggregate_va_arg_operand_homes(function_plan, homes);
+          homes.aggregate_access_plan =
+              make_rv64_aggregate_va_arg_access_plan(function_plan, homes, *call);
+          if (has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes)) {
+            remove_missing_variadic_entry_fact(
+                function_plan,
+                "helper_operand_homes.va_arg_aggregate.aggregate_access_plan");
+            remove_missing_variadic_entry_fact(function_plan,
+                                               "target_abi.va_arg_aggregate.payload_abi");
+            function_plan.helper_operand_homes.push_back(std::move(homes));
+          } else if (homes.aggregate_destination_payload.has_value() &&
+                     homes.source_va_list.has_value()) {
+            remove_missing_variadic_entry_fact(
+                function_plan,
+                "helper_operand_homes.va_arg_aggregate.aggregate_access_plan");
+            append_missing_variadic_entry_fact(function_plan,
+                                               "target_abi.va_arg_aggregate.payload_abi");
+          } else {
+            append_missing_variadic_entry_fact(
+                function_plan,
+                "helper_operand_homes.va_arg_aggregate.aggregate_access_plan");
+          }
+          break;
+        case PreparedVariadicEntryHelperKind::VaArg:
+        case PreparedVariadicEntryHelperKind::VaCopy:
+          break;
       }
     }
   }

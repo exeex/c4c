@@ -8154,7 +8154,7 @@ int check_rv64_variadic_entry_helper_missing_contract() {
           std::optional<std::size_t>{3} ||
       entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
-      entry_plan->helper_operand_homes.size() != 1 ||
+      entry_plan->helper_operand_homes.size() != 2 ||
       entry_plan->register_save_area.required ||
       !entry_plan->overflow_area.required ||
       entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8} ||
@@ -8174,6 +8174,38 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       !prepare::has_complete_prepared_variadic_va_start_operand_homes(*va_start_homes)) {
     return fail("RV64 variadic helper missing contract: va_start operand homes were not materialized");
   }
+  const auto* aggregate_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 3);
+  if (aggregate_homes == nullptr ||
+      !aggregate_homes->aggregate_destination_payload.has_value() ||
+      !aggregate_homes->source_va_list.has_value() ||
+      !aggregate_homes->aggregate_access_plan.has_value() ||
+      aggregate_homes->aggregate_access_plan->source_class !=
+          prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea ||
+      aggregate_homes->aggregate_access_plan->payload_size_bytes != 8 ||
+      aggregate_homes->aggregate_access_plan->payload_align_bytes != 4 ||
+      aggregate_homes->aggregate_access_plan->source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea} ||
+      aggregate_homes->aggregate_access_plan->source_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      aggregate_homes->aggregate_access_plan->source_payload_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      aggregate_homes->aggregate_access_plan->source_slot_size_bytes !=
+          std::optional<std::size_t>{8} ||
+      aggregate_homes->aggregate_access_plan->copy_size_bytes !=
+          std::optional<std::size_t>{8} ||
+      aggregate_homes->aggregate_access_plan->copy_align_bytes !=
+          std::optional<std::size_t>{4} ||
+      aggregate_homes->aggregate_access_plan->progression_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea} ||
+      aggregate_homes->aggregate_access_plan->progression_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      aggregate_homes->aggregate_access_plan->progression_stride_bytes !=
+          std::optional<std::size_t>{8}) {
+    return fail("RV64 variadic helper missing contract: aggregate va_arg overflow operand homes were not materialized");
+  }
   if (has_missing_fact("target_abi.variadic_entry_state") ||
       has_missing_fact("target_abi.va_list_layout") ||
       has_missing_fact("helper_resources.scratch_register_count") ||
@@ -8183,10 +8215,11 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       !has_missing_fact("helper_operand_homes.va_arg.source_va_list") ||
       !has_missing_fact("helper_operand_homes.va_arg.scalar_result") ||
       !has_missing_fact("helper_operand_homes.va_arg.scalar_access_plan") ||
-      !has_missing_fact("helper_operand_homes.va_arg_aggregate.source_va_list") ||
-      !has_missing_fact(
+      has_missing_fact("helper_operand_homes.va_arg_aggregate.source_va_list") ||
+      has_missing_fact(
           "helper_operand_homes.va_arg_aggregate.aggregate_destination_payload") ||
-      !has_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ||
+      has_missing_fact("helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ||
+      has_missing_fact("target_abi.va_arg_aggregate.payload_abi") ||
       !has_missing_fact("helper_operand_homes.va_copy.destination_va_list") ||
       !has_missing_fact("helper_operand_homes.va_copy.source_va_list")) {
     return fail("RV64 variadic helper missing contract: missing explicit helper facts or retained target ABI facts");
