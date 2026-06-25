@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <type_traits>
 #include <unordered_set>
 #include <vector>
@@ -210,13 +211,25 @@ std::string make_object_lowering_failure_message(
 
 c4c::backend::BackendObjectResult emit_rv64_prepared_object_module(
     const c4c::backend::prepare::PreparedBirModule& prepared) {
-  const auto image =
-      c4c::backend::riscv::codegen::write_rv64_prepared_relocatable_elf_object(prepared);
-  if (!image.has_value()) {
-    return make_object_error(
-        "RISC-V backend object route unsupported prepared module shape");
+  const auto result =
+      c4c::backend::riscv::codegen::
+          write_rv64_prepared_relocatable_elf_object_with_diagnostics(prepared);
+  if (!result.image.has_value()) {
+    std::string message =
+        "RISC-V backend object route unsupported prepared module shape";
+    if (result.prepared_consumer_category.has_value()) {
+      message += ": prepared_consumer_category=";
+      message += c4c::backend::prepare::
+          prepared_object_consumer_diagnostic_category_name(
+              *result.prepared_consumer_category);
+    }
+    if (!result.diagnostic.empty()) {
+      message += ": ";
+      message += result.diagnostic;
+    }
+    return make_object_error(std::move(message));
   }
-  return make_object_success(*image);
+  return make_object_success(*result.image);
 }
 
 c4c::backend::BackendObjectResult emit_aarch64_prepared_object_module(

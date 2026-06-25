@@ -2269,6 +2269,15 @@ int rejects_prepared_critical_edge_parallel_copy_with_shared_diagnostic() {
       "prepared critical-edge parallel-copy obligation has no target-consumable block event") {
     return fail("expected shared critical-edge parallel-copy diagnostic message");
   }
+  const auto image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(prepared);
+  if (image.ok() || image.image.has_value()) {
+    return fail("expected diagnostic RV64 object image result to reject");
+  }
+  if (image.prepared_consumer_category != result.prepared_consumer_category ||
+      image.diagnostic != result.diagnostic) {
+    return fail("expected RV64 prepared object writer to preserve shared diagnostic");
+  }
   return 0;
 }
 

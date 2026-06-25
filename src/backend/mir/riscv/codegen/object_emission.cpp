@@ -114,6 +114,27 @@ struct RiscvPreparedObjectFunctionResult {
   std::string diagnostic;
 };
 
+RiscvPreparedObjectFunctionResult make_rv64_prepared_function_rejection(
+    std::string diagnostic) {
+  return RiscvPreparedObjectFunctionResult{
+      .diagnostic = std::move(diagnostic),
+  };
+}
+
+RiscvPreparedObjectModuleResult make_rv64_prepared_module_rejection(
+    std::string diagnostic) {
+  return RiscvPreparedObjectModuleResult{
+      .diagnostic = std::move(diagnostic),
+  };
+}
+
+RiscvPreparedObjectImageResult make_rv64_prepared_image_rejection(
+    std::string diagnostic) {
+  return RiscvPreparedObjectImageResult{
+      .diagnostic = std::move(diagnostic),
+  };
+}
+
 struct RiscvLaidOutFragment {
   const RiscvEncodedFragment* fragment = nullptr;
   std::uint64_t section_offset = 0;
@@ -1977,16 +1998,26 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   const std::string function_name(
       prepare::prepared_function_name(prepared.names, control_flow.function_name));
   if (function_name.empty()) {
-    return {};
+    return make_rv64_prepared_function_rejection(
+        "unsupported_function_admission: prepared function has no target name");
   }
   const auto* function = find_defined_bir_function(prepared, function_name);
-  if (function == nullptr || function->is_variadic ||
-      !function->atomic_operations.empty()) {
-    return {};
+  if (function == nullptr) {
+    return make_rv64_prepared_function_rejection(
+        "unsupported_function_admission: prepared function has no defined BIR body");
+  }
+  if (function->is_variadic) {
+    return make_rv64_prepared_function_rejection(
+        "unsupported_function_admission: variadic functions are not supported by the RV64 object route");
+  }
+  if (!function->atomic_operations.empty()) {
+    return make_rv64_prepared_function_rejection(
+        "unsupported_instruction_fragment: atomic operations are not supported by the RV64 object route");
   }
   const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
   if (!prepared_param_homes_supported(prepared.names, &lookups, *function)) {
-    return {};
+    return make_rv64_prepared_function_rejection(
+        "unsupported_param_home: RV64 object route requires all parameters in supported GPR homes");
   }
   RiscvObjectFunction object_function{
       .name = function_name,
@@ -1998,7 +2029,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   const auto stack_frame_bytes =
       rv64_object_stack_frame_size(addressing, prepared.stack_layout);
   if (!stack_frame_bytes.has_value()) {
-    return {};
+    return make_rv64_prepared_function_rejection(
+        "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame");
   }
 
   bool has_call = false;
@@ -2016,7 +2048,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
     const auto call_frame_size = rv64_call_frame_size(*stack_frame_bytes);
     if (!fits_signed_12_bit_immediate(static_cast<std::int64_t>(call_frame_size)) ||
         !fits_signed_12_bit_immediate(rv64_call_frame_ra_offset(*stack_frame_bytes))) {
-      return {};
+      return make_rv64_prepared_function_rejection(
+          "unsupported_stack_frame: call frame exceeds RV64 object-route immediate range");
     }
     object_function.fragments.push_back(
         make_rv64_call_frame_prologue_fragment(*stack_frame_bytes));
@@ -2050,7 +2083,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
           auto label_fragment = make_rv64_block_label_fragment(
               riscv_local_block_label(function_name, block_label));
           if (!label_fragment.has_value()) {
-            return {};
+            return make_rv64_prepared_function_rejection(
+                "unsupported_function_admission: BIR block has no target label");
           }
           object_function.fragments.push_back(std::move(*label_fragment));
           break;
@@ -2069,14 +2103,16 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
           auto fragment =
               fragment_for_prepared_move_bundle(&lookups, *classification.move_bundle);
           if (!fragment.has_value()) {
-            return {};
+            return make_rv64_prepared_function_rejection(
+                "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves");
           }
           object_function.fragments.push_back(std::move(*fragment));
           break;
         }
         case prepare::PreparedObjectTraversalEventKind::Instruction: {
           if (event.instruction == nullptr) {
-            return {};
+            return make_rv64_prepared_function_rejection(
+                "unsupported_instruction_fragment: prepared traversal instruction is missing");
           }
           const auto select_classification =
               prepare::classify_prepared_object_select_consumer(&control_flow,
@@ -2102,7 +2138,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                            compares,
                                                            *stack_frame_bytes);
           if (!fragment.has_value()) {
-            return {};
+            return make_rv64_prepared_function_rejection(
+                "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
           }
           object_function.fragments.push_back(std::move(*fragment));
           break;
@@ -2120,7 +2157,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                has_call,
                                                *stack_frame_bytes);
           if (!terminator_fragment.has_value()) {
-            return {};
+            return make_rv64_prepared_function_rejection(
+                "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering");
           }
           object_function.fragments.push_back(std::move(*terminator_fragment));
           break;
@@ -2144,7 +2182,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
     auto label_fragment = make_rv64_block_label_fragment(
         riscv_local_block_label(function_name, block_label));
     if (!label_fragment.has_value()) {
-      return {};
+      return make_rv64_prepared_function_rejection(
+          "unsupported_function_admission: BIR block has no target label");
     }
     object_function.fragments.push_back(std::move(*label_fragment));
 
@@ -2163,7 +2202,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                        compares,
                                                        *stack_frame_bytes);
       if (!fragment.has_value()) {
-        return {};
+        return make_rv64_prepared_function_rejection(
+            "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
       }
       object_function.fragments.push_back(std::move(*fragment));
     }
@@ -2180,7 +2220,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                          has_call,
                                          *stack_frame_bytes);
     if (!terminator_fragment.has_value()) {
-      return {};
+      return make_rv64_prepared_function_rejection(
+          "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering");
     }
     object_function.fragments.push_back(std::move(*terminator_fragment));
   }
@@ -2909,7 +2950,8 @@ RiscvPreparedObjectModuleResult
 build_rv64_prepared_text_object_module_with_diagnostics(
     const c4c::backend::prepare::PreparedBirModule& prepared) {
   if (!prepared.module.string_constants.empty()) {
-    return RiscvPreparedObjectModuleResult{};
+    return make_rv64_prepared_module_rejection(
+        "module_string_constants: RV64 object route does not emit prepared string constants");
   }
   std::vector<RiscvObjectFunction> functions;
   functions.reserve(prepared.control_flow.functions.size());
@@ -2926,7 +2968,8 @@ build_rv64_prepared_text_object_module_with_diagnostics(
         c4c::backend::prepare::prepared_function_name(prepared.names,
                                                       control_flow.function_name);
     if (function_name.empty()) {
-      return RiscvPreparedObjectModuleResult{};
+      return make_rv64_prepared_module_rejection(
+          "unsupported_function_admission: prepared function has no target name");
     }
     if (find_defined_bir_function(prepared, function_name) == nullptr) {
       continue;
@@ -2939,19 +2982,25 @@ build_rv64_prepared_text_object_module_with_diagnostics(
       };
     }
     if (!function.function.has_value()) {
-      return RiscvPreparedObjectModuleResult{};
+      return make_rv64_prepared_module_rejection(
+          function.diagnostic.empty()
+              ? "unsupported_function_admission: prepared function could not be emitted for RV64 object route"
+              : std::move(function.diagnostic));
     }
     functions.push_back(std::move(*function.function));
   }
   if (functions.empty()) {
-    return RiscvPreparedObjectModuleResult{};
+    return make_rv64_prepared_module_rejection(
+        "unsupported_function_admission: no defined prepared functions were available for RV64 object emission");
   }
   auto module = build_rv64_text_object_module(functions);
   if (!module.has_value()) {
-    return RiscvPreparedObjectModuleResult{};
+    return make_rv64_prepared_module_rejection(
+        "object_module_or_elf_build_failed: RV64 object module construction failed");
   }
   if (!append_rv64_prepared_constant_global_objects(*module, prepared)) {
-    return RiscvPreparedObjectModuleResult{};
+    return make_rv64_prepared_module_rejection(
+        "unsupported_global_data: RV64 object route supports only constant scalar global objects");
   }
   return RiscvPreparedObjectModuleResult{
       .module = std::move(*module),
@@ -2968,14 +3017,34 @@ std::optional<object::RelocatableElfImage> write_rv64_relocatable_elf_object(
   return object::write_relocatable_elf(module, rv64_relocatable_elf_config());
 }
 
+RiscvPreparedObjectImageResult
+write_rv64_prepared_relocatable_elf_object_with_diagnostics(
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  auto module = build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (module.prepared_consumer_category.has_value() || !module.diagnostic.empty()) {
+    return RiscvPreparedObjectImageResult{
+        .prepared_consumer_category = module.prepared_consumer_category,
+        .diagnostic = std::move(module.diagnostic),
+    };
+  }
+  if (!module.module.has_value()) {
+    return make_rv64_prepared_image_rejection(
+        "object_module_or_elf_build_failed: RV64 prepared object module construction failed without diagnostic detail");
+  }
+  auto image = write_rv64_relocatable_elf_object(*module.module);
+  if (!image.has_value()) {
+    return make_rv64_prepared_image_rejection(
+        "object_module_or_elf_build_failed: RV64 relocatable ELF serialization failed");
+  }
+  return RiscvPreparedObjectImageResult{
+      .image = std::move(*image),
+  };
+}
+
 std::optional<object::RelocatableElfImage>
 write_rv64_prepared_relocatable_elf_object(
     const c4c::backend::prepare::PreparedBirModule& prepared) {
-  const auto module = build_rv64_prepared_text_object_module(prepared);
-  if (!module.has_value()) {
-    return std::nullopt;
-  }
-  return write_rv64_relocatable_elf_object(*module);
+  return write_rv64_prepared_relocatable_elf_object_with_diagnostics(prepared).image;
 }
 
 }  // namespace c4c::backend::riscv::codegen

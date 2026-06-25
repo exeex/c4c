@@ -56,6 +56,18 @@ struct RiscvPreparedObjectModuleResult {
   }
 };
 
+struct RiscvPreparedObjectImageResult {
+  std::optional<c4c::backend::mir::object::RelocatableElfImage> image;
+  std::optional<c4c::backend::prepare::PreparedObjectConsumerDiagnosticCategory>
+      prepared_consumer_category;
+  std::string diagnostic;
+
+  [[nodiscard]] bool ok() const {
+    return image.has_value() && !prepared_consumer_category.has_value() &&
+           diagnostic.empty();
+  }
+};
+
 enum class RiscvInsnDInlineAsmRegisterBank {
   Gpr,
   Vector,
@@ -105,6 +117,10 @@ build_rv64_prepared_text_object_module_with_diagnostics(
 [[nodiscard]] std::optional<c4c::backend::mir::object::RelocatableElfImage>
 write_rv64_relocatable_elf_object(
     const c4c::backend::mir::object::ObjectModule& module);
+
+[[nodiscard]] RiscvPreparedObjectImageResult
+write_rv64_prepared_relocatable_elf_object_with_diagnostics(
+    const c4c::backend::prepare::PreparedBirModule& prepared);
 
 [[nodiscard]] std::optional<c4c::backend::mir::object::RelocatableElfImage>
 write_rv64_prepared_relocatable_elf_object(
