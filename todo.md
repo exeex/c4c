@@ -1,32 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/359_bir_prepared_object_consumer_contract_completion.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Shared Traversal and Query Helpers
+Current Step ID: 4
+Current Step Title: Connect Target Consumers Through Hooks
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added a shared-only unplaced parallel-copy obligation contract in
-`src/backend/prealloc/prepared_object_traversal.{hpp,cpp}`. The new
-`collect_unplaced_prepared_object_parallel_copy_obligations` helper surfaces
-critical-edge `PreparedParallelCopyBundle` records that intentionally have no
-normal block traversal event, and the diagnostic overload reports them as
-unsupported parallel-copy execution-site obligations without target-local CFG
-rediscovery.
+Step 4 connected AArch64 prepared function traversal to the shared unplaced
+parallel-copy obligation contract. `lower_prepared_functions` now calls
+`collect_unplaced_prepared_object_parallel_copy_obligations(...)` for each
+prepared function and emits an AArch64 lowering diagnostic carrying the shared
+`UnsupportedParallelCopyExecutionSite` category and shared critical-edge
+obligation message instead of silently ignoring the obligation or rediscovering
+CFG facts locally.
 
-`backend_prepared_object_consumer_contract` now proves that critical-edge
-parallel-copy obligations are not inserted into traversal, are visible through
-the shared side-channel with predecessor/successor and move/step facts intact,
-and produce a precise shared diagnostic category and message.
+`backend_aarch64_function_traversal` now proves that an AArch64 prepared
+function with a critical-edge parallel-copy obligation still traverses normally
+and reports the shared target-consumer diagnostic with function/block context.
 
 ## Suggested Next
 
-Continue Step 3 by having the supervisor decide whether the shared prepared
-object traversal/query surface is complete enough for a target-connection
-packet, or whether one final shared-only packet should add convenience wrappers
-around combined classification-plus-diagnostic query flows.
+Continue Step 4 with the next target hook connection the supervisor selects,
+preferably another narrow target consumer that can use an existing shared
+classification/diagnostic helper without target-local semantic reconstruction.
 
 ## Watchouts
 
@@ -44,6 +42,10 @@ around combined classification-plus-diagnostic query flows.
 - Critical-edge parallel copies now have a shared unplaced-obligation
   side-channel; target consumers should query that contract and surface its
   diagnostic instead of rediscovering skipped copy obligations locally.
+- AArch64 now emits the shared critical-edge obligation diagnostic from function
+  traversal, but the public compile wrapper still discards lowering diagnostics;
+  direct traversal/module-lowering tests remain the observable proof point for
+  this packet.
 - The select classifier intentionally treats duplicate join-transfer rows,
   non-select carrier kinds, and incomplete select-materialization edge indexes
   as fail-closed statuses instead of falling back to target-local
@@ -70,6 +72,6 @@ around combined classification-plus-diagnostic query flows.
 ## Proof
 
 Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(prepared_object_consumer_contract|prepare_phi_materialize|prepared_lookup_helper|prepared_printer)$' > test_after.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(aarch64_function_traversal|prepared_object_consumer_contract|prepare_phi_materialize|prepared_lookup_helper|prepared_printer)$' > test_after.log 2>&1`
 
 Proof log: `test_after.log`.

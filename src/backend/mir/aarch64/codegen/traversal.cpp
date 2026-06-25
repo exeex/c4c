@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
@@ -29,6 +30,28 @@ namespace {
     }
   }
   return nullptr;
+}
+
+void emit_unplaced_parallel_copy_obligation_diagnostics(
+    const prepare::PreparedControlFlowFunction& prepared_function,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto obligations =
+      prepare::collect_unplaced_prepared_object_parallel_copy_obligations(
+          prepared_function);
+  for (const auto& obligation : obligations) {
+    auto diagnostic = prepare::diagnose_prepared_object_consumer(obligation);
+    if (!diagnostic.has_value()) {
+      continue;
+    }
+    diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+        .kind = module::ModuleLoweringDiagnosticKind::
+            PreparedObjectConsumerContractViolation,
+        .function_name = prepared_function.function_name,
+        .block_label = obligation.predecessor_label,
+        .prepared_consumer_category = diagnostic->category,
+        .message = std::move(diagnostic->message),
+    });
+  }
 }
 
 }  // namespace
@@ -69,6 +92,9 @@ std::vector<module::MachineFunction> lower_prepared_functions(
   functions.reserve(prepared.control_flow.functions.size());
 
   for (const auto& prepared_function : prepared.control_flow.functions) {
+    emit_unplaced_parallel_copy_obligation_diagnostics(prepared_function,
+                                                       diagnostics);
+
     auto function_context =
         make_function_lowering_context(prepared, target_profile, prepared_function);
     const auto prepared_lookups =

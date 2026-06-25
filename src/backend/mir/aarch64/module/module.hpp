@@ -4,6 +4,7 @@
 #include "../codegen/instruction.hpp"
 #include "../../mir.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/prepared_object_traversal.hpp"
 #include "../../../prealloc/value_locations.hpp"
 
 #include <cstddef>
@@ -51,6 +52,7 @@ enum class ModuleLoweringDiagnosticKind {
   MissingPreparedCallPlan,
   UnsupportedInstructionFamily,
   UnsupportedTerminatorFamily,
+  PreparedObjectConsumerContractViolation,
 };
 
 struct ModuleLoweringDiagnostic {
@@ -59,6 +61,8 @@ struct ModuleLoweringDiagnostic {
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   std::optional<std::size_t> instruction_index;
   InstructionLoweringFamily instruction_family = InstructionLoweringFamily::Unknown;
+  std::optional<prepare::PreparedObjectConsumerDiagnosticCategory>
+      prepared_consumer_category;
   prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
   std::string message;
