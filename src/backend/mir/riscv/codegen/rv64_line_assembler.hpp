@@ -35,7 +35,26 @@ struct Rv64LiLine {
 
 struct Rv64RetLine {};
 
-using Rv64AsmLine = std::variant<Rv64InsnDLine, Rv64LiLine, Rv64RetLine>;
+enum class Rv64IFormat {
+  RType,
+  IType,
+  SType,
+  UType,
+};
+
+struct Rv64ILine {
+  Rv64IFormat format = Rv64IFormat::IType;
+  std::uint32_t opcode = 0;
+  std::uint32_t funct3 = 0;
+  std::uint32_t funct7 = 0;
+  Rv64AsmRegister destination;
+  Rv64AsmRegister lhs;
+  Rv64AsmRegister rhs;
+  std::int64_t immediate = 0;
+};
+
+using Rv64AsmLine =
+    std::variant<Rv64InsnDLine, Rv64LiLine, Rv64RetLine, Rv64ILine>;
 
 [[nodiscard]] std::optional<Rv64AsmLine> parse_rv64_asm_line(
     std::string_view line);

@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <charconv>
+#include <limits>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace c4c::backend::riscv::codegen {
@@ -13,6 +15,29 @@ constexpr std::uint32_t encode_i_type(std::uint32_t opcode, std::uint32_t rd,
                                       std::int32_t imm12) {
   return ((static_cast<std::uint32_t>(imm12) & 0xfffu) << 20) |
          ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
+         ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
+}
+
+constexpr std::uint32_t encode_r_type(std::uint32_t opcode, std::uint32_t rd,
+                                      std::uint32_t funct3, std::uint32_t rs1,
+                                      std::uint32_t rs2, std::uint32_t funct7) {
+  return ((funct7 & 0x7fu) << 25) | ((rs2 & 0x1fu) << 20) |
+         ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
+         ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
+}
+
+constexpr std::uint32_t encode_s_type(std::uint32_t opcode, std::uint32_t funct3,
+                                      std::uint32_t rs1, std::uint32_t rs2,
+                                      std::int32_t imm12) {
+  const auto imm = static_cast<std::uint32_t>(imm12) & 0xfffu;
+  return ((imm >> 5) << 25) | ((rs2 & 0x1fu) << 20) |
+         ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
+         ((imm & 0x1fu) << 7) | (opcode & 0x7fu);
+}
+
+constexpr std::uint32_t encode_u_type(std::uint32_t opcode, std::uint32_t rd,
+                                      std::int32_t imm20) {
+  return ((static_cast<std::uint32_t>(imm20) & 0xfffffu) << 12) |
          ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
 }
 
@@ -93,23 +118,66 @@ std::optional<std::uint32_t> parse_u32_field(std::string_view text,
   return value;
 }
 
-std::optional<std::int64_t> parse_signed_field(std::string_view text) {
-  text = trim_ascii(text);
-  if (text.empty()) {
-    return std::nullopt;
-  }
-  std::int64_t value = 0;
+std::optional<std::uint64_t> parse_unsigned_digits(std::string_view text,
+                                                   int base) {
+  std::uint64_t value = 0;
   const char* const begin = text.data();
   const char* const end = text.data() + text.size();
-  const auto [ptr, ec] = std::from_chars(begin, end, value, 10);
+  const auto [ptr, ec] = std::from_chars(begin, end, value, base);
   if (ec != std::errc{} || ptr != end) {
     return std::nullopt;
   }
   return value;
 }
 
+std::optional<std::int64_t> parse_signed_field(std::string_view text) {
+  text = trim_ascii(text);
+  if (text.empty()) {
+    return std::nullopt;
+  }
+  bool negative = false;
+  if (text.front() == '-' || text.front() == '+') {
+    negative = text.front() == '-';
+    text.remove_prefix(1);
+    if (text.empty()) {
+      return std::nullopt;
+    }
+  }
+  int base = 10;
+  if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
+    text.remove_prefix(2);
+    base = 16;
+    if (text.empty()) {
+      return std::nullopt;
+    }
+  }
+  const auto magnitude = parse_unsigned_digits(text, base);
+  if (!magnitude.has_value()) {
+    return std::nullopt;
+  }
+  constexpr auto int64_max =
+      static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+  if ((!negative && *magnitude > int64_max) ||
+      (negative && *magnitude > int64_max + 1ull)) {
+    return std::nullopt;
+  }
+  if (negative && *magnitude == int64_max + 1ull) {
+    return INT64_MIN;
+  }
+  const auto signed_magnitude = static_cast<std::int64_t>(*magnitude);
+  return negative ? -signed_magnitude : signed_magnitude;
+}
+
 bool fits_signed_12_bit_immediate(std::int64_t value) {
   return value >= -2048 && value <= 2047;
+}
+
+bool fits_signed_20_bit_immediate(std::int64_t value) {
+  return value >= -(1 << 19) && value <= ((1 << 19) - 1);
+}
+
+bool fits_unsigned_shift_immediate(std::int64_t value, std::uint32_t max_value) {
+  return value >= 0 && value <= max_value;
 }
 
 std::optional<std::uint32_t> gpr_number(std::string_view name) {
@@ -243,6 +311,265 @@ std::optional<Rv64AsmLine> parse_li(std::string_view line) {
   }};
 }
 
+struct Rv64RSpec {
+  std::string_view mnemonic;
+  std::uint32_t opcode;
+  std::uint32_t funct3;
+  std::uint32_t funct7;
+};
+
+struct Rv64ISpec {
+  std::string_view mnemonic;
+  std::uint32_t opcode;
+  std::uint32_t funct3;
+};
+
+struct Rv64ShiftSpec {
+  std::string_view mnemonic;
+  std::uint32_t opcode;
+  std::uint32_t funct3;
+  std::uint32_t funct7;
+  std::uint32_t max_shamt;
+};
+
+struct Rv64LoadStoreSpec {
+  std::string_view mnemonic;
+  std::uint32_t opcode;
+  std::uint32_t funct3;
+};
+
+struct Rv64USpec {
+  std::string_view mnemonic;
+  std::uint32_t opcode;
+};
+
+template <typename Spec, std::size_t Count>
+const Spec* find_spec(std::string_view mnemonic, const Spec (&specs)[Count]) {
+  for (const auto& spec : specs) {
+    if (spec.mnemonic == mnemonic) {
+      return &spec;
+    }
+  }
+  return nullptr;
+}
+
+std::optional<std::pair<std::string_view, std::string_view>> split_mnemonic(
+    std::string_view line) {
+  line = trim_ascii(line);
+  const auto space = line.find_first_of(" \t");
+  if (space == std::string_view::npos) {
+    return std::nullopt;
+  }
+  return std::pair{line.substr(0, space), trim_ascii(line.substr(space + 1))};
+}
+
+std::optional<std::pair<std::string_view, Rv64AsmRegister>> parse_mem_operand(
+    std::string_view field) {
+  field = trim_ascii(field);
+  const auto open = field.find('(');
+  const auto close = field.find(')');
+  if (open == std::string_view::npos || close == std::string_view::npos ||
+      close + 1 != field.size() || open == 0 || close <= open + 1) {
+    return std::nullopt;
+  }
+  const auto base = parse_gpr(field.substr(open + 1, close - open - 1));
+  if (!base.has_value()) {
+    return std::nullopt;
+  }
+  return std::pair{trim_ascii(field.substr(0, open)), *base};
+}
+
+std::optional<Rv64AsmLine> parse_rv64i_line(std::string_view line) {
+  constexpr Rv64RSpec r_specs[] = {
+      {"add", 0x33, 0, 0x00},  {"sub", 0x33, 0, 0x20},
+      {"sll", 0x33, 1, 0x00},  {"slt", 0x33, 2, 0x00},
+      {"sltu", 0x33, 3, 0x00}, {"xor", 0x33, 4, 0x00},
+      {"srl", 0x33, 5, 0x00},  {"sra", 0x33, 5, 0x20},
+      {"or", 0x33, 6, 0x00},   {"and", 0x33, 7, 0x00},
+      {"addw", 0x3b, 0, 0x00}, {"subw", 0x3b, 0, 0x20},
+      {"sllw", 0x3b, 1, 0x00}, {"srlw", 0x3b, 5, 0x00},
+      {"sraw", 0x3b, 5, 0x20},
+  };
+  constexpr Rv64ISpec i_specs[] = {
+      {"addi", 0x13, 0}, {"slti", 0x13, 2},  {"sltiu", 0x13, 3},
+      {"xori", 0x13, 4}, {"ori", 0x13, 6},   {"andi", 0x13, 7},
+      {"addiw", 0x1b, 0},
+  };
+  constexpr Rv64ShiftSpec shift_specs[] = {
+      {"slli", 0x13, 1, 0x00, 63}, {"srli", 0x13, 5, 0x00, 63},
+      {"srai", 0x13, 5, 0x20, 63}, {"slliw", 0x1b, 1, 0x00, 31},
+      {"srliw", 0x1b, 5, 0x00, 31}, {"sraiw", 0x1b, 5, 0x20, 31},
+  };
+  constexpr Rv64LoadStoreSpec load_specs[] = {
+      {"lb", 0x03, 0},  {"lh", 0x03, 1},  {"lw", 0x03, 2},
+      {"ld", 0x03, 3},  {"lbu", 0x03, 4}, {"lhu", 0x03, 5},
+      {"lwu", 0x03, 6},
+  };
+  constexpr Rv64LoadStoreSpec store_specs[] = {
+      {"sb", 0x23, 0},
+      {"sh", 0x23, 1},
+      {"sw", 0x23, 2},
+      {"sd", 0x23, 3},
+  };
+  constexpr Rv64USpec u_specs[] = {
+      {"lui", 0x37},
+      {"auipc", 0x17},
+  };
+
+  const auto parts = split_mnemonic(line);
+  if (!parts.has_value()) {
+    return std::nullopt;
+  }
+  const auto [mnemonic, operands] = *parts;
+
+  if (const auto* spec = find_spec(mnemonic, r_specs)) {
+    const auto fields = split_fields(operands, 3);
+    if (!fields.has_value()) {
+      return std::nullopt;
+    }
+    const auto rd = parse_gpr((*fields)[0]);
+    const auto rs1 = parse_gpr((*fields)[1]);
+    const auto rs2 = parse_gpr((*fields)[2]);
+    if (!rd.has_value() || !rs1.has_value() || !rs2.has_value()) {
+      return std::nullopt;
+    }
+    return Rv64AsmLine{Rv64ILine{.format = Rv64IFormat::RType,
+                                 .opcode = spec->opcode,
+                                 .funct3 = spec->funct3,
+                                 .funct7 = spec->funct7,
+                                 .destination = *rd,
+                                 .lhs = *rs1,
+                                 .rhs = *rs2}};
+  }
+
+  if (const auto* spec = find_spec(mnemonic, i_specs)) {
+    const auto fields = split_fields(operands, 3);
+    if (!fields.has_value()) {
+      return std::nullopt;
+    }
+    const auto rd = parse_gpr((*fields)[0]);
+    const auto rs1 = parse_gpr((*fields)[1]);
+    const auto immediate = parse_signed_field((*fields)[2]);
+    if (!rd.has_value() || !rs1.has_value() || !immediate.has_value() ||
+        !fits_signed_12_bit_immediate(*immediate)) {
+      return std::nullopt;
+    }
+    return Rv64AsmLine{Rv64ILine{.format = Rv64IFormat::IType,
+                                 .opcode = spec->opcode,
+                                 .funct3 = spec->funct3,
+                                 .destination = *rd,
+                                 .lhs = *rs1,
+                                 .immediate = *immediate}};
+  }
+
+  if (const auto* spec = find_spec(mnemonic, shift_specs)) {
+    const auto fields = split_fields(operands, 3);
+    if (!fields.has_value()) {
+      return std::nullopt;
+    }
+    const auto rd = parse_gpr((*fields)[0]);
+    const auto rs1 = parse_gpr((*fields)[1]);
+    const auto shamt = parse_signed_field((*fields)[2]);
+    if (!rd.has_value() || !rs1.has_value() || !shamt.has_value() ||
+        !fits_unsigned_shift_immediate(*shamt, spec->max_shamt)) {
+      return std::nullopt;
+    }
+    return Rv64AsmLine{Rv64ILine{.format = Rv64IFormat::IType,
+                                 .opcode = spec->opcode,
+                                 .funct3 = spec->funct3,
+                                 .funct7 = spec->funct7,
+                                 .destination = *rd,
+                                 .lhs = *rs1,
+                                 .immediate = (spec->funct7 << 5) |
+                                              static_cast<std::uint32_t>(*shamt)}};
+  }
+
+  if (const auto* spec = find_spec(mnemonic, load_specs)) {
+    const auto fields = split_fields(operands, 2);
+    if (!fields.has_value()) {
+      return std::nullopt;
+    }
+    const auto rd = parse_gpr((*fields)[0]);
+    const auto mem = parse_mem_operand((*fields)[1]);
+    if (!rd.has_value() || !mem.has_value()) {
+      return std::nullopt;
+    }
+    const auto immediate = parse_signed_field(mem->first);
+    if (!immediate.has_value() || !fits_signed_12_bit_immediate(*immediate)) {
+      return std::nullopt;
+    }
+    return Rv64AsmLine{Rv64ILine{.format = Rv64IFormat::IType,
+                                 .opcode = spec->opcode,
+                                 .funct3 = spec->funct3,
+                                 .destination = *rd,
+                                 .lhs = mem->second,
+                                 .immediate = *immediate}};
+  }
+
+  if (const auto* spec = find_spec(mnemonic, store_specs)) {
+    const auto fields = split_fields(operands, 2);
+    if (!fields.has_value()) {
+      return std::nullopt;
+    }
+    const auto rs2 = parse_gpr((*fields)[0]);
+    const auto mem = parse_mem_operand((*fields)[1]);
+    if (!rs2.has_value() || !mem.has_value()) {
+      return std::nullopt;
+    }
+    const auto immediate = parse_signed_field(mem->first);
+    if (!immediate.has_value() || !fits_signed_12_bit_immediate(*immediate)) {
+      return std::nullopt;
+    }
+    return Rv64AsmLine{Rv64ILine{.format = Rv64IFormat::SType,
+                                 .opcode = spec->opcode,
+                                 .funct3 = spec->funct3,
+                                 .lhs = mem->second,
+                                 .rhs = *rs2,
+                                 .immediate = *immediate}};
+  }
+
+  if (const auto* spec = find_spec(mnemonic, u_specs)) {
+    const auto fields = split_fields(operands, 2);
+    if (!fields.has_value()) {
+      return std::nullopt;
+    }
+    const auto rd = parse_gpr((*fields)[0]);
+    const auto immediate = parse_signed_field((*fields)[1]);
+    if (!rd.has_value() || !immediate.has_value() ||
+        !fits_signed_20_bit_immediate(*immediate)) {
+      return std::nullopt;
+    }
+    return Rv64AsmLine{Rv64ILine{.format = Rv64IFormat::UType,
+                                 .opcode = spec->opcode,
+                                 .destination = *rd,
+                                 .immediate = *immediate}};
+  }
+
+  if (mnemonic == "jalr") {
+    const auto fields = split_fields(operands, 2);
+    if (!fields.has_value()) {
+      return std::nullopt;
+    }
+    const auto rd = parse_gpr((*fields)[0]);
+    const auto mem = parse_mem_operand((*fields)[1]);
+    if (!rd.has_value() || !mem.has_value()) {
+      return std::nullopt;
+    }
+    const auto immediate = parse_signed_field(mem->first);
+    if (!immediate.has_value() || !fits_signed_12_bit_immediate(*immediate)) {
+      return std::nullopt;
+    }
+    return Rv64AsmLine{Rv64ILine{.format = Rv64IFormat::IType,
+                                 .opcode = 0x67,
+                                 .funct3 = 0,
+                                 .destination = *rd,
+                                 .lhs = mem->second,
+                                 .immediate = *immediate}};
+  }
+
+  return std::nullopt;
+}
+
 std::optional<std::uint32_t> register_field(const Rv64AsmRegister& reg,
                                             Rv64AsmRegisterBank expected_bank) {
   if (reg.bank != expected_bank || reg.physical_index > 31) {
@@ -285,7 +612,10 @@ std::optional<Rv64AsmLine> parse_rv64_asm_line(std::string_view line) {
   if (auto parsed = parse_insn_d(line); parsed.has_value()) {
     return parsed;
   }
-  return parse_li(line);
+  if (auto parsed = parse_li(line); parsed.has_value()) {
+    return parsed;
+  }
+  return parse_rv64i_line(line);
 }
 
 std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
@@ -315,6 +645,45 @@ std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
   if (std::holds_alternative<Rv64RetLine>(line)) {
     append_le32(bytes, encode_i_type(0x67, 0, 0, 1, 0));
     return bytes;
+  }
+  if (const auto* rv64i = std::get_if<Rv64ILine>(&line)) {
+    const auto rd = register_field(rv64i->destination, Rv64AsmRegisterBank::Gpr);
+    const auto rs1 = register_field(rv64i->lhs, Rv64AsmRegisterBank::Gpr);
+    const auto rs2 = register_field(rv64i->rhs, Rv64AsmRegisterBank::Gpr);
+    switch (rv64i->format) {
+      case Rv64IFormat::RType:
+        if (!rd.has_value() || !rs1.has_value() || !rs2.has_value()) {
+          return std::nullopt;
+        }
+        append_le32(bytes, encode_r_type(rv64i->opcode, *rd, rv64i->funct3,
+                                         *rs1, *rs2, rv64i->funct7));
+        return bytes;
+      case Rv64IFormat::IType:
+        if (!rd.has_value() || !rs1.has_value() ||
+            !fits_signed_12_bit_immediate(rv64i->immediate)) {
+          return std::nullopt;
+        }
+        append_le32(bytes, encode_i_type(rv64i->opcode, *rd, rv64i->funct3,
+                                         *rs1,
+                                         static_cast<std::int32_t>(rv64i->immediate)));
+        return bytes;
+      case Rv64IFormat::SType:
+        if (!rs1.has_value() || !rs2.has_value() ||
+            !fits_signed_12_bit_immediate(rv64i->immediate)) {
+          return std::nullopt;
+        }
+        append_le32(bytes, encode_s_type(rv64i->opcode, rv64i->funct3, *rs1,
+                                         *rs2,
+                                         static_cast<std::int32_t>(rv64i->immediate)));
+        return bytes;
+      case Rv64IFormat::UType:
+        if (!rd.has_value() || !fits_signed_20_bit_immediate(rv64i->immediate)) {
+          return std::nullopt;
+        }
+        append_le32(bytes, encode_u_type(rv64i->opcode, *rd,
+                                         static_cast<std::int32_t>(rv64i->immediate)));
+        return bytes;
+    }
   }
   return std::nullopt;
 }

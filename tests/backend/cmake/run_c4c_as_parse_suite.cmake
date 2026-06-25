@@ -231,6 +231,12 @@ run_source_equivalence_case(
   "${SOURCE_CASE}"
   "0a0320080b0300001305000067800000"
 )
+run_success_case(
+  rv64i_step2_non_label_subset
+  ".text\n.globl main\nmain:\n  lui t0, 0x7ffff\n  auipc t1, -0x80000\n  addi t2, zero, -2048\n  slti s1, s0, -1\n  ori s4, s0, 0x7f\n  slli s6, s5, 63\n  srai s8, s6, 63\n  addiw s9, s8, -2048\n  sraiw a0, s10, 31\n  add a1, a0, s1\n  sub a2, a1, s2\n  sraw tp, gp, a4\n  lb a0, -2048(sp)\n  lwu a6, 60(sp)\n  sd a3, 2040(sp)\n  jalr zero, 0(ra)\n  .insn.d 10, 11, v6, v0, v2, v4, 3\n"
+  "assembled 17 instruction line(s)"
+  "b7f2ff7f17030080930300809324f4ff136af407139bfa03135cfb439b0c0c801b55fd41b3059500338625413bd2e140030501800368c103233cd17e678000000a0320080b030000"
+)
 run_failure_case(
   instruction_outside_text
   "li a0, 0\n.text\nret\n"
@@ -240,6 +246,31 @@ run_failure_case(
   unsupported_directive
   ".text\n.section .rodata\n"
   "unsupported directive"
+)
+run_failure_case(
+  branch_label_fixup_still_unsupported
+  ".text\n.globl main\nmain:\n  beq a0, a1, target\ntarget:\n  ret\n"
+  "unsupported RV64 instruction 'beq a0, a1, target'"
+)
+run_failure_case(
+  jal_label_fixup_still_unsupported
+  ".text\n.globl main\nmain:\n  jal x1, target\n"
+  "unsupported RV64 instruction 'jal x1, target'"
+)
+run_failure_case(
+  unsupported_extension_still_closed
+  ".text\n.globl main\nmain:\n  mul a0, a1, a2\n"
+  "unsupported RV64 instruction 'mul a0, a1, a2'"
+)
+run_failure_case(
+  rv64i_immediate_range_error
+  ".text\n.globl main\nmain:\n  addi a0, a1, 2048\n"
+  "unsupported RV64 instruction 'addi a0, a1, 2048'"
+)
+run_failure_case(
+  rv64i_shift_range_error
+  ".text\n.globl main\nmain:\n  slliw a0, a1, 32\n"
+  "unsupported RV64 instruction 'slliw a0, a1, 32'"
 )
 
 message(STATUS "[PASS][c4c-as-suite] ${WORK_DIR}")
