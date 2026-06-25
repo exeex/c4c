@@ -162,3 +162,26 @@ expected sequence is:
 - Any vector function-call ABI is invented or silently used.
 - Tests are weakened, marked unsupported, or rewritten around the exact sample
   instead of proving the general carrier/allocation/substitution route.
+
+## Closure Note
+
+Closed after the active runbook completed Steps 1-5:
+
+- `ba4598821` recorded the VRM frontier baseline proof.
+- `6f18810d3` carried VRM group placement through regalloc.
+- `88b7ac626` published structured grouped spill/reload records.
+- `af81547a1` supported the full VRM family in RV64 substitution.
+- `32742c1a` proved the source VRM `.insn.d` object route.
+
+Close proof:
+
+- Targeted Step 5 proof passed and was recorded in `test_after.log`.
+- Fresh full validation passed with
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure`.
+- `test_after.log` reports `100% tests passed, 0 tests failed out of 3347`.
+
+The source idea is complete: source-level VRM inline asm reaches prepared/MIR
+with assigned vector register groups, grouped spill/reload records are
+structured, RV64 substitution uses the base vector register, `.insn.d` object
+bytes are proven through c4c-owned emission, scalar `.insn r` remains green,
+and non-expanded VRM calls remain diagnostic rather than ABI fallback behavior.
