@@ -1,40 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/349_rv64_single_line_assembler_core_for_inline_asm.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Rewire Inline Asm Object Emission Through The Line Core
+Current Step ID: Step 5
+Current Step Title: Prove Shared Text/Object Compatibility
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 rewired RV64 `.insn.d` inline asm object emission through the line core.
+Step 5 proved substituted inline asm text is accepted by the same line core.
 
-- `fragment_for_rv64_insn_d_inline_asm(...)` now calls
-  `substitute_prepared_riscv_inline_asm_operands(...)`, parses the substituted
-  canonical text with `parse_rv64_asm_line(...)`, and encodes it with
-  `encode_rv64_asm_line(...)`.
-- The object path now rejects non-`.insn.d` parsed lines in this fragment and
-  preserves the existing fail-closed checks inherited from substitution.
-- Existing source-level `.insn.d` object bytes and `.s` output stayed green.
+- Added a focused unit assertion that the prepared `.insn.d` carrier
+  substitutes to `.insn.d 10, 11, v20, v4, v6, v8, 3`.
+- The test parses that substituted text with `parse_rv64_asm_line(...)` and
+  encodes it with `encode_rv64_asm_line(...)`.
+- The encoded substituted prepared line matches the existing EV64 object word
+  `0x0000030b10620a0a`.
+- Source-level object byte and `.s` route checks stayed green.
 
 ## Suggested Next
 
-Execute Step 5 by proving shared text/object compatibility more explicitly.
+Execute Step 6 by running broader validation and deciding whether idea 349 is
+ready for lifecycle closure.
 
 Owned files for the next packet should include:
 
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `src/backend/mir/riscv/codegen/object_emission.hpp`
-- `src/backend/mir/riscv/codegen/rv64_line_assembler.hpp`
-- `src/backend/mir/riscv/codegen/rv64_line_assembler.cpp`
 - `tests/backend/mir/backend_riscv_object_emission_test.cpp`
 - `todo.md`
 
-The next packet should add or tighten tests that take substituted inline asm
-text and prove the same line core accepts it. Prefer a focused unit assertion
-near the existing substitution/object tests, while keeping the source-level
-object byte and `.s` route checks intact.
+The next packet should run the broader RV64/backend validation subset chosen by
+the supervisor, inspect the final diff for testcase-overfit, and then call the
+plan owner if the source idea appears complete.
 
 ## Watchouts
 
@@ -60,8 +56,8 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 Result: 3/3 tests passed.
 
-Use the same narrow proof command for the Step 5 compatibility packet:
+Suggested broader validation command for Step 6:
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_cli_riscv64_vrm_insn_d_source_obj|backend_codegen_route_riscv64_vrm_insn_d_source_asm)$'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
 ```

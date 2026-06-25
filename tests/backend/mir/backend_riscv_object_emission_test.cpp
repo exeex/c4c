@@ -2066,6 +2066,27 @@ int encodes_rv64_line_core_canonical_subset() {
   return 0;
 }
 
+int parses_substituted_prepared_inline_asm_insn_d_with_line_core() {
+  const auto carrier = make_prepared_insn_d_carrier();
+  const auto substituted = rv64::substitute_prepared_riscv_inline_asm_operands(carrier);
+  if (!substituted.has_value() ||
+      *substituted != ".insn.d 10, 11, v20, v4, v6, v8, 3") {
+    return fail("expected prepared .insn.d carrier to substitute to canonical text");
+  }
+
+  const auto parsed = rv64::parse_rv64_asm_line(*substituted);
+  if (!parsed.has_value() ||
+      !std::holds_alternative<rv64::Rv64InsnDLine>(*parsed)) {
+    return fail("expected line core to parse substituted prepared .insn.d text");
+  }
+  const auto encoded = rv64::encode_rv64_asm_line(*parsed);
+  if (!encoded.has_value() || encoded->size() != 8 ||
+      read_u64(*encoded, 0) != 0x0000030b10620a0aull) {
+    return fail("expected line core to encode substituted prepared .insn.d text");
+  }
+  return 0;
+}
+
 int rejects_prepared_inline_asm_insn_r_without_complete_carrier() {
   const auto prepared = make_prepared_inline_asm_insn_r_module(
       ".insn r 0x33, 0, 0, %0, %1, %2",
@@ -2837,6 +2858,7 @@ int main() {
   status |= parses_rv64_line_core_canonical_subset();
   status |= rejects_rv64_line_core_malformed_subset();
   status |= encodes_rv64_line_core_canonical_subset();
+  status |= parses_substituted_prepared_inline_asm_insn_d_with_line_core();
   status |= rejects_prepared_inline_asm_insn_r_without_complete_carrier();
   status |= rejects_structured_prepared_inline_asm_insn_r_bad_operand_metadata_object();
   status |= rejects_prepared_inline_asm_non_insn_r_object();
