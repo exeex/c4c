@@ -423,6 +423,17 @@ struct PreparedObjectFrameSlotConsumerClassification {
   std::size_t align_bytes = 0;
 };
 
+struct PreparedObjectParallelCopyObligation {
+  const PreparedParallelCopyBundle* parallel_copy_bundle = nullptr;
+  PreparedParallelCopyExecutionSite execution_site =
+      PreparedParallelCopyExecutionSite::PredecessorTerminator;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  std::optional<BlockLabelId> execution_block_label;
+  std::size_t move_count = 0;
+  std::size_t step_count = 0;
+};
+
 struct PreparedObjectConsumerDiagnostic {
   PreparedObjectConsumerDiagnosticCategory category =
       PreparedObjectConsumerDiagnosticCategory::MissingValue;
@@ -488,6 +499,14 @@ diagnose_prepared_object_consumer(
 [[nodiscard]] std::optional<PreparedObjectConsumerDiagnostic>
 diagnose_prepared_object_consumer(
     const PreparedObjectFrameSlotConsumerClassification& classification);
+
+[[nodiscard]] std::optional<PreparedObjectConsumerDiagnostic>
+diagnose_prepared_object_consumer(
+    const PreparedObjectParallelCopyObligation& obligation);
+
+[[nodiscard]] std::vector<PreparedObjectParallelCopyObligation>
+collect_unplaced_prepared_object_parallel_copy_obligations(
+    const PreparedControlFlowFunction& control_flow);
 
 [[nodiscard]] std::vector<PreparedObjectTraversalEvent>
 make_prepared_object_function_traversal(

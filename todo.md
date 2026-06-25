@@ -8,25 +8,25 @@ Current Step Title: Implement Shared Traversal and Query Helpers
 
 ## Just Finished
 
-Step 3 added the target-independent prepared object consumer diagnostic query
-`diagnose_prepared_object_consumer` in
-`src/backend/prealloc/prepared_object_traversal.{hpp,cpp}`. The helper maps
-the existing select, value-home, move-bundle, and frame-slot consumer
-classifications/statuses into precise shared diagnostic categories and
-messages, returns no diagnostic for consumable states, and keeps fail-closed
-missing-contract explanations out of target-local emission code.
+Step 3 added a shared-only unplaced parallel-copy obligation contract in
+`src/backend/prealloc/prepared_object_traversal.{hpp,cpp}`. The new
+`collect_unplaced_prepared_object_parallel_copy_obligations` helper surfaces
+critical-edge `PreparedParallelCopyBundle` records that intentionally have no
+normal block traversal event, and the diagnostic overload reports them as
+unsupported parallel-copy execution-site obligations without target-local CFG
+rediscovery.
 
-`backend_prepared_object_consumer_contract` now covers diagnostic category-name
-stability plus representative shared diagnostics for missing prepared select
-join-transfer authority, missing prepared value-home authority, missing
-prepared move-bundle authority, and missing prepared frame-slot owner authority.
+`backend_prepared_object_consumer_contract` now proves that critical-edge
+parallel-copy obligations are not inserted into traversal, are visible through
+the shared side-channel with predecessor/successor and move/step facts intact,
+and produce a precise shared diagnostic category and message.
 
 ## Suggested Next
 
-Continue Step 3 by deciding whether the shared prepared object traversal/query
-surface is complete enough for a target-connection packet, or whether one more
-shared-only packet should add convenience wrappers around combined
-classification-plus-diagnostic query flows.
+Continue Step 3 by having the supervisor decide whether the shared prepared
+object traversal/query surface is complete enough for a target-connection
+packet, or whether one final shared-only packet should add convenience wrappers
+around combined classification-plus-diagnostic query flows.
 
 ## Watchouts
 
@@ -41,9 +41,9 @@ classification-plus-diagnostic query flows.
   `PreparedParallelCopyBundle::execution_site` is actually
   `PredecessorTerminator`; consumers should use the shared traversal placement
   instead of interpreting the raw phase directly.
-- Critical-edge parallel copies currently return no block event from the shared
-  placement helper; a later packet should add an explicit split-edge or
-  diagnostic contract before any target tries to emit them.
+- Critical-edge parallel copies now have a shared unplaced-obligation
+  side-channel; target consumers should query that contract and surface its
+  diagnostic instead of rediscovering skipped copy obligations locally.
 - The select classifier intentionally treats duplicate join-transfer rows,
   non-select carrier kinds, and incomplete select-materialization edge indexes
   as fail-closed statuses instead of falling back to target-local

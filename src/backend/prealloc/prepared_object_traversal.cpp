@@ -932,6 +932,46 @@ std::optional<PreparedObjectConsumerDiagnostic> diagnose_prepared_object_consume
   return std::nullopt;
 }
 
+std::optional<PreparedObjectConsumerDiagnostic> diagnose_prepared_object_consumer(
+    const PreparedObjectParallelCopyObligation& obligation) {
+  if (obligation.parallel_copy_bundle == nullptr) {
+    return std::nullopt;
+  }
+
+  switch (obligation.execution_site) {
+    case PreparedParallelCopyExecutionSite::PredecessorTerminator:
+    case PreparedParallelCopyExecutionSite::SuccessorEntry:
+      return std::nullopt;
+    case PreparedParallelCopyExecutionSite::CriticalEdge:
+      return make_consumer_diagnostic(
+          PreparedObjectConsumerDiagnosticCategory::
+              UnsupportedParallelCopyExecutionSite,
+          "prepared critical-edge parallel-copy obligation has no target-consumable block event");
+  }
+  return std::nullopt;
+}
+
+std::vector<PreparedObjectParallelCopyObligation>
+collect_unplaced_prepared_object_parallel_copy_obligations(
+    const PreparedControlFlowFunction& control_flow) {
+  std::vector<PreparedObjectParallelCopyObligation> obligations;
+  for (const auto& parallel_copy_bundle : control_flow.parallel_copy_bundles) {
+    if (prepared_object_parallel_copy_event_kind(parallel_copy_bundle).has_value()) {
+      continue;
+    }
+    obligations.push_back(PreparedObjectParallelCopyObligation{
+        .parallel_copy_bundle = &parallel_copy_bundle,
+        .execution_site = parallel_copy_bundle.execution_site,
+        .predecessor_label = parallel_copy_bundle.predecessor_label,
+        .successor_label = parallel_copy_bundle.successor_label,
+        .execution_block_label = parallel_copy_bundle.execution_block_label,
+        .move_count = parallel_copy_bundle.moves.size(),
+        .step_count = parallel_copy_bundle.steps.size(),
+    });
+  }
+  return obligations;
+}
+
 std::vector<PreparedObjectTraversalEvent> make_prepared_object_function_traversal(
     const PreparedControlFlowFunction& control_flow,
     const PreparedValueLocationFunction* value_locations,

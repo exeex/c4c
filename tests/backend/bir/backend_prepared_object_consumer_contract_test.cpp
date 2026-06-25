@@ -456,6 +456,10 @@ int verify_consumer_diagnostic_category_names() {
                          MissingMoveBundle) == "missing_move_bundle" &&
                  prepare::prepared_object_consumer_diagnostic_category_name(
                      prepare::PreparedObjectConsumerDiagnosticCategory::
+                         UnsupportedParallelCopyExecutionSite) ==
+                     "unsupported_parallel_copy_execution_site" &&
+                 prepare::prepared_object_consumer_diagnostic_category_name(
+                     prepare::PreparedObjectConsumerDiagnosticCategory::
                          MissingFrameSlotOwner) == "missing_frame_slot_owner",
              "prepared object consumer diagnostic category names should remain stable")
              ? 0
@@ -472,6 +476,68 @@ const prepare::PreparedObjectTraversalEvent* find_event(
     }
   }
   return nullptr;
+}
+
+int verify_critical_edge_parallel_copy_obligation_contract() {
+  auto fixture = make_fixture();
+  fixture.control_flow.parallel_copy_bundles[2].moves.push_back(
+      prepare::PreparedParallelCopyMove{
+          .join_transfer_index = 3,
+          .edge_transfer_index = 5,
+          .source_value = bir::Value::named(bir::TypeKind::I32, "%crit.in"),
+          .destination_value =
+              bir::Value::named(bir::TypeKind::I32, "%crit.out"),
+          .carrier_kind = prepare::PreparedJoinTransferCarrierKind::
+              SelectMaterialization,
+      });
+  fixture.control_flow.parallel_copy_bundles[2].steps.push_back(
+      prepare::PreparedParallelCopyStep{
+          .kind = prepare::PreparedParallelCopyStepKind::Move,
+          .move_index = 0,
+      });
+
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  for (const auto& event : traversal) {
+    if (!expect(event.parallel_copy_bundle !=
+                    &fixture.control_flow.parallel_copy_bundles[2],
+                "critical-edge parallel-copy obligations should not be inserted into block traversal")) {
+      return 1;
+    }
+  }
+
+  const auto obligations =
+      prepare::collect_unplaced_prepared_object_parallel_copy_obligations(
+          fixture.control_flow);
+  if (!expect(obligations.size() == 1,
+              "critical-edge parallel-copy obligations should be visible through the shared side-channel")) {
+    return 1;
+  }
+
+  const auto& obligation = obligations.front();
+  const auto diagnostic = prepare::diagnose_prepared_object_consumer(obligation);
+  if (!expect(obligation.parallel_copy_bundle ==
+                  &fixture.control_flow.parallel_copy_bundles[2] &&
+              obligation.execution_site ==
+                  prepare::PreparedParallelCopyExecutionSite::CriticalEdge &&
+              obligation.predecessor_label == fixture.predecessor_label &&
+              obligation.successor_label == fixture.exit_label &&
+              !obligation.execution_block_label.has_value() &&
+              obligation.move_count == 1 && obligation.step_count == 1,
+              "critical-edge obligation should preserve shared parallel-copy facts") ||
+      !expect(diagnostic.has_value(),
+              "critical-edge parallel-copy obligation should build a shared diagnostic") ||
+      !expect(diagnostic->category ==
+                  prepare::PreparedObjectConsumerDiagnosticCategory::
+                      UnsupportedParallelCopyExecutionSite,
+              "critical-edge parallel-copy obligation diagnostic category mismatch") ||
+      !expect(diagnostic->message ==
+                  "prepared critical-edge parallel-copy obligation has no target-consumable block event",
+              "critical-edge parallel-copy obligation diagnostic message mismatch")) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int verify_real_select_vs_required_missing_carrier_classification() {
@@ -1232,6 +1298,11 @@ int main() {
     return EXIT_FAILURE;
   }
   if (const auto result = verify_edge_copy_execution_site_placement();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result =
+          verify_critical_edge_parallel_copy_obligation_contract();
       result != 0) {
     return EXIT_FAILURE;
   }
