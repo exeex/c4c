@@ -1,48 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/365_rv64_va_start_overflow_base_state_production.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define the RV64 Prepared Overflow-Area Contract
+Current Step ID: 3
+Current Step Title: Materialize Overflow Base State in Prepared Facts
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 for
+Completed the validation/classification subpacket for `plan.md` Step 3 for
 `ideas/open/365_rv64_va_start_overflow_base_state_production.md`.
 
-- Added an RV64 storage-authority producer in
-  `src/backend/prealloc/variadic_entry_plans.cpp` for helper-bearing variadic
-  entries. It creates or reuses a zero-sized, 8-byte-aligned prepared frame
-  slot named `__rv64_variadic_overflow_area_base` with source kind
-  `rv64_variadic_overflow_area_base`.
-- RV64 helper-bearing entries now publish
-  `overflow_area.base_slot_id` and `overflow_area.base_stack_offset_bytes` from
-  that prepared frame slot, then clear the matching missing facts. The offset
-  contract is the non-negative prepared frame-slot offset from the stable stack
-  base used by object emission.
-- Helper-free RV64 variadic entries were left without this storage authority;
-  existing RV64 object admission still rejects helper-free variadic entries
-  unless a separate explicit supported runtime contract exists.
-- Focused BIR contract coverage now asserts the RV64 overflow base slot id,
-  source kind, zero size, 8-byte alignment, and that
-  `base_stack_offset_bytes` equals the prepared frame slot offset. Prepared
-  printer coverage now asserts the RV64 helper-family printable overflow-area
-  base slot and offset.
+- Rebuilt `backend_prepare_frame_stack_call_contract_test`,
+  `backend_prepared_printer_test`, `backend_riscv_object_emission_test`, and
+  `c4cll`.
+- Reran the focused prepared-contract/object-emission subset; all three focused
+  tests passed.
+- Reran the representative RV64 allowlist case `src/920908-1.c`; it still
+  fails, but no longer with the missing overflow-area base-state diagnostic.
+- Representative classification: normal preparation now reaches RV64 object
+  emission with the overflow-area base state present. The remaining failure is a
+  later helper/lowering boundary:
+  `unsupported_variadic_helper_lowering: RV64 va_start helper requires
+  destination va_list address in a prepared GPR home`.
 
 ## Suggested Next
 
-Step 3 packet: run the representative RV64 `va_start` path through normal
-preparation/object emission to confirm the new producer unblocks helper-bearing
-`va_start` without weakening explicit prepared-fact gating. Keep object
-emission edits out of scope unless the produced facts expose a narrow consumer
-contract mismatch.
-
-Suggested narrow proof command remains:
-
-```sh
-cmake --build build --target backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure
-```
+Step 4/lifecycle direction: treat the overflow-base-state producer as validated
+for helper-bearing preparation and decide whether to close this focused idea or
+split a separate initiative for the later RV64 `va_start` destination-address
+prepared-GPR-home boundary. A next execution packet should target that boundary
+only if the supervisor/plan owner keeps it inside the active lifecycle scope.
 
 ## Watchouts
 
@@ -55,19 +43,23 @@ cmake --build build --target backend_prepare_frame_stack_call_contract_test back
   producer convention as a non-negative prepared frame-slot offset from the
   stable stack base. The existing RV64 consumer still enforces signed 12-bit
   immediate materializability separately.
-- This packet did not run the representative `src/920908-1.c` allowlist case;
-  Step 4 owns that broader proof unless the supervisor chooses to fold it into
-  the next packet.
+- The representative residual is not the old
+  `requires prepared overflow-area initial base state` diagnostic. It is a
+  separate prepared destination-address/home requirement and should not be
+  reported as overflow-base-state producer failure.
 
 ## Proof
 
-Supervisor-selected proof passed and is preserved in `test_after.log`.
+Supervisor-selected proof completed and is preserved in `test_after.log`.
 
 Command run exactly:
 
 ```sh
-cmake --build build --target backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log
+cmake --build build --target backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test c4cll && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log && printf 'src/920908-1.c\n' > /tmp/rv64-overflow-base-representative.txt && (CASE_TIMEOUT_SEC=20 ALLOWLIST=/tmp/rv64-overflow-base-representative.txt scripts/check_progress_rv64_gcc_c_torture_backend.sh >> test_after.log 2>&1 || true)
 ```
 
 Result: build succeeded; `backend_prepare_frame_stack_call_contract`,
 `backend_prepared_printer`, and `backend_riscv_object_emission` all passed.
+The representative scan appended one expected failure for `src/920908-1.c`;
+details are in
+`build/rv64_gcc_c_torture_backend/src_920908-1.c/case.log`.
