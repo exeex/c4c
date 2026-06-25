@@ -1,60 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/355_rv64_prepared_object_shape_diagnostics.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Representative Diagnostic Tests
+Current Step ID: 4
+Current Step Title: Prove Scan-Bucket Visibility
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added representative diagnostic coverage for stable RV64 prepared-object
-buckets without capability repair or testcase-name matching:
+Step 4 proved scan-bucket visibility for RV64 prepared-object diagnostics
+without implementation, test, runner, or expectation edits:
 
-- Added focused assertions in
-  `tests/backend/mir/backend_riscv_object_emission_test.cpp` for
-  `module_string_constants`, `unsupported_global_data` for prepared global
-  memory instructions and unsupported module global data, and
-  `unsupported_local_memory_access` for non-32/64-bit local memory width.
-- Reused the existing focused shared consumer-contract assertion for the
-  preserved `UnsupportedParallelCopyExecutionSite` category through the
-  prepared object-to-ELF writer.
-- Added a diagnostic-only RV64 fallback in
-  `src/backend/mir/riscv/codegen/object_emission.cpp` so failed prepared local
-  load/store and global load/store lowering reports stable semantic buckets
-  instead of the generic `unsupported_instruction_fragment` bucket.
-- Representative direct commands now record structured diagnostics in
-  `test_after.log`: `src/20000112-1.c` reports `module_string_constants`,
-  `src/20000224-1.c` reports `unsupported_global_data`, and
-  `src/20001203-1.c` reports `unsupported_local_memory_access`.
+- Ran the delegated full RV64 GCC C torture backend object scan without
+  `--dump-prepared-bir`; `test_after.log` records per-case status and links to
+  the generated `case.log` files.
+- Scan totals were `total=1467 passed=70 failed=1397`.
+- `test_after.log` points at actionable representative diagnostic logs:
+  `src/20000112-1.c` fails with `module_string_constants`,
+  `src/20000224-1.c` fails with `unsupported_global_data`, and
+  `src/20001203-1.c` fails with `unsupported_local_memory_access`.
+- Generated scan logs also expose broader prepared-object bucket counts:
+  `unsupported_instruction_fragment` 347,
+  `unsupported_global_data` 234,
+  `unsupported_local_memory_access` 142,
+  `module_string_constants` 74,
+  `unsupported_terminator_fragment` 71,
+  `unsupported_param_home` 48,
+  `unsupported_stack_frame` 20,
+  `unsupported_move_bundle_target_shape` 3,
+  `unsupported_function_admission` 2, and
+  `prepared_consumer_category` 1.
+- Watched representatives `src/20000113-1.c` and `src/20030216-1.c` now pass in
+  the scan instead of producing diagnostics.
 
 ## Suggested Next
 
-Step 4 should prove scan-bucket visibility with the supervisor-selected narrow
-or scan command and decide whether declaration-entry and multi-block cases need
-separate Step 4 evidence or a new packet, since this Step 3 packet only proved
-the delegated string/global/local representatives plus the shared consumer
-category.
+Recommend supervisor close/review for this proof-only runbook slice. If the
+source idea remains open after review, the next packet should be a new
+supervisor-routed capability packet rather than more diagnostic visibility
+work.
 
 ## Watchouts
 
-- This packet intentionally did not repair globals, strings, ABI, widths,
-  varargs, declaration-entry control flow, or multi-block lowering coverage.
-- The new local-memory diagnostic is only selected after normal instruction
-  lowering fails and is based on prepared load/store width/address facts; it is
-  not a lowering capability change.
-- `src/20030216-1.c` and `src/20000113-1.c` were not part of the delegated
-  direct-command proof. They are not recorded here as undiagnosable; they still
-  need supervisor-routed evidence if Step 4 or a later packet requires them.
+- The scan summary itself does not inline diagnostic text; visibility is via
+  the `case.log` paths recorded in `test_after.log`.
+- No expectation baseline was changed, and no pass/fail result was reclassified
+  to make this proof succeed.
+- The scan still has many non-prepared or earlier-pipeline failures such as
+  `lir_to_bir lowering before the prepared object handoff`; those are outside
+  this proof-only packet.
 
 ## Proof
 
 Ran the delegated proof exactly:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_riscv_object_emission|backend_prepared_object_consumer_contract)$' && bash -lc ': > test_after.log; for case in src/20000112-1.c src/20000224-1.c src/20001203-1.c; do build/c4cll -I tests/c/external/gcc_torture --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/$case -o /tmp/rv64-prepared-shape.o >> test_after.log 2>&1; status=$?; echo "CASE $case exit=$status" >> test_after.log; test $status -ne 0 || exit 1; done'
+cmake --build --preset default && CASE_TIMEOUT_SEC=20 MAX_CASES=0 scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log 2>&1 || true
 ```
 
-Result: build passed, both focused CTest targets passed, and all three
-representative direct object commands failed as expected with structured
-buckets in `test_after.log`.
+Result: build passed and the scan completed. `test_after.log` is the preserved
+proof log; generated per-case proof logs live under
+`build/rv64_gcc_c_torture_backend/*/case.log`.
