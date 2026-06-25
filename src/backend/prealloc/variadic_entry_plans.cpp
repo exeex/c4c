@@ -1050,12 +1050,15 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
       switch (*helper_kind) {
         case PreparedVariadicEntryHelperKind::VaStart:
           if (!call->args.empty()) {
-            homes.destination_va_list =
+            homes.destination_va_list_address =
                 prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
-            if (homes.destination_va_list.has_value()) {
-              homes.destination_va_list_address =
-                  materialize_va_start_destination_home(
-                      prepared, function_plan, "rv64", *homes.destination_va_list);
+            if (homes.destination_va_list_address.has_value()) {
+              homes.destination_va_list = materialize_va_start_destination_home(
+                  prepared, function_plan, "rv64", *homes.destination_va_list_address);
+              if (homes.destination_va_list_address->kind !=
+                  PreparedValueHomeKind::Register) {
+                homes.destination_va_list_address = std::nullopt;
+              }
             }
           }
           require_variadic_helper_operand_home(function_plan,

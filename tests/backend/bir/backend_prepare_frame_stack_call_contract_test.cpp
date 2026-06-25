@@ -8176,6 +8176,14 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       !prepare::has_complete_prepared_variadic_va_start_operand_homes(*va_start_homes)) {
     return fail("RV64 variadic helper missing contract: va_start operand homes were not materialized");
   }
+  if (va_start_homes->destination_va_list->kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      !va_start_homes->destination_va_list->slot_id.has_value() ||
+      va_start_homes->destination_va_list_address->kind !=
+          prepare::PreparedValueHomeKind::Register ||
+      !va_start_homes->destination_va_list_address->register_name.has_value()) {
+    return fail("RV64 variadic helper missing contract: va_start storage and address homes were not distinguished");
+  }
   const auto* overflow_base_slot =
       prepare::find_prepared_frame_slot(prepared.stack_layout,
                                         *entry_plan->overflow_area.base_slot_id);

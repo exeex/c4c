@@ -6739,6 +6739,15 @@ int main() {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not materialize va_start operand homes\n";
     return EXIT_FAILURE;
   }
+  if (rv64_va_start_homes->destination_va_list->kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      !rv64_va_start_homes->destination_va_list->slot_id.has_value() ||
+      rv64_va_start_homes->destination_va_list_address->kind !=
+          prepare::PreparedValueHomeKind::Register ||
+      !rv64_va_start_homes->destination_va_list_address->register_name.has_value()) {
+    std::cerr << "[FAIL] RV64 variadic helper-family carrier did not distinguish va_start storage from the prepared GPR address\n";
+    return EXIT_FAILURE;
+  }
   const auto* rv64_aggregate_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(
           *rv64_helper_family_entry_plan, 0, 3);
@@ -6825,6 +6834,14 @@ int main() {
   if (!expect_contains(rv64_helper_family_dump,
                        "helper_operand kind=va_start block=0 inst=0 dst_va_list=ap:",
                        "RV64 variadic va_start operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(rv64_helper_family_dump,
+                       "dst_va_list=ap:stack_slot",
+                       "RV64 variadic va_start storage home") ||
+      !expect_contains(rv64_helper_family_dump,
+                       "dst_va_list_addr=ap:register:reg=",
+                       "RV64 variadic va_start prepared GPR address home")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,
