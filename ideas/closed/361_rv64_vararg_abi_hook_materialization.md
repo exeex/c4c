@@ -1,6 +1,6 @@
 # RV64 Vararg ABI Hook Materialization
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/closed/360_lir_bir_vararg_va_arg_contract_completion.md`
 
@@ -68,6 +68,28 @@ instead of reopening the shared-contract source idea.
 - Focused backend tests cover both successful hook publication and structured
   unsupported paths.
 - Existing baseline tests for touched backend/prepared surfaces remain green.
+
+## Closure Notes
+
+Closed after Step 5 milestone validation. The focused backend proof passed for:
+
+- `backend_prepare_frame_stack_call_contract`
+- `backend_prepared_printer`
+- `backend_cli_riscv64_variadic_entry_missing_contract_obj`
+- `backend_riscv_object_emission`
+
+The representative RV64 allowlist for `src/20030914-2.c` and `src/920908-1.c`
+still failed, but both cases now fail at the broader RV64 object-route gate:
+`unsupported_function_admission: variadic functions are not supported by the RV64
+object route; RV64 object variadic function lowering is not implemented`.
+
+The original target-only missing facts for variadic entry state, `va_list`
+layout, `va_start` helper resources/homes, and aggregate `va_arg` helper
+resources/homes were not observed in the inspected representative logs.
+
+Residual scalar `va_arg`, `va_copy`, and broader RV64 object variadic function
+lowering work is tracked separately instead of expanding this completed target
+hook milestone.
 
 ## Reviewer Reject Signals
 
