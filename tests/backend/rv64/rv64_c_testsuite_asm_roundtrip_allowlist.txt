@@ -1,6 +1,14 @@
 # Relative paths inside tests/c/external/c-testsuite.
-# Keep this initial scan allowlist explicit. Step 3 owns CMake target wiring.
-# Current explicit exclusion: cases whose generated RV64 assembly uses the
-# unsupported `mv` pseudo-instruction fail at `c4c-as-pass1`.
+#
+# This is the initial opt-in RV64 c-testsuite asm/objdump roundtrip scan
+# manifest. Keep it intentionally small until each added source case has a
+# reviewed backend/assembler reason to be included.
+#
+# Included now:
+# - src/00001.c: minimal `return 0`.
+# - src/00002.c: minimal constant expression return.
+#
+# Known exclusions are tracked in:
+# tests/backend/rv64/rv64_c_testsuite_asm_roundtrip_unsupported.md
 src/00001.c
 src/00002.c

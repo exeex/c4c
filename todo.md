@@ -1,49 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/353_c_testsuite_rv64_asm_objdump_roundtrip_scan_target.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Opt-In Build Integration
+Current Step ID: 4
+Current Step Title: Make The Allowlist And Unsupported Families Explicit
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added the explicit opt-in CMake target
-`rv64_c_testsuite_asm_roundtrip_scan` in `tests/backend/CMakeLists.txt`.
-The target depends on `c4cll`, `c4c-as`, and `c4c-objdump`, passes their
-`$<TARGET_FILE:...>` paths into the Step 2 runner, uses
-`tests/backend/rv64/rv64_c_testsuite_asm_roundtrip_allowlist.txt`, and writes
-case outputs under `build/tests/backend/rv64_c_testsuite_asm_roundtrip_scan`.
-It is a custom build target only and is not registered with `add_test`.
+Step 4 made the initial RV64 c-testsuite asm/objdump roundtrip scan scope
+explicit. `tests/backend/rv64/rv64_c_testsuite_asm_roundtrip_allowlist.txt`
+now names the two selected cases and points to
+`tests/backend/rv64/rv64_c_testsuite_asm_roundtrip_unsupported.md` for known
+exclusions. The unsupported-family note records `src/00003.c` as excluded
+because generated RV64 assembly currently contains unsupported
+pseudo-instruction `mv a0, s1`, failing at `c4c-as-pass1`.
 
 ## Suggested Next
 
-Step 4: Make the allowlist and unsupported families explicit. Suggested owned
-files are `tests/backend/rv64/rv64_c_testsuite_asm_roundtrip_allowlist.txt`,
-the narrowest nearby documentation or manifest file needed for unsupported
-families, and `todo.md`.
+Step 5: Prove and document the opt-in scan. Suggested owned files are the
+narrowest nearby README, contract, or CMake comments needed to make the manual
+command discoverable, plus `todo.md`. Preserve the target as opt-in and out of
+default CTest membership.
 
 ## Watchouts
 
 - Keep the large scan opt-in and out of default full CTest.
-- The initial scan allowlist is intentionally tiny: `src/00001.c` and
+- The initial scan allowlist remains intentionally tiny: `src/00001.c` and
   `src/00002.c`.
-- `src/00003.c` currently reaches `c4c-as-pass1` but fails because generated
-  RV64 assembly contains unsupported pseudo-instruction `mv a0, s1`; keep this
-  as an explicit exclusion until assembler or printer support changes.
-- The Step 3 target is intentionally not part of default CTest membership;
-  `ctest --test-dir build -N | rg 'rv64_c_testsuite_asm_roundtrip_scan|c_testsuite_asm_roundtrip_scan'`
-  found no matching registered test.
+- The unsupported-family note is factual, not exhaustive; unlisted c-testsuite
+  cases should still be classified before being added to the allowlist.
+- `src/00003.c` is the current representative unsupported case for the `mv`
+  pseudo-instruction gap.
 
 ## Proof
 
-Delegated Step 3 proof passed and wrote `test_after.log`:
+Delegated Step 4 proof passed and wrote `test_after.log`:
 
 ```sh
 cmake --build build --target rv64_c_testsuite_asm_roundtrip_scan >test_after.log 2>&1
 ```
 
-`test_after.log` shows CMake regenerating after the target addition, then
-running both allowlisted cases through `c4cll`, three `c4c-as` passes, and two
-`c4c-objdump` passes. It finishes with
+`test_after.log` shows both allowlisted cases running through `c4cll`, three
+`c4c-as` passes, and two `c4c-objdump` passes. It finishes with
 `[PASS][rv64-c-testsuite-roundtrip-scan] cases=2`.
