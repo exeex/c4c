@@ -15,6 +15,8 @@ enum class RiscvObjectFixupKind {
   CallPlt,
   PcrelHi20,
   PcrelLo12I,
+  Branch,
+  Jal,
 };
 
 struct RiscvObjectFixup {
