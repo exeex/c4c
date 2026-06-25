@@ -8,64 +8,60 @@ Current Step Title: Route Simple Call and FPR ABI Edges
 
 ## Just Finished
 
-Completed Plan Step 4 baseline-review cleanup for the stale RV64 CLI
-helper-free variadic entry expected-failure test. The test now uses the passing
-object-codegen harness because fact-complete helper-free RV64 variadic entries
-are intentionally admitted, while preserving the same source case, test name,
-output object path, and labels.
+Completed Plan Step 4 representative validation for `src/20030125-1.c` after
+prepared RV64 FPR `bir.fpext float -> double` lowering.
+
+The old generic `unsupported_instruction_fragment` / first-instruction
+`bir.fpext` boundary is gone. The representative now reaches the later
+structured floating-cast boundary:
+
+```text
+unsupported_floating_cast: RV64 object route supports only prepared F32-to-F64 FPR register casts
+```
 
 Changed files:
-- `tests/backend/CMakeLists.txt`
 - `todo.md`
 
 ## Suggested Next
 
-Return to the Step 4 FPR ABI edge route by running the representative
-`src/20030125-1.c` validation to confirm the old `bir.fpext` boundary advances.
-If it exposes the expected `bir.fptrunc double -> float` FPR-register boundary,
-the next coherent implementation packet is prepared FPR `fptrunc` lowering or a
-deliberately narrow structured diagnostic, depending on the supervisor's route
-choice.
+Implement the next narrow prepared FPR cast packet under Plan Step 4:
+`bir.fptrunc double -> float` for explicit FPR register homes, or keep the
+current `unsupported_floating_cast` diagnostic if the route deliberately defers
+that support. Touch only `src/backend/mir/riscv/codegen/object_emission.cpp`,
+`tests/backend/mir/backend_riscv_object_emission_test.cpp`, and `todo.md`.
 
-Suggested representative proof after the focused slice:
+Suggested focused proof for an implementation packet:
 
 ```sh
-tmp=$(mktemp); printf 'src/20030125-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEOUT_SEC=20 STOP_ON_FAILURE=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log; rc=$?; rm -f "$tmp"; exit $rc
+cmake --build build --target backend_riscv_object_emission_test && ctest --test-dir build -R '^backend_riscv_object_emission$' --output-on-failure > test_after.log
 ```
 
 ## Watchouts
 
-- This packet is baseline-review cleanup only. Do not count the CMake harness
-  conversion as a new feature slice.
-- The `backend_cli_riscv64_variadic_entry_missing_contract_obj` name and
-  `missing_contract` label are intentionally preserved to minimize CTest label
-  churn around the historical source case.
 - Treat `src/20030125-1.c` as a representative only. The semantic class is
   prepared FPR cast/call ABI lowering, not testcase-specific math folding.
-- This packet intentionally did not implement `fptrunc`, floating calls, libm
-  behavior, or stack-slot FPR materialization.
+- This validation packet intentionally did not implement `fptrunc`, floating
+  calls, libm behavior, or stack-slot FPR materialization.
 - The FPR cast lowerer requires `PreparedTargetRegisterIdentity` to identify
   RV64 FPR physical registers; it does not infer FPR numbers from names alone.
-- The local-memory address predicate remains intentionally narrow: default
-  address space, non-volatile, frame-slot base, published frame-slot id,
-  base-plus-offset eligibility, matching access size, compatible alignment,
-  non-negative offset, and signed 12-bit immediate reach.
-- Narrow local loads use the same stack-load helper and therefore encode signed
-  `lb`/`lh`; add an explicit load fixture before changing signedness behavior.
-- `src/20001203-1.c` is now green in the representative harness; do not keep
-  expanding this packet around that testcase.
-- `src/20030125-1.c` remains out of scope for this packet and should still be
-  classified separately before any FPR or floating-operation implementation.
+- The representative failure is inside the Step 4 FPR cast/call ABI bucket, but
+  this packet is validation-only and must not edit implementation files.
+- Re-run the `src/20030125-1.c` representative after any `fptrunc` slice to
+  see whether the next boundary is another floating cast, a floating call ABI
+  edge, or runtime mismatch.
 
 ## Proof
 
 Delegated proof:
 
 ```sh
-ctest --test-dir build -R '^backend_cli_riscv64_variadic_entry_missing_contract_obj$' --output-on-failure > test_after.log
+tmp=$(mktemp); printf 'src/20030125-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEOUT_SEC=20 STOP_ON_FAILURE=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log; rc=$?; rm -f "$tmp"; exit $rc
 ```
 
-Result: passed, with 1/1
-`backend_cli_riscv64_variadic_entry_missing_contract_obj` test passing.
+Result: exited `1`. This is acceptable for the validation-only packet because
+the old generic unsupported-instruction / `fpext` boundary advanced to the
+later structured `unsupported_floating_cast` boundary.
 
 Proof log: `test_after.log`.
+Representative case log:
+`build/rv64_gcc_c_torture_backend/src_20030125-1.c/case.log`.
