@@ -8,24 +8,24 @@ Current Step Title: Route Simple Call and FPR ABI Edges
 
 ## Just Finished
 
-Completed Plan Step 4's first RV64 FPR cast object-route slice. The prepared
-object emitter now lowers `bir.fpext float -> double` when both operand and
-result have explicit RV64 FPR register homes, emitting `fcvt.d.s`. Unsupported
-floating casts now report a structured RV64 diagnostic instead of falling
-through to the generic unsupported-instruction diagnostic.
+Completed Plan Step 4 baseline-review cleanup for the stale RV64 CLI
+helper-free variadic entry expected-failure test. The test now uses the passing
+object-codegen harness because fact-complete helper-free RV64 variadic entries
+are intentionally admitted, while preserving the same source case, test name,
+output object path, and labels.
 
 Changed files:
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `tests/backend/CMakeLists.txt`
 - `todo.md`
 
 ## Suggested Next
 
-Run the representative `src/20030125-1.c` validation to confirm the old
-`bir.fpext` boundary advances. If it exposes the expected
-`bir.fptrunc double -> float` FPR-register boundary, the next coherent Step 4
-implementation packet is prepared FPR `fptrunc` lowering or a deliberately
-narrow structured diagnostic, depending on the supervisor's route choice.
+Return to the Step 4 FPR ABI edge route by running the representative
+`src/20030125-1.c` validation to confirm the old `bir.fpext` boundary advances.
+If it exposes the expected `bir.fptrunc double -> float` FPR-register boundary,
+the next coherent implementation packet is prepared FPR `fptrunc` lowering or a
+deliberately narrow structured diagnostic, depending on the supervisor's route
+choice.
 
 Suggested representative proof after the focused slice:
 
@@ -35,6 +35,11 @@ tmp=$(mktemp); printf 'src/20030125-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEO
 
 ## Watchouts
 
+- This packet is baseline-review cleanup only. Do not count the CMake harness
+  conversion as a new feature slice.
+- The `backend_cli_riscv64_variadic_entry_missing_contract_obj` name and
+  `missing_contract` label are intentionally preserved to minimize CTest label
+  churn around the historical source case.
 - Treat `src/20030125-1.c` as a representative only. The semantic class is
   prepared FPR cast/call ABI lowering, not testcase-specific math folding.
 - This packet intentionally did not implement `fptrunc`, floating calls, libm
@@ -57,9 +62,10 @@ tmp=$(mktemp); printf 'src/20030125-1.c\n' > "$tmp"; ALLOWLIST="$tmp" CASE_TIMEO
 Delegated proof:
 
 ```sh
-cmake --build build --target backend_riscv_object_emission_test && ctest --test-dir build -R '^backend_riscv_object_emission$' --output-on-failure > test_after.log
+ctest --test-dir build -R '^backend_cli_riscv64_variadic_entry_missing_contract_obj$' --output-on-failure > test_after.log
 ```
 
-Result: passed, with 1/1 `backend_riscv_object_emission` test passing.
+Result: passed, with 1/1
+`backend_cli_riscv64_variadic_entry_missing_contract_obj` test passing.
 
 Proof log: `test_after.log`.

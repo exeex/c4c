@@ -574,12 +574,12 @@ c4c_add_backend_codegen_object_test(
   LABELS riscv64 object global cli
 )
 
-c4c_add_backend_codegen_object_failure_test(
+c4c_add_backend_codegen_object_test(
   backend_cli_riscv64_variadic_entry_missing_contract_obj
   SRC "${BACKEND_CASE_ROOT}/riscv64_variadic_entry_missing_contract.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_variadic_entry_missing_contract.o"
-  EXPECTED_DIAGNOSTICS "unsupported_function_admission: RV64 helper-free variadic entry lowering remains unsupported without an explicit supported variadic entry runtime contract"
+  EXPECTED_MACHINE_LE f300
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 object variadic missing_contract cli
 )
