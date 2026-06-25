@@ -400,6 +400,19 @@ c4c_add_backend_codegen_object_test(
   LABELS riscv64 object inline_asm vrm insn_d cli
 )
 
+add_test(
+  NAME backend_c4c_as_parse_suite
+  COMMAND "${CMAKE_COMMAND}"
+          -DC4C_AS=$<TARGET_FILE:c4c-as>
+          -DWORK_DIR=${BACKEND_TEST_BINARY_ROOT}/c4c_as_suite
+          -DCASE_TIMEOUT_SEC=10
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_c4c_as_parse_suite.cmake"
+)
+c4c_set_backend_test_labels(
+  backend_c4c_as_parse_suite
+  riscv64 asm cli c4c_as parser
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_vrm_insn_d_source_asm
   SRC "${BACKEND_CASE_ROOT}/riscv64_vrm_insn_d_source.c"

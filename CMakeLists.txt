@@ -53,6 +53,10 @@ set_target_properties(c4cll PROPERTIES
 add_executable(c4c-as
     "${PROJECT_SOURCE_DIR}/src/apps/c4c-as.cpp"
 )
+if(ENABLE_C4C_BACKEND)
+  target_link_libraries(c4c-as PRIVATE c4c_backend)
+endif()
+target_compile_definitions(c4c-as PRIVATE C4C_ENABLE_BACKEND=$<BOOL:${ENABLE_C4C_BACKEND}>)
 set_target_properties(c4c-as PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
