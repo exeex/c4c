@@ -208,7 +208,7 @@ RiscvPreparedObjectFunctionResult make_rv64_prepared_function_rejection(
   };
 }
 
-std::string rv64_variadic_function_admission_diagnostic(
+std::optional<std::string> rv64_variadic_function_admission_diagnostic(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name) {
   std::string diagnostic =
@@ -220,8 +220,7 @@ std::string rv64_variadic_function_admission_diagnostic(
     return diagnostic;
   }
   if (entry_plan->missing_required_facts.empty()) {
-    diagnostic += "; RV64 object variadic function lowering is not implemented";
-    return diagnostic;
+    return std::nullopt;
   }
 
   diagnostic += "; missing_required_facts=[";
@@ -234,6 +233,78 @@ std::string rv64_variadic_function_admission_diagnostic(
   }
   diagnostic += "]";
   return diagnostic;
+}
+
+std::string rv64_variadic_helper_unsupported_diagnostic(
+    prepare::PreparedVariadicEntryHelperKind helper) {
+  std::string diagnostic =
+      "unsupported_variadic_helper_lowering: RV64 object route does not yet lower ";
+  diagnostic += prepare::prepared_variadic_entry_helper_kind_name(helper);
+  diagnostic += " helper";
+  return diagnostic;
+}
+
+std::optional<std::string> diagnose_unsupported_prepared_variadic_helper_fragment(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const c4c::backend::bir::Inst& inst) {
+  const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+  if (call == nullptr) {
+    return std::nullopt;
+  }
+  const auto helper = prepare::prepared_variadic_entry_helper_kind_for_call(*call);
+  if (!helper.has_value()) {
+    return std::nullopt;
+  }
+  const auto* entry_plan =
+      prepare::find_prepared_variadic_entry_plan(prepared, function_name);
+  if (entry_plan == nullptr) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: missing variadic entry contract facts were not prepared"};
+  }
+  const auto* homes = prepare::find_prepared_variadic_entry_helper_operand_homes(
+      *entry_plan,
+      block_index,
+      instruction_index);
+  if (homes == nullptr || homes->helper != *helper) {
+    std::string diagnostic =
+        "unsupported_variadic_helper_lowering: RV64 object route requires prepared ";
+    diagnostic += prepare::prepared_variadic_entry_helper_kind_name(*helper);
+    diagnostic += " helper operand homes";
+    return diagnostic;
+  }
+  if (!prepare::has_complete_prepared_variadic_entry_helper_operand_homes(*homes)) {
+    std::string diagnostic =
+        "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared ";
+    diagnostic += prepare::prepared_variadic_entry_helper_kind_name(*helper);
+    diagnostic += " helper operand homes";
+    return diagnostic;
+  }
+  return rv64_variadic_helper_unsupported_diagnostic(*helper);
+}
+
+std::optional<std::string> diagnose_first_unsupported_prepared_variadic_helper(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::bir::Function& function) {
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+         ++instruction_index) {
+      if (auto diagnostic =
+              diagnose_unsupported_prepared_variadic_helper_fragment(
+                  prepared,
+                  function_name,
+                  block_index,
+                  instruction_index,
+                  block.insts[instruction_index])) {
+        return diagnostic;
+      }
+    }
+  }
+  return std::nullopt;
 }
 
 RiscvPreparedObjectModuleResult make_rv64_prepared_module_rejection(
@@ -2892,9 +2963,17 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
         "unsupported_function_admission: prepared function has no defined BIR body");
   }
   if (function->is_variadic) {
-    return make_rv64_prepared_function_rejection(
-        rv64_variadic_function_admission_diagnostic(prepared,
-                                                    control_flow.function_name));
+    if (auto diagnostic = rv64_variadic_function_admission_diagnostic(
+            prepared,
+            control_flow.function_name)) {
+      return make_rv64_prepared_function_rejection(std::move(*diagnostic));
+    }
+    if (auto diagnostic = diagnose_first_unsupported_prepared_variadic_helper(
+            prepared,
+            control_flow.function_name,
+            *function)) {
+      return make_rv64_prepared_function_rejection(std::move(*diagnostic));
+    }
   }
   if (!function->atomic_operations.empty()) {
     return make_rv64_prepared_function_rejection(
@@ -3025,6 +3104,15 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                            *stack_frame_bytes);
           if (!fragment.has_value()) {
             if (auto diagnostic =
+                    diagnose_unsupported_prepared_variadic_helper_fragment(
+                        prepared,
+                        control_flow.function_name,
+                        event.block_index,
+                        event.instruction_index,
+                        *event.instruction)) {
+              return make_rv64_prepared_function_rejection(std::move(*diagnostic));
+            }
+            if (auto diagnostic =
                     diagnose_unsupported_prepared_instruction_fragment(
                         lookups,
                         prepared_block_label,
@@ -3096,6 +3184,15 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                        compares,
                                                        *stack_frame_bytes);
       if (!fragment.has_value()) {
+        if (auto diagnostic =
+                diagnose_unsupported_prepared_variadic_helper_fragment(
+                    prepared,
+                    control_flow.function_name,
+                    block_index,
+                    instruction_index,
+                    block.insts[instruction_index])) {
+          return make_rv64_prepared_function_rejection(std::move(*diagnostic));
+        }
         if (auto diagnostic =
                 diagnose_unsupported_prepared_instruction_fragment(
                     lookups,

@@ -320,6 +320,137 @@ prepare::PreparedBirModule make_prepared_direct_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_variadic_return_zero_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("rv64_variadic");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+      .label_id = entry_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "rv64_variadic",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .is_variadic = true,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_variadic_missing_required_facts_module() {
+  auto prepared = make_prepared_variadic_return_zero_module();
+  const auto function_name = prepared.names.function_names.find("rv64_variadic");
+  prepared.variadic_entry_plans.functions.push_back(
+      prepare::PreparedVariadicEntryPlanFunction{
+          .function_name = function_name,
+          .missing_required_facts = {"target_abi.va_list_layout"},
+      });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_variadic_va_start_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("rv64_va_start");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+  const auto ap_name = prepared.names.value_names.intern("%ap");
+  const auto ap_addr_name = prepared.names.value_names.intern("%ap.addr");
+
+  bir::CallInst va_start;
+  va_start.callee = "llvm.va_start.p0";
+  va_start.args = {bir::Value::named(bir::TypeKind::Ptr, "%ap.addr")};
+  va_start.arg_types = {bir::TypeKind::Ptr};
+  va_start.return_type = bir::TypeKind::Void;
+  bir::Block entry{
+      .label = "entry",
+      .insts = {va_start},
+      .terminator = bir::Terminator{},
+      .label_id = entry_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "rv64_va_start",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .is_variadic = true,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  const prepare::PreparedValueHome ap_home{
+      .value_id = 1,
+      .function_name = function_name,
+      .value_name = ap_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"a0"},
+  };
+  const prepare::PreparedValueHome ap_addr_home{
+      .value_id = 2,
+      .function_name = function_name,
+      .value_name = ap_addr_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"a1"},
+  };
+  prepared.variadic_entry_plans.functions.push_back(
+      prepare::PreparedVariadicEntryPlanFunction{
+          .function_name = function_name,
+          .overflow_area =
+              prepare::PreparedVariadicEntryOverflowArea{
+                  .required = true,
+                  .align_bytes = std::size_t{8},
+              },
+          .va_list_layout =
+              prepare::PreparedVariadicVaListLayout{
+                  .required = true,
+                  .size_bytes = std::size_t{8},
+                  .align_bytes = std::size_t{8},
+                  .fields = {prepare::PreparedVariadicVaListField{
+                      .kind = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+                      .offset_bytes = 0,
+                      .size_bytes = 8,
+                  }},
+              },
+          .helper_resources =
+              prepare::PreparedVariadicEntryHelperResources{
+                  .required_helpers = {prepare::PreparedVariadicEntryHelperKind::VaStart},
+                  .scratch_register_count = std::size_t{3},
+                  .scratch_stack_bytes = std::size_t{0},
+              },
+          .helper_operand_homes =
+              {prepare::PreparedVariadicEntryHelperOperandHomes{
+                  .helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .destination_va_list = ap_home,
+                  .destination_va_list_address = ap_addr_home,
+              }},
+      });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_symbol_address_module(
     prepare::PreparedAddressMaterializationKind kind,
     std::string symbol_name) {
@@ -2944,6 +3075,24 @@ int builds_prepared_scalar_same_module_call_object() {
   return 0;
 }
 
+int preserves_missing_variadic_entry_plan_diagnostic() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_variadic_return_zero_module(),
+      "unsupported_function_admission: variadic functions are not supported by the RV64 object route; missing variadic entry contract facts were not prepared");
+}
+
+int preserves_missing_variadic_required_facts_diagnostic() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_variadic_missing_required_facts_module(),
+      "unsupported_function_admission: variadic functions are not supported by the RV64 object route; missing_required_facts=[target_abi.va_list_layout]");
+}
+
+int rejects_fact_complete_variadic_va_start_with_helper_specific_diagnostic() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_variadic_va_start_module(),
+      "unsupported_variadic_helper_lowering: RV64 object route does not yet lower va_start helper");
+}
+
 int builds_prepared_two_arg_scalar_call_object() {
   const auto prepared = make_prepared_two_arg_scalar_call_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -4768,6 +4917,9 @@ int main() {
   status |= builds_prepared_successor_entry_copy_from_shared_traversal();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
+  status |= preserves_missing_variadic_entry_plan_diagnostic();
+  status |= preserves_missing_variadic_required_facts_diagnostic();
+  status |= rejects_fact_complete_variadic_va_start_with_helper_specific_diagnostic();
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_stack_slot_scalar_flow_object();
