@@ -417,6 +417,65 @@ prepare::PreparedBirModule make_prepared_string_address_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_string_call_argument_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto text_name = prepared.names.texts.intern(".LC0");
+
+  bir::CallInst call;
+  call.callee = "sink";
+  call.args = {bir::Value::named(bir::TypeKind::Ptr, "@.LC0")};
+  call.arg_types = {bir::TypeKind::Ptr};
+  call.return_type = bir::TypeKind::Void;
+  bir::Block entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.module.string_constants.push_back(bir::StringConstant{
+      .name = ".LC0",
+      .name_id = text_name,
+      .bytes = "abc",
+      .align_bytes = 1,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"sink"},
+          .arguments = {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 0,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::SymbolAddress,
+              .source_symbol_name = std::string{"@.LC0"},
+              .destination_register_name = std::string{"a0"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          }},
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_global_address_module() {
   auto prepared = make_prepared_symbol_address_module(
       prepare::PreparedAddressMaterializationKind::DirectGlobal,
@@ -4162,6 +4221,49 @@ int emits_prepared_string_address_relocations_to_object_symbol() {
   return 0;
 }
 
+int emits_prepared_string_call_argument_relocation_to_object_symbol() {
+  const auto prepared = make_prepared_string_call_argument_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit string call argument");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* rodata = object::find_section(*module, ".rodata");
+  const auto* string_symbol = object::find_symbol(*module, ".LC0");
+  const auto* auipc_label =
+      object::find_symbol(*module, ".Lpcrel_call_arg_main_0_0_0");
+  const auto* sink_symbol = object::find_symbol(*module, "sink");
+  if (text == nullptr || rodata == nullptr || string_symbol == nullptr ||
+      auipc_label == nullptr || sink_symbol == nullptr) {
+    return fail("expected string call argument symbols and sections");
+  }
+  if (string_symbol->binding != object::SymbolBinding::Local ||
+      string_symbol->kind != object::SymbolKind::Object ||
+      string_symbol->section != std::optional<object::SectionId>{rodata->id}) {
+    return fail("expected string call argument relocation target to be defined object");
+  }
+  if (sink_symbol->section.has_value()) {
+    return fail("expected direct extern call target to remain undefined");
+  }
+  if (module->relocations.size() != 3 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].type != R_RISCV_PCREL_HI20 ||
+      module->relocations[0].symbol != string_symbol->id ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].type != R_RISCV_PCREL_LO12_I ||
+      module->relocations[1].symbol != auipc_label->id ||
+      module->relocations[2].section != text->id ||
+      module->relocations[2].type != R_RISCV_CALL_PLT ||
+      module->relocations[2].symbol != sink_symbol->id) {
+    return fail("expected string call argument relocation pair before call relocation");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize string call argument");
+  }
+  return 0;
+}
+
 int emits_prepared_global_address_relocations_to_object_symbol() {
   const auto prepared = make_prepared_global_address_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -4724,6 +4826,7 @@ int main() {
   status |= emits_prepared_zero_global_bss_storage();
   status |= emits_prepared_constant_f64_global_object_storage();
   status |= emits_prepared_string_address_relocations_to_object_symbol();
+  status |= emits_prepared_string_call_argument_relocation_to_object_symbol();
   status |= emits_prepared_global_address_relocations_to_object_symbol();
   status |= emits_prepared_global_load_relocations_and_instruction();
   status |= emits_prepared_global_i8_load_and_zext_instruction();

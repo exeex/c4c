@@ -92,6 +92,22 @@ void append_le64(std::vector<std::uint8_t>& bytes, std::uint64_t word) {
   }
 }
 
+void append_rv64_fragment(RiscvEncodedFragment& destination,
+                          RiscvEncodedFragment source) {
+  const auto base_offset = destination.bytes.size();
+  destination.bytes.insert(destination.bytes.end(),
+                           source.bytes.begin(),
+                           source.bytes.end());
+  for (auto& label : source.labels) {
+    label.offset_bytes += base_offset;
+    destination.labels.push_back(std::move(label));
+  }
+  for (auto& fixup : source.fixups) {
+    fixup.offset_bytes += base_offset;
+    destination.fixups.push_back(std::move(fixup));
+  }
+}
+
 constexpr bool fits_signed_12_bit_immediate(std::int64_t value) {
   return value >= -2048 && value <= 2047;
 }
@@ -119,6 +135,64 @@ struct PreparedObjectCompare {
   c4c::backend::bir::Value lhs;
   c4c::backend::bir::Value rhs;
 };
+
+std::string rv64_normalize_prepared_object_symbol(std::string symbol_name) {
+  if (!symbol_name.empty() && symbol_name.front() == '@') {
+    symbol_name.erase(symbol_name.begin());
+  }
+  return symbol_name;
+}
+
+std::optional<std::pair<std::string, RiscvObjectFixupTargetKind>>
+prepared_call_argument_object_symbol(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument) {
+  std::string symbol_name;
+  if (argument.source_symbol_name_id.has_value()) {
+    symbol_name =
+        std::string{prepare::prepared_link_name(prepared.names,
+                                                *argument.source_symbol_name_id)};
+  } else if (argument.source_symbol_name.has_value()) {
+    symbol_name = *argument.source_symbol_name;
+  }
+  if (symbol_name.empty()) {
+    return std::nullopt;
+  }
+
+  const std::string normalized = rv64_normalize_prepared_object_symbol(symbol_name);
+  for (const auto& constant : prepared.module.string_constants) {
+    std::string label = constant.name;
+    if (constant.name_id != c4c::kInvalidText) {
+      const std::string_view spelling =
+          prepared.module.names.texts.lookup(constant.name_id);
+      if (!spelling.empty()) {
+        label = std::string{spelling};
+      }
+    }
+    if (symbol_name == constant.name || symbol_name == label || normalized == label) {
+      return std::pair<std::string, RiscvObjectFixupTargetKind>{
+          label, RiscvObjectFixupTargetKind::Object};
+    }
+  }
+  for (const auto& global : prepared.module.globals) {
+    std::string label = global.name;
+    if (global.link_name_id != c4c::kInvalidLinkName) {
+      const std::string_view spelling =
+          prepared.module.names.link_names.spelling(global.link_name_id);
+      if (!spelling.empty()) {
+        label = std::string{spelling};
+      }
+    }
+    if (symbol_name == global.name || symbol_name == label || normalized == label) {
+      return std::pair<std::string, RiscvObjectFixupTargetKind>{
+          label, RiscvObjectFixupTargetKind::Object};
+    }
+  }
+
+  return std::pair<std::string, RiscvObjectFixupTargetKind>{
+      normalized.empty() ? std::move(symbol_name) : normalized,
+      RiscvObjectFixupTargetKind::Object};
+}
 
 struct RiscvPreparedObjectFunctionResult {
   std::optional<RiscvObjectFunction> function;
@@ -985,6 +1059,10 @@ bool prepared_pure_instruction_is_rematerialized_immediate(
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    std::string_view function_name,
+    std::size_t block_index,
+    std::size_t instruction_index,
     const c4c::backend::prepare::PreparedCallPlan* call_plan,
     const c4c::backend::prepare::PreparedInlineAsmCarrier* inline_asm_carrier,
     const c4c::backend::bir::CallInst& call) {
@@ -1056,6 +1134,29 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         return std::nullopt;
       }
       append_rv64_move(fragment, *destination, *source);
+      continue;
+    }
+    if (argument.source_encoding ==
+            prepare::PreparedStorageEncodingKind::SymbolAddress &&
+        (argument.source_symbol_name.has_value() ||
+         argument.source_symbol_name_id.has_value())) {
+      auto symbol = prepared_call_argument_object_symbol(prepared, argument);
+      if (!symbol.has_value()) {
+        return std::nullopt;
+      }
+      const std::string auipc_label = ".Lpcrel_call_arg_" +
+                                      std::string{function_name} + "_" +
+                                      std::to_string(block_index) + "_" +
+                                      std::to_string(instruction_index) + "_" +
+                                      std::to_string(arg_index);
+      append_rv64_fragment(
+          fragment,
+          make_rv64_pcrel_address_fragment(
+              *destination,
+              std::move(symbol->first),
+              auipc_label,
+              symbol->second,
+              argument.source_pointer_byte_delta.value_or(0)));
       continue;
     }
     return std::nullopt;
@@ -2644,7 +2745,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       instruction_index);
   const auto* inline_asm_carrier =
       find_prepared_inline_asm_carrier(inline_asm_carriers, block_index, instruction_index);
-  return fragment_for_prepared_call(call_plan, inline_asm_carrier, *call);
+  return fragment_for_prepared_call(prepared,
+                                    function_name,
+                                    block_index,
+                                    instruction_index,
+                                    call_plan,
+                                    inline_asm_carrier,
+                                    *call);
 }
 
 bool prepared_object_traversal_is_complete_bir_stream(

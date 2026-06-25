@@ -8,24 +8,31 @@ Current Step Title: Prove Representative String and Global Cases
 
 ## Just Finished
 
-Completed Plan Step 4: moved `src/20000227-1.c` past the residual 1-byte
-prepared global-memory width bucket. RV64 object emission now accepts prepared
-global-symbol scalar loads/stores of 1, 2, 4, and 8 bytes through a global-only
-width helper, leaving local 1/2-byte memory on its existing unsupported route.
-The implementation also emits prepared integer `zext`/`sext`/`trunc`/same-width
-`bitcast` fragments so the explicit prepared BIR `zext i8 ... to i32` in
-`20000227-1.c` supplies the unsigned value semantics instead of guessing from
-the global load itself.
+Completed Plan Step 4: moved `src/20000223-1.c` through RV64 object compile,
+link, and qemu execution by teaching prepared RV64 object call lowering to
+materialize prepared `SymbolAddress` call arguments with the same PC-relative
+data-symbol relocation path used by prepared string/global address
+materialization. The repair maps BIR-style prepared symbols such as `@.LC0` to
+the emitted object data label before attaching relocations, so string call
+arguments target the defined `.rodata` object symbol instead of an undefined
+BIR spelling. Added a focused `backend_riscv_object_emission` regression test
+for string symbol-address call arguments.
 
 ## Suggested Next
 
-Delegate the next Step 4/5 packet to classify or repair the remaining
-allowlisted representative failures from this proof: `src/20000112-1.c`,
-`src/20000223-1.c`, and `src/20000224-1.c`.
+Delegate Step 5 milestone validation or lifecycle review. The remaining
+allowlisted Step 4 representatives, `src/20000112-1.c` and
+`src/20000224-1.c`, now fail in `unsupported_terminator_fragment`, not in data
+section, data relocation, or global/string symbol emission.
 
 ## Watchouts
 
 - `src/20000227-1.c` is now green in the RV64 object backend allowlist scan.
+- `src/20000223-1.c` is now green in the RV64 object backend allowlist scan.
+- `src/20000112-1.c` and `src/20000224-1.c` are residual control-flow
+  terminator coverage, outside this data-route packet. Do not implement
+  general terminator/control-flow lowering under idea 357 Step 4 just to make
+  these representative cases pass.
 - The new width support is deliberately scoped to global memory helpers; local
   1/2-byte memory remains routed to idea 358.
 - Global byte/halfword loads currently encode signed `lb`/`lh`; wider unsigned
@@ -43,5 +50,6 @@ cmake --build --preset default && ctest --test-dir build --output-on-failure -R 
 
 The build passed and `backend_riscv_object_emission` passed. The delegated
 allowlisted torture scan wrote `test_after.log`; it reports
-`src/20000227-1.c` passing and the other three allowlisted representatives still
-failing, for total=4 passed=1 failed=3. Output is preserved in `test_after.log`.
+`src/20000223-1.c` and `src/20000227-1.c` passing, while `src/20000112-1.c`
+and `src/20000224-1.c` still fail with `unsupported_terminator_fragment`, for
+total=4 passed=2 failed=2. Output is preserved in `test_after.log`.
