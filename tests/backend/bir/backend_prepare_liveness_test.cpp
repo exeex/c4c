@@ -4237,6 +4237,7 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_group_allocation_modul
   function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm2, .name = "m2"});
   function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm4, .name = "m4"});
   function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm1, .name = "m1"});
+  function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm8, .name = "m8"});
   function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm2, .name = "rw"});
   function.params.push_back(bir::Param{.type = bir::TypeKind::Vrm4, .name = "tie"});
 
@@ -4245,12 +4246,16 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_group_allocation_modul
       .callee = "llvm.inline_asm",
       .args = {bir::Value::named(bir::TypeKind::Vrm2, "m2"),
                bir::Value::named(bir::TypeKind::Vrm4, "m4"),
-               bir::Value::named(bir::TypeKind::Vrm1, "m1")},
-      .arg_types = {bir::TypeKind::Vrm2, bir::TypeKind::Vrm4, bir::TypeKind::Vrm1},
+               bir::Value::named(bir::TypeKind::Vrm1, "m1"),
+               bir::Value::named(bir::TypeKind::Vrm8, "m8")},
+      .arg_types = {bir::TypeKind::Vrm2,
+                    bir::TypeKind::Vrm4,
+                    bir::TypeKind::Vrm1,
+                    bir::TypeKind::Vrm8},
       .return_type = bir::TypeKind::Void,
       .inline_asm = bir::InlineAsmMetadata{
-          .asm_text = "vgroup %0, %1, %2",
-          .constraints = "VRM2,VRM4,VR",
+          .asm_text = "vgroup %0, %1, %2, %3",
+          .constraints = "VRM2,VRM4,VR,VRM8",
           .side_effects = true,
           .operands = {
               inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterInput,
@@ -4277,6 +4282,14 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_vector_group_allocation_modul
                                           std::nullopt,
                                           bir::InlineAsmRegisterClass::Vector,
                                           1),
+              inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                          3,
+                                          "VRM8",
+                                          std::size_t{3},
+                                          std::nullopt,
+                                          std::nullopt,
+                                          bir::InlineAsmRegisterClass::Vector,
+                                          8),
           },
       },
   });
@@ -6968,10 +6981,13 @@ int check_vector_span_candidate_legality() {
       prepare::caller_saved_register_spans(profile, prepare::PreparedRegisterClass::Vector, 2);
   const auto m4_spans =
       prepare::caller_saved_register_spans(profile, prepare::PreparedRegisterClass::Vector, 4);
+  const auto m8_spans =
+      prepare::caller_saved_register_spans(profile, prepare::PreparedRegisterClass::Vector, 8);
   const auto callee_m2_spans =
       prepare::callee_saved_register_spans(profile, prepare::PreparedRegisterClass::Vector, 2);
 
-  if (m2_spans.size() < 2 || m4_spans.empty() || callee_m2_spans.empty()) {
+  if (m2_spans.size() < 2 || m4_spans.empty() || m8_spans.empty() ||
+      callee_m2_spans.empty()) {
     return fail("expected grouped vector candidate spans for caller/callee pools");
   }
   if (m2_spans[0].register_name != "v0" ||
@@ -6994,11 +7010,20 @@ int check_vector_span_candidate_legality() {
           std::vector<std::string>{"v0", "v1", "v2", "v3"}) {
     return fail("expected LMUL=4 vector candidates to occupy four contiguous units from the base");
   }
+  if (m8_spans[0].register_name != "v0" ||
+      m8_spans[0].occupied_register_names !=
+          std::vector<std::string>{"v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"} ||
+      m8_spans[1].register_name != "v8" ||
+      m8_spans[1].occupied_register_names !=
+          std::vector<std::string>{"v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"}) {
+    return fail("expected LMUL=8 vector candidates to use legal v8-aligned base groups");
+  }
   if (m2_spans.size() != 8 || m2_spans.back().register_name != "v14" ||
       m2_spans.back().occupied_register_names != std::vector<std::string>{"v14", "v15"} ||
       callee_m2_spans.size() != 8 || callee_m2_spans.back().register_name != "v30" ||
       callee_m2_spans.back().occupied_register_names != std::vector<std::string>{"v30", "v31"} ||
-      m4_spans.size() != 4 || m4_spans.back().register_name != "v12") {
+      m4_spans.size() != 4 || m4_spans.back().register_name != "v12" ||
+      m8_spans.size() != 2 || m8_spans.back().register_name != "v8") {
     return fail("expected disjoint RV64 caller/callee vector candidates to cover aligned bases through v31");
   }
   if (callee_m2_spans[0].register_name != "v16" ||
@@ -7129,21 +7154,24 @@ int check_rv64_inline_asm_vector_group_allocation(
   const auto* m2 = find_regalloc_value(prepared, *regalloc, "m2");
   const auto* m4 = find_regalloc_value(prepared, *regalloc, "m4");
   const auto* m1 = find_regalloc_value(prepared, *regalloc, "m1");
+  const auto* m8 = find_regalloc_value(prepared, *regalloc, "m8");
   const auto* rw = find_regalloc_value(prepared, *regalloc, "rw");
   const auto* tie = find_regalloc_value(prepared, *regalloc, "tie");
-  if (m2 == nullptr || m4 == nullptr || m1 == nullptr || rw == nullptr || tie == nullptr) {
+  if (m2 == nullptr || m4 == nullptr || m1 == nullptr || m8 == nullptr ||
+      rw == nullptr || tie == nullptr) {
     return fail("expected RV64 inline asm vector operands to appear in regalloc output");
   }
-  for (const auto* value : {m2, m4, m1, rw, tie}) {
+  for (const auto* value : {m2, m4, m1, m8, rw, tie}) {
     if (value->register_class != prepare::PreparedRegisterClass::Vector ||
         !value->assigned_register.has_value()) {
       return fail("expected RV64 inline asm vector operands to receive vector registers");
     }
   }
   if (m2->register_group_width != 2 || m4->register_group_width != 4 ||
-      m1->register_group_width != 1 || rw->register_group_width != 2 ||
+      m1->register_group_width != 1 || m8->register_group_width != 8 ||
+      rw->register_group_width != 2 ||
       tie->register_group_width != 4) {
-    return fail("expected RV64 inline asm VR/VRM2/VRM4 metadata to seed group widths");
+    return fail("expected RV64 inline asm VR/VRM2/VRM4/VRM8 metadata to seed group widths");
   }
 
   const auto caller_m2_spans = prepare::caller_saved_register_spans(
@@ -7152,6 +7180,8 @@ int check_rv64_inline_asm_vector_group_allocation(
       prepared.target_profile, prepare::PreparedRegisterClass::Vector, 4);
   const auto caller_m1_spans = prepare::caller_saved_register_spans(
       prepared.target_profile, prepare::PreparedRegisterClass::Vector, 1);
+  const auto caller_m8_spans = prepare::caller_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 8);
   auto any_m2_spans = caller_m2_spans;
   const auto callee_m2_spans = prepare::callee_saved_register_spans(
       prepared.target_profile, prepare::PreparedRegisterClass::Vector, 2);
@@ -7165,16 +7195,33 @@ int check_rv64_inline_asm_vector_group_allocation(
       m4->assigned_register->contiguous_width != 4 ||
       !contains_register_span(caller_m4_spans, m4->assigned_register->occupied_register_names) ||
       m1->assigned_register->contiguous_width != 1 ||
-      !contains_register_span(caller_m1_spans, m1->assigned_register->occupied_register_names)) {
+      !contains_register_span(caller_m1_spans, m1->assigned_register->occupied_register_names) ||
+      m8->assigned_register->contiguous_width != 8 ||
+      !contains_register_span(caller_m8_spans, m8->assigned_register->occupied_register_names)) {
     return fail("expected RV64 inline asm vector operands to use legal aligned caller spans");
   }
   if (spans_overlap(m2->assigned_register->occupied_register_names,
                     m4->assigned_register->occupied_register_names) ||
       spans_overlap(m2->assigned_register->occupied_register_names,
                     m1->assigned_register->occupied_register_names) ||
+      spans_overlap(m2->assigned_register->occupied_register_names,
+                    m8->assigned_register->occupied_register_names) ||
       spans_overlap(m4->assigned_register->occupied_register_names,
-                    m1->assigned_register->occupied_register_names)) {
+                    m1->assigned_register->occupied_register_names) ||
+      spans_overlap(m4->assigned_register->occupied_register_names,
+                    m8->assigned_register->occupied_register_names) ||
+      spans_overlap(m1->assigned_register->occupied_register_names,
+                    m8->assigned_register->occupied_register_names)) {
     return fail("expected untied RV64 inline asm vector operands to reserve full non-overlapping groups");
+  }
+  if (!m8->assigned_register->placement.has_value() ||
+      m8->assigned_register->placement->bank != prepare::PreparedRegisterBank::Vreg ||
+      m8->assigned_register->placement->pool != prepare::PreparedRegisterSlotPool::CallerSaved ||
+      m8->assigned_register->placement->slot_index % 8 != 0 ||
+      m8->assigned_register->placement->contiguous_width != 8 ||
+      m8->assigned_register->register_name !=
+          m8->assigned_register->occupied_register_names.front()) {
+    return fail("expected VRM8 allocation to expose aligned base placement and occupied group identity");
   }
   if (rw->assigned_register->contiguous_width != 2 ||
       !contains_register_span(any_m2_spans, rw->assigned_register->occupied_register_names) ||

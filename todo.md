@@ -1,33 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/348_vrm_regalloc_mir_and_rv64_assembler_bridge.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Frontier And Call-Boundary Baseline
+Current Step ID: 2
+Current Step Title: Final VRM Allocation And MIR Carrier
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: Frontier And Call-Boundary Baseline. Existing focused
-coverage proves HIR and LIR keep `__c4c_builtin_vrm1/2/4/8` as dedicated VRM
-carriers, BIR preserves a source-level VRM inline-asm operand as `c4c.vrm2`,
-prepared/regalloc metadata keeps vector carrier class/width facts visible, and
-non-expanded VRM call boundaries diagnose for direct argument, call result,
-function return, and function-pointer call cases. No expectations were
-downgraded and no implementation changes were needed.
+Completed Step 2: Final VRM Allocation And MIR Carrier. Regalloc now copies
+the chosen candidate span placement into assigned vector homes at allocation
+time, so MIR-facing homes expose base register, occupied group, contiguous
+width, and structured pool/slot identity without waiting for later recovery.
+Focused coverage now proves RV64 VR/VRM2/VRM4/VRM8 candidate legality,
+non-overlap across independent inline-asm vector groups, and an aligned VRM8
+base/group placement.
 
 ## Suggested Next
 
-Delegate Step 2: extend the existing prepared/regalloc frontier from observable
-VRM carrier metadata into final contiguous vector-register group allocation and
-MIR-consumable base/group identity.
+Delegate Step 3: define target-neutral structured grouped vector spill/reload
+pseudo records and tests without rendering target assembly at the prepared
+layer.
 
 ## Watchouts
 
 - Do not add any VRM function-call ABI behavior.
 - Do not downgrade supported-path expectations to unsupported.
-- Keep proof tied to source-level VRM carriers, not fixture-only prepared
-  modules.
+- The tied/register-matching reuse proof remains covered by existing RV64
+  vector inline-asm carrier tests; this packet strengthened final allocation
+  base/group identity and VRM8 alignment coverage.
 - The delegated owned path `tests/backend/bir/backend_prealloc_inline_asm_test.cpp`
   does not exist in this checkout; the `backend_prealloc_inline_asm` CTest entry
   currently reuses `backend_prepared_printer_test`.
@@ -35,6 +36,6 @@ MIR-consumable base/group identity.
 ## Proof
 
 Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_lir_function_signature_type_ref|backend_lir_to_bir_notes|backend_prepare_liveness|backend_prepared_printer|backend_prealloc_inline_asm|backend_riscv_object_emission)$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepared_printer|backend_prealloc_inline_asm)$'`
 
 Proof log: `test_after.log`.

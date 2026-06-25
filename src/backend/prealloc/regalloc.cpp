@@ -659,6 +659,7 @@ void BirPreAlloc::run_regalloc() {
               .register_name = chosen_register->register_name,
               .contiguous_width = chosen_register->contiguous_width,
               .occupied_register_names = chosen_register->occupied_register_names,
+              .placement = chosen_register->placement,
           };
           value.allocation_status = PreparedAllocationStatus::AssignedRegister;
           active_assignments.push_back(ActiveRegisterAssignment{
@@ -695,6 +696,7 @@ void BirPreAlloc::run_regalloc() {
             .register_name = replacement_register->register_name,
             .contiguous_width = replacement_register->contiguous_width,
             .occupied_register_names = replacement_register->occupied_register_names,
+            .placement = replacement_register->placement,
         };
         value.allocation_status = PreparedAllocationStatus::AssignedRegister;
 
