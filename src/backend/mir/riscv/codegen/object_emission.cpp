@@ -2908,6 +2908,18 @@ std::string rv64_prepared_object_global_label(
   return global.name;
 }
 
+std::string rv64_prepared_object_text_label(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::bir::StringConstant& constant) {
+  if (constant.name_id != c4c::kInvalidText) {
+    const std::string_view spelling = module.names.texts.lookup(constant.name_id);
+    if (!spelling.empty()) {
+      return std::string{spelling};
+    }
+  }
+  return constant.name;
+}
+
 void append_unsigned_le_bytes(std::vector<std::uint8_t>& bytes,
                               std::uint64_t value,
                               std::size_t size_bytes) {
@@ -2916,111 +2928,213 @@ void append_unsigned_le_bytes(std::vector<std::uint8_t>& bytes,
   }
 }
 
-std::optional<std::vector<std::uint8_t>> rv64_constant_scalar_global_bytes(
-    const c4c::backend::bir::Global& global) {
+std::optional<std::size_t> rv64_immediate_value_size_bytes(
+    c4c::backend::bir::TypeKind type) {
   namespace bir = c4c::backend::bir;
 
-  if (global.is_extern || global.is_thread_local || !global.is_constant ||
-      !global.initializer.has_value() ||
-      global.initializer->kind != bir::Value::Kind::Immediate ||
-      global.initializer_symbol_name.has_value() ||
-      global.initializer_symbol_name_id != c4c::kInvalidLinkName ||
-      !global.initializer_elements.empty()) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return 1;
+    case bir::TypeKind::I16:
+      return 2;
+    case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
+      return 4;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::F64:
+      return 8;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<std::vector<std::uint8_t>> rv64_immediate_value_bytes(
+    const c4c::backend::bir::Value& value) {
+  namespace bir = c4c::backend::bir;
+
+  if (value.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  const auto size_bytes = rv64_immediate_value_size_bytes(value.type);
+  if (!size_bytes.has_value()) {
     return std::nullopt;
   }
 
-  std::size_t expected_size = 0;
   std::uint64_t payload = 0;
-  switch (global.type) {
+  switch (value.type) {
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
-      expected_size = 1;
-      payload =
-          static_cast<std::uint64_t>(global.initializer->immediate) & 0xffu;
+      payload = static_cast<std::uint64_t>(value.immediate) & 0xffu;
       break;
     case bir::TypeKind::I16:
-      expected_size = 2;
-      payload =
-          static_cast<std::uint64_t>(global.initializer->immediate) & 0xffffu;
+      payload = static_cast<std::uint64_t>(value.immediate) & 0xffffu;
       break;
     case bir::TypeKind::I32:
-      expected_size = 4;
-      payload =
-          static_cast<std::uint64_t>(global.initializer->immediate) & 0xffffffffu;
+      payload = static_cast<std::uint64_t>(value.immediate) & 0xffffffffu;
       break;
     case bir::TypeKind::I64:
-      expected_size = 8;
-      payload = static_cast<std::uint64_t>(global.initializer->immediate);
+      payload = static_cast<std::uint64_t>(value.immediate);
       break;
     case bir::TypeKind::F32:
-      expected_size = 4;
-      payload = global.initializer->immediate_bits & 0xffffffffu;
+      payload = value.immediate_bits & 0xffffffffu;
       break;
     case bir::TypeKind::F64:
-      expected_size = 8;
-      payload = global.initializer->immediate_bits;
+      payload = value.immediate_bits;
       break;
     default:
       return std::nullopt;
   }
 
-  if (global.size_bytes != expected_size ||
-      global.align_bytes == 0 ||
-      global.align_bytes > expected_size ||
-      global.initializer->type != global.type) {
-    return std::nullopt;
-  }
-
   std::vector<std::uint8_t> bytes;
-  bytes.reserve(expected_size);
-  append_unsigned_le_bytes(bytes, payload, expected_size);
+  bytes.reserve(*size_bytes);
+  append_unsigned_le_bytes(bytes, payload, *size_bytes);
   return bytes;
 }
 
-bool append_rv64_prepared_constant_global_objects(
-    object::ObjectModule& object_module,
-    const c4c::backend::prepare::PreparedBirModule& prepared) {
-  if (prepared.module.globals.empty()) {
-    return true;
+std::optional<std::vector<std::uint8_t>> rv64_prepared_global_initializer_bytes(
+    const c4c::backend::bir::Global& global) {
+  if (global.is_extern || global.is_thread_local ||
+      global.initializer_symbol_name.has_value() ||
+      global.initializer_symbol_name_id != c4c::kInvalidLinkName) {
+    return std::nullopt;
   }
 
-  auto& rodata = object::get_or_create_section(object_module,
-                                               ".rodata",
-                                               object::SectionKind::Data,
-                                               1,
-                                               true,
-                                               false,
-                                               false);
-  bool wrote_global = false;
-  for (const auto& global : prepared.module.globals) {
-    const auto label = rv64_prepared_object_global_label(prepared.module, global);
-    const auto bytes = rv64_constant_scalar_global_bytes(global);
-    if (label.empty() || !bytes.has_value() ||
+  if (global.initializer.has_value() && global.initializer_elements.empty()) {
+    if (global.initializer->type != global.type) {
+      return std::nullopt;
+    }
+    auto bytes = rv64_immediate_value_bytes(*global.initializer);
+    if (!bytes.has_value() || bytes->size() != global.size_bytes) {
+      return std::nullopt;
+    }
+    return bytes;
+  }
+
+  if (!global.initializer_elements.empty() && !global.initializer.has_value()) {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(global.size_bytes);
+    for (const auto& element : global.initializer_elements) {
+      auto element_bytes = rv64_immediate_value_bytes(element);
+      if (!element_bytes.has_value()) {
+        return std::nullopt;
+      }
+      bytes.insert(bytes.end(), element_bytes->begin(), element_bytes->end());
+    }
+    if (bytes.size() != global.size_bytes) {
+      return std::nullopt;
+    }
+    return bytes;
+  }
+
+  return std::nullopt;
+}
+
+bool bytes_are_all_zero(const std::vector<std::uint8_t>& bytes) {
+  return std::all_of(bytes.begin(), bytes.end(), [](std::uint8_t byte) {
+    return byte == 0;
+  });
+}
+
+std::optional<std::string> append_rv64_prepared_data_objects(
+    object::ObjectModule& object_module,
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  for (const auto& constant : prepared.module.string_constants) {
+    const auto label = rv64_prepared_object_text_label(prepared.module, constant);
+    if (label.empty() || constant.align_bytes == 0 ||
         object::find_symbol(object_module, label) != nullptr) {
-      return false;
+      return "unsupported_global_data: RV64 object route cannot emit prepared string constant symbol";
     }
 
-    object::align_section(rodata, global.align_bytes, 0);
-    const auto offset = object::append_section_bytes(rodata, *bytes);
+    std::vector<std::uint8_t> bytes(constant.bytes.begin(),
+                                    constant.bytes.end());
+    if (bytes.empty() || bytes.back() != 0) {
+      bytes.push_back(0);
+    }
+
+    auto& rodata = object::get_or_create_section(object_module,
+                                                 ".rodata",
+                                                 object::SectionKind::Data,
+                                                 constant.align_bytes,
+                                                 true,
+                                                 false,
+                                                 false);
+    object::align_section(rodata, constant.align_bytes, 0);
+    const auto offset = object::append_section_bytes(rodata, bytes);
+    object::define_symbol(object_module,
+                          label,
+                          object::SymbolBinding::Local,
+                          object::SymbolKind::Object,
+                          rodata.id,
+                          offset,
+                          bytes.size());
+  }
+
+  for (const auto& global : prepared.module.globals) {
+    const auto label = rv64_prepared_object_global_label(prepared.module, global);
+    if (label.empty()) {
+      return "unsupported_global_data: RV64 object route cannot emit unnamed prepared global";
+    }
+
+    if (global.is_thread_local ||
+        global.address_materialization_policy ==
+            c4c::backend::bir::GlobalAddressMaterializationPolicy::GotRequired) {
+      return "unsupported_global_data: RV64 object route does not emit TLS or GOT-required global storage";
+    }
+
+    if (global.is_extern && !global.initializer.has_value() &&
+        !global.initializer_symbol_name.has_value() &&
+        global.initializer_symbol_name_id == c4c::kInvalidLinkName &&
+        global.initializer_elements.empty()) {
+      continue;
+    }
+
+    if (global.align_bytes == 0 ||
+        object::find_symbol(object_module, label) != nullptr) {
+      return "unsupported_global_data: RV64 object route cannot emit prepared global symbol";
+    }
+
+    const auto bytes = rv64_prepared_global_initializer_bytes(global);
+    if (!bytes.has_value()) {
+      return "unsupported_global_data: RV64 object route supports only immediate scalar and immediate linear global storage";
+    }
+
+    auto& section =
+        !global.is_constant && bytes_are_all_zero(*bytes)
+            ? object::get_or_create_section(object_module,
+                                            ".bss",
+                                            object::SectionKind::Bss,
+                                            global.align_bytes,
+                                            true,
+                                            false,
+                                            true)
+            : object::get_or_create_section(object_module,
+                                            global.is_constant ? ".rodata" : ".data",
+                                            object::SectionKind::Data,
+                                            global.align_bytes,
+                                            true,
+                                            false,
+                                            !global.is_constant);
+
+    object::align_section(section, global.align_bytes, 0);
+    const auto offset =
+        section.kind == object::SectionKind::Bss
+            ? object::reserve_section_bytes(section, bytes->size())
+            : object::append_section_bytes(section, *bytes);
     object::define_symbol(object_module,
                           label,
                           object::SymbolBinding::Global,
                           object::SymbolKind::Object,
-                          rodata.id,
+                          section.id,
                           offset,
                           bytes->size());
-    wrote_global = true;
   }
-  return wrote_global;
+  return std::nullopt;
 }
 
 RiscvPreparedObjectModuleResult
 build_rv64_prepared_text_object_module_with_diagnostics(
     const c4c::backend::prepare::PreparedBirModule& prepared) {
-  if (!prepared.module.string_constants.empty()) {
-    return make_rv64_prepared_module_rejection(
-        "module_string_constants: RV64 object route does not emit prepared string constants");
-  }
   std::vector<RiscvObjectFunction> functions;
   functions.reserve(prepared.control_flow.functions.size());
   for (const auto& control_flow : prepared.control_flow.functions) {
@@ -3066,9 +3180,8 @@ build_rv64_prepared_text_object_module_with_diagnostics(
     return make_rv64_prepared_module_rejection(
         "object_module_or_elf_build_failed: RV64 object module construction failed");
   }
-  if (!append_rv64_prepared_constant_global_objects(*module, prepared)) {
-    return make_rv64_prepared_module_rejection(
-        "unsupported_global_data: RV64 object route supports only constant scalar global objects");
+  if (auto diagnostic = append_rv64_prepared_data_objects(*module, prepared)) {
+    return make_rv64_prepared_module_rejection(std::move(*diagnostic));
   }
   return RiscvPreparedObjectModuleResult{
       .module = std::move(*module),

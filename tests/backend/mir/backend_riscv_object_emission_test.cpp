@@ -3510,7 +3510,7 @@ int rejects_prepared_inline_asm_insn_d_object() {
   return 0;
 }
 
-int rejects_prepared_string_constants_with_stable_bucket() {
+int emits_prepared_string_constant_object_storage() {
   auto prepared = make_prepared_direct_call_module();
   const auto text_name = prepared.module.names.texts.intern(".LC0");
   prepared.module.string_constants.push_back(bir::StringConstant{
@@ -3519,9 +3519,31 @@ int rejects_prepared_string_constants_with_stable_bucket() {
       .bytes = "hello",
       .align_bytes = 1,
   });
-  return expect_prepared_rejection_diagnostic(
-      prepared,
-      "module_string_constants: RV64 object route does not emit prepared string constants");
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit string constants");
+  }
+  const auto* rodata = object::find_section(*module, ".rodata");
+  if (rodata == nullptr || rodata->writable || rodata->executable ||
+      rodata->align_bytes != 1 ||
+      rodata->bytes !=
+          std::vector<std::uint8_t>{'h', 'e', 'l', 'l', 'o', 0}) {
+    return fail("expected prepared string bytes in read-only data");
+  }
+  const auto* symbol = object::find_symbol(*module, ".LC0");
+  if (symbol == nullptr ||
+      symbol->binding != object::SymbolBinding::Local ||
+      symbol->kind != object::SymbolKind::Object ||
+      symbol->section != std::optional<object::SectionId>{rodata->id} ||
+      symbol->value != 0 || symbol->size_bytes != 6) {
+    return fail("expected prepared string object symbol in rodata");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize prepared string object");
+  }
+  return 0;
 }
 
 int rejects_prepared_global_memory_instruction_with_stable_bucket() {
@@ -3538,16 +3560,133 @@ int rejects_prepared_i16_local_memory_with_stable_bucket() {
 
 int rejects_prepared_data_without_asm_fallback() {
   auto prepared = make_prepared_direct_call_module();
+  const auto target = prepared.module.names.link_names.intern("target");
   prepared.module.globals.push_back(bir::Global{
       .name = "g",
-      .type = bir::TypeKind::I32,
-      .size_bytes = 4,
-      .align_bytes = 4,
-      .initializer = bir::Value::immediate_i32(1),
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer = bir::Value::named_symbol_pointer("@target", target),
   });
   return expect_prepared_rejection_diagnostic(
       prepared,
-      "unsupported_global_data: RV64 object route supports only constant scalar global objects");
+      "unsupported_global_data: RV64 object route supports only immediate scalar and immediate linear global storage");
+}
+
+int emits_prepared_writable_i32_global_object_storage() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto link_name = prepared.module.names.link_names.intern("counter");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "counter",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(7),
+  });
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit writable I32 globals");
+  }
+  const auto* data = object::find_section(*module, ".data");
+  if (data == nullptr || !data->writable || data->executable ||
+      data->align_bytes != 4 ||
+      data->bytes != std::vector<std::uint8_t>{7, 0, 0, 0}) {
+    return fail("expected mutable I32 global bytes in writable data");
+  }
+  const auto* symbol = object::find_symbol(*module, "counter");
+  if (symbol == nullptr ||
+      symbol->binding != object::SymbolBinding::Global ||
+      symbol->kind != object::SymbolKind::Object ||
+      symbol->section != std::optional<object::SectionId>{data->id} ||
+      symbol->value != 0 || symbol->size_bytes != 4) {
+    return fail("expected mutable I32 global object symbol in data");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize mutable I32 global object");
+  }
+  return 0;
+}
+
+int emits_prepared_linear_i8_global_object_storage() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto link_name = prepared.module.names.link_names.intern("bytes");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "bytes",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::I8,
+      .is_constant = true,
+      .size_bytes = 3,
+      .align_bytes = 1,
+      .initializer_elements =
+          {
+              bir::Value::immediate_i8(1),
+              bir::Value::immediate_i8(2),
+              bir::Value::immediate_i8(3),
+          },
+  });
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit linear I8 globals");
+  }
+  const auto* rodata = object::find_section(*module, ".rodata");
+  if (rodata == nullptr || rodata->writable || rodata->executable ||
+      rodata->align_bytes != 1 ||
+      rodata->bytes != std::vector<std::uint8_t>{1, 2, 3}) {
+    return fail("expected constant I8 element bytes in read-only data");
+  }
+  const auto* symbol = object::find_symbol(*module, "bytes");
+  if (symbol == nullptr ||
+      symbol->binding != object::SymbolBinding::Global ||
+      symbol->kind != object::SymbolKind::Object ||
+      symbol->section != std::optional<object::SectionId>{rodata->id} ||
+      symbol->value != 0 || symbol->size_bytes != 3) {
+    return fail("expected linear I8 global object symbol in rodata");
+  }
+  return 0;
+}
+
+int emits_prepared_zero_global_bss_storage() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto link_name = prepared.module.names.link_names.intern("zeros");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "zeros",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .initializer_elements =
+          {
+              bir::Value::immediate_i32(0),
+              bir::Value::immediate_i32(0),
+          },
+  });
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit BSS globals");
+  }
+  const auto* bss = object::find_section(*module, ".bss");
+  if (bss == nullptr || !bss->writable || bss->executable ||
+      bss->align_bytes != 4 || !bss->bytes.empty() || bss->size_bytes != 8) {
+    return fail("expected zero global reservation in BSS");
+  }
+  const auto* symbol = object::find_symbol(*module, "zeros");
+  if (symbol == nullptr ||
+      symbol->binding != object::SymbolBinding::Global ||
+      symbol->kind != object::SymbolKind::Object ||
+      symbol->section != std::optional<object::SectionId>{bss->id} ||
+      symbol->value != 0 || symbol->size_bytes != 8) {
+    return fail("expected zero global object symbol in BSS");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize BSS global object");
+  }
+  return 0;
 }
 
 int emits_prepared_constant_f64_global_object_storage() {
@@ -3949,10 +4088,13 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_d_named_operand_shape();
   status |= rejects_prepared_inline_asm_insn_d_template_modifier_shape();
   status |= rejects_prepared_inline_asm_insn_d_object();
-  status |= rejects_prepared_string_constants_with_stable_bucket();
+  status |= emits_prepared_string_constant_object_storage();
   status |= rejects_prepared_global_memory_instruction_with_stable_bucket();
   status |= rejects_prepared_i16_local_memory_with_stable_bucket();
   status |= rejects_prepared_data_without_asm_fallback();
+  status |= emits_prepared_writable_i32_global_object_storage();
+  status |= emits_prepared_linear_i8_global_object_storage();
+  status |= emits_prepared_zero_global_bss_storage();
   status |= emits_prepared_constant_f64_global_object_storage();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
