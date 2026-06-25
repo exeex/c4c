@@ -1,9 +1,18 @@
 # RV64 Object Route Frame-Slot Value Call Arguments
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/open/368_rv64_object_route_frame_slot_base_offset_memory.md`
+
+## Completion Note
+
+Closed after the RV64 object route admitted scalar frame-slot-value call
+arguments from prepared frame-plan, value-home, frame-slot, and call-selection
+facts. Focused object-emission tests cover the supported scalar path and
+fail-closed neighbors, the focused backend proof stayed green at `3/3`, and
+`src/20000121-1.c` now passes the one-case RV64 gcc torture backend runner
+with `total=1 passed=1 failed=0`.
 
 ## Goal
 
