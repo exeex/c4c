@@ -1500,6 +1500,7 @@ prepare::PreparedBirModule make_prepared_before_return_fpr_abi_move_module(
                       prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
                   .destination_storage_kind =
                       prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"fa0"},
                   .destination_contiguous_width = 1,
                   .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
                   .destination_register_placement =
@@ -4986,6 +4987,17 @@ int rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes() {
   }
 
   prepared = make_prepared_before_return_fpr_f128_abi_move_module();
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_before_return_fpr_f32_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_register_placement = std::nullopt;
   if (expect_prepared_rejection_diagnostic(
           prepared,
           "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves") !=

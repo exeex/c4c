@@ -984,18 +984,22 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     std::optional<std::uint32_t> fpr_destination;
     if (move.destination_register_name.has_value()) {
       destination = rv64_register_number(*move.destination_register_name);
-    } else if (move.destination_kind ==
-               prepare::PreparedMoveDestinationKind::Value) {
+    }
+    if (!destination.has_value() &&
+        move.destination_kind ==
+            prepare::PreparedMoveDestinationKind::Value) {
       const auto* destination_home =
           prepared_value_home_for_id(lookups, move.to_value_id);
       if (destination_home != nullptr) {
         destination = gpr_register_number_for_home(*destination_home);
         fpr_destination = fpr_register_number_for_home(*destination_home);
       }
-    } else if (move.destination_register_placement.has_value() &&
-               move.destination_register_placement->bank ==
-                   prepare::PreparedRegisterBank::Fpr &&
-               move.destination_register_placement->contiguous_width == 1) {
+    }
+    if (!destination.has_value() && !fpr_destination.has_value() &&
+        move.destination_register_placement.has_value() &&
+        move.destination_register_placement->bank ==
+            prepare::PreparedRegisterBank::Fpr &&
+        move.destination_register_placement->contiguous_width == 1) {
       fpr_destination = fpr_register_number_for_abi_placement(
           target_profile, *move.destination_register_placement);
     }
