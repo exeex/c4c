@@ -3,9 +3,12 @@
 #endif
 
 #include <cctype>
+#include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -20,7 +23,15 @@ struct CliOptions {
 struct ParseResult {
   std::vector<std::string> globals;
   std::vector<std::string> labels;
-  std::vector<std::string> instruction_lines;
+#if C4C_ENABLE_BACKEND
+  struct Instruction {
+    int line_number = 0;
+    c4c::backend::riscv::codegen::Rv64AsmLine parsed;
+  };
+  std::vector<Instruction> instructions;
+#else
+  std::vector<std::string> instructions;
+#endif
 };
 
 void print_help(std::ostream& out) {
@@ -31,7 +42,8 @@ void print_help(std::ostream& out) {
       << "  --version        Print version information\n"
       << "  -o <path>        Output object path\n\n"
       << "Status:\n"
-      << "  parses the initial RV64 .text assembly subset; object emission is not implemented yet\n";
+      << "  assembles the initial RV64 .text instruction subset into text bytes;\n"
+      << "  relocatable object emission is not implemented yet\n";
 }
 
 std::string_view trim_ascii(std::string_view text) {
@@ -87,13 +99,20 @@ bool is_valid_symbol(std::string_view symbol) {
   return true;
 }
 
-bool validate_rv64_instruction(std::string_view line) {
 #if C4C_ENABLE_BACKEND
-  return c4c::backend::riscv::codegen::parse_rv64_asm_line(line).has_value();
-#else
-  (void)line;
-  return false;
+std::optional<c4c::backend::riscv::codegen::Rv64AsmLine> parse_rv64_instruction(
+    std::string_view line) {
+  return c4c::backend::riscv::codegen::parse_rv64_asm_line(line);
+}
 #endif
+
+std::string hex_bytes(const std::vector<std::uint8_t>& bytes) {
+  std::ostringstream out;
+  out << std::hex << std::setfill('0');
+  for (const auto byte : bytes) {
+    out << std::setw(2) << static_cast<unsigned int>(byte);
+  }
+  return out.str();
 }
 
 std::optional<CliOptions> parse_cli(int argc, char** argv) {
@@ -197,7 +216,13 @@ std::optional<ParseResult> parse_assembly_file(const std::string& path) {
       continue;
     }
 
-    if (!line.empty() && line.front() == '.' && !validate_rv64_instruction(line)) {
+#if C4C_ENABLE_BACKEND
+    auto parsed_instruction = parse_rv64_instruction(line);
+    const bool instruction_parsed = parsed_instruction.has_value();
+#else
+    const bool instruction_parsed = false;
+#endif
+    if (!line.empty() && line.front() == '.' && !instruction_parsed) {
       std::cerr << "c4c-as: error: " << path << ':' << line_number
                 << ": unsupported directive '" << line << "'\n";
       return std::nullopt;
@@ -208,7 +233,7 @@ std::optional<ParseResult> parse_assembly_file(const std::string& path) {
                 << ": instruction outside .text section\n";
       return std::nullopt;
     }
-    if (!validate_rv64_instruction(line)) {
+    if (!instruction_parsed) {
 #if C4C_ENABLE_BACKEND
       std::cerr << "c4c-as: error: " << path << ':' << line_number
                 << ": unsupported RV64 instruction '" << line << "'\n";
@@ -217,7 +242,11 @@ std::optional<ParseResult> parse_assembly_file(const std::string& path) {
 #endif
       return std::nullopt;
     }
-    result.instruction_lines.emplace_back(line);
+#if C4C_ENABLE_BACKEND
+    result.instructions.push_back(ParseResult::Instruction{line_number, *parsed_instruction});
+#else
+    result.instructions.emplace_back(line);
+#endif
   }
 
   if (!in_text) {
@@ -225,6 +254,29 @@ std::optional<ParseResult> parse_assembly_file(const std::string& path) {
     return std::nullopt;
   }
   return result;
+}
+
+std::optional<std::vector<std::uint8_t>> assemble_text_bytes(const ParseResult& parsed,
+                                                            const std::string& path) {
+  std::vector<std::uint8_t> bytes;
+#if C4C_ENABLE_BACKEND
+  for (const auto& instruction : parsed.instructions) {
+    const auto encoded =
+        c4c::backend::riscv::codegen::encode_rv64_asm_line(instruction.parsed);
+    if (!encoded.has_value()) {
+      std::cerr << "c4c-as: error: " << path << ':' << instruction.line_number
+                << ": failed to encode RV64 instruction\n";
+      return std::nullopt;
+    }
+    bytes.insert(bytes.end(), encoded->begin(), encoded->end());
+  }
+  return bytes;
+#else
+  (void)parsed;
+  (void)path;
+  std::cerr << "c4c-as: error: backend support is disabled; cannot encode RV64 instructions\n";
+  return std::nullopt;
+#endif
 }
 
 }  // namespace
@@ -257,9 +309,15 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::cout << "c4c-as: parsed " << parsed->instruction_lines.size()
-            << " instruction line(s) from " << options->input_path
-            << "; object emission is not implemented yet for " << options->output_path
-            << '\n';
+  const auto text_bytes = assemble_text_bytes(*parsed, options->input_path);
+  if (!text_bytes.has_value()) {
+    return 1;
+  }
+
+  std::cout << "c4c-as: assembled " << parsed->instructions.size()
+            << " instruction line(s) from " << options->input_path << " into "
+            << text_bytes->size() << " text byte(s): " << hex_bytes(*text_bytes)
+            << "; relocatable object emission is not implemented yet for "
+            << options->output_path << '\n';
   return 0;
 }

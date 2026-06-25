@@ -38,7 +38,7 @@ function(run_success_case name source_text expected_stdout)
   endif()
   if(EXISTS "${out_object}")
     message(FATAL_ERROR
-      "[C4C_AS_UNEXPECTED_OBJECT] parse-only Step 2 wrote '${out_object}'")
+      "[C4C_AS_UNEXPECTED_OBJECT] pre-object Step 3 wrote '${out_object}'")
   endif()
 endfunction()
 
@@ -76,7 +76,12 @@ endfunction()
 run_success_case(
   canonical
   ".text\n# canonical RV64 source accepted by c4c-as\n.globl main\nmain:\n  .insn.d 10, 11, v6, v0, v2, v4, 3 # custom instruction\n\n  li a0, 0\n  ret\n"
-  "parsed 3 instruction line(s)"
+  "assembled 3 instruction line(s)"
+)
+run_success_case(
+  canonical_text_bytes
+  ".text\n.globl main\nmain:\n  .insn.d 10, 11, v6, v0, v2, v4, 3\n  li a0, 0\n  ret\n"
+  "text byte(s): 0a0320080b0300001305000067800000"
 )
 run_failure_case(
   instruction_outside_text
