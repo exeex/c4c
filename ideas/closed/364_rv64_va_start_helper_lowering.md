@@ -1,6 +1,6 @@
 # RV64 `va_start` Helper Lowering
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/closed/362_rv64_scalar_vararg_and_variadic_lowering.md`
 
@@ -57,6 +57,21 @@ rename.
 - `src/920908-1.c` is rerun and its outcome is documented.
 - Existing focused backend coverage for RV64 object emission and prepared
   vararg facts remains green.
+
+## Closure Note
+
+Closed after Step 4 validation. RV64 object emission now has a focused
+prepared `va_start` materialization path when the overflow-area initial base
+state is explicit, and unsupported helper classes produce precise target
+diagnostics instead of the old generic unlowered-helper boundary.
+
+The representative `src/920908-1.c` was rerun and remains failing at:
+
+`unsupported_variadic_helper_lowering: RV64 va_start helper requires prepared overflow-area initial base state`
+
+That residual is outside this object-emission helper-lowering milestone and is
+tracked separately as prepared overflow-area base-state production/runtime
+variadic-entry state materialization work.
 
 ## Reviewer Reject Signals
 
