@@ -1,5 +1,14 @@
 # c-testsuite RV64 asm/objdump Roundtrip Scan Target
 
+## Closure
+
+Closed after adding the opt-in
+`rv64_c_testsuite_asm_roundtrip_scan` build target, direct CMake-script runner,
+explicit initial allowlist, unsupported-family note, and manual scan
+documentation. The accepted close proof used the opt-in scan target with both
+allowlisted cases passing and a CTest membership query confirming the scan is
+not registered as a default CTest test.
+
 ## Goal
 
 Add a large-scale, opt-in test target for the `c4c-as` and `c4c-objdump`
