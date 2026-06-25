@@ -1,0 +1,6 @@
+# Relative paths inside tests/c/external/c-testsuite.
+# Keep this initial scan allowlist explicit. Step 3 owns CMake target wiring.
+# Current explicit exclusion: cases whose generated RV64 assembly uses the
+# unsupported `mv` pseudo-instruction fail at `c4c-as-pass1`.
+src/00001.c
+src/00002.c
