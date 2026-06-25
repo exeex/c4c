@@ -4348,10 +4348,33 @@ int rejects_prepared_global_memory_without_prepared_access() {
       "unsupported_global_data: RV64 object route requires prepared direct global-symbol base-plus-offset memory addressing");
 }
 
-int rejects_prepared_i16_local_memory_with_stable_bucket() {
-  return expect_prepared_rejection_diagnostic(
-      make_prepared_i16_local_store_module(),
-      "unsupported_local_memory_access: RV64 object route supports only 32-bit and 64-bit prepared local memory accesses");
+int builds_prepared_i16_local_store_object() {
+  const auto prepared = make_prepared_i16_local_store_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared i16 local-store RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared i16 local-store object to publish text/main");
+  }
+  if (text->bytes.size() != 24 || text->size_bytes != 24 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 24) {
+    return fail("expected prepared i16 local-store object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00700313 ||
+      read_u32(text->bytes, 8) != 0x00611023 ||
+      read_u32(text->bytes, 12) != 0x00000513 ||
+      read_u32(text->bytes, 16) != 0x01010113 ||
+      read_u32(text->bytes, 20) != 0x00008067) {
+    return fail("expected stack-frame sh i16 local-store object sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected i16 local-store object to need no relocations");
+  }
+  return 0;
 }
 
 int rejects_prepared_data_without_asm_fallback() {
@@ -5172,7 +5195,7 @@ int main() {
   status |= rejects_prepared_inline_asm_insn_d_object();
   status |= emits_prepared_string_constant_object_storage();
   status |= rejects_prepared_global_memory_without_prepared_access();
-  status |= rejects_prepared_i16_local_memory_with_stable_bucket();
+  status |= builds_prepared_i16_local_store_object();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= emits_prepared_writable_i32_global_object_storage();
   status |= emits_prepared_linear_i8_global_object_storage();

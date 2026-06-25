@@ -580,6 +580,10 @@ std::optional<std::int32_t> prepared_stack_slot_home_offset_for_value(
 
 std::optional<std::uint32_t> rv64_load_store_funct3_for_size(std::size_t size_bytes) {
   switch (size_bytes) {
+    case 1:
+      return 0;
+    case 2:
+      return 1;
     case 4:
       return 2;
     case 8:
@@ -1552,6 +1556,10 @@ std::optional<std::int32_t> prepared_frame_slot_absolute_offset(
 std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type) {
   switch (type) {
+    case c4c::backend::bir::TypeKind::I8:
+      return std::size_t{1};
+    case c4c::backend::bir::TypeKind::I16:
+      return std::size_t{2};
     case c4c::backend::bir::TypeKind::I32:
       return std::size_t{4};
     case c4c::backend::bir::TypeKind::I64:
@@ -3040,7 +3048,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
           const prepare::PreparedMemoryAccess* access) -> std::optional<std::string> {
     if (!size_bytes.has_value()) {
       return std::string{
-          "unsupported_local_memory_access: RV64 object route supports only 32-bit and 64-bit prepared local memory accesses"};
+          "unsupported_local_memory_access: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared local memory accesses"};
     }
     if (access == nullptr || access->address_space != bir::AddressSpace::Default ||
         access->is_volatile ||
