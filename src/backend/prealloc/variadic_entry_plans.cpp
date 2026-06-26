@@ -901,8 +901,59 @@ make_rv64_aggregate_va_arg_access_plan(
     const PreparedVariadicEntryHelperOperandHomes& homes,
     const bir::Block& block,
     const bir::CallInst& call) {
-  return make_overflow_aggregate_va_arg_access_plan(
+  auto plan = make_overflow_aggregate_va_arg_access_plan(
       prepared, function_plan, homes, block, call);
+  if (!plan.has_value() ||
+      function_plan.rv64_incoming_variadic_gpr_publications.empty()) {
+    return plan;
+  }
+
+  if (!function_plan.overflow_area.base_slot_id.has_value() ||
+      !function_plan.overflow_area.base_stack_offset_bytes.has_value() ||
+      plan->source_field != PreparedVariadicVaListFieldKind::OverflowArgArea ||
+      plan->progression_field != PreparedVariadicVaListFieldKind::OverflowArgArea ||
+      !plan->source_payload_offset_bytes.has_value() ||
+      !plan->copy_size_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  constexpr std::size_t kRv64GprSaveAreaSlotBytes = 8;
+  constexpr std::size_t kRv64GprSaveAreaSlotAlign = 8;
+  const auto& publications = function_plan.rv64_incoming_variadic_gpr_publications;
+  const std::size_t slot_size = publications.front().size_bytes;
+  if (slot_size != kRv64GprSaveAreaSlotBytes ||
+      publications.front().align_bytes != kRv64GprSaveAreaSlotAlign ||
+      publications.front().destination_offset_bytes != 0 ||
+      publications.front().destination_stack_offset_bytes !=
+          *function_plan.overflow_area.base_stack_offset_bytes ||
+      publications.front().destination_slot_id !=
+          *function_plan.overflow_area.base_slot_id) {
+    return std::nullopt;
+  }
+
+  for (std::size_t index = 0; index < publications.size(); ++index) {
+    const auto& publication = publications[index];
+    const std::size_t expected_offset = index * slot_size;
+    if (publication.destination_slot_id != *function_plan.overflow_area.base_slot_id ||
+        publication.destination_offset_bytes != expected_offset ||
+        publication.destination_stack_offset_bytes !=
+            *function_plan.overflow_area.base_stack_offset_bytes + expected_offset ||
+        publication.size_bytes != slot_size ||
+        publication.align_bytes != kRv64GprSaveAreaSlotAlign) {
+      return std::nullopt;
+    }
+  }
+
+  if (*plan->source_payload_offset_bytes >= slot_size ||
+      *plan->copy_size_bytes > slot_size ||
+      *plan->source_payload_offset_bytes > slot_size - *plan->copy_size_bytes) {
+    return plan;
+  }
+
+  plan->source_slot_size_bytes = slot_size;
+  plan->progression_stride_bytes = slot_size;
+  plan->overflow_stride_bytes = slot_size;
+  return plan;
 }
 
 void require_variadic_helper_operand_home(

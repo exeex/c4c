@@ -7378,10 +7378,30 @@ int materializes_fact_complete_variadic_aggregate_va_arg_helper() {
 }
 
 int rejects_aggregate_va_arg_helper_without_access_plan_payload_write_address() {
-  return expect_prepared_rejection_diagnostic(
-      make_prepared_variadic_aggregate_va_arg_module(
-          false),
-      "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared va_arg_aggregate helper operand homes");
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_variadic_aggregate_va_arg_module(false),
+          "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared va_arg_aggregate helper operand homes") !=
+      0) {
+    return 1;
+  }
+
+  auto malformed_slot_stride =
+      make_prepared_variadic_aggregate_va_arg_module(true);
+  auto& malformed_plan =
+      *malformed_slot_stride.variadic_entry_plans.functions.front()
+           .helper_operand_homes.front()
+           .aggregate_access_plan;
+  malformed_plan.source_slot_size_bytes = std::size_t{4};
+  malformed_plan.progression_stride_bytes = std::size_t{8};
+  malformed_plan.overflow_stride_bytes = std::size_t{8};
+  if (expect_prepared_rejection_diagnostic(
+          malformed_slot_stride,
+          "unsupported_variadic_helper_lowering: RV64 va_arg_aggregate helper requires a supported overflow-area aggregate access plan") !=
+      0) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int builds_prepared_two_arg_scalar_call_object() {

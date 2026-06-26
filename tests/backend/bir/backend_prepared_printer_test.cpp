@@ -6804,9 +6804,9 @@ int main() {
       rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->payload_size_bytes != 4 ||
       rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->payload_align_bytes != 4 ||
       rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->source_slot_size_bytes !=
-          std::optional<std::size_t>{4} ||
+          std::optional<std::size_t>{8} ||
       rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->progression_stride_bytes !=
-          std::optional<std::size_t>{4} ||
+          std::optional<std::size_t>{8} ||
       rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->register_save_lane_count.has_value()) {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not materialize aggregate overflow va_arg plans\n";
     return EXIT_FAILURE;
@@ -6898,6 +6898,18 @@ int main() {
   if (!expect_contains(rv64_helper_family_dump,
                        "helper_operand kind=va_arg_aggregate block=0 inst=4",
                        "RV64 variadic HFA-shaped aggregate va_arg operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          rv64_helper_family_dump,
+          "aggregate_access_plan=source_class=overflow_arg_area:payload_size=4:payload_align=4",
+          "RV64 variadic 4-byte aggregate va_arg access plan")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          rv64_helper_family_dump,
+          "source_field=overflow_arg_area@0:source_payload_offset=0:source_slot=8:copy_size=4:copy_align=4:progression_field=overflow_arg_area@0:progression_stride=8",
+          "RV64 variadic 4-byte aggregate va_arg publication-backed slot stride")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,

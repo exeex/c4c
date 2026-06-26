@@ -548,14 +548,20 @@ rv64_variadic_va_arg_aggregate_materialization_diagnostic(
       plan.source_field_offset_bytes != overflow_field->offset_bytes ||
       plan.progression_field_offset_bytes != overflow_field->offset_bytes ||
       !plan.source_payload_offset_bytes.has_value() ||
+      !plan.source_slot_size_bytes.has_value() ||
       !plan.copy_size_bytes.has_value() ||
       !plan.copy_align_bytes.has_value() ||
       !plan.progression_stride_bytes.has_value() ||
       !plan.overflow_stride_bytes.has_value() ||
       plan.overflow_source_field_offset_bytes != overflow_field->offset_bytes ||
       *plan.progression_stride_bytes != *plan.overflow_stride_bytes ||
+      *plan.source_slot_size_bytes != *plan.progression_stride_bytes ||
       *plan.copy_size_bytes == 0 ||
       *plan.copy_size_bytes > plan.payload_size_bytes ||
+      *plan.copy_size_bytes > *plan.source_slot_size_bytes ||
+      *plan.source_payload_offset_bytes >= *plan.source_slot_size_bytes ||
+      *plan.source_payload_offset_bytes >
+          *plan.source_slot_size_bytes - *plan.copy_size_bytes ||
       *plan.copy_size_bytes > kMaxSupportedCopySize ||
       *plan.copy_align_bytes == 0 ||
       *plan.copy_align_bytes > 8 ||
