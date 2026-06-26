@@ -650,6 +650,16 @@ prepare::PreparedBirModule make_prepared_variadic_aggregate_va_arg_module(
   const auto entry_label = prepared.names.block_labels.intern("entry");
   const auto ap_name = prepared.names.value_names.intern("%ap");
   const auto aggregate_name = prepared.names.value_names.intern("%aggregate");
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = 5,
+      .object_id = 1,
+      .function_name = function_name,
+      .offset_bytes = 32,
+      .size_bytes = 9,
+      .align_bytes = 1,
+  });
+  prepared.stack_layout.frame_size_bytes = 48;
+  prepared.stack_layout.frame_alignment_bytes = 16;
 
   bir::CallInst va_arg;
   va_arg.callee = "llvm.va_arg.aggregate";
@@ -6091,11 +6101,40 @@ int materializes_fact_complete_variadic_va_start_with_overflow_base_state() {
   return 0;
 }
 
-int rejects_complete_current_aggregate_va_arg_helper_contract_without_lowering() {
-  return expect_prepared_rejection_diagnostic(
-      make_prepared_variadic_aggregate_va_arg_module(
-          true),
-      "unsupported_variadic_helper_lowering: RV64 object route does not yet lower va_arg_aggregate helper");
+int materializes_fact_complete_variadic_aggregate_va_arg_helper() {
+  const auto prepared =
+      make_prepared_variadic_aggregate_va_arg_module(true);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared aggregate va_arg RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "rv64_aggregate_va_arg");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared aggregate va_arg object to publish text/function");
+  }
+  if (text->bytes.size() != 44 || text->size_bytes != 44 ||
+      function->value != 0 || function->size_bytes != 44 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared aggregate va_arg object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xfd010113 ||
+      read_u32(text->bytes, 4) != 0x0004b303 ||
+      read_u32(text->bytes, 8) != 0x00033383 ||
+      read_u32(text->bytes, 12) != 0x02713023 ||
+      read_u32(text->bytes, 16) != 0x00830383 ||
+      read_u32(text->bytes, 20) != 0x02710423 ||
+      read_u32(text->bytes, 24) != 0x00930313 ||
+      read_u32(text->bytes, 28) != 0x0064b023 ||
+      read_u32(text->bytes, 32) != 0x00000513 ||
+      read_u32(text->bytes, 36) != 0x03010113 ||
+      read_u32(text->bytes, 40) != 0x00008067) {
+    return fail("expected aggregate va_arg to copy overflow payload and advance va_list");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected materialized aggregate va_arg helper to need no relocations");
+  }
+  return 0;
 }
 
 int rejects_aggregate_va_arg_helper_without_access_plan_payload_write_address() {
@@ -9435,7 +9474,7 @@ int main() {
   status |=
       materializes_fact_complete_variadic_va_start_with_overflow_base_state();
   status |=
-      rejects_complete_current_aggregate_va_arg_helper_contract_without_lowering();
+      materializes_fact_complete_variadic_aggregate_va_arg_helper();
   status |=
       rejects_aggregate_va_arg_helper_without_access_plan_payload_write_address();
   status |= builds_prepared_two_arg_scalar_call_object();

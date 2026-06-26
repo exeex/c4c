@@ -8,47 +8,41 @@ Current Step Title: Lower Supported Aggregate va_arg Helper Shape
 
 ## Just Finished
 
-Step 3 completed the contract-publication prerequisite for RV64 overflow-area
-aggregate `va_arg` lowering without implementing object-route aggregate helper
-lowering.
+Step 3 lowered the first supported RV64 object-route overflow-area aggregate
+`va_arg` helper shape by consuming the prepared `payload_write_address`
+directly.
 
-- Added structured `payload_write_address` data to
-  `PreparedVariadicAggregateVaArgAccessPlan`, carrying the destination pointer
-  result value plus exact prepared frame-slot address materialization block,
-  instruction, slot, and byte offset.
-- Populated the fact only from exact prepared address-materialization authority
-  for the aggregate destination pointer at the helper call site.
-- Printed the fact as `payload_write_address=%value/frame_slot:slot=#...` with
-  materialization block/instruction details.
-- Updated the focused RV64 dump contract to assert the distinct case where
-  `destination_payload=%t1/stack_slot` remains stack slot `#37` offset `48`
-  while `payload_write_address=%t1/frame_slot` is frame slot `#28` offset `35`.
-- Kept RV64 object aggregate `va_arg` lowering fail-closed when the structured
-  write-address fact is absent, while complete current aggregate helper facts
-  still reject as unsupported lowering rather than guessing.
+- Added fail-closed RV64 aggregate `va_arg` helper diagnostics for the supported
+  one-field overflow-area va_list shape, prepared GPR source va_list, prepared
+  scratch resources, supported copy size/alignment, and frame-slot
+  `payload_write_address` coverage.
+- Emitted object code that loads the current overflow pointer from the prepared
+  va_list field, copies the prepared byte range into the prepared frame-slot
+  payload address in 8/4/2/1-byte chunks, advances the overflow pointer by the
+  prepared stride, and stores it back to the overflow-area field.
+- Added focused RV64 object-emission coverage for a 9-byte aggregate payload
+  copy and kept the missing-`payload_write_address` diagnostic fail-closed.
+- Updated the representative RV64 aggregate-overflow helper object fixture to
+  record the new boundary after helper lowering:
+  `unsupported_param_home: RV64 object route requires all parameters in
+  supported GPR or prepared FPR register homes`.
 
 ## Suggested Next
 
-Proceed with the next supervisor-selected packet for RV64 object-route
-aggregate `va_arg` lowering by consuming `payload_write_address` directly from
-the prepared aggregate access plan.
+Proceed with the next supervisor-selected packet after the new boundary, likely
+RV64 object-route support for the prepared parameter home shape exposed by
+`riscv64_variadic_aggregate_overflow_helper_contract.c`.
 
 ## Watchouts
 
-- RV64 object emission still deliberately rejects complete aggregate
-  `va_arg_aggregate` helper plans with
-  `unsupported_variadic_helper_lowering: RV64 object route does not yet lower
-  va_arg_aggregate helper`.
-- Do not infer the payload write object from raw BIR names, address-selection
-  side channels, or joins between aggregate value names and addressing records.
-- `destination_payload_home` remains present for existing consumers, but the
-  concrete write-address fact for the next RV64 lowering packet is the
-  structured `payload_write_address`.
-- When exact prepared address materialization cannot be found, the RV64 planner
-  records `helper_operand_homes.va_arg_aggregate.payload_write_address` as the
-  missing fact and the RV64 object route rejects the helper as incomplete.
-- Existing root-level `test_before.log` and baseline logs were left in place;
-  this packet wrote the delegated proof output to `test_after.log`.
+- The supported helper shape is intentionally narrow: overflow_arg_area source
+  class, one-field 8-byte overflow va_list field, frame-slot
+  `payload_write_address`, prepared source va_list GPR, and small explicit copy
+  sizes encodable by the current load/store chunk loop.
+- The helper path still does not infer payload addresses from BIR names, call
+  argument side channels, testcase names, or `destination_payload_home`.
+- Broader end-to-end RV64 object acceptance for the representative C fixture is
+  still blocked by `unsupported_param_home`, not by aggregate helper lowering.
 
 ## Proof
 

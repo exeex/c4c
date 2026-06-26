@@ -7,6 +7,7 @@
 #include "rv64_line_assembler.hpp"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cctype>
 #include <cstdint>
@@ -348,12 +349,99 @@ std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(
   return std::nullopt;
 }
 
+std::optional<std::string>
+rv64_variadic_va_arg_aggregate_materialization_diagnostic(
+    const prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedVariadicEntryPlanFunction& entry_plan,
+    const prepare::PreparedVariadicEntryHelperOperandHomes& homes,
+    std::size_t stack_frame_bytes) {
+  constexpr std::size_t kMaxSupportedCopySize = 128;
+
+  const auto* overflow_field =
+      rv64_variadic_va_list_overflow_arg_area_field(entry_plan);
+  if (overflow_field == nullptr || overflow_field->size_bytes != 8 ||
+      overflow_field->offset_bytes >
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+      !fits_signed_12_bit_immediate(
+          static_cast<std::int64_t>(overflow_field->offset_bytes))) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_arg_aggregate helper requires a supported overflow-arg-area va_list field"};
+  }
+  if (!homes.source_va_list.has_value() ||
+      homes.source_va_list->kind != prepare::PreparedValueHomeKind::Register ||
+      !gpr_register_number_for_home(*homes.source_va_list).has_value()) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_arg_aggregate helper requires source va_list in a prepared GPR home"};
+  }
+  if (entry_plan.helper_resources.scratch_register_count < 2) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_arg_aggregate helper requires prepared scratch registers"};
+  }
+  if (!homes.aggregate_access_plan.has_value() ||
+      !homes.aggregate_access_plan->payload_write_address.has_value()) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared va_arg_aggregate helper operand homes"};
+  }
+
+  const auto& plan = *homes.aggregate_access_plan;
+  if (plan.source_class !=
+          prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea ||
+      plan.source_field != prepare::PreparedVariadicVaListFieldKind::OverflowArgArea ||
+      plan.progression_field !=
+          prepare::PreparedVariadicVaListFieldKind::OverflowArgArea ||
+      plan.source_field_offset_bytes != overflow_field->offset_bytes ||
+      plan.progression_field_offset_bytes != overflow_field->offset_bytes ||
+      !plan.source_payload_offset_bytes.has_value() ||
+      !plan.copy_size_bytes.has_value() ||
+      !plan.copy_align_bytes.has_value() ||
+      !plan.progression_stride_bytes.has_value() ||
+      !plan.overflow_stride_bytes.has_value() ||
+      plan.overflow_source_field_offset_bytes != overflow_field->offset_bytes ||
+      *plan.progression_stride_bytes != *plan.overflow_stride_bytes ||
+      *plan.copy_size_bytes == 0 ||
+      *plan.copy_size_bytes > plan.payload_size_bytes ||
+      *plan.copy_size_bytes > kMaxSupportedCopySize ||
+      *plan.copy_align_bytes == 0 ||
+      *plan.copy_align_bytes > 8 ||
+      !fits_signed_12_bit_immediate(
+          static_cast<std::int64_t>(*plan.progression_stride_bytes))) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_arg_aggregate helper requires a supported overflow-area aggregate access plan"};
+  }
+
+  const auto& write_address = *plan.payload_write_address;
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == write_address.frame_slot_id;
+                   });
+  if (slot_it == stack_layout.frame_slots.end() ||
+      write_address.stack_offset_bytes < slot_it->offset_bytes ||
+      write_address.stack_offset_bytes - slot_it->offset_bytes >
+          slot_it->size_bytes ||
+      slot_it->size_bytes -
+              (write_address.stack_offset_bytes - slot_it->offset_bytes) <
+          *plan.copy_size_bytes ||
+      write_address.stack_offset_bytes > stack_frame_bytes ||
+      stack_frame_bytes - write_address.stack_offset_bytes <
+          *plan.copy_size_bytes ||
+      !fits_signed_12_bit_immediate(
+          static_cast<std::int64_t>(write_address.stack_offset_bytes))) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_arg_aggregate helper requires payload_write_address in a supported frame slot"};
+  }
+
+  return std::nullopt;
+}
+
 std::optional<std::string> diagnose_unsupported_prepared_variadic_helper_fragment(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
     std::size_t block_index,
     std::size_t instruction_index,
-    const c4c::backend::bir::Inst& inst) {
+    const c4c::backend::bir::Inst& inst,
+    std::size_t stack_frame_bytes) {
   const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
   if (call == nullptr) {
     return std::nullopt;
@@ -399,13 +487,25 @@ std::optional<std::string> diagnose_unsupported_prepared_variadic_helper_fragmen
     }
     return std::nullopt;
   }
+  if (*helper == prepare::PreparedVariadicEntryHelperKind::VaArgAggregate) {
+    if (auto diagnostic =
+            rv64_variadic_va_arg_aggregate_materialization_diagnostic(
+                prepared.stack_layout,
+                *entry_plan,
+                *homes,
+                stack_frame_bytes)) {
+      return diagnostic;
+    }
+    return std::nullopt;
+  }
   return rv64_variadic_helper_unsupported_diagnostic(*helper);
 }
 
 std::optional<std::string> diagnose_first_unsupported_prepared_variadic_helper(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
-    const c4c::backend::bir::Function& function) {
+    const c4c::backend::bir::Function& function,
+    std::size_t stack_frame_bytes) {
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
     for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
@@ -416,7 +516,8 @@ std::optional<std::string> diagnose_first_unsupported_prepared_variadic_helper(
                   function_name,
                   block_index,
                   instruction_index,
-                  block.insts[instruction_index])) {
+                  block.insts[instruction_index],
+                  stack_frame_bytes)) {
         return diagnostic;
       }
     }
@@ -1059,6 +1160,130 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_start(
           fragment,
           scratch,
           *destination,
+          static_cast<std::int32_t>(overflow_field->offset_bytes),
+          overflow_field->size_bytes)) {
+    return std::nullopt;
+  }
+  return fragment;
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_variadic_va_arg_aggregate(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const c4c::backend::bir::CallInst& call,
+    std::size_t stack_frame_bytes) {
+  const auto helper = prepare::prepared_variadic_entry_helper_kind_for_call(call);
+  if (!helper.has_value() ||
+      *helper != prepare::PreparedVariadicEntryHelperKind::VaArgAggregate) {
+    return std::nullopt;
+  }
+  const auto* entry_plan =
+      prepare::find_prepared_variadic_entry_plan(prepared, function_name);
+  if (entry_plan == nullptr) {
+    return std::nullopt;
+  }
+  const auto* homes = prepare::find_prepared_variadic_entry_helper_operand_homes(
+      *entry_plan,
+      block_index,
+      instruction_index);
+  if (homes == nullptr || homes->helper != *helper ||
+      !prepare::has_complete_prepared_variadic_entry_helper_operand_homes(*homes) ||
+      rv64_variadic_va_arg_aggregate_materialization_diagnostic(
+          prepared.stack_layout,
+          *entry_plan,
+          *homes,
+          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+
+  const auto* overflow_field =
+      rv64_variadic_va_list_overflow_arg_area_field(*entry_plan);
+  const auto va_list_base = gpr_register_number_for_home(*homes->source_va_list);
+  if (overflow_field == nullptr || !va_list_base.has_value()) {
+    return std::nullopt;
+  }
+  const auto& plan = *homes->aggregate_access_plan;
+  const auto& write_address = *plan.payload_write_address;
+
+  constexpr std::array<std::uint32_t, 3> scratch_candidates = {6, 7, 28};
+  std::optional<std::uint32_t> overflow_pointer;
+  std::optional<std::uint32_t> copy_scratch;
+  for (const auto candidate : scratch_candidates) {
+    if (candidate == *va_list_base) {
+      continue;
+    }
+    if (!overflow_pointer.has_value()) {
+      overflow_pointer = candidate;
+      continue;
+    }
+    copy_scratch = candidate;
+    break;
+  }
+  if (!overflow_pointer.has_value() || !copy_scratch.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_load_base_to_register(
+          fragment,
+          *overflow_pointer,
+          *va_list_base,
+          static_cast<std::int32_t>(overflow_field->offset_bytes),
+          overflow_field->size_bytes)) {
+    return std::nullopt;
+  }
+
+  std::size_t byte_offset = 0;
+  while (byte_offset < *plan.copy_size_bytes) {
+    std::size_t width = 1;
+    const std::size_t remaining = *plan.copy_size_bytes - byte_offset;
+    const std::size_t source_offset =
+        *plan.source_payload_offset_bytes + byte_offset;
+    const std::size_t destination_offset =
+        write_address.stack_offset_bytes + byte_offset;
+    if (remaining >= 8 && source_offset % 8 == 0 &&
+        destination_offset % 8 == 0) {
+      width = 8;
+    } else if (remaining >= 4 && source_offset % 4 == 0 &&
+               destination_offset % 4 == 0) {
+      width = 4;
+    } else if (remaining >= 2 && source_offset % 2 == 0 &&
+               destination_offset % 2 == 0) {
+      width = 2;
+    }
+    if (source_offset >
+            static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+        destination_offset >
+            static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+        !append_rv64_load_base_to_register(fragment,
+                                           *copy_scratch,
+                                           *overflow_pointer,
+                                           static_cast<std::int32_t>(source_offset),
+                                           width) ||
+        !append_rv64_store_register_to_stack(
+            fragment,
+            *copy_scratch,
+            static_cast<std::int32_t>(destination_offset),
+            width)) {
+      return std::nullopt;
+    }
+    byte_offset += width;
+  }
+
+  append_le32(fragment.bytes,
+              encode_i_type(0x13,
+                            *overflow_pointer,
+                            0,
+                            *overflow_pointer,
+                            static_cast<std::int32_t>(
+                                *plan.progression_stride_bytes)));
+  if (!append_rv64_store_register_to_base(
+          fragment,
+          *overflow_pointer,
+          *va_list_base,
           static_cast<std::int32_t>(overflow_field->offset_bytes),
           overflow_field->size_bytes)) {
     return std::nullopt;
@@ -5115,6 +5340,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                   *call)) {
     return fragment;
   }
+  if (auto fragment =
+          fragment_for_prepared_variadic_va_arg_aggregate(prepared,
+                                                          control_flow.function_name,
+                                                          block_index,
+                                                          instruction_index,
+                                                          *call,
+                                                          stack_frame_bytes)) {
+    return fragment;
+  }
 
   const auto* call_plan = prepare::find_indexed_prepared_call_plan(
       &lookups.call_plans,
@@ -5284,12 +5518,6 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
             control_flow.function_name)) {
       return make_rv64_prepared_function_rejection(std::move(*diagnostic));
     }
-    if (auto diagnostic = diagnose_first_unsupported_prepared_variadic_helper(
-            prepared,
-            control_flow.function_name,
-            *function)) {
-      return make_rv64_prepared_function_rejection(std::move(*diagnostic));
-    }
   }
   if (!function->atomic_operations.empty()) {
     return make_rv64_prepared_function_rejection(
@@ -5317,6 +5545,15 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   if (!stack_frame_bytes.has_value()) {
     return make_rv64_prepared_function_rejection(
         "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame");
+  }
+  if (function->is_variadic) {
+    if (auto diagnostic = diagnose_first_unsupported_prepared_variadic_helper(
+            prepared,
+            control_flow.function_name,
+            *function,
+            *stack_frame_bytes)) {
+      return make_rv64_prepared_function_rejection(std::move(*diagnostic));
+    }
   }
 
   bool has_call = false;
@@ -5461,7 +5698,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                         control_flow.function_name,
                         event.block_index,
                         event.instruction_index,
-                        *event.instruction)) {
+                        *event.instruction,
+                        *stack_frame_bytes)) {
               return make_rv64_prepared_function_rejection(std::move(*diagnostic));
             }
             if (auto diagnostic =
@@ -5550,7 +5788,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                     control_flow.function_name,
                     block_index,
                     instruction_index,
-                    block.insts[instruction_index])) {
+                    block.insts[instruction_index],
+                    *stack_frame_bytes)) {
           return make_rv64_prepared_function_rejection(std::move(*diagnostic));
         }
         if (auto diagnostic =
