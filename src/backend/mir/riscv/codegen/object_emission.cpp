@@ -793,6 +793,12 @@ std::optional<std::uint32_t> gpr_register_number_for_prior_preserved_selection(
   return rv64_register_number(*selection.preserved_register_name);
 }
 
+std::optional<std::int32_t> stack_slot_offset_for_prior_preserved_gpr_selection(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection,
+    c4c::backend::bir::TypeKind argument_type,
+    std::size_t stack_frame_bytes);
+
 void append_rv64_move(RiscvEncodedFragment& fragment,
                       std::uint32_t destination,
                       std::uint32_t source);
@@ -2558,6 +2564,61 @@ std::optional<std::int32_t> prepared_frame_slot_call_argument_offset(
   return static_cast<std::int32_t>(offset);
 }
 
+std::optional<std::int32_t> stack_slot_offset_for_prior_preserved_gpr_selection(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection,
+    c4c::backend::bir::TypeKind argument_type,
+    std::size_t stack_frame_bytes) {
+  namespace prepare = c4c::backend::prepare;
+
+  const auto size_bytes = rv64_scalar_memory_size_for_type(argument_type);
+  if (selection.kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation ||
+      selection.preservation_route != prepare::PreparedCallPreservationRoute::StackSlot ||
+      selection.source_home_kind !=
+          std::optional<prepare::PreparedValueHomeKind>{
+              prepare::PreparedValueHomeKind::StackSlot} ||
+      (selection.preserved_register_bank.has_value() &&
+       *selection.preserved_register_bank != prepare::PreparedRegisterBank::None &&
+       *selection.preserved_register_bank != prepare::PreparedRegisterBank::Gpr) ||
+      !selection.source_slot_id.has_value() ||
+      !selection.source_stack_offset_bytes.has_value() ||
+      !selection.source_size_bytes.has_value() ||
+      !selection.preserved_stack_slot_id.has_value() ||
+      !selection.preserved_stack_offset_bytes.has_value() ||
+      !selection.preserved_stack_size_bytes.has_value() ||
+      !selection.preserved_stack_align_bytes.has_value() ||
+      !size_bytes.has_value() ||
+      *selection.source_slot_id != *selection.preserved_stack_slot_id ||
+      *selection.source_stack_offset_bytes !=
+          *selection.preserved_stack_offset_bytes ||
+      *selection.source_size_bytes != *size_bytes ||
+      *selection.preserved_stack_size_bytes != *size_bytes ||
+      *selection.preserved_stack_align_bytes > *size_bytes) {
+    return std::nullopt;
+  }
+
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *selection.preserved_stack_slot_id;
+                   });
+  if (slot_it == stack_layout.frame_slots.end() ||
+      slot_it->offset_bytes != *selection.preserved_stack_offset_bytes ||
+      slot_it->size_bytes < *size_bytes ||
+      slot_it->align_bytes > *size_bytes) {
+    return std::nullopt;
+  }
+
+  const std::size_t offset = *selection.preserved_stack_offset_bytes;
+  if (offset > stack_frame_bytes || stack_frame_bytes - offset < *size_bytes ||
+      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
+    return std::nullopt;
+  }
+  return static_cast<std::int32_t>(offset);
+}
+
 std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -3274,10 +3335,30 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         case prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation: {
           const auto source = gpr_register_number_for_prior_preserved_selection(
               *argument.source_selection);
-          if (!source.has_value()) {
+          if (source.has_value()) {
+            append_rv64_move(fragment, *destination, *source);
+            continue;
+          }
+          if (argument.value_bank != prepare::PreparedRegisterBank::Gpr ||
+              arg_index >= call.arg_types.size()) {
             return std::nullopt;
           }
-          append_rv64_move(fragment, *destination, *source);
+          const auto offset = stack_slot_offset_for_prior_preserved_gpr_selection(
+              stack_layout,
+              *argument.source_selection,
+              call.arg_types[arg_index],
+              stack_frame_bytes);
+          const auto size_bytes =
+              offset.has_value()
+                  ? rv64_scalar_memory_size_for_type(call.arg_types[arg_index])
+                  : std::optional<std::size_t>{};
+          if (!offset.has_value() || !size_bytes.has_value() ||
+              !append_rv64_load_stack_to_register(fragment,
+                                                 *destination,
+                                                 *offset,
+                                                 *size_bytes)) {
+            return std::nullopt;
+          }
           continue;
         }
         case prepare::PreparedCallArgumentSourceSelectionKind::
