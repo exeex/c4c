@@ -584,6 +584,27 @@ c4c_add_backend_codegen_object_test(
   LABELS riscv64 object variadic missing_contract cli
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_variadic_aggregate_overflow_helper_contract
+  SRC "${BACKEND_CASE_ROOT}/riscv64_variadic_aggregate_overflow_helper_contract.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "prepared.func @pick_second_byte named_params=1 named_gp=1 named_fp=0 helpers=2|overflow_area required=yes|va_list_layout required=yes size=8 align=8 fields=1|field kind=overflow_arg_area offset=0 size=8|helper_resources scratch_registers=3 scratch_stack=0 helpers=[va_start,va_arg_aggregate]|helper_operand kind=va_start block=0 inst=0|dst_va_list=%lv.ap:stack_slot|dst_va_list_addr=%lv.ap:register:reg=s1|helper_operand kind=va_arg_aggregate block=0 inst=1|src_va_list=%lv.ap:register:reg=s1|aggregate_access_plan=source_class=overflow_arg_area:payload_size=9:payload_align=1:destination_payload=%t0/register:source_field=overflow_arg_area@0:source_payload_offset=0:source_slot=9:copy_size=9:copy_align=1:progression_field=overflow_arg_area@0:progression_stride=9:overflow_source_field=overflow_arg_area@0:overflow_stride=9|helper_operand kind=va_arg_aggregate block=0 inst=20|aggregate_dst=%t1:stack_slot|aggregate_access_plan=source_class=overflow_arg_area:payload_size=9:payload_align=1:destination_payload=%t1/stack_slot:source_field=overflow_arg_area@0:source_payload_offset=0:source_slot=9:copy_size=9:copy_align=1:progression_field=overflow_arg_area@0:progression_stride=9:overflow_source_field=overflow_arg_area@0:overflow_stride=9"
+  FORBIDDEN_SNIPPETS "destination_payload_slot|destination_payload_object|payload_write_address"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 variadic aggregate va_arg prepared_printer helper_contract dump
+)
+
+c4c_add_backend_codegen_object_failure_test(
+  backend_cli_riscv64_variadic_aggregate_overflow_helper_contract_obj
+  SRC "${BACKEND_CASE_ROOT}/riscv64_variadic_aggregate_overflow_helper_contract.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_variadic_aggregate_overflow_helper_contract.o"
+  EXPECTED_DIAGNOSTICS "unsupported_variadic_helper_lowering: RV64 object route does not yet lower va_arg_aggregate helper"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object variadic aggregate va_arg helper_contract expected_failure cli
+)
+
 c4c_add_backend_codegen_object_failure_test(
   backend_cli_riscv64_requires_output_path_obj
   SRC "${BACKEND_CASE_ROOT}/aarch64_return_zero_smoke.c"

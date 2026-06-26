@@ -640,6 +640,122 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_variadic_aggregate_va_arg_module(
+    bool include_access_plan_destination_payload_home) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("rv64_aggregate_va_arg");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+  const auto ap_name = prepared.names.value_names.intern("%ap");
+  const auto aggregate_name = prepared.names.value_names.intern("%aggregate");
+
+  bir::CallInst va_arg;
+  va_arg.callee = "llvm.va_arg.aggregate";
+  va_arg.args = {bir::Value::named(bir::TypeKind::Ptr, "%aggregate"),
+                 bir::Value::named(bir::TypeKind::Ptr, "%ap")};
+  va_arg.arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr};
+  va_arg.return_type = bir::TypeKind::Void;
+  bir::Block entry{
+      .label = "entry",
+      .insts = {va_arg},
+      .terminator = bir::Terminator{},
+      .label_id = entry_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "rv64_aggregate_va_arg",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .is_variadic = true,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+
+  const prepare::PreparedValueHome ap_home{
+      .value_id = 1,
+      .function_name = function_name,
+      .value_name = ap_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"s1"},
+  };
+  const prepare::PreparedValueHome aggregate_payload_home{
+      .value_id = 2,
+      .function_name = function_name,
+      .value_name = aggregate_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = std::size_t{5},
+      .offset_bytes = std::size_t{32},
+  };
+  prepare::PreparedVariadicAggregateVaArgAccessPlan aggregate_access_plan{
+      .source_class = prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea,
+      .block_index = 0,
+      .instruction_index = 0,
+      .payload_size_bytes = 9,
+      .payload_align_bytes = 1,
+      .source_field = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .source_field_offset_bytes = std::size_t{0},
+      .source_payload_offset_bytes = std::size_t{0},
+      .source_slot_size_bytes = std::size_t{9},
+      .copy_size_bytes = std::size_t{9},
+      .copy_align_bytes = std::size_t{1},
+      .progression_field = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .progression_field_offset_bytes = std::size_t{0},
+      .progression_stride_bytes = std::size_t{9},
+      .overflow_source_field_offset_bytes = std::size_t{0},
+      .overflow_stride_bytes = std::size_t{9},
+  };
+  if (include_access_plan_destination_payload_home) {
+    aggregate_access_plan.destination_payload_home = aggregate_payload_home;
+  }
+  prepared.variadic_entry_plans.functions.push_back(
+      prepare::PreparedVariadicEntryPlanFunction{
+          .function_name = function_name,
+          .overflow_area =
+              prepare::PreparedVariadicEntryOverflowArea{
+                  .required = true,
+                  .base_slot_id = prepare::PreparedFrameSlotId{8},
+                  .base_stack_offset_bytes = std::size_t{64},
+                  .align_bytes = std::size_t{8},
+              },
+          .va_list_layout =
+              prepare::PreparedVariadicVaListLayout{
+                  .required = true,
+                  .size_bytes = std::size_t{8},
+                  .align_bytes = std::size_t{8},
+                  .fields = {prepare::PreparedVariadicVaListField{
+                      .kind = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+                      .offset_bytes = 0,
+                      .size_bytes = 8,
+                  }},
+              },
+          .helper_resources =
+              prepare::PreparedVariadicEntryHelperResources{
+                  .required_helpers = {prepare::PreparedVariadicEntryHelperKind::VaArgAggregate},
+                  .scratch_register_count = std::size_t{3},
+                  .scratch_stack_bytes = std::size_t{0},
+              },
+          .helper_operand_homes =
+              {prepare::PreparedVariadicEntryHelperOperandHomes{
+                  .helper = prepare::PreparedVariadicEntryHelperKind::VaArgAggregate,
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .source_va_list = ap_home,
+                  .aggregate_destination_payload = aggregate_payload_home,
+                  .aggregate_access_plan = aggregate_access_plan,
+              }},
+      });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_symbol_address_module(
     prepare::PreparedAddressMaterializationKind kind,
     std::string symbol_name) {
@@ -5967,6 +6083,20 @@ int materializes_fact_complete_variadic_va_start_with_overflow_base_state() {
   return 0;
 }
 
+int rejects_complete_current_aggregate_va_arg_helper_contract_without_lowering() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_variadic_aggregate_va_arg_module(
+          true),
+      "unsupported_variadic_helper_lowering: RV64 object route does not yet lower va_arg_aggregate helper");
+}
+
+int rejects_aggregate_va_arg_helper_without_access_plan_destination_payload_home() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_variadic_aggregate_va_arg_module(
+          false),
+      "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared va_arg_aggregate helper operand homes");
+}
+
 int builds_prepared_two_arg_scalar_call_object() {
   const auto prepared = make_prepared_two_arg_scalar_call_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -9296,6 +9426,10 @@ int main() {
   status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
   status |=
       materializes_fact_complete_variadic_va_start_with_overflow_base_state();
+  status |=
+      rejects_complete_current_aggregate_va_arg_helper_contract_without_lowering();
+  status |=
+      rejects_aggregate_va_arg_helper_without_access_plan_destination_payload_home();
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= builds_prepared_prior_preserved_arg_call_object();
   status |= rejects_prepared_prior_preserved_arg_call_fail_closed_shapes();
