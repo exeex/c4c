@@ -3143,6 +3143,17 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .address_materialization_policy =
           bir::GlobalAddressMaterializationPolicy::GotRequired,
   });
+  const c4c::LinkNameId aggregate_global_id =
+      module.names.link_names.intern("g.aggregate.contract");
+  module.globals.push_back(bir::Global{
+      .name = "g.aggregate.contract",
+      .link_name_id = aggregate_global_id,
+      .type = bir::TypeKind::Void,
+      .size_bytes = 96,
+      .align_bytes = 16,
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::Direct,
+  });
   const c4c::LinkNameId tls_global_id = module.names.link_names.intern("g.tls");
   module.globals.push_back(bir::Global{
       .name = "g.tls",
@@ -3260,6 +3271,31 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .opcode = bir::CastOpcode::Bitcast,
       .result = bir::Value::named(bir::TypeKind::Ptr, "@g.raw.materialization"),
       .operand = bir::Value::named(bir::TypeKind::Ptr, "unused.raw.materialization.source"),
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "local.global.lane.loaded"),
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .base_name = "g.aggregate.contract",
+              .byte_offset = 24,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .base_link_name_id = aggregate_global_id,
+          },
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "local.global.raw.loaded"),
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .base_name = "g.aggregate.contract",
+              .byte_offset = 28,
+              .size_bytes = 4,
+              .align_bytes = 4,
+          },
   });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
@@ -4936,7 +4972,7 @@ int check_link_name_authoritative_global_access_activation(
     return fail("expected link-name authoritative global fixture to publish addressing");
   }
   const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
-  if (function_addressing->accesses.size() != 4) {
+  if (function_addressing->accesses.size() != 5) {
     return fail("expected raw structured-global fallbacks to fail closed while compatibility remains");
   }
 
@@ -5134,6 +5170,56 @@ int check_link_name_authoritative_global_access_activation(
                                                      entry_block_label_id,
                                                      12) != nullptr) {
     return fail("expected raw @name pointer value without LinkNameId to stay out of global materialization");
+  }
+
+  const auto* local_global_lane_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 13);
+  if (local_global_lane_access == nullptr) {
+    return fail("expected LoadLocalInst global lane with LinkNameId to publish prepared access");
+  }
+  const auto& local_global_lane_address = local_global_lane_access->address;
+  const auto& local_global_lane_provenance = local_global_lane_address.provenance;
+  if (!local_global_lane_access->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names,
+                                   *local_global_lane_access->result_value_name) !=
+          "local.global.lane.loaded" ||
+      local_global_lane_access->stored_value_name.has_value() ||
+      local_global_lane_access->address_space != bir::AddressSpace::Default ||
+      local_global_lane_access->is_volatile ||
+      local_global_lane_address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !local_global_lane_address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *local_global_lane_address.symbol_name) !=
+          "g.aggregate.contract" ||
+      local_global_lane_address.global_address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::Direct ||
+      local_global_lane_address.byte_offset != 24 ||
+      local_global_lane_address.size_bytes != 4 ||
+      local_global_lane_address.align_bytes != 4 ||
+      !local_global_lane_address.can_use_base_plus_offset ||
+      local_global_lane_provenance.base_identity.kind !=
+          bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol ||
+      local_global_lane_provenance.base_identity.spelling != "g.aggregate.contract" ||
+      local_global_lane_provenance.base_identity.link_name_id == c4c::kInvalidLinkName ||
+      prepared.module.names.link_names.spelling(
+          local_global_lane_provenance.base_identity.link_name_id) !=
+          "g.aggregate.contract" ||
+      local_global_lane_provenance.object_extent.completeness !=
+          bir::MemoryObjectExtentCompleteness::Complete ||
+      local_global_lane_provenance.object_extent.size_bytes != 96 ||
+      !local_global_lane_provenance.object_extent.size_known ||
+      local_global_lane_provenance.requested_range.begin != 24 ||
+      local_global_lane_provenance.requested_range.size_bytes != 4 ||
+      local_global_lane_provenance.requested_range.end != 28 ||
+      !local_global_lane_provenance.requested_range.available ||
+      !local_global_lane_provenance.requested_range.end_available ||
+      local_global_lane_provenance.requested_range.overflowed ||
+      local_global_lane_provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
+    return fail("expected LoadLocalInst global lane to preserve semantic prepared contract facts");
+  }
+
+  if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 14) !=
+      nullptr) {
+    return fail("expected LoadLocalInst structured global spelling without LinkNameId to fail closed");
   }
 
   return 0;
