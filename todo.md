@@ -8,21 +8,30 @@ Current Step Title: Trace Representative Prepared Publications
 
 ## Just Finished
 
-Lifecycle review after the prior Step 5 found that idea 392 is not complete.
-The representative `va-arg-13.c` still aborts with the same value-publication
-boundary: the first and second `dummy` call argument objects are overwritten
-with the local `va_list` storage address (`s1 == sp+0x80`) instead of the
-initialized save-area pointer payload. The active runbook has been replaced
-with a continuation focused on why the explicit prepared
-`call_argument_value_publications` route is not owning the representative.
+Continuation Step 1 traced the representative prepared publications for
+`va-arg-13.c` and compared them with the focused Step 4 fixture. Both `dummy`
+calls have explicit prepared `call_argument_value_publications` facts:
+
+- call inst 9 arg0: argument `%t7` value id 15, object slot #6 offset 24,
+  source store inst 8, payload `%t7.memcpy.copy.0` value id 14, destination
+  slot #6 offset 24.
+- call inst 16 arg0: argument `%t14` value id 19, object slot #7 offset 32,
+  source store inst 15, payload `%t14.memcpy.copy.0` value id 18, destination
+  slot #7 offset 32.
+
+The facts are not absent, and their callsite/object identities match the
+frame-slot-address call-plan rows. The boundary class is `wrong effective
+payload`: each explicit payload is a `load_local` result from `%lv.state.8`,
+and the matching store-source rows print `source_load_local=yes`. The focused
+Step 4 fixture used direct register payload `%lv.src` without the representative
+load-local payload shape, so it did not prove this case.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: inspect the representative prepared output and
-classify whether the explicit call-argument value-publication facts are absent,
-mismatched, carrying the wrong effective payload, or present but skipped by
-backend object emission. Compare directly against the focused Step 4 backend
-fixture that passed.
+Execute Step 2 by classifying the load-local payload materialization rule for
+explicit call-argument value-publication facts. The next owner should preserve
+the payload value `%t7.memcpy.copy.0` / `%t14.memcpy.copy.0` rather than
+reinterpreting it as the local `va_list` storage address `%lv.state.8`.
 
 ## Watchouts
 
@@ -36,9 +45,15 @@ fixture that passed.
   records to agree.
 - Keep the argument object address, the local `va_list` storage address, and
   the initialized save-area pointer payload separate in all notes and proof.
+- The representative facts are valid enough to identify the callsite/object,
+  so do not route this as an absent-fact or mismatched-fact problem. The live
+  question is how an explicit load-local payload should be materialized without
+  collapsing back to the source storage address.
 
 ## Proof
 
-Lifecycle-only rewrite. No build or runtime proof was run by the plan owner.
-Relevant existing evidence remains in `test_after.log` and
-`build/agent_state/392_step5_va-arg-13.*.log`.
+Delegated proof run:
+`cmake --build --preset default --target c4cll && mkdir -p build/agent_state && build/c4cll --target riscv64-linux-gnu --dump-prepared-bir tests/c/external/gcc_torture/src/va-arg-13.c > build/agent_state/392_cont_step1_va-arg-13.prepared.log 2>&1`.
+
+Result: passed; prepared dump captured. Analysis log:
+`build/agent_state/392_cont_step1_va-arg-13.analysis.log`.
