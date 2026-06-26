@@ -1113,6 +1113,9 @@ class BirFunctionLowerer {
       const bir::Value& value,
       const LocalSlotTypes& local_slot_types,
       std::vector<bir::Inst>* lowered_insts);
+  bool maybe_publish_local_byte_storage_covering_extent(
+      const LocalSlotAddress& local_slot_ptr,
+      std::size_t access_size);
   bool try_lower_local_slot_pointer_load(
       std::string_view result_name,
       const LocalSlotAddress& local_slot_ptr,

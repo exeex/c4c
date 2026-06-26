@@ -1176,7 +1176,7 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_aggregate_local_anonymous_union_fields.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.store_local %lv.value.0, i32 1|bir.store_local %lv.value.4, i32 2, addr %lv.value.4|bir.store_local %lv.value.8, i32 3, addr %lv.value.8|bir.store_local %lv.value.12, i32 4|bir.load_local i32 %t13.addr, addr %lv.value.4|bir.load_local i32 %t18.addr, addr %lv.value.4|bir.load_local i32 %t25.addr, addr %lv.value.8|range_verdict=proven_out_of_bounds"
+  REQUIRED_SNIPPETS "bir.store_local %lv.value.0, i32 1|bir.store_local %lv.value.4, i32 2, addr %lv.value.4|bir.store_local %lv.value.8, i32 3, addr %lv.value.8|bir.store_local %lv.value.12, i32 4|bir.load_local i32 %t13.addr, addr %lv.value.4|bir.load_local i32 %t18.addr, addr %lv.value.4|bir.load_local i32 %t25.addr, addr %lv.value.8|range_verdict=proven_in_bounds"
   FORBIDDEN_SNIPPETS "define i32 @main()|src/00046.c"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 aggregate local aggregate_subobject anonymous_union dump

@@ -297,6 +297,10 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
     case AggregateTypeLayout::Kind::Scalar: {
       const std::string slot_name =
           std::string(slot_prefix) + "." + std::to_string(byte_offset);
+      const auto scalar_size = type_size_bytes(layout.scalar_type);
+      if (scalar_size == 0) {
+        return false;
+      }
       local_slot_types_.emplace(slot_name, layout.scalar_type);
       local_pointer_slots_.emplace(slot_name, slot_name);
       local_aggregate_field_slots_.insert(slot_name);
@@ -304,6 +308,7 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
       lowered_function_.local_slots.push_back(bir::LocalSlot{
           .name = slot_name,
           .type = layout.scalar_type,
+          .size_bytes = scalar_size,
           .align_bytes = align_bytes > 0 ? align_bytes : layout.align_bytes,
       });
       return true;

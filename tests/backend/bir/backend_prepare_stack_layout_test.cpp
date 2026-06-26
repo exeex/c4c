@@ -965,6 +965,116 @@ std::optional<prepare::PreparedBirModule> prepare_lir_i16_local_writeback_module
   return std::move(planner.prepared());
 }
 
+std::optional<prepare::PreparedBirModule> prepare_lir_byte_storage_overlay_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  module.type_decls.push_back("%struct.uf = type [4 x i8]");
+
+  lir::LirFunction function;
+  function.name = "stack_layout_byte_storage_overlay_activation";
+  function.signature_text = "define void @stack_layout_byte_storage_overlay_activation(i32 %p.v)";
+  function.params.emplace_back("%p.v", c4c::TypeSpec{.base = c4c::TB_INT});
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.u"),
+      .type_str = lir::LirTypeRef("%struct.uf"),
+      .count = lir::LirOperand(""),
+      .align = 4,
+  });
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%lv.u.0"),
+      .element_type = lir::LirTypeRef("%struct.uf"),
+      .ptr = lir::LirOperand("%lv.u"),
+      .inbounds = true,
+      .indices = {"i64 0", "i64 0"},
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = lir::LirTypeRef("i32"),
+      .val = lir::LirOperand("%p.v"),
+      .ptr = lir::LirOperand("%lv.u.0"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%loaded.f"),
+      .type_str = lir::LirTypeRef("float"),
+      .ptr = lir::LirOperand("%lv.u.0"),
+  });
+  entry.terminator = lir::LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto lowered = c4c::backend::try_lower_to_bir(module);
+  if (!lowered.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(*lowered);
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
+int check_byte_storage_overlay_local_slot_activation(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* object = find_stack_object(prepared, "%lv.u.0");
+  if (object == nullptr || object->type != bir::TypeKind::I8 ||
+      object->size_bytes != 4 || object->align_bytes != 4 ||
+      !object->address_exposed || !object->requires_home_slot) {
+    return fail("byte-storage overlay base stack object should publish a covering i8 extent");
+  }
+
+  const auto* base_slot = find_frame_slot(prepared, object->object_id);
+  if (base_slot == nullptr || base_slot->size_bytes != 4 ||
+      base_slot->align_bytes != 4 || !base_slot->fixed_location) {
+    return fail("byte-storage overlay base frame slot should cover the aggregate storage");
+  }
+
+  const auto* byte_object = find_stack_object(prepared, "%lv.u.1");
+  if (byte_object == nullptr || byte_object->size_bytes != 1) {
+    return fail("byte-storage overlay sibling byte leaves should remain byte-sized");
+  }
+
+  const auto function_name_id =
+      find_function_name_id(prepared, "stack_layout_byte_storage_overlay_activation");
+  const auto entry_block_label_id = find_block_label_id(prepared, "entry");
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, function_name_id);
+  if (function_addressing == nullptr) {
+    return fail("byte-storage overlay function should publish prepared addressing facts");
+  }
+
+  const auto* store_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 0);
+  const auto* load_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 1);
+  if (store_access == nullptr || load_access == nullptr) {
+    return fail("byte-storage overlay store/load should publish prepared memory accesses");
+  }
+  for (const auto* access : {store_access, load_access}) {
+    if (access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+        !access->address.frame_slot_id.has_value() ||
+        *access->address.frame_slot_id != base_slot->slot_id ||
+        access->address.byte_offset != 0 ||
+        access->address.size_bytes != 4 ||
+        access->address.provenance.range_verdict !=
+            bir::MemoryRangeVerdict::ProvenInBounds) {
+      return fail("byte-storage overlay prepared access should select the covering frame slot");
+    }
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepare_sliced_i16_local_address_module() {
   bir::Module module;
 
@@ -5723,6 +5833,15 @@ int main() {
     return fail("expected LIR-origin i16 local fixture to lower to BIR");
   }
   if (const int rc = check_lir_i16_local_writeback_sizing(*lir_i16_local_prepared);
+      rc != 0) {
+    return rc;
+  }
+  auto byte_storage_overlay_prepared = prepare_lir_byte_storage_overlay_module();
+  if (!byte_storage_overlay_prepared.has_value()) {
+    return fail("expected LIR-origin byte-storage overlay fixture to lower to BIR");
+  }
+  if (const int rc =
+          check_byte_storage_overlay_local_slot_activation(*byte_storage_overlay_prepared);
       rc != 0) {
     return rc;
   }

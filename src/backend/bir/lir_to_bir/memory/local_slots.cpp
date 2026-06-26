@@ -121,6 +121,21 @@ std::optional<HomogeneousFpAggregateFacts> homogeneous_fp_aggregate_facts(
   return facts;
 }
 
+bool is_byte_storage_layout(const BirFunctionLowerer::AggregateTypeLayout& layout,
+                            const BirFunctionLowerer::TypeDeclMap& type_decls,
+                            const BackendStructuredLayoutTable* structured_layouts) {
+  if (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array ||
+      layout.size_bytes == 0) {
+    return false;
+  }
+  const auto element_layout =
+      lookup_scalar_byte_offset_layout(layout.element_type_text, type_decls, structured_layouts);
+  if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Scalar) {
+    return element_layout.scalar_type == bir::TypeKind::I8;
+  }
+  return is_byte_storage_layout(element_layout, type_decls, structured_layouts);
+}
+
 [[nodiscard]] bool is_aarch64_va_list_vr_top_address(
     const LocalSlotAddress& address,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
@@ -403,6 +418,7 @@ std::optional<bool> try_lower_byte_array_base_store(
     const bir::Value& value,
     const BirFunctionLowerer::LocalPointerArrayBaseMap& local_pointer_array_bases,
     const BirFunctionLowerer::LocalSlotTypes& local_slot_types,
+    std::vector<bir::LocalSlot>* local_slots,
     std::vector<bir::Inst>* lowered_insts) {
   if (value_type == bir::TypeKind::Ptr) {
     return std::nullopt;
@@ -423,6 +439,15 @@ std::optional<bool> try_lower_byte_array_base_store(
     const auto slot_type_it = local_slot_types.find(array_base_it->second.element_slots[index]);
     if (slot_type_it == local_slot_types.end() || slot_type_it->second != bir::TypeKind::I8) {
       return false;
+    }
+  }
+  if (slot_size > 1 && array_base_it->second.base_index == 0) {
+    for (auto& slot : *local_slots) {
+      if (slot.name == array_base_it->second.element_slots.front() &&
+          slot.size_bytes < array_base_it->second.element_slots.size()) {
+        slot.size_bytes = array_base_it->second.element_slots.size();
+        break;
+      }
     }
   }
   lowered_insts->push_back(bir::StoreLocalInst{
@@ -446,6 +471,7 @@ std::optional<bool> try_lower_byte_array_base_load(
     bir::TypeKind value_type,
     const BirFunctionLowerer::LocalPointerArrayBaseMap& local_pointer_array_bases,
     const BirFunctionLowerer::LocalSlotTypes& local_slot_types,
+    std::vector<bir::LocalSlot>* local_slots,
     std::vector<bir::Inst>* lowered_insts) {
   if (value_type == bir::TypeKind::Ptr) {
     return std::nullopt;
@@ -466,6 +492,15 @@ std::optional<bool> try_lower_byte_array_base_load(
     const auto slot_type_it = local_slot_types.find(array_base_it->second.element_slots[index]);
     if (slot_type_it == local_slot_types.end() || slot_type_it->second != bir::TypeKind::I8) {
       return false;
+    }
+  }
+  if (slot_size > 1 && array_base_it->second.base_index == 0) {
+    for (auto& slot : *local_slots) {
+      if (slot.name == array_base_it->second.element_slots.front() &&
+          slot.size_bytes < array_base_it->second.element_slots.size()) {
+        slot.size_bytes = array_base_it->second.element_slots.size();
+        break;
+      }
     }
   }
   lowered_insts->push_back(bir::LoadLocalInst{
@@ -1398,6 +1433,9 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_store(
   if (slot_size == 0) {
     return false;
   }
+  if (!maybe_publish_local_byte_storage_covering_extent(local_slot_ptr, slot_size)) {
+    return false;
+  }
 
   lowered_insts->push_back(bir::StoreLocalInst{
       .slot_name = local_slot_ptr.slot_name,
@@ -1412,6 +1450,50 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_store(
           },
   });
   return true;
+}
+
+bool BirFunctionLowerer::maybe_publish_local_byte_storage_covering_extent(
+    const LocalSlotAddress& local_slot_ptr,
+    std::size_t access_size) {
+  if (access_size <= 1 || local_slot_ptr.byte_offset != 0) {
+    return true;
+  }
+  if (!local_slot_ptr.array_element_slots.empty() && local_slot_ptr.array_base_index == 0 &&
+      access_size <= local_slot_ptr.array_element_slots.size()) {
+    for (auto& slot : lowered_function_.local_slots) {
+      if (slot.name == local_slot_ptr.array_element_slots.front()) {
+        if (slot.size_bytes < local_slot_ptr.array_element_slots.size()) {
+          slot.size_bytes = local_slot_ptr.array_element_slots.size();
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+  if (local_slot_ptr.storage_type_text.empty()) {
+    return true;
+  }
+  if (local_slot_ptr.value_type != bir::TypeKind::I8) {
+    return true;
+  }
+
+  const auto layout = lookup_scalar_byte_offset_layout(local_slot_ptr.storage_type_text,
+                                                       type_decls_,
+                                                       &structured_layouts_);
+  if (!is_byte_storage_layout(layout, type_decls_, &structured_layouts_) ||
+      access_size > layout.size_bytes) {
+    return true;
+  }
+
+  for (auto& slot : lowered_function_.local_slots) {
+    if (slot.name == local_slot_ptr.slot_name) {
+      if (slot.size_bytes < layout.size_bytes) {
+        slot.size_bytes = layout.size_bytes;
+      }
+      return true;
+    }
+  }
+  return false;
 }
 
 bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
@@ -1478,6 +1560,9 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
   if (slot_size == 0) {
     return false;
   }
+  if (!maybe_publish_local_byte_storage_covering_extent(local_slot_ptr, slot_size)) {
+    return false;
+  }
   const std::string scratch_slot = result + ".addr";
   if (!ensure_local_scratch_slot(scratch_slot, value_type, slot_size)) {
     return false;
@@ -1534,6 +1619,7 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
                                                                       value,
                                                                       local_pointer_array_bases,
                                                                       local_slot_types,
+                                                                      &lowered_function_.local_slots,
                                                                       lowered_insts);
         byte_array_store.has_value()) {
       return *byte_array_store ? LocalSlotStoreResult::Lowered : LocalSlotStoreResult::Failed;
@@ -1872,6 +1958,7 @@ BirFunctionLowerer::LocalSlotLoadResult BirFunctionLowerer::try_lower_local_slot
                                                                     value_type,
                                                                     *local_pointer_array_bases,
                                                                     local_slot_types,
+                                                                    &lowered_function_.local_slots,
                                                                     lowered_insts);
         byte_array_load.has_value()) {
       return *byte_array_load ? LocalSlotLoadResult::Lowered : LocalSlotLoadResult::Failed;

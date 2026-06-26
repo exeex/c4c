@@ -8054,6 +8054,103 @@ LirModule make_local_gep_rejects_structured_opaque_legacy_fallback_module() {
   return module;
 }
 
+LirModule make_local_byte_storage_overlay_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.uf = type [4 x i8]");
+
+  LirFunction function;
+  function.name = "local_byte_storage_overlay";
+  function.signature_text = "define void @local_byte_storage_overlay(i32 %p.v)";
+  function.params.emplace_back("%p.v", c4c::TypeSpec{.base = c4c::TB_INT});
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.u"),
+      .type_str = "%struct.uf",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%lv.u.0"),
+      .element_type = c4c::codegen::lir::LirTypeRef("%struct.uf"),
+      .ptr = LirOperand("%lv.u"),
+      .inbounds = true,
+      .indices = {"i64 0", "i64 0"},
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i32",
+      .val = LirOperand("%p.v"),
+      .ptr = LirOperand("%lv.u.0"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.f"),
+      .type_str = "float",
+      .ptr = LirOperand("%lv.u.0"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_byte_storage_overlay_publishes_covering_slot_extent() {
+  auto result = try_lower_to_bir_with_options(make_local_byte_storage_overlay_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("local byte-storage overlay fixture should lower to BIR");
+  }
+
+  const auto& function = result.module->functions.front();
+  const c4c::backend::bir::LocalSlot* base_slot = nullptr;
+  const c4c::backend::bir::LocalSlot* byte_slot = nullptr;
+  for (const auto& slot : function.local_slots) {
+    if (slot.name == "%lv.u.0") {
+      base_slot = &slot;
+    } else if (slot.name == "%lv.u.1") {
+      byte_slot = &slot;
+    }
+  }
+  if (base_slot == nullptr || base_slot->type != TypeKind::I8 ||
+      base_slot->size_bytes != 4 || base_slot->align_bytes != 4) {
+    return fail("byte-storage aggregate base slot should publish the full covering extent");
+  }
+  if (byte_slot == nullptr || byte_slot->type != TypeKind::I8 ||
+      byte_slot->size_bytes != 1 || byte_slot->align_bytes != 4) {
+    return fail("byte-storage aggregate non-base leaves should remain byte-sized");
+  }
+
+  bool saw_i32_overlay_store = false;
+  bool saw_float_overlay_load = false;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+          store != nullptr && store->address.has_value() &&
+          store->address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot &&
+          store->address->base_name == "%lv.u.0" &&
+          store->address->size_bytes == 4) {
+        saw_i32_overlay_store = true;
+      } else if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+                 load != nullptr && load->address.has_value() &&
+                 load->address->base_kind ==
+                     c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot &&
+                 load->address->base_name == "%lv.u.0" &&
+                 load->address->size_bytes == 4) {
+        saw_float_overlay_load = true;
+      }
+    }
+  }
+  if (!saw_i32_overlay_store || !saw_float_overlay_load) {
+    return fail("wide byte-storage overlay accesses should use the covering local-slot base");
+  }
+  return 0;
+}
+
 LirModule make_local_scalar_double_decimal_zero_store_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -8578,6 +8675,11 @@ int main() {
           expect_memory_access_dynamic_array_verdicts_use_existing_facts();
       dynamic_array_status != 0) {
     return dynamic_array_status;
+  }
+  if (const int byte_storage_overlay_status =
+          expect_local_byte_storage_overlay_publishes_covering_slot_extent();
+      byte_storage_overlay_status != 0) {
+    return byte_storage_overlay_status;
   }
 
   if (const int inline_asm_status = expect_failure_notes(
