@@ -5461,6 +5461,32 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
     default:
       break;
   }
+  if (binary.opcode == c4c::backend::bir::BinaryOpcode::AShr &&
+      rhs_immediate.has_value()) {
+    const std::int64_t shift_width =
+        binary.result.type == c4c::backend::bir::TypeKind::I32 ? 32 : 64;
+    if (*rhs_immediate < 0 || *rhs_immediate >= shift_width) {
+      return std::nullopt;
+    }
+    if (!append_rv64_move_value_to_register(fragment,
+                                            28,
+                                            stack_layout,
+                                            names,
+                                            lookups,
+                                            binary.lhs,
+                                            stack_frame_bytes)) {
+      return std::nullopt;
+    }
+    append_le32(fragment.bytes,
+                encode_i_type(binary.result.type == c4c::backend::bir::TypeKind::I32
+                                  ? 0x1b
+                                  : 0x13,
+                              destination_register,
+                              5,
+                              28,
+                              static_cast<std::int32_t>(0x400 | *rhs_immediate)));
+    return finish();
+  }
   if (!append_rv64_move_value_to_register(fragment,
                                           28,
                                           stack_layout,
@@ -5505,6 +5531,17 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
     case c4c::backend::bir::BinaryOpcode::LShr:
       append_le32(fragment.bytes,
                   encode_r_type(0x33, destination_register, 5, 28, 29, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::AShr:
+      append_le32(fragment.bytes,
+                  encode_r_type(binary.result.type == c4c::backend::bir::TypeKind::I32
+                                    ? 0x3b
+                                    : 0x33,
+                                destination_register,
+                                5,
+                                28,
+                                29,
+                                0x20));
       return finish();
     case c4c::backend::bir::BinaryOpcode::Mul:
       append_le32(fragment.bytes,

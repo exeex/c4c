@@ -4387,6 +4387,71 @@ prepare::PreparedBirModule make_prepared_scalar_compare_trunc_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_scalar_ashr_module(
+    bir::TypeKind type,
+    bool immediate_shift) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto result_name = prepared.names.value_names.intern("%result");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto rhs =
+      immediate_shift
+          ? (type == bir::TypeKind::I32 ? bir::Value::immediate_i32(31)
+                                        : bir::Value::immediate_i64(31))
+          : bir::Value::named(type, "%rhs");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::AShr,
+                  .result = bir::Value::named(type, "%result"),
+                  .operand_type = type,
+                  .lhs = bir::Value::named(type, "%lhs"),
+                  .rhs = rhs,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(type, "%result");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = type,
+      .return_size_bytes = type == bir::TypeKind::I32 ? std::size_t{4}
+                                                      : std::size_t{8},
+      .return_align_bytes = type == bir::TypeKind::I32 ? std::size_t{4}
+                                                       : std::size_t{8},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  auto homes = std::vector<prepare::PreparedValueHome>{
+      rv64_gpr_home(1, function_name, lhs_name, "t0", 5),
+      rv64_gpr_home(2, function_name, result_name, "s2", 18),
+  };
+  if (!immediate_shift) {
+    homes.push_back(rv64_gpr_home(3, function_name, rhs_name, "s1", 9));
+  }
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = std::move(homes),
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_stack_slot_to_gpr_move_bundle_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -9124,6 +9189,133 @@ int builds_prepared_scalar_ordered_compare_return_object() {
   return 0;
 }
 
+int builds_prepared_scalar_ashr_register_object() {
+  const auto prepared = make_prepared_scalar_ashr_module(bir::TypeKind::I32, false);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared scalar ashr register RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared scalar ashr register object to publish text/main");
+  }
+  if (text->bytes.size() != 20 || text->size_bytes != 20 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 20) {
+    return fail("expected prepared scalar ashr register object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00028e13 ||
+      read_u32(text->bytes, 4) != 0x00048e93 ||
+      read_u32(text->bytes, 8) != 0x41de593b ||
+      read_u32(text->bytes, 12) != 0x00090513 ||
+      read_u32(text->bytes, 16) != 0x00008067) {
+    return fail("expected prepared scalar ashr register lowering sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected scalar ashr register object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_scalar_ashr_immediate_object() {
+  const auto prepared = make_prepared_scalar_ashr_module(bir::TypeKind::I32, true);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared scalar ashr immediate RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared scalar ashr immediate object to publish text/main");
+  }
+  if (text->bytes.size() != 16 || text->size_bytes != 16 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 16) {
+    return fail("expected prepared scalar ashr immediate object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00028e13 ||
+      read_u32(text->bytes, 4) != 0x41fe591b ||
+      read_u32(text->bytes, 8) != 0x00090513 ||
+      read_u32(text->bytes, 12) != 0x00008067) {
+    return fail("expected prepared scalar ashr immediate lowering sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected scalar ashr immediate object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_scalar_ashr_i64_register_object() {
+  const auto prepared = make_prepared_scalar_ashr_module(bir::TypeKind::I64, false);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared scalar ashr i64 register RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared scalar ashr i64 register object to publish text/main");
+  }
+  if (text->bytes.size() != 20 || text->size_bytes != 20 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 20) {
+    return fail("expected prepared scalar ashr i64 register object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00028e13 ||
+      read_u32(text->bytes, 4) != 0x00048e93 ||
+      read_u32(text->bytes, 8) != 0x41de5933 ||
+      read_u32(text->bytes, 12) != 0x00090513 ||
+      read_u32(text->bytes, 16) != 0x00008067) {
+    return fail("expected prepared scalar ashr i64 register lowering sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected scalar ashr i64 register object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_scalar_ashr_i64_immediate_object() {
+  const auto prepared = make_prepared_scalar_ashr_module(bir::TypeKind::I64, true);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared scalar ashr i64 immediate RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared scalar ashr i64 immediate object to publish text/main");
+  }
+  if (text->bytes.size() != 16 || text->size_bytes != 16 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 16) {
+    return fail("expected prepared scalar ashr i64 immediate object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00028e13 ||
+      read_u32(text->bytes, 4) != 0x41fe5913 ||
+      read_u32(text->bytes, 8) != 0x00090513 ||
+      read_u32(text->bytes, 12) != 0x00008067) {
+    return fail("expected prepared scalar ashr i64 immediate lowering sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected scalar ashr i64 immediate object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_scalar_ashr_invalid_immediate_object() {
+  constexpr const char* diagnostic =
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
+
+  auto prepared = make_prepared_scalar_ashr_module(bir::TypeKind::I32, true);
+  auto* shift = std::get_if<bir::BinaryInst>(
+      &prepared.module.functions.front().blocks.front().insts.front());
+  if (shift == nullptr) {
+    return fail("expected prepared scalar ashr fixture to contain a binary instruction");
+  }
+  shift->rhs = bir::Value::immediate_i32(32);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+  return 0;
+}
+
 int rejects_prepared_scalar_compare_publication_missing_home() {
   constexpr const char* diagnostic =
       "unsupported_scalar_compare_publication: RV64 object route requires prepared scalar compare result homes and materializable operands";
@@ -11968,6 +12160,11 @@ int main() {
   status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
   status |= builds_prepared_scalar_compare_trunc_object();
   status |= builds_prepared_scalar_ordered_compare_return_object();
+  status |= builds_prepared_scalar_ashr_register_object();
+  status |= builds_prepared_scalar_ashr_immediate_object();
+  status |= builds_prepared_scalar_ashr_i64_register_object();
+  status |= builds_prepared_scalar_ashr_i64_immediate_object();
+  status |= rejects_prepared_scalar_ashr_invalid_immediate_object();
   status |= rejects_prepared_scalar_compare_publication_missing_home();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= builds_prepared_normalized_sle_select_materialization_object();
