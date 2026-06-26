@@ -3755,6 +3755,69 @@ bool rv64_floating_type(c4c::backend::bir::TypeKind type) {
          type == c4c::backend::bir::TypeKind::F64;
 }
 
+std::optional<std::int32_t> rv64_va_start_destination_load_offset(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadLocalInst& load,
+    const c4c::backend::prepare::PreparedMemoryAccess* access,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (access == nullptr || load.result.type != c4c::backend::bir::TypeKind::Ptr ||
+      load.slot_name.empty() ||
+      access->address_space != c4c::backend::bir::AddressSpace::Default ||
+      access->is_volatile ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value() ||
+      !access->address.can_use_base_plus_offset ||
+      access->address.byte_offset != 0 ||
+      access->address.size_bytes != size_bytes ||
+      access->address.align_bytes > size_bytes) {
+    return std::nullopt;
+  }
+
+  const auto value_name = prepared.names.value_names.find(load.slot_name);
+  if (value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto* entry_plan =
+      prepare::find_prepared_variadic_entry_plan(prepared, function_name);
+  if (entry_plan == nullptr ||
+      !rv64_variadic_helper_free_entry_contract_is_complete(*entry_plan)) {
+    return std::nullopt;
+  }
+
+  const prepare::PreparedVariadicEntryHelperOperandHomes* selected = nullptr;
+  for (const auto& homes : entry_plan->helper_operand_homes) {
+    if (homes.helper != prepare::PreparedVariadicEntryHelperKind::VaStart ||
+        homes.block_index != block_index ||
+        homes.instruction_index >= instruction_index ||
+        !prepare::has_complete_prepared_variadic_va_start_operand_homes(homes) ||
+        homes.destination_va_list_address->kind !=
+            prepare::PreparedValueHomeKind::Register ||
+        homes.destination_va_list_address->value_name != value_name ||
+        homes.destination_va_list->kind != prepare::PreparedValueHomeKind::StackSlot ||
+        !homes.destination_va_list->size_bytes.has_value() ||
+        *homes.destination_va_list->size_bytes != size_bytes) {
+      continue;
+    }
+    if (selected == nullptr ||
+        homes.instruction_index > selected->instruction_index) {
+      selected = &homes;
+    }
+  }
+  if (selected == nullptr) {
+    return std::nullopt;
+  }
+  return prepared_stack_slot_home_offset(prepared.stack_layout,
+                                         *selected->destination_va_list,
+                                         stack_frame_bytes,
+                                         size_bytes);
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_frame_address_materialization(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -4062,6 +4125,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    std::size_t block_index,
+    std::size_t instruction_index,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -4072,11 +4139,22 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
   if (!size_bytes.has_value()) {
     return std::nullopt;
   }
+  const auto va_start_destination_offset =
+      rv64_va_start_destination_load_offset(prepared,
+                                            function_name,
+                                            block_index,
+                                            instruction_index,
+                                            load,
+                                            access,
+                                            stack_frame_bytes,
+                                            *size_bytes);
   const auto offset =
-      prepared_frame_slot_absolute_offset(stack_layout,
-                                          access,
-                                          stack_frame_bytes,
-                                          *size_bytes);
+      va_start_destination_offset.has_value()
+          ? va_start_destination_offset
+          : prepared_frame_slot_absolute_offset(stack_layout,
+                                                access,
+                                                stack_frame_bytes,
+                                                *size_bytes);
   if (!offset.has_value()) {
     const auto byval_offset =
         prepared_byval_stack_slot_pointer_access_offset(stack_layout,
@@ -5937,7 +6015,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       if (c4c::backend::bir::is_vrm_register_type(load->result.type)) {
         return RiscvEncodedFragment{};
       }
+      const auto function_id = prepared.names.function_names.find(function_name);
       auto fragment = fragment_for_prepared_load_local(
+          prepared,
+          function_id,
+          block_index,
+          instruction_index,
           prepared.stack_layout,
           prepared.names,
           &lookups,

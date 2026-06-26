@@ -769,6 +769,75 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_with_saved_gpr_public
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_variadic_va_start_then_load_published_word_module() {
+  auto prepared = make_prepared_variadic_va_start_with_saved_gpr_publications_module();
+  const auto function_name = prepared.names.function_names.find("rv64_va_start");
+  const auto block_label = prepared.names.block_labels.find("entry");
+  const auto loaded_name = prepared.names.value_names.intern("%loaded.ap");
+  const auto stale_slot_name = prepared.names.slot_names.intern("%ap.addr");
+
+  auto& entry = prepared.module.functions[0].blocks[0];
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%loaded.ap"),
+      .slot_name = "%ap.addr",
+      .slot_id = stale_slot_name,
+      .align_bytes = 8,
+  });
+
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{8},
+      .object_id = 3,
+      .function_name = function_name,
+      .offset_bytes = 0,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 3,
+      .function_name = function_name,
+      .value_name = prepared.names.value_names.find("%ap.addr"),
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 3,
+          .function_name = function_name,
+          .value_name = loaded_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"a2"},
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses = {prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 1,
+          .result_value_name = loaded_name,
+          .address = prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+              .frame_slot_id = prepare::PreparedFrameSlotId{8},
+              .byte_offset = 0,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .can_use_base_plus_offset = true,
+          },
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_variadic_va_end_module(
     std::string prepared_callee = "llvm.va_end.p0",
     std::size_t arg_count = 1) {
@@ -6668,6 +6737,33 @@ int materializes_fact_complete_variadic_va_start_with_saved_gpr_publications() {
   return 0;
 }
 
+int loads_rv64_va_start_published_word_after_helper() {
+  const auto prepared =
+      make_prepared_variadic_va_start_then_load_published_word_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared va_start followed by va_list load RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "rv64_va_start");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared va_start load object to publish text/function");
+  }
+  if (text->bytes.size() != 60 || text->size_bytes != 60 ||
+      function->value != 0 || function->size_bytes != 60 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared va_start load object text layout");
+  }
+  if (read_u32(text->bytes, 40) != 0x00653023 ||
+      read_u32(text->bytes, 44) != 0x04813603 ||
+      read_u32(text->bytes, 48) != 0x00000513 ||
+      read_u32(text->bytes, 52) != 0x05010113 ||
+      read_u32(text->bytes, 56) != 0x00008067) {
+    return fail("expected load_local after va_start to read helper-published va_list word");
+  }
+  return 0;
+}
+
 int rejects_malformed_variadic_saved_gpr_publications() {
   {
     auto prepared =
@@ -10483,6 +10579,7 @@ int main() {
   status |= rejects_variadic_va_start_with_missing_saved_gpr_publication_fact();
   status |=
       materializes_fact_complete_variadic_va_start_with_saved_gpr_publications();
+  status |= loads_rv64_va_start_published_word_after_helper();
   status |= rejects_malformed_variadic_saved_gpr_publications();
   status |= rejects_malformed_variadic_va_start_destination_homes();
   status |= lowers_fact_complete_variadic_va_end_as_noop();
