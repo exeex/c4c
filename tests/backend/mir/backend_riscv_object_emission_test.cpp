@@ -7809,6 +7809,31 @@ int builds_prepared_frame_slot_address_arg_call_object() {
   return 0;
 }
 
+int records_prepared_frame_slot_address_arg_missing_publication_need() {
+  const auto prepared = make_prepared_frame_slot_address_arg_call_module();
+  const auto& call = prepared.call_plans.functions[0].calls[0];
+  const auto x_need =
+      prepare::find_prepared_missing_frame_slot_call_argument_publication_need(
+          call.arguments[0]);
+  const auto y_need =
+      prepare::find_prepared_missing_frame_slot_call_argument_publication_need(
+          call.arguments[1]);
+  if (!x_need.available || !y_need.available ||
+      x_need.kind != prepare::PreparedMissingFrameSlotCallArgumentPublicationKind::
+                         FrameSlotAddress ||
+      y_need.kind != prepare::PreparedMissingFrameSlotCallArgumentPublicationKind::
+                         FrameSlotAddress ||
+      x_need.source_value_id != prepare::PreparedValueId{14} ||
+      y_need.source_value_id != prepare::PreparedValueId{15} ||
+      x_need.source_selection == nullptr || y_need.source_selection == nullptr ||
+      !x_need.source_materializes_address || !y_need.source_materializes_address ||
+      x_need.may_emit_local_aggregate_address_payload ||
+      y_need.may_emit_local_aggregate_address_payload) {
+    return fail("expected frame-slot-address args to expose missing-publication need without claiming payload authority");
+  }
+  return 0;
+}
+
 int expect_frame_slot_address_arg_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
@@ -7906,6 +7931,20 @@ int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
   auto duplicate = prepared.addressing.functions[0].address_materializations[0];
   duplicate.byte_offset = 32;
   prepared.addressing.functions[0].address_materializations.push_back(duplicate);
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  duplicate = prepared.addressing.functions[0].address_materializations[0];
+  prepared.addressing.functions[0].address_materializations.push_back(duplicate);
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.addressing.functions[0].address_materializations[0].kind =
+      prepare::PreparedAddressMaterializationKind::DirectGlobal;
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
@@ -10022,6 +10061,7 @@ int main() {
   status |= builds_prepared_frame_slot_value_arg_call_object();
   status |= rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes();
   status |= builds_prepared_frame_slot_address_arg_call_object();
+  status |= records_prepared_frame_slot_address_arg_missing_publication_need();
   status |= rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes();
   status |= builds_prepared_inline_asm_insn_r_object();
   status |= builds_structured_prepared_inline_asm_insn_r_object_without_text_reparse();
