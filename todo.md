@@ -1,51 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/392_rv64_va_list_expression_call_argument_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair The Representative Publication Path
+Current Step ID: 4
+Current Step Title: Reprove Focused Coverage And Representative
 
 # Current Packet
 
 ## Just Finished
 
-Continuation Step 3 repaired the RV64 frame-slot-address call-argument
-publication path for load-local payload producers. In
-`prepared_frame_slot_address_call_argument_publication`, a matching
-`source_load_local` store-source record now validates that the load-local result
-is exactly the explicit `fact->payload_value`, but it no longer rewrites the
-payload to `source_load_local->slot_name`. This preserves the prepared
-call-argument value-publication payload as the value stored into the argument
-object before materializing that object's address.
+Continuation Step 4 reproved the focused backend coverage and reran the
+`va-arg-13.c` RV64 object-route representative after the Step 3 repair. The
+backend subset passed: `ctest --test-dir build -j --output-on-failure -R
+'^backend_'` reported `100% tests passed, 0 tests failed out of 326`.
 
-Focused backend coverage now includes a frame-slot-address call fixture where
-the prepared load-local producer's result lives in `s2` while the original
-storage slot address lives in `s1`. The test asserts the pre-call stores move
-from the load-local payload register, proving the route does not collapse back
-to the storage address. The fail-closed matrix now also mutates only the
-load-local producer result in that representative fixture while keeping the
-fact and store-source payload aligned, proving the explicit
-`PreparedCallArgumentValuePublicationFact::payload_value` equality guard is
-required. Existing fail-closed variants remain in the backend subset.
+The representative did not advance past the prior abort boundary. The case
+runner compiled the C4C object, validated the ELF header, built and ran the
+clang reference with `clang_exit=0`, linked the C4C object into `c4c.bin`, then
+reported `[RV64_BACKEND_RUNTIME_MISMATCH]` with `c4c_exit=Subprocess aborted`
+and empty stdout/stderr. Evidence:
+`build/agent_state/392_cont_step4_va-arg-13.case.log`; combined proof log:
+`test_after.log`.
 
 ## Suggested Next
 
-Run the representative `va-arg-13.c` RV64 object-route case again to confirm the
-prior abort boundary is gone or to classify the next concrete boundary without
-broadening the plan.
+Trace the remaining `va-arg-13.c` runtime abort boundary in the emitted RV64
+object route. The next packet should start from the Step 4 case log and classify
+which emitted object/ABI state still differs, without changing prepared fact
+schema or broadening beyond the representative route.
 
 ## Watchouts
 
-- The repair keeps the explicit fact as authority; it does not infer payload
-  authority from a generic `StoreLocalPublication` alone.
-- The `source_load_local` path now fails closed if the producer result is not
-  the same pointer value named by the prepared call-argument value-publication
-  fact.
-- This packet did not rerun the standalone `va-arg-13.c` representative; the
-  next packet should preserve a case log if it appears.
+- Step 4 was proof/evidence only; no implementation or tests were changed.
+- The focused backend contract remains green, including the Step 3 load-local
+  payload route and its fail-closed equality guard.
+- The representative abort is now a runtime mismatch after successful C4C object
+  compile and link, not an object-production failure. The prior
+  `Subprocess aborted` boundary remains present.
 
 ## Proof
 
 Delegated proof run:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
+`mkdir -p build/agent_state build/rv64_gcc_c_torture_backend/src_va-arg-13.c && { echo 'Step 4 backend proof for idea 392'; cmake --build --preset default; ctest --test-dir build -j --output-on-failure -R '^backend_'; echo 'Step 4 va-arg-13 RV64 object runner for idea 392'; case_log=build/agent_state/392_cont_step4_va-arg-13.case.log; set +e; cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=$(command -v clang) -DQEMU_RISCV64=$(command -v qemu-riscv64) -DSRC=/workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-13.c -DROOT=/workspaces/c4c -DOUT_CLANG_BIN=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/clang.bin -DOUT_OBJECT=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/c4c.o -DOUT_C4C_BIN=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/c4c.bin -P /workspaces/c4c/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake > "$case_log" 2>&1; rc=$?; set -e; echo "case_exit=$rc"; cat "$case_log"; exit 0; } > test_after.log 2>&1`.
 
-Result: passed. Proof log: `test_after.log`.
+Result: backend proof passed; representative case failed with
+`case_exit=1`, `[RV64_BACKEND_RUNTIME_MISMATCH]`, `clang_exit=0`, and
+`c4c_exit=Subprocess aborted`. Proof log: `test_after.log`. Case log:
+`build/agent_state/392_cont_step4_va-arg-13.case.log`.
