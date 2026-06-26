@@ -1,7 +1,8 @@
 # RV64 gcc_torture Prepared Module Shape Classification
 
-Status: Open
+Status: Closed
 Type: Umbrella analysis idea
+Closed By: Final child-coverage audit and classification closeout
 
 ## Context
 
@@ -215,3 +216,45 @@ That boundary is split into child idea
 `ideas/open/386_rv64_object_route_same_module_byval_aggregate_call_args.md`.
 It is distinct from closed byval parameter-home idea 370 because the current
 failure is call argument lowering, not entry parameter-home admission.
+
+## Closure Notes
+
+Idea 354's umbrella acceptance criteria are satisfied. The prepared-module
+shape failures were classified from actual scan data in
+`review/354_prepared_shape_classification.md`, including counts and
+representative cases for the original `1012` opaque prepared-module-shape
+failures. Non-backend or not-yet-actionable families were explicitly separated
+from repairable RV64 object-route buckets.
+
+Child and residual owner audit:
+
+- original child set 355-359: closed
+- upstream/continuation chain 360-367: closed
+- representative-refresh residual children 368-375: closed
+- additional residual owner IDs 376-382: closed
+- global/data and same-module byval follow-ups 383, 384, and 386: closed
+- later representative/runtime owner chain 387-394: closed
+
+Idea 385 remains open but is unrelated EV64 `.insn.d` length-prefix work, not a
+child or blocker for this RV64 gcc_torture prepared-module-shape umbrella.
+
+The Step 2 closeout evidence reviewed:
+
+- `review/354_prepared_shape_classification.md`
+- `build/agent_state/354_step3_representative_refresh.log`
+- `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
+- `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
+
+Current scan artifacts timestamped 2026-06-26 06:09 cover `1467` cases:
+`208` pass and `1259` fail. Those remaining failures are structured diagnostics
+or semantic handoff/runtime families, not opaque unclassified
+prepared-module-shape buckets. No unowned prepared-module-shape bucket was
+found after comparing residual diagnostics with the closed child set 355-394,
+so no Step 3 residual-owner split was needed.
+
+The plan-owner close gate was rerun as lifecycle-only validation against the
+accepted current backend baseline on both sides:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed`
+
+Result: PASS, 326/326 before and 326/326 after, no new failures.
