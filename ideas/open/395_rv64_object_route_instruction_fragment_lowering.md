@@ -66,3 +66,14 @@ same-fragment cases.
   control/data-flow semantics inside the RV64 object emitter.
 - Reject a green single case if nearby same-fragment cases still fail with the
   identical unsupported instruction diagnostic and were not examined.
+
+## Lifecycle Notes
+
+- 2026-06-26: Step 4 classified `src/20000403-1.c` as a producer-side scalar
+  formal ABI publication gap, not an RV64 object-emitter instruction-fragment
+  lowering gap. The `i16 %p.win` formal in `seqgt` and `seqgt2` reaches object
+  emission as a stack-homed parameter without usable prepared scalar integer
+  ABI facts. This work was split to
+  `ideas/open/403_prepared_i16_formal_abi_publication.md`; do not repair it by
+  reconstructing missing incoming-argument ABI policy in the RV64 object
+  emitter.

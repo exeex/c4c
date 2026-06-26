@@ -1,175 +1,177 @@
-# RV64 Object Route Instruction Fragment Lowering Runbook
+# Prepared I16 Formal ABI Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/395_rv64_object_route_instruction_fragment_lowering.md
+Source Idea: ideas/open/403_prepared_i16_formal_abi_publication.md
 
 ## Purpose
 
-Turn the current RV64 prepared-object `unsupported_instruction_fragment` bucket
-into reusable target lowering work that reduces real gcc_torture backend
-failures without weakening contracts.
+Repair the producer-side scalar integer formal ABI publication gap that leaves
+direct-call `I16` formals stack-homed without usable prepared ABI facts.
 
 ## Goal
 
-Repair prepared BIR instruction fragments that already crossed the semantic
-handoff and are rejected inside RV64 object emission.
+Publish prepared `I16` formal ABI/home facts in the same producer repair path
+used for adjacent scalar integer widths, then prove the RV64 object route can
+consume those facts without reconstructing ABI policy.
 
 ## Core Rule
 
-Lower reusable prepared instruction families. Do not add filename-specific
-shortcuts, expectation downgrades, allowlist filtering, or BIR control/data-flow
-reconstruction inside the RV64 object emitter.
+Repair the prepared-BIR producer contract. Do not teach RV64 object emission to
+infer missing incoming argument registers or stack homes from parameter order.
 
 ## Read First
 
-- `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`
-- `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
-- Representative case:
-  `tests/c/external/gcc_torture/src/20000223-1.c`
-- RV64 gcc_torture backend runner:
-  `scripts/check_progress_rv64_gcc_c_torture_backend.sh`
-- Object-route diagnostics and RV64 prepared-object lowering code in `src/`
+- `ideas/open/403_prepared_i16_formal_abi_publication.md`
+- `todo.md` history from idea 395 commit `e6210244`
+- Representative case `tests/c/external/gcc_torture/src/20000403-1.c`
+- `src/backend/prealloc/legalize.cpp`
+  `direct_bir_call_arg_abi_repair()`
+- Prepared dump, if still present:
+  `build/agent_state/395_step4_20000403-1.prepared-bir.txt`
+- RV64 backend runner `scripts/check_progress_rv64_gcc_c_torture_backend.sh`
 
 ## Current Scope
 
-- Classify the 385-case `unsupported_instruction_fragment` bucket from the
-  2026-06-26 reopened classification.
-- Identify concrete prepared instruction fragment families and choose a small
-  representative set, starting with `src/20000223-1.c`.
-- Implement semantic RV64 object lowering for reusable instruction families.
-- Prove representative and nearby same-fragment cases through object emission,
-  link, and qemu comparison when runnable.
+- Inspect scalar formal ABI repair coverage for direct BIR calls.
+- Add missing `I16` support at the producer-side prepared ABI publication
+  boundary.
+- Keep object-emitter parameter-home admission dependent on prepared facts.
+- Prove the `src/20000403-1.c` `i16 %p.win` blocker no longer reaches RV64
+  object emission as an ABI-less stack-home parameter.
 
 ## Non-Goals
 
-- Do not rewrite gcc_torture expectations or supported/unsupported markers.
-- Do not treat semantic `lir_to_bir` failures as this bucket.
-- Do not perform a broad assembler/object architecture rewrite unrelated to the
-  observed unsupported instruction fragments.
-- Do not claim progress from a green single representative if identical nearby
-  fragment failures remain unexamined.
+- Do not edit RV64 `object_emission.cpp` to reconstruct missing formal ABI
+  policy.
+- Do not weaken `unsupported_param_home` admission or accept ABI-less scalar
+  stack homes.
+- Do not redesign aggregate, variadic, byval, sret, or unrelated scalar width
+  ABI handling.
+- Do not rewrite gcc_torture expectations, supported markers, or allowlists.
 
 ## Working Model
 
-- The prepared-object contract owns semantic BIR facts before target lowering.
-- This plan owns RV64 object lowering for prepared instruction fragments that
-  already have enough contract facts to emit machine code.
-- If investigation proves a fragment lacks producer-side facts, record that in
-  `todo.md` and ask the supervisor to split a separate source idea instead of
-  hiding the producer issue in target emission.
+- `direct_bir_call_arg_abi_repair()` is the expected producer-side repair
+  point because it already handles `I1`, `I8`, `I32`, `I64`, and `Ptr`.
+- The observed bad prepared shape is `i16 %p.win` in `seqgt` and `seqgt2`,
+  assigned to stack-slot homes backed by regalloc spill slots without usable
+  scalar integer ABI facts.
+- RV64 object emission should only consume prepared formal ABI/home facts; it
+  should not derive missing producer policy from source-level parameter order.
 
 ## Execution Rules
 
-- Keep each implementation packet centered on one fragment family.
-- Use diagnostics and prepared dumps to group failures by semantic fragment, not
-  by testcase filename.
-- Preserve existing diagnostics for unsupported forms until real lowering is
-  added.
-- For each code-changing packet, run the supervisor-selected build/proof
-  command exactly and record results in `todo.md`.
-- Escalate to a refreshed subset or regression guard when lowering touches
-  shared instruction selection, relocation, or runtime-sensitive value moves.
+- Keep the first packet focused on `I16` direct formal ABI publication.
+- Compare the existing scalar width handling before adding a new branch so the
+  `I16` behavior follows the established helper contract.
+- Preserve diagnostics for truly unsupported or ABI-less parameter homes.
+- Record prepared-dump evidence in `todo.md` before and after code changes.
+- For each code-changing packet, run the supervisor-delegated build/proof
+  command exactly and record results in `todo.md` / `test_after.log`.
 
 ## Ordered Steps
 
-### Step 1: Classify Instruction Fragments
+### Step 1: Confirm Producer-Side I16 Gap
 
-Goal: identify the concrete prepared instruction fragment families behind the
-`unsupported_instruction_fragment` bucket.
+Goal: verify the current failure is missing producer-side `I16` formal ABI
+publication, not an object-emitter lowering gap.
 
 Primary targets:
 
-- Existing RV64 gcc_torture scan artifacts under `build/agent_state/` and
-  `build/rv64_gcc_c_torture_backend/`, if present
-- Representative case `tests/c/external/gcc_torture/src/20000223-1.c`
-- Prepared BIR/object-route diagnostic output
+- `tests/c/external/gcc_torture/src/20000403-1.c`
+- `build/agent_state/395_step4_20000403-1.prepared-bir.txt`, if present
+- `src/backend/prealloc/legalize.cpp`
 
 Actions:
 
-- Load or regenerate enough scan data to reproduce the current representative
-  failure.
-- Extract cases with
-  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`.
-- Group failing cases by prepared instruction opcode, operand/home shapes, and
-  required RV64 emission behavior.
-- Select representative and nearby same-fragment cases for the first repair
-  packet.
-- Record classification notes and proof commands in `todo.md`.
+- Reproduce or load the `src/20000403-1.c` prepared dump and object-route
+  diagnostic.
+- Confirm `seqgt` and `seqgt2` expose `i16 %p.win` as stack-homed formal
+  values without usable scalar integer ABI facts.
+- Inspect `direct_bir_call_arg_abi_repair()` and adjacent tests to identify the
+  scalar width dispatch used for `I1`, `I8`, `I32`, `I64`, and `Ptr`.
+- Record the exact missing-fact evidence and chosen narrow proof command in
+  `todo.md`.
 
 Completion check:
 
-- `todo.md` names the first fragment family, representative cases, observed
-  diagnostics, and the narrow proof command the executor should use next.
+- `todo.md` records the current `I16` formal ABI gap, relevant prepared-home
+  evidence, and the delegated proof command to use after the repair.
 
-### Step 2: Lower The First Reusable Fragment Family
+### Step 2: Publish I16 Formal ABI Facts
 
-Goal: add RV64 object lowering for the highest-value classified instruction
-fragment family that has sufficient prepared contract facts.
+Goal: extend producer-side direct formal ABI repair so `I16` formals publish
+usable prepared scalar integer ABI/home facts.
 
 Primary targets:
 
-- RV64 prepared-object instruction lowering implementation in `src/`
-- Existing tests or gcc_torture runner coverage for the selected fragment
+- `src/backend/prealloc/legalize.cpp`
+- Existing prepared-BIR/regalloc tests for direct call/formal ABI repair, if
+  present
 
 Actions:
 
-- Inspect the existing RV64 lowering path for adjacent supported instruction
-  fragments.
-- Add the minimal semantic lowering rule for the selected family.
-- Preserve explicit rejection diagnostics for still-unsupported operand shapes.
-- Avoid copying BIR producer logic into the target emitter.
+- Add `I16` handling through the same mechanism as adjacent scalar integer
+  widths.
+- Keep the change producer-side; do not edit RV64 object emission to compensate
+  for missing ABI facts.
+- Add or adjust narrow tests if there is an existing local prepared-BIR or
+  regalloc test surface for direct formal ABI repair.
+- Preserve behavior for `I1`, `I8`, `I32`, `I64`, and `Ptr`.
 
 Completion check:
 
-- The selected representative no longer fails with
-  `unsupported_instruction_fragment`, and nearby same-fragment cases are either
-  fixed or explicitly separated by a different diagnostic/root cause.
+- Prepared dumps or tests show `I16` formals receive usable scalar integer
+  ABI/home facts before object emission, without broad unrelated ABI diffs.
 
-### Step 3: Prove Runtime And Bucket Reduction
+### Step 3: Prove 20000403-1.c And Guard Adjacent Widths
 
-Goal: verify that newly emitted object code is correct enough to reduce the
-bucket without introducing runtime regressions.
+Goal: prove the repaired producer facts unblock the representative route and do
+not regress adjacent scalar formal widths.
 
 Primary targets:
 
-- Representative and nearby same-fragment cases
-- Supervisor-selected temporary allowlist or backend scan subset
+- `src/20000403-1.c`
+- Any narrow prepared-BIR/regalloc tests touched in Step 2
 - Canonical `test_after.log` when delegated by the supervisor
 
 Actions:
 
-- Run the delegated build/proof command for the changed fragment family.
-- Prefer qemu comparison proof for cases that compile and link.
-- Refresh a subset large enough to show the fragment bucket count decreases.
-- Record any new runtime mismatch or producer-side missing fact in `todo.md`.
+- Run the exact supervisor-delegated build/proof command.
+- Confirm `src/20000403-1.c` no longer fails with the same
+  `unsupported_param_home` diagnostic for ABI-less `i16 %p.win`.
+- Check whether the case now passes or exposes a later, distinct object-route
+  diagnostic; record that result without claiming unrelated bucket completion.
+- If tests cover adjacent scalar widths, run the matching narrow subset.
+- Record proof logs and remaining blockers in `todo.md`.
 
 Completion check:
 
-- Proof logs show reduced `unsupported_instruction_fragment` failures for the
-  selected family and no new runtime abort, segfault, or comparison mismatch in
-  the proved subset.
+- `test_after.log` and `todo.md` show the `I16` producer ABI publication gap is
+  repaired or name a distinct later blocker for supervisor routing.
 
-### Step 4: Iterate Or Split Remaining Families
+### Step 4: Route Any Remaining Blocker
 
-Goal: continue with the next classified fragment family or split work that is
-not target-lowering scope.
+Goal: return clean lifecycle state to the supervisor once the producer repair is
+proved or a different gap is exposed.
 
 Primary targets:
 
-- Remaining classified instruction fragment families
-- Any producer-side missing fact discovered during lowering
+- `todo.md`
+- Active source idea `ideas/open/403_prepared_i16_formal_abi_publication.md`
+- Related open RV64 object-route ideas if a later target-emission blocker
+  appears
 
 Actions:
 
-- Pick the next reusable target-lowering family only after the previous packet
-  has proof recorded in `todo.md`.
-- Ask the supervisor for a new source idea when a remaining family needs
-  upstream BIR/prepared-contract repair.
-- Keep routine progress in `todo.md`; rewrite this plan only for a real route
-  reset or scope split.
+- If `src/20000403-1.c` passes the producer-home point and exposes a later
+  object-route issue, record the new diagnostic in `todo.md`.
+- Ask the supervisor to reactivate the relevant object-route idea when the
+  producer repair is complete.
+- If another producer missing fact appears, split it into a separate source
+  idea instead of expanding this one.
 
 Completion check:
 
-- The dominant repairable instruction fragment families are lowered or split
-  into precise follow-up ideas, and refreshed proof shows the 385-case bucket is
-  materially reduced without testcase overfit.
+- The active lifecycle state clearly says whether this idea is complete,
+  blocked by a distinct follow-up, or ready to hand back to object-route work.
