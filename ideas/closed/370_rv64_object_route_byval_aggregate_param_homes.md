@@ -1,6 +1,6 @@
 # RV64 Object Route Byval Aggregate Parameter Homes
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -13,8 +13,8 @@ prepared stack slots.
 
 Closed idea 363 intentionally narrowed the parameter-home boundary to a precise
 diagnostic. Closed idea 367 then advanced `src/20030914-2.c` past helper-free
-variadic entry admission. Idea 354's Step 3 representative refresh now confirms
-the current residual:
+variadic entry admission. Idea 354's Step 3 representative refresh confirmed
+the residual:
 
 ```text
 unsupported_byval_param_home: RV64 object route does not yet lower byval aggregate parameter homes in prepared stack slots
@@ -24,7 +24,7 @@ Representative:
 
 - `src/20030914-2.c`
 
-This is a target ABI parameter-home coverage gap, not a scalar vararg admission
+This was a target ABI parameter-home coverage gap, not a scalar vararg admission
 gap and not an opaque prepared-shape failure.
 
 ## In Scope
@@ -69,3 +69,37 @@ gap and not an opaque prepared-shape failure.
   unless the byval home contract directly requires it.
 - Reject diagnostic-only renames that retain the same unsupported byval
   parameter-home boundary.
+
+## Closure Notes
+
+Closed after commit `1bc45813` admitted the first safe RV64 object-route byval
+aggregate parameter-home class: a default-address-space byval formal whose
+prepared value home is a stack slot backed by a matching permanent
+`source_kind=byval_param` frame object. The repair consumes explicit prepared
+ABI/home, frame-slot, size, align, and in-bounds access facts rather than source
+names or assumed stack layout.
+
+`src/20030914-2.c` now advances past `unsupported_byval_param_home` and exposes
+a distinct next boundary:
+
+```text
+unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing
+```
+
+That local-memory addressing shape is outside this idea's byval parameter-home
+scope and is handed off to
+`ideas/open/382_rv64_object_route_prepared_local_memory_addressing.md`.
+
+Close-time regression guard used the existing focused byval CTest logs:
+
+- `test_before.log`: passed=9 failed=2 total=11
+- `test_after.log`: passed=9 failed=2 total=11
+- no newly failing tests
+- remaining failures are the pre-existing
+  `backend_codegen_route_riscv64_byval_preserved_pointer_args` and
+  `backend_rv64_runtime_riscv64_byval_preserved_pointer_args`
+
+The broader post-patch backend run reported only those same two pre-existing
+preserved-pointer failures. The hook-produced `test_baseline.new.log` was not
+accepted as full-suite baseline state because it is not monotonic against the
+accepted `test_baseline.log`.
