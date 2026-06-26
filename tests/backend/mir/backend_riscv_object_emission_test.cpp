@@ -2931,6 +2931,49 @@ prepare::PreparedBirModule make_prepared_formal_fpr_fpext_to_ft0_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_sitofp_i32_immediate_to_f64_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("sitofp_i32_immediate_to_f64");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto result_name = prepared.names.value_names.intern("%t0");
+
+  bir::CastInst cast;
+  cast.opcode = bir::CastOpcode::SIToFP;
+  cast.operand = bir::Value::immediate_i32(0);
+  cast.result = bir::Value::named(bir::TypeKind::F64, "%t0");
+  bir::Block entry{
+      .label = "entry",
+      .insts = {cast},
+      .terminator = bir::Terminator{},
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "sitofp_i32_immediate_to_f64",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              make_fpr_home(function_name, result_name, 1, "ft0", 0),
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_unsupported_floating_cast_module() {
   return make_prepared_fpr_cast_module("unsupported_floating_cast",
                                        bir::CastOpcode::FPExt,
@@ -10226,6 +10269,34 @@ int builds_prepared_formal_fpr_fpext_to_ft0_object() {
   return 0;
 }
 
+int builds_prepared_sitofp_i32_immediate_to_f64_object() {
+  const auto prepared = make_prepared_sitofp_i32_immediate_to_f64_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared SIToFP i32 immediate to F64 RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function =
+      object::find_symbol(*module, "sitofp_i32_immediate_to_f64");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared SIToFP object to publish text/function");
+  }
+  if (text->bytes.size() != 12 || text->size_bytes != 12 ||
+      function->value != 0 || function->size_bytes != 12 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared SIToFP object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00000293 ||
+      read_u32(text->bytes, 4) != 0xd2028053 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected addi t0, zero, 0; fcvt.d.w ft0, t0, rne; ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared SIToFP object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_before_return_fpr_f32_abi_move_object() {
   const auto prepared = make_prepared_before_return_fpr_f32_abi_move_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -10405,7 +10476,7 @@ int rejects_prepared_fpr_immediate_return_fail_closed_shapes() {
 int rejects_unsupported_prepared_floating_cast_with_precise_diagnostic() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_unsupported_floating_cast_module(),
-      "unsupported_floating_cast: RV64 object route supports only prepared F32-to-F64 and F64-to-F32 FPR register casts");
+      "unsupported_floating_cast: RV64 object route supports only prepared FPR width casts and I32/I64-to-F32/F64 integer-to-floating casts");
 }
 
 int rejects_prepared_data_without_asm_fallback() {
@@ -11344,6 +11415,7 @@ int main() {
   status |= builds_prepared_fpr_fpext_object();
   status |= builds_prepared_fpr_fptrunc_object();
   status |= builds_prepared_formal_fpr_fpext_to_ft0_object();
+  status |= builds_prepared_sitofp_i32_immediate_to_f64_object();
   status |= builds_prepared_before_return_fpr_f32_abi_move_object();
   status |= builds_prepared_before_return_fpr_f64_abi_move_object();
   status |= rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes();

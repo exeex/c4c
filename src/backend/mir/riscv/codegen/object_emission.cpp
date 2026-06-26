@@ -4705,6 +4705,43 @@ void append_rv64_sign_extend_register(RiscvEncodedFragment& fragment,
                             static_cast<std::int32_t>(0x400U | (64U - source_bits))));
 }
 
+std::optional<std::uint32_t> rv64_int_to_fp_cast_rs2(
+    c4c::backend::bir::CastOpcode opcode,
+    c4c::backend::bir::TypeKind source_type) {
+  switch (source_type) {
+    case c4c::backend::bir::TypeKind::I32:
+      if (opcode == c4c::backend::bir::CastOpcode::SIToFP) {
+        return 0;  // fcvt.{s,d}.w
+      }
+      if (opcode == c4c::backend::bir::CastOpcode::UIToFP) {
+        return 1;  // fcvt.{s,d}.wu
+      }
+      return std::nullopt;
+    case c4c::backend::bir::TypeKind::I64:
+      if (opcode == c4c::backend::bir::CastOpcode::SIToFP) {
+        return 2;  // fcvt.{s,d}.l
+      }
+      if (opcode == c4c::backend::bir::CastOpcode::UIToFP) {
+        return 3;  // fcvt.{s,d}.lu
+      }
+      return std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<std::uint32_t> rv64_int_to_fp_cast_funct7(
+    c4c::backend::bir::TypeKind result_type) {
+  switch (result_type) {
+    case c4c::backend::bir::TypeKind::F32:
+      return 0x68;
+    case c4c::backend::bir::TypeKind::F64:
+      return 0x69;
+    default:
+      return std::nullopt;
+  }
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_floating_cast(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -4745,6 +4782,47 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_floating_cast(
   return fragment;
 }
 
+std::optional<RiscvEncodedFragment> fragment_for_prepared_int_to_fp_cast(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::CastInst& cast,
+    std::size_t stack_frame_bytes) {
+  const auto rs2 = rv64_int_to_fp_cast_rs2(cast.opcode, cast.operand.type);
+  const auto funct7 = rv64_int_to_fp_cast_funct7(cast.result.type);
+  if (!rs2.has_value() || !funct7.has_value()) {
+    return std::nullopt;
+  }
+  const auto* destination_home = prepared_value_home_for(names, lookups, cast.result);
+  const auto destination =
+      destination_home == nullptr ? std::nullopt : fpr_register_number_for_home(*destination_home);
+  if (!destination.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto source = gpr_register_number_for_value(names, lookups, cast.operand);
+  const std::uint32_t source_register = source.value_or(5);
+  RiscvEncodedFragment fragment;
+  if (!source.has_value() &&
+      !append_rv64_move_value_to_register(fragment,
+                                          source_register,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          cast.operand,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  append_le32(fragment.bytes,
+              encode_r_type(0x53,
+                            *destination,
+                            0,
+                            source_register,
+                            *rs2,
+                            *funct7));
+  return fragment;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_cast(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -4752,6 +4830,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_cast(
     const c4c::backend::bir::CastInst& cast,
     std::size_t stack_frame_bytes) {
   if (auto fragment = fragment_for_prepared_floating_cast(names, lookups, cast)) {
+    return fragment;
+  }
+  if (auto fragment = fragment_for_prepared_int_to_fp_cast(stack_layout,
+                                                           names,
+                                                           lookups,
+                                                           cast,
+                                                           stack_frame_bytes)) {
     return fragment;
   }
 
@@ -6724,7 +6809,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
     if (rv64_floating_type(cast->operand.type) ||
         rv64_floating_type(cast->result.type)) {
       return std::string{
-          "unsupported_floating_cast: RV64 object route supports only prepared F32-to-F64 and F64-to-F32 FPR register casts"};
+          "unsupported_floating_cast: RV64 object route supports only prepared FPR width casts and I32/I64-to-F32/F64 integer-to-floating casts"};
     }
   }
   if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
