@@ -2510,6 +2510,117 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
   return static_cast<std::int32_t>(offset);
 }
 
+struct PreparedFrameSlotAddressArgumentPublication {
+  std::int32_t address_offset = 0;
+  std::int32_t destination_offset = 0;
+  bir::Value source_value;
+};
+
+std::optional<PreparedFrameSlotAddressArgumentPublication>
+prepared_frame_slot_address_call_argument_publication(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    std::string_view function_name,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
+    std::size_t stack_frame_bytes) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (!argument.source_selection.has_value() ||
+      argument.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
+    return std::nullopt;
+  }
+  const auto address_offset =
+      prepared_frame_slot_address_call_argument_offset(stack_layout,
+                                                       lookups,
+                                                       frame_plan,
+                                                       argument,
+                                                       stack_frame_bytes);
+  if (!address_offset.has_value()) {
+    return std::nullopt;
+  }
+  const auto need =
+      prepare::find_prepared_missing_frame_slot_call_argument_publication_need(
+          argument);
+  if (!need.available ||
+      need.kind !=
+          prepare::PreparedMissingFrameSlotCallArgumentPublicationKind::
+              FrameSlotAddress ||
+      need.source_selection != &*argument.source_selection ||
+      need.source_value_id != argument.source_value_id ||
+      !need.source_materializes_address ||
+      need.may_emit_local_aggregate_address_payload) {
+    return std::nullopt;
+  }
+
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName ||
+      !argument.source_selection->source_slot_id.has_value() ||
+      !argument.source_selection->source_stack_offset_bytes.has_value() ||
+      !argument.source_selection->source_size_bytes.has_value() ||
+      *argument.source_selection->source_size_bytes != 8) {
+    return std::nullopt;
+  }
+
+  const prepare::PreparedStoreSourcePublicationRecord* selected = nullptr;
+  for (const auto& record : prepared.store_source_publications.records) {
+    const auto& plan = record.plan;
+    if (record.function_name != function_id ||
+        !argument.source_selection->address_materialization_block_label.has_value() ||
+        record.block_label !=
+            *argument.source_selection->address_materialization_block_label ||
+        record.instruction_index > argument.instruction_index ||
+        !prepare::prepared_store_source_publication_available(plan) ||
+        plan.intent !=
+            prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication ||
+        plan.duplicate_publication ||
+        plan.destination_frame_slot_id != argument.source_selection->source_slot_id ||
+        plan.destination_stack_offset_bytes !=
+            argument.source_selection->source_stack_offset_bytes ||
+        plan.destination_size_bytes != 8) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return std::nullopt;
+    }
+    selected = &record;
+  }
+  if (selected == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto& plan = selected->plan;
+  bir::Value source_value = plan.source_value;
+  if (plan.source_load_local != nullptr) {
+    if (plan.source_load_local->slot_name.empty() ||
+        plan.source_load_local->result.type != bir::TypeKind::Ptr) {
+      return std::nullopt;
+    }
+    source_value =
+        bir::Value::named(plan.source_load_local->result.type,
+                          plan.source_load_local->slot_name);
+  }
+  if (source_value.kind != bir::Value::Kind::Named ||
+      source_value.type != bir::TypeKind::Ptr ||
+      prepared_value_home_for(prepared.names, lookups, source_value) == nullptr ||
+      !plan.destination_stack_offset_bytes.has_value() ||
+      *plan.destination_stack_offset_bytes >
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+      !fits_signed_12_bit_immediate(
+          static_cast<std::int64_t>(*plan.destination_stack_offset_bytes))) {
+    return std::nullopt;
+  }
+
+  return PreparedFrameSlotAddressArgumentPublication{
+      .address_offset = *address_offset,
+      .destination_offset =
+          static_cast<std::int32_t>(*plan.destination_stack_offset_bytes),
+      .source_value = std::move(source_value),
+  };
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -2776,11 +2887,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
       return std::nullopt;
     }
     if (argument.source_selection.has_value() &&
-        (argument.source_selection->kind ==
-             prepare::PreparedCallArgumentSourceSelectionKind::
-                 LocalFrameAddressMaterialization ||
-         argument.source_selection->kind ==
-             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress)) {
+        argument.source_selection->kind ==
+            prepare::PreparedCallArgumentSourceSelectionKind::
+                LocalFrameAddressMaterialization) {
       const auto offset =
           prepared_frame_slot_address_call_argument_offset(stack_layout,
                                                            lookups,
@@ -2796,6 +2905,42 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
                                 0,
                                 2,
                                 *offset));  // addi rd, sp, off
+      continue;
+    }
+    if (argument.source_selection.has_value() &&
+        argument.source_selection->kind ==
+            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
+      const auto publication =
+          prepared_frame_slot_address_call_argument_publication(prepared,
+                                                                stack_layout,
+                                                                lookups,
+                                                                frame_plan,
+                                                                function_name,
+                                                                argument,
+                                                                stack_frame_bytes);
+      if (!publication.has_value()) {
+        return std::nullopt;
+      }
+      const std::uint32_t scratch = rv64_temporary_gpr_avoiding(*destination);
+      if (!append_rv64_move_value_to_register(fragment,
+                                              scratch,
+                                              stack_layout,
+                                              prepared.names,
+                                              lookups,
+                                              publication->source_value,
+                                              stack_frame_bytes) ||
+          !append_rv64_store_register_to_stack(fragment,
+                                               scratch,
+                                               publication->destination_offset,
+                                               8)) {
+        return std::nullopt;
+      }
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                *destination,
+                                0,
+                                2,
+                                publication->address_offset));  // addi rd, sp, off
       continue;
     }
     if (argument.source_selection.has_value()) {

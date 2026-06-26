@@ -5269,6 +5269,7 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
   const auto callee_name = prepared.names.function_names.intern("sink");
   const auto main_name = prepared.names.function_names.intern("main");
   const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("%lv.src");
   const auto x_name = prepared.names.value_names.intern("%lv.x");
   const auto y_name = prepared.names.value_names.intern("%lv.y");
   const auto x_slot_name = prepared.names.slot_names.intern("%lv.x");
@@ -5369,6 +5370,15 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
       .function_name = main_name,
       .value_homes =
           {
+              prepare::PreparedValueHome{
+                  .value_id = 13,
+                  .function_name = main_name,
+                  .value_name = source_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"s1"},
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
               prepare::PreparedValueHome{
                   .value_id = 14,
                   .function_name = main_name,
@@ -5588,6 +5598,50 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
           .size_bytes = 8,
           .align_bytes = 8,
           .fixed_location = true,
+      },
+  };
+  prepared.store_source_publications.records = {
+      prepare::PreparedStoreSourcePublicationRecord{
+          .function_name = main_name,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .plan =
+              prepare::PreparedStoreSourcePublicationPlan{
+                  .status =
+                      prepare::PreparedStoreSourcePublicationStatus::Available,
+                  .intent = prepare::PreparedStoreSourcePublicationIntent::
+                      StoreLocalPublication,
+                  .source_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.src"),
+                  .source_value_id = prepare::PreparedValueId{13},
+                  .source_value_name = source_name,
+                  .destination_frame_slot_id = prepare::PreparedFrameSlotId{7},
+                  .destination_size_bytes = 8,
+                  .destination_align_bytes = 8,
+                  .destination_stack_offset_bytes = 24,
+                  .destination_stack_size_bytes = 8,
+                  .destination_stack_align_bytes = 8,
+              },
+      },
+      prepare::PreparedStoreSourcePublicationRecord{
+          .function_name = main_name,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .plan =
+              prepare::PreparedStoreSourcePublicationPlan{
+                  .status =
+                      prepare::PreparedStoreSourcePublicationStatus::Available,
+                  .intent = prepare::PreparedStoreSourcePublicationIntent::
+                      StoreLocalPublication,
+                  .source_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.src"),
+                  .source_value_id = prepare::PreparedValueId{13},
+                  .source_value_name = source_name,
+                  .destination_frame_slot_id = prepare::PreparedFrameSlotId{8},
+                  .destination_size_bytes = 8,
+                  .destination_align_bytes = 8,
+                  .destination_stack_offset_bytes = 32,
+                  .destination_stack_size_bytes = 8,
+                  .destination_stack_align_bytes = 8,
+              },
       },
   };
   return prepared;
@@ -7797,14 +7851,22 @@ int builds_prepared_frame_slot_address_arg_call_object() {
       module->relocations[0].section != text->id ||
       module->relocations[0].type != R_RISCV_CALL_PLT ||
       module->relocations[0].symbol != sink->id ||
-      module->relocations[0].offset < main->value + 8) {
+      module->relocations[0].offset < main->value + 24) {
     return fail("expected frame-slot-address same-module call relocation");
   }
-  if (read_u32(text->bytes, module->relocations[0].offset - 8) !=
+  if (read_u32(text->bytes, module->relocations[0].offset - 24) !=
+          0x00048313 ||
+      read_u32(text->bytes, module->relocations[0].offset - 20) !=
+          0x00613c23 ||
+      read_u32(text->bytes, module->relocations[0].offset - 16) !=
           0x01810513 ||
+      read_u32(text->bytes, module->relocations[0].offset - 12) !=
+          0x00048313 ||
+      read_u32(text->bytes, module->relocations[0].offset - 8) !=
+          0x02613023 ||
       read_u32(text->bytes, module->relocations[0].offset - 4) !=
           0x02010593) {
-    return fail("expected frame-slot addresses materialized into a0/a1 before call");
+    return fail("expected initialized va_list payload publication before frame-slot-address args");
   }
   return 0;
 }
@@ -7843,6 +7905,26 @@ int expect_frame_slot_address_arg_call_rejection(
 
 int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
   auto prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.store_source_publications.records.clear();
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.store_source_publications.records.push_back(
+      prepared.store_source_publications.records[0]);
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.store_source_publications.records[0].plan.destination_stack_offset_bytes =
+      40;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
   prepared.call_plans.functions[0]
       .calls[0]
       .arguments[0]

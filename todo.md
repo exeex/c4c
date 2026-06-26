@@ -1,42 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/390_rv64_va_list_value_publication_copy_runtime_abort.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Focused Backend Coverage
+Current Step ID: 4
+Current Step Title: Implement Narrow `va_list` Value Publication/Copy
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added focused RV64 object-emission coverage around the prepared
-frame-slot-address call-argument owner used by the selected `va_list`
-payload-copy route.
+Step 4 implemented the narrow RV64 prepared-call payload-publication route for
+`FrameSlotAddress` call arguments.
 
-Coverage added:
+The object route now requires all of the following before it emits the
+publication/copy:
 
-- `records_prepared_frame_slot_address_arg_missing_publication_need` asserts
-  both frame-slot-address GPR arguments expose
-  `FrameSlotAddress` missing-publication needs, preserve source value identity,
-  and do not claim local aggregate payload authority from address
-  materialization alone.
-- `rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes` now also
-  rejects duplicate exact frame-slot address materialization facts and
-  non-frame-slot materialization kinds in the prepared RV64 object route.
+- a prepared `FrameSlotAddress` missing-publication need for the argument
+- a supported frame-slot address materialization for the argument object
+- exactly one available `StoreLocalPublication` prepared store-source record
+  targeting that argument object's frame slot and stack offset
+- a named pointer source value with an authoritative prepared value home
 
-Accepted-route assertion intentionally deferred:
+When those facts line up, RV64 object emission copies the initialized source
+value into the frame-slot-address argument object with an 8-byte stack store
+before emitting `addi aN, sp, <object-offset>`. Missing, mismatched, duplicate,
+or malformed publication facts still fail closed through the prepared-call
+unsupported-instruction path.
 
-- A green assertion that copies an initialized source `va_list` payload into a
-  frame-slot-address argument object before `addi aN, sp, <offset>` requires the
-  Step 4 implementation and/or a new explicit prepared publication-copy fact.
-  The current public prepared facts expose the missing-publication need but do
-  not yet encode the source `va_list` payload-to-destination-object copy edge.
+Focused coverage now asserts the accepted publication sequence and rejects
+absent, duplicate, and destination-mismatched publication facts, while
+preserving the Step 3 address-materialization fail-closed variants.
 
 ## Suggested Next
 
-Execute Step 4: add the narrow RV64 prepared-call payload-copy implementation
-or first expose the missing explicit prepared publication-copy fact if the
-implementation cannot connect initialized `va_list` source storage to the
-frame-slot-address argument object through existing metadata.
+Execute Step 5: rerun the `va-arg-13.c` representative comparison and record
+whether the current runtime abort advances or exposes a later owned boundary.
 
 ## Watchouts
 
@@ -48,9 +45,10 @@ frame-slot-address argument object through existing metadata.
 - Address materialization alone is not proof that the initialized `va_list`
   payload reached `dummy`; the implementation must require a source-to-object
   publication/copy fact and fail closed when the fact is absent or ambiguous.
-- The new green coverage intentionally does not assert the accepted copy
-  sequence yet because the route cannot pass before Step 4 without either
-  weakening expectations or implementing behavior.
+- The Step 4 route intentionally consumes prepared store-source publication
+  facts; do not weaken this to address-materialization-only acceptance.
+- Step 5 should distinguish this route from any later `va_arg`, `va_end`, or
+  aggregate-copy boundary if `va-arg-13.c` still fails.
 
 ## Proof
 
