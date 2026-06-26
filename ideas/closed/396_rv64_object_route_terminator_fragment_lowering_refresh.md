@@ -1,6 +1,6 @@
 # RV64 Object Route Terminator Fragment Lowering Refresh
 
-Status: Open
+Status: Closed
 Type: Follow-up repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -55,3 +55,19 @@ current unowned terminator-fragment family.
   be linked and run through qemu.
 - Reject broad route rewrites that absorb semantic CFG lowering into the RV64
   backend.
+
+## Lifecycle Notes
+
+- 2026-06-26: Closed after refreshed Step 1 proof found no current owned
+  `unsupported_terminator_fragment` family in the selected seed bucket.
+  `20020206-2`, `20000412-1`, `20020129-1`, `20030403-1`,
+  `20060910-1`, `20050125-1`, and `20100209-1` all reported
+  `c4cll_status=0` and `prepared_status=0`.
+- 2026-06-26: Prepared dumps exercised conditional branches, unconditional
+  branches, returns, fused branch conditions, and join/parallel-copy facts;
+  all selected representatives compiled successfully, no producer CFG fact gap
+  surfaced, and no Step 2 terminator lowering family was justified.
+- 2026-06-26: Close gate passed with the backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`. The
+  rolled-forward `test_before.log` and regenerated `test_after.log` both
+  reported 326/326 passing backend tests with no new failures.
