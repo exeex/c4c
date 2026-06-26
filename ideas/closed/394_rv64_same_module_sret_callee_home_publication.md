@@ -1,9 +1,10 @@
 # RV64 Same-Module Sret Callee Home Publication
 
-Status: Open
+Status: Closed
 Type: Target lowering follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/393_rv64_variadic_aggregate_va_arg_cursor_stride.md`
+Closed By: RV64 same-module sret callee home-publication repair plus Step 5 acceptance classification
 
 ## Goal
 
@@ -69,6 +70,45 @@ that is later used as a pointer-value memory base.
 - `920908-1.c` advances past the current `%ret.sret` home-publication
   segmentation fault, or any remaining later boundary is recorded with a clear
   owner and split instead of expanding this idea.
+
+## Closure Notes
+
+The same-module RV64 callee `%ret.sret` home-publication acceptance is
+satisfied. Step 4 implementation commit `1154aca4` normalized RV64 prepared
+pointer `sret_param` homes to exact ABI pointer storage before frame-slot
+assignment and made RV64 object emission publish incoming `a0` into supported
+sret homes while fail-closing malformed homes.
+
+Focused coverage was added for:
+
+- RV64 narrow and wide returned-aggregate metadata normalizing to 8-byte
+  pointer homes
+- AArch64 preserving the shared BIR layout
+- RV64 object emission and rejection behavior for supported and malformed sret
+  homes
+
+Representative evidence confirms the owned boundary is repaired:
+
+- `build/agent_state/394_step4_final_920908-1.prepared.log` still shows BIR
+  `ptr sret(size=4, align=4) %ret.sret`, while prepared object/frame-slot facts
+  use `source_kind=sret_param type=ptr size=8 align=8`, slot #0 `size=8
+  align=8`, and preservation homes with `stack_size=8 stack_align=8`
+- `build/agent_state/394_step4_final_920908-1.case.log` reports
+  `[PASS][rv64-gcc-torture-backend-obj]` for
+  `tests/c/external/gcc_torture/src/920908-1.c`
+- Step 5 commit `64b6d62a` classified the post-repair representative as having
+  no later observed boundary
+
+Supervisor acceptance ran backend CTest after the implementation and compared
+against the accepted baseline with the regression guard. The accepted
+`test_after.log` was rolled into `test_before.log` before closure.
+
+The plan-owner close gate was rerun as lifecycle-only validation against the
+accepted current backend baseline on both sides:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed`
+
+Result: PASS, 326/326 before and 326/326 after, no new failures.
 
 ## Reviewer Reject Signals
 
