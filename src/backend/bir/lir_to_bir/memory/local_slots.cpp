@@ -1168,6 +1168,7 @@ bool BirFunctionLowerer::lower_memory_load_inst(
                   .byte_offset = static_cast<std::int64_t>(byte_offset),
                   .size_bytes = slot_size,
                   .align_bytes = std::max(slot_size, aggregate_layout->align_bytes),
+                  .base_link_name_id = global_it->second.link_name_id,
               },
       });
       lowered_insts->push_back(bir::StoreLocalInst{
