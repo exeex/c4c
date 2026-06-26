@@ -5200,6 +5200,62 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
                   encode_r_type(opcode, destination_register, 5, 28, 29, 1));
       return finish();
     }
+    case c4c::backend::bir::BinaryOpcode::Slt:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 2, 28, 29, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Sgt:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 2, 29, 28, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Sle:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 2, 29, 28, 0));
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                4,
+                                destination_register,
+                                1));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Sge:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 2, 28, 29, 0));
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                4,
+                                destination_register,
+                                1));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Ult:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 3, 28, 29, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Ugt:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 3, 29, 28, 0));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Ule:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 3, 29, 28, 0));
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                4,
+                                destination_register,
+                                1));
+      return finish();
+    case c4c::backend::bir::BinaryOpcode::Uge:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33, destination_register, 3, 28, 29, 0));
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                4,
+                                destination_register,
+                                1));
+      return finish();
     default:
       return std::nullopt;
   }
@@ -6651,9 +6707,15 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                                  block,
                                                                  instruction_index,
                                                                  *binary,
-                                                                 stack_frame_bytes)) {
+                                                                 stack_frame_bytes) &&
+      !fragment_for_prepared_binary(stack_layout,
+                                    names,
+                                    &lookups,
+                                    *binary,
+                                    stack_frame_bytes)
+           .has_value()) {
     return std::string{
-        "unsupported_scalar_compare_trunc: RV64 object route supports only prepared named Sge i32 compare results feeding one i16 integer trunc publication"};
+        "unsupported_scalar_compare_publication: RV64 object route requires prepared scalar compare result homes and materializable operands"};
   }
   return std::nullopt;
 }

@@ -8398,59 +8398,43 @@ int builds_prepared_scalar_compare_trunc_object() {
   return 0;
 }
 
-int rejects_prepared_scalar_compare_trunc_fail_closed_shapes() {
-  constexpr const char* diagnostic =
-      "unsupported_scalar_compare_trunc: RV64 object route supports only prepared named Sge i32 compare results feeding one i16 integer trunc publication";
-
+int builds_prepared_scalar_ordered_compare_return_object() {
   auto prepared = make_prepared_scalar_compare_trunc_module();
-  auto* compare =
-      std::get_if<bir::BinaryInst>(&prepared.module.functions[0].blocks[0].insts[0]);
+  auto& function = prepared.module.functions[0];
+  auto& block = function.blocks[0];
+  auto* compare = std::get_if<bir::BinaryInst>(&block.insts[0]);
   if (compare == nullptr) {
-    return fail("expected mutable scalar compare/trunc fixture compare");
+    return fail("expected mutable scalar compare fixture compare");
   }
   compare->opcode = bir::BinaryOpcode::Slt;
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return 1;
-  }
+  block.insts.resize(1);
+  block.terminator.value = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  function.return_type = bir::TypeKind::I32;
+  function.return_size_bytes = 4;
+  function.return_align_bytes = 4;
 
-  prepared = make_prepared_scalar_compare_trunc_module();
-  compare =
-      std::get_if<bir::BinaryInst>(&prepared.module.functions[0].blocks[0].insts[0]);
-  if (compare == nullptr) {
-    return fail("expected mutable scalar compare/trunc fixture compare");
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared scalar ordered compare return RV64 object module to build");
   }
-  compare->operand_type = bir::TypeKind::I64;
-  compare->lhs = bir::Value::named(bir::TypeKind::I64, "%lhs");
-  compare->rhs = bir::Value::immediate_i64(8);
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return 1;
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr || text->bytes.empty()) {
+    return fail("expected prepared scalar ordered compare return object to publish text/main");
   }
+  if (!module->relocations.empty()) {
+    return fail("expected scalar ordered compare return object to need no relocations");
+  }
+  return 0;
+}
 
-  prepared = make_prepared_scalar_compare_trunc_module();
-  auto* trunc =
-      std::get_if<bir::CastInst>(&prepared.module.functions[0].blocks[0].insts[1]);
-  if (trunc == nullptr) {
-    return fail("expected mutable scalar compare/trunc fixture trunc");
-  }
-  trunc->result = bir::Value::named(bir::TypeKind::I32, "%trunc");
-  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return 1;
-  }
+int rejects_prepared_scalar_compare_publication_missing_home() {
+  constexpr const char* diagnostic =
+      "unsupported_scalar_compare_publication: RV64 object route requires prepared scalar compare result homes and materializable operands";
 
-  prepared = make_prepared_scalar_compare_trunc_module();
-  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
-      .slot_id = prepare::PreparedFrameSlotId{10},
-      .function_name = prepared.names.function_names.find("main"),
-      .offset_bytes = 0,
-      .size_bytes = 4,
-      .align_bytes = 4,
-  });
-  prepared.value_locations.functions[0].value_homes[1] =
-      rv64_stack_slot_home(2,
-                           prepared.names.function_names.find("main"),
-                           prepared.names.value_names.find("%cmp"),
-                           prepare::PreparedFrameSlotId{10},
-                           0);
+  auto prepared = make_prepared_scalar_compare_trunc_module();
+  prepared.value_locations.functions[0].value_homes.erase(
+      prepared.value_locations.functions[0].value_homes.begin() + 1);
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
     return 1;
   }
@@ -11222,7 +11206,8 @@ int main() {
   status |= builds_prepared_stack_slot_to_gpr_move_bundle_object();
   status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
   status |= builds_prepared_scalar_compare_trunc_object();
-  status |= rejects_prepared_scalar_compare_trunc_fail_closed_shapes();
+  status |= builds_prepared_scalar_ordered_compare_return_object();
+  status |= rejects_prepared_scalar_compare_publication_missing_home();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= skips_published_prepared_join_transfer_select_carrier_object();
   status |= materializes_published_prepared_join_transfer_select_edge_compare_source_object();
