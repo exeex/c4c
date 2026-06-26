@@ -24,6 +24,19 @@ The committed corpus must cover these RV64I families:
   unsigned-looking immediates, labels, and local labels
 - c4c EV64: `.insn.d`
 
+EV64 `.insn.d` binary layout:
+
+- bits `[6:0]`: fixed RISC-V 64-bit instruction length prefix `0x3f`
+- bits `[11:7]`: destination vector register
+- bits `[14:12]`: reserved subformat, encoded as zero
+- bits `[19:15]`: lhs vector register
+- bits `[24:20]`: rhs vector register
+- bits `[31:25]`: `.insn.d` major, 7-bit
+- bits `[39:32]`: operation, 8-bit
+- bits `[44:40]`: accumulator/fourth vector operand (`rs4`/mask)
+- bits `[47:45]`: reserved, encoded as zero and decoded fail-closed
+- bits `[63:48]`: dtype immediate, 16-bit
+
 Canonical roundtrip route:
 
 ```text

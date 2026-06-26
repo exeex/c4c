@@ -7322,25 +7322,27 @@ std::optional<std::uint64_t> encode_rv64_ev_insn_d_inline_asm(
     return static_cast<std::uint64_t>(reg.physical_index);
   };
 
-  const auto opcode7 = unsigned_field(shape.major, 0x7f);
+  const auto major7 = unsigned_field(shape.major, 0x7f);
   const auto evop8 = unsigned_field(shape.operation, 0xff);
   const auto dtype16 = unsigned_field(shape.dtype, 0xffff);
   const auto rd = register_field(shape.destination);
   const auto rs1 = register_field(shape.lhs);
   const auto rs2 = register_field(shape.rhs);
-  const auto rs3 = register_field(shape.accumulator);
-  if (!opcode7.has_value() || !evop8.has_value() || !dtype16.has_value() ||
+  const auto rs4 = register_field(shape.accumulator);
+  if (!major7.has_value() || !evop8.has_value() || !dtype16.has_value() ||
       !rd.has_value() || !rs1.has_value() || !rs2.has_value() ||
-      !rs3.has_value()) {
+      !rs4.has_value()) {
     return std::nullopt;
   }
 
   // First supported EV64 shape:
-  // bits 6:0 opcode/namespace, 11:7 rd, 14:12 funct3=0,
-  // 19:15 rs1, 24:20 rs2, 29:25 rs3, 31:30 funct2=0,
-  // 39:32 EV operation, 55:40 dtype/policy, 63:56 opcode8=0.
-  return (*opcode7) | (*rd << 7) | (*rs1 << 15) | (*rs2 << 20) |
-         (*rs3 << 25) | (*evop8 << 32) | (*dtype16 << 40);
+  // bits 6:0 prefix=0x3f, 11:7 rd, 14:12 reserved=0,
+  // 19:15 rs1, 24:20 rs2, 31:25 major/subformat,
+  // 39:32 EV operation, 44:40 rs4/mask, 47:45 reserved=0,
+  // 63:48 dtype immediate.
+  return std::uint64_t{0x3f} | (*rd << 7) | (*rs1 << 15) | (*rs2 << 20) |
+         (*major7 << 25) | (*evop8 << 32) | (*rs4 << 40) |
+         (*dtype16 << 48);
 }
 
 std::optional<std::uint32_t> rv64_elf_relocation_type(

@@ -276,8 +276,9 @@ set(rv64_object "${WORK_DIR}/rv64_vrm_insn_d_source.o")
 set(aarch64_object "${WORK_DIR}/aarch64_return_zero_smoke.o")
 set(unsupported_rv64_object "${WORK_DIR}/rv64_unsupported_instruction.o")
 set(malformed_input "${WORK_DIR}/malformed.bin")
-set(expected_hex "0a0320080b0300001305000067800000")
-set(unsupported_hex "0a0320080b0300001305000000000000")
+set(expected_hex "3f0320140b0403001305000067800000")
+# Same instruction shape with EV64 reserved bits [47:45] set nonzero.
+set(unsupported_hex "3f0320140b2403001305000067800000")
 file(REMOVE "${rv64_object}" "${aarch64_object}" "${unsupported_rv64_object}")
 
 execute_process(
@@ -430,7 +431,7 @@ run_objdump_failure_case(
   unsupported_instruction
   "${unsupported_rv64_object}"
   "${WORK_DIR}/rv64_unsupported_instruction.s"
-  "unsupported RV64 instruction bytes at .text offset 0xc"
+  "unsupported RV64 instruction bytes at .text offset 0x0"
 )
 
 file(WRITE "${malformed_input}" "this is not an ELF object\n")

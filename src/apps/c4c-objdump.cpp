@@ -470,18 +470,20 @@ std::optional<ExtractedObject> extract_supported_rv64_object(
 }
 
 std::optional<DecodedInsnD> decode_insn_d(std::uint64_t word) {
-  const auto major = static_cast<std::uint32_t>(word & 0x7fu);
-  if (major != 10) {
+  constexpr std::uint64_t kEv64Prefix = 0x3f;
+  if ((word & 0x7fu) != kEv64Prefix ||
+      ((word >> 12) & 0x7u) != 0 ||
+      ((word >> 45) & 0x7u) != 0) {
     return std::nullopt;
   }
   return DecodedInsnD{
-      .major = major,
+      .major = static_cast<std::uint32_t>((word >> 25) & 0x7fu),
       .operation = static_cast<std::uint32_t>((word >> 32) & 0xffu),
       .destination = static_cast<std::uint32_t>((word >> 7) & 0x1fu),
       .lhs = static_cast<std::uint32_t>((word >> 15) & 0x1fu),
       .rhs = static_cast<std::uint32_t>((word >> 20) & 0x1fu),
-      .accumulator = static_cast<std::uint32_t>((word >> 25) & 0x1fu),
-      .dtype = static_cast<std::uint32_t>((word >> 40) & 0xffffu),
+      .accumulator = static_cast<std::uint32_t>((word >> 40) & 0x1fu),
+      .dtype = static_cast<std::uint32_t>((word >> 48) & 0xffffu),
   };
 }
 

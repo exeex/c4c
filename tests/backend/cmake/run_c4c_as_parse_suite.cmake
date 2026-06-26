@@ -217,25 +217,25 @@ run_success_case(
   canonical
   ".text\n# canonical RV64 source accepted by c4c-as\n.globl main\nmain:\n  .insn.d 10, 11, v6, v0, v2, v4, 3 # custom instruction\n\n  li a0, 0\n  ret\n"
   "assembled 3 instruction line(s)"
-  "0a0320080b0300001305000067800000"
+  "3f0320140b0403001305000067800000"
 )
 run_success_case(
   canonical_text_bytes
   ".text\n.globl main\nmain:\n  .insn.d 10, 11, v6, v0, v2, v4, 3\n  li a0, 0\n  ret\n"
-  "text byte(s): 0a0320080b0300001305000067800000"
-  "0a0320080b0300001305000067800000"
+  "text byte(s): 3f0320140b0403001305000067800000"
+  "3f0320140b0403001305000067800000"
 )
 run_source_equivalence_case(
   source_route_equivalence
   ".text\n.globl main\nmain:\n  .insn.d 10, 11, v6, v0, v2, v4, 3\n  li a0, 0\n  ret\n"
   "${SOURCE_CASE}"
-  "0a0320080b0300001305000067800000"
+  "3f0320140b0403001305000067800000"
 )
 run_success_case(
   rv64i_step2_non_label_subset
   ".text\n.globl main\nmain:\n  lui t0, 0x7ffff\n  auipc t1, -0x80000\n  addi t2, zero, -2048\n  slti s1, s0, -1\n  ori s4, s0, 0x7f\n  slli s6, s5, 63\n  srai s8, s6, 63\n  addiw s9, s8, -2048\n  sraiw a0, s10, 31\n  add a1, a0, s1\n  sub a2, a1, s2\n  sraw tp, gp, a4\n  lb a0, -2048(sp)\n  lwu a6, 60(sp)\n  sd a3, 2040(sp)\n  jalr zero, 0(ra)\n  .insn.d 10, 11, v6, v0, v2, v4, 3\n"
   "assembled 17 instruction line(s)"
-  "b7f2ff7f17030080930300809324f4ff136af407139bfa03135cfb439b0c0c801b55fd41b3059500338625413bd2e140030501800368c103233cd17e678000000a0320080b030000"
+  "b7f2ff7f17030080930300809324f4ff136af407139bfa03135cfb439b0c0c801b55fd41b3059500338625413bd2e140030501800368c103233cd17e678000003f0320140b040300"
 )
 run_success_case(
   rv64i_step3_local_branch_labels

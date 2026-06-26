@@ -674,21 +674,21 @@ std::optional<std::uint64_t> encode_insn_d_word(const Rv64InsnDLine& insn) {
   const auto rd = register_field(insn.destination, Rv64AsmRegisterBank::Vector);
   const auto rs1 = register_field(insn.lhs, Rv64AsmRegisterBank::Vector);
   const auto rs2 = register_field(insn.rhs, Rv64AsmRegisterBank::Vector);
-  const auto rs3 = register_field(insn.accumulator, Rv64AsmRegisterBank::Vector);
+  const auto rs4 = register_field(insn.accumulator, Rv64AsmRegisterBank::Vector);
   if (insn.major > 0x7f || insn.operation > 0xff || insn.dtype > 0xffff ||
       !rd.has_value() || !rs1.has_value() || !rs2.has_value() ||
-      !rs3.has_value()) {
+      !rs4.has_value()) {
     return std::nullopt;
   }
 
   // First supported EV64 shape, matching object_emission.cpp.
-  return static_cast<std::uint64_t>(insn.major) |
-         (static_cast<std::uint64_t>(*rd) << 7) |
+  return std::uint64_t{0x3f} | (static_cast<std::uint64_t>(*rd) << 7) |
          (static_cast<std::uint64_t>(*rs1) << 15) |
          (static_cast<std::uint64_t>(*rs2) << 20) |
-         (static_cast<std::uint64_t>(*rs3) << 25) |
+         (static_cast<std::uint64_t>(insn.major) << 25) |
          (static_cast<std::uint64_t>(insn.operation) << 32) |
-         (static_cast<std::uint64_t>(insn.dtype) << 40);
+         (static_cast<std::uint64_t>(*rs4) << 40) |
+         (static_cast<std::uint64_t>(insn.dtype) << 48);
 }
 
 }  // namespace

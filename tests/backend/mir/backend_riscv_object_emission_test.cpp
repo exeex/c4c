@@ -9481,7 +9481,7 @@ int encodes_rv64_line_core_canonical_subset() {
     }
     bytes.insert(bytes.end(), encoded->begin(), encoded->end());
   }
-  if (bytes.size() != 16 || read_u64(bytes, 0) != 0x0000030b0820030aull ||
+  if (bytes.size() != 16 || read_u64(bytes, 0) != 0x0003040b1420033full ||
       read_u32(bytes, 8) != 0x00000513 ||
       read_u32(bytes, 12) != 0x00008067) {
     return fail("expected RV64 line encoder to preserve canonical object bytes");
@@ -9524,7 +9524,7 @@ int parses_substituted_prepared_inline_asm_insn_d_with_line_core() {
   }
   const auto encoded = rv64::encode_rv64_asm_line(*parsed);
   if (!encoded.has_value() || encoded->size() != 8 ||
-      read_u64(*encoded, 0) != 0x0000030b10620a0aull) {
+      read_u64(*encoded, 0) != 0x0003080b14620a3full) {
     return fail("expected line core to encode substituted prepared .insn.d text");
   }
   return 0;
@@ -9728,7 +9728,7 @@ int encodes_prepared_inline_asm_insn_d_positional_shape() {
   if (!encoded.has_value()) {
     return fail("expected positional RV64 EV .insn.d shape to encode");
   }
-  if (*encoded != 0x0000030b10620a0aull) {
+  if (*encoded != 0x0003080b14620a3full) {
     return fail("expected EV .insn.d fields to land in documented 64-bit bits");
   }
   return 0;
@@ -9776,7 +9776,7 @@ int builds_prepared_inline_asm_insn_d_object() {
       main_symbol->value != 0 || main_symbol->size_bytes != 12) {
     return fail("expected inline-asm .insn.d object text layout");
   }
-  if (read_u64(text->bytes, 0) != 0x0000030b10620a0aull ||
+  if (read_u64(text->bytes, 0) != 0x0003080b14620a3full ||
       read_u32(text->bytes, 8) != 0x00008067) {
     return fail("expected EV .insn.d bytes followed by return");
   }
@@ -9806,7 +9806,7 @@ int builds_prepared_inline_asm_insn_d_adjacent_template_object() {
       main->value != 0 || main->size_bytes != 12) {
     return fail("expected adjacent-fragment inline-asm .insn.d object text layout");
   }
-  if (read_u64(text->bytes, 0) != 0x0000030b10620a0aull ||
+  if (read_u64(text->bytes, 0) != 0x0003080b14620a3full ||
       read_u32(text->bytes, 8) != 0x00008067u) {
     return fail("expected adjacent-fragment EV .insn.d bytes followed by return");
   }
@@ -9833,7 +9833,7 @@ int builds_prepared_inline_asm_insn_d_helper_template_object() {
       main->value != 0 || main->size_bytes != 12) {
     return fail("expected helper-built inline-asm .insn.d object text layout");
   }
-  if (read_u64(text->bytes, 0) != 0x0000030b10620a0aull ||
+  if (read_u64(text->bytes, 0) != 0x0003080b14620a3full ||
       read_u32(text->bytes, 8) != 0x00008067u) {
     return fail("expected helper-built EV .insn.d bytes followed by return");
   }
@@ -9859,7 +9859,7 @@ int builds_prepared_mixed_inline_asm_insn_object() {
     return fail("expected mixed inline-asm object text layout");
   }
   if (read_u32(text->bytes, 0) != 0x007302b3 ||
-      read_u64(text->bytes, 4) != 0x0000030b10620a0aull ||
+      read_u64(text->bytes, 4) != 0x0003080b14620a3full ||
       read_u32(text->bytes, 12) != 0x00028513 ||
       read_u32(text->bytes, 16) != 0x00008067) {
     return fail("expected .insn r, EV .insn.d, and return bytes in order");
