@@ -1,6 +1,6 @@
 # Prepared Local Aggregate Slot Layout Facts
 
-Status: Open
+Status: Closed
 Type: Follow-up producer repair idea
 Parent: `ideas/closed/400_rv64_object_route_local_memory_addressing_edges.md`
 Discovered From: `tests/c/external/gcc_torture/src/20020225-2.c`
@@ -67,3 +67,28 @@ union storage before target emission may lower it.
   claimed as producer progress.
 - Reject a renamed diagnostic if the same contradictory one-byte slot fact still
   blocks the representative.
+
+## Lifecycle Notes
+
+- 2026-06-26: Closed after commit `57a841bd` repaired producer-side local
+  aggregate and union overlay slot extent publication. Prepared dumps from
+  `build/agent_state/405_step2_dumps/20020225-2.prepared-bir.txt` show
+  `%lv.a.0` published as `size=8 align=8`, with the 8-byte double store and
+  4-byte i32 store/load selecting `frame_slot=#0` and
+  `range_verdict=proven_in_bounds`.
+- 2026-06-26: Same-family proof for
+  `src/ieee/mul-subnormal-single-1.c` shows `u2f` and `f2u` `%lv.u.0`
+  published as `size=4 align=4`, with 4-byte i32/float overlay accesses
+  selecting covering frame slots and `range_verdict=proven_in_bounds`.
+- 2026-06-26: The allowlisted RV64 probe still reports
+  `unsupported_local_memory_access` for both representatives, but the failures
+  are later RV64 object-route local-memory boundaries rather than the repaired
+  one-byte slot extent defect. Those residual target-emission boundaries are
+  routed to
+  `ideas/open/406_rv64_object_route_residual_local_memory_boundaries.md`.
+- Close gate: backend regression guard passed on 2026-06-26 using
+  `test_before.log` and regenerated `test_after.log`, both covering
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'` with
+  326/326 passing tests. The lifecycle-only close comparison used
+  `--allow-non-decreasing-passed` because the accepted backend pass count
+  remained unchanged.
