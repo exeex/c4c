@@ -1,6 +1,6 @@
 # RV64 Object Route Non-Register Parameter Homes
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/open/368_rv64_object_route_frame_slot_base_offset_memory.md`
@@ -66,6 +66,26 @@ Known representative evidence:
   prepared-printer coverage remains green.
 - Progress consumes prepared ABI-home facts instead of adding testcase-specific
   lowering.
+
+## Closure Note
+
+Accepted after the scalar GPR formal stack-slot home slice. The object route
+now admits scalar GPR formal stack-slot homes only when prepared value-home,
+ABI integer-register ownership, frame-slot, stack-object, type, size/alignment,
+final-frame-bound, and signed 12-bit stack-offset facts are coherent. Unsupported
+or ambiguous parameter-home shapes remain fail-closed.
+
+The representative `tests/c/external/gcc_torture/src/va-arg-13.c` no longer
+stops at `unsupported_param_home`; it advances to a later
+`unsupported_instruction_fragment` boundary. That boundary is not
+parameter-home-specific and is tracked separately by
+`ideas/open/386_rv64_object_route_unsupported_instruction_fragment.md`.
+
+Close gate proof used the backend subset:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+`test_before.log` and `test_after.log` both reported 326 passing tests and no
+failures; the regression guard passed with non-decreasing pass count for this
+lifecycle-only close.
 
 ## Reviewer Reject Signals
 
