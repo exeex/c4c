@@ -1,48 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/379_rv64_object_route_20000112_runtime_join_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement the First Semantic Publication Repair
+Current Step ID: 3
+Current Step Title: Rerun `src/20000112-1.c`
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 implemented the first semantic RV64 object-route publication repair for
-prepared predecessor-terminator `select_materialization` parallel copies.
-The shared edge-publication adapter now accepts authoritative immediate
-sources carried by `PreparedMoveResolution::source_immediate_i32`, so an
-immediate incoming value can publish directly into the join result register
-without requiring a separate source home. The object route now validates
-predecessor-terminator select-publication bundles before using the existing
-move-bundle emitter, admitting only immediate-to-GPR and GPR-to-GPR moves and
-rejecting adjacent stack-source or non-select-carrier shapes.
+Step 3 reran `src/20000112-1.c` through the RV64 GCC torture backend
+object-route representative using the supervisor-provided single-case
+allowlist. The representative does not pass yet; it now fails as a distinct
+runtime mismatch:
 
-Focused object coverage now asserts the published select carrier is skipped at
-the join, predecessor terminators emit the expected `li` and `mv` publication
-bytes before their jumps, and unsupported adjacent publication shapes remain
-fail-closed.
+`[RV64_BACKEND_RUNTIME_MISMATCH] clang_exit=0 c4c_exit=Segmentation fault`
+
+Evidence paths:
+`build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`,
+`build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`, and
+`build/agent_state/rv64_gcc_c_torture_backend_failed.txt`.
 
 ## Suggested Next
 
-Run Step 3 for `src/20000112-1.c` through the supervisor-provided RV64 GCC
-torture allowlist command, then record whether the representative passes or
-advances to a distinct next owner.
+Open a new focused packet for the `src/20000112-1.c` RV64 object-route runtime
+segfault. Start from the generated `c4c.o`, `c4c.bin`, `clang.bin`, and
+`case.log` under
+`build/rv64_gcc_c_torture_backend/src_20000112-1.c/`, then identify the
+responsible backend/runtime owner without changing expectations or allowlists.
 
 ## Watchouts
 
-The object route still intentionally rejects select-publication stack sources,
-cycle-temp moves, non-predecessor execution, and carrier drift. The validator
-uses prepared publication and parallel-copy metadata; do not loosen it through
-testcase names, exact labels, hard-coded value ids, or physical-register
-special cases. The next packet should not broaden into CFG reconstruction or
-register allocation replacement if the representative exposes a different
-owner.
+The Step 3 packet was classification-only; no implementation repair was
+attempted. The current failure is a c4c RV64 runtime segfault while the clang
+reference exits 0 with no stdout/stderr. Keep the next packet focused on that
+runtime mismatch and avoid testcase-shaped fixes, expectation downgrades, or
+real external allowlist changes.
 
 ## Proof
 
 Ran the supervisor-selected proof command:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_prepared_edge_publication|backend_riscv_object_emission|backend_codegen_route_riscv64_(short_circuit_select_false_lhs|compare_result_select_false_arm|pointer_typed_select_publication)|backend_rv64_runtime_riscv64_(short_circuit_select_false_lhs|compare_result_select_false_arm|pointer_typed_select_publication))$' | tee test_after.log`
+`bash -o pipefail -c 'printf "%s\n" "src/20000112-1.c" > build/agent_state/379_step3_20000112.allowlist && ALLOWLIST=build/agent_state/379_step3_20000112.allowlist STOP_ON_FAILURE=1 VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh | tee test_after.log'`
 
-Result: passed, 8/8 tests green. Proof log: `test_after.log`.
+Result: failed, 0/1 cases passed. `test_after.log` contains the representative
+result and reports `src/20000112-1.c` as
+`[RV64_BACKEND_RUNTIME_MISMATCH]` with `clang_exit=0` and
+`c4c_exit=Segmentation fault`. Proof log: `test_after.log`.
