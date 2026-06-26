@@ -1,37 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/392_rv64_va_list_expression_call_argument_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace Representative Prepared Publications
+Current Step ID: 2
+Current Step Title: Pin The Backend Selection Failure
 
 # Current Packet
 
 ## Just Finished
 
-Continuation Step 1 traced the representative prepared publications for
-`va-arg-13.c` and compared them with the focused Step 4 fixture. Both `dummy`
-calls have explicit prepared `call_argument_value_publications` facts:
+Continuation Step 2 pinned the RV64 object-emission selection failure. The
+explicit call-argument value-publication route is selected for both `dummy`
+calls; it is not skipped, absent, mismatched, or shadowed by the older address
+route. The failing branch is inside
+`prepared_frame_slot_address_call_argument_publication` in
+`src/backend/mir/riscv/codegen/object_emission.cpp`.
 
-- call inst 9 arg0: argument `%t7` value id 15, object slot #6 offset 24,
-  source store inst 8, payload `%t7.memcpy.copy.0` value id 14, destination
-  slot #6 offset 24.
-- call inst 16 arg0: argument `%t14` value id 19, object slot #7 offset 32,
-  source store inst 15, payload `%t14.memcpy.copy.0` value id 18, destination
-  slot #7 offset 32.
-
-The facts are not absent, and their callsite/object identities match the
-frame-slot-address call-plan rows. The boundary class is `wrong effective
-payload`: each explicit payload is a `load_local` result from `%lv.state.8`,
-and the matching store-source rows print `source_load_local=yes`. The focused
-Step 4 fixture used direct register payload `%lv.src` without the representative
-load-local payload shape, so it did not prove this case.
+The exact bad guard/rewrite is the `plan.source_load_local != nullptr` block:
+after `source_value` is initialized from `fact->payload_value`, the helper
+rewrites it to `bir::Value::named(plan.source_load_local->result.type,
+plan.source_load_local->slot_name)`. For `va-arg-13.c`, the explicit fact
+payloads are `%t7.memcpy.copy.0` and `%t14.memcpy.copy.0`, but their
+`source_load_local->slot_name` is `%lv.state.8`. `append_rv64_move_value_to_register`
+then materializes `%lv.state.8` from `s1`, so the final emitted stores write
+the local `va_list` storage address into the argument objects at stack offsets
+24 and 32.
 
 ## Suggested Next
 
-Execute Step 2 by classifying the load-local payload materialization rule for
-explicit call-argument value-publication facts. The next owner should preserve
-the payload value `%t7.memcpy.copy.0` / `%t14.memcpy.copy.0` rather than
-reinterpreting it as the local `va_list` storage address `%lv.state.8`.
+Execute Step 3 by repairing this narrow load-local payload materialization
+rule. The minimal semantic repair target is to preserve the explicit
+`fact->payload_value` for call-argument value-publication facts when the
+matching store-source record has `source_load_local=yes`, instead of rewriting
+to `source_load_local->slot_name`. Add focused coverage for this representative
+shape before or with the implementation.
 
 ## Watchouts
 
@@ -49,11 +50,18 @@ reinterpreting it as the local `va_list` storage address `%lv.state.8`.
   so do not route this as an absent-fact or mismatched-fact problem. The live
   question is how an explicit load-local payload should be materialized without
   collapsing back to the source storage address.
+- Step 2 evidence says the RV64 FrameSlotAddress branch is selected. If
+  `prepared_frame_slot_address_call_argument_publication` returned null, the
+  prepared call fragment would fail closed; instead the object is emitted with
+  stores before `addi a0,sp,24` and `addi a0,sp,32`.
+- The trace command produced the current contract-first debug surface only; the
+  decisive evidence is the prepared dump plus object-emission branch analysis
+  in `build/agent_state/392_cont_step2_backend-selection.analysis.log`.
 
 ## Proof
 
 Delegated proof run:
-`cmake --build --preset default --target c4cll && mkdir -p build/agent_state && build/c4cll --target riscv64-linux-gnu --dump-prepared-bir tests/c/external/gcc_torture/src/va-arg-13.c > build/agent_state/392_cont_step1_va-arg-13.prepared.log 2>&1`.
+`cmake --build --preset default --target c4cll && mkdir -p build/agent_state && build/c4cll --target riscv64-linux-gnu --trace-mir --mir-focus-function test tests/c/external/gcc_torture/src/va-arg-13.c > build/agent_state/392_cont_step2_va-arg-13.trace-mir.log 2>&1`.
 
-Result: passed; prepared dump captured. Analysis log:
-`build/agent_state/392_cont_step1_va-arg-13.analysis.log`.
+Result: passed; trace log captured. Analysis log:
+`build/agent_state/392_cont_step2_backend-selection.analysis.log`.
