@@ -1,6 +1,6 @@
 # RV64 Object Route Residual Local Memory Boundaries
 
-Status: Open
+Status: Closed
 Type: Follow-up repair idea
 Parent: `ideas/closed/400_rv64_object_route_local_memory_addressing_edges.md`
 Discovered From: `ideas/closed/405_prepared_local_aggregate_slot_layout_facts.md`
@@ -91,3 +91,24 @@ layout.
 - Reject expectation downgrades, unsupported markers, or allowlist filtering.
 - Reject object-compilation-only proof when the repaired case reaches qemu and
   can be compared against clang runtime behavior.
+
+## Lifecycle Notes
+
+- 2026-06-26: Closed after commits `5b60f77c` and `b91fc4d5` repaired the
+  residual RV64 object-route local-memory boundaries for prepared frame-slot
+  sub-width overlays and valid F32 local-memory access admission.
+- 2026-06-26: Step 4 representative proof shows neither
+  `src/20020225-2.c` nor `src/ieee/mul-subnormal-single-1.c` still reports
+  `unsupported_local_memory_access` or the local-memory diagnostics owned by
+  this idea. `src/20020225-2.c` now stops at
+  `unsupported_instruction_fragment`, routed to
+  `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`.
+  `src/ieee/mul-subnormal-single-1.c` now stops at
+  `unsupported_stack_frame`, routed to
+  `ideas/open/398_rv64_object_route_stack_frame_and_param_home_edges.md`.
+- 2026-06-26: Close gate passed with backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+  `test_before.log` and regenerated `test_after.log` both report 326/326
+  passing backend tests. The lifecycle-only close comparison used
+  `--allow-non-decreasing-passed` because the accepted backend pass count
+  remained unchanged.
