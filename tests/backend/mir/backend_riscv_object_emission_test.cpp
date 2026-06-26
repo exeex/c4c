@@ -546,7 +546,10 @@ prepare::PreparedBirModule make_prepared_variadic_helper_free_complete_module() 
 }
 
 prepare::PreparedBirModule make_prepared_variadic_va_start_module(
-    bool include_overflow_area_initial_state = false) {
+    bool include_overflow_area_initial_state = false,
+    bool destination_va_list_is_stack_slot = true,
+    bool destination_address_is_gpr = true,
+    std::string destination_address_register_name = "a1") {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -555,6 +558,18 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
   const auto entry_label = prepared.names.block_labels.intern("entry");
   const auto ap_name = prepared.names.value_names.intern("%ap");
   const auto ap_addr_name = prepared.names.value_names.intern("%ap.addr");
+  if (destination_va_list_is_stack_slot) {
+    prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+        .slot_id = prepare::PreparedFrameSlotId{5},
+        .object_id = 1,
+        .function_name = function_name,
+        .offset_bytes = 72,
+        .size_bytes = 8,
+        .align_bytes = 8,
+    });
+    prepared.stack_layout.frame_size_bytes = 80;
+    prepared.stack_layout.frame_alignment_bytes = 16;
+  }
 
   bir::CallInst va_start;
   va_start.callee = "llvm.va_start.p0";
@@ -587,15 +602,49 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
       .value_id = 1,
       .function_name = function_name,
       .value_name = ap_name,
-      .kind = prepare::PreparedValueHomeKind::Register,
-      .register_name = std::string{"a0"},
+      .kind = destination_va_list_is_stack_slot
+                  ? prepare::PreparedValueHomeKind::StackSlot
+                  : prepare::PreparedValueHomeKind::Register,
+      .register_name = destination_va_list_is_stack_slot ? std::nullopt
+                                                         : std::optional<std::string>{"a0"},
+      .slot_id = destination_va_list_is_stack_slot
+                     ? std::optional<prepare::PreparedFrameSlotId>{
+                           prepare::PreparedFrameSlotId{5}}
+                     : std::nullopt,
+      .offset_bytes = destination_va_list_is_stack_slot
+                          ? std::optional<std::size_t>{72}
+                          : std::nullopt,
+      .size_bytes = destination_va_list_is_stack_slot
+                        ? std::optional<std::size_t>{8}
+                        : std::nullopt,
+      .align_bytes = destination_va_list_is_stack_slot
+                         ? std::optional<std::size_t>{8}
+                         : std::nullopt,
   };
   const prepare::PreparedValueHome ap_addr_home{
       .value_id = 2,
       .function_name = function_name,
       .value_name = ap_addr_name,
-      .kind = prepare::PreparedValueHomeKind::Register,
-      .register_name = std::string{"a1"},
+      .kind = destination_address_is_gpr
+                  ? prepare::PreparedValueHomeKind::Register
+                  : prepare::PreparedValueHomeKind::StackSlot,
+      .register_name = destination_address_is_gpr
+                           ? std::optional<std::string>{
+                                 std::move(destination_address_register_name)}
+                           : std::nullopt,
+      .slot_id = destination_address_is_gpr
+                     ? std::nullopt
+                     : std::optional<prepare::PreparedFrameSlotId>{
+                           prepare::PreparedFrameSlotId{5}},
+      .offset_bytes = destination_address_is_gpr
+                          ? std::nullopt
+                          : std::optional<std::size_t>{72},
+      .size_bytes = destination_address_is_gpr
+                        ? std::nullopt
+                        : std::optional<std::size_t>{8},
+      .align_bytes = destination_address_is_gpr
+                         ? std::nullopt
+                         : std::optional<std::size_t>{8},
   };
   prepared.variadic_entry_plans.functions.push_back(
       prepare::PreparedVariadicEntryPlanFunction{
@@ -6315,21 +6364,50 @@ int materializes_fact_complete_variadic_va_start_with_overflow_base_state() {
   if (text == nullptr || function == nullptr) {
     return fail("expected prepared va_start object to publish text/function");
   }
-  if (text->bytes.size() != 16 || text->size_bytes != 16 ||
-      function->value != 0 || function->size_bytes != 16 ||
+  if (text->bytes.size() != 28 || text->size_bytes != 28 ||
+      function->value != 0 || function->size_bytes != 28 ||
       function->section != std::optional<object::SectionId>{text->id}) {
     return fail("expected prepared va_start object text layout");
   }
-  if (read_u32(text->bytes, 0) != 0x04010313 ||
-      read_u32(text->bytes, 4) != 0x0065b023 ||
-      read_u32(text->bytes, 8) != 0x00000513 ||
-      read_u32(text->bytes, 12) != 0x00008067) {
-    return fail("expected va_start to store sp+64 into the overflow-area va_list field");
+  if (read_u32(text->bytes, 0) != 0xfb010113 ||
+      read_u32(text->bytes, 4) != 0x04810593 ||
+      read_u32(text->bytes, 8) != 0x04010313 ||
+      read_u32(text->bytes, 12) != 0x0065b023 ||
+      read_u32(text->bytes, 16) != 0x00000513 ||
+      read_u32(text->bytes, 20) != 0x05010113 ||
+      read_u32(text->bytes, 24) != 0x00008067) {
+    return fail("expected va_start to materialize destination address before the overflow-area va_list field store");
   }
   if (!module->relocations.empty()) {
     return fail("expected materialized va_start helper to need no relocations");
   }
   return 0;
+}
+
+int rejects_malformed_variadic_va_start_destination_homes() {
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_variadic_va_start_module(
+              true /*include_overflow_area_initial_state*/,
+              false /*destination_va_list_is_stack_slot*/,
+              true /*destination_address_is_gpr*/),
+          "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list in a supported prepared stack-slot home") != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_variadic_va_start_module(
+              true /*include_overflow_area_initial_state*/,
+              true /*destination_va_list_is_stack_slot*/,
+              false /*destination_address_is_gpr*/),
+          "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home") != 0) {
+    return 1;
+  }
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_variadic_va_start_module(
+          true /*include_overflow_area_initial_state*/,
+          true /*destination_va_list_is_stack_slot*/,
+          true /*destination_address_is_gpr*/,
+          "t1"),
+      "unsupported_variadic_helper_lowering: RV64 va_start helper destination va_list address aliases the overflow-area scratch register");
 }
 
 int lowers_fact_complete_variadic_va_end_as_noop() {
@@ -9908,6 +9986,7 @@ int main() {
   status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
   status |=
       materializes_fact_complete_variadic_va_start_with_overflow_base_state();
+  status |= rejects_malformed_variadic_va_start_destination_homes();
   status |= lowers_fact_complete_variadic_va_end_as_noop();
   status |= rejects_malformed_variadic_va_end_direct_extern_shapes();
   status |=

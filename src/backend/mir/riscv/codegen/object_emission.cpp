@@ -26,6 +26,8 @@ namespace {
 
 namespace object = c4c::backend::mir::object;
 namespace prepare = c4c::backend::prepare;
+
+constexpr std::uint32_t kRv64VaStartOverflowAreaScratch = 6;  // t1
 namespace bir = c4c::backend::bir;
 
 constexpr std::uint16_t kElfMachineRiscv = 243;
@@ -305,6 +307,12 @@ rv64_variadic_va_list_overflow_arg_area_field(
   return nullptr;
 }
 
+std::optional<std::int32_t> prepared_stack_slot_home_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedValueHome& home,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes);
+
 bool rv64_variadic_helper_free_entry_contract_is_complete(
     const prepare::PreparedVariadicEntryPlanFunction& entry_plan) {
   const auto* overflow_arg_area =
@@ -321,8 +329,10 @@ bool rv64_variadic_helper_free_entry_contract_is_complete(
 }
 
 std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(
+    const prepare::PreparedStackLayout& stack_layout,
     const prepare::PreparedVariadicEntryPlanFunction& entry_plan,
-    const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
+    const prepare::PreparedVariadicEntryHelperOperandHomes& homes,
+    std::size_t stack_frame_bytes) {
   if (auto diagnostic = rv64_variadic_va_start_runtime_state_diagnostic(entry_plan)) {
     return diagnostic;
   }
@@ -334,12 +344,33 @@ std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(
     return std::string{
         "unsupported_variadic_helper_lowering: RV64 va_start helper requires a supported overflow-arg-area va_list field"};
   }
+  const auto destination_address =
+      homes.destination_va_list_address.has_value()
+          ? gpr_register_number_for_home(*homes.destination_va_list_address)
+          : std::nullopt;
   if (!homes.destination_va_list_address.has_value() ||
       homes.destination_va_list_address->kind !=
           prepare::PreparedValueHomeKind::Register ||
-      !gpr_register_number_for_home(*homes.destination_va_list_address).has_value()) {
+      !destination_address.has_value()) {
     return std::string{
         "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list address in a prepared GPR home"};
+  }
+  if (*destination_address == kRv64VaStartOverflowAreaScratch) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_start helper destination va_list address aliases the overflow-area scratch register"};
+  }
+  if (!entry_plan.va_list_layout.size_bytes.has_value()) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list in a supported prepared stack-slot home"};
+  }
+  if (!homes.destination_va_list.has_value() ||
+      !prepared_stack_slot_home_offset(stack_layout,
+                                       *homes.destination_va_list,
+                                       stack_frame_bytes,
+                                       *entry_plan.va_list_layout.size_bytes)
+           .has_value()) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list in a supported prepared stack-slot home"};
   }
   if (!fits_signed_12_bit_immediate(
           static_cast<std::int64_t>(*entry_plan.overflow_area.base_stack_offset_bytes))) {
@@ -482,7 +513,11 @@ std::optional<std::string> diagnose_unsupported_prepared_variadic_helper_fragmen
   }
   if (*helper == prepare::PreparedVariadicEntryHelperKind::VaStart) {
     if (auto diagnostic =
-            rv64_variadic_va_start_materialization_diagnostic(*entry_plan, *homes)) {
+            rv64_variadic_va_start_materialization_diagnostic(
+                prepared.stack_layout,
+                *entry_plan,
+                *homes,
+                stack_frame_bytes)) {
       return diagnostic;
     }
     return std::nullopt;
@@ -1171,7 +1206,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_start(
     c4c::FunctionNameId function_name,
     std::size_t block_index,
     std::size_t instruction_index,
-    const c4c::backend::bir::CallInst& call) {
+    const c4c::backend::bir::CallInst& call,
+    std::size_t stack_frame_bytes) {
   const auto helper = prepare::prepared_variadic_entry_helper_kind_for_call(call);
   if (!helper.has_value() ||
       *helper != prepare::PreparedVariadicEntryHelperKind::VaStart) {
@@ -1188,7 +1224,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_start(
       instruction_index);
   if (homes == nullptr || homes->helper != *helper ||
       !prepare::has_complete_prepared_variadic_va_start_operand_homes(*homes) ||
-      rv64_variadic_va_start_materialization_diagnostic(*entry_plan, *homes)) {
+      rv64_variadic_va_start_materialization_diagnostic(prepared.stack_layout,
+                                                        *entry_plan,
+                                                        *homes,
+                                                        stack_frame_bytes)) {
     return std::nullopt;
   }
 
@@ -1196,22 +1235,29 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_start(
       rv64_variadic_va_list_overflow_arg_area_field(*entry_plan);
   const auto destination =
       gpr_register_number_for_home(*homes->destination_va_list_address);
-  if (overflow_field == nullptr || !destination.has_value()) {
+  const auto destination_offset =
+      prepared_stack_slot_home_offset(prepared.stack_layout,
+                                      *homes->destination_va_list,
+                                      stack_frame_bytes,
+                                      *entry_plan->va_list_layout.size_bytes);
+  if (overflow_field == nullptr || !destination.has_value() ||
+      !destination_offset.has_value()) {
     return std::nullopt;
   }
 
-  constexpr std::uint32_t scratch = 6;  // t1
   RiscvEncodedFragment fragment;
   append_le32(fragment.bytes,
+              encode_i_type(0x13, *destination, 0, 2, *destination_offset));
+  append_le32(fragment.bytes,
               encode_i_type(0x13,
-                            scratch,
+                            kRv64VaStartOverflowAreaScratch,
                             0,
                             2,
                             static_cast<std::int32_t>(
                                 *entry_plan->overflow_area.base_stack_offset_bytes)));
   if (!append_rv64_store_register_to_base(
           fragment,
-          scratch,
+          kRv64VaStartOverflowAreaScratch,
           *destination,
           static_cast<std::int32_t>(overflow_field->offset_bytes),
           overflow_field->size_bytes)) {
@@ -5588,7 +5634,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                   control_flow.function_name,
                                                   block_index,
                                                   instruction_index,
-                                                  *call)) {
+                                                  *call,
+                                                  stack_frame_bytes)) {
     return fragment;
   }
   if (auto fragment =
