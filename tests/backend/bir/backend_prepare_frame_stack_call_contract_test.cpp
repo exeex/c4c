@@ -1005,6 +1005,83 @@ bir::Module make_call_contract_module() {
   return module;
 }
 
+bir::Module make_same_module_i16_call_argument_contract_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "same_module_i16";
+  callee.return_type = bir::TypeKind::I16;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I16,
+      .name = "value",
+      .size_bytes = 2,
+      .align_bytes = 2,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I16,
+          .size_bytes = 2,
+          .align_bytes = 2,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  bir::Block callee_entry;
+  callee_entry.label = "entry";
+  callee_entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I16, "value")};
+  callee.blocks.push_back(std::move(callee_entry));
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "same_module_i16_call_argument_contract";
+  caller.return_type = bir::TypeKind::I16;
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.i16",
+      .type = bir::TypeKind::I16,
+      .size_bytes = 2,
+      .align_bytes = 2,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.i16",
+      .value = bir::Value::immediate_i16(7),
+      .align_bytes = 2,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I16, "tmp.i16"),
+      .slot_name = "lv.i16",
+      .align_bytes = 2,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I16, "tmp.call"),
+      .callee = "same_module_i16",
+      .args = {bir::Value::named(bir::TypeKind::I16, "tmp.i16")},
+      .arg_types = {bir::TypeKind::I16},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I16,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_on_stack = true,
+          .sret_pointer = true,
+      }},
+      .return_type_name = "i16",
+      .return_type = bir::TypeKind::I16,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I16,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I16, "tmp.call")};
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
 bir::Module make_stack_result_slot_contract_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3515,6 +3592,44 @@ int check_call_contract() {
           *result_binding_it->destination_register_placement) {
     return fail("call contract: after-call move lost structured ABI source placement");
   }
+  return 0;
+}
+
+int check_same_module_i16_call_argument_contract() {
+  const auto prepared =
+      prepare_riscv_module(make_same_module_i16_call_argument_contract_module());
+  const auto* call_plans =
+      find_call_plans_function(prepared, "same_module_i16_call_argument_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 1) {
+    return fail("same-module i16 call argument contract: missing prepared call plan");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  if (call_plan.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
+      !call_plan.direct_callee_name.has_value() ||
+      *call_plan.direct_callee_name != "same_module_i16") {
+    return fail("same-module i16 call argument contract: lost same-module direct-call identity");
+  }
+
+  const auto& argument = call_plan.arguments.front();
+  if (argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      argument.value_bank != prepare::PreparedRegisterBank::Gpr ||
+      argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
+      !argument.destination_register_name.has_value() ||
+      !argument.destination_register_placement.has_value() ||
+      argument.destination_register_placement->bank != prepare::PreparedRegisterBank::Gpr ||
+      argument.destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallArgument) {
+    return fail("same-module i16 call argument contract: lost GPR argument publication");
+  }
+  const auto missing_frame_slot_need =
+      prepare::find_prepared_missing_frame_slot_call_argument_publication_need(argument);
+  if (!missing_frame_slot_need.available ||
+      missing_frame_slot_need.destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
+    return fail("same-module i16 call argument contract: frame-slot-to-GPR publication query failed");
+  }
+
   return 0;
 }
 
@@ -8814,6 +8929,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_call_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_same_module_i16_call_argument_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_float_call_contract(); rc != 0) {

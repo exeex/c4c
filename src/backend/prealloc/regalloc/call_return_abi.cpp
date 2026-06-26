@@ -302,19 +302,50 @@ std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
   return std::nullopt;
 }
 
+[[nodiscard]] bool scalar_i16_call_arg_abi_needs_repair(
+    const bir::CallArgAbiInfo& abi) {
+  return abi.type == bir::TypeKind::I16 &&
+         (abi.primary_class != bir::AbiValueClass::Integer ||
+          abi.passed_on_stack ||
+          abi.byval_copy ||
+          abi.sret_pointer ||
+          !abi.passed_in_register);
+}
+
+[[nodiscard]] bir::CallArgAbiInfo repair_scalar_i16_call_arg_abi(
+    const bir::CallArgAbiInfo& abi) {
+  bir::CallArgAbiInfo repaired = abi;
+  repaired.type = bir::TypeKind::I16;
+  repaired.size_bytes = 2;
+  repaired.align_bytes = 2;
+  repaired.primary_class = bir::AbiValueClass::Integer;
+  repaired.secondary_class = bir::AbiValueClass::None;
+  repaired.passed_in_register = true;
+  repaired.passed_on_stack = false;
+  repaired.byval_copy = false;
+  repaired.sret_pointer = false;
+  repaired.aarch64_hfa_lane_count = 0;
+  repaired.aarch64_hfa_lane_index = 0;
+  return repaired;
+}
+
 std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
     std::size_t arg_index) {
   (void)target_profile;
-  return resolve_call_arg_abi(call, arg_index);
+  auto abi = resolve_call_arg_abi(call, arg_index);
+  if (abi.has_value() && scalar_i16_call_arg_abi_needs_repair(*abi)) {
+    return repair_scalar_i16_call_arg_abi(*abi);
+  }
+  return abi;
 }
 
 std::optional<std::size_t> call_arg_abi_register_index(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
     std::size_t arg_index) {
-  const auto abi = resolve_call_arg_abi(call, arg_index);
+  const auto abi = resolve_call_arg_abi(target_profile, call, arg_index);
   if (!abi.has_value() || !abi->passed_in_register) {
     if (target_profile.arch == c4c::TargetArch::X86_64 &&
         abi.has_value() &&
@@ -340,7 +371,7 @@ std::optional<std::size_t> call_arg_abi_register_index(
 
   std::size_t register_index = 0;
   for (std::size_t candidate_index = 0; candidate_index < arg_index; ++candidate_index) {
-    const auto candidate_abi = resolve_call_arg_abi(call, candidate_index);
+    const auto candidate_abi = resolve_call_arg_abi(target_profile, call, candidate_index);
     if (!candidate_abi.has_value() || !candidate_abi->passed_in_register) {
       continue;
     }
@@ -366,7 +397,7 @@ std::optional<std::size_t> call_arg_abi_register_index(
 PreparedMoveStorageKind call_arg_storage_kind(const c4c::TargetProfile& target_profile,
                                               const bir::CallInst& call,
                                               std::size_t arg_index) {
-  const auto abi = resolve_call_arg_abi(call, arg_index);
+  const auto abi = resolve_call_arg_abi(target_profile, call, arg_index);
   if (!abi.has_value()) {
     return PreparedMoveStorageKind::None;
   }

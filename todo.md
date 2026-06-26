@@ -1,68 +1,80 @@
 Status: Active
 Source Idea Path: ideas/open/407_prepared_i16_same_module_call_arg_abi_publication.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Locate The Caller-Side Publication Gap
+Current Step ID: Step 2
+Current Step Title: Publish Same-Module I16 Argument ABI Facts
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 classification completed. The prepared `i8` same-module call publishes
-`value_bank=gpr`, `source_encoding=register`, `dest_bank=gpr`, and a before-call
-`call_arg_register_to_register` move to `gpr:call_argument#0/w1 reg=a0`. The
-prepared `i16` same-module call instead has the source value stack-homed and
-publishes `value_bank=none`, `source_encoding=frame_slot`, `dest_bank=none`,
-with a before-call `call_arg_stack_to_stack` move, even though a separate
-register `abi_binding` for `a0` is present.
+Step 2 producer repair completed. Same-module scalar `I16` call arguments now
+publish GPR value and destination facts without a parallel raw argument-index
+fallback.
 
-Producer trace: `src/backend/prealloc/legalize.cpp`
-`direct_bir_call_arg_abi_repair()` already includes `I16` after closed 403, and
-it feeds missing `CallInst::arg_abi` entries. The first caller-side gap is in
-`src/backend/prealloc/call_plans.cpp`: `register_bank_from_type()` omits
-`bir::TypeKind::I16`, so `register_bank_from_arg_abi()` maps integer `I16`
-call arguments to `PreparedRegisterBank::None`. That leaves
-`populate_call_plans()` / `plan_call_argument_destination()` unable to publish
-the GPR destination bank for same-module `i16` call arguments, and it also
-prevents `find_prepared_missing_frame_slot_call_argument_publication_need()` in
-`src/backend/prealloc/calls.hpp` from recognizing the frame-slot-to-GPR
-publication need.
+Concrete changes:
+
+- `src/backend/prealloc/call_plans.cpp` maps `I16` to
+  `PreparedRegisterBank::Gpr`, uses `call_argument_value_bank()` for argument
+  value-bank publication, and only synthesizes same-module `I16` destinations
+  through the existing `regalloc_detail::call_arg_abi_register_index(...)`
+  authority.
+- `src/backend/prealloc/legalize.cpp` repairs impossible existing scalar `I16`
+  call-argument ABI metadata, such as stale `sret` / stack / memory-class
+  metadata on scalar arguments, back to direct integer register ABI metadata.
+- `src/backend/prealloc/regalloc/call_return_abi.cpp` makes the target-aware
+  call-argument ABI resolver and register-index computation repair/read that
+  scalar `I16` ABI authority consistently.
+- The focused prepared contract test now uses malformed scalar `I16` ABI
+  metadata on a same-module call and asserts the frame-slot source shape
+  publishes GPR destination facts and the missing-frame-slot argument
+  publication query.
+
+Fresh representative prepared dump:
+`build/agent_state/407_step2_dumps/divmod-1.prepared.txt` now shows the
+frame-slot same-module `i16` call arguments as `value_bank=gpr` with
+`dest_placement=gpr:call_argument#N/w1`, `dest_reg=aN`, `dest_bank=gpr`, and
+`missing_frame_slot_arg_publication=yes`. The previous
+`value_bank=gpr ... dest_bank=none` frame-slot `i16` shape is gone.
 
 ## Suggested Next
 
-First implementation packet: extend the scalar bank helper family in
-`src/backend/prealloc/call_plans.cpp`, starting with
-`register_bank_from_type()` so `bir::TypeKind::I16` maps to
-`PreparedRegisterBank::Gpr`. Then regenerate/check the prepared `i16`
-same-module call shape to confirm `value_bank`/`dest_bank` become GPR and the
-existing `FrameSlotValue` path can drive RV64 frame-slot-to-register argument
-loading without adding ABI inference to `object_emission.cpp`.
+Next packet should classify the remaining `src/divmod-1.c` RV64 object-route
+failure after the prepared producer now publishes target-consumable `i16`
+same-module call-argument destinations. Keep that classification outside RV64
+object-emission ABI inference unless the supervisor explicitly changes scope.
 
 ## Watchouts
 
-- Do not patch RV64 `object_emission.cpp` to infer the missing scalar argument
-  destination.
-- Keep closed 403 formal ABI publication separate unless fresh facts show a
-  regression in incoming formal handling.
-- The before-call move producer in `src/backend/prealloc/regalloc.cpp` /
-  `src/backend/prealloc/regalloc/call_moves.cpp` already records both the stack
-  move and the later register ABI binding in the `i16` dump; the first missing
-  fact is the call-plan value/destination bank publication, not raw ABI repair.
-- After `I16` is exposed as GPR in the call plan, verify whether the existing
-  `FrameSlotValue` consumer path is enough; if not, the next gap is an adjacent
-  prepared frame-slot-value call-argument publication/helper issue, still in
-  producer-prepared facts rather than RV64 ABI reconstruction.
-- Preserve `test_after.log` as the canonical executor proof log.
+- Do not reintroduce a parallel raw argument-index fallback; same-module `I16`
+  destination publication is now routed through
+  `regalloc_detail::call_arg_abi_register_index(...)`.
+- `call_arg_stack_to_stack` move records still appear in the move bundle for
+  the representative frame-slot sources, but the call plan now carries the GPR
+  destination facts and missing-frame-slot argument publication facts needed by
+  consumers.
+- The prepared dump still prints the original semantic BIR call text with stale
+  `sret(...)` suffixes in the top BIR section; the repaired producer facts are
+  visible in the call-plan section.
+- `test_after.log` is fresh and contains the backend CTest proof.
 
 ## Proof
 
 Ran the supervisor-delegated proof command exactly:
 
 ```sh
-cmake --build --preset default && mkdir -p build/agent_state/407_step1_dumps && printf '%s\n' 'src/divmod-1.c' > build/agent_state/407_step1_i16_call_arg.allowlist.txt && { ALLOWLIST=build/agent_state/407_step1_i16_call_arg.allowlist.txt STOP_ON_FAILURE=0 VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/407_step1_i16_call_arg_probe.log 2>&1 || true; } && rg -n 'unsupported_instruction_fragment|unsupported_stack_frame|unsupported_local_memory_access|unsupported_global_data|RV64_BACKEND_RUNTIME_MISMATCH|unsupported RV64 object lowering|\[rv64-gcc-torture\]|pass\t|fail\t|RV64_C4C_OBJ|error:' build/agent_state/407_step1_i16_call_arg_probe.log && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'
 ```
 
-Results: build was up to date; the narrow `src/divmod-1.c` probe still fails
-with `RV64_C4C_OBJ_COMPILE_FAIL` and `unsupported_instruction_fragment` in
-`build/agent_state/407_step1_i16_call_arg_probe.log`; backend CTest passed
-`326/326` in `test_after.log`.
+Results: build passed; backend CTest passed `326/326`. Re-ran the same backend
+CTest subset with output redirected to preserve `test_after.log`, also exit
+code 0.
+
+Prepared dump command:
+
+```sh
+build/c4cll --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/divmod-1.c > build/agent_state/407_step2_dumps/divmod-1.prepared.txt 2> build/agent_state/407_step2_dumps/divmod-1.prepared.err
+```
+
+Result: dump succeeded. The frame-slot same-module `i16` call arguments now
+publish GPR destination facts through existing ABI/register-index authority.

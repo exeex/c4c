@@ -38,6 +38,7 @@ namespace {
   switch (type) {
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
     case bir::TypeKind::I32:
     case bir::TypeKind::I64:
     case bir::TypeKind::Ptr:
@@ -1158,6 +1159,34 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
   return nullptr;
 }
 
+[[nodiscard]] bir::TypeKind call_argument_type(const bir::CallInst& call,
+                                               std::size_t arg_index) {
+  if (arg_index < call.arg_types.size() &&
+      call.arg_types[arg_index] != bir::TypeKind::Void) {
+    return call.arg_types[arg_index];
+  }
+  if (arg_index < call.args.size()) {
+    return call.args[arg_index].type;
+  }
+  return bir::TypeKind::Void;
+}
+
+[[nodiscard]] PreparedRegisterBank call_argument_value_bank(
+    const bir::CallInst& call,
+    std::size_t arg_index) {
+  PreparedRegisterBank bank = PreparedRegisterBank::None;
+  if (arg_index < call.arg_abi.size()) {
+    bank = register_bank_from_arg_abi(call.arg_abi[arg_index]);
+  } else {
+    bank = direct_bir_call_arg_bank_display(call_argument_type(call, arg_index));
+  }
+  if (bank == PreparedRegisterBank::None &&
+      call_argument_type(call, arg_index) == bir::TypeKind::I16) {
+    return PreparedRegisterBank::Gpr;
+  }
+  return bank;
+}
+
 [[nodiscard]] PreparedRegisterBank call_argument_destination_register_bank(
     const bir::CallInst& call,
     std::size_t arg_index,
@@ -1192,6 +1221,7 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
 [[nodiscard]] CallArgumentDestinationPlan plan_call_argument_destination(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
+    PreparedCallWrapperKind wrapper_kind,
     const PreparedMoveBundle* before_call_bundle,
     std::size_t arg_index,
     PreparedRegisterBank value_bank) {
@@ -1205,6 +1235,11 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
     destination.occupied_register_names = binding.destination_occupied_register_names;
     destination.register_bank = call_argument_destination_register_bank(call, arg_index, value_bank);
     destination.register_placement = binding.destination_register_placement;
+    if (destination.register_placement.has_value() &&
+        destination.register_placement->bank == PreparedRegisterBank::None &&
+        destination.register_bank == PreparedRegisterBank::Gpr) {
+      destination.register_placement->bank = PreparedRegisterBank::Gpr;
+    }
     if (!destination.register_placement.has_value() &&
         arg_index < call.arg_abi.size() && abi_register_index.has_value()) {
       destination.register_placement =
@@ -1238,6 +1273,31 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
                                            arg_index);
         register_binding != nullptr) {
       apply_register_binding(*register_binding);
+    }
+  }
+  if (!destination.register_name.has_value() &&
+      wrapper_kind == PreparedCallWrapperKind::SameModule &&
+      value_bank == PreparedRegisterBank::Gpr &&
+      call_argument_type(call, arg_index) == bir::TypeKind::I16 &&
+      abi_register_index.has_value()) {
+    if (const auto abi = infer_call_arg_abi(target_profile, bir::TypeKind::I16);
+        abi.has_value()) {
+      destination.register_name =
+          call_arg_destination_register_name(target_profile, *abi, *abi_register_index);
+      if (destination.register_name.has_value()) {
+        destination.contiguous_width = 1;
+        destination.occupied_register_names = {*destination.register_name};
+        destination.register_bank = PreparedRegisterBank::Gpr;
+        destination.register_placement =
+            call_arg_destination_register_placement(target_profile,
+                                                    *abi,
+                                                    *abi_register_index,
+                                                    destination.contiguous_width);
+        if (destination.register_placement.has_value() &&
+            destination.register_placement->bank == PreparedRegisterBank::None) {
+          destination.register_placement->bank = PreparedRegisterBank::Gpr;
+        }
+      }
     }
   }
 
@@ -3094,9 +3154,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .arg_index = arg_index,
               .allows_local_aggregate_address_publication =
                   call_argument_allows_local_aggregate_address_publication(*call, arg_index),
-              .value_bank = arg_index < call->arg_abi.size()
-                                ? register_bank_from_arg_abi(call->arg_abi[arg_index])
-                                : direct_bir_call_arg_bank_display(call->arg_types[arg_index]),
+              .value_bank = call_argument_value_bank(*call, arg_index),
               .source_encoding = PreparedStorageEncodingKind::None,
               .source_value_id = std::nullopt,
               .source_base_value_id = std::nullopt,
@@ -3124,6 +3182,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
           const CallArgumentDestinationPlan destination =
               plan_call_argument_destination(prepared.target_profile,
                                              *call,
+                                             call_plan.wrapper_kind,
                                              before_call_bundle,
                                              arg_index,
                                              arg_plan.value_bank);

@@ -88,6 +88,15 @@ void legalize_call_result_abi(const c4c::TargetProfile& target_profile,
   abi.type = legalize_type(target_profile, abi.type);
 }
 
+bool scalar_i16_call_arg_abi_needs_repair(const bir::CallArgAbiInfo& abi) {
+  return abi.type == bir::TypeKind::I16 &&
+         (abi.primary_class != bir::AbiValueClass::Integer ||
+          abi.passed_on_stack ||
+          abi.byval_copy ||
+          abi.sret_pointer ||
+          !abi.passed_in_register);
+}
+
 std::optional<bir::CallArgAbiInfo> direct_bir_call_arg_abi_repair(
     const c4c::TargetProfile& target_profile,
     bir::TypeKind type) {
@@ -376,8 +385,18 @@ void legalize_module(const c4c::TargetProfile& target_profile,
                   }
                   lowered.arg_abi.push_back(*inferred_arg_abi);
                 }
-                for (auto& arg_abi : lowered.arg_abi) {
+                for (std::size_t arg_index = 0; arg_index < lowered.arg_abi.size(); ++arg_index) {
+                  auto& arg_abi = lowered.arg_abi[arg_index];
                   legalize_call_arg_abi(target_profile, arg_abi);
+                  if (arg_index < lowered.arg_types.size() &&
+                      lowered.arg_types[arg_index] == bir::TypeKind::I16 &&
+                      scalar_i16_call_arg_abi_needs_repair(arg_abi)) {
+                    if (const auto repaired =
+                            direct_bir_call_arg_abi_repair(target_profile, bir::TypeKind::I16);
+                        repaired.has_value()) {
+                      arg_abi = *repaired;
+                    }
+                  }
                 }
                 if (!lowered.result_abi.has_value() && lowered.result.has_value() &&
                     lowered.result->kind == bir::Value::Kind::Named) {
