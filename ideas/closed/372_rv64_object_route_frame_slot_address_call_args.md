@@ -1,6 +1,6 @@
 # RV64 Object Route Frame-Slot Address Call Arguments
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/open/368_rv64_object_route_frame_slot_base_offset_memory.md`
@@ -62,6 +62,30 @@ owner as pointer-value local-memory loads/stores.
   call-argument repair, and all listed representatives are rerun and recorded.
 - Existing focused backend object-emission and prepared-contract coverage
   remains green.
+
+## Completion Notes
+
+Closed on 2026-06-26 after the RV64 object route admitted focused
+`LocalFrameAddressMaterialization` GPR call arguments in commit `b7276260`.
+Focused backend tests prove the positive stack-slot-address call-argument form
+and fail-closed adjacent unsupported shapes.
+
+Representative results:
+
+- `src/20000217-1.c` was rerun and advanced off the frame-slot-address call
+  publication owner. It still fails at generic `unsupported_instruction_fragment`,
+  with packet probes showing the visible residual in `showbug` as scalar
+  compare-result lowering for `sge` feeding `trunc i1 -> i16`.
+- `src/va-arg-13.c` remains blocked earlier by `unsupported_param_home`, owned
+  by `ideas/open/374_rv64_object_route_non_register_param_homes.md`, before
+  its later frame-slot address publications can be proved in file-level object
+  mode.
+
+The scalar compare/trunc residual from `src/20000217-1.c` is tracked separately
+by `ideas/open/375_rv64_object_route_scalar_compare_trunc_lowering.md`.
+
+Close-time focused backend proof passed with non-decreasing regression guard:
+`3/3` before, `3/3` after.
 
 ## Reviewer Reject Signals
 
