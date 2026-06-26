@@ -1692,6 +1692,47 @@ prepare::PreparedBirModule prepare_param_fixed_location_ordering_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_sret_param_home_module(
+    c4c::TargetProfile target_profile,
+    std::size_t sret_size_bytes,
+    std::size_t sret_align_bytes) {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_sret_param_home_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.sret.home",
+      .size_bytes = sret_size_bytes,
+      .align_bytes = sret_align_bytes,
+      .is_sret = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(0),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = std::move(target_profile);
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_addressed_local_slot_module() {
   bir::Module module;
 
@@ -4025,6 +4066,74 @@ int check_param_fixed_location_ordering_activation(const prepare::PreparedBirMod
   return 0;
 }
 
+int check_sret_param_home_rv64_activation(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* sret_object = find_stack_object(prepared, "p.sret.home");
+  if (sret_object == nullptr) {
+    return fail("expected RV64 sret param to produce a stack-layout object");
+  }
+  if (sret_object->source_kind != "sret_param" ||
+      !sret_object->address_exposed ||
+      !sret_object->requires_home_slot ||
+      !sret_object->permanent_home_slot) {
+    return fail("expected RV64 sret param to keep its permanent-home contract");
+  }
+  if (sret_object->type != bir::TypeKind::Ptr ||
+      sret_object->size_bytes != 8 ||
+      sret_object->align_bytes != 8) {
+    return fail("expected RV64 sret param storage to normalize to pointer-width");
+  }
+
+  const auto* sret_slot = find_frame_slot(prepared, sret_object->object_id);
+  if (sret_slot == nullptr) {
+    return fail("expected RV64 sret param to receive frame-slot storage");
+  }
+  if (!sret_slot->fixed_location ||
+      sret_slot->offset_bytes != 0 ||
+      sret_slot->size_bytes != 8 ||
+      sret_slot->align_bytes != 8) {
+    return fail("expected RV64 sret param frame slot to use pointer-width storage");
+  }
+  if (prepared.stack_layout.frame_size_bytes != 8 ||
+      prepared.stack_layout.frame_alignment_bytes != 8) {
+    return fail("expected RV64 sret param frame metrics to reflect pointer-width storage");
+  }
+
+  return 0;
+}
+
+int check_sret_param_home_aarch64_activation(
+    const prepare::PreparedBirModule& prepared,
+    std::size_t expected_size_bytes,
+    std::size_t expected_align_bytes) {
+  const auto* sret_object = find_stack_object(prepared, "p.sret.home");
+  if (sret_object == nullptr) {
+    return fail("expected AArch64 sret param to produce a stack-layout object");
+  }
+  if (sret_object->source_kind != "sret_param" ||
+      sret_object->size_bytes != expected_size_bytes ||
+      sret_object->align_bytes != expected_align_bytes) {
+    return fail("expected AArch64 sret param storage to preserve shared BIR layout");
+  }
+
+  const auto* sret_slot = find_frame_slot(prepared, sret_object->object_id);
+  if (sret_slot == nullptr) {
+    return fail("expected AArch64 sret param to receive frame-slot storage");
+  }
+  if (!sret_slot->fixed_location ||
+      sret_slot->offset_bytes != 0 ||
+      sret_slot->size_bytes != expected_size_bytes ||
+      sret_slot->align_bytes != expected_align_bytes) {
+    return fail("expected AArch64 sret param frame slot to preserve shared layout");
+  }
+  if (prepared.stack_layout.frame_size_bytes != expected_size_bytes ||
+      prepared.stack_layout.frame_alignment_bytes != expected_align_bytes) {
+    return fail("expected AArch64 sret param frame metrics to preserve shared layout");
+  }
+
+  return 0;
+}
+
 int check_lowering_scratch_frame_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* scratch_object = find_stack_object(prepared, "lv.scratch.root");
   const auto* wide_object = find_stack_object(prepared, "lv.scratch.wide");
@@ -5675,6 +5784,35 @@ int main() {
       prepare_param_fixed_location_ordering_module();
   if (const int rc =
           check_param_fixed_location_ordering_activation(param_fixed_location_ordering_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto rv64_narrow_sret_home_prepared =
+      prepare_sret_param_home_module(riscv_target_profile(), 4, 4);
+  if (const int rc =
+          check_sret_param_home_rv64_activation(rv64_narrow_sret_home_prepared);
+      rc != 0) {
+    return rc;
+  }
+  const auto rv64_wide_sret_home_prepared =
+      prepare_sret_param_home_module(riscv_target_profile(), 16, 16);
+  if (const int rc =
+          check_sret_param_home_rv64_activation(rv64_wide_sret_home_prepared);
+      rc != 0) {
+    return rc;
+  }
+  const auto aarch64_narrow_sret_home_prepared =
+      prepare_sret_param_home_module(aarch64_pic_target_profile(), 4, 4);
+  if (const int rc =
+          check_sret_param_home_aarch64_activation(aarch64_narrow_sret_home_prepared, 4, 4);
+      rc != 0) {
+    return rc;
+  }
+  const auto aarch64_wide_sret_home_prepared =
+      prepare_sret_param_home_module(aarch64_pic_target_profile(), 16, 16);
+  if (const int rc =
+          check_sret_param_home_aarch64_activation(aarch64_wide_sret_home_prepared, 16, 16);
       rc != 0) {
     return rc;
   }

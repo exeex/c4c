@@ -1072,6 +1072,14 @@ std::uint32_t rv64_temporary_gpr_avoiding(std::uint32_t reserved_register) {
 std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type);
 
+std::optional<std::size_t> rv64_formal_entry_home_store_size(
+    const c4c::backend::bir::Param& param) {
+  if (param.is_sret && param.type == c4c::backend::bir::TypeKind::Ptr) {
+    return std::size_t{8};
+  }
+  return rv64_scalar_memory_size_for_type(param.type);
+}
+
 std::optional<std::uint32_t> rv64_gpr_formal_argument_register_number(
     const c4c::backend::bir::Function& function,
     std::size_t param_index) {
@@ -5687,14 +5695,87 @@ std::optional<std::string> diagnose_unsupported_prepared_param_homes(
                !object_it->permanent_home_slot;
       };
 
+  const auto has_supported_sret_param_stack_slot_home =
+      [&](const c4c::backend::bir::Param& param,
+          std::size_t param_index,
+          const prepare::PreparedValueHome& home) {
+        constexpr std::size_t pointer_size = 8;
+        if (!param.is_sret || param.is_byval || param.is_varargs ||
+            param.type != c4c::backend::bir::TypeKind::Ptr ||
+            !param.abi.has_value() || !param.abi->passed_in_register ||
+            param.abi->passed_on_stack ||
+            param.abi->primary_class != c4c::backend::bir::AbiValueClass::Integer ||
+            param.abi->type != param.type ||
+            home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+            !home.slot_id.has_value() || !home.offset_bytes.has_value() ||
+            !home.size_bytes.has_value() || !home.align_bytes.has_value() ||
+            *home.size_bytes != pointer_size ||
+            *home.align_bytes > pointer_size) {
+          return false;
+        }
+        const auto source_register =
+            rv64_gpr_formal_argument_register_number(function, param_index);
+        if (!source_register.has_value() || *source_register != rv64_register_number("a0")) {
+          return false;
+        }
+        const auto param_name = names.value_names.find(param.name);
+        if (param_name == c4c::kInvalidValueName ||
+            home.value_name != param_name) {
+          return false;
+        }
+        const auto frame_slot_it =
+            std::find_if(stack_layout.frame_slots.begin(),
+                         stack_layout.frame_slots.end(),
+                         [&](const prepare::PreparedFrameSlot& slot) {
+                           return slot.slot_id == *home.slot_id &&
+                                  slot.function_name == home.function_name;
+                         });
+        if (frame_slot_it == stack_layout.frame_slots.end() ||
+            frame_slot_it->offset_bytes != *home.offset_bytes ||
+            frame_slot_it->size_bytes != pointer_size ||
+            frame_slot_it->align_bytes > pointer_size ||
+            *home.offset_bytes > stack_frame_bytes ||
+            stack_frame_bytes - *home.offset_bytes < pointer_size ||
+            !fits_signed_12_bit_immediate(
+                static_cast<std::int64_t>(*home.offset_bytes))) {
+          return false;
+        }
+        const auto object_it =
+            std::find_if(stack_layout.objects.begin(),
+                         stack_layout.objects.end(),
+                         [&](const prepare::PreparedStackObject& object) {
+                           return object.object_id == frame_slot_it->object_id &&
+                                  object.function_name == home.function_name;
+                         });
+        return object_it != stack_layout.objects.end() &&
+               object_it->value_name == param_name &&
+               object_it->source_kind == "sret_param" &&
+               object_it->type == c4c::backend::bir::TypeKind::Ptr &&
+               object_it->size_bytes == pointer_size &&
+               object_it->align_bytes <= pointer_size &&
+               object_it->address_exposed && object_it->requires_home_slot &&
+               object_it->permanent_home_slot;
+      };
+
   for (std::size_t param_index = 0; param_index < function.params.size();
        ++param_index) {
     const auto& param = function.params[param_index];
-    if (param.is_varargs || param.is_sret) {
+    if (param.is_varargs) {
       continue;
     }
     const auto value = c4c::backend::bir::Value::named(param.type, param.name);
     const auto* home = prepared_value_home_for(names, lookups, value);
+    if (param.is_sret) {
+      if (home == nullptr) {
+        continue;
+      }
+      if (home != nullptr &&
+          has_supported_sret_param_stack_slot_home(param, param_index, *home)) {
+        continue;
+      }
+      return std::string{
+          "unsupported_sret_param_home: RV64 object route requires a pointer-sized permanent sret frame-slot home matching the incoming a0 formal"};
+    }
     if (home != nullptr &&
         (gpr_register_number_for_home(*home).has_value() ||
          fpr_register_number_for_home(*home).has_value())) {
@@ -5748,8 +5829,9 @@ std::optional<RiscvEncodedFragment> make_rv64_formal_entry_home_fragment(
         param.abi->primary_class != c4c::backend::bir::AbiValueClass::Integer) {
       continue;
     }
-    const auto size_bytes = rv64_scalar_memory_size_for_type(param.type);
-    if (!size_bytes.has_value() || *size_bytes != param.size_bytes) {
+    const auto size_bytes = rv64_formal_entry_home_store_size(param);
+    if (!size_bytes.has_value() ||
+        (!param.is_sret && *size_bytes != param.size_bytes)) {
       continue;
     }
     const auto value = c4c::backend::bir::Value::named(param.type, param.name);

@@ -42,6 +42,21 @@ struct FunctionStackObjectPlan {
   stack_layout::FunctionInlineAsmSummary inline_asm_summary;
 };
 
+void apply_target_stack_object_storage_contracts(
+    const c4c::TargetProfile& target_profile,
+    std::vector<PreparedStackObject>& objects) {
+  if (target_profile.arch != c4c::TargetArch::Riscv64) {
+    return;
+  }
+  for (auto& object : objects) {
+    if (object.source_kind == "sret_param" &&
+        object.type == c4c::backend::bir::TypeKind::Ptr) {
+      object.size_bytes = 8;
+      object.align_bytes = 8;
+    }
+  }
+}
+
 struct ProvenanceBaseIdentityFacts {
   bir::MemoryProvenanceBaseIdentityKind kind =
       bir::MemoryProvenanceBaseIdentityKind::Unknown;
@@ -1821,6 +1836,7 @@ void BirPreAlloc::run_stack_layout() {
     auto object_plan = plan_function_stack_objects(
         prepared_.names, prepared_.module.names, function, next_object_id);
     auto& function_objects = object_plan.objects;
+    apply_target_stack_object_storage_contracts(prepared_.target_profile, function_objects);
 
     std::size_t function_frame_size = 0;
     std::size_t function_frame_alignment = 1;

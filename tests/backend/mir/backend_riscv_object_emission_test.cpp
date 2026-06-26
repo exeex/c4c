@@ -2584,6 +2584,13 @@ prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
           .name = "%ret.sret",
           .size_bytes = 8,
           .align_bytes = 8,
+          .abi = bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
           .is_sret = true,
       }},
       .local_slots = {bir::LocalSlot{
@@ -8033,18 +8040,19 @@ int builds_prepared_sret_stack_pointer_store_object() {
   if (text == nullptr || function == nullptr) {
     return fail("expected prepared sret pointer store object to publish text/function");
   }
-  if (text->bytes.size() != 24 || text->size_bytes != 24 ||
-      function->value != 0 || function->size_bytes != 24 ||
+  if (text->bytes.size() != 28 || text->size_bytes != 28 ||
+      function->value != 0 || function->size_bytes != 28 ||
       function->section != std::optional<object::SectionId>{text->id}) {
     return fail("expected prepared sret pointer store object text layout");
   }
   if (read_u32(text->bytes, 0) != 0xff010113 ||
-      read_u32(text->bytes, 4) != 0x00013383 ||
-      read_u32(text->bytes, 8) != 0x02a00313 ||
-      read_u32(text->bytes, 12) != 0x0063a223 ||
-      read_u32(text->bytes, 16) != 0x01010113 ||
-      read_u32(text->bytes, 20) != 0x00008067) {
-    return fail("expected sret pointer load, indirect store, and return sequence");
+      read_u32(text->bytes, 4) != 0x00a13023 ||
+      read_u32(text->bytes, 8) != 0x00013383 ||
+      read_u32(text->bytes, 12) != 0x02a00313 ||
+      read_u32(text->bytes, 16) != 0x0063a223 ||
+      read_u32(text->bytes, 20) != 0x01010113 ||
+      read_u32(text->bytes, 24) != 0x00008067) {
+    return fail("expected sret a0 home publication, pointer load, indirect store, and return sequence");
   }
   if (!module->relocations.empty()) {
     return fail("expected prepared sret pointer store object to need no relocations");
@@ -8066,16 +8074,29 @@ int expect_sret_stack_pointer_store_rejection(
       "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing");
 }
 
+int expect_sret_home_publication_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_sret_param_home: RV64 object route requires a pointer-sized permanent sret frame-slot home matching the incoming a0 formal");
+}
+
 int rejects_prepared_sret_stack_pointer_store_fail_closed_shapes() {
   auto prepared = make_prepared_sret_stack_pointer_store_module();
   prepared.stack_layout.objects[0].source_kind = "local_slot";
-  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+  if (expect_sret_home_publication_rejection(prepared) != 0) {
     return 1;
   }
 
   prepared = make_prepared_sret_stack_pointer_store_module();
   prepared.stack_layout.objects[0].permanent_home_slot = false;
-  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+  if (expect_sret_home_publication_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.stack_layout.objects[0].address_exposed = false;
+  if (expect_sret_home_publication_rejection(prepared) != 0) {
     return 1;
   }
 
@@ -8084,13 +8105,27 @@ int rejects_prepared_sret_stack_pointer_store_fail_closed_shapes() {
       prepare::PreparedValueHomeKind::Register;
   prepared.value_locations.functions[0].value_homes[0].register_name =
       std::nullopt;
-  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+  if (expect_sret_home_publication_rejection(prepared) != 0) {
     return 1;
   }
 
   prepared = make_prepared_sret_stack_pointer_store_module();
   prepared.stack_layout.frame_slots[0].offset_bytes = 8;
-  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+  if (expect_sret_home_publication_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.stack_layout.frame_slots[0].size_bytes = 4;
+  prepared.stack_layout.objects[0].size_bytes = 4;
+  prepared.value_locations.functions[0].value_homes[0].size_bytes = std::size_t{4};
+  if (expect_sret_home_publication_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.module.functions[0].params[0].abi = std::nullopt;
+  if (expect_sret_home_publication_rejection(prepared) != 0) {
     return 1;
   }
 
