@@ -1,6 +1,6 @@
 # Prepared I16 Same-Module Call Argument ABI Publication
 
-Status: Open
+Status: Closed
 Type: Follow-up producer repair idea
 Parent: `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`
 
@@ -124,3 +124,19 @@ formal publication.
   `reason=call_arg_stack_to_stack`; `src/20000223-1.c` passes. This remains
   the producer-side same-module `i16` call-argument ABI publication boundary,
   not an RV64 object-emission opcode-lowering packet.
+- 2026-06-26: Reclosed after reopened Step 3 proof showed the producer-side
+  frame-slot same-module `i16` call-argument facts are complete in fresh
+  `src/divmod-1.c` prepared dumps: `value_bank=gpr`,
+  `dest_placement=gpr:call_argument#N/w1`, `dest_reg=aN`, `dest_bank=gpr`,
+  and `missing_frame_slot_arg_publication=yes`. The old
+  `source_encoding=frame_slot ... dest_bank=none`, `call_arg_stack_to_stack`,
+  and `placement=none:call_argument` producer regressions are absent.
+- 2026-06-26: The remaining `src/divmod-1.c` failure is generic
+  `unsupported_instruction_fragment`, routed back to
+  `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`.
+- 2026-06-26: Close gate passed with backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+  Existing `test_before.log` and regenerated `test_after.log` both report
+  326/326 passing backend tests, with no new failures. The lifecycle-only
+  close comparison used `--allow-non-decreasing-passed` because the accepted
+  backend pass count remained unchanged.
