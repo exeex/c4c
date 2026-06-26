@@ -1,188 +1,181 @@
-# RV64 Va List Call-Argument Publication Continuation Runbook
+# RV64 Va List Post-Repair Runtime Boundary Runbook
 
 Status: Active
 Source Idea: ideas/open/392_rv64_va_list_expression_call_argument_value_publication.md
-Supersedes: prior five-step runbook exhausted after Step 5; idea 392 remains open because `va-arg-13.c` still reaches the same value-publication boundary.
+Supersedes: continuation runbook exhausted after Step 4; idea 392 remains open because `va-arg-13.c` still aborts after the load-local publication repair.
 
 ## Purpose
 
-Continue idea 392 from the post-Step-5 evidence. Step 4 added explicit prepared
-`call_argument_value_publications` and focused backend proof passed, but the
-representative still stores the `va_list` storage address into the call
-argument object instead of the initialized save-area pointer payload.
+Continue idea 392 after the explicit `call_argument_value_publications` route
+and the load-local payload rewrite were repaired. Focused backend coverage now
+passes, but the representative still reaches `[RV64_BACKEND_RUNTIME_MISMATCH]`
+with `c4c_exit=Subprocess aborted`.
 
 ## Goal
 
-Make the representative use the prepared `va_list` call-argument publication
-fact/effective payload, or identify the exact missing/mismatched fact boundary
-that prevents the prepared route from owning the representative.
+Trace the post-repair RV64 object/runtime state for `va-arg-13.c` and decide
+whether the remaining abort is still the `va_list` call-argument payload
+publication boundary, a nearby object-ABI state bug required by idea 392, or a
+later boundary that must be split into a separate idea.
 
 ## Core Rule
 
-Follow the explicit prepared call-argument value-publication facts through the
-real representative path. Do not replace this with `va-arg-13.c`, `test`,
-`dummy`, register, stack-offset, or abort-branch matching.
+Start from emitted object/runtime evidence after commit `9fb88adc`. Do not
+assume the focused backend proof describes the representative runtime state,
+and do not fix the abort by matching `va-arg-13.c`, `test`, `dummy`, literal
+registers, stack offsets, or the abort branch.
 
 ## Read First
 
 - `ideas/open/392_rv64_va_list_expression_call_argument_value_publication.md`
 - `todo.md`
 - `test_after.log`
-- `build/agent_state/392_step5_va-arg-13.case.log`
-- `build/agent_state/392_step5_va-arg-13.c4c-disasm.log`
-- `build/agent_state/392_step5_va-arg-13.clang-disasm.log`
-- `build/agent_state/392_step5_va-arg-13.qemu-strace.log`
-- `src/backend/prealloc/publication_plans.cpp`
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/module.hpp`
+- `build/agent_state/392_cont_step1_va-arg-13.analysis.log`
+- `build/agent_state/392_cont_step1_va-arg-13.prepared.log`
+- `build/agent_state/392_cont_step2_backend-selection.analysis.log`
+- `build/agent_state/392_cont_step2_va-arg-13.trace-mir.log`
+- `build/agent_state/392_cont_step4_va-arg-13.case.log`
 - `src/backend/mir/riscv/codegen/object_emission.cpp`
 - `tests/backend/mir/backend_riscv_object_emission_test.cpp`
 
 ## Current Targets
 
 - Representative: `tests/c/external/gcc_torture/src/va-arg-13.c`
-- Prepared `call_argument_value_publications` emitted for the representative
-- Store-source/publication records referenced by those prepared facts
-- Backend selection and application of the prepared publication fact at the
-  first and second `dummy` call argument objects
+- Post-repair RV64 disassembly and runtime trace for `test` and `dummy`
+- Caller-side argument object contents before each `dummy` call
+- Callee-side `dummy` entry state and `va_arg` load path
+- Object/ABI state that decides whether the remaining abort belongs to idea
+  392 or a later split
 
 ## Non-Goals
 
-- Do not reopen RV64 variadic prologue save-area publication from idea 391.
-- Do not reopen `va_start` destination-address materialization from idea 389.
-- Do not reopen prepared frame-slot-address GPR call-argument lowering from
-  ideas 386 or 390 except where the explicit value-publication fact proves a
-  direct conflict.
-- Do not implement same-module memory-return/sret calls owned by idea 387.
+- Do not reopen RV64 variadic prologue save-area publication from idea 391
+  unless post-repair evidence proves the save area is no longer populated.
+- Do not reopen `va_start` destination-address materialization from idea 389
+  unless post-repair evidence proves the local `va_list` payload is not
+  initialized.
+- Do not weaken the explicit prepared publication fact guards added for idea
+  392.
 - Do not redesign generic variadic, aggregate, call ABI, or `va_arg` lowering.
-- Do not downgrade expectations, mark the representative unsupported, or
-  suppress the abort path as proof.
+- Do not downgrade expectations, suppress `abort()`, or mark the
+  representative unsupported as progress.
 
 ## Working Model
 
-The previous runbook established the right semantic owner and added explicit
-prepared `call_argument_value_publications`. The remaining failure is narrower:
-the focused fixture exercises the new backend route, but the real
-representative still emits:
+Earlier continuation steps established:
 
-```text
-mv t1,s1
-sd t1,24(sp)
-...
-mv t1,s1
-sd t1,32(sp)
-```
+- The representative has explicit `call_argument_value_publications` for both
+  `dummy` calls.
+- The backend selected the publication route but rewrote the payload from the
+  load-local result to the local `va_list` storage object.
+- Commit `9fb88adc` repaired that load-local rewrite and added focused backend
+  coverage.
+- Step 4 then reproved backend coverage but `va-arg-13.c` still aborted.
 
-where `s1` is the local `va_list` storage address (`sp+0x80`). The expected
-payload is the initialized save-area pointer stored in that object. The next
-route must determine whether the representative lacks the prepared fact, carries
-a mismatched source/destination identity, loses the effective payload before
-object emission, or falls through to an older address-publication path.
+The next boundary is no longer allowed to assume the old `mv t1,s1` /
+argument-object overwrite still exists. It must capture fresh post-repair
+object evidence and classify the exact runtime state that reaches `abort()`.
 
 ## Execution Rules
 
-- Start from emitted prepared facts for the real representative before editing
-  backend behavior.
-- Compare the representative against the focused passing fixture and explain
-  the divergence.
-- Keep the argument object address, local `va_list` storage address, and
-  initialized save-area pointer payload distinct in notes and assertions.
-- Preserve fail-closed behavior for missing, duplicate, ambiguous, or
-  mismatched publication facts.
-- Record any later boundary in `todo.md` and route it separately instead of
-  expanding this plan.
+- Capture fresh post-repair disassembly/runtime evidence before editing code.
+- Keep these states separate: source `va_list` storage address, initialized
+  save-area pointer payload, caller argument object address, caller argument
+  object contents, callee parameter pointer, and callee `va_arg` loaded value.
+- If the caller still passes the wrong payload, keep the repair inside idea
+  392.
+- If the caller payload is correct but `dummy` misinterprets object/ABI state,
+  decide whether that behavior is required for idea 392 acceptance or should
+  be split as a later idea.
+- Preserve focused backend proof and fail-closed variants while adding any new
+  representative-shaped coverage.
 
 ## Steps
 
-### Step 1: Trace Representative Prepared Publications
+### Step 1: Capture Post-Repair Runtime State
 
-Goal: prove whether `va-arg-13.c` carries the explicit prepared
-`call_argument_value_publications` needed by the Step 4 backend route.
+Goal: produce fresh evidence for the representative after the load-local
+payload repair.
 
-Primary target: prepared dumps/prints for the first and second `dummy` calls.
-
-Actions:
-
-- Generate or inspect the representative prepared output that includes
-  `call_argument_value_publications` and referenced store-source/publication
-  records.
-- Name the source local object, initialized payload source, destination
-  argument object, callsite, and referenced publication fact IDs for both
-  `dummy` calls.
-- Compare those facts with the focused backend fixture that passed in Step 4.
-- Classify the boundary as absent fact, mismatched fact identity, wrong
-  effective payload, or backend fallthrough despite a valid fact.
-- Record the exact classification and evidence in `todo.md`.
-
-Completion check: `todo.md` states whether the representative has a valid
-explicit prepared publication fact for each `dummy` call and why the current
-backend does or does not consume it.
-
-### Step 2: Pin The Backend Selection Failure
-
-Goal: identify the exact branch that emits the `va_list` storage address for
-the representative after the prepared facts are available.
-
-Primary target: `src/backend/mir/riscv/codegen/object_emission.cpp`.
+Primary target: `va-arg-13.c` object disassembly and qemu/runtime trace around
+both `dummy` calls.
 
 Actions:
 
-- Trace the call-argument object emission path for the representative from
-  prepared fact lookup through final store emission.
-- Determine whether the explicit value-publication route is skipped, rejected,
-  shadowed by an older frame-slot/address route, or selected with the wrong
-  payload.
-- Add focused assertions or diagnostics only as needed to make this branch
-  observable in backend proof.
-- Keep generic `StoreLocalPublication` records as input evidence, not as
-  standalone callsite authority.
-- Record the selected owner and minimal repair target in `todo.md`.
+- Regenerate the representative object, disassembly, and runtime logs under
+  `build/agent_state/392_postrepair_step1_*`.
+- Inspect the stores that populate the first and second caller argument
+  objects immediately before `dummy`.
+- Record whether the old local-storage-address overwrite is gone.
+- Capture the values/addresses at `dummy` entry that determine the subsequent
+  `va_arg` load and abort.
+- Record the exact post-repair state in `todo.md`.
 
-Completion check: `todo.md` names the failing backend branch/guard and the
-minimal semantic repair needed to make the explicit prepared publication route
-own the representative.
+Completion check: `todo.md` states the caller argument object contents and
+callee entry state for both `dummy` calls using fresh post-repair logs.
 
-### Step 3: Repair The Representative Publication Path
+### Step 2: Compare Caller Publication Against Callee Consumption
 
-Goal: make supported representative-shaped facts copy the initialized
-`va_list` payload into the call-argument object without testcase-shaped
-matching.
+Goal: determine whether the remaining abort comes from caller-side publication
+or callee-side object/ABI interpretation.
 
-Primary target: direct prepared-publication plumbing and RV64 object emission.
+Primary target: caller `test` emission, callee `dummy` emission, and prepared
+object/ABI facts.
 
 Actions:
 
-- Implement the minimal repair identified in Step 2.
-- If the representative lacks required prepared facts, repair fact production
-  instead of weakening backend guards.
-- If backend matching is wrong, bind by the explicit prepared publication fact
-  and its referenced source/destination identities.
-- If the payload is wrong, load/copy the initialized source payload rather than
-  storing the source object's address.
-- Extend focused backend coverage for the representative divergence and
-  preserve existing fail-closed variants.
+- Compare the caller argument object contents against the prepared
+  `call_argument_value_publications` payload facts.
+- Compare the callee parameter object and `va_arg` load against the RV64
+  `va_list` layout used by the caller.
+- Identify whether the passed value should be the save-area pointer payload, a
+  pointer to a copied `va_list` object, or another ABI-owned representation.
+- Check clang disassembly or runtime behavior only to classify semantics, not
+  to copy instruction shape.
+- Record the owner classification in `todo.md`.
 
-Completion check: focused backend tests cover the old fallthrough/mismatch and
-pass only when the initialized `va_list` payload reaches the call argument
-object through the explicit prepared route.
+Completion check: `todo.md` classifies the boundary as caller publication,
+callee consumption/object-ABI, or later split, with concrete evidence.
 
-### Step 4: Reprove Focused Coverage And Representative
+### Step 3: Route Or Repair The Owned Boundary
 
-Goal: prove idea 392 acceptance or route a genuinely later boundary.
+Goal: either repair the remaining idea-392 boundary or create a precise split
+proposal for a later owner.
 
-Primary target: focused backend tests plus `va-arg-13.c`.
+Primary target: the narrow code/test surface identified in Step 2.
 
 Actions:
 
-- Run the delegated backend proof command selected by the supervisor.
-- Rerun the `va-arg-13.c` RV64 object-route representative with the same
-  comparison shape used in Step 5.
-- Confirm whether the prior `Subprocess aborted` boundary is gone.
-- If a later boundary appears, record exact logs, owner, and split/defer
-  recommendation in `todo.md`.
+- If caller publication is still wrong, repair the explicit prepared
+  publication path and add focused coverage for the post-repair divergence.
+- If callee consumption is wrong but required to make `va_list` expression
+  call arguments work, repair the narrow object/ABI state in this plan and add
+  focused coverage.
+- If the caller/callee handoff is correct and the abort is a distinct later
+  feature, stop implementation and record the split recommendation in
+  `todo.md`; do not silently expand this plan.
+- Preserve existing backend proof and fail-closed publication tests.
+
+Completion check: focused coverage or split evidence matches the Step 2 owner
+classification without testcase-shaped matching.
+
+### Step 4: Reprove And Decide Disposition
+
+Goal: prove idea 392 completion or provide a canonical later-boundary handoff.
+
+Primary target: focused backend tests and `va-arg-13.c`.
+
+Actions:
+
+- Run the supervisor-delegated backend proof command.
+- Rerun the `va-arg-13.c` RV64 object-route representative.
+- If the representative advances past the abort or reaches a later clearly
+  owned boundary, record exact evidence in `todo.md`.
+- If a separate initiative is required, ask the plan owner to split it instead
+  of continuing implementation inside this runbook.
 - Keep `test_after.log` as the canonical executor proof log unless the
   supervisor delegates another artifact.
 
-Completion check: `todo.md` records the focused proof and representative
-result, and either shows idea 392 acceptance evidence or identifies a later
-owner without weakening the current idea.
+Completion check: `todo.md` contains proof logs and a lifecycle-ready
+disposition: completion evidence for idea 392, or exact split/next-owner
+evidence.
