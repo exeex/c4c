@@ -1,72 +1,70 @@
 Status: Active
 Source Idea Path: ideas/open/392_rv64_va_list_expression_call_argument_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Capture Post-Repair Runtime State
+Current Step ID: 2
+Current Step Title: Compare Caller Publication Against Callee Consumption
 
 # Current Packet
 
 ## Just Finished
 
-Post-repair Step 1 captured fresh RV64 object/disassembly/runtime evidence for
-`va-arg-13.c` after commit `9fb88adc`. The representative still fails with
-`[RV64_BACKEND_RUNTIME_MISMATCH]`, `clang_exit=0`, and
-`c4c_exit=Subprocess aborted`.
+Post-repair Step 2 compared caller publication against callee consumption and
+classified the remaining `va-arg-13.c` abort as a caller
+publication/materialization boundary.
 
-The old caller-side `mv t1,s1` local-storage-address overwrite before the
-`dummy` calls is gone. Fresh C4C disassembly shows both call-argument objects
-are now populated from `t0`:
+The explicit prepared call-argument value-publication facts are present and
+specific:
 
-- first call: `sd t1,24(sp)` twice, then `a0 = sp + 24`, then `dummy`
-- second call: `sd t1,32(sp)` twice, then `a0 = sp + 32`, then `dummy`
+- call inst 9 publishes payload `%t7.memcpy.copy.0` into argument object `%t7`
+  at object slot `#6`, stack offset `24`
+- call inst 16 publishes payload `%t14.memcpy.copy.0` into argument object
+  `%t14` at object slot `#7`, stack offset `32`
 
-Runtime reaches the first `dummy` only. At first `dummy` entry, QEMU shows
-`a0 = 0x0000ffff9eb4d7c8`, the first argument object address, with `t0/t1 =
-0x0000ffff9eb4d860`. `dummy` executes `ld s2,0(a0)`, then `lw s1,0(s2)`;
-the loaded pointer is `s2 = 0x0000ffff9eb4d860` and the loaded int is
-`s1 = 0xffffffff9eb4d9f8`, not `1234`, so the first call branches to `abort`.
+Both payloads come from `source_load_local=yes` store-source records. The
+problem is the effective source being loaded: prepared memory access records
+materialize `%t7.memcpy.copy.0` / `%t14.memcpy.copy.0` from frame slot `#4`
+for `%lv.state.8`, while the RV64 `va_start` helper publishes the active
+va_list word to helper destination slot `#13`, stack offset `128`. Runtime then
+shows the first argument object contains `0x0000ffff9eb4d860` instead of the
+saved variadic argument area pointer, so `dummy` loads the int from
+`0x0000ffff9eb4d860` and aborts.
 
-The second `dummy` call is not reached because the first call aborts. Static
-object evidence shows the second call would pass `a0 = sp + 32` and populate
-that argument object through the same `t0` route, not through `s1`.
+For the current C4C same-module route, `dummy` consumes `a0` as a pointer to a
+copied va_list object (`ld s2,0(a0)`, then `lw s1,0(s2)`). Therefore the
+caller should pass the copied object address, but that object's first word must
+be the save-area pointer payload. Clang's RV64 lowering passes the save-area
+pointer directly as scalar `va_list`; that broader ABI difference remains a
+watchout, but it is not the immediate same-C4C abort owner.
 
 Analysis log:
-`build/agent_state/392_postrepair_step1_analysis.log`.
+`build/agent_state/392_postrepair_step2_analysis.log`.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: trace why the post-repair caller payload value
-for both `dummy` call-argument objects is still the wrong pointer. Start from
-the fresh disassembly/runtime logs and classify the prepared or RV64
-materialization owner for the `t0` value that reaches the argument objects.
+Execute Step 3 from `plan.md`: trace and repair the prepared/RV64 object
+materialization owner for `load_local %lv.state.8` after `llvm.va_start`.
+The value used for `%t7.memcpy.copy.0` and `%t14.memcpy.copy.0` must come from
+the active va_start-published va_list word, not the stale/local frame slot that
+currently yields the caller stack pointer.
 
 ## Watchouts
 
-- Keep the caller argument object address (`a0 = sp + 24` / `sp + 32`) separate
-  from the object contents (`0x0000ffff9eb4d860` in the first observed call).
-- The first call aborts before the second call executes, so second-call runtime
-  state is not available from this QEMU run; only static object state was
-  captured for the second call.
-- The old `mv t1,s1` route is no longer the live boundary. The remaining issue
-  is that `t0` still materializes a pointer that makes `dummy` load from
-  `0x0000ffff9eb4d860` instead of the saved variadic argument value `1234`.
-- Do not reopen idea 391 unless fresh evidence shows incoming variadic GPR
-  payloads are no longer saved into the backing area.
+- Keep the caller argument object address separate from its contents. The
+  object-address route is selected; the bad value is the word stored inside the
+  object.
+- Do not regress the Step 3 equality guard for explicit call-argument
+  value-publication facts. The next repair should not infer payload authority
+  from generic `StoreLocalPublication` alone.
+- The immediate owner is not the old `mv t1,s1` overwrite; that pattern is gone.
+- Keep the broader clang/RV64 scalar-`va_list` ABI difference visible, but do
+  not broaden Step 3 unless the materialization repair proves insufficient.
 
 ## Proof
 
 Delegated proof/evidence command run:
-`mkdir -p build/agent_state build/rv64_gcc_c_torture_backend/src_va-arg-13.c && { echo 'Post-repair Step 1 va-arg-13 RV64 object/runtime evidence for idea 392'; cmake --build --preset default --target c4cll >/dev/null; case_log=build/agent_state/392_postrepair_step1_va-arg-13.case.log; set +e; cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=$(command -v clang) -DQEMU_RISCV64=$(command -v qemu-riscv64) -DSRC=/workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-13.c -DROOT=/workspaces/c4c -DOUT_CLANG_BIN=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/clang.bin -DOUT_OBJECT=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/c4c.o -DOUT_C4C_BIN=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/c4c.bin -P /workspaces/c4c/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake > "$case_log" 2>&1; rc=$?; set -e; echo "case_exit=$rc"; cat "$case_log"; riscv64-linux-gnu-objdump -dr /workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/c4c.o > build/agent_state/392_postrepair_step1_va-arg-13.c4c-disasm.log 2>&1; riscv64-linux-gnu-objdump -dr /workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/clang.bin > build/agent_state/392_postrepair_step1_va-arg-13.clang-disasm.log 2>&1; timeout 20 qemu-riscv64 -L /usr/riscv64-linux-gnu -strace /workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/c4c.bin > build/agent_state/392_postrepair_step1_va-arg-13.qemu-strace.log 2>&1 || true; timeout 20 qemu-riscv64 -d in_asm,cpu -D build/agent_state/392_postrepair_step1_va-arg-13.qemu-cpu.log -L /usr/riscv64-linux-gnu /workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/c4c.bin >/dev/null 2>&1 || true; exit 0; } > test_after.log 2>&1`.
+`mkdir -p build/agent_state && { echo 'Post-repair Step 2 caller/callee comparison for idea 392'; cmake --build --preset default --target c4cll >/dev/null; build/c4cll --target riscv64-linux-gnu --dump-prepared-bir tests/c/external/gcc_torture/src/va-arg-13.c > build/agent_state/392_postrepair_step2_prepared.log 2>&1; echo 'prepared_dump_exit='$?; } > test_after.log 2>&1`.
 
-Result: evidence captured; representative still failed with `case_exit=1`,
-`[RV64_BACKEND_RUNTIME_MISMATCH]`, `clang_exit=0`, and
-`c4c_exit=Subprocess aborted`. Logs:
+Result: passed for evidence capture; `prepared_dump_exit=0`. Logs:
 `test_after.log`,
-`build/agent_state/392_postrepair_step1_va-arg-13.case.log`,
-`build/agent_state/392_postrepair_step1_va-arg-13.c4c-disasm.log`,
-`build/agent_state/392_postrepair_step1_va-arg-13.clang-disasm.log`,
-`build/agent_state/392_postrepair_step1_va-arg-13.qemu-strace.log`,
-`build/agent_state/392_postrepair_step1_va-arg-13.qemu-cpu.log`,
-`build/agent_state/392_postrepair_step1_va-arg-13.c4c-bin-disasm.log`,
-`build/agent_state/392_postrepair_step1_va-arg-13.c4c-nm.log`, and
-`build/agent_state/392_postrepair_step1_analysis.log`.
+`build/agent_state/392_postrepair_step2_prepared.log`, and
+`build/agent_state/392_postrepair_step2_analysis.log`.
