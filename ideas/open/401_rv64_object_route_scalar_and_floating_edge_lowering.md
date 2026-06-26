@@ -21,6 +21,8 @@ Representatives:
 
 - `tests/c/external/gcc_torture/src/20000313-1.c`
 - `tests/c/external/gcc_torture/src/20020225-2.c`
+- `tests/c/external/gcc_torture/src/20000403-1.c` after the separate `I16`
+  formal ABI publication repair
 
 ## In Scope
 
@@ -58,3 +60,11 @@ Representatives:
 - Reject MIR/RV64 changes that invent scalar result, truncation, or floating
   cast facts that should have been represented by BIR/prepared lowering.
 - Reject expectation rewrites or allowlist filtering.
+
+## Lifecycle Notes
+
+- 2026-06-26: Reactivated after closing
+  `ideas/closed/403_prepared_i16_formal_abi_publication.md`. The former
+  `src/20000403-1.c` producer ABI blocker now reaches
+  `unsupported_scalar_compare_trunc`, matching this idea's scalar edge bucket.
+  Do not fold `I16` formal ABI publication back into this object-route plan.

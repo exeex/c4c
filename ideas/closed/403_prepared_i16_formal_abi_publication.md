@@ -1,6 +1,6 @@
 # Prepared I16 Formal ABI Publication
 
-Status: Open
+Status: Closed
 Type: Follow-up producer repair idea
 Parent: `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`
 
@@ -63,6 +63,18 @@ inside the consumer.
   duplicate scalar formal ABI classifier.
 - Narrow build/proof plus supervisor-selected backend proof are recorded in
   canonical `todo.md` / `test_after.log` by the executor.
+
+## Closure Notes
+
+- 2026-06-26: Closed after commit `f847dd20` added `I16` handling to
+  `direct_bir_call_arg_abi_repair()`.
+- `src/20000403-1.c` no longer fails with the producer-side ABI-less
+  `i16 %p.win` `unsupported_param_home` blocker.
+- Fresh probing now reaches the distinct RV64 object-route blocker
+  `unsupported_scalar_compare_trunc`; continue that work under
+  `ideas/open/401_rv64_object_route_scalar_and_floating_edge_lowering.md`.
+- Close gate passed using canonical backend regression logs in non-decreasing
+  mode: 326 passed before, 326 passed after, no new failing tests.
 
 ## Reviewer Reject Signals
 

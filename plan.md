@@ -1,177 +1,189 @@
-# Prepared I16 Formal ABI Publication Runbook
+# RV64 Object Route Scalar And Floating Edge Lowering Runbook
 
 Status: Active
-Source Idea: ideas/open/403_prepared_i16_formal_abi_publication.md
+Source Idea: ideas/open/401_rv64_object_route_scalar_and_floating_edge_lowering.md
 
 ## Purpose
 
-Repair the producer-side scalar integer formal ABI publication gap that leaves
-direct-call `I16` formals stack-homed without usable prepared ABI facts.
+Repair the RV64 prepared-object scalar compare/trunc and floating-cast edge
+lowering bucket without weakening prepared BIR ownership or object-route
+admission.
 
 ## Goal
 
-Publish prepared `I16` formal ABI/home facts in the same producer repair path
-used for adjacent scalar integer widths, then prove the RV64 object route can
-consume those facts without reconstructing ABI policy.
+Generalize reusable RV64 object lowering for the observed scalar compare/trunc
+and floating-cast prepared forms, then prove representative cases and nearby
+same-bucket cases through the backend route.
 
 ## Core Rule
 
-Repair the prepared-BIR producer contract. Do not teach RV64 object emission to
-infer missing incoming argument registers or stack homes from parameter order.
+Lower real prepared scalar and floating forms semantically. Do not hard-code
+testcase names, compare function names, constants, or source filenames, and do
+not invent missing producer facts inside RV64 emission.
 
 ## Read First
 
-- `ideas/open/403_prepared_i16_formal_abi_publication.md`
-- `todo.md` history from idea 395 commit `e6210244`
-- Representative case `tests/c/external/gcc_torture/src/20000403-1.c`
-- `src/backend/prealloc/legalize.cpp`
-  `direct_bir_call_arg_abi_repair()`
-- Prepared dump, if still present:
-  `build/agent_state/395_step4_20000403-1.prepared-bir.txt`
+- `ideas/open/401_rv64_object_route_scalar_and_floating_edge_lowering.md`
+- `todo.md`
+- `tests/c/external/gcc_torture/src/20000313-1.c`
+- `tests/c/external/gcc_torture/src/20020225-2.c`
+- `tests/c/external/gcc_torture/src/20000403-1.c`
+- RV64 object emission and prepared lowering code around
+  `unsupported_scalar_compare_trunc` and `unsupported_floating_cast`
 - RV64 backend runner `scripts/check_progress_rv64_gcc_c_torture_backend.sh`
 
 ## Current Scope
 
-- Inspect scalar formal ABI repair coverage for direct BIR calls.
-- Add missing `I16` support at the producer-side prepared ABI publication
-  boundary.
-- Keep object-emitter parameter-home admission dependent on prepared facts.
-- Prove the `src/20000403-1.c` `i16 %p.win` blocker no longer reaches RV64
-  object emission as an ABI-less stack-home parameter.
+- Classify the prepared shapes behind current `unsupported_scalar_compare_trunc`
+  failures, including `src/20000403-1.c` after the separate `I16` formal ABI
+  repair.
+- Generalize scalar compare result publication and integer truncation support
+  beyond the currently admitted narrow shape.
+- Classify and repair, or precisely split, the observed `unsupported_floating_cast`
+  failures.
+- Prove representative and nearby same-bucket cases without expectation
+  rewrites or allowlist-only progress claims.
 
 ## Non-Goals
 
-- Do not edit RV64 `object_emission.cpp` to reconstruct missing formal ABI
-  policy.
-- Do not weaken `unsupported_param_home` admission or accept ABI-less scalar
-  stack homes.
-- Do not redesign aggregate, variadic, byval, sret, or unrelated scalar width
-  ABI handling.
-- Do not rewrite gcc_torture expectations, supported markers, or allowlists.
+- Do not rewrite unrelated scalar-binop semantic `lir_to_bir` failures.
+- Do not implement broad floating-point ABI work beyond the observed prepared
+  forms unless proof shows it is required for this bucket.
+- Do not change gcc_torture expectations, supported markers, or allowlists as
+  claimed capability progress.
+- Do not reopen the closed `I16` formal ABI publication repair inside this
+  object-route plan.
 
 ## Working Model
 
-- `direct_bir_call_arg_abi_repair()` is the expected producer-side repair
-  point because it already handles `I1`, `I8`, `I32`, `I64`, and `Ptr`.
-- The observed bad prepared shape is `i16 %p.win` in `seqgt` and `seqgt2`,
-  assigned to stack-slot homes backed by regalloc spill slots without usable
-  scalar integer ABI facts.
-- RV64 object emission should only consume prepared formal ABI/home facts; it
-  should not derive missing producer policy from source-level parameter order.
+- The `I16` formal ABI producer gap is closed; `src/20000403-1.c` now exposes a
+  later object-route scalar compare/trunc blocker.
+- The scalar bucket is expected to need reusable compare-result plus truncation
+  lowering, not a named-case shortcut.
+- Floating-cast failures may be RV64 FPR lowering gaps, but missing prepared
+  BIR facts should be split into a separate producer idea instead of patched in
+  the object emitter.
 
 ## Execution Rules
 
-- Keep the first packet focused on `I16` direct formal ABI publication.
-- Compare the existing scalar width handling before adding a new branch so the
-  `I16` behavior follows the established helper contract.
-- Preserve diagnostics for truly unsupported or ABI-less parameter homes.
-- Record prepared-dump evidence in `todo.md` before and after code changes.
-- For each code-changing packet, run the supervisor-delegated build/proof
-  command exactly and record results in `todo.md` / `test_after.log`.
+- Start with classification before code changes; capture representative
+  prepared forms and exact diagnostics in `todo.md`.
+- Keep scalar compare/trunc and floating-cast work as separable packets unless
+  the same helper contract genuinely covers both.
+- Preserve prepared-object contract boundaries; RV64 emission consumes prepared
+  facts and lowers target forms.
+- Each code-changing packet needs the supervisor-delegated build/proof command
+  recorded in `test_after.log` and `todo.md`.
+- Use same-bucket nearby cases for proof, not only one representative.
 
 ## Ordered Steps
 
-### Step 1: Confirm Producer-Side I16 Gap
+### Step 1: Classify Scalar And Floating Edge Shapes
 
-Goal: verify the current failure is missing producer-side `I16` formal ABI
-publication, not an object-emitter lowering gap.
+Goal: identify the reusable prepared forms behind the scalar compare/trunc and
+floating-cast diagnostics before editing lowering code.
 
 Primary targets:
 
+- `tests/c/external/gcc_torture/src/20000313-1.c`
+- `tests/c/external/gcc_torture/src/20020225-2.c`
 - `tests/c/external/gcc_torture/src/20000403-1.c`
-- `build/agent_state/395_step4_20000403-1.prepared-bir.txt`, if present
-- `src/backend/prealloc/legalize.cpp`
+- RV64 object emission diagnostics for `unsupported_scalar_compare_trunc` and
+  `unsupported_floating_cast`
 
 Actions:
 
-- Reproduce or load the `src/20000403-1.c` prepared dump and object-route
-  diagnostic.
-- Confirm `seqgt` and `seqgt2` expose `i16 %p.win` as stack-homed formal
-  values without usable scalar integer ABI facts.
-- Inspect `direct_bir_call_arg_abi_repair()` and adjacent tests to identify the
-  scalar width dispatch used for `I1`, `I8`, `I32`, `I64`, and `Ptr`.
-- Record the exact missing-fact evidence and chosen narrow proof command in
+- Run or inspect a supervisor-selected allowlist probe for representative
+  scalar and floating cases.
+- Capture prepared/object-route evidence for the compare result, truncation,
+  and floating-cast shapes.
+- Decide whether the first implementation packet should target scalar
+  compare/trunc, floating cast, or a producer-fact split.
+- Record the chosen narrow proof command and any same-bucket neighbor cases in
   `todo.md`.
 
 Completion check:
 
-- `todo.md` records the current `I16` formal ABI gap, relevant prepared-home
-  evidence, and the delegated proof command to use after the repair.
+- `todo.md` records the exact prepared forms, diagnostic evidence, selected
+  first packet, and proof command without claiming implementation progress.
 
-### Step 2: Publish I16 Formal ABI Facts
+### Step 2: Generalize Scalar Compare/Trunc Lowering
 
-Goal: extend producer-side direct formal ABI repair so `I16` formals publish
-usable prepared scalar integer ABI/home facts.
-
-Primary targets:
-
-- `src/backend/prealloc/legalize.cpp`
-- Existing prepared-BIR/regalloc tests for direct call/formal ABI repair, if
-  present
-
-Actions:
-
-- Add `I16` handling through the same mechanism as adjacent scalar integer
-  widths.
-- Keep the change producer-side; do not edit RV64 object emission to compensate
-  for missing ABI facts.
-- Add or adjust narrow tests if there is an existing local prepared-BIR or
-  regalloc test surface for direct formal ABI repair.
-- Preserve behavior for `I1`, `I8`, `I32`, `I64`, and `Ptr`.
-
-Completion check:
-
-- Prepared dumps or tests show `I16` formals receive usable scalar integer
-  ABI/home facts before object emission, without broad unrelated ABI diffs.
-
-### Step 3: Prove 20000403-1.c And Guard Adjacent Widths
-
-Goal: prove the repaired producer facts unblock the representative route and do
-not regress adjacent scalar formal widths.
+Goal: repair `unsupported_scalar_compare_trunc` for reusable prepared scalar
+compare-result and integer truncation forms.
 
 Primary targets:
 
-- `src/20000403-1.c`
-- Any narrow prepared-BIR/regalloc tests touched in Step 2
-- Canonical `test_after.log` when delegated by the supervisor
+- RV64 object emission/lowering code around scalar compare result publication
+  and truncation
+- Representative scalar cases from Step 1
 
 Actions:
 
-- Run the exact supervisor-delegated build/proof command.
-- Confirm `src/20000403-1.c` no longer fails with the same
-  `unsupported_param_home` diagnostic for ABI-less `i16 %p.win`.
-- Check whether the case now passes or exposes a later, distinct object-route
-  diagnostic; record that result without claiming unrelated bucket completion.
-- If tests cover adjacent scalar widths, run the matching narrow subset.
-- Record proof logs and remaining blockers in `todo.md`.
+- Add semantic lowering for the prepared scalar compare/trunc family identified
+  in Step 1.
+- Preserve truncation semantics; do not clear the diagnostic by widening,
+  dropping, or bypassing the truncation.
+- Avoid matching on testcase names, function names, or one exact instruction
+  sequence when nearby cases share the same prepared family.
+- Run the delegated build/proof command and record before/after diagnostic
+  movement in `todo.md`.
 
 Completion check:
 
-- `test_after.log` and `todo.md` show the `I16` producer ABI publication gap is
-  repaired or name a distinct later blocker for supervisor routing.
+- Representative scalar cases no longer fail with
+  `unsupported_scalar_compare_trunc`, or `todo.md` names a precise producer
+  fact split required before object lowering can proceed.
 
-### Step 4: Route Any Remaining Blocker
+### Step 3: Repair Or Split Floating-Cast Lowering
 
-Goal: return clean lifecycle state to the supervisor once the producer repair is
-proved or a different gap is exposed.
+Goal: handle the observed `unsupported_floating_cast` prepared forms without
+creating ABI-incoherent FPR/GPR movement.
+
+Primary targets:
+
+- `tests/c/external/gcc_torture/src/20020225-2.c`
+- RV64 FPR register and floating-cast object lowering code
+
+Actions:
+
+- Classify whether the floating cast has complete prepared facts for RV64
+  object emission.
+- If facts are complete, implement the narrow reusable F32/F64 lowering needed
+  for the observed forms.
+- If facts are missing or wrong, write a precise follow-up producer idea rather
+  than compensating in MIR/RV64 emission.
+- Run the delegated proof command for the representative and nearby floating
+  cases.
+
+Completion check:
+
+- `src/20020225-2.c` no longer fails with `unsupported_floating_cast`, or the
+  remaining blocker is split into a source idea with concrete acceptance and
+  reviewer reject signals.
+
+### Step 4: Refresh Bucket Proof And Route Remaining Work
+
+Goal: prove the scalar/floating bucket moved in the intended direction and
+return clean lifecycle state for any distinct follow-up.
 
 Primary targets:
 
 - `todo.md`
-- Active source idea `ideas/open/403_prepared_i16_formal_abi_publication.md`
-- Related open RV64 object-route ideas if a later target-emission blocker
-  appears
+- `test_after.log`
+- RV64 gcc_torture backend subset output
 
 Actions:
 
-- If `src/20000403-1.c` passes the producer-home point and exposes a later
-  object-route issue, record the new diagnostic in `todo.md`.
-- Ask the supervisor to reactivate the relevant object-route idea when the
-  producer repair is complete.
-- If another producer missing fact appears, split it into a separate source
-  idea instead of expanding this one.
+- Run the supervisor-selected refreshed subset or full backend progress probe.
+- Confirm the scalar/floating edge bucket count decreases without new runtime
+  mismatches.
+- Record remaining distinct diagnostics in `todo.md`.
+- If all acceptance criteria are satisfied, ask the plan owner to close the
+  idea; otherwise route any separate producer or target-emission initiative
+  through a new or existing `ideas/open/` file.
 
 Completion check:
 
-- The active lifecycle state clearly says whether this idea is complete,
-  blocked by a distinct follow-up, or ready to hand back to object-route work.
+- Canonical lifecycle state says whether idea 401 is complete, still active for
+  a remaining scalar/floating packet, or blocked by a distinct follow-up.
