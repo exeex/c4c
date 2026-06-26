@@ -8,38 +8,54 @@ Current Step Title: Rerun Representatives
 
 ## Just Finished
 
-Completed Step 2 and Step 3 of `plan.md` for the first audited terminator
-shape: added focused RV64 object-emission coverage for a prepared fused
-`sgt i32 %reg, %reg` conditional branch, then lowered that shape semantically
-by normalizing it to an RV64 `slt` branch with swapped operands.
+Completed Step 5 of `plan.md`: reran the representative RV64 GCC torture
+backend subset after the `sgt i32` fused branch lowering.
 
-The focused tests also keep adjacent fail-closed coverage for unsupported
-fused branch predicates and non-i32 `sgt` branch shapes.
+Representative results:
+
+- `src/20000224-1.c`: pass. Its prior first unsupported
+  `cond_branch` shape, `fused_compare compare=sgt i32 %t0, %t1`, no longer
+  fails in the representative object-route run.
+- `src/20000112-1.c`: fail. The run still stops at
+  `unsupported_terminator_fragment`; the prior Step 1 audit identifies its
+  first unsupported branch shape as `fused_compare compare=ne ptr %t0, 0`.
 
 ## Suggested Next
 
-Run the Step 5 representative RV64 GCC torture backend subset for
-`src/20000224-1.c` and `src/20000112-1.c` to see whether the first case now
-advances and to confirm the next first unsupported terminator shape. If the
-allowlist order remains unchanged, the likely next implementation packet is
-the pointer-null `ne` fused branch for `src/20000112-1.c`.
+Implement the next in-scope terminator shape for `src/20000112-1.c`: semantic
+RV64 object-route lowering for a fused pointer-null `ne` conditional branch
+(`ne ptr %reg, 0`). Keep the packet scoped to the general pointer/null branch
+shape and add focused object-emission coverage plus representative rerun proof.
 
 ## Watchouts
 
-- `sgt i32` support is intentionally implemented as branch predicate
-  normalization, not by testcase names or prepared-BIR text matching.
-- The implementation does not broaden unsupported `sle` or non-i32 `sgt`
-  fused branch shapes; those remain covered by the object-emission test's
-  fail-closed assertions.
-- `src/20000112-1.c` previously reached a pointer-typed null `ne` fused branch;
-  that path was not part of this packet and still needs representative rerun
-  confirmation before implementation.
+- The Step 5 runner log records the remaining `src/20000112-1.c` failure only
+  as `unsupported_terminator_fragment`; use
+  `build/agent_state/369_step1_terminator_audit.summary.log` and
+  `build/agent_state/369_step1_terminator_audit.prepared_bir.log` for the
+  known first unsupported shape evidence.
+- `src/20000224-1.c` passing is the confirmation that the prior `sgt i32`
+  fused branch shape advanced out of the representative blocker set.
+- Do not turn this into named-case handling for `20000112-1.c`; the next owner
+  should lower the semantic pointer/null branch form and fail closed for
+  non-owned pointer compare variants.
 
 ## Proof
 
-Ran the supervisor-selected proof:
+Ran the supervisor-selected proof exactly:
 
-`( cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure ) > test_after.log 2>&1`
+`mkdir -p build/agent_state && printf '%s\n' 'src/20000224-1.c' 'src/20000112-1.c' > build/agent_state/369_step5_terminator_representatives.allowlist.txt && ALLOWLIST=build/agent_state/369_step5_terminator_representatives.allowlist.txt STOP_ON_FAILURE=1 VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains the fresh build and three-test CTest
-run.
+Result: exited nonzero because the representative subset still has one
+in-scope unsupported terminator. This is sufficient Step 5 pass/next-owner
+evidence: total=2, passed=1, failed=1.
+
+Proof logs and supporting artifacts:
+
+- `test_after.log`
+- `build/agent_state/369_step5_terminator_representatives.runner.log`
+- `build/agent_state/369_step5_terminator_representatives.allowlist.txt`
+- `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
+- `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
+- `build/rv64_gcc_c_torture_backend/src_20000224-1.c/case.log`
+- `build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`
