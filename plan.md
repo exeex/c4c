@@ -1,71 +1,67 @@
-# RV64 Object Route Residual Call Argument Prior-Preservation Runbook
+# RV64 Object Route Short-Circuit Select Join Materialization Runbook
 
 Status: Active
-Source Idea: ideas/open/380_rv64_object_route_short_circuit_call_argument_reload.md
+Source Idea: ideas/open/381_rv64_object_route_short_circuit_select_join_materialization.md
 
 ## Purpose
 
-Continue idea 380 after the first repair admitted one GPR callee-saved
-`PriorPreservation` shape but did not resolve the representative
-`src/20000112-1.c` crash.
+Continue `src/20000112-1.c` after idea 380 repaired the call-argument
+prior-preservation owner and the representative advanced to a distinct
+short-circuit select/join materialization failure.
 
-Goal: repair the remaining semantic owner that lets the original incoming
-`fmt` argument become unavailable before a later prepared call, then rerun the
-representative to confirm it passes or advances to a distinct owner.
+Goal: repair the RV64 object route so skip-edge and join materialization uses
+the prepared authoritative select/join value instead of reading an RHS result
+home on paths where the RHS did not run.
 
 ## Core Rule
 
-Use prepared call, argument, value-home, prior-preservation, and object-route
-facts. Do not key behavior on `src/20000112-1.c`, `special_format`, a specific
-`strchr` call, exact C expression spelling, block labels, value ids,
-instruction indexes, physical registers, object addresses, or log text.
+Use prepared BIR, phi-edge move bundles, value-home, publication, and
+object-route facts. Do not key behavior on `src/20000112-1.c`,
+`special_format`, `strchr`, exact C expression spelling, block labels, value
+ids, instruction indexes, physical registers, object addresses, or log text.
 
 ## Read First
 
-- `ideas/open/380_rv64_object_route_short_circuit_call_argument_reload.md`
+- `ideas/open/381_rv64_object_route_short_circuit_select_join_materialization.md`
 - `todo.md`
-- `build/agent_state/380_step4_20000112.classification.txt`
-- `build/agent_state/380_step4_20000112.c4c_trace_tail.txt`
-- `build/agent_state/380_step4_20000112.c4c_qemu_L_strace.err`
-- `build/agent_state/380_step4_20000112.clang_qemu_L_strace.err`
-- `build/agent_state/380_step4_20000112.c4c_o_objdump.txt`
-- `build/agent_state/380_step4_20000112.clang_bin_objdump.txt`
+- `build/agent_state/380_residual_followup_20000112.classification.txt`
+- `build/agent_state/380_residual_followup_20000112.special_format_disasm.txt`
+- `build/agent_state/380_residual_followup_20000112.prepared_bir.txt`
 - `build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`
 
 ## Current Targets
 
 - Primary representative: `src/20000112-1.c`
 - Failure class entering this pass: `RV64_BACKEND_RUNTIME_MISMATCH`
-- Residual symptom: after `strchr(fmt, '*')` returns `NULL` for `"ee"`, c4c
-  reaches the next prepared call with `a0 == NULL` instead of preserving or
-  reloading the original `fmt` pointer for the later `strchr(fmt, 'V')`.
-- Current owner: still the idea 380 call-argument reload /
-  prior-preservation owner family, not a separate runtime-crash initiative.
+- Current symptom: object code reaches a short-circuit join and reads `s2` on
+  skip edges where the RHS call result was never produced.
+- Current owner: RV64 object-route short-circuit select/join materialization,
+  not the idea 380 call-argument prior-preservation owner.
 
 ## Non-Goals
 
-- Do not create a separate runtime-crash source idea for the current evidence.
-- Do not reopen idea 379 select/publication lowering while its repaired
-  behavior remains green.
-- Do not add testcase-name, `special_format`, or `strchr`-specific handling.
-- Do not broaden the route into full register allocation, full ABI redesign,
-  assembler replacement, byval aggregate homes, aggregate `va_arg`, globals,
-  or strings unless the residual audit proves the current prepared-call and
-  value-home facts cannot express the repair.
+- Do not reopen idea 380 unless focused coverage shows call-argument
+  prior-preservation regressed.
+- Do not reopen idea 379 unless focused coverage shows its earlier
+  select/publication repair regressed.
+- Do not add testcase-name, `special_format`, `strchr`, block-label,
+  value-id, register, address, or log-text handling.
+- Do not broaden the route into full CFG reconstruction, register allocation,
+  ABI redesign, assembler/object replacement, byval aggregate homes, aggregate
+  `va_arg`, globals, or strings unless the audit proves the current prepared
+  edge/value-home facts cannot express the repair.
 - Do not weaken runtime expectations, external allowlists, supported-path
   contracts, or focused backend coverage.
 
 ## Working Model
 
-- The original incoming argument must remain available across one RHS call that
-  clobbers argument registers and produces a `NULL` result in the same call
-  argument register needed by a later RHS call.
-- The prior Step 2 repair accepted one GPR callee-saved `PriorPreservation`
-  shape, but that acceptance was not sufficient for the representative.
-- The next packet should identify whether the missing fact is the original
-  incoming-argument home, the chosen prior-preservation source, the reload
-  point before prepared call emission, or rejection of a currently unsupported
-  multi-call shape.
+- Prepared BIR already contains phi-edge immediate materialization bundles for
+  short-circuit skip edges.
+- RV64 object emission must publish or preserve the authoritative select/join
+  value on every incoming edge before join consumers read it.
+- The first packet should verify whether the missing lowering is edge move
+  emission, join publication placement, consumer source selection, or rejection
+  of an unsupported shape.
 - If the representative advances to a truly distinct owner after this repair,
   document that owner in `todo.md` instead of expanding this plan.
 
@@ -73,91 +69,86 @@ instruction indexes, physical registers, object addresses, or log text.
 
 - Keep routine packet progress in `todo.md`.
 - Keep implementation packets small and semantic.
+- Preserve fail-closed behavior for unsupported or ambiguous select/join
+  materialization shapes.
 - For each code-changing step, run the focused backend build/test proof chosen
   by the supervisor.
-- Preserve fail-closed behavior for unsupported or ambiguous repeated-call
-  argument shapes.
-- Rerun `src/20000112-1.c` after the admitted residual repair.
-- Escalate to reviewer or plan-owner repair if the route requires broad
-  register-allocation or ABI redesign.
+- Keep ideas 379 and 380 focused coverage green.
+- Rerun `src/20000112-1.c` after the admitted repair.
 
 ## Steps
 
-### Step 1: Audit Residual Prior-Preservation Gap
+### Step 1: Audit Select/Join Materialization Gap
 
-Goal: identify why the first `PriorPreservation` repair does not keep the
-original incoming `fmt` pointer available for the later prepared call.
+Goal: identify why object emission reads the RHS result home on skip-edge join
+paths instead of the prepared authoritative select/join value.
 
 Actions:
-- Inspect the residual Step 4 artifacts and the current object-route emission
-  around the first failed `strchr` return and the following prepared call.
-- Compare the value homes for the original incoming argument, the first call
-  result, and the later call argument.
-- Determine whether the missing rule is prior source selection, home
-  publication, reload placement, call-clobber invalidation, or an unsupported
-  shape that must stay rejected.
-- Record the smallest semantic shape that must be admitted and the adjacent
-  shapes that must remain fail-closed.
+- Inspect the starting evidence and current object-route emission around the
+  first logic-end join that reads `s2`.
+- Compare prepared BIR phi-edge move bundles with emitted object code for the
+  corresponding predecessor edges and join consumers.
+- Determine whether the missing rule is edge move emission, block-entry
+  publication, join publication placement, consumer source selection, or an
+  unsupported shape that must stay rejected.
+- Record the smallest semantic shape that must be admitted and nearby shapes
+  that must remain fail-closed.
 
 Completion check:
-- `todo.md` names the residual call-argument prior-preservation shape, the
-  missing fact or lowering rule, and the artifacts or commands used to identify
-  it.
+- `todo.md` names the select/join materialization shape, the missing lowering
+  rule, and the artifacts or commands used to identify it.
 
-### Step 2: Implement Residual Semantic Repair
+### Step 2: Implement Select/Join Materialization Repair
 
-Goal: preserve or reload the original incoming argument for the later prepared
-call without testcase-shaped matching.
+Goal: emit or select the correct prepared select/join value for skip-edge joins
+without testcase-shaped matching.
 
 Actions:
-- Implement the narrow semantic repair in the responsible prepared/object-route
+- Implement the narrow semantic repair in the responsible RV64 object-route
   lowering surface.
-- Base the repair on prepared call, argument, value-home, and
-  prior-preservation facts, not physical-register coincidences or source
-  testcase details.
-- Ensure a call result held in the same outgoing argument register does not
-  masquerade as the original incoming argument for a later call.
-- Keep idea 379's repaired select/publication behavior intact.
+- Base the repair on prepared BIR, phi-edge move bundles, value-home, and
+  publication facts.
+- Ensure skip edges that bypass RHS calls do not read unproduced RHS result
+  homes.
+- Keep idea 379 and idea 380 repairs intact.
 
 Completion check:
-- Focused backend tests prove the admitted residual repeated-call argument
-  behavior and reject adjacent unsupported or ambiguous shapes.
-- Existing focused backend coverage for the prior idea 380 repair and idea
-  379's select/publication repair remains green.
+- Focused backend tests prove the admitted short-circuit skip-edge/join
+  materialization behavior and reject adjacent unsupported or ambiguous shapes.
+- Existing focused backend coverage for ideas 379 and 380 remains green.
 - The supervisor-delegated focused build and test command passes.
 
 ### Step 3: Rerun `src/20000112-1.c`
 
-Goal: confirm the representative result after the residual prior-preservation
-repair.
+Goal: confirm the representative result after the select/join repair.
 
 Actions:
 - Rerun `src/20000112-1.c` through the RV64 GCC torture backend progress path
   using the supervisor-provided command.
 - Inspect any remaining failure to decide whether it is still the same
-  call-argument owner or a distinct next owner.
-- If it is the same owner, record the remaining reload/preservation gap in
+  select/join owner or a distinct next owner.
+- If it is the same owner, record the remaining materialization gap in
   `todo.md` for another bounded executor packet.
 
 Completion check:
 - The representative passes, or `todo.md` documents a distinct next owner with
   artifacts and a handoff recommendation, or `todo.md` documents the still
-  in-scope residual reload gap that needs another plan-owner review.
+  in-scope select/join gap that needs another plan-owner review.
 
 ### Step 4: Closure or Handoff Check
 
-Goal: decide whether idea 380 is complete after the residual repair.
+Goal: decide whether idea 381 is complete after the select/join repair.
 
 Actions:
-- Verify the source idea's call-argument preservation/reload acceptance
-  criteria are satisfied.
-- Confirm focused backend coverage for the admitted repeated-call behavior
-  still passes.
-- Confirm idea 379's focused select/publication coverage still passes.
-- Ask the plan owner to close idea 380 only if the source idea acceptance
+- Verify the source idea's select/join materialization acceptance criteria are
+  satisfied.
+- Confirm focused backend coverage for the admitted select/join behavior still
+  passes.
+- Confirm ideas 379 and 380 focused coverage still passes.
+- Ask the plan owner to close idea 381 only if the source idea acceptance
   criteria are satisfied and regression guard can pass.
 
 Completion check:
-- Either the supervisor has enough evidence to request closure of idea 380, or
+- Either the supervisor has enough evidence to request closure of idea 381, or
   `todo.md` clearly identifies the remaining blocker and why it is still in
   scope.

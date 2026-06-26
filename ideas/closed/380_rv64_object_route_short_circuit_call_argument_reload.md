@@ -1,8 +1,8 @@
 # RV64 Object Route Short-Circuit Call Argument Reload
 
-Status: Open
+Status: Closed
 Type: Repair idea
-Parent: `ideas/open/379_rv64_object_route_20000112_runtime_join_publication.md`
+Parent: `ideas/closed/379_rv64_object_route_20000112_runtime_join_publication.md`
 
 ## Goal
 
@@ -57,16 +57,27 @@ call-argument liveness/reload contract on the RV64 object route.
 - Existing focused backend coverage for idea 379's select/publication repair
   remains green.
 
-## Starting Evidence
+## Closure Summary
 
-- `build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`
-- `build/agent_state/379_step4_20000112.classification.txt`
-- `build/agent_state/379_step4_20000112.c4c_o_objdump.txt`
-- `build/agent_state/379_step4_20000112.c4c_bin_objdump.txt`
-- `build/agent_state/379_step4_20000112.clang_bin_objdump.txt`
-- `build/agent_state/379_step4_20000112.c4c_qemu_L_strace.err`
-- `build/agent_state/379_step4_20000112.c4c_qemu_trace.log`
-- `build/agent_state/379_step4_20000112.clang_qemu_L_strace.err`
+Closed after the RV64 object route repaired the bounded call-argument
+prior-preservation owner. The implementation now emits preservation home
+population and republication effects for supported callee-saved GPR homes,
+saves and restores prepared callee-saved GPR homes in object functions, and
+seeds earlier matching register-source calls from later supported preservation
+facts.
+
+Focused backend proof passed for the 13-test call/object/select subset recorded
+in `test_after.log`, and the close-time regression guard passed against
+`test_before.log` with no lost ctest passes. The `src/20000112-1.c`
+representative was rerun and advanced: `special_format` now emits `mv s1,a0`
+before the first clobbering `strchr`, and later calls reload the original
+argument from `s1`.
+
+The remaining abort is a distinct RV64 object-route short-circuit select/join
+materialization owner. Prepared BIR contains phi-edge immediate materialization
+bundles for skip edges, but emitted object code still reads the RHS result home
+`s2` on skip paths where the RHS call did not run. That work is split to
+`ideas/open/381_rv64_object_route_short_circuit_select_join_materialization.md`.
 
 ## Reviewer Reject Signals
 
