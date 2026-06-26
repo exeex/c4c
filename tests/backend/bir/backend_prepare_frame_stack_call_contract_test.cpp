@@ -1058,15 +1058,6 @@ bir::Module make_same_module_i16_call_argument_contract_module() {
       .result = bir::Value::named(bir::TypeKind::I16, "tmp.call"),
       .callee = "same_module_i16",
       .args = {bir::Value::named(bir::TypeKind::I16, "tmp.i16")},
-      .arg_types = {bir::TypeKind::I16},
-      .arg_abi = {bir::CallArgAbiInfo{
-          .type = bir::TypeKind::I16,
-          .size_bytes = 4,
-          .align_bytes = 4,
-          .primary_class = bir::AbiValueClass::Memory,
-          .passed_on_stack = true,
-          .sret_pointer = true,
-      }},
       .return_type_name = "i16",
       .return_type = bir::TypeKind::I16,
       .result_abi = bir::CallResultAbiInfo{
@@ -3615,6 +3606,9 @@ int check_same_module_i16_call_argument_contract() {
   const auto& argument = call_plan.arguments.front();
   if (argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
       argument.value_bank != prepare::PreparedRegisterBank::Gpr ||
+      !argument.source_selection.has_value() ||
+      argument.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
       argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
       !argument.destination_register_name.has_value() ||
       !argument.destination_register_placement.has_value() ||
@@ -3628,6 +3622,54 @@ int check_same_module_i16_call_argument_contract() {
   if (!missing_frame_slot_need.available ||
       missing_frame_slot_need.destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
     return fail("same-module i16 call argument contract: frame-slot-to-GPR publication query failed");
+  }
+
+  const auto* value_locations =
+      prepare::find_prepared_value_location_function(prepared,
+                                                     "same_module_i16_call_argument_contract");
+  const auto* before_call_bundle =
+      value_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(*value_locations,
+                                               prepare::PreparedMovePhase::BeforeCall,
+                                               0,
+                                               2);
+  if (before_call_bundle == nullptr) {
+    return fail("same-module i16 call argument contract: missing before-call move bundle");
+  }
+  const auto move_it = std::find_if(
+      before_call_bundle->moves.begin(),
+      before_call_bundle->moves.end(),
+      [](const prepare::PreparedMoveResolution& move) {
+        return move.destination_kind ==
+                   prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+               move.destination_abi_index == std::optional<std::size_t>{0};
+      });
+  if (move_it == before_call_bundle->moves.end() ||
+      move_it->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      !move_it->destination_register_name.has_value() ||
+      !move_it->destination_register_placement.has_value() ||
+      move_it->destination_register_placement->bank != prepare::PreparedRegisterBank::Gpr ||
+      move_it->destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallArgument) {
+    return fail("same-module i16 call argument contract: before-call move lost GPR destination");
+  }
+  const auto binding_it = std::find_if(
+      before_call_bundle->abi_bindings.begin(),
+      before_call_bundle->abi_bindings.end(),
+      [](const prepare::PreparedAbiBinding& binding) {
+        return binding.destination_kind ==
+                   prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+               binding.destination_abi_index == std::optional<std::size_t>{0};
+      });
+  if (binding_it == before_call_bundle->abi_bindings.end() ||
+      binding_it->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      !binding_it->destination_register_name.has_value() ||
+      !binding_it->destination_register_placement.has_value() ||
+      binding_it->destination_register_placement->bank != prepare::PreparedRegisterBank::Gpr ||
+      binding_it->destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallArgument) {
+    return fail("same-module i16 call argument contract: ABI binding lost GPR destination");
   }
 
   return 0;

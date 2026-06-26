@@ -214,7 +214,7 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                 : nullptr;
         const std::size_t destination_contiguous_width =
             source != nullptr ? published_register_group_width(*source) : 1;
-        const auto abi_register_placement =
+        auto abi_register_placement =
             destination_storage_kind == PreparedMoveStorageKind::Register && arg_abi.has_value() &&
                     abi_register_index.has_value()
                 ? f128_call_arg_destination_placement(
@@ -224,6 +224,13 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                                                              destination_contiguous_width),
                       arg.type)
                 : std::nullopt;
+        if (abi_register_placement.has_value() &&
+            abi_register_placement->bank == PreparedRegisterBank::None &&
+            arg_abi.has_value() &&
+            arg_abi->type == bir::TypeKind::I16 &&
+            arg_abi->primary_class == bir::AbiValueClass::Integer) {
+          abi_register_placement->bank = PreparedRegisterBank::Gpr;
+        }
         const auto destination_occupied_register_names =
             destination_storage_kind == PreparedMoveStorageKind::Register &&
                     abi_register_name.has_value() && abi_register_index.has_value()

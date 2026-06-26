@@ -261,7 +261,7 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
         const PreparedMoveStorageKind consumed_kind =
             call_arg_storage_kind(target_profile, *call, arg_index);
         const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
-        const auto arg_abi = resolve_call_arg_abi(*call, arg_index);
+        const auto arg_abi = resolve_call_arg_abi(target_profile, *call, arg_index);
         const auto abi_register_index =
             call_arg_abi_register_index(target_profile, *call, arg_index);
         const auto abi_register_name =
@@ -277,7 +277,7 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
               consumed_kind == PreparedMoveStorageKind::Register
                   ? call_arg_destination_register_width(target_profile, *source, arg_abi)
                   : 1;
-        const auto destination_register_placement =
+        auto destination_register_placement =
             consumed_kind == PreparedMoveStorageKind::Register && arg_abi.has_value() &&
                     abi_register_index.has_value()
                 ? f128_call_arg_destination_placement(
@@ -287,6 +287,13 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                                              destination_contiguous_width),
                       arg.type)
                 : std::nullopt;
+        if (destination_register_placement.has_value() &&
+            destination_register_placement->bank == PreparedRegisterBank::None &&
+            arg_abi.has_value() &&
+            arg_abi->type == bir::TypeKind::I16 &&
+            arg_abi->primary_class == bir::AbiValueClass::Integer) {
+          destination_register_placement->bank = PreparedRegisterBank::Gpr;
+        }
           const auto destination_occupied_register_names =
               consumed_kind == PreparedMoveStorageKind::Register &&
                       destination_register_name.has_value() && abi_register_index.has_value()

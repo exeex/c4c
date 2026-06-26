@@ -302,16 +302,6 @@ std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
   return std::nullopt;
 }
 
-[[nodiscard]] bool scalar_i16_call_arg_abi_needs_repair(
-    const bir::CallArgAbiInfo& abi) {
-  return abi.type == bir::TypeKind::I16 &&
-         (abi.primary_class != bir::AbiValueClass::Integer ||
-          abi.passed_on_stack ||
-          abi.byval_copy ||
-          abi.sret_pointer ||
-          !abi.passed_in_register);
-}
-
 [[nodiscard]] bir::CallArgAbiInfo repair_scalar_i16_call_arg_abi(
     const bir::CallArgAbiInfo& abi) {
   bir::CallArgAbiInfo repaired = abi;
@@ -329,14 +319,44 @@ std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
   return repaired;
 }
 
+[[nodiscard]] bir::TypeKind call_argument_type(const bir::CallInst& call,
+                                               std::size_t arg_index) {
+  if (arg_index < call.arg_types.size() &&
+      call.arg_types[arg_index] != bir::TypeKind::Void) {
+    return call.arg_types[arg_index];
+  }
+  if (arg_index < call.args.size()) {
+    return call.args[arg_index].type;
+  }
+  return bir::TypeKind::Void;
+}
+
+[[nodiscard]] std::optional<bir::CallArgAbiInfo> infer_scalar_i16_call_arg_abi(
+    const bir::CallInst& call,
+    std::size_t arg_index) {
+  if (call_argument_type(call, arg_index) != bir::TypeKind::I16) {
+    return std::nullopt;
+  }
+  return repair_scalar_i16_call_arg_abi(bir::CallArgAbiInfo{
+      .type = bir::TypeKind::I16,
+      .size_bytes = 2,
+      .align_bytes = 2,
+      .primary_class = bir::AbiValueClass::Integer,
+      .passed_in_register = true,
+  });
+}
+
 std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
     std::size_t arg_index) {
   (void)target_profile;
   auto abi = resolve_call_arg_abi(call, arg_index);
-  if (abi.has_value() && scalar_i16_call_arg_abi_needs_repair(*abi)) {
-    return repair_scalar_i16_call_arg_abi(*abi);
+  if (call_argument_type(call, arg_index) == bir::TypeKind::I16) {
+    if (abi.has_value()) {
+      return repair_scalar_i16_call_arg_abi(*abi);
+    }
+    return infer_scalar_i16_call_arg_abi(call, arg_index);
   }
   return abi;
 }
