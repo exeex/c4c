@@ -1,134 +1,128 @@
-# RV64 `va_list` Value Publication/Copy Runbook
+# RV64 Variadic Prologue Save-Area Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/390_rv64_va_list_value_publication_copy_runtime_abort.md
-Activated from: ideas/open/390_rv64_va_list_value_publication_copy_runtime_abort.md
+Source Idea: ideas/open/391_rv64_variadic_prologue_save_area_publication.md
+Activated from: ideas/open/391_rv64_variadic_prologue_save_area_publication.md
 
 ## Purpose
 
-Resolve the RV64 object-route runtime abort exposed after idea 389 fixed
-`va_start` destination-address materialization. The initialized `va_list`
-value must be the value observed by later `va_list` copy/call-argument uses.
+Resolve the RV64 object-route runtime abort that remains after the prepared
+`va_list` destination-address and prepared-call publication/copy routes are
+fixed. The incoming variadic argument payload must be available in the backing
+save area consumed by `va_start` / `va_arg`.
 
 ## Goal
 
-Make later `dummy(statep->ap)` / `dummy(state.ap)`-style `va_list` uses observe
-the `va_list` value initialized by `va_start`, or fail closed with a precise
-diagnostic owner.
+Make supported RV64 variadic callees publish incoming variadic GPR payloads
+into the save area reached by the initialized `va_list`, or fail closed with a
+precise diagnostic owner.
 
 ## Core Rule
 
-Use prepared/BIR/object-emission facts to connect the initialized `va_list`
-value to later copy or call-argument uses. Do not hard-code
-`va-arg-13.c`, `test`, `dummy`, registers, stack offsets, or the current abort
-branch as the route condition.
+Use prepared/BIR/object facts for variadic prologue payload ownership and
+save-area publication. Do not hard-code `va-arg-13.c`, `test`, `dummy`,
+register names, stack offsets, or the current abort branch as the route
+condition.
 
 ## Read First
 
-- `ideas/open/390_rv64_va_list_value_publication_copy_runtime_abort.md`
-- `ideas/closed/389_rv64_va_start_destination_va_list_address_publication.md`
-- `build/agent_state/389_step5_va-arg-13.case.log`
-- `build/agent_state/389_step5_va-arg-13.objdump.log`
-- `build/agent_state/389_step5_va_arg_13.prepared_bir.log`
-- `build/agent_state/389_step5_va_arg_13.dummy.prepared_bir.log`
+- `ideas/open/391_rv64_variadic_prologue_save_area_publication.md`
+- `ideas/closed/390_rv64_va_list_value_publication_copy_runtime_abort.md`
+- `build/agent_state/390_step5_va-arg-13.case.log`
+- `build/agent_state/390_step5_va-arg-13.c4c_disasm.log`
+- `build/agent_state/390_step5_va-arg-13.clang_disasm.log`
+- `build/agent_state/390_step5_va-arg-13.qemu_strace.log`
 - `src/backend/mir/riscv/codegen/object_emission.cpp`
 
 ## Current Targets
 
 - Representative: `tests/c/external/gcc_torture/src/va-arg-13.c`
-- RV64 object route for `va_start`-initialized `va_list` value publication
-- Later `va_list` copy/call-argument setup for `dummy(statep->ap)` and
-  `dummy(state.ap)`
+- RV64 variadic callee prologue / save-area setup
+- Incoming variadic GPR payload publication for later `va_start` / `va_arg`
+  consumption
 - Focused RV64 backend object-emission tests and CMake wiring as needed
 
 ## Non-Goals
 
 - Do not reopen `va_start` destination-address materialization from idea 389.
+- Do not reopen prepared-call frame-slot-address `va_list` value
+  publication/copy from idea 390.
 - Do not reopen `llvm.va_end.p0` lowering from idea 388.
-- Do not reopen frame-slot-address GPR call-argument lowering from idea 386.
+- Do not reopen ordinary frame-slot-address GPR call-argument lowering from
+  idea 386.
 - Do not implement same-module memory-return/sret calls owned by idea 387.
 - Do not perform broad aggregate rewrites, full `va_arg` redesign, or generic
-  call ABI changes beyond the `va_list` value publication/copy route.
+  call ABI changes beyond the RV64 variadic save-area publication route.
 - Do not downgrade expectations or suppress the `abort()` path without proving
-  the initialized `va_list` value reaches the later consumer.
+  incoming variadic payloads reach the backing save area consumed by `va_arg`.
 
 ## Working Model
 
-Idea 389 made the prepared destination address valid before
-`fragment_for_prepared_variadic_va_start` stores through it. Step 5 evidence
-shows the representative now emits:
-
-```text
-addi s1,sp,72
-addi t1,sp,72
-sd t1,0(s1)
-```
-
-The next failure is a later runtime abort:
+Idea 390 made later prepared-call frame-slot-address arguments copy the
+initialized `va_list` pointer payload into the call argument object. Step 5
+still reports:
 
 ```text
 [RV64_BACKEND_RUNTIME_MISMATCH]
-clang_exit=0
-c4c_exit=Subprocess aborted
+clang_exit=0 c4c_exit=Subprocess aborted
 ```
 
-The suspected gap is value publication, not address materialization: the
-prepared `va_start` destination value is initialized, but later `va_list`
-copy/call-argument setup appears to load or copy from the ordinary aggregate
-member storage path instead of from the initialized prepared destination value.
+The current evidence points one boundary earlier than `dummy`'s read: `dummy`
+receives a va-list pointer object, but the pointed-to save area does not
+appear to contain the incoming variadic `a1=1234` payload that clang publishes
+for later `va_arg` consumption.
 
 ## Execution Rules
 
-- Capture prepared/BIR/object facts before choosing a publication or copy
+- Capture prepared/BIR/object facts before choosing a save-area publication
   route.
-- Prove the authoritative initialized `va_list` value and the later consumer
-  path; do not rely only on the representative abort result.
+- Prove the incoming variadic payload source and the later save-area consumer;
+  do not rely only on the representative abort result.
 - Add focused backend coverage before or alongside implementation.
-- Preserve fail-closed diagnostics for ambiguous or unsupported `va_list`
-  value copy/publication shapes.
+- Preserve fail-closed diagnostics for ambiguous or unsupported variadic
+  prologue save-area shapes.
 - Keep any later boundary separate and record it in `todo.md` for lifecycle
   routing.
 
 ## Steps
 
-### Step 1: Capture The `va_list` Value Publication Boundary
+### Step 1: Capture The Variadic Save-Area Boundary
 
-Goal: identify the exact prepared/BIR/object facts for the initialized
-`va_list` value and the later failing call-argument uses.
+Goal: identify the exact prepared/BIR/object facts for incoming RV64 variadic
+payloads and the save area later reached by `va_start` / `va_arg`.
 
-Primary target: `va-arg-13.c` prepared/BIR/object evidence around `va_start`,
-`dummy(statep->ap)`, `dummy(state.ap)`, and `dummy`.
+Primary target: `va-arg-13.c` prepared/BIR/object and disassembly evidence
+around `test` prologue, `va_start`, and `dummy`.
 
 Actions:
 
-- Inspect the idea 389 Step 5 logs and current prepared/BIR dumps.
-- Map the `va_start` initialized value to its prepared destination storage and
-  any aliases or publication facts.
-- Map the later `dummy` call-argument setup to the value source it currently
-  copies.
-- Identify whether the ordinary aggregate/member path, prepared destination
-  slot, or a missing alias/publication fact is authoritative.
+- Inspect the idea 390 Step 5 logs and current prepared/BIR dumps.
+- Map incoming variadic argument payloads, especially the payload corresponding
+  to `a1=1234`, to any prepared prologue or save-area facts.
+- Map the `va_start` initialized pointer to the save area later consumed by
+  `dummy` / `va_arg`.
+- Identify whether the gap is missing prologue save-area publication, an
+  incorrect save-area base, or an ambiguous ownership fact.
 - Record the exact fact gap or ambiguity in `todo.md`.
 
-Completion check: `todo.md` names the initialized `va_list` value, later
-consumer value, prepared facts, object slots/registers as evidence, and the
-likely owner for publication/copy.
+Completion check: `todo.md` names the incoming payload source, save-area
+destination, prepared facts, object slots/registers as evidence, and the
+likely owner for save-area publication.
 
-### Step 2: Classify The Publication/Copy Route
+### Step 2: Classify The Save-Area Publication Route
 
-Goal: choose the narrow semantic route for connecting the initialized
-`va_list` value to later uses.
+Goal: choose the narrow semantic route for publishing incoming variadic
+payloads into the save area.
 
-Primary target: RV64 object emission and prepared value/source metadata.
+Primary target: RV64 object emission and prepared variadic prologue metadata.
 
 Actions:
 
-- Decide whether to publish the initialized value back to ordinary
-  aggregate/member storage, copy from the prepared destination slot at use
-  sites, or model the relationship as a prepared value alias.
+- Decide whether publication belongs in the variadic prologue object fragment,
+  a prepared local/save-area publication route, or a new prepared fact consumed
+  by existing object emission.
 - Define required facts and unsupported/ambiguous variants.
-- Keep idea 386, idea 387, idea 388, and idea 389 routes out of this owner
-  decision.
+- Keep ideas 386, 387, 388, 389, and 390 routes out of this owner decision.
 - Record the route, guards, and fail-closed diagnostics in `todo.md`.
 
 Completion check: `todo.md` states the selected route and exact guard
@@ -136,28 +130,29 @@ conditions an executor can implement without re-deriving lifecycle scope.
 
 ### Step 3: Add Focused Backend Coverage
 
-Goal: prove later `va_list` copy/call-argument uses observe the initialized
-`va_start` destination value.
+Goal: prove supported RV64 incoming variadic payloads reach the backing save
+area consumed by `va_arg`.
 
 Primary target: focused RV64 backend object-emission tests/fixtures and CMake
 wiring as needed.
 
 Actions:
 
-- Add or extend focused RV64 object-emission coverage for a supported
-  `va_start`-initialized `va_list` value later copied or passed as an argument.
-- Assert that the later consumer value comes from the initialized
-  destination/publication route.
-- Add adjacent fail-closed coverage for ambiguous value-source or alias facts.
+- Add or extend focused RV64 backend coverage for a variadic callee with an
+  incoming GPR variadic payload consumed through `va_start` / `va_arg`.
+- Assert that the payload is stored into the save area through the selected
+  publication route.
+- Add adjacent fail-closed coverage for missing, ambiguous, or malformed
+  save-area publication facts.
 - Avoid assertions tied to `va-arg-13.c`, `test`, `dummy`, concrete registers,
   literal offsets, or the abort branch except where fixture-owned expected
   encodings require concrete values.
 
-Completion check: focused coverage pins the current unsafe value-source route
-and passes only when the initialized `va_list` value reaches the later
-consumer.
+Completion check: focused coverage pins the current missing save-area
+publication route and passes only when incoming variadic payloads reach the
+expected save area.
 
-### Step 4: Implement Narrow `va_list` Value Publication/Copy
+### Step 4: Implement Narrow Save-Area Publication
 
 Goal: implement the selected route without broad variadic, aggregate, or ABI
 rewrites.
@@ -167,11 +162,11 @@ directly related focused backend wiring if needed.
 
 Actions:
 
-- Use prepared/BIR/object facts to publish or copy the initialized `va_list`
-  value to later consumers.
+- Use prepared/BIR/object facts to publish incoming variadic payloads into the
+  backing save area.
 - Emit a narrow diagnostic or unsupported route when required facts are absent
   or ambiguous.
-- Preserve idea 386, 387, 388, and 389 behavior.
+- Preserve idea 386, 387, 388, 389, and 390 behavior.
 - Run the delegated backend proof command and record results in `todo.md`.
 
 Completion check: focused backend tests pass, fail-closed variants remain
@@ -187,7 +182,7 @@ Primary target: `tests/c/external/gcc_torture/src/va-arg-13.c`.
 Actions:
 
 - Rerun the representative GCC torture case with the same comparison shape
-  used at the idea 389 close boundary.
+  used at the idea 390 close boundary.
 - Confirm whether the c4c RV64 object route advances past the current
   `Subprocess aborted` mismatch.
 - If a later boundary appears, record exact evidence and route it to an
@@ -195,4 +190,4 @@ Actions:
 - Preserve the backend proof result required by the supervisor.
 
 Completion check: `todo.md` records the representative result, proof logs, and
-either completion evidence for idea 390 or a clearly owned later boundary.
+either completion evidence for idea 391 or a clearly owned later boundary.

@@ -1,9 +1,10 @@
 # RV64 `va_list` Value Publication/Copy Runtime Abort Boundary
 
-Status: Open
+Status: Closed
 Type: Target lowering follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: closure of `ideas/closed/389_rv64_va_start_destination_va_list_address_publication.md`
+Closed By: prepared-call publication/copy implementation plus Step 5 routing evidence
 
 ## Goal
 
@@ -82,6 +83,44 @@ idea 387.
   a narrower fail-closed diagnostic with a clear owner.
 - Any later boundary is routed to an existing or new idea instead of being
   silently absorbed.
+
+## Closure Notes
+
+Idea 390 is complete as the prepared-call `va_list` value publication/copy
+owner. The implemented RV64 object route requires the missing-publication need
+plus exactly one matching `StoreLocalPublication` fact, then stores the
+initialized pointer payload into the frame-slot-address argument object before
+materializing that object's address into the ABI register. Missing, duplicate,
+or mismatched publication facts fail closed.
+
+Focused backend coverage now records the missing-publication need without
+treating address materialization as payload authority, and covers malformed
+publication shapes including duplicate exact address materialization facts and
+non-frame-slot materialization kinds.
+
+Step 5 reran
+`tests/c/external/gcc_torture/src/va-arg-13.c`. The representative still
+returns:
+
+```text
+[RV64_BACKEND_RUNTIME_MISMATCH]
+clang_exit=0 c4c_exit=Subprocess aborted
+```
+
+The later abort is outside this idea's prepared-call publication/copy owner.
+Evidence points to RV64 variadic function prologue / `va_start` backing
+register-save-area publication for incoming varargs payloads: `dummy` receives
+a va-list pointer object, but the pointed-to save area is not known to contain
+the expected incoming `a1=1234` payload. That boundary is tracked separately by
+`ideas/open/391_rv64_variadic_prologue_save_area_publication.md`.
+
+Close gate:
+
+- Fresh build plus backend CTest after log:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+- Regression guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+- Result: PASS, 326/326 before and 326/326 after, no new failures.
 
 ## Reviewer Reject Signals
 
