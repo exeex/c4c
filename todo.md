@@ -8,60 +8,64 @@ Current Step Title: Capture Sret Param Home Evidence
 
 ## Just Finished
 
-Lifecycle disposition closed idea 393 and split the later representative
-failure into idea 394.
+Step 1 captured fresh prepared/BIR/object/qemu evidence for
+`tests/c/external/gcc_torture/src/920908-1.c`, focused on callee `f`
+`%ret.sret`.
 
-Idea 393 is complete because Step 5 evidence shows the aggregate `va_arg`
-cursor-stride boundary is repaired:
+Findings:
+- Caller-side same-module sret address construction is correct in the
+  representative. The prepared call plan has `memory_return=%t8`,
+  `memory_slot=#7`, `memory_stack_offset=16`, and arg 0 source selection
+  `local_frame_address_materialization`; linked disassembly materializes
+  `a0=sp+16` before calling `f`.
+- QEMU confirms `f` receives the caller sret address in incoming `a0`.
+- Prepared state gives callee `%ret.sret` a stack home:
+  `source_kind=sret_param`, slot `#0`, `stack_offset=0`,
+  `requires_home_slot=yes`, `permanent_home_slot=yes`.
+- The final return store is prepared as `base=pointer_value` through
+  `pointer=%ret.sret`, and object emission lowers it as
+  `ld t2,0(sp); sw t1,0(t2)`.
+- The callee prologue saves variadic `a2`-`a7` and initializes the `va_list`
+  cursor, but does not publish/save incoming `a0` into the `%ret.sret` home at
+  `0(sp)`.
 
-- both aggregate helpers now use `payload_size=4`, `copy_size=4`,
-  `source_slot=8`, `progression_stride=8`, and `overflow_stride=8`
-- the first aggregate read observes `10`
-- the second aggregate read observes `20`
-- both prior abort branches are skipped
-
-The remaining `920908-1.c` failure is a later same-module sret/callee
-`%ret.sret` home-publication boundary. `main` passes the sret address in `a0`,
-but callee `f` later loads stack-homed `%ret.sret` from `0(sp)` without a prior
-callee-side publication/save of incoming `a0` into that home slot.
+Conclusion: the fault comes from an uninitialized callee `%ret.sret` stack
+home, not from caller-side sret address construction. The exact fact gap and
+evidence are recorded in `build/agent_state/394_step1_analysis.log`.
 
 ## Suggested Next
 
-Execute Step 1: capture prepared/BIR/object evidence for callee `%ret.sret`,
-incoming `a0`, the stack home slot, and the final pointer-value return store.
-Record the exact missing publication point and repair owner before selecting an
-implementation route.
+Execute Step 2 by selecting the narrow route for callee-entry publication of
+stack-homed RV64 `sret_param` pointer values. Start from the prepared
+`sret_param` object/home facts and the RV64 object-emission prologue path, and
+decide whether the publication should be explicit prepared metadata or a
+strict object-emission entry rule.
 
 ## Watchouts
 
-- Do not reopen idea 393 aggregate `va_arg` cursor stride; the representative
-  now reads both aggregate payloads correctly.
-- Do not reopen idea 387 caller-side same-module sret object emission unless
-  fresh evidence contradicts the current `a0` handoff.
-- The current boundary is callee home publication for `%ret.sret`, not caller
-  address construction.
-- Avoid hard-coding `920908-1.c`, callee `f`, registers, stack offsets, or the
-  observed final store sequence.
+- Keep the route semantic: incoming RV64 sret pointer argument to a callee
+  `sret_param` object with an explicit stack home. Do not hard-code
+  `920908-1.c`, callee `f`, stack offsets, or the final store sequence.
+- Object emission already supports the final pointer-value local-memory store
+  shape once `%ret.sret` home contains the incoming pointer.
+- The representative still exits with a segmentation fault because Step 1 is an
+  evidence packet only; no implementation was changed.
 
 ## Proof
 
-Plan-owner close gate command run for idea 393:
+Delegated representative/evidence command run:
+`mkdir -p build/agent_state build/rv64_gcc_c_torture_backend/src_920908-1.c && { echo 'Step 1 920908-1 RV64 sret callee home evidence for idea 394'; cmake --build --preset default --target c4cll >/dev/null; build/c4cll --target riscv64-linux-gnu --dump-prepared-bir tests/c/external/gcc_torture/src/920908-1.c > build/agent_state/394_step1_920908-1.prepared.log 2>&1; echo "dump_prepared_exit=$?"; build/c4cll --target riscv64-linux-gnu --dump-bir tests/c/external/gcc_torture/src/920908-1.c > build/agent_state/394_step1_920908-1.bir.log 2>&1; echo "dump_bir_exit=$?"; case_log=build/agent_state/394_step1_920908-1.case.log; run_log=build/agent_state/394_step1_920908-1.run.log; set +e; cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=$(command -v clang) -DQEMU_RISCV64=$(command -v qemu-riscv64) -DSRC=/workspaces/c4c/tests/c/external/gcc_torture/src/920908-1.c -DROOT=/workspaces/c4c -DOUT_CLANG_BIN=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_920908-1.c/clang.bin -DOUT_OBJECT=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_920908-1.c/c4c.o -DOUT_C4C_BIN=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_920908-1.c/c4c.bin -P /workspaces/c4c/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake > "$case_log" 2>&1; rc=$?; set -e; { echo "case_exit=$rc"; cat "$case_log"; } | tee "$run_log"; riscv64-linux-gnu-objdump -dr /workspaces/c4c/build/rv64_gcc_c_torture_backend/src_920908-1.c/c4c.o > build/agent_state/394_step1_920908-1.c4c-disasm.log 2>&1; riscv64-linux-gnu-objdump -dr /workspaces/c4c/build/rv64_gcc_c_torture_backend/src_920908-1.c/c4c.bin > build/agent_state/394_step1_920908-1.c4c-bin-disasm.log 2>&1; timeout 20 qemu-riscv64 -d in_asm,cpu -D build/agent_state/394_step1_920908-1.qemu-cpu.log -L /usr/riscv64-linux-gnu /workspaces/c4c/build/rv64_gcc_c_torture_backend/src_920908-1.c/c4c.bin >/dev/null 2>&1 || true; exit 0; } > test_after.log 2>&1`
 
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed`
-
-Result: PASS. The accepted current backend baseline remained 326/326 before
-and 326/326 after with no new failures. `test_before.log` was used on both
-sides for lifecycle-only close validation because `test_after.log` currently
-contains Step 5 representative evidence rather than a CTest after-log.
-
-Representative evidence for the split boundary:
-
+Result: evidence captured. `dump_prepared_exit=0`, `dump_bir_exit=0`, and the
+representative still reports `case_exit=1` because clang exits `0` while C4C
+exits with `Segmentation fault`, as expected for this evidence-only packet.
+Logs:
 - `test_after.log`
-- `build/agent_state/393_step5_analysis.log`
-- `build/agent_state/393_step5_920908-1.prepared.log`
-- `build/agent_state/393_step5_920908-1.bir.log`
-- `build/agent_state/393_step5_920908-1.case.log`
-- `build/agent_state/393_step5_920908-1.run.log`
-- `build/agent_state/393_step5_920908-1.c4c-disasm.log`
-- `build/agent_state/393_step5_920908-1.c4c-bin-disasm.log`
-- `build/agent_state/393_step5_920908-1.qemu-cpu.log`
+- `build/agent_state/394_step1_analysis.log`
+- `build/agent_state/394_step1_920908-1.prepared.log`
+- `build/agent_state/394_step1_920908-1.bir.log`
+- `build/agent_state/394_step1_920908-1.case.log`
+- `build/agent_state/394_step1_920908-1.run.log`
+- `build/agent_state/394_step1_920908-1.c4c-disasm.log`
+- `build/agent_state/394_step1_920908-1.c4c-bin-disasm.log`
+- `build/agent_state/394_step1_920908-1.qemu-cpu.log`
