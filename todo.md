@@ -8,47 +8,62 @@ Current Step Title: Rerun Representative Case
 
 ## Just Finished
 
-Step 2 and Step 3 completed for the first supportable instruction fragment.
+Step 5 completed for the representative `src/20000112-1.c` rerun after
+same-width integer `ZExt` lowering.
 
-Implemented semantic RV64 object-route lowering for same-width integer `ZExt`
-casts where operand and result resolve to prepared GPR scalar homes. The
-accepted shape publishes the prepared GPR copy/no-op directly from value-home
-facts and keeps pointer, same-width `SExt`, source stack-home, and destination
-stack-home adjacent shapes fail-closed.
+The previously audited first unsupported instruction fragment no longer fails
+first:
 
-Focused object-emission coverage now proves `i32 -> i32` `ZExt` from `t0` to
-`s2` emits the expected GPR copy and serializes as an RV64 object, with the
-fail-closed adjacent shapes preserving rejection diagnostics.
+```text
+%t8 = bir.zext i32 %t7 to i32
+```
+
+The representative now compiles and links far enough to execute under qemu, but
+the progress script reports `RV64_BACKEND_RUNTIME_MISMATCH`:
+
+```text
+clang_exit=0 c4c_exit=Segmentation fault
+```
 
 ## Suggested Next
 
-Execute Step 5 representative rerun for `src/20000112-1.c` using the RV64 GCC
-C torture backend allowlist. Confirm the prior first unsupported instruction
-fragment (`%t8 = bir.zext i32 %t7 to i32`) is no longer the first blocker, then
-record the new first unsupported shape if the representative still fails.
+Ask the plan owner to decide whether idea 378 should close or hand off to a new
+runtime-owner idea. The remaining failure is no longer the audited
+instruction-fragment compile blocker and appears outside this idea's direct
+scope.
 
 ## Watchouts
 
 - Do not reopen idea 369 terminator-fragment lowering or CFG reconstruction.
 - Do not treat diagnostic-only changes, allowlist edits, expectation rewrites,
   or named-case shortcuts as capability progress.
-- The implementation deliberately excludes pointer `ZExt` and non-GPR homes;
-  keep any future extension semantic and backed by prepared type/home facts.
-- The next proof should be the representative progress script, not another
-  object-emission-only run, unless the representative exposes a regression in
-  the focused lowering.
+- `build/agent_state/378_step5_20000112.c4c_objdump.log` confirms the
+  same-width `ZExt` publication in `main` as `mv s2,t0` around the former
+  `%t8` result.
+- The same object dump suggests a distinct join/select publication issue in
+  `special_format`: skip blocks write `t0=1`, while later join blocks read
+  `s2` before comparing.
+- Keep any follow-up semantic and backed by prepared CFG/value-home facts; do
+  not route this through testcase-shaped fixes for `src/20000112-1.c`.
 
 ## Proof
 
 Delegated proof command run exactly:
 
 ```sh
-( cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure ) > test_after.log 2>&1
+mkdir -p build/agent_state && printf '%s\n' 'src/20000112-1.c' > build/agent_state/378_step5_20000112.allowlist.txt && ALLOWLIST=build/agent_state/378_step5_20000112.allowlist.txt STOP_ON_FAILURE=1 VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > test_after.log 2>&1
 ```
 
-Result: passed. The supervisor-selected proof is sufficient for this focused
-implementation and object-emission coverage packet.
+Result: exited nonzero with `total=1 passed=0 failed=1` because the
+representative now reaches runtime and segfaults under qemu. This is sufficient
+for this proof-only classification packet because the audited unsupported
+instruction-fragment blocker no longer fails first.
 
-Evidence path:
+Evidence paths:
 
 - `test_after.log`
+- `build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`
+- `build/agent_state/378_step5_20000112.allowlist.txt`
+- `build/agent_state/378_step5_20000112.c4c_objdump.log`
+- `build/agent_state/378_step5_20000112.qemu_strace.err`
+- `build/agent_state/378_step5_20000112.qemu_strace.out`
