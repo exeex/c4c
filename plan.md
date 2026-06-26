@@ -1,163 +1,168 @@
-# RV64 Object Route Prepared Local Memory Addressing Runbook
+# RV64 Global Aggregate Lane Materialization Runbook
 
 Status: Active
-Source Idea: ideas/open/382_rv64_object_route_prepared_local_memory_addressing.md
+Source Idea: ideas/open/383_rv64_global_aggregate_lane_materialization.md
 
 ## Purpose
 
-Activate the direct follow-up from idea 370 for the new `src/20030914-2.c`
-boundary:
+Activate the direct follow-up from closed idea 382 for the next
+`src/20030914-2.c` RV64 object-route boundary:
 
 ```text
-unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing
+%t0.global.aggregate.load.0 = bir.load_local i32 %t0.0, addr gs
 ```
 
 ## Goal
 
-Lower or precisely route the first supportable RV64 object-route prepared
-local-memory addressing shape using explicit prepared metadata.
+Route or lower global aggregate lane loads from explicit prepared data facts,
+or prove the missing fact belongs to an upstream prepared-data publication
+owner.
 
 ## Core Rule
 
-Consume prepared frame-slot, pointer-value, offset, size, and alignment facts;
-do not reconstruct local-memory bases or aggregate byte ranges from source
-syntax, testcase names, physical registers, raw object offsets, or log text.
+Consume prepared global/data facts and object-model symbol, section, relocation,
+and address-use metadata. Do not reconstruct aggregate bytes, global identity,
+or source layout from testcase names, C syntax, raw offsets, physical registers,
+or log text.
 
 ## Read First
 
-- `ideas/open/382_rv64_object_route_prepared_local_memory_addressing.md`
-- The prepared local-memory access structures and diagnostics in the RV64
-  object route.
-- Existing RV64 object-emission and prepared-printer tests that cover local
-  memory, frame slots, pointer-value bases, byval homes, or rejected local
-  memory shapes.
-- Recent idea 370 closure context for `src/20030914-2.c`, especially the
-  transition from `unsupported_byval_param_home` to the local-memory diagnostic.
+- `ideas/open/383_rv64_global_aggregate_lane_materialization.md`
+- `ideas/closed/357_rv64_object_route_data_sections_globals_strings.md`
+- `ideas/closed/382_rv64_object_route_prepared_local_memory_addressing.md`
+- The prepared dump for `src/20030914-2.c`, especially `main` insts
+  `0,2,...,34` and the paired destination frame-slot stores.
+- RV64 object-emission tests for globals, strings, relocations, local memory,
+  and rejected unsupported object-route shapes.
 
 ## Current Targets
 
 - Representative gcc torture case: `src/20030914-2.c`
-- Focused backend fixtures for prepared local-memory addressing and rejected
-  adjacent shapes
-- RV64 object-emission path that currently emits
-  `unsupported_local_memory_access`
+- Focused backend fixtures for global aggregate data and data-symbol memory
+  access
+- RV64 object-emission path currently diagnosing the global-source lane loads
+  through `unsupported_local_memory_access`
+- Prepared BIR/module data publication for aggregate globals
 
 ## Non-Goals
 
-- Do not reopen byval aggregate parameter-home admission; idea 370 closed that
-  boundary.
-- Do not implement non-register entry parameter homes; that belongs to
-  `ideas/open/374_rv64_object_route_non_register_param_homes.md`.
+- Do not reopen byval aggregate parameter homes or prepared local-memory
+  pointer-value/frame-slot lanes; ideas 370 and 382 closed those boundaries.
+- Do not reopen blanket prepared globals, strings, ELF data sections, symbols,
+  or relocations already closed by idea 357.
 - Do not implement aggregate `va_arg` helper lowering; that belongs to
   `ideas/open/371_rv64_object_route_aggregate_va_arg_helper_lowering.md`.
-- Do not route unrelated global or data-section materialization here.
-- Do not add source-name handling for `src/20030914-2.c`.
-- Do not weaken expectations, allowlists, or unsupported contracts to claim
-  progress.
+- Do not treat global-source lanes as stack local memory to satisfy the old
+  diagnostic.
+- Do not add source-name handling for `src/20030914-2.c` or global-name
+  handling for `gs`.
+- Do not weaken expectations, allowlists, unsupported contracts, or diagnostics
+  to claim progress.
 
 ## Working Model
 
-The representative now reaches a later object-route boundary after explicit
-byval parameter-home facts are admitted. The next repair should inspect the
-prepared local-memory access metadata already available to object emission,
-choose a fact-complete default-address-space shape, and lower only that shape.
-Unsupported widths, missing base facts, non-default address spaces, dynamic
-offsets, ambiguous aggregate homes, and out-of-bounds accesses must remain
-fail-closed with precise diagnostics.
+The representative now reaches a global aggregate source copied lane-by-lane
+into a frame-slot destination. The destination stores are prepared
+frame-slot-based, but the source `load_local ... addr gs` lanes do not publish
+the frame-slot or pointer-value metadata required by the local-memory object
+route. The first packet should decide whether the source global data facts are
+already available elsewhere in prepared module metadata or missing upstream. If
+they are available, object emission should lower them through semantic
+global/data object-model machinery. If they are missing, the route should fail
+closed with a precise upstream-owner diagnostic.
 
 ## Execution Rules
 
 - Keep each implementation packet narrow enough to prove with a build and a
   focused RV64 object-route test subset.
-- Prefer new focused backend tests before broad gcc torture scans.
-- Preserve or improve the existing unsupported diagnostic when a shape remains
-  out of scope.
-- Treat testcase-specific matching for `src/20030914-2.c` as route drift.
-- Escalate to supervisor review if the needed metadata is not present in the
-  prepared contract; do not infer it in target emission.
+- Prefer focused backend tests before rerunning broad gcc torture scans.
+- Preserve or improve unsupported diagnostics when the missing fact is upstream.
+- Treat testcase-specific matching for `src/20030914-2.c` or `gs` as route
+  drift.
+- Escalate to supervisor review if the needed prepared global/data facts are
+  absent; do not infer them in target emission.
 - Use the canonical `test_after.log` only when delegated by the supervisor for
   executor proof.
 
 ## Steps
 
-### Step 1: Audit Local-Memory Metadata
+### Step 1: Audit Global Aggregate Lane Facts
 
-Goal: identify the exact prepared facts available at the current
-`unsupported_local_memory_access` boundary.
+Goal: identify the exact prepared facts available for the `main` `addr gs`
+aggregate lane loads.
 
-Primary target: RV64 object-route local-memory rejection path and
-`src/20030914-2.c` prepared dumps.
+Primary target: prepared BIR/module dumps for `src/20030914-2.c` and the RV64
+object-route rejection path.
 
 Actions:
 
-- Locate the diagnostic site that emits the current local-memory access
-  unsupported message.
-- Trace the prepared access facts available there: base kind, frame slot or
-  pointer-value identity, offset representation, access size, alignment,
-  address space, and aggregate/home provenance.
-- Compare those facts with nearby focused backend fixtures to find the
-  smallest semantic support shape.
-- Record in `todo.md` which shape is supportable and which adjacent shapes
-  should remain rejected.
+- Locate the diagnostic site reached by `bir.load_local i32 ... addr gs`.
+- Trace the source global facts available there: symbol identity, section,
+  initializer bytes or lane payload, offset, access size, alignment, address
+  materialization, relocation needs, and address space.
+- Compare those facts with the object/data support closed by idea 357.
+- Record in `todo.md` whether this is target-consumable prepared data or an
+  upstream prepared-data publication gap.
 
 Completion check:
 
-- The executor can name the first supported local-memory addressing shape using
-  only prepared facts, and can name the rejected adjacent shapes without
-  relying on source syntax or testcase identity.
+- The executor can name the first supportable or rejected global aggregate
+  lane shape using only prepared facts, without source syntax or testcase
+  identity.
 
-### Step 2: Add Focused Supported And Rejected Fixtures
+### Step 2: Add Focused Supported Or Rejected Fixtures
 
-Goal: encode the selected support boundary in focused backend tests before or
-alongside implementation.
+Goal: encode the selected global aggregate lane boundary in focused tests.
 
-Primary target: RV64 object-emission tests and prepared-printer or diagnostic
-coverage for local-memory accesses.
+Primary target: RV64 object-emission tests and any prepared-printer or
+diagnostic coverage needed to prove the data facts.
 
 Actions:
 
-- Add or extend focused tests for the selected fact-complete default-address
-  space local-memory addressing shape.
-- Add adjacent rejected-shape coverage for missing base facts, unsupported
+- Add or extend focused tests for global aggregate lane loads from explicit
+  prepared facts if the facts are target-consumable.
+- Add rejected-shape coverage for missing global data facts, unsupported
   widths, non-default address spaces, dynamic offsets, ambiguous aggregate
-  homes, or out-of-bounds accesses as applicable to the audited boundary.
+  storage, or out-of-bounds lane offsets as applicable.
 - Keep test names and expectations semantic; do not key behavior to
-  `src/20030914-2.c`.
+  `src/20030914-2.c` or `gs`.
 
 Completion check:
 
-- The focused tests fail for the missing supported behavior or prove the
-  existing fail-closed diagnostics for rejected shapes before the lowering
-  change is accepted.
+- Focused tests either fail for missing semantic support or prove a narrower
+  fail-closed upstream-publication diagnostic before any lowering change is
+  accepted.
 
-### Step 3: Implement Prepared Local-Memory Addressing Lowering
+### Step 3: Implement Or Route Global Aggregate Lane Materialization
 
-Goal: lower the selected local-memory access shape in the RV64 object route.
+Goal: lower the selected global aggregate lane shape, or route the missing fact
+to the correct upstream owner.
 
-Primary target: RV64 object-route memory-address materialization and emission
-helpers.
+Primary target: RV64 object-route data-symbol access, relocation, and memory
+fragment helpers, or the prepared-data producer if target facts are missing.
 
 Actions:
 
-- Add or reuse a helper that materializes the supported frame-slot or
-  pointer-value base-plus-offset address from prepared metadata.
-- Emit the load/store or address materialization for the selected size and
-  alignment class.
-- Preserve fail-closed diagnostics for unsupported widths, missing base facts,
-  non-default address spaces, dynamic offsets, ambiguous aggregate homes, and
-  out-of-bounds accesses.
-- Keep any helper boundaries named around semantic prepared facts, not the
+- If complete prepared facts are present, add or reuse helpers that materialize
+  the global data address and emit lane loads through valid RV64 object-model
+  symbol/section/relocation semantics.
+- If facts are missing, preserve a precise unsupported diagnostic naming the
+  missing prepared global aggregate data fact.
+- Preserve fail-closed behavior for unsupported widths, non-default address
+  spaces, dynamic offsets, ambiguous aggregate storage, and out-of-bounds lane
+  offsets.
+- Keep helper boundaries named around semantic prepared data facts, not the
   representative testcase.
 
 Completion check:
 
-- Focused supported tests pass because of semantic local-memory addressing
-  lowering, while rejected-shape tests still produce precise unsupported
-  diagnostics.
+- Focused supported tests pass because of semantic global/data materialization,
+  or focused rejected tests prove the precise upstream-publication boundary.
 
 ### Step 4: Rerun Representative And Route Next Boundary
 
-Goal: prove whether `src/20030914-2.c` advances and document the next owner.
+Goal: prove whether `src/20030914-2.c` advances beyond the `main` `addr gs`
+lanes and document the next owner.
 
 Primary target: the narrow RV64 gcc torture object runner for
 `src/20030914-2.c`.
@@ -167,7 +172,7 @@ Actions:
 - Rerun the representative using the repo-native narrow RV64 gcc torture
   object-route command selected by the supervisor.
 - Document whether the case passes or advances to aggregate `va_arg`,
-  global/data work, or another distinct owner.
+  terminator, call, control-flow, or another distinct owner.
 - If a new distinct initiative is exposed, report it to the supervisor instead
   of silently expanding this plan.
 
@@ -181,19 +186,19 @@ Completion check:
 Goal: prepare the slice for supervisor acceptance and eventual source-idea
 closure.
 
-Primary target: existing RV64 object-emission, prepared frame-stack call
-contract, and prepared-printer coverage.
+Primary target: existing RV64 object-emission, object/data, relocation, and
+prepared-printer coverage.
 
 Actions:
 
 - Run the focused proof required for the implementation packet.
-- Run broader RV64 object-emission or prepared-contract coverage if the helper
-  touches shared address materialization.
+- Run broader RV64 object-emission, object/data, or prepared-contract coverage
+  if the helper touches shared data-symbol or address materialization.
 - Confirm no expectations, allowlists, or unsupported contracts were weakened.
-- Summarize remaining unsupported local-memory shapes and why they are outside
+- Summarize remaining unsupported global/data shapes and why they are outside
   this runbook or need a separate idea.
 
 Completion check:
 
 - The implementation has fresh build/test proof, no testcase-overfit evidence,
-  and clear notes for any remaining local-memory addressing gaps.
+  and clear notes for any remaining global aggregate/data materialization gaps.

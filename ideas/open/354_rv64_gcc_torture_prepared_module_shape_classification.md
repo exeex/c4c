@@ -191,6 +191,7 @@ New follow-up child ideas:
 - `ideas/closed/373_rv64_object_route_frame_slot_value_call_args.md`
 - `ideas/open/374_rv64_object_route_non_register_param_homes.md`
 - `ideas/open/375_rv64_object_route_scalar_compare_trunc_lowering.md`
+- `ideas/open/383_rv64_global_aggregate_lane_materialization.md`
 
 These follow-ups intentionally keep the residual buckets outside this
 classification umbrella's implementation scope. Idea 354 remains open until
