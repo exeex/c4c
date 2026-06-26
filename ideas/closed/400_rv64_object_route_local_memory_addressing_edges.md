@@ -1,6 +1,6 @@
 # RV64 Object Route Local Memory Addressing Edges
 
-Status: Open
+Status: Closed
 Type: Follow-up repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -70,3 +70,18 @@ Representatives:
   local union storage whose frame-slot range is reported out of bounds. Treat
   this as local-memory/addressing work or split a producer fact repair; do not
   compensate in floating-cast lowering.
+- 2026-06-26: Closed after commit `656502db` lowered coherent prepared F64
+  local-memory frame-slot and pointer-value accesses. The three-case probe now
+  shows `src/20030910-1.c` moved off local-memory diagnostics to the existing
+  terminator-fragment bucket owned by
+  `ideas/open/396_rv64_object_route_terminator_fragment_lowering_refresh.md`.
+  The remaining local-memory diagnostics are not target-emission gaps:
+  `src/20020225-2.c` is split to
+  `ideas/open/405_prepared_local_aggregate_slot_layout_facts.md` for
+  contradictory one-byte union slot/layout publication, and `src/20000722-1.c`
+  is routed to `ideas/open/399_rv64_object_route_global_data_and_symbol_memory.md`
+  for string/global symbol address materialization with missing structured
+  symbol identity.
+- Close gate: backend regression guard passed on 2026-06-26 with
+  `test_before.log` and `test_after.log` both at 326/326 passing tests using
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`.

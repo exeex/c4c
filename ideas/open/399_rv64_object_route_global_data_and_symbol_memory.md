@@ -60,3 +60,11 @@ Representatives:
   identity, or memory-access facts that should be owned by BIR/prepared
   publication.
 - Reject expectation rewrites or allowlist filtering.
+
+## Lifecycle Notes
+
+- 2026-06-26: Idea 400 split `src/20000722-1.c` here after valid local pointer
+  facts were no longer the first blocker. The current boundary is
+  string-constant local address materialization with missing structured symbol
+  identity, which belongs with global/string symbol data publication or
+  relocation ownership instead of local-memory target lowering.
