@@ -3899,8 +3899,7 @@ std::optional<std::int32_t> prepared_frame_slot_absolute_offset(
     const auto slot_byte_offset =
         static_cast<std::size_t>(access->address.byte_offset);
     if (slot_byte_offset > slot_it->size_bytes ||
-        slot_it->size_bytes - slot_byte_offset < size_bytes ||
-        slot_it->align_bytes > size_bytes) {
+        slot_it->size_bytes - slot_byte_offset < size_bytes) {
       return std::nullopt;
     }
     slot_offset = slot_it->offset_bytes;

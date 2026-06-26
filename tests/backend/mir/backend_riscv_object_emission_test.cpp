@@ -2489,7 +2489,7 @@ prepare::PreparedBirModule make_prepared_scalar_local_subobject_frame_module() {
           .function_name = function_name,
           .offset_bytes = 8,
           .size_bytes = 8,
-          .align_bytes = 4,
+          .align_bytes = 8,
       },
   };
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
