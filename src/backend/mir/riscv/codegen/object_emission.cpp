@@ -675,6 +675,35 @@ bool append_rv64_callee_saved_gpr_preservation_effect(
   return true;
 }
 
+bool rv64_noop_stack_slot_preservation_effect(
+    const c4c::backend::prepare::PreparedCallBoundaryEffectPlan& effect,
+    c4c::backend::prepare::PreparedCallBoundaryEffectKind effect_kind,
+    c4c::backend::prepare::PreparedMovePhase phase) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (effect.effect_kind != effect_kind || effect.phase != phase ||
+      effect.classification_status !=
+          prepare::PreparedCallBoundaryMoveClassificationStatus::Available ||
+      effect.preservation_route != prepare::PreparedCallPreservationRoute::StackSlot) {
+    return false;
+  }
+  const auto& source = effect.source;
+  const auto& destination = effect.destination;
+  return source.storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+         destination.storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+         source.encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+         destination.encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+         source.value_id == destination.value_id &&
+         source.slot_id.has_value() &&
+         source.slot_id == destination.slot_id &&
+         source.stack_offset_bytes.has_value() &&
+         source.stack_offset_bytes == destination.stack_offset_bytes &&
+         source.stack_size_bytes.has_value() &&
+         source.stack_size_bytes == destination.stack_size_bytes &&
+         source.stack_align_bytes.has_value() &&
+         source.stack_align_bytes == destination.stack_align_bytes;
+}
+
 std::optional<std::uint32_t> fpr_register_number_for_home(
     const c4c::backend::prepare::PreparedValueHome& home) {
   if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
@@ -2293,18 +2322,32 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
   if (lookups == nullptr || frame_plan == nullptr || frame_plan->has_dynamic_stack ||
       frame_plan->uses_frame_pointer_for_fixed_slots ||
       argument.value_bank != prepare::PreparedRegisterBank::Gpr ||
-      !argument.source_selection.has_value() ||
-      argument.source_selection->kind !=
-          prepare::PreparedCallArgumentSourceSelectionKind::
-              LocalFrameAddressMaterialization ||
-      (argument.source_encoding != prepare::PreparedStorageEncodingKind::Register &&
-       argument.source_encoding !=
-           prepare::PreparedStorageEncodingKind::ComputedAddress)) {
+      !argument.source_selection.has_value()) {
     return std::nullopt;
   }
 
   const auto& selection = *argument.source_selection;
-  if (!selection.source_slot_id.has_value() ||
+  const bool local_frame_address_selection =
+      selection.kind ==
+      prepare::PreparedCallArgumentSourceSelectionKind::
+          LocalFrameAddressMaterialization;
+  const bool frame_slot_address_selection =
+      selection.kind ==
+      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress;
+  if ((!local_frame_address_selection && !frame_slot_address_selection) ||
+      (local_frame_address_selection &&
+       argument.source_encoding != prepare::PreparedStorageEncodingKind::Register &&
+       argument.source_encoding !=
+           prepare::PreparedStorageEncodingKind::ComputedAddress) ||
+      (frame_slot_address_selection &&
+       (argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+        !argument.source_value_id.has_value() ||
+        !argument.source_slot_id.has_value() ||
+        selection.source_home_kind !=
+            prepare::PreparedValueHomeKind::StackSlot ||
+        !selection.source_value_id.has_value() ||
+        *selection.source_value_id != *argument.source_value_id)) ||
+      !selection.source_slot_id.has_value() ||
       !selection.address_materialization_block_label.has_value() ||
       !selection.address_materialization_inst_index.has_value() ||
       !selection.address_materialization_frame_slot_id.has_value() ||
@@ -2329,8 +2372,26 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
     if (materialization == nullptr ||
         materialization->inst_index !=
             *selection.address_materialization_inst_index ||
-        materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
-        materialization->frame_slot_id != selection.address_materialization_frame_slot_id ||
+        materialization->kind !=
+            prepare::PreparedAddressMaterializationKind::FrameSlot) {
+      continue;
+    }
+    const bool same_selected_value =
+        (!selection.source_value_id.has_value() &&
+         !selection.source_value_name.has_value()) ||
+        (selection.source_value_id.has_value() &&
+         materialization->result_value_id == selection.source_value_id) ||
+        (selection.source_value_name.has_value() &&
+         materialization->result_value_name == selection.source_value_name);
+    if (same_selected_value &&
+        (materialization->frame_slot_id !=
+             selection.address_materialization_frame_slot_id ||
+         materialization->byte_offset !=
+             *selection.address_materialization_byte_offset)) {
+      return std::nullopt;
+    }
+    if (materialization->frame_slot_id !=
+            selection.address_materialization_frame_slot_id ||
         materialization->byte_offset !=
             *selection.address_materialization_byte_offset) {
       continue;
@@ -2441,6 +2502,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     }
     if (!append_rv64_callee_saved_gpr_preservation_effect(
             fragment,
+            effect,
+            prepare::PreparedCallBoundaryEffectKind::PreservationHomePopulation,
+            prepare::PreparedMovePhase::BeforeCall) &&
+        !rv64_noop_stack_slot_preservation_effect(
             effect,
             prepare::PreparedCallBoundaryEffectKind::PreservationHomePopulation,
             prepare::PreparedMovePhase::BeforeCall)) {
@@ -2636,9 +2701,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
       return std::nullopt;
     }
     if (argument.source_selection.has_value() &&
-        argument.source_selection->kind ==
-            prepare::PreparedCallArgumentSourceSelectionKind::
-                LocalFrameAddressMaterialization) {
+        (argument.source_selection->kind ==
+             prepare::PreparedCallArgumentSourceSelectionKind::
+                 LocalFrameAddressMaterialization ||
+         argument.source_selection->kind ==
+             prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress)) {
       const auto offset =
           prepared_frame_slot_address_call_argument_offset(stack_layout,
                                                            lookups,
@@ -2893,6 +2960,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     }
     if (!append_rv64_callee_saved_gpr_preservation_effect(
             fragment,
+            effect,
+            prepare::PreparedCallBoundaryEffectKind::PreservationRepublication,
+            prepare::PreparedMovePhase::AfterCall) &&
+        !rv64_noop_stack_slot_preservation_effect(
             effect,
             prepare::PreparedCallBoundaryEffectKind::PreservationRepublication,
             prepare::PreparedMovePhase::AfterCall)) {

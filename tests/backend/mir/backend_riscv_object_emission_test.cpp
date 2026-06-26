@@ -5234,8 +5234,9 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
                   .value_id = 14,
                   .function_name = main_name,
                   .value_name = x_name,
-                  .kind = prepare::PreparedValueHomeKind::Register,
-                  .register_name = std::string{"s1"},
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{9},
+                  .offset_bytes = 48,
                   .size_bytes = 8,
                   .align_bytes = 8,
               },
@@ -5243,8 +5244,9 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
                   .value_id = 15,
                   .function_name = main_name,
                   .value_name = y_name,
-                  .kind = prepare::PreparedValueHomeKind::Register,
-                  .register_name = std::string{"s2"},
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{10},
+                  .offset_bytes = 56,
                   .size_bytes = 8,
                   .align_bytes = 8,
               },
@@ -5264,10 +5266,10 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
                       .arg_index = 0,
                       .value_bank = prepare::PreparedRegisterBank::Gpr,
                       .source_encoding =
-                          prepare::PreparedStorageEncodingKind::Register,
+                          prepare::PreparedStorageEncodingKind::FrameSlot,
                       .source_value_id = prepare::PreparedValueId{14},
-                      .source_register_name = std::string{"s1"},
-                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_slot_id = prepare::PreparedFrameSlotId{9},
+                      .source_stack_offset_bytes = 48,
                       .destination_register_name = std::string{"a0"},
                       .destination_contiguous_width = 1,
                       .destination_register_bank =
@@ -5276,20 +5278,20 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
                           prepare::PreparedCallArgumentSourceSelection{
                               .kind = prepare::
                                   PreparedCallArgumentSourceSelectionKind::
-                                      LocalFrameAddressMaterialization,
+                                      FrameSlotAddress,
                               .source_value_id = prepare::PreparedValueId{14},
                               .source_value_name = x_name,
                               .source_home_kind =
-                                  prepare::PreparedValueHomeKind::Register,
-                              .source_slot_id = prepare::PreparedFrameSlotId{4},
-                              .source_stack_offset_bytes = 0,
+                                  prepare::PreparedValueHomeKind::StackSlot,
+                              .source_slot_id = prepare::PreparedFrameSlotId{7},
+                              .source_stack_offset_bytes = 24,
                               .source_size_bytes = 8,
                               .source_align_bytes = 8,
                               .address_materialization_block_label = block_label,
                               .address_materialization_inst_index = 0,
                               .address_materialization_frame_slot_id =
-                                  prepare::PreparedFrameSlotId{4},
-                              .address_materialization_byte_offset = 0,
+                                  prepare::PreparedFrameSlotId{7},
+                              .address_materialization_byte_offset = 24,
                           },
                   },
                   prepare::PreparedCallArgumentPlan{
@@ -5297,10 +5299,10 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
                       .arg_index = 1,
                       .value_bank = prepare::PreparedRegisterBank::Gpr,
                       .source_encoding =
-                          prepare::PreparedStorageEncodingKind::Register,
+                          prepare::PreparedStorageEncodingKind::FrameSlot,
                       .source_value_id = prepare::PreparedValueId{15},
-                      .source_register_name = std::string{"s2"},
-                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_slot_id = prepare::PreparedFrameSlotId{10},
+                      .source_stack_offset_bytes = 56,
                       .destination_register_name = std::string{"a1"},
                       .destination_contiguous_width = 1,
                       .destination_register_bank =
@@ -5309,21 +5311,60 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
                           prepare::PreparedCallArgumentSourceSelection{
                               .kind = prepare::
                                   PreparedCallArgumentSourceSelectionKind::
-                                      LocalFrameAddressMaterialization,
+                                      FrameSlotAddress,
                               .source_value_id = prepare::PreparedValueId{15},
                               .source_value_name = y_name,
                               .source_home_kind =
-                                  prepare::PreparedValueHomeKind::Register,
-                              .source_slot_id = prepare::PreparedFrameSlotId{5},
-                              .source_stack_offset_bytes = 2,
+                                  prepare::PreparedValueHomeKind::StackSlot,
+                              .source_slot_id = prepare::PreparedFrameSlotId{8},
+                              .source_stack_offset_bytes = 32,
                               .source_size_bytes = 8,
                               .source_align_bytes = 8,
                               .address_materialization_block_label = block_label,
                               .address_materialization_inst_index = 0,
                               .address_materialization_frame_slot_id =
-                                  prepare::PreparedFrameSlotId{5},
-                              .address_materialization_byte_offset = 2,
+                                  prepare::PreparedFrameSlotId{8},
+                              .address_materialization_byte_offset = 32,
                           },
+                  },
+              },
+          .preserved_values =
+              {
+                  prepare::PreparedCallPreservedValue{
+                      .value_id = prepare::PreparedValueId{14},
+                      .value_name = x_name,
+                      .route = prepare::PreparedCallPreservationRoute::StackSlot,
+                      .slot_id = prepare::PreparedFrameSlotId{9},
+                      .stack_offset_bytes = 48,
+                      .stack_size_bytes = 8,
+                      .stack_align_bytes = 8,
+                      .preservation_source =
+                          prepare::PreparedCallBoundaryEffectEndpoint{
+                              .encoding =
+                                  prepare::PreparedStorageEncodingKind::FrameSlot,
+                              .storage_kind =
+                                  prepare::PreparedMoveStorageKind::StackSlot,
+                              .value_id = prepare::PreparedValueId{14},
+                              .value_name = x_name,
+                              .slot_id = prepare::PreparedFrameSlotId{9},
+                              .stack_offset_bytes = 48,
+                              .stack_size_bytes = 8,
+                              .stack_align_bytes = 8,
+                          },
+                      .preservation_destination =
+                          prepare::PreparedCallBoundaryEffectEndpoint{
+                              .encoding =
+                                  prepare::PreparedStorageEncodingKind::FrameSlot,
+                              .storage_kind =
+                                  prepare::PreparedMoveStorageKind::StackSlot,
+                              .value_id = prepare::PreparedValueId{14},
+                              .value_name = x_name,
+                              .slot_id = prepare::PreparedFrameSlotId{9},
+                              .stack_offset_bytes = 48,
+                              .stack_size_bytes = 8,
+                              .stack_align_bytes = 8,
+                          },
+                      .preservation_reason = "stack_slot_preservation",
                   },
               },
       }},
@@ -5342,8 +5383,8 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
                   .result_value_name = x_name,
                   .result_value_id = prepare::PreparedValueId{14},
                   .result_home_kind = prepare::PreparedValueHomeKind::Register,
-                  .frame_slot_id = prepare::PreparedFrameSlotId{4},
-                  .byte_offset = 0,
+                  .frame_slot_id = prepare::PreparedFrameSlotId{7},
+                  .byte_offset = 24,
               },
               prepare::PreparedAddressMaterialization{
                   .function_name = main_name,
@@ -5353,8 +5394,8 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
                   .result_value_name = y_name,
                   .result_value_id = prepare::PreparedValueId{15},
                   .result_home_kind = prepare::PreparedValueHomeKind::Register,
-                  .frame_slot_id = prepare::PreparedFrameSlotId{5},
-                  .byte_offset = 2,
+                  .frame_slot_id = prepare::PreparedFrameSlotId{8},
+                  .byte_offset = 32,
               },
           },
   });
@@ -5366,29 +5407,47 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
       },
       prepare::PreparedFramePlanFunction{
           .function_name = main_name,
-          .frame_size_bytes = 12,
-          .frame_alignment_bytes = 4,
-          .frame_slot_order = {prepare::PreparedFrameSlotId{4},
-                               prepare::PreparedFrameSlotId{5}},
+          .frame_size_bytes = 64,
+          .frame_alignment_bytes = 8,
+          .frame_slot_order = {prepare::PreparedFrameSlotId{7},
+                               prepare::PreparedFrameSlotId{8},
+                               prepare::PreparedFrameSlotId{9},
+                               prepare::PreparedFrameSlotId{10}},
       },
   };
-  prepared.stack_layout.frame_size_bytes = 4;
-  prepared.stack_layout.frame_alignment_bytes = 2;
+  prepared.stack_layout.frame_size_bytes = 64;
+  prepared.stack_layout.frame_alignment_bytes = 8;
   prepared.stack_layout.frame_slots = {
       prepare::PreparedFrameSlot{
-          .slot_id = prepare::PreparedFrameSlotId{4},
+          .slot_id = prepare::PreparedFrameSlotId{7},
           .function_name = main_name,
-          .offset_bytes = 0,
-          .size_bytes = 2,
-          .align_bytes = 2,
+          .offset_bytes = 24,
+          .size_bytes = 8,
+          .align_bytes = 8,
           .fixed_location = true,
       },
       prepare::PreparedFrameSlot{
-          .slot_id = prepare::PreparedFrameSlotId{5},
+          .slot_id = prepare::PreparedFrameSlotId{8},
           .function_name = main_name,
-          .offset_bytes = 2,
-          .size_bytes = 2,
-          .align_bytes = 2,
+          .offset_bytes = 32,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .fixed_location = true,
+      },
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{9},
+          .function_name = main_name,
+          .offset_bytes = 48,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .fixed_location = true,
+      },
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{10},
+          .function_name = main_name,
+          .offset_bytes = 56,
+          .size_bytes = 8,
+          .align_bytes = 8,
           .fixed_location = true,
       },
   };
@@ -7524,9 +7583,9 @@ int builds_prepared_frame_slot_address_arg_call_object() {
     return fail("expected frame-slot-address same-module call relocation");
   }
   if (read_u32(text->bytes, module->relocations[0].offset - 8) !=
-          0x00010513 ||
+          0x01810513 ||
       read_u32(text->bytes, module->relocations[0].offset - 4) !=
-          0x00210593) {
+          0x02010593) {
     return fail("expected frame-slot addresses materialized into a0/a1 before call");
   }
   return 0;
@@ -7551,6 +7610,29 @@ int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0].source_value_id =
+      std::nullopt;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0].source_slot_id =
+      std::nullopt;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_destination.stack_offset_bytes = 56;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
   prepared.call_plans.functions[0]
       .calls[0]
       .arguments[0]
@@ -7569,7 +7651,43 @@ int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->source_value_id = prepare::PreparedValueId{99};
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->source_home_kind = prepare::PreparedValueHomeKind::Register;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->address_materialization_frame_slot_id =
+      prepare::PreparedFrameSlotId{8};
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
   prepared.addressing.functions[0].address_materializations.clear();
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  auto duplicate = prepared.addressing.functions[0].address_materializations[0];
+  duplicate.byte_offset = 32;
+  prepared.addressing.functions[0].address_materializations.push_back(duplicate);
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
@@ -7583,6 +7701,13 @@ int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
   prepared.addressing.functions[0].address_materializations[0].is_thread_local = true;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0].destination_contiguous_width =
+      2;
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
