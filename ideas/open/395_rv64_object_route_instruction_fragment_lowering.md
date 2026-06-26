@@ -77,3 +77,13 @@ same-fragment cases.
   `ideas/open/403_prepared_i16_formal_abi_publication.md`; do not repair it by
   reconstructing missing incoming-argument ABI policy in the RV64 object
   emitter.
+- 2026-06-26: Step 4 classified the remaining `src/divmod-1.c`
+  `unsupported_instruction_fragment` as a producer-side same-module small
+  integer call-argument ABI publication gap, not an RV64 object-emitter
+  instruction-fragment lowering gap. The prepared same-module `i16` call
+  argument is sourced from a frame slot with `value_bank=none`,
+  `dest_bank=none`, and a `call_arg_stack_to_stack` move even though the callee
+  formal has a register ABI home. This work was split to
+  `ideas/open/407_prepared_i16_same_module_call_arg_abi_publication.md`; do
+  not repair it by inferring the missing scalar argument destination in
+  `object_emission.cpp`.

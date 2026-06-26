@@ -1,181 +1,176 @@
-# RV64 Object Route Instruction Fragment Lowering Runbook
+# Prepared I16 Same-Module Call Argument ABI Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/395_rv64_object_route_instruction_fragment_lowering.md
+Source Idea: ideas/open/407_prepared_i16_same_module_call_arg_abi_publication.md
+Supersedes active runbook from: ideas/open/395_rv64_object_route_instruction_fragment_lowering.md
 
 ## Purpose
 
-Repair the dominant RV64 prepared-object bucket where prepared BIR
-instructions reach object emission but are rejected as unsupported instruction
-fragments.
+Repair the producer-side prepared ABI publication gap where same-module `i16`
+scalar call arguments remain no-bank frame-slot arguments even though the ABI
+requires a GPR argument destination.
 
 ## Goal
 
-Make reusable prepared instruction-fragment families lower to valid RV64
-object code without reconstructing BIR ownership inside the target emitter.
+Make same-module `i16` scalar call arguments publish target-consumable prepared
+call-plan facts before RV64 object emission.
 
 ## Core Rule
 
-RV64 object emission may consume explicit prepared instruction, value-home,
-and operand facts. It must not special-case torture filenames, weaken
-expectations, or infer missing BIR control/data-flow semantics from source or
-instruction shape.
+Fix the caller-side producer publication path. Do not teach RV64
+`object_emission.cpp` to infer scalar argument registers, destination banks, or
+ABI policy from source type, argument index, callee formal homes, or testcase
+shape.
 
 ## Read First
 
+- `ideas/open/407_prepared_i16_same_module_call_arg_abi_publication.md`
+- `ideas/closed/403_prepared_i16_formal_abi_publication.md`
 - `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`
-- `ideas/closed/406_rv64_object_route_residual_local_memory_boundaries.md`
-- `tests/c/external/gcc_torture/src/20000223-1.c`
-- `tests/c/external/gcc_torture/src/20020225-2.c`
-- Current RV64 gcc_torture backend logs and prepared dumps for instruction
-  fragment representatives
+- `build/agent_state/395_step4_divmod_residual_prepared.txt`
+- `build/agent_state/395_step4_divmod_residual_i8_call.prepared.txt`
+- `build/agent_state/395_step4_divmod_residual_i16_call.prepared.txt`
+- The producer path that plans or repairs same-module call arguments before
+  RV64 object emission
 
 ## Current Targets
 
-- The 2026-06-26 reopened 354 classification found 385 failures with
-  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64
-  object lowering`.
-- Primary representative: `src/20000223-1.c`.
-- Residual routed from idea 406: `src/20020225-2.c` now advances past local
-  memory and stops at the same instruction-fragment owner.
-- Nearby same-fragment cases should be selected from current backend artifacts
-  before accepting a lowering packet.
+- Primary representative: `tests/c/external/gcc_torture/src/divmod-1.c`.
+- Minimized failing artifact:
+  `build/agent_state/395_step4_divmod_residual_i16_call.c`.
+- Contrasting supported artifact:
+  `build/agent_state/395_step4_divmod_residual_i8_call.c`.
+- Prepared failing shape: `wrapper_kind=same_module`, `arg index=0`,
+  `value_bank=none`, `source_encoding=frame_slot`, `dest_bank=none`, move
+  reason `call_arg_stack_to_stack`.
 
 ## Non-Goals
 
-- Do not repair stack-frame, callee-saved, parameter-home, or variadic
-  admission work owned by
-  `ideas/open/398_rv64_object_route_stack_frame_and_param_home_edges.md`.
-- Do not repair terminator-fragment, move-bundle, global-data, runtime
-  mismatch, or wide-rematerialized-immediate producer work owned by other open
-  ideas.
-- Do not treat semantic `lir_to_bir` failures as instruction-fragment
-  lowering.
-- Do not rewrite gcc_torture expectations, change allowlists to hide failures,
-  or mark supported-path cases unsupported.
-- Do not add filename-specific lowering for `20000223-1.c`, `20020225-2.c`,
-  or any other representative.
+- Do not lower this by adding scalar argument ABI inference to
+  `src/backend/riscv/rv64/object_emission.cpp`.
+- Do not reopen the closed 403 incoming-formal repair unless fresh evidence
+  proves that direct `i16` formal ABI publication regressed.
+- Do not redesign aggregate, byval, sret, variadic, or stack-passed argument
+  handling.
+- Do not treat unrelated 395 instruction-fragment lowering, 397 move-bundle,
+  or 398 parameter-home failures as part of this idea.
+- Do not rewrite gcc_torture expectations, change allowlists, or add
+  filename-specific handling for `divmod-1.c`.
 
 ## Working Model
 
-This idea owns target-side lowering for prepared BIR instructions whose
-semantic facts are already published enough for RV64 object emission. Each
-packet should first classify the rejected instruction family and then lower a
-reusable instruction form with proof from at least one representative and one
-nearby same-fragment case when available.
+The callee-side `i16` formal already has a register home. The remaining failure
+is that the caller-side same-module argument is published as a frame-slot
+source with no value bank or destination bank, leaving target emission without
+an explicit scalar argument destination. The producer should publish the same
+kind of target-consumable scalar argument facts that make the minimized `i8`
+same-module case compile.
 
-If classification shows that a failure lacks required producer facts, stop and
-route that boundary to a producer-side idea instead of teaching RV64 object
-emission to rediscover those facts.
+If investigation proves the no-bank shape is intentional and requires a
+separate move-bundle or stack-home owner, stop and route that boundary instead
+of expanding RV64 object emission.
 
 ## Execution Rules
 
-- Keep each implementation packet tied to one concrete instruction-fragment
-  family.
-- Inspect prepared dumps before changing RV64 lowering; record operand widths,
-  homes, immediates, memory facts, and result publication requirements.
-- Preserve the prepared-object contract boundary. Do not move BIR ownership,
-  value-home selection, or CFG reconstruction into target code.
-- Add or update focused backend coverage only where it proves the semantic
-  lowering family, not just a representative filename.
+- Keep each implementation packet scoped to same-module scalar `i16`
+  call-argument publication.
+- Inspect prepared dumps before changing code and record the exact call-plan
+  facts in `todo.md`.
+- Prefer extending existing scalar-width handling near the producer call-ABI
+  publication path over adding a parallel classifier.
+- Preserve existing behavior for `i1`, `i8`, `i32`, `i64`, pointer, aggregate,
+  variadic, byval, and stack-passed calls unless local proof requires a narrow
+  supporting adjustment.
 - Use the supervisor-selected proof command and record exact results in
   `todo.md`.
 - Treat diagnostic-only churn, expectation rewrites, and single-case green
   proof as insufficient progress.
 
-## Step 1: Classify Instruction Fragment Families
+## Step 1: Locate The Caller-Side Publication Gap
 
-Goal: identify the concrete unsupported prepared instruction families behind
-the current bucket and select the first reusable lowering packet.
-
-Actions:
-
-- Reproduce or inspect the current RV64 gcc_torture backend artifacts for
-  `src/20000223-1.c`, the 406 residual `src/20020225-2.c`, and nearby
-  `unsupported_instruction_fragment` cases.
-- Inspect prepared dumps for each selected representative and record opcode,
-  operand types, result width, value-home facts, immediates, and any memory or
-  publication requirements.
-- Map each rejected instruction to the RV64 object-route code path that emits
-  the unsupported instruction diagnostic.
-- Group cases by reusable instruction family rather than by source filename.
-- Decide whether the first packet is a valid target-emission lowering gap or a
-  producer-fact gap that needs lifecycle routing.
-
-Completion check:
-
-- `todo.md` names the first concrete instruction-fragment family to repair,
-  its representatives, and the exact proof command delegated by the
-  supervisor.
-- Any producer-fact gap is stopped and routed for lifecycle review instead of
-  patched in RV64 object emission.
-
-## Step 2: Lower The First Reusable Instruction Family
-
-Goal: implement semantic RV64 object lowering for the first classified
-instruction-fragment family.
+Goal: identify the producer code that publishes same-module scalar call
+arguments and explain why `i8` gets target-consumable facts while `i16` remains
+no-bank.
 
 Actions:
 
-- Update the RV64 object instruction route to consume explicit prepared facts
-  for the selected family.
-- Preserve existing width, signedness, immediate, register-home, stack-home,
-  and memory-admission checks.
-- Keep invalid or unsupported operand shapes rejected with precise diagnostics.
-- Add or update focused backend tests when the repo has a matching prepared
-  object test surface for the family.
+- Inspect the prepared dumps for the full `divmod-1.c` case, the minimized
+  failing `i16` artifact, and the contrasting `i8` artifact.
+- Trace the producer path that creates `wrapper_kind=same_module` call plans,
+  argument value banks, destination banks, and before-call move reasons.
+- Compare scalar-width handling against the closed 403 formal repair so any
+  shared helper can be reused without conflating formal and call-argument
+  ownership.
+- Decide whether the first implementation packet belongs in direct
+  call-argument ABI publication, move-bundle production, or another producer
+  boundary.
 
 Completion check:
 
-- The selected representative no longer fails with the same
-  `unsupported_instruction_fragment` diagnostic for the repaired family.
-- A nearby same-fragment case either passes the same boundary or is classified
-  as a distinct family with evidence in `todo.md`.
-- Existing backend tests selected by the supervisor still pass.
+- `todo.md` names the exact producer function or helper family to repair, the
+  observed `i8` versus `i16` fact delta, and the supervisor-delegated proof
+  command.
+- If the failure is not a call-argument ABI publication gap, stop and request
+  lifecycle review instead of patching RV64 object emission.
 
-## Step 3: Refresh Bucket Counts And Route The Next Family
+## Step 2: Publish Same-Module I16 Argument ABI Facts
 
-Goal: prove the first lowering reduced the current bucket and identify the
-next highest-value instruction-fragment family.
+Goal: repair the producer path so same-module `i16` scalar arguments publish a
+target-consumable argument destination when the ABI uses a GPR.
 
 Actions:
 
-- Run the supervisor-selected refreshed RV64 gcc_torture backend subset or
-  temporary allowlist probe.
-- Compare unsupported instruction-fragment diagnostics before and after the
-  repair.
-- Classify any newly exposed later failure for the repaired representatives as
-  same-family, later instruction-family, another open owner, runtime mismatch,
-  or producer-fact gap.
-- Select the next instruction-fragment family only if it remains inside idea
-  395 scope.
+- Extend the selected producer path for `i16` using the same semantic pattern
+  as adjacent supported scalar integer widths.
+- Ensure frame-slot sources are converted or published through explicit
+  prepared facts before the call reaches RV64 object emission.
+- Preserve precise diagnostics for unsupported argument shapes that still lack
+  legitimate prepared facts.
+- Add or update focused backend or prepared tests if a local test surface
+  already exists for same-module scalar call-argument publication.
 
 Completion check:
 
-- `todo.md` records exact proof results and whether the first family is
-  complete, needs another executor packet, or should be split.
-- The refreshed subset shows fewer failures in the repaired instruction
-  family without introducing new runtime mismatches.
+- The minimized `i16` same-module artifact no longer reaches object emission
+  with `value_bank=none`, `source_encoding=frame_slot`, `dest_bank=none`, and
+  `call_arg_stack_to_stack` as the blocking shape.
+- Existing supported scalar call-argument cases, including the minimized `i8`
+  artifact, remain supported.
 
-## Step 4: Repeat Family Packets Until 395 Is Exhausted Or Needs Review
+## Step 3: Prove Divmod And Check Residual Ownership
 
-Goal: continue reducing reusable instruction-fragment families without drifting
-into adjacent owners.
+Goal: prove the repair removes the `src/divmod-1.c` blocker without crossing
+the prepared-object consumer boundary.
 
 Actions:
 
-- Repeat Step 1 through Step 3 for the next classified instruction-fragment
-  family.
-- Escalate to plan review if the bucket splits into unrelated producer
-  defects, if the current runbook no longer describes the remaining failures,
-  or if repeated packets collide with the same unresolved boundary.
-- Keep residual stack/frame/home, terminator, move-bundle, global-data,
-  runtime, and wide-immediate failures routed to their existing owners.
+- Run the supervisor-selected build and narrow RV64 gcc_torture backend proof
+  for `src/divmod-1.c` and the minimized artifacts.
+- Inspect fresh prepared dumps or diagnostics for `div2`, `div4`, `mod2`, and
+  `mod4` callsites.
+- Classify any newly exposed later failure as inside this idea, back in 395,
+  owned by another open idea, or requiring a new producer-side split.
 
 Completion check:
 
-- All reachable 395-scope representative families either lower semantically,
-  have precise residual owner routing, or have a lifecycle review artifact
-  explaining why the runbook should be replaced.
-- No accepted packet relies on testcase-shaped matching, expectation
-  downgrades, allowlist filtering, or diagnostic renaming.
+- `todo.md` records exact proof results and states whether this idea is
+  complete, needs another same-module `i16` call-argument packet, or should be
+  routed to another owner.
+- RV64 object emission did not gain scalar call-argument ABI inference.
+
+## Step 4: Close Or Route Remaining Scope
+
+Goal: finish the producer-side call-argument publication idea cleanly.
+
+Actions:
+
+- Confirm the source idea acceptance criteria are satisfied or document the
+  remaining producer boundary that prevents closure.
+- If complete, prepare for close-gate regression guard through the plan owner.
+- If blocked or split, preserve durable notes in the correct open idea and do
+  not silently fold unrelated work into this runbook.
+
+Completion check:
+
+- The plan owner can either close this source idea with regression proof or
+  switch/deactivate it with precise residual ownership.
