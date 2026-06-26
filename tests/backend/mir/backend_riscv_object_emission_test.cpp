@@ -3714,6 +3714,276 @@ prepare::PreparedBirModule make_prepared_frame_slot_value_arg_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
+  prepare::PreparedBirModule prepared;
+  const auto callee_name = prepared.names.function_names.intern("sink");
+  const auto main_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto x_name = prepared.names.value_names.intern("%lv.x");
+  const auto y_name = prepared.names.value_names.intern("%lv.y");
+  const auto x_slot_name = prepared.names.slot_names.intern("%lv.x");
+  const auto y_slot_name = prepared.names.slot_names.intern("%lv.y");
+
+  bir::Block callee_entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+
+  bir::CallInst call;
+  call.callee = "sink";
+  call.args = {bir::Value::named(bir::TypeKind::Ptr, "%lv.x"),
+               bir::Value::named(bir::TypeKind::Ptr, "%lv.y")};
+  call.arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr};
+  call.return_type = bir::TypeKind::Void;
+  bir::Block main_entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "sink",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = {bir::Param{
+                     .type = bir::TypeKind::Ptr,
+                     .name = "%p.x",
+                     .size_bytes = 8,
+                     .align_bytes = 8,
+                 },
+                 bir::Param{
+                     .type = bir::TypeKind::Ptr,
+                     .name = "%p.y",
+                     .size_bytes = 8,
+                     .align_bytes = 8,
+                 }},
+      .blocks = {std::move(callee_entry)},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .local_slots = {bir::LocalSlot{
+                          .name = "%lv.x",
+                          .slot_id = x_slot_name,
+                          .type = bir::TypeKind::I16,
+                          .size_bytes = 2,
+                          .align_bytes = 2,
+                      },
+                      bir::LocalSlot{
+                          .name = "%lv.y",
+                          .slot_id = y_slot_name,
+                          .type = bir::TypeKind::I16,
+                          .size_bytes = 2,
+                          .align_bytes = 2,
+                      }},
+      .blocks = {std::move(main_entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = callee_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = main_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = callee_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = callee_name,
+                  .value_name = prepared.names.value_names.intern("%p.x"),
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = callee_name,
+                  .value_name = prepared.names.value_names.intern("%p.y"),
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a1"},
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+          },
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = main_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 14,
+                  .function_name = main_name,
+                  .value_name = x_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"s1"},
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 15,
+                  .function_name = main_name,
+                  .value_name = y_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"s2"},
+                  .size_bytes = 8,
+                  .align_bytes = 8,
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = main_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+          .direct_callee_name = std::string{"sink"},
+          .arguments =
+              {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding =
+                          prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = prepare::PreparedValueId{14},
+                      .source_register_name = std::string{"s1"},
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                      .source_selection =
+                          prepare::PreparedCallArgumentSourceSelection{
+                              .kind = prepare::
+                                  PreparedCallArgumentSourceSelectionKind::
+                                      LocalFrameAddressMaterialization,
+                              .source_value_id = prepare::PreparedValueId{14},
+                              .source_value_name = x_name,
+                              .source_home_kind =
+                                  prepare::PreparedValueHomeKind::Register,
+                              .source_slot_id = prepare::PreparedFrameSlotId{4},
+                              .source_stack_offset_bytes = 0,
+                              .source_size_bytes = 8,
+                              .source_align_bytes = 8,
+                              .address_materialization_block_label = block_label,
+                              .address_materialization_inst_index = 0,
+                              .address_materialization_frame_slot_id =
+                                  prepare::PreparedFrameSlotId{4},
+                              .address_materialization_byte_offset = 0,
+                          },
+                  },
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 1,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding =
+                          prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = prepare::PreparedValueId{15},
+                      .source_register_name = std::string{"s2"},
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"a1"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                      .source_selection =
+                          prepare::PreparedCallArgumentSourceSelection{
+                              .kind = prepare::
+                                  PreparedCallArgumentSourceSelectionKind::
+                                      LocalFrameAddressMaterialization,
+                              .source_value_id = prepare::PreparedValueId{15},
+                              .source_value_name = y_name,
+                              .source_home_kind =
+                                  prepare::PreparedValueHomeKind::Register,
+                              .source_slot_id = prepare::PreparedFrameSlotId{5},
+                              .source_stack_offset_bytes = 2,
+                              .source_size_bytes = 8,
+                              .source_align_bytes = 8,
+                              .address_materialization_block_label = block_label,
+                              .address_materialization_inst_index = 0,
+                              .address_materialization_frame_slot_id =
+                                  prepare::PreparedFrameSlotId{5},
+                              .address_materialization_byte_offset = 2,
+                          },
+                  },
+              },
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = main_name,
+      .frame_size_bytes = 12,
+      .frame_alignment_bytes = 4,
+      .address_materializations =
+          {
+              prepare::PreparedAddressMaterialization{
+                  .function_name = main_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+                  .result_value_name = x_name,
+                  .result_value_id = prepare::PreparedValueId{14},
+                  .result_home_kind = prepare::PreparedValueHomeKind::Register,
+                  .frame_slot_id = prepare::PreparedFrameSlotId{4},
+                  .byte_offset = 0,
+              },
+              prepare::PreparedAddressMaterialization{
+                  .function_name = main_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+                  .result_value_name = y_name,
+                  .result_value_id = prepare::PreparedValueId{15},
+                  .result_home_kind = prepare::PreparedValueHomeKind::Register,
+                  .frame_slot_id = prepare::PreparedFrameSlotId{5},
+                  .byte_offset = 2,
+              },
+          },
+  });
+  prepared.frame_plan.functions = {
+      prepare::PreparedFramePlanFunction{
+          .function_name = callee_name,
+          .frame_size_bytes = 0,
+          .frame_alignment_bytes = 1,
+      },
+      prepare::PreparedFramePlanFunction{
+          .function_name = main_name,
+          .frame_size_bytes = 12,
+          .frame_alignment_bytes = 4,
+          .frame_slot_order = {prepare::PreparedFrameSlotId{4},
+                               prepare::PreparedFrameSlotId{5}},
+      },
+  };
+  prepared.stack_layout.frame_size_bytes = 4;
+  prepared.stack_layout.frame_alignment_bytes = 2;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{4},
+          .function_name = main_name,
+          .offset_bytes = 0,
+          .size_bytes = 2,
+          .align_bytes = 2,
+          .fixed_location = true,
+      },
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{5},
+          .function_name = main_name,
+          .offset_bytes = 2,
+          .size_bytes = 2,
+          .align_bytes = 2,
+          .fixed_location = true,
+      },
+  };
+  return prepared;
+}
+
 int records_minimal_text_and_call_relocation() {
   const auto module = make_minimal_call_module();
   if (!module.has_value()) {
@@ -4716,6 +4986,130 @@ int rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes() {
       2048;
   prepared.stack_layout.frame_slots[0].offset_bytes = 2048;
   prepared.frame_plan.functions[1].frame_size_bytes = 2056;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame") !=
+      0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int builds_prepared_frame_slot_address_arg_call_object() {
+  const auto prepared = make_prepared_frame_slot_address_arg_call_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared frame-slot-address arg call RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* sink = object::find_symbol(*module, "sink");
+  const auto* main = object::find_symbol(*module, "main");
+  if (text == nullptr || sink == nullptr || main == nullptr) {
+    return fail("expected frame-slot-address arg call object to publish text/functions");
+  }
+  if (module->relocations.size() != 1 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].type != R_RISCV_CALL_PLT ||
+      module->relocations[0].symbol != sink->id ||
+      module->relocations[0].offset < main->value + 8) {
+    return fail("expected frame-slot-address same-module call relocation");
+  }
+  if (read_u32(text->bytes, module->relocations[0].offset - 8) !=
+          0x00010513 ||
+      read_u32(text->bytes, module->relocations[0].offset - 4) !=
+          0x00210593) {
+    return fail("expected frame-slot addresses materialized into a0/a1 before call");
+  }
+  return 0;
+}
+
+int expect_frame_slot_address_arg_call_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+}
+
+int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
+  auto prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->kind =
+      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->source_slot_id = std::nullopt;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->address_materialization_frame_slot_id = std::nullopt;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.addressing.functions[0].address_materializations.clear();
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.addressing.functions[0].address_materializations[0].address_space =
+      bir::AddressSpace::Tls;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.addressing.functions[0].address_materializations[0].is_thread_local = true;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0].destination_register_bank =
+      prepare::PreparedRegisterBank::Fpr;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.frame_plan.functions[1].has_dynamic_stack = true;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.frame_plan.functions[1].uses_frame_pointer_for_fixed_slots = true;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->address_materialization_byte_offset = 2048;
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->source_stack_offset_bytes = 2048;
+  prepared.addressing.functions[0].address_materializations[0].byte_offset = 2048;
+  prepared.stack_layout.frame_slots[0].offset_bytes = 2048;
+  prepared.frame_plan.functions[1].frame_size_bytes = 2050;
   if (expect_prepared_rejection_diagnostic(
           prepared,
           "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame") !=
@@ -6630,6 +7024,8 @@ int main() {
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_frame_slot_value_arg_call_object();
   status |= rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes();
+  status |= builds_prepared_frame_slot_address_arg_call_object();
+  status |= rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes();
   status |= builds_prepared_inline_asm_insn_r_object();
   status |= builds_structured_prepared_inline_asm_insn_r_object_without_text_reparse();
   status |= builds_prepared_inline_asm_insn_r_tied_input_object();

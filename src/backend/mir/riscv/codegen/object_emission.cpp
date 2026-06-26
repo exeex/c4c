@@ -1631,10 +1631,104 @@ std::optional<std::int32_t> prepared_frame_slot_call_argument_offset(
   return static_cast<std::int32_t>(offset);
 }
 
+std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
+    std::size_t stack_frame_bytes) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  if (lookups == nullptr || frame_plan == nullptr || frame_plan->has_dynamic_stack ||
+      frame_plan->uses_frame_pointer_for_fixed_slots ||
+      argument.value_bank != prepare::PreparedRegisterBank::Gpr ||
+      !argument.source_selection.has_value() ||
+      argument.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization ||
+      (argument.source_encoding != prepare::PreparedStorageEncodingKind::Register &&
+       argument.source_encoding !=
+           prepare::PreparedStorageEncodingKind::ComputedAddress)) {
+    return std::nullopt;
+  }
+
+  const auto& selection = *argument.source_selection;
+  if (!selection.source_slot_id.has_value() ||
+      !selection.address_materialization_block_label.has_value() ||
+      !selection.address_materialization_inst_index.has_value() ||
+      !selection.address_materialization_frame_slot_id.has_value() ||
+      !selection.address_materialization_byte_offset.has_value() ||
+      *selection.address_materialization_byte_offset < 0 ||
+      *selection.source_slot_id != *selection.address_materialization_frame_slot_id ||
+      (argument.source_value_id.has_value() && selection.source_value_id.has_value() &&
+       *argument.source_value_id != *selection.source_value_id)) {
+    return std::nullopt;
+  }
+
+  const auto materializations =
+      prepare::find_indexed_prepared_address_materializations(
+          &lookups->address_materializations,
+          *selection.address_materialization_block_label);
+  if (materializations == nullptr) {
+    return std::nullopt;
+  }
+
+  const prepare::PreparedAddressMaterialization* selected = nullptr;
+  for (const auto* materialization : *materializations) {
+    if (materialization == nullptr ||
+        materialization->inst_index !=
+            *selection.address_materialization_inst_index ||
+        materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
+        materialization->frame_slot_id != selection.address_materialization_frame_slot_id ||
+        materialization->byte_offset !=
+            *selection.address_materialization_byte_offset) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return std::nullopt;
+    }
+    selected = materialization;
+  }
+  if (selected == nullptr || selected->address_space != bir::AddressSpace::Default ||
+      selected->is_thread_local || selected->has_tls_address_space ||
+      selected->tls_model != prepare::PreparedTlsMaterializationModel::None ||
+      selected->tls_thread_pointer_register !=
+          prepare::PreparedTlsThreadPointerRegister::None ||
+      selected->tls_high_relocation != prepare::PreparedTlsRelocationKind::None ||
+      selected->tls_low_relocation != prepare::PreparedTlsRelocationKind::None) {
+    return std::nullopt;
+  }
+
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *selection.source_slot_id;
+                   });
+  if (slot_it == stack_layout.frame_slots.end()) {
+    return std::nullopt;
+  }
+
+  const auto offset =
+      static_cast<std::size_t>(*selection.address_materialization_byte_offset);
+  if ((selection.source_stack_offset_bytes.has_value() &&
+       *selection.source_stack_offset_bytes != offset) ||
+      offset < slot_it->offset_bytes ||
+      offset > slot_it->offset_bytes + slot_it->size_bytes ||
+      offset > stack_frame_bytes ||
+      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
+    return std::nullopt;
+  }
+
+  return static_cast<std::int32_t>(offset);
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
     std::string_view function_name,
     std::size_t block_index,
     std::size_t instruction_index,
@@ -1721,6 +1815,45 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     const auto destination = rv64_register_number(*argument.destination_register_name);
     if (!destination.has_value()) {
       return std::nullopt;
+    }
+    if (argument.source_selection.has_value() &&
+        argument.source_selection->kind ==
+            prepare::PreparedCallArgumentSourceSelectionKind::
+                LocalFrameAddressMaterialization) {
+      const auto offset =
+          prepared_frame_slot_address_call_argument_offset(stack_layout,
+                                                           lookups,
+                                                           frame_plan,
+                                                           argument,
+                                                           stack_frame_bytes);
+      if (!offset.has_value()) {
+        return std::nullopt;
+      }
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                *destination,
+                                0,
+                                2,
+                                *offset));  // addi rd, sp, off
+      continue;
+    }
+    if (argument.source_selection.has_value()) {
+      switch (argument.source_selection->kind) {
+        case prepare::PreparedCallArgumentSourceSelectionKind::None:
+          break;
+        case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue:
+          if (argument.source_encoding !=
+              prepare::PreparedStorageEncodingKind::FrameSlot) {
+            return std::nullopt;
+          }
+          break;
+        case prepare::PreparedCallArgumentSourceSelectionKind::
+            LocalFrameAddressMaterialization:
+        case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
+        case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
+        case prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation:
+          return std::nullopt;
+      }
     }
     if (argument.source_encoding == prepare::PreparedStorageEncodingKind::Immediate &&
         argument.source_literal.has_value()) {
@@ -3407,6 +3540,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     std::size_t instruction_index,
     const c4c::backend::bir::Inst& inst,
     std::unordered_map<std::string, PreparedObjectCompare>& compares,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
     std::size_t stack_frame_bytes) {
   const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
   if (call == nullptr) {
@@ -3589,6 +3723,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
   return fragment_for_prepared_call(prepared,
                                     prepared.stack_layout,
                                     &lookups,
+                                    frame_plan,
                                     function_name,
                                     block_index,
                                     instruction_index,
@@ -3863,6 +3998,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                            event.instruction_index,
                                                            *event.instruction,
                                                            compares,
+                                                           frame_plan,
                                                            *stack_frame_bytes);
           if (!fragment.has_value()) {
             if (auto diagnostic =
@@ -3947,6 +4083,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                        instruction_index,
                                                        block.insts[instruction_index],
                                                        compares,
+                                                       frame_plan,
                                                        *stack_frame_bytes);
       if (!fragment.has_value()) {
         if (auto diagnostic =
