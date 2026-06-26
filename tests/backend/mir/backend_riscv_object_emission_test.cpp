@@ -2262,6 +2262,97 @@ prepare::PreparedBirModule make_prepared_stack_slot_scalar_flow_module() {
   return prepared;
 }
 
+prepare::PreparedValueHome rv64_i16_stack_slot_home(
+    prepare::PreparedValueId value_id,
+    c4c::FunctionNameId function_name,
+    c4c::ValueNameId value_name,
+    prepare::PreparedFrameSlotId slot_id,
+    std::size_t offset_bytes) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = slot_id,
+      .offset_bytes = offset_bytes,
+      .size_bytes = std::size_t{2},
+      .align_bytes = std::size_t{2},
+  };
+}
+
+prepare::PreparedBirModule make_prepared_scalar_compare_trunc_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto compare_name = prepared.names.value_names.intern("%cmp");
+  const auto trunc_name = prepared.names.value_names.intern("%trunc");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Sge,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%cmp"),
+                  .operand_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+                  .rhs = bir::Value::immediate_i32(8),
+              },
+              bir::CastInst{
+                  .opcode = bir::CastOpcode::Trunc,
+                  .result = bir::Value::named(bir::TypeKind::I16, "%trunc"),
+                  .operand = bir::Value::named(bir::TypeKind::I32, "%cmp"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I16, "%trunc");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I16,
+      .return_size_bytes = 2,
+      .return_align_bytes = 2,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 24;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{11},
+          .function_name = function_name,
+          .offset_bytes = 20,
+          .size_bytes = 2,
+          .align_bytes = 2,
+      },
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, lhs_name, "t0", 5),
+              rv64_gpr_home(2, function_name, compare_name, "s1", 9),
+              rv64_i16_stack_slot_home(3,
+                                       function_name,
+                                       trunc_name,
+                                       prepare::PreparedFrameSlotId{11},
+                                       20),
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_join_transfer_select_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -4751,6 +4842,99 @@ int builds_prepared_stack_slot_scalar_flow_object() {
   return 0;
 }
 
+int builds_prepared_scalar_compare_trunc_object() {
+  const auto prepared = make_prepared_scalar_compare_trunc_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared scalar compare/trunc RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared scalar compare/trunc object to publish text/main");
+  }
+  if (text->bytes.size() != 40 || text->size_bytes != 40 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 40) {
+    return fail("expected prepared scalar compare/trunc object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xfe010113 ||
+      read_u32(text->bytes, 4) != 0x0082a493 ||
+      read_u32(text->bytes, 8) != 0x0014c493 ||
+      read_u32(text->bytes, 12) != 0x00048f13 ||
+      read_u32(text->bytes, 16) != 0x030f1f13 ||
+      read_u32(text->bytes, 20) != 0x030f5f13 ||
+      read_u32(text->bytes, 24) != 0x01e11a23 ||
+      read_u32(text->bytes, 28) != 0x01411503 ||
+      read_u32(text->bytes, 32) != 0x02010113 ||
+      read_u32(text->bytes, 36) != 0x00008067) {
+    return fail("expected Sge i32 compare materialization feeding i16 trunc publication");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected scalar compare/trunc object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_scalar_compare_trunc_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_scalar_compare_trunc: RV64 object route supports only prepared named Sge i32 compare results feeding one i16 integer trunc publication";
+
+  auto prepared = make_prepared_scalar_compare_trunc_module();
+  auto* compare =
+      std::get_if<bir::BinaryInst>(&prepared.module.functions[0].blocks[0].insts[0]);
+  if (compare == nullptr) {
+    return fail("expected mutable scalar compare/trunc fixture compare");
+  }
+  compare->opcode = bir::BinaryOpcode::Slt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_compare_trunc_module();
+  compare =
+      std::get_if<bir::BinaryInst>(&prepared.module.functions[0].blocks[0].insts[0]);
+  if (compare == nullptr) {
+    return fail("expected mutable scalar compare/trunc fixture compare");
+  }
+  compare->operand_type = bir::TypeKind::I64;
+  compare->lhs = bir::Value::named(bir::TypeKind::I64, "%lhs");
+  compare->rhs = bir::Value::immediate_i64(8);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_compare_trunc_module();
+  auto* trunc =
+      std::get_if<bir::CastInst>(&prepared.module.functions[0].blocks[0].insts[1]);
+  if (trunc == nullptr) {
+    return fail("expected mutable scalar compare/trunc fixture trunc");
+  }
+  trunc->result = bir::Value::named(bir::TypeKind::I32, "%trunc");
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_compare_trunc_module();
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{10},
+      .function_name = prepared.names.function_names.find("main"),
+      .offset_bytes = 0,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.value_locations.functions[0].value_homes[1] =
+      rv64_stack_slot_home(2,
+                           prepared.names.function_names.find("main"),
+                           prepared.names.value_names.find("%cmp"),
+                           prepare::PreparedFrameSlotId{10},
+                           0);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int builds_prepared_join_transfer_select_materialization_object() {
   const auto prepared = make_prepared_join_transfer_select_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -7019,6 +7203,8 @@ int main() {
   status |= builds_prepared_pointer_value_scalar_local_store_with_t1_base_object();
   status |= rejects_prepared_pointer_value_scalar_local_fail_closed_shapes();
   status |= builds_prepared_stack_slot_scalar_flow_object();
+  status |= builds_prepared_scalar_compare_trunc_object();
+  status |= rejects_prepared_scalar_compare_trunc_fail_closed_shapes();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= skips_published_prepared_join_transfer_select_carrier_object();
   status |= builds_prepared_local_register_arg_call_object();
