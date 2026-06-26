@@ -1,6 +1,6 @@
 # RV64 Variadic Prologue Save-Area Publication
 
-Status: Open
+Status: Parked - save-area route complete; close pending supervisor regression-log normalization
 Type: Target lowering follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: closure of `ideas/closed/390_rv64_va_list_value_publication_copy_runtime_abort.md`
@@ -75,6 +75,22 @@ prepared-call frame-slot-address copy, destination-address materialization, or
   a narrower later boundary with a clear owner.
 - Any later boundary is routed to an existing or new idea instead of being
   silently absorbed.
+
+## Lifecycle Note
+
+Step 5 evidence after implementation shows the RV64 variadic prologue now
+stores incoming variadic GPR payloads into the prepared backing area (`a1`
+through `a7` at the expected save slots), satisfying this idea's save-area
+publication owner. The representative still aborts at a later `va_list`
+expression/call-argument value publication boundary: the `dummy` parameter
+object receives the `va_list` slot address instead of the initialized
+save-area pointer payload.
+
+That later boundary is split into
+`ideas/open/392_rv64_va_list_expression_call_argument_value_publication.md`.
+This idea should be closed after the supervisor can run or normalize the
+required close-gate regression logs without replacing the root representative
+failure log that Step 5 intentionally preserved.
 
 ## Reviewer Reject Signals
 
