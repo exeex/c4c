@@ -1,6 +1,6 @@
 # RV64 Object Route Prepared Move-Bundle Target Shapes
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/375_rv64_object_route_scalar_compare_trunc_lowering.md`
@@ -66,6 +66,41 @@ materialization that idea 375 closed.
   next owner because of semantic move-bundle target repair.
 - Existing focused backend object-emission and prepared-contract coverage
   remains green.
+
+## Closure Notes
+
+Closed after the admitted prepared move-bundle shape repaired the first
+downstream object-route blocker exposed by idea 375. Step 1 identified the
+first rejected prepared bundle as a scalar integer stack-slot source feeding a
+single-width GPR value destination. The implementation slice committed as
+`274d7364` added focused RV64 object-emission support and preserved adjacent
+fail-closed move-bundle contracts.
+
+The Step 5 representative rerun for `src/20000217-1.c` no longer reports:
+
+```text
+unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves
+```
+
+It now advances to a distinct out-of-scope residual:
+
+```text
+unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering
+```
+
+Durable follow-up ownership lives in:
+
+- `ideas/open/377_rv64_object_route_instruction_fragment_lowering.md`
+
+Close-time regression guard used the focused backend scope from this runbook
+and passed with non-decreasing results:
+
+```sh
+cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test &&
+ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log
+
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
 
 ## Reviewer Reject Signals
 
