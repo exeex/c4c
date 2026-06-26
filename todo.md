@@ -1,47 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/380_rv64_object_route_short_circuit_call_argument_reload.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement the First Semantic Reload Repair
+Current Step ID: 3
+Current Step Title: Rerun `src/20000112-1.c`
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 implementation completed for the first semantic RV64 prepared-call reload
-shape: when a GPR call argument has a prepared `PriorPreservation` source
-selection with complete single-width callee-saved register authority, RV64
-textual prepared-call emission and RV64 object emission now source the outgoing
-ABI argument from the preserved register instead of falling through to the stale
-original ABI argument register. Added focused RV64 object-emission coverage that
-proves the later call reloads `s1 -> a0` from the prepared prior-preservation
-selection, and that incomplete preserved-register facts plus stack
-prior-preservation remain fail-closed on the existing unsupported instruction
-diagnostic.
+Step 3 reran the RV64 GCC torture backend object-route representative
+`src/20000112-1.c` after the call-argument reload repair. The case still fails,
+but now classifies as a runtime mismatch rather than a runner/toolchain blocker:
+clang exits 0 while the c4c-produced RV64 object route exits with a segmentation
+fault. Evidence is in `test_after.log`,
+`build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`,
+`build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`, and
+`build/agent_state/rv64_gcc_c_torture_backend_failed.txt`.
 
 ## Suggested Next
 
-Run Step 3 against the representative `src/20000112-1.c` RV64 GCC torture
-backend path to determine whether this repair makes the case pass or advances
-it to a distinct next owner.
+Investigate the `src/20000112-1.c` RV64 object-route runtime segfault as the
+next distinct owner. Start from the generated objects/binaries under
+`build/rv64_gcc_c_torture_backend/src_20000112-1.c/` and compare the failing
+c4c execution against the clang reference.
 
 ## Watchouts
 
-This packet intentionally admits only complete single-width GPR callee-saved
-`PriorPreservation` selections. Stack prior-preservation and
-wider/register-bank variants remain unsupported in the RV64 object route until
-separately planned. The object-route fixture verifies the reload from the
-preserved home, but it does not claim broader call-boundary preservation-home
-population coverage.
+This packet did not implement a new repair. The runner completed and produced
+artifacts, so the remaining issue appears to be inside the generated RV64
+object-route program behavior for `src/20000112-1.c`, not an allowlist,
+toolchain, or script failure.
 
 ## Proof
 
-Supervisor-delegated proof passed and was written to `test_after.log`:
+Supervisor-delegated proof failed as the representative result and was written
+to `test_after.log`:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_call_boundary_effect_plan|backend_codegen_route_riscv64_(short_circuit_select_false_lhs|compare_result_select_false_arm|pointer_typed_select_publication)|backend_rv64_runtime_riscv64_(short_circuit_select_false_lhs|compare_result_select_false_arm|pointer_typed_select_publication)|backend_(obj_)?runtime_rv64_(two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call))$' | tee test_after.log`
+`bash -o pipefail -c 'printf "%s\n" "src/20000112-1.c" > build/agent_state/380_step3_20000112.allowlist && ALLOWLIST=build/agent_state/380_step3_20000112.allowlist STOP_ON_FAILURE=1 VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh | tee test_after.log'`
 
-Result: build completed with no work needed after the prior compile, and all 13
-selected tests passed, including `backend_riscv_object_emission`,
-`backend_prepare_frame_stack_call_contract`, `backend_call_boundary_effect_plan`,
-idea 379 select-publication route/runtime tests, and the focused RV64
-local-argument runtime/object cases.
+Result: `src/20000112-1.c` failed with
+`[RV64_BACKEND_RUNTIME_MISMATCH]`; `clang_exit=0`, `c4c_exit=Segmentation
+fault`, with empty stdout from both programs. The per-case log is
+`build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`.
