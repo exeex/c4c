@@ -1,47 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/382_rv64_object_route_prepared_local_memory_addressing.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused Supported And Rejected Fixtures
+Current Step ID: 3
+Current Step Title: Implement Prepared Local-Memory Addressing Lowering
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by adding focused RV64 object-emission fixtures for
-the audited byval stack-slot pointer-value local-memory access boundary.
+Completed `plan.md` Step 3 by verifying that the audited prepared byval
+stack-slot pointer-value local-memory lane load shape is already semantically
+lowered in the RV64 object route.
 
-`tests/backend/mir/backend_riscv_object_emission_test.cpp` now parameterizes the
-existing `make_prepared_byval_stack_slot_param_module` access offset and asserts
-the supported 4-byte lane load shape at both offset `0` and the final in-bounds
-offset `68`. The supported expectations check the exact generated RV64 text:
-frame allocation, `lw a0, 0(sp)` for offset `0` or `lw a0, 68(sp)` for offset
-`68`, frame release, `ret`, and no relocations.
+No `object_emission.cpp` implementation change was needed. The current helper
+path is `fragment_for_prepared_load_local` ->
+`prepared_byval_stack_slot_pointer_access_offset` ->
+`append_rv64_load_stack_to_register`. That helper validates default address
+space, non-volatile pointer-value base, prepared base-plus-offset addressing,
+matching prepared value-home and frame-slot metadata, a permanent
+`byval_param` stack object, size/align compatibility, in-bounds byte offsets,
+frame bounds, and signed-12-bit encodability before emitting the `sp`-relative
+load.
 
-The adjacent fail-closed byval pointer-access fixtures now cover missing
-pointer identity, missing byval/home facts that are rejected by the earlier
-parameter-home checks, non-pointer/non-base-plus-offset addressing,
-out-of-bounds offset `69`, non-default address space, volatile access,
-over-alignment, and an unsupported `I128` local-memory load size.
+The Step 2 fixtures at offsets `0` and `68` exercise that path and remain green
+without testcase-shaped code. The same helper participates in
+`diagnose_unsupported_prepared_instruction_fragment`, preserving the precise
+fail-closed local-memory diagnostic when any required prepared fact is absent.
 
 ## Suggested Next
 
-Next packet should move to the next supervisor-selected plan step. If Step 3 is
-lowering work, use these fixtures as the acceptance boundary and keep the
-supported byval shape semantic rather than testcase-name based.
+Next packet should run the supervisor-selected Step 4 representative proof for
+the prepared RV64 object route.
 
 ## Watchouts
 
-- A fabricated unencodable byval home offset was not retained because it trips
-  the supported-stack-frame admission diagnostic before the local-memory
-  boundary. The feasible local fixture covers the adjacent out-of-bounds offset
-  `69` instead.
-- The current checkout already lowers the supported byval stack-slot pointer
-  lane loads; the new supported expectations are green here rather than acting
-  as red tests.
-- Missing byval/home facts can be rejected before local-memory analysis by
-  `unsupported_param_home` or `unsupported_byval_param_home`; those expectations
-  are intentionally precise.
+- `prepared_byval_stack_slot_pointer_access_offset` is also called by the store
+  path, but this packet verified the delegated load shape only.
+- Missing byval/home facts can still be rejected before local-memory analysis by
+  `unsupported_param_home` or `unsupported_byval_param_home`; those diagnostics
+  are intentional and should not be weakened.
+- The feasible adjacent local-memory boundary remains offset `69`, because an
+  artificial unencodable byval home offset is rejected earlier by stack-frame
+  admission rather than by local-memory lowering.
 
 ## Proof
 
@@ -51,6 +51,6 @@ Ran the delegated proof command exactly:
 { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'; } > test_after.log 2>&1
 ```
 
-Result: passed. Build relinked `backend_riscv_object_emission_test`, and CTest
-reported `1/1 Test #215: backend_riscv_object_emission .... Passed`. Proof log:
+Result: passed. Build reported `ninja: no work to do`, and CTest reported
+`1/1 Test #215: backend_riscv_object_emission .... Passed`. Proof log:
 `test_after.log`.
