@@ -24,6 +24,13 @@ std::string_view maybe_value_name(const PreparedNameTables& names, ValueNameId i
   return prepared_value_name(names, id);
 }
 
+std::string_view maybe_block_label(const PreparedNameTables& names, BlockLabelId id) {
+  if (id == kInvalidBlockLabel) {
+    return "<none>";
+  }
+  return prepared_block_label(names, id);
+}
+
 std::string optional_size_text(const std::optional<std::size_t>& value) {
   return value.has_value() ? std::to_string(*value) : std::string("<unknown>");
 }
@@ -244,6 +251,21 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
                 << "/"
                 << prepared_value_home_kind_name(
                        plan.destination_payload_home->kind);
+          }
+          if (plan.payload_write_address.has_value()) {
+            out << ":payload_write_address="
+                << maybe_value_name(module.names,
+                                    plan.payload_write_address->result_value_name)
+                << "/frame_slot:slot=#"
+                << plan.payload_write_address->frame_slot_id
+                << ":offset="
+                << plan.payload_write_address->stack_offset_bytes
+                << ":materialization_block="
+                << maybe_block_label(
+                       module.names,
+                       plan.payload_write_address->materialization_block_label)
+                << ":materialization_inst="
+                << plan.payload_write_address->materialization_instruction_index;
           }
           if (plan.source_field.has_value()) {
             out << ":source_field="

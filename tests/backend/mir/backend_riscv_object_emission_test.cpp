@@ -641,7 +641,7 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
 }
 
 prepare::PreparedBirModule make_prepared_variadic_aggregate_va_arg_module(
-    bool include_access_plan_destination_payload_home) {
+    bool include_access_plan_payload_write_address) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -701,6 +701,7 @@ prepare::PreparedBirModule make_prepared_variadic_aggregate_va_arg_module(
       .instruction_index = 0,
       .payload_size_bytes = 9,
       .payload_align_bytes = 1,
+      .destination_payload_home = aggregate_payload_home,
       .source_field = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
       .source_field_offset_bytes = std::size_t{0},
       .source_payload_offset_bytes = std::size_t{0},
@@ -713,8 +714,15 @@ prepare::PreparedBirModule make_prepared_variadic_aggregate_va_arg_module(
       .overflow_source_field_offset_bytes = std::size_t{0},
       .overflow_stride_bytes = std::size_t{9},
   };
-  if (include_access_plan_destination_payload_home) {
-    aggregate_access_plan.destination_payload_home = aggregate_payload_home;
+  if (include_access_plan_payload_write_address) {
+    aggregate_access_plan.payload_write_address =
+        prepare::PreparedVariadicAggregatePayloadWriteAddress{
+            .result_value_name = aggregate_payload_home.value_name,
+            .materialization_block_label = entry_label,
+            .materialization_instruction_index = 0,
+            .frame_slot_id = prepare::PreparedFrameSlotId{5},
+            .stack_offset_bytes = 32,
+        };
   }
   prepared.variadic_entry_plans.functions.push_back(
       prepare::PreparedVariadicEntryPlanFunction{
@@ -6090,7 +6098,7 @@ int rejects_complete_current_aggregate_va_arg_helper_contract_without_lowering()
       "unsupported_variadic_helper_lowering: RV64 object route does not yet lower va_arg_aggregate helper");
 }
 
-int rejects_aggregate_va_arg_helper_without_access_plan_destination_payload_home() {
+int rejects_aggregate_va_arg_helper_without_access_plan_payload_write_address() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_variadic_aggregate_va_arg_module(
           false),
@@ -9429,7 +9437,7 @@ int main() {
   status |=
       rejects_complete_current_aggregate_va_arg_helper_contract_without_lowering();
   status |=
-      rejects_aggregate_va_arg_helper_without_access_plan_destination_payload_home();
+      rejects_aggregate_va_arg_helper_without_access_plan_payload_write_address();
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= builds_prepared_prior_preserved_arg_call_object();
   status |= rejects_prepared_prior_preserved_arg_call_fail_closed_shapes();

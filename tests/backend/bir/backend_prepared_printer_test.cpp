@@ -6481,6 +6481,12 @@ int main() {
       .payload_size_bytes = 8,
       .payload_align_bytes = 4,
       .destination_payload_home = aggregate_payload_home,
+      .payload_write_address =
+          prepare::PreparedVariadicAggregatePayloadWriteAddress{
+              .result_value_name = aggregate_payload_home.value_name,
+              .frame_slot_id = prepare::PreparedFrameSlotId{42},
+              .stack_offset_bytes = 16,
+          },
       .source_field = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
       .source_field_offset_bytes = std::size_t{0},
       .source_payload_offset_bytes = std::size_t{0},

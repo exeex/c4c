@@ -7109,6 +7109,12 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
                       .slot_id = prepare::PreparedFrameSlotId{9},
                       .offset_bytes = std::size_t{32},
                   },
+              .payload_write_address =
+                  prepare::PreparedVariadicAggregatePayloadWriteAddress{
+                      .result_value_name = c4c::ValueNameId{9},
+                      .frame_slot_id = prepare::PreparedFrameSlotId{9},
+                      .stack_offset_bytes = 32,
+                  },
               .source_field =
                   prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
               .source_field_offset_bytes = std::size_t{8},

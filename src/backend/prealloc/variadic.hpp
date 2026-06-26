@@ -238,6 +238,14 @@ prepared_variadic_aggregate_va_arg_source_class_name(
   return "unknown";
 }
 
+struct PreparedVariadicAggregatePayloadWriteAddress {
+  ValueNameId result_value_name = kInvalidValueName;
+  BlockLabelId materialization_block_label = kInvalidBlockLabel;
+  std::size_t materialization_instruction_index = 0;
+  PreparedFrameSlotId frame_slot_id = 0;
+  std::size_t stack_offset_bytes = 0;
+};
+
 struct PreparedVariadicAggregateVaArgAccessPlan {
   PreparedVariadicAggregateVaArgSourceClass source_class =
       PreparedVariadicAggregateVaArgSourceClass::Unknown;
@@ -246,6 +254,7 @@ struct PreparedVariadicAggregateVaArgAccessPlan {
   std::size_t payload_size_bytes = 0;
   std::size_t payload_align_bytes = 0;
   std::optional<PreparedValueHome> destination_payload_home;
+  std::optional<PreparedVariadicAggregatePayloadWriteAddress> payload_write_address;
   std::optional<PreparedVariadicVaListFieldKind> source_field;
   std::optional<std::size_t> source_field_offset_bytes;
   std::optional<std::size_t> source_payload_offset_bytes;

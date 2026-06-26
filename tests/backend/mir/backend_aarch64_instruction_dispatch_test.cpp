@@ -15413,6 +15413,13 @@ int aggregate_va_arg_dispatch_reports_missing_prepared_access_plan() {
           .payload_size_bytes = 24,
           .payload_align_bytes = 8,
           .destination_payload_home = homes.aggregate_destination_payload,
+          .payload_write_address =
+              prepare::PreparedVariadicAggregatePayloadWriteAddress{
+                  .result_value_name =
+                      homes.aggregate_destination_payload->value_name,
+                  .frame_slot_id = prepare::PreparedFrameSlotId{5},
+                  .stack_offset_bytes = 64,
+              },
           .source_field =
               prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
           .source_field_offset_bytes = std::size_t{8},

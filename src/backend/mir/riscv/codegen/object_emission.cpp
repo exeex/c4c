@@ -386,6 +386,12 @@ std::optional<std::string> diagnose_unsupported_prepared_variadic_helper_fragmen
     diagnostic += " helper operand homes";
     return diagnostic;
   }
+  if (*helper == prepare::PreparedVariadicEntryHelperKind::VaArgAggregate &&
+      (!homes->aggregate_access_plan.has_value() ||
+       !homes->aggregate_access_plan->payload_write_address.has_value())) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared va_arg_aggregate helper operand homes"};
+  }
   if (*helper == prepare::PreparedVariadicEntryHelperKind::VaStart) {
     if (auto diagnostic =
             rv64_variadic_va_start_materialization_diagnostic(*entry_plan, *homes)) {
