@@ -1178,6 +1178,11 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
   if (call_is_runtime_intrinsic_placeholder(call)) {
     return false;
   }
+  if (arg_index < call.arg_abi.size() &&
+      call.arg_abi[arg_index].type == bir::TypeKind::Ptr &&
+      call.arg_abi[arg_index].byval_copy) {
+    return true;
+  }
   if (arg_index < call.arg_types.size()) {
     return call.arg_types[arg_index] == bir::TypeKind::Ptr;
   }
@@ -1777,6 +1782,87 @@ struct ByvalPayloadLaneStore {
   return std::nullopt;
 }
 
+[[nodiscard]] std::vector<PreparedAggregateTransportChunk>
+collect_byval_stack_copy_store_chunks(const PreparedStackLayout& stack_layout,
+                                      const bir::Function& function,
+                                      const PreparedAddressingFunction* addressing,
+                                      BlockLabelId block_label,
+                                      std::size_t block_index,
+                                      std::size_t call_instruction_index,
+                                      std::string_view aggregate_name,
+                                      std::size_t copy_size_bytes) {
+  std::vector<PreparedAggregateTransportChunk> chunks;
+  if (addressing == nullptr || block_label == kInvalidBlockLabel ||
+      aggregate_name.empty() || copy_size_bytes == 0 ||
+      block_index >= function.blocks.size()) {
+    return chunks;
+  }
+
+  std::vector<bool> covered(copy_size_bytes, false);
+  const auto& block = function.blocks[block_index];
+  const auto end_index = std::min(call_instruction_index, block.insts.size());
+  for (std::size_t index = 0; index < end_index; ++index) {
+    const auto* store = std::get_if<bir::StoreLocalInst>(&block.insts[index]);
+    if (store == nullptr) {
+      continue;
+    }
+    const auto payload_offset =
+        aggregate_slot_suffix_offset(store->slot_name, aggregate_name);
+    if (!payload_offset.has_value() || *payload_offset >= copy_size_bytes) {
+      continue;
+    }
+    const auto* access = find_prepared_memory_access(*addressing, block_label, index);
+    if (access == nullptr) {
+      continue;
+    }
+    const auto payload_store =
+        byval_payload_lane_store(stack_layout, *access, *payload_offset);
+    if (!payload_store.has_value() ||
+        payload_store->size_bytes > copy_size_bytes - *payload_offset) {
+      continue;
+    }
+    bool overlaps = false;
+    for (std::size_t byte = 0; byte < payload_store->size_bytes; ++byte) {
+      if (covered[*payload_offset + byte]) {
+        overlaps = true;
+        break;
+      }
+    }
+    if (overlaps) {
+      return {};
+    }
+    for (std::size_t byte = 0; byte < payload_store->size_bytes; ++byte) {
+      covered[*payload_offset + byte] = true;
+    }
+    chunks.push_back(PreparedAggregateTransportChunk{
+        .chunk_index = chunks.size(),
+        .kind = PreparedAggregateTransportChunkKind::RequiredPayload,
+        .payload_offset_bytes = *payload_offset,
+        .source_offset_bytes = payload_store->stack_offset,
+        .destination_offset_bytes = *payload_offset,
+        .size_bytes = payload_store->size_bytes,
+        .align_bytes = payload_store->align_bytes,
+        .preferred_width_bytes = payload_store->size_bytes,
+        .fallback_width_bytes = {},
+    });
+  }
+  for (bool byte_covered : covered) {
+    if (!byte_covered) {
+      return {};
+    }
+  }
+  std::sort(chunks.begin(),
+            chunks.end(),
+            [](const PreparedAggregateTransportChunk& lhs,
+               const PreparedAggregateTransportChunk& rhs) {
+              return lhs.payload_offset_bytes < rhs.payload_offset_bytes;
+            });
+  for (std::size_t index = 0; index < chunks.size(); ++index) {
+    chunks[index].chunk_index = index;
+  }
+  return chunks;
+}
+
 [[nodiscard]] std::optional<std::size_t> byval_payload_load_source_offset(
     std::string_view result_name,
     std::string_view aggregate_name) {
@@ -1918,7 +2004,12 @@ find_latest_frame_slot_materialization(const PreparedAddressingFunction* address
       continue;
     }
     if (selected != nullptr && selected->inst_index == materialization.inst_index) {
-      return nullptr;
+      if (selected->frame_slot_id != materialization.frame_slot_id ||
+          selected->byte_offset != materialization.byte_offset ||
+          selected->result_value_name != materialization.result_value_name) {
+        return nullptr;
+      }
+      continue;
     }
     if (selected == nullptr || selected->inst_index < materialization.inst_index) {
       selected = &materialization;
@@ -2343,7 +2434,13 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
                : std::nullopt;
   }
 
-  if (argument.allows_local_aggregate_address_publication &&
+  const bool byval_pointer_abi_argument =
+      argument.arg_index < call.arg_abi.size() &&
+      call.arg_abi[argument.arg_index].type == bir::TypeKind::Ptr &&
+      call.arg_abi[argument.arg_index].byval_copy;
+
+  if ((argument.allows_local_aggregate_address_publication ||
+       byval_pointer_abi_argument) &&
       argument.source_encoding == PreparedStorageEncodingKind::Register &&
       source_home != nullptr &&
       source_home->kind == PreparedValueHomeKind::Register &&
@@ -2395,7 +2492,8 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
     }
   }
 
-  if (argument.allows_local_aggregate_address_publication &&
+  if ((argument.allows_local_aggregate_address_publication ||
+       byval_pointer_abi_argument) &&
       argument.source_encoding == PreparedStorageEncodingKind::ComputedAddress &&
       source_home != nullptr &&
       source_home->kind == PreparedValueHomeKind::PointerBasePlusOffset &&
@@ -2457,7 +2555,13 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
 }
 
 [[nodiscard]] std::optional<PreparedAggregateTransportPlan>
-plan_prepared_aggregate_transport(const bir::CallInst& call,
+plan_prepared_aggregate_transport(const PreparedNameTables& names,
+                                  const PreparedStackLayout& stack_layout,
+                                  const bir::Function& function,
+                                  const PreparedCallPlan& call_plan,
+                                  const PreparedAddressingFunction* addressing,
+                                  BlockLabelId block_label,
+                                  const bir::CallInst& call,
                                   const PreparedCallArgumentPlan& argument) {
   if (argument.arg_index >= call.arg_abi.size() ||
       !argument.source_selection.has_value()) {
@@ -2493,24 +2597,37 @@ plan_prepared_aggregate_transport(const bir::CallInst& call,
     };
 
     constexpr std::size_t max_chunk_size = 8;
-    for (std::size_t payload_offset = 0, chunk_index = 0;
-         payload_offset < abi.size_bytes;
-         ++chunk_index) {
-      const std::size_t chunk_size =
-          std::min(max_chunk_size, abi.size_bytes - payload_offset);
-      plan.chunks.push_back(PreparedAggregateTransportChunk{
-          .chunk_index = chunk_index,
-          .kind = PreparedAggregateTransportChunkKind::RequiredPayload,
-          .payload_offset_bytes = payload_offset,
-          .source_offset_bytes = *selection.source_stack_offset_bytes + payload_offset,
-          .destination_offset_bytes = payload_offset,
-          .size_bytes = chunk_size,
-          .align_bytes = std::min<std::size_t>(*selection.source_align_bytes,
-                                                chunk_size),
-          .preferred_width_bytes = chunk_size,
-          .fallback_width_bytes = {},
-      });
-      payload_offset += chunk_size;
+    if (selection.source_value_name.has_value()) {
+      const auto aggregate_name = names.value_names.spelling(*selection.source_value_name);
+      plan.chunks = collect_byval_stack_copy_store_chunks(stack_layout,
+                                                          function,
+                                                          addressing,
+                                                          block_label,
+                                                          call_plan.block_index,
+                                                          call_plan.instruction_index,
+                                                          aggregate_name,
+                                                          abi.size_bytes);
+    }
+    if (plan.chunks.empty()) {
+      for (std::size_t payload_offset = 0, chunk_index = 0;
+           payload_offset < abi.size_bytes;
+           ++chunk_index) {
+        const std::size_t chunk_size =
+            std::min(max_chunk_size, abi.size_bytes - payload_offset);
+        plan.chunks.push_back(PreparedAggregateTransportChunk{
+            .chunk_index = chunk_index,
+            .kind = PreparedAggregateTransportChunkKind::RequiredPayload,
+            .payload_offset_bytes = payload_offset,
+            .source_offset_bytes = *selection.source_stack_offset_bytes + payload_offset,
+            .destination_offset_bytes = payload_offset,
+            .size_bytes = chunk_size,
+            .align_bytes = std::min<std::size_t>(*selection.source_align_bytes,
+                                                  chunk_size),
+            .preferred_width_bytes = chunk_size,
+            .fallback_width_bytes = {},
+        });
+        payload_offset += chunk_size;
+      }
     }
     plan.scratch_requirements.push_back(
         PreparedAggregateTransportScratchRequirement{
@@ -3067,7 +3184,14 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                    arg_plan,
                                                    source_home);
           arg_plan.aggregate_transport =
-              plan_prepared_aggregate_transport(*call, arg_plan);
+              plan_prepared_aggregate_transport(prepared.names,
+                                                prepared.stack_layout,
+                                                function,
+                                                call_plan,
+                                                addressing_function,
+                                                block_label,
+                                                *call,
+                                                arg_plan);
           arg_plan.allows_local_aggregate_address_publication =
               arg_plan.source_selection.has_value() &&
               arg_plan.source_selection->kind ==

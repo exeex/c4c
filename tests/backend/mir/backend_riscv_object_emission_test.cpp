@@ -1142,7 +1142,7 @@ prepare::PreparedBirModule make_prepared_byval_stack_copy_same_module_call_modul
                       .source_slot_id = source_slot_id,
                       .source_stack_offset_bytes = std::size_t{96},
                       .source_register_bank =
-                          prepare::PreparedRegisterBank::AggregateAddress,
+                          prepare::PreparedRegisterBank::Gpr,
                       .source_selection =
                           prepare::PreparedCallArgumentSourceSelection{
                               .kind = prepare::PreparedCallArgumentSourceSelectionKind::

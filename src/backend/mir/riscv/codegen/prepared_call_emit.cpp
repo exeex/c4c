@@ -271,7 +271,7 @@ bool emit_riscv_byval_aggregate_address_argument(
       plan.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
       plan.source_register_bank !=
           std::optional<prepare::PreparedRegisterBank>{
-              prepare::PreparedRegisterBank::AggregateAddress} ||
+              prepare::PreparedRegisterBank::Gpr} ||
       !plan.source_register_name.has_value() ||
       plan.source_register_name->empty() ||
       plan.destination_register_bank.has_value() ||
@@ -337,10 +337,6 @@ bool emit_riscv_byval_aggregate_address_argument(
         chunk.destination_offset_bytes > transport->copy_size_bytes ||
         chunk.size_bytes > transport->copy_size_bytes - chunk.payload_offset_bytes ||
         chunk.size_bytes > transport->copy_size_bytes - chunk.destination_offset_bytes ||
-        chunk.source_offset_bytes < *transport->source_stack_offset_bytes ||
-        chunk.size_bytes >
-            *transport->source_stack_offset_bytes + transport->payload_size_bytes -
-                chunk.source_offset_bytes ||
         chunk.source_offset_bytes >
             std::numeric_limits<std::size_t>::max() - pending_stack_adjustment) {
       return false;

@@ -259,7 +259,7 @@ c4c_add_backend_codegen_route_test(
   SRC "${BACKEND_CASE_ROOT}/aarch64_byval_global_payload_address_call_boundary.c"
   TARGET_TRIPLE aarch64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_byval_global_payload_address_call_boundary.s"
-  REQUIRED_SNIPPETS "arg:|bl fa_s16|adrp x10, s17|ldrb w9, [x10]|strb w9, [sp, #136]|ldrb w9, [x10, #16]|strb w9, [sp, #152]|add x0, sp, #136|bl fa_s17"
+  REQUIRED_SNIPPETS "arg:|bl fa_s16|adrp x10, s17|ldrb w9, [x10]|strb w9, [sp, #136]|adrp x10, s17+16|add x10, x10, :lo12:s17+16|ldrb w9, [x10]|strb w9, [sp, #152]|add x0, sp, #136|bl fa_s17"
   FORBIDDEN_SNIPPETS "mov x0, x20"
   CASE_TIMEOUT_SEC 5
   LABELS aarch64 byval prepared_call_boundary aggregate_address probe
@@ -290,7 +290,7 @@ c4c_add_backend_codegen_route_test(
   SRC "${BACKEND_CASE_ROOT}/aarch64_hfa_global_payload_call_boundary.c"
   TARGET_TRIPLE aarch64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_hfa_global_payload_call_boundary.s"
-  REQUIRED_SNIPPETS "call_hfa_globals:|adrp x9, global_float2|ldr s0, [x9]|ldr s1, [x9, #4]|bl take_float2|adrp x9, global_double2|ldr d0, [x9]|ldr d1, [x9, #8]|bl take_double2"
+  REQUIRED_SNIPPETS "call_hfa_globals:|adrp x9, global_float2|ldr s0, [x9]|adrp x9, global_float2+4|add x9, x9, :lo12:global_float2+4|ldr s1, [x9]|bl take_float2|adrp x9, global_double2|ldr d0, [x9]|adrp x9, global_double2+8|add x9, x9, :lo12:global_double2+8|ldr d1, [x9]|bl take_double2"
   FORBIDDEN_SNIPPETS "fmov s0, s13|fmov s1, s|fmov d0, d13|fmov d1, d"
   CASE_TIMEOUT_SEC 5
   LABELS aarch64 hfa prepared_call_boundary scalar_fp probe
@@ -311,7 +311,7 @@ c4c_add_backend_codegen_route_test(
   SRC "${BACKEND_CASE_ROOT}/aarch64_f128_hfa_global_payload_call_boundary.c"
   TARGET_TRIPLE aarch64-linux-gnu
   OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/aarch64_f128_hfa_global_payload_call_boundary.s"
-  REQUIRED_SNIPPETS "call_f128_hfa_globals:|adrp x9, global_f128_2|ldr q0, [x9]|ldr q1, [x9, #16]|bl take_f128_2"
+  REQUIRED_SNIPPETS "call_f128_hfa_globals:|adrp x9, global_f128_2|ldr q0, [x9]|adrp x9, global_f128_2+16|add x9, x9, :lo12:global_f128_2+16|ldr q1, [x9]|bl take_f128_2"
   FORBIDDEN_SNIPPETS "mov q0, q13|mov q1, q|mov v0.16b, v13.16b|mov v1.16b, v"
   CASE_TIMEOUT_SEC 5
   LABELS aarch64 hfa prepared_call_boundary f128 probe
@@ -1089,7 +1089,7 @@ c4c_add_backend_dump_flag_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_byval_preserved_pointer_args.c"
   TARGET_TRIPLE riscv64-linux-gnu
   DUMP_FLAG --dump-prepared-bir
-  REQUIRED_SNIPPETS "bir.call i32 consume_pairbox(ptr byval(size=16, align=4) %lv.value, ptr %lv.value)|arg index=1 value_bank=gpr source_encoding=register source_value_id=20 source_placement=gpr:callee_saved#0/w1 source_reg=s1 source_bank=gpr dest_placement=gpr:call_argument#1/w1 dest_reg=a1 dest_bank=gpr arg.source_selection=prior_preservation|address_materialization block=entry inst_index=6 kind=frame_slot result=%lv.value"
+  REQUIRED_SNIPPETS "bir.call i32 consume_pairbox(ptr byval(size=16, align=4) %lv.value, ptr %lv.value)|arg index=0 value_bank=aggregate_address source_encoding=register source_value_id=20 source_placement=gpr:callee_saved#0/w1 source_reg=s1 source_bank=gpr dest_bank=none arg.source_selection=local_frame_address_materialization selection_source_value_id=20 selection_source_value=%lv.value selection_source_home=register selection_source_slot=#11 selection_source_stack_offset=0 selection_source_size=16 selection_source_align=4 selection_source_delta=0 selection_materialization_block=entry selection_materialization_inst=6 selection_materialization_slot=#11 selection_materialization_offset=0 selection_preserved_bank=none arg.aggregate_transport=stack_copy payload_size=16 payload_align=4 copy_size=16 copy_align=4 transport_source_slot=#11 transport_source_stack_offset=0 chunk index=0 kind=required_payload payload_offset=0 source_offset=0 dest_offset=0 size=4 align=4 preferred_width=4 chunk index=1 kind=required_payload payload_offset=4 source_offset=4 dest_offset=4 size=4 align=4 preferred_width=4 chunk index=2 kind=required_payload payload_offset=8 source_offset=8 dest_offset=8 size=4 align=4 preferred_width=4 chunk index=3 kind=required_payload payload_offset=12 source_offset=12 dest_offset=12 size=4 align=4 preferred_width=4 scratch=general_purpose scratch_width=8 scratch_overlap_source=no scratch_overlap_dest=no|arg index=1 value_bank=gpr source_encoding=register source_value_id=20 source_placement=gpr:callee_saved#0/w1 source_reg=s1 source_bank=gpr dest_placement=gpr:call_argument#1/w1 dest_reg=a1 dest_bank=gpr arg.source_selection=local_frame_address_materialization selection_source_value_id=20 selection_source_value=%lv.value selection_source_home=register selection_source_slot=#11 selection_source_stack_offset=0 selection_source_size=8 selection_source_align=8 selection_source_delta=0 selection_materialization_block=entry selection_materialization_inst=6 selection_materialization_slot=#11 selection_materialization_offset=0 selection_preserved_bank=none|address_materialization block=entry inst_index=6 kind=frame_slot result=%lv.value"
   FORBIDDEN_SNIPPETS "src/00140.c|%p.f"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 byval aggregate call pointer prepared_call_boundary dump

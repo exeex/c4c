@@ -2212,7 +2212,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
           argument.value_bank != prepare::PreparedRegisterBank::AggregateAddress ||
           argument.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
           argument.source_register_bank !=
-              prepare::PreparedRegisterBank::AggregateAddress ||
+              prepare::PreparedRegisterBank::Gpr ||
           argument.destination_register_bank.has_value() ||
           argument.destination_register_name.has_value() ||
           argument.destination_stack_offset_bytes.has_value() ||
@@ -2280,10 +2280,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
                 transport->copy_size_bytes - chunk.payload_offset_bytes ||
             chunk.size_bytes >
                 transport->copy_size_bytes - chunk.destination_offset_bytes ||
-            chunk.source_offset_bytes < *transport->source_stack_offset_bytes ||
-            chunk.size_bytes >
-                *transport->source_stack_offset_bytes +
-                    transport->payload_size_bytes - chunk.source_offset_bytes ||
             chunk.source_offset_bytes >
                 std::numeric_limits<std::size_t>::max() -
                     pending_stack_adjustment) {
