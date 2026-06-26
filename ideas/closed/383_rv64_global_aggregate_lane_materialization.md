@@ -1,6 +1,6 @@
 # RV64 Global Aggregate Lane Materialization
 
-Status: Open
+Status: Closed
 Type: Target object-route follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/382_rv64_object_route_prepared_local_memory_addressing.md`
@@ -95,3 +95,30 @@ prepared global memory facts suitable for semantic lowering.
   consumption remains.
 - Reject retaining the exact `main` `addr gs` lane failure behind a renamed
   helper or less precise diagnostic.
+
+## Closure Notes
+
+Closed on 2026-06-26 after the active runbook proved the target-side boundary:
+
+- focused RV64 object-emission fixtures prove explicit `LoadGlobalInst` plus
+  prepared `PreparedAddressBaseKind::GlobalSymbol` access facts are
+  target-consumable for aggregate lane loads, including offset `68`
+- raw `LoadLocalInst` with semantic `bir::MemoryAddress::BaseKind::GlobalSymbol`
+  now fails closed with:
+
+```text
+unsupported_global_data: RV64 object route requires prepared global-symbol memory access facts for LoadLocalInst global-address lanes
+```
+
+- `src/20030914-2.c` still reaches the same first source lane in `main`,
+  `entry`, inst `0`:
+
+```text
+%t0.global.aggregate.load.0 = bir.load_local i32 %t0.0, addr gs
+```
+
+That remaining failure is intentionally not target object-emission work. RV64
+object emission must not infer global aggregate lane facts from raw
+`addr <global>` spelling. The next owner is upstream publication of
+authoritative prepared global-symbol memory-access facts for those
+`LoadLocalInst` global-address lanes.
