@@ -1,35 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/386_rv64_object_route_same_module_byval_aggregate_call_args.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Rerun Representative And Route Next Boundary
+Current Step ID: 5
+Current Step Title: Broader Guard And Closure Review
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: Rerun Representative And Route Next Boundary dump contract repair
-completed before the representative rerun.
+Step 4: Rerun Representative And Route Next Boundary completed the
+representative rerun for `src/20030914-2.c`.
 
-Changed files:
-
-- `tests/backend/CMakeLists.txt`
-- `todo.md`
-
-The remaining prepared-dump failure was expectation drift after the byval
-regression repair. `backend_dump_riscv64_byval_preserved_pointer_args` now
-requires the current semantic contract for the second call boundary: arg0 keeps
-the prepared byval `stack_copy` transport from frame slot #11 with the four
-required payload chunks, and arg1 still publishes the preserved `s1` register
-source to call argument `a1` while explicitly selecting
-`arg.source_selection=local_frame_address_materialization` with matching
-frame-slot selection metadata.
+Supervisor-provided proof showed
+`llvm_gcc_c_torture_src_20030914_2_c` passes through the RV64 object route.
+The representative rerun did not expose a new distinct boundary, so execution
+can move to Step 5 broader guard and closure review.
 
 ## Suggested Next
 
-Execute the original Step 4 representative rerun for `src/20030914-2.c` through
-the RV64 object route and decide whether the active idea is ready for broader
-validation or needs another focused packet.
+Run Step 5 validation and closure review: choose the appropriate broader guard
+for the repaired RV64 byval aggregate call-argument route, then decide whether
+the active plan can close or needs lifecycle follow-up.
 
 ## Watchouts
 
@@ -40,8 +31,8 @@ validation or needs another focused packet.
 - Keep aggregate `va_arg` and non-register parameter-home work routed to ideas
   371 and 374 respectively.
 - Do not modify or rely on unrelated EV64 idea 385 for this lifecycle route.
-- This packet repaired the remaining prepared-dump contract after the
-  baseline-review regression repair; it did not run `src/20030914-2.c`.
+- Step 4 representative rerun is now recorded as passing; no additional focused
+  boundary was exposed by `src/20030914-2.c`.
 - `tests/backend/mir/backend_riscv_object_emission_test.cpp` is the existing
   test file for the delegated `backend_riscv_object_emission` proof target,
   even though the packet named `tests/backend/bir` for optional focused tests.
@@ -53,12 +44,10 @@ validation or needs another focused packet.
 
 ## Proof
 
-Delegated proof command:
+Supervisor-provided proof command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_dump_riscv64_byval_preserved_pointer_args|backend_codegen_route_aarch64_byval_global_payload_address_call_boundary|backend_codegen_route_aarch64_hfa_global_payload_call_boundary|backend_codegen_route_aarch64_f128_hfa_global_payload_call_boundary|backend_codegen_route_riscv64_byval_aggregate_fixed_call|backend_codegen_route_riscv64_byval_preserved_pointer_args|backend_codegen_route_riscv64_byval_formal_gpr_publication|backend_rv64_runtime_riscv64_byval_aggregate_fixed_call|backend_rv64_runtime_riscv64_byval_preserved_pointer_args|backend_rv64_runtime_riscv64_byval_formal_gpr_publication|backend_call_boundary_effect_plan|backend_riscv_object_emission)$'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_20030914_2_c$'
 ```
 
-Result: passed with the delegated 12-test scope, including
-`backend_dump_riscv64_byval_preserved_pointer_args`. Canonical proof log:
-`test_after.log`.
+Result: passed 1/1. Canonical proof log: `test_after.log`.
