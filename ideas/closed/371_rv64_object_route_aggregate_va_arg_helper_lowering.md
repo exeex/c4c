@@ -1,6 +1,6 @@
 # RV64 Object Route Aggregate `va_arg` Helper Lowering
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -71,3 +71,45 @@ contract discovery.
   lowering and fail-closed unsupported behavior.
 - Reject diagnostic-only renames that keep the same unsupported
   `va_arg_aggregate` helper boundary.
+
+## Closure Notes
+
+Closed after the committed lowering slices:
+
+- `2b670bd1 add aggregate va_arg helper contract coverage`
+- `cfb28244 publish aggregate va_arg payload write address`
+- `cea00708 lower RV64 aggregate va_arg overflow helper`
+
+The RV64 object route now lowers the first supported overflow-area aggregate
+`va_arg` helper shape from explicit prepared facts: source `va_list` home,
+overflow pointer field, `payload_write_address`, copy size/alignment, stride,
+and frame resources. Focused backend coverage proves both the supported copy
+path and fail-closed diagnostics when required helper facts are absent.
+
+`src/920908-1.c` and
+`tests/backend/case/riscv64_variadic_aggregate_overflow_helper_contract.c`
+advance past the prior aggregate helper boundary:
+
+```text
+unsupported_variadic_helper_lowering: RV64 object route does not yet lower va_arg_aggregate helper
+```
+
+They now expose the separate entry-parameter home boundary:
+
+```text
+unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes
+```
+
+That boundary is not aggregate `va_arg` helper lowering. It remains outside
+this idea's scope and is already owned by the open follow-up
+`ideas/open/374_rv64_object_route_non_register_param_homes.md`; no duplicate
+open idea was created.
+
+Close-time regression guard used matching backend logs:
+
+- `test_before.log`: passed=326 failed=0 total=326
+- `test_after.log`: passed=326 failed=0 total=326
+- no newly failing tests
+- accepted with `--allow-non-decreasing-passed` because this lifecycle-only
+  close follows the already accepted backend roll-forward and does not change
+  implementation code
