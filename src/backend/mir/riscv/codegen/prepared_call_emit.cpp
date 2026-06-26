@@ -232,6 +232,52 @@ bool emit_riscv_prior_preserved_gpr_argument(
   return true;
 }
 
+bool emit_riscv_callee_saved_gpr_preservation_effect(
+    std::string& out,
+    const c4c::backend::prepare::PreparedCallBoundaryEffectPlan& effect,
+    c4c::backend::prepare::PreparedCallBoundaryEffectKind effect_kind,
+    c4c::backend::prepare::PreparedMovePhase phase) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (effect.effect_kind != effect_kind || effect.phase != phase ||
+      effect.classification_status !=
+          prepare::PreparedCallBoundaryMoveClassificationStatus::Available ||
+      effect.preservation_route !=
+          prepare::PreparedCallPreservationRoute::CalleeSavedRegister) {
+    return false;
+  }
+
+  const auto& source = effect.source;
+  const auto& destination = effect.destination;
+  if (source.storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      destination.storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      source.register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::Gpr} ||
+      destination.register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::Gpr} ||
+      !source.register_name.has_value() ||
+      source.register_name->empty() ||
+      !destination.register_name.has_value() ||
+      destination.register_name->empty() ||
+      source.contiguous_width != 1 ||
+      destination.contiguous_width != 1 ||
+      source.occupied_register_names.size() > 1 ||
+      destination.occupied_register_names.size() > 1) {
+    return false;
+  }
+
+  if (*source.register_name != *destination.register_name) {
+    out += "    mv ";
+    out += *destination.register_name;
+    out += ", ";
+    out += *source.register_name;
+    out += "\n";
+  }
+  return true;
+}
+
 bool emit_riscv_byval_aggregate_address_argument(
     std::string& out,
     const c4c::backend::prepare::PreparedBirModule& prepared,
@@ -419,6 +465,31 @@ std::optional<std::string> emit_riscv_simple_call(
 
   std::string out;
   std::size_t active_stack_adjustment_bytes = 0;
+  const auto* before_call_bundle = prepare::find_indexed_prepared_move_bundle(
+      &context.lookups->move_bundles,
+      nullptr,
+      prepare::PreparedMovePhase::BeforeCall,
+      block_index,
+      context.instruction_index);
+  const auto before_call_effects =
+      prepare::plan_prepared_call_boundary_effects(
+          *call_plan,
+          before_call_bundle,
+          nullptr);
+  for (const auto& effect : before_call_effects) {
+    if (effect.effect_kind !=
+        prepare::PreparedCallBoundaryEffectKind::PreservationHomePopulation) {
+      continue;
+    }
+    if (!emit_riscv_callee_saved_gpr_preservation_effect(
+            out,
+            effect,
+            prepare::PreparedCallBoundaryEffectKind::PreservationHomePopulation,
+            prepare::PreparedMovePhase::BeforeCall)) {
+      return std::nullopt;
+    }
+  }
+
   for (std::size_t arg_index = 0; arg_index < call.args.size(); ++arg_index) {
     const auto* plan = prepare::find_indexed_prepared_immediate_call_argument(
         &context.lookups->call_plans,
@@ -550,6 +621,31 @@ std::optional<std::string> emit_riscv_simple_call(
     const std::string& source_register = *call_plan->result->source_register_name;
     if (destination_register != source_register) {
       out += "    mv " + destination_register + ", " + source_register + "\n";
+    }
+  }
+
+  const auto* after_call_bundle = prepare::find_indexed_prepared_move_bundle(
+      &context.lookups->move_bundles,
+      nullptr,
+      prepare::PreparedMovePhase::AfterCall,
+      block_index,
+      context.instruction_index);
+  const auto after_call_effects =
+      prepare::plan_prepared_call_boundary_effects(
+          *call_plan,
+          nullptr,
+          after_call_bundle);
+  for (const auto& effect : after_call_effects) {
+    if (effect.effect_kind !=
+        prepare::PreparedCallBoundaryEffectKind::PreservationRepublication) {
+      continue;
+    }
+    if (!emit_riscv_callee_saved_gpr_preservation_effect(
+            out,
+            effect,
+            prepare::PreparedCallBoundaryEffectKind::PreservationRepublication,
+            prepare::PreparedMovePhase::AfterCall)) {
+      return std::nullopt;
     }
   }
 

@@ -1437,6 +1437,41 @@ prepare::PreparedBirModule make_prepared_prior_preserved_arg_call_module() {
                               .slot_index = 1,
                               .contiguous_width = 1,
                           },
+                      .preservation_source =
+                          prepare::PreparedCallBoundaryEffectEndpoint{
+                              .encoding =
+                                  prepare::PreparedStorageEncodingKind::Register,
+                              .storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .value_id = prepare::PreparedValueId{1},
+                              .value_name = param_name,
+                              .register_name = std::string{"a0"},
+                              .register_bank = prepare::PreparedRegisterBank::Gpr,
+                              .contiguous_width = 1,
+                              .occupied_register_names = {std::string{"a0"}},
+                          },
+                      .preservation_destination =
+                          prepare::PreparedCallBoundaryEffectEndpoint{
+                              .encoding =
+                                  prepare::PreparedStorageEncodingKind::Register,
+                              .storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .value_id = prepare::PreparedValueId{1},
+                              .value_name = param_name,
+                              .register_name = std::string{"s1"},
+                              .register_bank = prepare::PreparedRegisterBank::Gpr,
+                              .contiguous_width = 1,
+                              .occupied_register_names = {std::string{"s1"}},
+                              .callee_saved_save_index = std::size_t{0},
+                              .register_placement =
+                                  prepare::PreparedRegisterPlacement{
+                                      .bank = prepare::PreparedRegisterBank::Gpr,
+                                      .pool = prepare::PreparedRegisterSlotPool::
+                                          CalleeSaved,
+                                      .slot_index = 1,
+                                      .contiguous_width = 1,
+                                  },
+                          },
                   }},
               },
               prepare::PreparedCallPlan{
@@ -1478,6 +1513,40 @@ prepare::PreparedBirModule make_prepared_prior_preserved_arg_call_module() {
                   },
               },
           },
+  });
+  const prepare::PreparedRegisterPlacement s1_placement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedSavedRegisterSlotPlacement s1_slot{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "s1",
+      .contiguous_width = 1,
+      .occupied_register_names = {"s1"},
+      .save_index = 0,
+      .register_placement = s1_placement,
+      .slot_id = prepare::PreparedFrameSlotId{20},
+      .stack_offset_bytes = std::size_t{0},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+      .fixed_location = true,
+  };
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+      .saved_callee_registers =
+          {prepare::PreparedSavedRegister{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "s1",
+              .contiguous_width = 1,
+              .occupied_register_names = {"s1"},
+              .save_index = 0,
+              .placement = s1_placement,
+              .slot_placement = s1_slot,
+          }},
   });
   return prepared;
 }
@@ -5381,12 +5450,29 @@ int builds_prepared_prior_preserved_arg_call_object() {
       module->relocations[0].symbol != probe->id ||
       module->relocations[1].symbol != probe->id ||
       module->relocations[0].offset >= module->relocations[1].offset ||
-      module->relocations[1].offset < main->value + 16) {
+      module->relocations[0].offset < main->value + 20 ||
+      module->relocations[1].offset < main->value + 36) {
     return fail("expected two direct probe call relocations");
   }
-  if (read_u32(text->bytes, module->relocations[1].offset - 4) !=
+  if (read_u32(text->bytes, main->value + 0) != 0xfe010113 ||
+      read_u32(text->bytes, main->value + 4) != 0x00113c23 ||
+      read_u32(text->bytes, main->value + 8) != 0x00913023 ||
+      read_u32(text->bytes, module->relocations[0].offset - 8) !=
+          0x00050493 ||
+      read_u32(text->bytes, module->relocations[0].offset - 4) !=
+          0x00048513 ||
+      read_u32(text->bytes, module->relocations[1].offset - 8) !=
+          0x00048513 ||
+      read_u32(text->bytes, module->relocations[1].offset - 4) !=
       0x00048513) {
-    return fail("expected later call argument to reload from preserved s1 into a0");
+    return fail("expected preservation population/republication and later reload");
+  }
+  const auto epilogue_offset = main->value + main->size_bytes - 16;
+  if (read_u32(text->bytes, epilogue_offset + 0) != 0x00013483 ||
+      read_u32(text->bytes, epilogue_offset + 4) != 0x01813083 ||
+      read_u32(text->bytes, epilogue_offset + 8) != 0x02010113 ||
+      read_u32(text->bytes, epilogue_offset + 12) != 0x00008067) {
+    return fail("expected s1 restore before ra restore and return");
   }
   return 0;
 }
@@ -5420,6 +5506,31 @@ int rejects_prepared_prior_preserved_arg_call_fail_closed_shapes() {
   selection.preserved_stack_offset_bytes = std::size_t{24};
   selection.preserved_stack_size_bytes = std::size_t{8};
   selection.preserved_stack_align_bytes = std::size_t{8};
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_prior_preserved_arg_call_module();
+  prepared.frame_plan.functions[0]
+      .saved_callee_registers[0]
+      .slot_placement
+      ->size_bytes = std::size_t{4};
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved GPR save slots") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_prior_preserved_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .preserved_values[0]
+      .preservation_source
+      .storage_kind = prepare::PreparedMoveStorageKind::None;
   if (expect_prepared_rejection_diagnostic(
           prepared,
           "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") !=
