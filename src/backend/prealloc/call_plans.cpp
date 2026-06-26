@@ -1178,9 +1178,6 @@ find_same_block_local_frame_address_derived_source(const PreparedNameTables& nam
   if (call_is_runtime_intrinsic_placeholder(call)) {
     return false;
   }
-  if (arg_index < call.arg_abi.size() && call.arg_abi[arg_index].byval_copy) {
-    return false;
-  }
   if (arg_index < call.arg_types.size()) {
     return call.arg_types[arg_index] == bir::TypeKind::Ptr;
   }
@@ -2381,8 +2378,17 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
             *selection.address_materialization_byte_offset);
       }
       selection.source_pointer_byte_delta = selected_source_delta;
-      selection.source_size_bytes = source_home->size_bytes.value_or(std::size_t{8});
-      selection.source_align_bytes = source_home->align_bytes.value_or(std::size_t{8});
+      if (argument.arg_index < call.arg_abi.size() &&
+          call.arg_abi[argument.arg_index].byval_copy &&
+          call.arg_abi[argument.arg_index].size_bytes > 0) {
+        selection.source_size_bytes = call.arg_abi[argument.arg_index].size_bytes;
+        selection.source_align_bytes = call.arg_abi[argument.arg_index].align_bytes == 0
+                                           ? source_home->align_bytes.value_or(std::size_t{8})
+                                           : call.arg_abi[argument.arg_index].align_bytes;
+      } else {
+        selection.source_size_bytes = source_home->size_bytes.value_or(std::size_t{8});
+        selection.source_align_bytes = source_home->align_bytes.value_or(std::size_t{8});
+      }
       return selection.source_stack_offset_bytes.has_value()
                  ? std::optional<PreparedCallArgumentSourceSelection>{selection}
                  : std::nullopt;
@@ -2415,8 +2421,17 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
             static_cast<std::size_t>(*selection.address_materialization_byte_offset);
       }
       selection.source_pointer_byte_delta = selected_source_delta;
-      selection.source_size_bytes = source_home->size_bytes.value_or(std::size_t{8});
-      selection.source_align_bytes = source_home->align_bytes.value_or(std::size_t{8});
+      if (argument.arg_index < call.arg_abi.size() &&
+          call.arg_abi[argument.arg_index].byval_copy &&
+          call.arg_abi[argument.arg_index].size_bytes > 0) {
+        selection.source_size_bytes = call.arg_abi[argument.arg_index].size_bytes;
+        selection.source_align_bytes = call.arg_abi[argument.arg_index].align_bytes == 0
+                                           ? source_home->align_bytes.value_or(std::size_t{8})
+                                           : call.arg_abi[argument.arg_index].align_bytes;
+      } else {
+        selection.source_size_bytes = source_home->size_bytes.value_or(std::size_t{8});
+        selection.source_align_bytes = source_home->align_bytes.value_or(std::size_t{8});
+      }
       return selection.source_stack_offset_bytes.has_value()
                  ? std::optional<PreparedCallArgumentSourceSelection>{selection}
                  : std::nullopt;
@@ -2445,13 +2460,70 @@ select_prepared_call_argument_source(const PreparedBirModule& prepared,
 plan_prepared_aggregate_transport(const bir::CallInst& call,
                                   const PreparedCallArgumentPlan& argument) {
   if (argument.arg_index >= call.arg_abi.size() ||
-      !argument.source_selection.has_value() ||
-      argument.source_selection->kind !=
-          PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane) {
+      !argument.source_selection.has_value()) {
     return std::nullopt;
   }
   const auto& abi = call.arg_abi[argument.arg_index];
   const auto& selection = *argument.source_selection;
+  if (selection.kind ==
+      PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization) {
+    if (abi.type != bir::TypeKind::Ptr || !abi.byval_copy ||
+        abi.primary_class != bir::AbiValueClass::Memory ||
+        abi.size_bytes == 0 || abi.align_bytes == 0 ||
+        !selection.source_stack_offset_bytes.has_value() ||
+        !selection.source_size_bytes.has_value() ||
+        !selection.source_align_bytes.has_value() ||
+        *selection.source_size_bytes < abi.size_bytes) {
+      return std::nullopt;
+    }
+
+    PreparedAggregateTransportPlan plan{
+        .kind = PreparedAggregateTransportKind::StackCopy,
+        .payload_size_bytes = *selection.source_size_bytes,
+        .payload_align_bytes = *selection.source_align_bytes,
+        .copy_size_bytes = abi.size_bytes,
+        .copy_align_bytes = abi.align_bytes,
+        .source_slot_id = selection.source_slot_id,
+        .source_stack_offset_bytes = selection.source_stack_offset_bytes,
+        .destination_stack_offset_bytes = argument.destination_stack_offset_bytes,
+        .destination_stack_size_bytes = argument.destination_stack_size_bytes,
+        .chunks = {},
+        .lanes = {},
+        .scratch_requirements = {},
+    };
+
+    constexpr std::size_t max_chunk_size = 8;
+    for (std::size_t payload_offset = 0, chunk_index = 0;
+         payload_offset < abi.size_bytes;
+         ++chunk_index) {
+      const std::size_t chunk_size =
+          std::min(max_chunk_size, abi.size_bytes - payload_offset);
+      plan.chunks.push_back(PreparedAggregateTransportChunk{
+          .chunk_index = chunk_index,
+          .kind = PreparedAggregateTransportChunkKind::RequiredPayload,
+          .payload_offset_bytes = payload_offset,
+          .source_offset_bytes = *selection.source_stack_offset_bytes + payload_offset,
+          .destination_offset_bytes = payload_offset,
+          .size_bytes = chunk_size,
+          .align_bytes = std::min<std::size_t>(*selection.source_align_bytes,
+                                                chunk_size),
+          .preferred_width_bytes = chunk_size,
+          .fallback_width_bytes = {},
+      });
+      payload_offset += chunk_size;
+    }
+    plan.scratch_requirements.push_back(
+        PreparedAggregateTransportScratchRequirement{
+            .kind = PreparedAggregateTransportScratchKind::GeneralPurpose,
+            .width_bytes = max_chunk_size,
+            .may_overlap_source = false,
+            .may_overlap_destination = false,
+        });
+    return plan;
+  }
+  if (selection.kind != PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane) {
+    return std::nullopt;
+  }
   const bool has_register_destination =
       argument.destination_register_name.has_value() &&
       argument.destination_register_bank.has_value() &&
