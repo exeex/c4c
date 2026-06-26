@@ -1981,14 +1981,38 @@ std::optional<Rv64NormalizedBranchPredicate> normalize_rv64_branch_predicate(
         .rhs = rhs,
     };
   }
-  if (opcode == c4c::backend::bir::BinaryOpcode::Sgt &&
-      lhs.type == c4c::backend::bir::TypeKind::I32 &&
-      rhs.type == c4c::backend::bir::TypeKind::I32) {
-    return Rv64NormalizedBranchPredicate{
-        .opcode = c4c::backend::bir::BinaryOpcode::Slt,
-        .lhs = rhs,
-        .rhs = lhs,
-    };
+  const bool matching_scalar_integer_operands =
+      lhs.type == rhs.type &&
+      lhs.type == c4c::backend::bir::TypeKind::I32;
+  if (matching_scalar_integer_operands) {
+    switch (opcode) {
+      case c4c::backend::bir::BinaryOpcode::Sgt:
+        return Rv64NormalizedBranchPredicate{
+            .opcode = c4c::backend::bir::BinaryOpcode::Slt,
+            .lhs = rhs,
+            .rhs = lhs,
+        };
+      case c4c::backend::bir::BinaryOpcode::Sle:
+        return Rv64NormalizedBranchPredicate{
+            .opcode = c4c::backend::bir::BinaryOpcode::Sge,
+            .lhs = rhs,
+            .rhs = lhs,
+        };
+      case c4c::backend::bir::BinaryOpcode::Ugt:
+        return Rv64NormalizedBranchPredicate{
+            .opcode = c4c::backend::bir::BinaryOpcode::Ult,
+            .lhs = rhs,
+            .rhs = lhs,
+        };
+      case c4c::backend::bir::BinaryOpcode::Ule:
+        return Rv64NormalizedBranchPredicate{
+            .opcode = c4c::backend::bir::BinaryOpcode::Uge,
+            .lhs = rhs,
+            .rhs = lhs,
+        };
+      default:
+        break;
+    }
   }
   return std::nullopt;
 }
@@ -5519,7 +5543,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
       select.result.type != c4c::backend::bir::TypeKind::I64) {
     return std::nullopt;
   }
-  const auto funct3 = rv64_branch_funct3(select.predicate);
+  const auto normalized =
+      normalize_rv64_branch_predicate(select.predicate, select.lhs, select.rhs);
+  if (!normalized.has_value()) {
+    return std::nullopt;
+  }
+  const auto funct3 = rv64_branch_funct3(normalized->opcode);
   if (!funct3.has_value()) {
     return std::nullopt;
   }
@@ -5551,14 +5580,14 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
                                           stack_layout,
                                           names,
                                           lookups,
-                                          select.lhs,
+                                          normalized->lhs,
                                           stack_frame_bytes) ||
       !append_rv64_move_value_to_register(fragment,
                                           29,
                                           stack_layout,
                                           names,
                                           lookups,
-                                          select.rhs,
+                                          normalized->rhs,
                                           stack_frame_bytes)) {
     return std::nullopt;
   }
