@@ -1,6 +1,6 @@
 # Prepared I16 Same-Module Call Argument ABI Publication
 
-Status: Open
+Status: Closed
 Type: Follow-up producer repair idea
 Parent: `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`
 
@@ -97,3 +97,23 @@ formal publication.
 - Reject a green `src/divmod-1.c` result if prepared dumps still show the old
   no-bank same-module `i16` call-argument publication hidden behind a new
   abstraction name.
+
+## Lifecycle Notes
+
+- 2026-06-26: Closed after the producer-side same-module `i16` call-argument
+  publication repair made the former frame-slot call arguments publish
+  target-consumable GPR call-plan facts: `value_bank=gpr`,
+  `dest_placement=gpr:call_argument#N/w1`, `dest_reg=aN`, and
+  `dest_bank=gpr`, with `missing_frame_slot_arg_publication=yes` preserving
+  the producer boundary.
+- 2026-06-26: Step 3 proof for `src/divmod-1.c` shows the remaining failure is
+  generic `unsupported_instruction_fragment`, not the no-bank same-module
+  `i16` call-argument shape owned by this idea. The residual belongs back to
+  `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md` or a
+  narrower follow-up opened from that route.
+- 2026-06-26: Close gate passed with backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+  Existing `test_before.log` and regenerated `test_after.log` both report
+  326/326 passing backend tests, with no new failures. The lifecycle-only
+  close comparison used `--allow-non-decreasing-passed` because the accepted
+  backend pass count remained unchanged.
