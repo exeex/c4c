@@ -614,6 +614,12 @@ std::optional<std::int64_t> integer_immediate_for_value(
   return home->immediate_i32;
 }
 
+bool is_rv64_null_pointer_value(const c4c::backend::bir::Value& value) {
+  return value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+         value.type == c4c::backend::bir::TypeKind::Ptr &&
+         value.immediate == 0 && value.immediate_bits == 0;
+}
+
 std::optional<std::int64_t> materializable_fpr_immediate_bits(
     const c4c::backend::bir::Value& value) {
   if (value.kind != c4c::backend::bir::Value::Kind::Immediate) {
@@ -1174,6 +1180,10 @@ bool append_rv64_move_value_to_register(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Value& value,
     std::size_t stack_frame_bytes) {
+  if (is_rv64_null_pointer_value(value)) {
+    append_rv64_load_immediate(fragment, destination, 0);
+    return true;
+  }
   const auto immediate = integer_immediate_for_value(names, lookups, value);
   if (immediate.has_value()) {
     if (!fits_signed_12_bit_immediate(*immediate)) {
@@ -1229,6 +1239,20 @@ std::optional<Rv64NormalizedBranchPredicate> normalize_rv64_branch_predicate(
     c4c::backend::bir::BinaryOpcode opcode,
     const c4c::backend::bir::Value& lhs,
     const c4c::backend::bir::Value& rhs) {
+  if (lhs.type == c4c::backend::bir::TypeKind::Ptr ||
+      rhs.type == c4c::backend::bir::TypeKind::Ptr) {
+    if (opcode == c4c::backend::bir::BinaryOpcode::Ne &&
+        lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        lhs.type == c4c::backend::bir::TypeKind::Ptr &&
+        is_rv64_null_pointer_value(rhs)) {
+      return Rv64NormalizedBranchPredicate{
+          .opcode = opcode,
+          .lhs = lhs,
+          .rhs = rhs,
+      };
+    }
+    return std::nullopt;
+  }
   if (rv64_branch_funct3(opcode).has_value()) {
     return Rv64NormalizedBranchPredicate{
         .opcode = opcode,

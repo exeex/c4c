@@ -45,6 +45,24 @@ std::uint32_t read_u32(const std::vector<std::uint8_t>& bytes,
          (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
 }
 
+bir::Value null_pointer_value() {
+  return bir::Value{
+      .kind = bir::Value::Kind::Immediate,
+      .type = bir::TypeKind::Ptr,
+      .immediate = 0,
+      .immediate_bits = 0,
+  };
+}
+
+bir::Value nonnull_pointer_immediate(std::int64_t value) {
+  return bir::Value{
+      .kind = bir::Value::Kind::Immediate,
+      .type = bir::TypeKind::Ptr,
+      .immediate = value,
+      .immediate_bits = static_cast<std::uint64_t>(value),
+  };
+}
+
 std::uint64_t read_u64(const std::vector<std::uint8_t>& bytes,
                        std::size_t offset) {
   std::uint64_t value = 0;
@@ -283,7 +301,8 @@ prepare::PreparedBirModule make_prepared_successor_entry_copy_module() {
 
 prepare::PreparedBirModule make_prepared_fused_compare_branch_module(
     bir::BinaryOpcode predicate,
-    bir::TypeKind compare_type = bir::TypeKind::I32) {
+    bir::TypeKind compare_type = bir::TypeKind::I32,
+    std::optional<bir::Value> rhs_override = std::nullopt) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -295,6 +314,9 @@ prepare::PreparedBirModule make_prepared_fused_compare_branch_module(
   const auto condition_name = prepared.names.value_names.intern("%cmp");
   const auto lhs_name = prepared.names.value_names.intern("%lhs");
   const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto lhs_value = bir::Value::named(compare_type, "%lhs");
+  const auto rhs_value =
+      rhs_override.has_value() ? *rhs_override : bir::Value::named(compare_type, "%rhs");
 
   bir::Block entry{
       .label = "entry",
@@ -353,8 +375,8 @@ prepare::PreparedBirModule make_prepared_fused_compare_branch_module(
                   .condition_value = bir::Value::named(bir::TypeKind::I32, "%cmp"),
                   .predicate = predicate,
                   .compare_type = compare_type,
-                  .lhs = bir::Value::named(compare_type, "%lhs"),
-                  .rhs = bir::Value::named(compare_type, "%rhs"),
+                  .lhs = lhs_value,
+                  .rhs = rhs_value,
                   .can_fuse_with_branch = true,
                   .true_label = true_label,
                   .false_label = false_label,
@@ -4587,6 +4609,54 @@ int builds_prepared_fused_sgt_i32_compare_branch_object() {
   return 0;
 }
 
+int builds_prepared_fused_ne_ptr_null_compare_branch_object() {
+  const auto prepared = make_prepared_fused_compare_branch_module(
+      bir::BinaryOpcode::Ne,
+      bir::TypeKind::Ptr,
+      null_pointer_value());
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared fused ne ptr null compare branch RV64 object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  const auto* true_label = object::find_symbol(*module, ".Lcmp_branch_is_true");
+  const auto* false_label = object::find_symbol(*module, ".Lcmp_branch_is_false");
+  if (text == nullptr || function == nullptr || true_label == nullptr ||
+      false_label == nullptr) {
+    return fail("expected fused pointer-null compare branch object symbols and text");
+  }
+  if (text->bytes.size() != 32 || text->size_bytes != 32 ||
+      function->value != 0 || function->size_bytes != 32 ||
+      true_label->value != 16 || false_label->value != 24) {
+    return fail("expected fused pointer-null compare branch object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00028e13 ||
+      read_u32(text->bytes, 4) != 0x00000e93 ||
+      read_u32(text->bytes, 8) != 0x01de1063 ||
+      read_u32(text->bytes, 12) != 0x0000006f ||
+      read_u32(text->bytes, 16) != 0x00100513 ||
+      read_u32(text->bytes, 20) != 0x00008067 ||
+      read_u32(text->bytes, 24) != 0x00000513 ||
+      read_u32(text->bytes, 28) != 0x00008067) {
+    return fail("expected ne ptr null branch to lower as bne against zero");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 8 ||
+      module->relocations[0].type != R_RISCV_BRANCH ||
+      module->relocations[0].symbol != true_label->id ||
+      module->relocations[0].addend != 0 ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 12 ||
+      module->relocations[1].type != R_RISCV_JAL ||
+      module->relocations[1].symbol != false_label->id ||
+      module->relocations[1].addend != 0) {
+    return fail("expected fused pointer-null compare branch local relocations");
+  }
+  return 0;
+}
+
 int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering";
@@ -4599,6 +4669,27 @@ int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
   if (expect_prepared_rejection_diagnostic(
           make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Sgt,
                                                     bir::TypeKind::I64),
+          diagnostic) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Eq,
+                                                    bir::TypeKind::Ptr,
+                                                    null_pointer_value()),
+          diagnostic) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_fused_compare_branch_module(
+              bir::BinaryOpcode::Ne,
+              bir::TypeKind::Ptr,
+              nonnull_pointer_immediate(8)),
+          diagnostic) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ne,
+                                                    bir::TypeKind::Ptr),
           diagnostic) != 0) {
     return 1;
   }
@@ -7741,6 +7832,7 @@ int main() {
   status |= rejects_prepared_critical_edge_parallel_copy_with_shared_diagnostic();
   status |= builds_prepared_successor_entry_copy_from_shared_traversal();
   status |= builds_prepared_fused_sgt_i32_compare_branch_object();
+  status |= builds_prepared_fused_ne_ptr_null_compare_branch_object();
   status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
