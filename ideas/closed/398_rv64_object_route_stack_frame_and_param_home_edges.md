@@ -1,6 +1,6 @@
 # RV64 Object Route Stack Frame And Parameter Home Edges
 
-Status: Open
+Status: Closed
 Type: Follow-up repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -59,3 +59,25 @@ Representatives:
 - Reject ABI changes that pass object compilation but misplace parameters,
   callee-saved values, or variadic `va_list` state at runtime.
 - Reject expectation downgrades or allowlist filtering.
+
+## Lifecycle Notes
+
+- 2026-06-26: Closed after refreshed Step 1 proof found no current owned RV64
+  object-route stack-frame, callee-saved save-slot, parameter-home, or
+  function-admission diagnostic in the selected seed bucket.
+  `930603-1.c`, `20001017-1.c`, and `va-arg-21.c` all reported
+  `c4cll_status=0` and `prepared_status=0`.
+- 2026-06-26: Five stale-log nearby seeds (`20000412-2.c`, `20000706-2.c`,
+  `20000717-4.c`, `20010605-2.c`, and `20011008-3.c`) stopped before
+  prepared handoff with semantic LIR-to-BIR diagnostics, so they are not
+  current 398 object-route evidence.
+- 2026-06-26: Fresh prepared facts show explicit callee-saved save slots and
+  frame facts for `930603-1.c`, explicit register-passed parameter homes for
+  `20001017-1.c`, and currently admitted stack-passed formals. The remaining
+  `va-arg-21.c` issue is producer-side missing
+  `helper_operand_homes.va_start.destination_va_list_address` metadata, split
+  into `ideas/open/408_prepared_va_start_destination_address_helper_operand_publication.md`.
+- 2026-06-26: Close gate passed with the backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`. The
+  rolled-forward `test_before.log` and regenerated `test_after.log` both
+  reported 326/326 passing backend tests with no new failures.

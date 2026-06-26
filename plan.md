@@ -1,171 +1,151 @@
-# RV64 Object Route Stack Frame And Parameter Home Edges Runbook
+# Prepared `va_start` Destination Address Helper Operand Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/398_rv64_object_route_stack_frame_and_param_home_edges.md
-Activated after: ideas/closed/397_rv64_object_route_move_bundle_target_shapes.md
+Source Idea: ideas/open/408_prepared_va_start_destination_address_helper_operand_publication.md
+Activated after: ideas/closed/398_rv64_object_route_stack_frame_and_param_home_edges.md
 
 ## Purpose
 
-Repair the current RV64 prepared-object route bucket where stack-frame,
-callee-saved GPR, parameter-home, or related function-admission facts block
-object emission.
+Repair the producer-side prepared metadata gap where supportable RV64
+`va_start` helper calls still lack an explicit destination `va_list` address
+helper operand fact.
 
 ## Goal
 
-Classify and repair reusable ABI admission edges so prepared stack frames,
-callee-saved save slots, GPR/FPR parameter homes, and the narrow current
-variadic admission boundary lower through RV64 object emission using explicit
-prepared facts.
+Publish `helper_operand_homes.va_start.destination_va_list_address` from the
+prepared producer authority so RV64 helper lowering can consume explicit facts
+instead of inferring the destination address from instruction or stack shape.
 
 ## Core Rule
 
-RV64 object emission may consume explicit prepared frame and home facts. It
-must not reimplement the ABI classifier, fabricate missing homes, or infer
-callee-saved/variadic state that the prepared contract did not publish.
+Prepared producers must publish the `va_start` destination `va_list` address
+when supportable. RV64 object emission must not reconstruct that address from
+source text, BIR instruction shape, frame layout, or testcase identity.
 
 ## Read First
 
-- `ideas/open/398_rv64_object_route_stack_frame_and_param_home_edges.md`
-- `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
-- `ideas/closed/395_rv64_object_route_instruction_fragment_lowering.md`
-- `ideas/closed/396_rv64_object_route_terminator_fragment_lowering_refresh.md`
-- `ideas/closed/397_rv64_object_route_move_bundle_target_shapes.md`
-- `tests/c/external/gcc_torture/src/930603-1.c`
-- `tests/c/external/gcc_torture/src/20001017-1.c`
+- `ideas/open/408_prepared_va_start_destination_address_helper_operand_publication.md`
+- `ideas/closed/398_rv64_object_route_stack_frame_and_param_home_edges.md`
+- `ideas/closed/389_rv64_va_start_destination_va_list_address_publication.md`
+- `ideas/closed/366_rv64_va_start_destination_va_list_gpr_home.md`
 - `tests/c/external/gcc_torture/src/va-arg-21.c`
-- Current RV64 gcc_torture backend probe artifacts under `build/agent_state/`
-  and `build/rv64_gcc_c_torture_backend/`
+- Current prepared dump artifacts under
+  `build/agent_state/398_step1_frame_home_refresh/`
 
 ## Current Targets
 
-- Callee-saved GPR save-slot representative:
-  `tests/c/external/gcc_torture/src/930603-1.c`
-- Prepared stack-frame / parameter-home representative:
-  `tests/c/external/gcc_torture/src/20001017-1.c`
-- Variadic admission representative:
-  `tests/c/external/gcc_torture/src/va-arg-21.c`
-- Nearby same-bucket frame/home representatives selected by the supervisor
-  from current RV64 gcc_torture backend artifacts.
+- Primary representative: `tests/c/external/gcc_torture/src/va-arg-21.c`
+- Focused backend/prepared tests that cover variadic entry, `va_start`
+  helper operand homes, prepared printing, frame-stack-call facts, and RV64
+  object emission.
 
 ## Non-Goals
 
-- Do not reimplement the full ABI classifier in the object emitter.
-- Do not reopen already-closed byval, sret, or va_list ideas unless current
-  logs prove a new fact boundary.
-- Do not treat semantic function-signature failures as this backend bucket.
-- Do not fabricate stack-frame, callee-saved, parameter-home, or variadic
-  facts that are absent from prepared output.
-- Do not downgrade torture cases to unsupported, weaken allowlists, or use
-  filename-specific branches.
+- Do not reopen generic RV64 stack-frame, callee-saved save-slot, or
+  parameter-home lowering from idea 398.
+- Do not reopen closed target-side `va_start` helper lowering unless fresh
+  proof shows that exact target failure regressed.
+- Do not teach RV64 object emission to infer missing helper operand homes.
+- Do not broaden into scalar `va_arg`, aggregate `va_arg`, `va_copy`, or
+  external variadic call support.
+- Do not downgrade expectations, filter allowlists, or use testcase-specific
+  branches.
 
 ## Working Model
 
-The reopened 354 classification found 103 ABI admission failures:
+Idea 398 proved that the old RV64 object-route frame/home diagnostics are
+stale or passing. Its fresh `va-arg-21.c` prepared dump still reports:
 
-- 66 `RV64 object route requires supported prepared callee-saved GPR save slots`
-- 14 `RV64 object route requires a supported prepared stack frame`
-- 22 `RV64 object route requires all parameters in supported GPR or prepared FPR register homes`
-- 1 variadic function admission failure for missing `va_start` destination
-  `va_list` address facts
+```text
+missing fact=helper_operand_homes.va_start.destination_va_list_address
+```
 
-The first packet should refresh the representative set and classify which
-failures still reproduce in the current tree. Implementation should only begin
-after the current frame/home/admission family is named and confirmed to have
-explicit prepared facts for RV64 object emission to consume.
+The same dump contains the surrounding variadic entry plan, `va_list` layout,
+overflow-area state, incoming variadic GPR publications, and `llvm.va_start.p0`
+call sites. The first packet should identify which producer owns the missing
+helper operand home and confirm the supportable destination-address shape.
 
 ## Execution Rules
 
-- Start with classification proof before implementation.
-- Keep each implementation packet tied to one concrete frame, callee-saved
-  save-slot, parameter-home, FPR-home, or variadic admission family.
-- Inspect prepared dumps and object-route diagnostics before editing target
-  emission.
-- Preserve ABI placement, stack alignment, register bank, callee-saved save
-  and restore semantics, parameter width, and variadic `va_list` state.
-- If a representative lacks required prepared facts, stop and route that
-  producer boundary instead of compensating in the RV64 emitter.
+- Start with classification proof from the current `va-arg-21.c` prepared
+  dump before implementation.
+- Keep the repair in producer/prepared publication code unless evidence proves
+  the consumer contract itself is wrong.
+- Preserve separate facts for destination `va_list` storage and destination
+  `va_list` address.
+- Preserve precise unsupported diagnostics for unsupported or ambiguous
+  destination address shapes.
 - Use the supervisor-selected proof command and record exact results in
   `todo.md`.
-- If a repaired case object-compiles and links, include qemu comparison in the
-  proof.
-- Treat ABI misplacement, expectation rewrites, allowlist filtering, and
-  named-case green proof as route failures.
+- Treat target-emitter inference, diagnostic-only churn, expectation rewrites,
+  and named-case green proof as route failures.
 
-## Step 1: Classify Current Stack Frame And Home Rejections
+## Step 1: Classify The Missing Helper Operand Publication
 
-Goal: identify the concrete prepared frame, save-slot, parameter-home, or
-variadic admission facts currently blocking RV64 object emission.
+Goal: identify the producer authority and exact supportable destination-address
+shape for `va_start` helper operand publication.
 
 Actions:
 
-- Reproduce or inspect the supervisor-selected RV64 gcc_torture backend probe
-  for `930603-1.c`, `20001017-1.c`, `va-arg-21.c`, and nearby same-bucket
-  frame/home cases.
-- Dump or inspect prepared BIR for each representative and record stack-frame
-  shape, callee-saved save slots, parameter homes, register banks, widths,
-  FPR/GPR placement, variadic `va_start` destination facts, and function
-  admission diagnostics.
-- Map each rejection to the RV64 object-route code that emits the current
-  stack-frame, callee-saved, parameter-home, or variadic admission diagnostic.
-- Decide whether the first repair packet is a callee-saved save-slot,
-  prepared stack-frame, GPR/FPR parameter-home, or producer missing-fact route.
-- Route any missing prepared fact to lifecycle review instead of patching RV64
-  object emission.
+- Reproduce or inspect the fresh prepared dump for `va-arg-21.c`.
+- Record the destination `va_list` object, address-producing facts,
+  frame-slot/register homes, `llvm.va_start.p0` call operands, variadic entry
+  state, and the missing helper operand line.
+- Locate the producer path that emits `helper_operand_homes.va_start.*`
+  metadata and decide why `destination_va_list_address` is absent.
+- Decide whether the first repair packet publishes a frame-slot-backed
+  destination address, a register-backed destination address, or routes a
+  broader producer contract gap.
 
 Completion check:
 
-- `todo.md` records the concrete frame/home/admission family for the first
-  executor packet, the representative set, and the exact
+- `todo.md` records the exact missing producer fact, the supportable
+  destination-address shape, the intended producer file/function area, and the
   supervisor-delegated proof command.
-- Any non-398 residual is routed with precise evidence instead of patched in
+- Any non-408 residual is routed with precise evidence instead of patched in
   RV64 object emission.
 
-## Step 2: Repair The First Valid Frame Or Home Family
+## Step 2: Publish The Supported Destination Address Fact
 
-Goal: add reusable RV64 object admission/lowering for the first classified
-frame/home family when all required prepared facts are explicit.
+Goal: make prepared output publish
+`helper_operand_homes.va_start.destination_va_list_address` for the first
+supportable destination-address shape.
 
 Actions:
 
-- Update the RV64 object route to consume the prepared frame, callee-saved,
-  parameter-home, FPR-home, or variadic facts for the selected family.
-- Preserve correct stack layout, save/restore behavior, ABI register bank,
-  parameter width, and call/return semantics.
-- Preserve existing diagnostics for unsupported or incomplete prepared facts.
-- Add or update focused backend coverage where the repo has a matching test
-  surface for the admission family.
+- Update the producer/prepared publication path to emit the explicit helper
+  operand home.
+- Keep destination storage and destination address metadata distinct.
+- Preserve fail-closed behavior for unsupported or ambiguous shapes.
+- Add or update focused backend/prepared coverage for the supported and
+  unsupported helper operand publication paths.
 
 Completion check:
 
-- The selected representative no longer fails with the same stack-frame,
-  callee-saved, parameter-home, or variadic admission diagnostic.
-- Nearby same-family cases examined by the executor either advance together or
-  are explicitly classified as separate owners.
-- Existing backend tests for adjacent ABI, frame, stack, parameter, and call
-  lowering remain green.
+- `va-arg-21.c` no longer reports missing
+  `helper_operand_homes.va_start.destination_va_list_address` for the
+  supportable shape.
+- Focused tests prove the fact is present and unsupported adjacent shapes are
+  still precise.
 
-## Step 3: Prove Representatives And Residual Ownership
+## Step 3: Prove Representative And Residual Ownership
 
-Goal: prove the frame/home repair advanced 398 without hiding runtime or
-ownership failures.
+Goal: prove the producer repair advanced 408 without hiding target-side or
+runtime residuals.
 
 Actions:
 
-- Run the supervisor-selected narrow RV64 gcc_torture backend probe for the
-  repaired representative and same-family additions.
-- If a case object-compiles and links, inspect qemu comparison rather than
-  stopping at compile success.
-- Run the supervisor-selected backend CTest subset for the implementation
-  slice.
-- Classify any remaining failure as the same frame/home family, a distinct
-  target-emission family, or a producer-fact gap that needs a separate source
-  idea.
+- Run the supervisor-selected `va-arg-21.c` object-route compile plus prepared
+  dump proof.
+- Run the supervisor-selected backend CTest subset.
+- If the case advances to a new object-route, link, qemu, or runtime mismatch
+  boundary, classify it separately instead of absorbing it into 408.
 
 Completion check:
 
 - `todo.md` records exact proof commands, results, and residual ownership.
 - No expectation rewrites, unsupported downgrades, allowlist filtering,
-  fabricated ABI facts, misplaced homes, or filename-specific fixes are used
-  as acceptance evidence.
-- The supervisor has enough evidence to continue with another 398 packet,
-  request route review, or ask the plan owner for close/deactivation handling.
+  target-emitter inference, or filename-specific fixes are used as acceptance
+  evidence.
+- The supervisor has enough evidence to continue, request route review, or ask
+  the plan owner for close/deactivation handling.
