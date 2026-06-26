@@ -1086,6 +1086,8 @@ std::uint32_t rv64_temporary_gpr_avoiding(std::uint32_t reserved_register) {
 std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type);
 
+bool rv64_floating_type(c4c::backend::bir::TypeKind type);
+
 std::optional<std::size_t> rv64_formal_entry_home_store_size(
     const c4c::backend::bir::Param& param) {
   if (param.is_sret && param.type == c4c::backend::bir::TypeKind::Ptr) {
@@ -1317,11 +1319,13 @@ bool append_rv64_store_fpr_to_stack(RiscvEncodedFragment& fragment,
                                     std::int32_t offset,
                                     c4c::backend::bir::TypeKind type) {
   if (!fits_signed_12_bit_immediate(offset) ||
-      type != c4c::backend::bir::TypeKind::F64) {
+      !rv64_floating_type(type)) {
     return false;
   }
+  const std::uint32_t funct3 =
+      type == c4c::backend::bir::TypeKind::F32 ? 2 : 3;
   append_le32(fragment.bytes,
-              encode_s_type(0x27, 3, 2, source_register, offset));  // fsd
+              encode_s_type(0x27, funct3, 2, source_register, offset));
   return true;
 }
 
@@ -1331,15 +1335,17 @@ bool append_rv64_store_fpr_to_base(RiscvEncodedFragment& fragment,
                                    std::int32_t offset,
                                    c4c::backend::bir::TypeKind type) {
   if (!fits_signed_12_bit_immediate(offset) ||
-      type != c4c::backend::bir::TypeKind::F64) {
+      !rv64_floating_type(type)) {
     return false;
   }
+  const std::uint32_t funct3 =
+      type == c4c::backend::bir::TypeKind::F32 ? 2 : 3;
   append_le32(fragment.bytes,
               encode_s_type(0x27,
-                            3,
+                            funct3,
                             base_register,
                             source_register,
-                            offset));  // fsd
+                            offset));
   return true;
 }
 
@@ -1348,11 +1354,13 @@ bool append_rv64_load_stack_to_fpr(RiscvEncodedFragment& fragment,
                                    std::int32_t offset,
                                    c4c::backend::bir::TypeKind type) {
   if (!fits_signed_12_bit_immediate(offset) ||
-      type != c4c::backend::bir::TypeKind::F64) {
+      !rv64_floating_type(type)) {
     return false;
   }
+  const std::uint32_t funct3 =
+      type == c4c::backend::bir::TypeKind::F32 ? 2 : 3;
   append_le32(fragment.bytes,
-              encode_i_type(0x07, destination_register, 3, 2, offset));  // fld
+              encode_i_type(0x07, destination_register, funct3, 2, offset));
   return true;
 }
 
@@ -1362,15 +1370,17 @@ bool append_rv64_load_base_to_fpr(RiscvEncodedFragment& fragment,
                                   std::int32_t offset,
                                   c4c::backend::bir::TypeKind type) {
   if (!fits_signed_12_bit_immediate(offset) ||
-      type != c4c::backend::bir::TypeKind::F64) {
+      !rv64_floating_type(type)) {
     return false;
   }
+  const std::uint32_t funct3 =
+      type == c4c::backend::bir::TypeKind::F32 ? 2 : 3;
   append_le32(fragment.bytes,
               encode_i_type(0x07,
                             destination_register,
-                            3,
+                            funct3,
                             base_register,
-                            offset));  // fld
+                            offset));
   return true;
 }
 
@@ -2007,14 +2017,14 @@ bool append_rv64_move_value_to_register(
   return false;
 }
 
-std::optional<std::uint32_t> append_rv64_prepare_f64_value_for_store(
+std::optional<std::uint32_t> append_rv64_prepare_floating_value_for_store(
     RiscvEncodedFragment& fragment,
     std::uint32_t scratch_fpr,
     std::uint32_t scratch_gpr,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::bir::Value& value) {
-  if (value.type != c4c::backend::bir::TypeKind::F64) {
+  if (!rv64_floating_type(value.type)) {
     return std::nullopt;
   }
   if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
@@ -4123,10 +4133,14 @@ std::optional<std::size_t> rv64_scalar_memory_size_for_type(
 
 std::optional<std::size_t> rv64_local_memory_size_for_type(
     c4c::backend::bir::TypeKind type) {
-  if (type == c4c::backend::bir::TypeKind::F64) {
-    return std::size_t{8};
+  switch (type) {
+    case c4c::backend::bir::TypeKind::F32:
+      return std::size_t{4};
+    case c4c::backend::bir::TypeKind::F64:
+      return std::size_t{8};
+    default:
+      return rv64_scalar_memory_size_for_type(type);
   }
-  return rv64_scalar_memory_size_for_type(type);
 }
 
 std::optional<std::size_t> rv64_global_scalar_memory_size_for_type(
@@ -4475,7 +4489,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     const c4c::backend::bir::StoreLocalInst& store,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t stack_frame_bytes) {
-  if (store.value.type == c4c::backend::bir::TypeKind::F64) {
+  if (rv64_floating_type(store.value.type)) {
     constexpr std::uint32_t scratch_fpr = 0;  // ft0
     const auto size_bytes = rv64_local_memory_size_for_type(store.value.type);
     if (!size_bytes.has_value()) {
@@ -4488,7 +4502,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
                                             *size_bytes);
     if (offset.has_value()) {
       RiscvEncodedFragment fragment;
-      const auto source_fpr = append_rv64_prepare_f64_value_for_store(
+      const auto source_fpr = append_rv64_prepare_floating_value_for_store(
           fragment, scratch_fpr, 6, names, lookups, store.value);
       if (!source_fpr.has_value() ||
           !append_rv64_store_fpr_to_stack(
@@ -4503,7 +4517,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
       return std::nullopt;
     }
     RiscvEncodedFragment fragment;
-    const auto source_fpr = append_rv64_prepare_f64_value_for_store(
+    const auto source_fpr = append_rv64_prepare_floating_value_for_store(
         fragment,
         scratch_fpr,
         rv64_temporary_gpr_avoiding(pointer_base->first),
@@ -4633,7 +4647,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
     const c4c::backend::bir::LoadLocalInst& load,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t stack_frame_bytes) {
-  if (load.result.type == c4c::backend::bir::TypeKind::F64) {
+  if (rv64_floating_type(load.result.type)) {
     const auto size_bytes = rv64_local_memory_size_for_type(load.result.type);
     if (!size_bytes.has_value()) {
       return std::nullopt;
@@ -6972,7 +6986,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
       return std::nullopt;
     }
     return local_memory_diagnostic(
-        size_bytes, access, store->value.type == bir::TypeKind::F64);
+        size_bytes, access, rv64_floating_type(store->value.type));
   }
   if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst)) {
     if (load->address.has_value() &&
@@ -6985,7 +6999,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
         prepared_memory_access_for_instruction(&lookups,
                                                prepared_block_label,
                                                instruction_index),
-        load->result.type == bir::TypeKind::F64);
+        rv64_floating_type(load->result.type));
   }
   if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst)) {
     const auto access = prepared_memory_access_for_instruction(&lookups,
