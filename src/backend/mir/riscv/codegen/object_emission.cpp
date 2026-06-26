@@ -3393,7 +3393,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         argument.source_literal.has_value()) {
       const auto immediate =
           integer_immediate_for_value({}, nullptr, *argument.source_literal);
-      if (!immediate.has_value() || !fits_signed_12_bit_immediate(*immediate)) {
+      if (!immediate.has_value()) {
         return std::nullopt;
       }
       append_rv64_load_immediate(fragment, *destination, *immediate);
