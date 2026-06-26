@@ -1,8 +1,10 @@
 # RV64 gcc_torture Prepared Module Shape Classification
 
-Status: Closed
+Status: Open
 Type: Umbrella analysis idea
 Closed By: Final child-coverage audit and classification closeout
+Reopened: 2026-06-26 by user request after fresh RV64 gcc_torture backend scan
+showed `211` pass / `1256` fail across `1467` selected cases.
 
 ## Context
 
