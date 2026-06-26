@@ -1,7 +1,8 @@
 # RV64 EV64 `.insn.d` RISC-V Length Prefix Alignment
 
-Status: Open
+Status: Closed
 Type: Backend object emission design/repair idea
+Closed By: EV64 `.insn.d` prefixed layout implementation and backend regression acceptance
 
 ## Context
 
@@ -91,6 +92,53 @@ and remaining function bits.
 - The RV64 roundtrip contract documents the new EV64 layout and explicitly
   calls out the RISC-V length-prefix dependency.
 
+## Closure Notes
+
+Idea 385's acceptance criteria are satisfied.
+
+Step 1 proved the independent LLVM RISC-V objdump contract: a candidate
+8-byte word with low seven bits `0x3f` is consumed as one unknown instruction
+rather than split into smaller fragments.
+
+Step 2 mapped the implemented EV64 `.insn.d` layout:
+
+- prefix `[6:0] = 0x3f`
+- destination `[11:7]`
+- reserved `[14:12] = 0`
+- lhs `[19:15]`
+- rhs `[24:20]`
+- major `[31:25]`
+- operation `[39:32]`
+- accumulator/rs4 `[44:40]`
+- reserved `[47:45] = 0`
+- dtype `[63:48]`
+
+Implementation commit `11b36c5f` updated c4c EV64 encoders, the c4c-as line
+encoder, c4c-objdump extractor, focused tests, and roundtrip contract
+documentation. c4c-objdump intentionally decodes only the new prefixed layout
+and rejects nonzero reserved `[14:12]` or `[47:45]` bits.
+
+Step 4 artifacts under `build/agent_state/385_step4/` prove the canonical
+fixture `.insn.d 10, 11, v6, v0, v2, v4, 3` now emits bytes
+`3f0320140b040300`; c4c-objdump prints the canonical `.insn.d` spelling;
+reassembly reproduces identical bytes; and LLVM objdump shows one unknown row
+at address `0` with the next row at `8` and no address `4` split.
+
+Step 5 backend proof ran:
+
+`ctest --test-dir build -L backend -j --output-on-failure > test_after.log 2>&1`
+
+Result: 326/326 backend tests passed. The supervisor regression guard against
+`test_before.log` passed 326/326 before and after, and the accepted
+`test_after.log` was rolled into `test_before.log`.
+
+The plan-owner close gate was rerun as lifecycle-only validation against the
+accepted current backend baseline on both sides:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed`
+
+Result: PASS, 326/326 before and 326/326 after, no new failures.
+
 ## Reviewer Reject Signals
 
 Reject the route if any of these happen:
@@ -106,10 +154,3 @@ Reject the route if any of these happen:
   banks/immediates to make existing tests pass.
 - The work expands into unrelated RV64 object-route lowering or LLVM upstream
   decoder implementation before this encoding contract is proven.
-
-## Suggested First Step
-
-Write a tiny byte-level probe for a candidate `.insn.d` word with low 7 bits
-`0x3f`, run it through LLVM RISC-V objdump, and capture the expected one-line
-`<unknown>` behavior. Use that proof to pin the exact test expectation before
-rewriting the c4c encoder.
