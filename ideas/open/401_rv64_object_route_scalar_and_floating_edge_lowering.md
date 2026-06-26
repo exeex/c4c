@@ -28,6 +28,9 @@ Representatives:
   the currently admitted narrow named shape.
 - Add RV64 FPR register floating cast lowering for prepared F32/F64 forms
   observed in the bucket.
+- If the failure is caused by missing or incorrect BIR/prepared scalar,
+  truncation, cast, or FPR publication facts, split that producer repair into
+  a separate BIR/prepared idea instead of compensating in MIR/RV64 emission.
 - Prove representative and nearby scalar/floating cases through qemu
   comparison.
 
@@ -52,4 +55,6 @@ Representatives:
 - Reject hard-coded compare/trunc sequences that only match one testcase.
 - Reject clearing the diagnostic by widening or dropping truncation semantics.
 - Reject floating casts that compile but produce ABI-incoherent FPR/GPR moves.
+- Reject MIR/RV64 changes that invent scalar result, truncation, or floating
+  cast facts that should have been represented by BIR/prepared lowering.
 - Reject expectation rewrites or allowlist filtering.

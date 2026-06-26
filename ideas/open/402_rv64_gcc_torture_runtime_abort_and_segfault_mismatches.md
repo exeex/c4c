@@ -32,6 +32,9 @@ should not be treated as classification-only progress.
   segfault when clang exits successfully.
 - Split distinct semantic families into smaller follow-up ideas if this bucket
   proves too broad.
+- If triage shows the runtime mismatch is caused by incorrect BIR/prepared
+  facts rather than RV64 lowering of correct facts, create or switch to a
+  separate BIR/prepared idea before changing MIR/RV64 code.
 
 ## Out Of Scope
 
@@ -55,5 +58,7 @@ should not be treated as classification-only progress.
 - Reject expectation rewrites, qemu comparison weakening, or allowlist
   filtering.
 - Reject claiming progress from compile-only proof when the case reaches qemu.
+- Reject MIR/RV64 fixes that mask bad BIR/prepared facts instead of routing
+  the producer defect to a separate semantic idea.
 - Reject keeping abort and segfault failures lumped together after evidence
   shows separate root causes that need separate owners.

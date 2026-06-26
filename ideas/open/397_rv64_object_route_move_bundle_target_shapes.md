@@ -30,6 +30,9 @@ Representatives:
   copy-authority forms already present in the prepared contract.
 - Keep move-bundle ownership explicit; missing authority should be fixed at
   the correct producer when the prepared contract is incomplete.
+- If the repair requires changing BIR/prepared move-bundle production,
+  create or switch to a separate BIR/prepared producer idea instead of
+  guessing that authority in MIR/RV64 object emission.
 
 ## Out Of Scope
 
@@ -52,4 +55,6 @@ Representatives:
   `930123-1.c`.
 - Reject changes that conflate missing prepared authority with target lowering
   and leave ownership ambiguous.
+- Reject MIR/RV64 fixes that fabricate move-bundle or select-publication facts
+  that should have been produced by BIR/prepared lowering.
 - Reject expectation rewrites or allowlist filtering.

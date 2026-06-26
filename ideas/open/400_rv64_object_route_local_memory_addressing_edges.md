@@ -29,6 +29,9 @@ Representatives:
   forms that are valid under the prepared contract.
 - Split producer-side missing local-memory facts when the prepared handoff is
   insufficient.
+- If the required fix changes local-memory fact production, aliasing, or base
+  classification in BIR/prepared lowering, create or switch to a separate
+  BIR/prepared idea instead of patching MIR/RV64 emission around missing facts.
 
 ## Out Of Scope
 
@@ -49,6 +52,8 @@ Representatives:
 - Reject filename-specific handling for `20000722-1.c` or `20030910-1.c`.
 - Reject lowering that assumes an arbitrary stack slot layout not described by
   prepared facts.
+- Reject MIR/RV64 changes that synthesize local-memory base, offset, width, or
+  alias facts that should have been published by BIR/prepared lowering.
 - Reject changes that turn a local-memory object-route failure into a silent
   runtime mismatch without diagnosing the new root.
 - Reject expectation rewrites or allowlist filtering.

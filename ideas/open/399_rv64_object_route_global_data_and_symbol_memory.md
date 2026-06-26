@@ -31,6 +31,9 @@ Representatives:
 - Add RV64 ELF/data/relocation lowering for supported prepared facts.
 - Split missing producer-side global initializer or memory facts into a
   separate upstream idea when needed.
+- If global initializer, symbol-memory, or base-plus-offset facts are missing
+  from BIR/prepared output, route that to a separate BIR/prepared idea instead
+  of inferring source/global semantics in MIR/RV64 object emission.
 
 ## Out Of Scope
 
@@ -53,4 +56,7 @@ Representatives:
 - Reject object emission that creates malformed ELF data or relocations while
   merely clearing the compile diagnostic.
 - Reject moving frontend/global-initializer semantics into RV64 target code.
+- Reject MIR/RV64 changes that reconstruct global initializer bytes, symbol
+  identity, or memory-access facts that should be owned by BIR/prepared
+  publication.
 - Reject expectation rewrites or allowlist filtering.
