@@ -1,6 +1,6 @@
 # RV64 Object Route Instruction Fragment Lowering
 
-Status: Open
+Status: Closed
 Type: Follow-up repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -87,3 +87,20 @@ same-fragment cases.
   `ideas/open/407_prepared_i16_same_module_call_arg_abi_publication.md`; do
   not repair it by inferring the missing scalar argument destination in
   `object_emission.cpp`.
+- 2026-06-26: Closed after refreshed Step 1 proof found no current owned
+  `unsupported_instruction_fragment` family in the selected seed bucket.
+  `20000223-1`, `divmod-1`, `20000412-6`, `20000412-4`, `20000622-1`,
+  `20000523-1`, and `20000801-1` all reported `c4cll_status=0` and
+  `prepared_status=0`; all `.err` and `.prepared.err` artifacts were empty.
+- 2026-06-26: The `divmod-1` refresh did not regress closed 403/407 producer
+  facts. Direct `I16` formals still publish `encoding=register bank=gpr
+  reg=a0/a1`, same-module frame-slot `I16` call arguments retain
+  `dest_placement=gpr:call_argument#N/w1`, `dest_reg=aN`, `dest_bank=gpr`, and
+  `missing_frame_slot_arg_publication=yes`, and the old producer residual
+  shapes remain absent.
+- 2026-06-26: Close gate passed with backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+  Existing `test_before.log` and regenerated `test_after.log` both report
+  326/326 passing backend tests, with no new failures. The lifecycle-only
+  close comparison used `--allow-non-decreasing-passed` because the accepted
+  backend pass count remained unchanged.
