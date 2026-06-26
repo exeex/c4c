@@ -1,6 +1,6 @@
 # RV64 Object Route Frame-Slot Address Call Argument
 
-Status: Open
+Status: Closed
 Type: Target lowering follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Exposed By: `ideas/closed/374_rv64_object_route_non_register_param_homes.md`
@@ -75,6 +75,22 @@ existing common call-address materialization abstraction.
 - `va-arg-13.c` is rerun and documented against the new boundary.
 - Any later boundary is routed to an existing or new owner instead of being
   folded silently into this idea.
+
+## Closure Note
+
+Closed after implementing guarded RV64 object-route lowering for GPR call
+arguments selected by
+`PreparedCallArgumentSourceSelectionKind::FrameSlotAddress`. Focused backend
+coverage verifies that the emitted pointer payload uses the selected frame-slot
+address materialization offset, not the ordinary scalar value home, and that
+nearby malformed prepared facts fail closed.
+
+`tests/c/external/gcc_torture/src/va-arg-13.c` now advances past c4c RV64
+object compilation. The next boundary is a link failure on unresolved
+`llvm.va_end.p0` in `test`; that follow-up is tracked separately in
+`ideas/open/388_rv64_object_route_variadic_va_end_boundary.md`. Same-module
+sret calls remain outside this idea and owned by
+`ideas/open/387_rv64_object_route_same_module_sret_calls.md`.
 
 ## Reviewer Reject Signals
 
