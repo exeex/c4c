@@ -689,6 +689,17 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_variadic_va_start_missing_saved_gpr_publication_module() {
+  auto prepared = make_prepared_variadic_va_start_module(
+      true /*include_overflow_area_initial_state*/);
+  auto& entry_plan = prepared.variadic_entry_plans.functions.front();
+  entry_plan.named_parameter_count = 1;
+  entry_plan.named_register_counts.gp = std::size_t{1};
+  entry_plan.missing_required_facts.push_back(
+      "rv64.incoming_variadic_gpr_publications");
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_variadic_va_end_module(
     std::string prepared_callee = "llvm.va_end.p0",
     std::size_t arg_count = 1) {
@@ -6406,6 +6417,12 @@ int rejects_fact_complete_variadic_va_start_without_overflow_base_state() {
       "unsupported_variadic_helper_lowering: RV64 va_start helper requires prepared overflow-area initial base state");
 }
 
+int rejects_variadic_va_start_with_missing_saved_gpr_publication_fact() {
+  return expect_prepared_rejection_diagnostic(
+      make_prepared_variadic_va_start_missing_saved_gpr_publication_module(),
+      "unsupported_function_admission: variadic functions are not supported by the RV64 object route; missing_required_facts=[rv64.incoming_variadic_gpr_publications]");
+}
+
 int materializes_fact_complete_variadic_va_start_with_overflow_base_state() {
   const auto prepared = make_prepared_variadic_va_start_module(
       true /*include_overflow_area_initial_state*/);
@@ -10105,6 +10122,7 @@ int main() {
   status |= rejects_incomplete_helper_free_variadic_entry_contract();
   status |= builds_fact_complete_helper_free_variadic_entry_object();
   status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
+  status |= rejects_variadic_va_start_with_missing_saved_gpr_publication_fact();
   status |=
       materializes_fact_complete_variadic_va_start_with_overflow_base_state();
   status |= rejects_malformed_variadic_va_start_destination_homes();
