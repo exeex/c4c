@@ -1,6 +1,6 @@
 # Prepared I16 Formal ABI Publication
 
-Status: Open
+Status: Closed
 Type: Follow-up producer repair idea
 Parent: `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`
 
@@ -82,6 +82,24 @@ inside the consumer.
   bank=none reg=a0`. Existing RV64 `SExt` lowering cannot consume that
   bankless prepared formal without reconstructing producer ABI policy in the
   object emitter.
+- 2026-06-26: Reclosed after commits `75157a1f` and `6d38e5d1` cleared the
+  reopened `src/divmod-1.c` route. Fresh prepared dumps show direct `I16`
+  formals in `div2`, `div4`, `mod2`, and `mod4` publish
+  `encoding=register bank=gpr reg=a0/a1`; the old
+  `encoding=register bank=none reg=aN` direct-formal shape is absent.
+- 2026-06-26: Corrected 407 caller-side same-module `I16` call-argument facts
+  remain present with `missing_frame_slot_arg_publication=yes`; old
+  caller-side residual shapes are absent.
+- 2026-06-26: Step 3 proof for `src/divmod-1.c` completed successfully with
+  `c4cll_status=0` and empty stderr under
+  `build/agent_state/403_reopen_step3_probe/`, so no fresh residual was routed
+  to 395 or another owner by this packet.
+- 2026-06-26: Close gate passed with backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+  Existing `test_before.log` and regenerated `test_after.log` both report
+  326/326 passing backend tests, with no new failures. The lifecycle-only
+  close comparison used `--allow-non-decreasing-passed` because the accepted
+  backend pass count remained unchanged.
 
 ## Reviewer Reject Signals
 
