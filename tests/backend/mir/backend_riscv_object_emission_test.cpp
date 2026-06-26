@@ -2541,6 +2541,128 @@ prepare::PreparedBirModule make_prepared_pointer_value_scalar_local_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_sret_stack_pointer_store_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("sret_stack_pointer_store");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto slot_name = prepared.names.slot_names.intern("%ret.sret");
+  const auto pointer_name = prepared.names.value_names.intern("%ret.sret");
+  const auto object_id = prepare::PreparedObjectId{31};
+  const auto slot_id = prepare::PreparedFrameSlotId{19};
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%lv.result",
+                  .value = bir::Value::immediate_i32(42),
+                  .align_bytes = 4,
+                  .address =
+                      bir::MemoryAddress{
+                          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                          .base_name = "%ret.sret",
+                          .base_slot_id = slot_name,
+                      },
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "sret_stack_pointer_store",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = {bir::Param{
+          .type = bir::TypeKind::Ptr,
+          .name = "%ret.sret",
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .is_sret = true,
+      }},
+      .local_slots = {bir::LocalSlot{
+          .name = "%ret.sret",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = object_id,
+      .function_name = function_name,
+      .value_name = pointer_name,
+      .source_kind = "sret_param",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = object_id,
+      .function_name = function_name,
+      .offset_bytes = 0,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 8,
+      .frame_slot_order = {slot_id},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 1,
+          .function_name = function_name,
+          .value_name = pointer_name,
+          .kind = prepare::PreparedValueHomeKind::StackSlot,
+          .slot_id = slot_id,
+          .offset_bytes = std::size_t{0},
+          .size_bytes = std::size_t{8},
+          .align_bytes = std::size_t{8},
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 8,
+      .accesses = {prepare::PreparedMemoryAccess{
+          .function_name = function_name,
+          .block_label = block_label,
+          .inst_index = 0,
+          .address = prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+              .pointer_value_name = pointer_name,
+              .byte_offset = 4,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .can_use_base_plus_offset = true,
+          },
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_i16_local_store_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -7547,11 +7669,111 @@ int builds_prepared_pointer_value_scalar_local_store_with_t1_base_object() {
   return 0;
 }
 
+int builds_prepared_sret_stack_pointer_store_object() {
+  const auto prepared = make_prepared_sret_stack_pointer_store_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared sret stack-homed pointer store to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "sret_stack_pointer_store");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared sret pointer store object to publish text/function");
+  }
+  if (text->bytes.size() != 24 || text->size_bytes != 24 ||
+      function->value != 0 || function->size_bytes != 24 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared sret pointer store object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00013383 ||
+      read_u32(text->bytes, 8) != 0x02a00313 ||
+      read_u32(text->bytes, 12) != 0x0063a223 ||
+      read_u32(text->bytes, 16) != 0x01010113 ||
+      read_u32(text->bytes, 20) != 0x00008067) {
+    return fail("expected sret pointer load, indirect store, and return sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared sret pointer store object to need no relocations");
+  }
+  return 0;
+}
+
 int expect_pointer_value_scalar_local_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
       prepared,
       "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing");
+}
+
+int expect_sret_stack_pointer_store_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing");
+}
+
+int rejects_prepared_sret_stack_pointer_store_fail_closed_shapes() {
+  auto prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.stack_layout.objects[0].source_kind = "local_slot";
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.stack_layout.objects[0].permanent_home_slot = false;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.value_locations.functions[0].value_homes[0].kind =
+      prepare::PreparedValueHomeKind::Register;
+  prepared.value_locations.functions[0].value_homes[0].register_name =
+      std::nullopt;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.stack_layout.frame_slots[0].offset_bytes = 8;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.addressing.functions[0].accesses[0].address.can_use_base_plus_offset =
+      false;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.addressing.functions[0].accesses[0].address_space =
+      bir::AddressSpace::Tls;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.addressing.functions[0].accesses[0].is_volatile = true;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.addressing.functions[0].accesses[0].address.byte_offset = 4096;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_sret_stack_pointer_store_module();
+  prepared.addressing.functions[0].accesses[0].address.align_bytes = 8;
+  if (expect_sret_stack_pointer_store_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int rejects_prepared_pointer_value_scalar_local_fail_closed_shapes() {
@@ -10603,6 +10825,8 @@ int main() {
   status |= rejects_prepared_scalar_local_subobject_fail_closed_shapes();
   status |= builds_prepared_pointer_value_scalar_local_object();
   status |= builds_prepared_pointer_value_scalar_local_store_with_t1_base_object();
+  status |= builds_prepared_sret_stack_pointer_store_object();
+  status |= rejects_prepared_sret_stack_pointer_store_fail_closed_shapes();
   status |= rejects_prepared_pointer_value_scalar_local_fail_closed_shapes();
   status |= builds_prepared_stack_slot_scalar_flow_object();
   status |= builds_prepared_stack_slot_to_gpr_move_bundle_object();

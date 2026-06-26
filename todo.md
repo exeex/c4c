@@ -1,83 +1,69 @@
 Status: Active
 Source Idea Path: ideas/open/387_rv64_object_route_same_module_sret_calls.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Choose The Narrow Sret Route
+Current Step ID: 3
+Current Step Title: Add Focused Backend Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 pinned the `unsupported_local_memory_access` boundary from Step 1 and
-classified it as a prerequisite inside the idea 387 same-module sret route.
+Step 3 added the narrow RV64 object-emission prerequisite for stack-homed
+`sret_param` pointer-value local memory stores.
 
-The exact failing prepared memory access is in callee `f`, not caller `main`:
-`block_4 inst_index=2`, the terminal
-`bir.store_local %lv.X.0, i32 f.ret.sret.copy.0, addr %ret.sret`. Its prepared
-memory row is `base=pointer_value`, `stored=f.ret.sret.copy.0`,
-`pointer=%ret.sret`, `offset=0`, `size=4`, `align=4`,
-`base_plus_offset=yes`.
+The new object-emission route recognizes a prepared `StoreLocalInst` memory
+access with `base=pointer_value` when the pointer value is stack-homed and its
+matching stack object is an address-exposed permanent `source_kind=sret_param`
+object. The emitted sequence loads the sret pointer value from its stack home
+into a temporary GPR, materializes the scalar store value into another GPR, and
+stores through the loaded pointer plus the prepared byte offset.
 
-`%ret.sret` is stack-homed, not GPR-homed:
-`home %ret.sret value_id=0 kind=stack_slot slot_id=0 offset=0`. The stack
-object is the sret parameter object:
-`object #4 func=f name=%ret.sret source_kind=sret_param type=ptr size=4 align=4
-address_exposed=yes requires_home_slot=yes permanent_home_slot=yes`.
+Focused backend coverage now proves the accepted shape with a fixture that
+stores an `i32` through a stack-homed `%ret.sret` pointer and asserts the RV64
+sequence `ld` from the pointer home followed by an indirect `sw`. Fail-closed
+coverage preserves rejection for unsupported source kinds, non-permanent homes,
+unsupported home/register shapes, mismatched frame-slot metadata, non-default or
+volatile accesses, non-base-plus-offset access, out-of-range offset, and
+over-aligned scalar accesses.
 
-The rejecting object-emission guard set is in
-`fragment_for_prepared_store_local` / `diagnose_unsupported_prepared_instruction_fragment`:
+The same-module `memory_return` gate was not deleted or weakened in this
+packet.
 
-- `prepared_frame_slot_absolute_offset` rejects because the access base is
-  `pointer_value`, not `frame_slot`.
-- `prepared_byval_stack_slot_pointer_access_offset` only admits stack-homed
-  pointer values for stack objects with `source_kind == "byval_param"`;
-  `%ret.sret` is `source_kind=sret_param`.
-- `prepared_pointer_value_base_offset` rejects because `%ret.sret` is not in a
-  GPR home.
-
-Route decision: do not split. This is directly required for idea 387 because
-the callee-side sret return store must write through the incoming sret pointer
-before the same-module call can return the memory result to the caller object.
-The caller-side call plan still carries the later sret authority:
-`memory_return=%t8`, `memory_encoding=frame_slot`, `sret_arg_index=0`,
-`memory_slot=#7`, `memory_stack_offset=16`.
-
-Detailed evidence:
-`build/agent_state/387_step2_local_memory_route.log`.
+Additional representative evidence:
+`build/agent_state/387_step3_920908-1.run.log` shows the
+`920908-1.c` object route now advances past the prior
+`unsupported_local_memory_access` boundary and reaches
+`unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`,
+which is consistent with returning to the same-module call/memory-return
+emission boundary.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: add the narrow RV64 object-emission prerequisite
-for stack-homed `sret_param` pointer-value local memory accesses. The repair
-should load the sret pointer value from its stack home into a temporary GPR,
-materialize the stored scalar into another GPR, and store through the loaded
-pointer plus the prepared byte offset. After that, rerun the representative and
-return to the existing same-module `memory_return=%t8` call-emission gate.
+Execute the next idea 387 packet against the now-exposed same-module
+`memory_return=%t8` call-emission boundary. Start from the Step 1 prepared call
+plan and the Step 3 representative log; do not revisit local-memory admission
+unless the new evidence contradicts this repair.
 
 ## Watchouts
 
-- Keep the Step 3 guard narrow: default address space, nonvolatile,
-  base-plus-offset pointer access, supported scalar size, valid alignment,
-  signed 12-bit offset, stack-homed pointer value, and a matching stack object
-  with `source_kind=sret_param`.
-- Preserve existing `byval_param` behavior; do not broaden the byval helper by
-  silently treating every stack-homed pointer as direct pointee storage.
-- Do not delete or weaken the `memory_return` gate. It remains the next
-  expected boundary after the callee-side sret pointer store is admitted.
+- The sret-param helper is intentionally separate from the existing byval
+  stack-slot pointer helper. Byval still treats stack-homed byval payload as
+  direct storage; sret loads the pointer and stores through it.
+- The next boundary should be call emission for prepared same-module
+  `memory_return` plans, not another local-memory route.
+- Do not hard-code `920908-1.c`, callee `f`, stack offsets, or the generic
+  unsupported-instruction diagnostic.
 
 ## Proof
 
-Proof for this packet: inspected existing Step 1 logs and implementation paths
-only; no build or tests were run.
+Delegated proof command run:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 
-AST-backed navigation used `c4c-clang-tool-ccdb` on
-`src/backend/mir/riscv/codegen/object_emission.cpp` to locate
-`fragment_for_prepared_instruction`, its callees, and the offset helpers.
+Result: passed; `test_after.log` reports `100% tests passed, 0 tests failed
+out of 326`.
 
-Logs inspected:
-`build/agent_state/387_step1_analysis.log`,
-`build/agent_state/387_step1_920908-1.prepared.log`, and
-`build/agent_state/387_step1_920908-1.case.log`.
+Focused pre-proof also passed:
+`cmake --build --preset default --target backend_riscv_object_emission_test && build/tests/backend/mir/backend_riscv_object_emission_test`.
 
-Result: route classified as local-memory prerequisite inside idea 387, followed
-by the existing same-module sret `memory_return` gate.
+Representative evidence log:
+`build/agent_state/387_step3_920908-1.run.log`.
