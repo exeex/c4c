@@ -1,61 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/392_rv64_va_list_expression_call_argument_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Route Or Repair The Owned Boundary
+Current Step ID: 4
+Current Step Title: Reprove And Decide Disposition
 
 # Current Packet
 
 ## Just Finished
 
-Post-repair Step 3 repaired the caller-side materialization boundary for
-`load_local %lv.state.8` after `llvm.va_start`.
+Post-repair Step 4 reproved the focused backend coverage and reran the RV64
+object-route representative for idea 392.
 
-RV64 object emission now routes a `LoadLocalInst` of a va_start destination
-address value to the active helper-owned destination stack slot when there is a
-complete prepared RV64 variadic entry helper contract and a preceding same-block
-`VaStart` helper operand home for that destination. This keeps the explicit
-call-argument publication payload value intact, but materializes the payload
-from the va_start-published word instead of the stale ordinary frame slot.
+Backend proof passed with the full `^backend_` subset: `test_after.log` reports
+`100% tests passed, 0 tests failed out of 326`.
 
-The focused backend fixture covers the representative shape by giving the load
-a stale normal frame-slot memory access and a valid va_start helper destination
-slot. The test asserts that the post-va_start load reads the helper-published
-word (`ld a2,72(sp)` in the fixture), not the stale slot. Existing
-call-argument value-publication fail-closed variants remain covered by the
-backend suite.
+The `va-arg-13.c` representative also passed through the RV64 object runner:
+`build/agent_state/392_postrepair_step4_va-arg-13.run.log` records
+`case_exit=0` and
+`[PASS][rv64-gcc-torture-backend-obj] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-13.c`.
 
-Additional representative evidence shows the RV64 object route for
-`va-arg-13.c` now passes:
-`build/agent_state/392_postrepair_step3_va-arg-13.run.log` and
-`build/agent_state/392_postrepair_step3_va-arg-13.case.log`.
+This satisfies the Step 4 disposition check for the idea 392 representative:
+the prior abort boundary is gone, no later representative boundary appeared in
+this packet, and the slice has lifecycle-ready completion evidence.
 
 ## Suggested Next
 
-The Step 3 slice is ready for supervisor review/commit. A useful next packet is
-acceptance-oriented evidence or plan-owner closure/rewrite depending on whether
-idea 392 is now complete beyond the representative route.
+Supervisor or plan-owner disposition is the next coherent packet: review/commit
+the completed slice, then decide whether idea 392 can close or needs a
+runbook-level follow-up outside this representative route.
 
 ## Watchouts
 
-- The helper-destination route is intentionally guarded by explicit prepared
-  RV64 va_start helper operand homes; it does not infer authority from generic
-  store publications.
-- The repair keeps the caller argument object address route separate from the
-  word stored into that object.
-- The broader clang/RV64 scalar-`va_list` ABI difference remains a watchout,
-  but the same-C4C representative object route now passes.
+- Step 4 did not modify implementation or tests; it only refreshed proof and
+  representative evidence.
+- The same-C4C `va-arg-13.c` representative passes. Any broader clang/RV64
+  scalar-`va_list` ABI question should be handled as a separate lifecycle
+  decision if still relevant.
 
 ## Proof
 
 Delegated proof command run:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
+`mkdir -p build/agent_state build/rv64_gcc_c_torture_backend/src_va-arg-13.c && { echo 'Post-repair Step 4 backend proof for idea 392'; cmake --build --preset default; ctest --test-dir build -j --output-on-failure -R '^backend_'; echo 'Post-repair Step 4 va-arg-13 RV64 object runner for idea 392'; case_log=build/agent_state/392_postrepair_step4_va-arg-13.case.log; run_log=build/agent_state/392_postrepair_step4_va-arg-13.run.log; set +e; cmake -DCOMPILER=/workspaces/c4c/build/c4cll -DCLANG=$(command -v clang) -DQEMU_RISCV64=$(command -v qemu-riscv64) -DSRC=/workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-13.c -DROOT=/workspaces/c4c -DOUT_CLANG_BIN=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/clang.bin -DOUT_OBJECT=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/c4c.o -DOUT_C4C_BIN=/workspaces/c4c/build/rv64_gcc_c_torture_backend/src_va-arg-13.c/c4c.bin -P /workspaces/c4c/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake > "$case_log" 2>&1; rc=$?; set -e; { echo "case_exit=$rc"; cat "$case_log"; } | tee "$run_log"; exit 0; } > test_after.log 2>&1`.
 
-Result: passed; `test_after.log` reports `100% tests passed, 0 tests failed
-out of 326`.
-
-Representative evidence run:
-`build/agent_state/392_postrepair_step3_va-arg-13.run.log`.
-
-Result: passed; `case_exit=0` and
-`[PASS][rv64-gcc-torture-backend-obj] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-13.c`.
+Result: passed. Logs:
+`test_after.log`,
+`build/agent_state/392_postrepair_step4_va-arg-13.case.log`, and
+`build/agent_state/392_postrepair_step4_va-arg-13.run.log`.
