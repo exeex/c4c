@@ -2353,6 +2353,79 @@ prepare::PreparedBirModule make_prepared_scalar_compare_trunc_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_stack_slot_to_gpr_move_bundle_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("stack_move");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("%src");
+  const auto destination_name = prepared.names.value_names.intern("%dst");
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I16, "%src");
+  prepared.module.functions.push_back(bir::Function{
+      .name = "stack_move",
+      .return_type = bir::TypeKind::I16,
+      .return_size_bytes = 2,
+      .return_align_bytes = 2,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{6},
+          .function_name = function_name,
+          .offset_bytes = 8,
+          .size_bytes = 2,
+          .align_bytes = 2,
+      },
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_i16_stack_slot_home(1,
+                                       function_name,
+                                       source_name,
+                                       prepare::PreparedFrameSlotId{6},
+                                       8),
+              rv64_gpr_home(2, function_name, destination_name, "s1", 9),
+          },
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeReturn,
+              .block_index = 0,
+              .instruction_index = 0,
+              .moves = {prepare::PreparedMoveResolution{
+                  .from_value_id = 1,
+                  .to_value_id = 2,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_contiguous_width = 1,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              }},
+          }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_join_transfer_select_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -4842,6 +4915,101 @@ int builds_prepared_stack_slot_scalar_flow_object() {
   return 0;
 }
 
+int builds_prepared_stack_slot_to_gpr_move_bundle_object() {
+  const auto prepared = make_prepared_stack_slot_to_gpr_move_bundle_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared stack-slot to GPR move-bundle RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "stack_move");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared stack-slot move object to publish text/function");
+  }
+  if (text->bytes.size() != 20 || text->size_bytes != 20 ||
+      function->value != 0 || function->size_bytes != 20 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared stack-slot move object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00811483 ||
+      read_u32(text->bytes, 8) != 0x00811503 ||
+      read_u32(text->bytes, 12) != 0x01010113 ||
+      read_u32(text->bytes, 16) != 0x00008067) {
+    return fail("expected lh s1, 8(sp) move-bundle emission before stack return");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared stack-slot move object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  auto prepared = make_prepared_stack_slot_to_gpr_move_bundle_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_stack_offset_bytes = 8;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_slot_to_gpr_move_bundle_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_contiguous_width = 2;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_slot_to_gpr_move_bundle_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .uses_cycle_temp_source = true;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_slot_to_gpr_move_bundle_module();
+  prepared.value_locations.functions[0].value_homes[0].slot_id = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_slot_to_gpr_move_bundle_module();
+  prepared.module.functions[0].return_type = bir::TypeKind::F32;
+  prepared.module.functions[0].return_size_bytes = 4;
+  prepared.module.functions[0].return_align_bytes = 4;
+  prepared.module.functions[0].blocks[0].terminator.value =
+      bir::Value::named(bir::TypeKind::F32, "%src");
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_slot_to_gpr_move_bundle_module();
+  prepared.module.functions[0].return_type = bir::TypeKind::Ptr;
+  prepared.module.functions[0].return_size_bytes = 8;
+  prepared.module.functions[0].return_align_bytes = 8;
+  prepared.module.functions[0].blocks[0].terminator.value =
+      bir::Value::named(bir::TypeKind::Ptr, "%src");
+  prepared.stack_layout.frame_slots[0].size_bytes = 8;
+  prepared.stack_layout.frame_slots[0].align_bytes = 8;
+  prepared.value_locations.functions[0].value_homes[0].size_bytes =
+      std::size_t{8};
+  prepared.value_locations.functions[0].value_homes[0].align_bytes =
+      std::size_t{8};
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int builds_prepared_scalar_compare_trunc_object() {
   const auto prepared = make_prepared_scalar_compare_trunc_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -7203,6 +7371,8 @@ int main() {
   status |= builds_prepared_pointer_value_scalar_local_store_with_t1_base_object();
   status |= rejects_prepared_pointer_value_scalar_local_fail_closed_shapes();
   status |= builds_prepared_stack_slot_scalar_flow_object();
+  status |= builds_prepared_stack_slot_to_gpr_move_bundle_object();
+  status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
   status |= builds_prepared_scalar_compare_trunc_object();
   status |= rejects_prepared_scalar_compare_trunc_fail_closed_shapes();
   status |= builds_prepared_join_transfer_select_materialization_object();

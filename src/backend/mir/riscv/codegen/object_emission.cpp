@@ -1049,9 +1049,11 @@ std::optional<c4c::backend::bir::TypeKind> prepared_bir_value_type_for_name(
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::size_t stack_frame_bytes,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
   RiscvEncodedFragment fragment;
   for (const auto& move : move_bundle.moves) {
@@ -1129,6 +1131,33 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     }
 
     const auto source = gpr_register_number_for_home(*source_home);
+    if (!source.has_value() &&
+        source_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+      const auto type =
+          prepared_bir_value_type_for_name(names, function, source_home->value_name);
+      if (!type.has_value()) {
+        return std::nullopt;
+      }
+      if (*type == c4c::backend::bir::TypeKind::Ptr) {
+        return std::nullopt;
+      }
+      const auto size_bytes = rv64_scalar_memory_size_for_type(*type);
+      if (!size_bytes.has_value()) {
+        return std::nullopt;
+      }
+      const auto stack_offset = prepared_stack_slot_home_offset(stack_layout,
+                                                               *source_home,
+                                                               stack_frame_bytes,
+                                                               *size_bytes);
+      if (!stack_offset.has_value() ||
+          !append_rv64_load_stack_to_register(fragment,
+                                             *destination,
+                                             *stack_offset,
+                                             *size_bytes)) {
+        return std::nullopt;
+      }
+      continue;
+    }
     if (!source.has_value()) {
       return std::nullopt;
     }
@@ -4095,9 +4124,11 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
           }
           auto fragment =
               fragment_for_prepared_move_bundle(prepared.target_profile,
+                                                prepared.stack_layout,
                                                 prepared.names,
                                                 *function,
                                                 &lookups,
+                                                *stack_frame_bytes,
                                                 *classification.move_bundle);
           if (!fragment.has_value()) {
             return make_rv64_prepared_function_rejection(
