@@ -5780,6 +5780,90 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_frame_slot_address_arg_call_load_local_payload_module() {
+  auto prepared = make_prepared_frame_slot_address_arg_call_module();
+  const auto main_name = prepared.names.function_names.find("main");
+  const auto block_label = prepared.names.block_labels.find("entry");
+  const auto loaded_x_name =
+      prepared.names.value_names.intern("%lv.loaded.x");
+  const auto loaded_y_name =
+      prepared.names.value_names.intern("%lv.loaded.y");
+  const auto source_slot_name = prepared.names.slot_names.intern("%lv.src");
+
+  static bir::LoadLocalInst x_load{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%lv.loaded.x"),
+      .slot_name = "%lv.src",
+      .align_bytes = 8,
+  };
+  static bir::LoadLocalInst y_load{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%lv.loaded.y"),
+      .slot_name = "%lv.src",
+      .align_bytes = 8,
+  };
+  x_load.slot_id = source_slot_name;
+  y_load.slot_id = source_slot_name;
+
+  prepared.value_locations.functions[1].value_homes.push_back(
+      prepare::PreparedValueHome{
+          .value_id = 16,
+          .function_name = main_name,
+          .value_name = loaded_x_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"s2"},
+          .size_bytes = 8,
+          .align_bytes = 8,
+      });
+  prepared.value_locations.functions[1].value_homes.push_back(
+      prepare::PreparedValueHome{
+          .value_id = 17,
+          .function_name = main_name,
+          .value_name = loaded_y_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"s2"},
+          .size_bytes = 8,
+          .align_bytes = 8,
+      });
+
+  auto& x_record = prepared.store_source_publications.records[0];
+  x_record.instruction_index = 0;
+  x_record.plan.source_value =
+      bir::Value::named(bir::TypeKind::Ptr, "%lv.loaded.x");
+  x_record.plan.source_value_id = prepare::PreparedValueId{16};
+  x_record.plan.source_value_name = loaded_x_name;
+  x_record.plan.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal;
+  x_record.plan.source_producer_block_label = block_label;
+  x_record.plan.source_producer_instruction_index = 0;
+  x_record.plan.source_load_local = &x_load;
+
+  auto& y_record = prepared.store_source_publications.records[1];
+  y_record.instruction_index = 0;
+  y_record.plan.source_value =
+      bir::Value::named(bir::TypeKind::Ptr, "%lv.loaded.y");
+  y_record.plan.source_value_id = prepare::PreparedValueId{17};
+  y_record.plan.source_value_name = loaded_y_name;
+  y_record.plan.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal;
+  y_record.plan.source_producer_block_label = block_label;
+  y_record.plan.source_producer_instruction_index = 0;
+  y_record.plan.source_load_local = &y_load;
+
+  auto& x_fact = prepared.call_argument_value_publications.facts[0];
+  x_fact.source_store_instruction_index = 0;
+  x_fact.payload_value_id = prepare::PreparedValueId{16};
+  x_fact.payload_value_name = loaded_x_name;
+  x_fact.payload_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.loaded.x");
+
+  auto& y_fact = prepared.call_argument_value_publications.facts[1];
+  y_fact.source_store_instruction_index = 0;
+  y_fact.payload_value_id = prepare::PreparedValueId{17};
+  y_fact.payload_value_name = loaded_y_name;
+  y_fact.payload_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.loaded.y");
+
+  return prepared;
+}
+
 int records_minimal_text_and_call_relocation() {
   const auto module = make_minimal_call_module();
   if (!module.has_value()) {
@@ -8063,6 +8147,43 @@ int builds_prepared_frame_slot_address_arg_call_object() {
   return 0;
 }
 
+int builds_prepared_frame_slot_address_arg_call_load_local_payload_object() {
+  const auto prepared =
+      make_prepared_frame_slot_address_arg_call_load_local_payload_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared frame-slot-address load-local payload arg call RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* sink = object::find_symbol(*module, "sink");
+  const auto* main = object::find_symbol(*module, "main");
+  if (text == nullptr || sink == nullptr || main == nullptr) {
+    return fail("expected frame-slot-address load-local payload object to publish text/functions");
+  }
+  if (module->relocations.size() != 1 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].type != R_RISCV_CALL_PLT ||
+      module->relocations[0].symbol != sink->id ||
+      module->relocations[0].offset < main->value + 24) {
+    return fail("expected frame-slot-address load-local payload same-module call relocation");
+  }
+  if (read_u32(text->bytes, module->relocations[0].offset - 24) !=
+          0x00090313 ||
+      read_u32(text->bytes, module->relocations[0].offset - 20) !=
+          0x00613c23 ||
+      read_u32(text->bytes, module->relocations[0].offset - 16) !=
+          0x01810513 ||
+      read_u32(text->bytes, module->relocations[0].offset - 12) !=
+          0x00090313 ||
+      read_u32(text->bytes, module->relocations[0].offset - 8) !=
+          0x02613023 ||
+      read_u32(text->bytes, module->relocations[0].offset - 4) !=
+          0x02010593) {
+    return fail("expected load-local publication payload, not storage address, before frame-slot-address args");
+  }
+  return 0;
+}
+
 int records_prepared_frame_slot_address_arg_missing_publication_need() {
   const auto prepared = make_prepared_frame_slot_address_arg_call_module();
   const auto& call = prepared.call_plans.functions[0].calls[0];
@@ -8162,6 +8283,18 @@ int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
       prepare::PreparedValueId{14};
   prepared.call_argument_value_publications.facts[0].payload_value_name =
       prepared.names.value_names.find("%lv.x");
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_load_local_payload_module();
+  static const bir::LoadLocalInst mismatched_load_local_payload{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%lv.loaded.y"),
+      .slot_name = "%lv.src",
+      .align_bytes = 8,
+  };
+  prepared.store_source_publications.records[0].plan.source_load_local =
+      &mismatched_load_local_payload;
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
@@ -10387,6 +10520,7 @@ int main() {
   status |= builds_prepared_frame_slot_value_arg_call_object();
   status |= rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes();
   status |= builds_prepared_frame_slot_address_arg_call_object();
+  status |= builds_prepared_frame_slot_address_arg_call_load_local_payload_object();
   status |= records_prepared_frame_slot_address_arg_missing_publication_need();
   status |= rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes();
   status |= builds_prepared_inline_asm_insn_r_object();

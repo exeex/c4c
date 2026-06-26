@@ -2816,13 +2816,10 @@ prepared_frame_slot_address_call_argument_publication(
   const auto& plan = selected->plan;
   bir::Value source_value = fact->payload_value;
   if (plan.source_load_local != nullptr) {
-    if (plan.source_load_local->slot_name.empty() ||
-        plan.source_load_local->result.type != bir::TypeKind::Ptr) {
+    if (plan.source_load_local->result.type != bir::TypeKind::Ptr ||
+        plan.source_load_local->result != fact->payload_value) {
       return std::nullopt;
     }
-    source_value =
-        bir::Value::named(plan.source_load_local->result.type,
-                          plan.source_load_local->slot_name);
   }
   if (source_value.kind != bir::Value::Kind::Named ||
       source_value.type != bir::TypeKind::Ptr ||
