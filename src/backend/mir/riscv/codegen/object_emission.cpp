@@ -5547,11 +5547,32 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
       append_le32(fragment.bytes,
                   encode_r_type(0x33, destination_register, 0, 28, 29, 1));
       return finish();
+    case c4c::backend::bir::BinaryOpcode::SDiv: {
+      const std::uint32_t opcode =
+          binary.result.type == c4c::backend::bir::TypeKind::I32 ? 0x3b : 0x33;
+      append_le32(fragment.bytes,
+                  encode_r_type(opcode, destination_register, 4, 28, 29, 1));
+      return finish();
+    }
     case c4c::backend::bir::BinaryOpcode::UDiv: {
       const std::uint32_t opcode =
           binary.result.type == c4c::backend::bir::TypeKind::I32 ? 0x3b : 0x33;
       append_le32(fragment.bytes,
                   encode_r_type(opcode, destination_register, 5, 28, 29, 1));
+      return finish();
+    }
+    case c4c::backend::bir::BinaryOpcode::SRem: {
+      const std::uint32_t opcode =
+          binary.result.type == c4c::backend::bir::TypeKind::I32 ? 0x3b : 0x33;
+      append_le32(fragment.bytes,
+                  encode_r_type(opcode, destination_register, 6, 28, 29, 1));
+      return finish();
+    }
+    case c4c::backend::bir::BinaryOpcode::URem: {
+      const std::uint32_t opcode =
+          binary.result.type == c4c::backend::bir::TypeKind::I32 ? 0x3b : 0x33;
+      append_le32(fragment.bytes,
+                  encode_r_type(opcode, destination_register, 7, 28, 29, 1));
       return finish();
     }
     case c4c::backend::bir::BinaryOpcode::Slt:
