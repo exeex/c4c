@@ -1,6 +1,6 @@
 # RV64 Object Route 20000112 Instruction Fragment Lowering
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/369_rv64_object_route_terminator_fragment_lowering.md`
@@ -79,6 +79,32 @@ contract instead of expanding idea 369.
 - `build/agent_state/369_step5_terminator_representatives.runner.log`
 - `build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`
 - `build/rv64_gcc_c_torture_backend/src_20000224-1.c/case.log`
+
+## Completion Note
+
+Closed after the audited unsupported ordinary instruction fragment for
+`src/20000112-1.c` advanced:
+
+```text
+%t8 = bir.zext i32 %t7 to i32
+```
+
+The same-width integer `ZExt` RV64 object-route lowering was implemented with
+focused object-emission coverage and fail-closed adjacent cast coverage. The
+representative now compiles and links far enough to run under qemu, where it
+fails as a distinct runtime mismatch:
+
+```text
+RV64_BACKEND_RUNTIME_MISMATCH
+clang_exit=0 c4c_exit=Segmentation fault
+```
+
+That remaining failure is outside this idea's instruction-fragment
+compile-blocker scope and is handed off to
+`ideas/open/379_rv64_object_route_20000112_runtime_join_publication.md`.
+
+Close-time regression guard passed against the accepted full-suite baseline:
+`3353 passed, 0 failed` before and after.
 
 ## Reviewer Reject Signals
 
