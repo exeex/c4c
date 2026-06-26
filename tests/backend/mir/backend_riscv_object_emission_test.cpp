@@ -7840,7 +7840,7 @@ int emits_prepared_global_aggregate_lane_load_from_explicit_facts() {
 int rejects_raw_load_local_global_address_lane_without_prepared_access() {
   return expect_prepared_rejection_diagnostic(
       make_raw_global_address_load_local_lane_module(),
-      "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing");
+      "unsupported_global_data: RV64 object route requires prepared global-symbol memory access facts for LoadLocalInst global-address lanes");
 }
 
 int builds_prepared_i16_local_store_object() {

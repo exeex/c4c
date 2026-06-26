@@ -5033,6 +5033,11 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
                                                instruction_index));
   }
   if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst)) {
+    if (load->address.has_value() &&
+        load->address->base_kind == bir::MemoryAddress::BaseKind::GlobalSymbol) {
+      return std::string{
+          "unsupported_global_data: RV64 object route requires prepared global-symbol memory access facts for LoadLocalInst global-address lanes"};
+    }
     return local_memory_diagnostic(
         rv64_scalar_memory_size_for_type(load->result.type),
         prepared_memory_access_for_instruction(&lookups,
