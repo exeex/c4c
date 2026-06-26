@@ -198,6 +198,40 @@ bool emit_riscv_frame_slot_address_argument(
   return true;
 }
 
+bool emit_riscv_prior_preserved_gpr_argument(
+    std::string& out,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& plan) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (!plan.source_selection.has_value() ||
+      plan.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation) {
+    return false;
+  }
+  const auto& selection = *plan.source_selection;
+  if (selection.preservation_route !=
+          prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      selection.preserved_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::Gpr} ||
+      !selection.preserved_register_name.has_value() ||
+      selection.preserved_register_name->empty() ||
+      !selection.preserved_register_contiguous_width.has_value() ||
+      *selection.preserved_register_contiguous_width != 1 ||
+      selection.preserved_occupied_register_names.empty() ||
+      !selection.preserved_register_placement.has_value()) {
+    return false;
+  }
+  if (*selection.preserved_register_name != *plan.destination_register_name) {
+    out += "    mv ";
+    out += *plan.destination_register_name;
+    out += ", ";
+    out += *selection.preserved_register_name;
+    out += "\n";
+  }
+  return true;
+}
+
 bool emit_riscv_byval_aggregate_address_argument(
     std::string& out,
     const c4c::backend::prepare::PreparedBirModule& prepared,
@@ -440,6 +474,13 @@ std::optional<std::string> emit_riscv_simple_call(
       out += "    addi " + *plan->destination_register_name + ", sp, " +
              std::to_string(*source_selection->source_stack_offset_bytes +
                             active_stack_adjustment_bytes) + "\n";
+    } else if (source_selection != nullptr &&
+               source_selection->kind ==
+                   prepare::PreparedCallArgumentSourceSelectionKind::
+                       PriorPreservation) {
+      if (!emit_riscv_prior_preserved_gpr_argument(out, *plan)) {
+        return std::nullopt;
+      }
     } else if (plan->source_encoding ==
             prepare::PreparedStorageEncodingKind::Register &&
         plan->source_register_bank ==

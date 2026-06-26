@@ -214,6 +214,9 @@ RiscvPreparedObjectFunctionResult make_rv64_prepared_function_rejection(
 std::optional<std::uint32_t> gpr_register_number_for_home(
     const c4c::backend::prepare::PreparedValueHome& home);
 
+std::optional<std::uint32_t> gpr_register_number_for_prior_preserved_selection(
+    const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection);
+
 const prepare::PreparedVariadicVaListField*
 rv64_variadic_va_list_overflow_arg_area_field(
     const prepare::PreparedVariadicEntryPlanFunction& entry_plan);
@@ -477,6 +480,27 @@ std::optional<std::uint32_t> gpr_register_number_for_home(
     return std::nullopt;
   }
   return rv64_register_number(*home.register_name);
+}
+
+std::optional<std::uint32_t> gpr_register_number_for_prior_preserved_selection(
+    const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (selection.kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation ||
+      selection.preservation_route !=
+          prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      selection.preserved_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::Gpr} ||
+      !selection.preserved_register_name.has_value() ||
+      !selection.preserved_register_contiguous_width.has_value() ||
+      *selection.preserved_register_contiguous_width != 1 ||
+      selection.preserved_occupied_register_names.empty() ||
+      !selection.preserved_register_placement.has_value()) {
+    return std::nullopt;
+  }
+  return rv64_register_number(*selection.preserved_register_name);
 }
 
 std::optional<std::uint32_t> fpr_register_number_for_home(
@@ -1945,11 +1969,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
             return std::nullopt;
           }
           break;
+        case prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation: {
+          const auto source = gpr_register_number_for_prior_preserved_selection(
+              *argument.source_selection);
+          if (!source.has_value()) {
+            return std::nullopt;
+          }
+          append_rv64_move(fragment, *destination, *source);
+          continue;
+        }
         case prepare::PreparedCallArgumentSourceSelectionKind::
             LocalFrameAddressMaterialization:
         case prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
         case prepare::PreparedCallArgumentSourceSelectionKind::ByvalRegisterLane:
-        case prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation:
           return std::nullopt;
       }
     }

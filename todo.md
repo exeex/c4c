@@ -1,72 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/380_rv64_object_route_short_circuit_call_argument_reload.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Short-Circuit Call Argument Loss
+Current Step ID: 2
+Current Step Title: Implement the First Semantic Reload Repair
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 audit completed for `src/20000112-1.c`: the first semantic failure is
-the second `strchr` in `special_format`, reached from the first short-circuit
-RHS after `strchr(fmt, '*')` returns NULL.  Prepared BIR keeps the semantic
-argument as `%p.fmt` / value id 0, records later `strchr` arg0 as that value,
-and also records preservation of `%p.fmt` into callee-saved `s1`; generated
-object code instead emits the second call with arg0 still in ABI register `a0`,
-which now contains the previous call result NULL.
+Step 2 implementation completed for the first semantic RV64 prepared-call reload
+shape: when a GPR call argument has a prepared `PriorPreservation` source
+selection with complete single-width callee-saved register authority, RV64
+textual prepared-call emission and RV64 object emission now source the outgoing
+ABI argument from the preserved register instead of falling through to the stale
+original ABI argument register. Added focused RV64 object-emission coverage that
+proves the later call reloads `s1 -> a0` from the prepared prior-preservation
+selection, and that incomplete preserved-register facts plus stack
+prior-preservation remain fail-closed on the existing unsupported instruction
+diagnostic.
 
 ## Suggested Next
 
-Implement a general call-argument reload/preservation repair for prepared
-call arguments whose semantic source value has a preserved/value home different
-from the live ABI argument register after an earlier call result can clobber
-that ABI register.  The first concrete shape to handle is `special_format`
-callsite `block_index=1 inst_index=0`: reload/copy `%p.fmt` value id 0 from its
-preserved home `s1` (or otherwise keep it live in a valid home) into arg0 `a0`
-before calling `strchr(..., 'V')`.
+Run Step 3 against the representative `src/20000112-1.c` RV64 GCC torture
+backend path to determine whether this repair makes the case pass or advances
+it to a distinct next owner.
 
 ## Watchouts
 
-Do not key behavior on testcase name, `special_format`, a specific `strchr`
-call, exact C expression spelling, block labels, value ids, instruction
-indexes, physical registers, object addresses, or log text. The semantic
-invariant is: when a call arg is sourced from a value that has been preserved or
-moved out of a call-clobbered ABI/result register, call setup must source from
-the current value home rather than assuming the old ABI arg register still
-contains the incoming parameter.
-
-Required prepared facts observed:
-- `prepared.summary @special_format` has saved `s1` and `s2`, no frame homes,
-  and four `strchr` callsites.
-- `%p.fmt` storage is initially `register:a0`, value id 0.
-- Later `strchr` callsites at `block_index=1`, `5`, and `9` preserve
-  `%p.fmt#0` via `callee_saved_register:s1`.
-- Prepared call plans still describe arg0 for those later callsites as
-  `source_value_id=0 source_reg=a0 -> dest_reg=a0`, while also listing the
-  preserve home in `s1`. That is the semantic reload gap.
-
-Runtime/object evidence:
-- c4c `special_format` does not copy/reload the incoming `fmt` before the
-  second call. It executes `li a1,86; jalr strchr@plt` with `a0` unchanged from
-  the first call result.
-- QEMU trace shows entry to `special_format` with `a0=0x5555555568b0`, first
-  `strchr('*')` returning NULL into `a0=0`, then the second `strchr('V')`
-  entered with `x10/a0=0`, leading to SIGSEGV `si_addr=NULL`.
-- clang stores the incoming `a0` to a frame slot and reloads it before every
-  `strchr`, which is the expected semantic behavior but not necessarily the
-  required implementation strategy.
+This packet intentionally admits only complete single-width GPR callee-saved
+`PriorPreservation` selections. Stack prior-preservation and
+wider/register-bank variants remain unsupported in the RV64 object route until
+separately planned. The object-route fixture verifies the reload from the
+preserved home, but it does not claim broader call-boundary preservation-home
+population coverage.
 
 ## Proof
 
-Audit/classification only; no build or root proof log was run or overwritten.
-Artifacts and commands used:
-- `sed -n '1,220p' build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`
-- `sed -n '1,220p' build/agent_state/379_step4_20000112.classification.txt`
-- `rg -n 'strchr|call|arg|a0|value|home|20000112' build/agent_state/378_step1_20000112.prepared_bir.log build/agent_state/378_step1_20000112.semantic_bir.log build/agent_state/378_step1_20000112_probe_results.log`
-- `sed -n '216,238p' build/agent_state/378_step1_20000112.prepared_bir.log`
-- `sed -n '545,620p' build/agent_state/378_step1_20000112.prepared_bir.log`
-- `sed -n '117,173p' build/agent_state/379_step4_20000112.c4c_bin_objdump.txt`
-- `sed -n '138,173p' build/agent_state/379_step4_20000112.clang_bin_objdump.txt`
-- `sed -n '42353,42750p' build/agent_state/379_step4_20000112.c4c_qemu_trace.log`
-- `rg -n 'SIG|a0|strchr|main|call' build/agent_state/379_step4_20000112.c4c_qemu_L_strace.err build/agent_state/379_step4_20000112.c4c_qemu_trace.log build/agent_state/379_step4_20000112.clang_qemu_L_strace.err`
+Supervisor-delegated proof passed and was written to `test_after.log`:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_call_boundary_effect_plan|backend_codegen_route_riscv64_(short_circuit_select_false_lhs|compare_result_select_false_arm|pointer_typed_select_publication)|backend_rv64_runtime_riscv64_(short_circuit_select_false_lhs|compare_result_select_false_arm|pointer_typed_select_publication)|backend_(obj_)?runtime_rv64_(two_arg_local_arg|two_arg_both_local_arg|two_arg_second_local_arg|local_arg_call))$' | tee test_after.log`
+
+Result: build completed with no work needed after the prior compile, and all 13
+selected tests passed, including `backend_riscv_object_emission`,
+`backend_prepare_frame_stack_call_contract`, `backend_call_boundary_effect_plan`,
+idea 379 select-publication route/runtime tests, and the focused RV64
+local-argument runtime/object cases.

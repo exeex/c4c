@@ -1273,6 +1273,215 @@ prepare::PreparedBirModule make_prepared_two_arg_scalar_call_module() {
   return prepared;
 }
 
+prepare::PreparedCallArgumentSourceSelection prior_preserved_s1_selection(
+    c4c::ValueNameId source_name) {
+  return prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::PriorPreservation,
+      .source_value_id = prepare::PreparedValueId{1},
+      .source_value_name = source_name,
+      .preserved_call_block_index = std::size_t{0},
+      .preserved_call_instruction_index = std::size_t{0},
+      .preservation_route =
+          prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+      .preserved_register_name = std::string{"s1"},
+      .preserved_register_bank = prepare::PreparedRegisterBank::Gpr,
+      .preserved_register_contiguous_width = std::size_t{1},
+      .preserved_occupied_register_names = {std::string{"s1"}},
+      .preserved_register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+              .slot_index = 1,
+              .contiguous_width = 1,
+          },
+      .preserved_callee_saved_save_index = std::size_t{0},
+  };
+}
+
+prepare::PreparedBirModule make_prepared_prior_preserved_arg_call_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("reload_prior_preserved_arg");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto param_name = prepared.names.value_names.intern("%p.ptr");
+  const auto first_result_name = prepared.names.value_names.intern("%first");
+  const auto second_result_name = prepared.names.value_names.intern("%second");
+
+  bir::CallInst first_call;
+  first_call.result = bir::Value::named(bir::TypeKind::Ptr, "%first");
+  first_call.callee = "probe";
+  first_call.args = {bir::Value::named(bir::TypeKind::Ptr, "%p.ptr")};
+  first_call.arg_types = {bir::TypeKind::Ptr};
+  first_call.return_type = bir::TypeKind::Ptr;
+
+  bir::CallInst second_call;
+  second_call.result = bir::Value::named(bir::TypeKind::Ptr, "%second");
+  second_call.callee = "probe";
+  second_call.args = {bir::Value::named(bir::TypeKind::Ptr, "%p.ptr")};
+  second_call.arg_types = {bir::TypeKind::Ptr};
+  second_call.return_type = bir::TypeKind::Ptr;
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {first_call, second_call},
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::Ptr, "%second");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "reload_prior_preserved_arg",
+      .return_type = bir::TypeKind::Ptr,
+      .return_size_bytes = 8,
+      .return_align_bytes = 8,
+      .params = {bir::Param{
+          .type = bir::TypeKind::Ptr,
+          .name = "%p.ptr",
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = param_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"s1"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = first_result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 3,
+                  .function_name = function_name,
+                  .value_name = second_result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls =
+          {
+              prepare::PreparedCallPlan{
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .wrapper_kind =
+                      prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+                  .direct_callee_name = std::string{"probe"},
+                  .arguments = {prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding =
+                          prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = prepare::PreparedValueId{1},
+                      .source_register_name = std::string{"s1"},
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  }},
+                  .result = prepare::PreparedCallResultPlan{
+                      .instruction_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_value_id = prepare::PreparedValueId{2},
+                      .source_register_name = std::string{"a0"},
+                      .source_contiguous_width = 1,
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  },
+                  .preserved_values = {prepare::PreparedCallPreservedValue{
+                      .value_id = prepare::PreparedValueId{1},
+                      .value_name = param_name,
+                      .route = prepare::PreparedCallPreservationRoute::
+                          CalleeSavedRegister,
+                      .callee_saved_save_index = std::size_t{0},
+                      .contiguous_width = 1,
+                      .register_name = std::string{"s1"},
+                      .register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .occupied_register_names = {std::string{"s1"}},
+                      .register_placement =
+                          prepare::PreparedRegisterPlacement{
+                              .bank = prepare::PreparedRegisterBank::Gpr,
+                              .pool =
+                                  prepare::PreparedRegisterSlotPool::CalleeSaved,
+                              .slot_index = 1,
+                              .contiguous_width = 1,
+                          },
+                  }},
+              },
+              prepare::PreparedCallPlan{
+                  .block_index = 0,
+                  .instruction_index = 1,
+                  .wrapper_kind =
+                      prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+                  .direct_callee_name = std::string{"probe"},
+                  .arguments = {prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 1,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding =
+                          prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = prepare::PreparedValueId{1},
+                      .source_register_name = std::string{"a0"},
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                      .source_selection = prior_preserved_s1_selection(param_name),
+                  }},
+                  .result = prepare::PreparedCallResultPlan{
+                      .instruction_index = 1,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_value_id = prepare::PreparedValueId{3},
+                      .source_register_name = std::string{"a0"},
+                      .source_contiguous_width = 1,
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"a0"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  },
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -5152,6 +5361,75 @@ int builds_prepared_two_arg_scalar_call_object() {
   return 0;
 }
 
+int builds_prepared_prior_preserved_arg_call_object() {
+  const auto prepared = make_prepared_prior_preserved_arg_call_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared prior-preserved arg call RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main = object::find_symbol(*module, "reload_prior_preserved_arg");
+  const auto* probe = object::find_symbol(*module, "probe");
+  if (text == nullptr || main == nullptr || probe == nullptr) {
+    return fail("expected prior-preserved arg call object to publish text/function/probe");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[1].section != text->id ||
+      module->relocations[0].type != R_RISCV_CALL_PLT ||
+      module->relocations[1].type != R_RISCV_CALL_PLT ||
+      module->relocations[0].symbol != probe->id ||
+      module->relocations[1].symbol != probe->id ||
+      module->relocations[0].offset >= module->relocations[1].offset ||
+      module->relocations[1].offset < main->value + 16) {
+    return fail("expected two direct probe call relocations");
+  }
+  if (read_u32(text->bytes, module->relocations[1].offset - 4) !=
+      0x00048513) {
+    return fail("expected later call argument to reload from preserved s1 into a0");
+  }
+  return 0;
+}
+
+int rejects_prepared_prior_preserved_arg_call_fail_closed_shapes() {
+  auto prepared = make_prepared_prior_preserved_arg_call_module();
+  prepared.call_plans.functions[0]
+      .calls[1]
+      .arguments[0]
+      .source_selection->preserved_register_name = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_prior_preserved_arg_call_module();
+  auto& selection = *prepared.call_plans.functions[0]
+                         .calls[1]
+                         .arguments[0]
+                         .source_selection;
+  selection.preservation_route =
+      prepare::PreparedCallPreservationRoute::StackSlot;
+  selection.preserved_register_name = std::nullopt;
+  selection.preserved_register_bank = std::nullopt;
+  selection.preserved_register_contiguous_width = std::nullopt;
+  selection.preserved_occupied_register_names.clear();
+  selection.preserved_register_placement = std::nullopt;
+  selection.preserved_stack_slot_id = prepare::PreparedFrameSlotId{7};
+  selection.preserved_stack_offset_bytes = std::size_t{24};
+  selection.preserved_stack_size_bytes = std::size_t{8};
+  selection.preserved_stack_align_bytes = std::size_t{8};
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") !=
+      0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int rejects_byval_stack_slot_param_home_with_precise_diagnostic() {
   return expect_prepared_rejection_diagnostic(
       make_prepared_byval_stack_slot_param_module(),
@@ -8049,6 +8327,8 @@ int main() {
   status |=
       materializes_fact_complete_variadic_va_start_with_overflow_base_state();
   status |= builds_prepared_two_arg_scalar_call_object();
+  status |= builds_prepared_prior_preserved_arg_call_object();
+  status |= rejects_prepared_prior_preserved_arg_call_fail_closed_shapes();
   status |= rejects_byval_stack_slot_param_home_with_precise_diagnostic();
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();
   status |= rejects_raw_fpr_formal_param_home_without_target_identity();
