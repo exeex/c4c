@@ -1,3 +1,4 @@
+#include "src/backend/prealloc/call_plans.hpp"
 #include "src/backend/prealloc/calls.hpp"
 
 #include <cstddef>
@@ -187,6 +188,100 @@ prepare::PreparedMoveBundle make_after_call_bundle() {
   };
 }
 
+prepare::PreparedCallPlan make_register_source_call(std::size_t block_index,
+                                                    std::size_t instruction_index,
+                                                    prepare::PreparedValueId value_id,
+                                                    std::string source_register) {
+  return prepare::PreparedCallPlan{
+      .block_index = block_index,
+      .instruction_index = instruction_index,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .arguments =
+          {prepare::PreparedCallArgumentPlan{
+              .instruction_index = instruction_index,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+              .source_value_id = value_id,
+              .source_register_name = std::move(source_register),
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_register_name = std::string{"a0"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          }},
+  };
+}
+
+prepare::PreparedCallPreservedValue make_supported_callee_saved_preservation(
+    prepare::PreparedValueId value_id,
+    std::string source_register) {
+  return prepare::PreparedCallPreservedValue{
+      .value_id = value_id,
+      .value_name = c4c::ValueNameId{51},
+      .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+      .callee_saved_save_index = std::size_t{0},
+      .contiguous_width = 1,
+      .register_name = std::string{"s1"},
+      .register_bank = prepare::PreparedRegisterBank::Gpr,
+      .occupied_register_names = {std::string{"s1"}},
+      .register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+              .slot_index = 0,
+              .contiguous_width = 1,
+          },
+      .preservation_source =
+          prepare::PreparedCallBoundaryEffectEndpoint{
+              .encoding = prepare::PreparedStorageEncodingKind::Register,
+              .storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .value_id = value_id,
+              .value_name = c4c::ValueNameId{51},
+              .register_name = std::move(source_register),
+              .register_bank = prepare::PreparedRegisterBank::Gpr,
+              .contiguous_width = 1,
+              .occupied_register_names = {std::string{"a0"}},
+          },
+      .preservation_destination =
+          prepare::PreparedCallBoundaryEffectEndpoint{
+              .encoding = prepare::PreparedStorageEncodingKind::Register,
+              .storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .value_id = value_id,
+              .value_name = c4c::ValueNameId{51},
+              .register_name = std::string{"s1"},
+              .register_bank = prepare::PreparedRegisterBank::Gpr,
+              .contiguous_width = 1,
+              .occupied_register_names = {std::string{"s1"}},
+              .callee_saved_save_index = std::size_t{0},
+              .register_placement =
+                  prepare::PreparedRegisterPlacement{
+                      .bank = prepare::PreparedRegisterBank::Gpr,
+                      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                      .slot_index = 0,
+                      .contiguous_width = 1,
+                  },
+          },
+      .preservation_reason = "callee_saved_register_preservation",
+  };
+}
+
+prepare::PreparedCallPreservedValue make_unsupported_non_register_source_preservation(
+    prepare::PreparedValueId value_id) {
+  auto preserved =
+      make_supported_callee_saved_preservation(value_id, std::string{"a0"});
+  preserved.preservation_source =
+      prepare::PreparedCallBoundaryEffectEndpoint{
+          .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+          .storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+          .value_id = value_id,
+          .value_name = c4c::ValueNameId{51},
+          .slot_id = prepare::PreparedFrameSlotId{4},
+          .stack_offset_bytes = std::size_t{24},
+          .stack_size_bytes = std::size_t{8},
+          .stack_align_bytes = std::size_t{8},
+      };
+  return preserved;
+}
+
 bool records_explicit_before_and_after_moves() {
   const auto call_plan = make_call_plan();
   const auto before = make_before_call_bundle();
@@ -236,6 +331,82 @@ bool records_explicit_before_and_after_moves() {
          expect(after_move.destination.slot_id ==
                     std::optional<prepare::PreparedFrameSlotId>{6},
                 "expected result destination slot id");
+}
+
+bool seeds_supported_prior_register_source_preservation() {
+  const auto value_id = prepare::PreparedValueId{101};
+  prepare::PreparedCallPlansFunction function_plan{
+      .function_name = c4c::FunctionNameId{7},
+      .calls =
+          {make_register_source_call(0, 0, value_id, std::string{"a1"}),
+           make_register_source_call(0, 1, value_id, std::string{"a0"}),
+           make_register_source_call(0, 2, value_id, std::string{"a0"})},
+  };
+  function_plan.calls.back().preserved_values.push_back(
+      make_supported_callee_saved_preservation(value_id, std::string{"a0"}));
+
+  prepare::seed_supported_prior_call_preservations_from_current_call(
+      function_plan, function_plan.calls.back());
+
+  const auto& different_source_call = function_plan.calls[0];
+  if (!expect(different_source_call.preserved_values.empty(),
+              "expected different source register prior call to remain unseeded")) {
+    return false;
+  }
+
+  const auto& seeded_call = function_plan.calls[1];
+  if (!expect(seeded_call.preserved_values.size() == 1,
+              "expected matching register-source prior call to receive preservation") ||
+      !expect(seeded_call.preserved_values.front().value_id == value_id,
+              "expected seeded preserved value id") ||
+      !expect(seeded_call.preserved_values.front().preservation_source.storage_kind ==
+                  prepare::PreparedMoveStorageKind::Register,
+              "expected seeded preservation source to remain register-backed") ||
+      !expect(seeded_call.preserved_values.front().preservation_source.register_name ==
+                  std::optional<std::string>{"a0"},
+              "expected seeded preservation source register") ||
+      !expect(seeded_call.preserved_values.front().preservation_destination.storage_kind ==
+                  prepare::PreparedMoveStorageKind::Register,
+              "expected seeded preservation destination to remain register-backed") ||
+      !expect(seeded_call.preserved_values.front().preservation_destination.register_name ==
+                  std::optional<std::string>{"s1"},
+              "expected seeded preservation destination register")) {
+    return false;
+  }
+
+  const auto effects =
+      prepare::plan_prepared_call_boundary_effects(seeded_call, nullptr, nullptr);
+  const auto population_it = std::find_if(
+      effects.begin(), effects.end(), [value_id](const auto& effect) {
+        return effect.effect_kind ==
+                   prepare::PreparedCallBoundaryEffectKind::
+                       PreservationHomePopulation &&
+               effect.source.value_id ==
+                   std::optional<prepare::PreparedValueId>{value_id} &&
+               effect.source.register_name == std::optional<std::string>{"a0"} &&
+               effect.destination.register_name ==
+                   std::optional<std::string>{"s1"};
+      });
+  return expect(population_it != effects.end(),
+                "expected seeded prior call to yield preservation home population");
+}
+
+bool does_not_seed_unsupported_non_register_preservation_source() {
+  const auto value_id = prepare::PreparedValueId{102};
+  prepare::PreparedCallPlansFunction function_plan{
+      .function_name = c4c::FunctionNameId{8},
+      .calls =
+          {make_register_source_call(0, 0, value_id, std::string{"a0"}),
+           make_register_source_call(0, 1, value_id, std::string{"a0"})},
+  };
+  function_plan.calls.back().preserved_values.push_back(
+      make_unsupported_non_register_source_preservation(value_id));
+
+  prepare::seed_supported_prior_call_preservations_from_current_call(
+      function_plan, function_plan.calls.back());
+
+  return expect(function_plan.calls.front().preserved_values.empty(),
+                "expected unsupported non-register preservation source to stay unseeded");
 }
 
 bool records_preservation_and_republication_intent() {
@@ -384,6 +555,8 @@ bool records_unavailable_explicit_move_without_target_operands() {
 
 int main() {
   if (!records_explicit_before_and_after_moves() ||
+      !seeds_supported_prior_register_source_preservation() ||
+      !does_not_seed_unsupported_non_register_preservation_source() ||
       !records_preservation_and_republication_intent() ||
       !records_unavailable_explicit_move_without_target_operands()) {
     return 1;

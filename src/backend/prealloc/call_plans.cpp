@@ -2135,6 +2135,75 @@ void append_incremental_prior_preserved_values(PreparedCallPlanLookups& lookups,
   }
 }
 
+[[nodiscard]] bool call_has_preserved_value(const PreparedCallPlan& call_plan,
+                                            PreparedValueId value_id) {
+  return std::any_of(call_plan.preserved_values.begin(),
+                     call_plan.preserved_values.end(),
+                     [&](const PreparedCallPreservedValue& preserved) {
+                       return preserved.value_id == value_id;
+                     });
+}
+
+[[nodiscard]] bool preservation_can_seed_prior_call(
+    const PreparedCallPreservedValue& preserved) {
+  return preserved.route == PreparedCallPreservationRoute::CalleeSavedRegister &&
+         preserved.preservation_source.storage_kind ==
+             PreparedMoveStorageKind::Register &&
+         preserved.preservation_source.register_bank.has_value() &&
+         preserved.preservation_source.register_name.has_value() &&
+         !preserved.preservation_source.register_name->empty() &&
+         preserved.preservation_destination.storage_kind ==
+             PreparedMoveStorageKind::Register &&
+         preserved.preservation_destination.register_bank.has_value() &&
+         preserved.preservation_destination.register_name.has_value() &&
+         !preserved.preservation_destination.register_name->empty() &&
+         preserved.contiguous_width == 1 &&
+         preserved.occupied_register_names.size() == 1;
+}
+
+[[nodiscard]] bool call_argument_sources_preserved_value(
+    const PreparedCallArgumentPlan& argument,
+    const PreparedCallPreservedValue& preserved) {
+  if (!argument.source_value_id.has_value() ||
+      *argument.source_value_id != preserved.value_id ||
+      argument.source_encoding != PreparedStorageEncodingKind::Register ||
+      argument.source_register_bank != preserved.preservation_source.register_bank ||
+      argument.source_register_name != preserved.preservation_source.register_name) {
+    return false;
+  }
+  return true;
+}
+
+void seed_prior_call_preservation_from_later_dependency(
+    PreparedCallPlansFunction& function_plan,
+    const PreparedCallPreservedValue& preserved) {
+  if (!preservation_can_seed_prior_call(preserved)) {
+    return;
+  }
+
+  for (auto& prior_call : function_plan.calls) {
+    if (call_has_preserved_value(prior_call, preserved.value_id)) {
+      continue;
+    }
+    const auto argument_it =
+        std::find_if(prior_call.arguments.begin(),
+                     prior_call.arguments.end(),
+                     [&](const PreparedCallArgumentPlan& argument) {
+                       return call_argument_sources_preserved_value(argument, preserved);
+                     });
+    if (argument_it == prior_call.arguments.end()) {
+      continue;
+    }
+    prior_call.preserved_values.push_back(preserved);
+    std::sort(prior_call.preserved_values.begin(),
+              prior_call.preserved_values.end(),
+              [](const PreparedCallPreservedValue& lhs,
+                 const PreparedCallPreservedValue& rhs) {
+                return lhs.value_id < rhs.value_id;
+              });
+  }
+}
+
 [[nodiscard]] std::optional<PreparedCallArgumentSourceSelection>
 select_prepared_call_argument_source(const PreparedBirModule& prepared,
                                      const PreparedNameTables& names,
@@ -2726,6 +2795,14 @@ void publish_route6_named_scalar_i32_call_argument_source(
   existing->source_value_name = std::string{prepared_source_name};
 }
 
+void seed_supported_prior_call_preservations_from_current_call(
+    PreparedCallPlansFunction& function_plan,
+    const PreparedCallPlan& current_call_plan) {
+  for (const auto& preserved : current_call_plan.preserved_values) {
+    seed_prior_call_preservation_from_later_dependency(function_plan, preserved);
+  }
+}
+
 void populate_call_plans(PreparedBirModule& prepared) {
   prepared.call_plans.functions.clear();
 
@@ -2941,6 +3018,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                   *call);
 
         function_plan.calls.push_back(std::move(call_plan));
+        seed_supported_prior_call_preservations_from_current_call(
+            function_plan, function_plan.calls.back());
         append_incremental_prior_preserved_values(prior_preserved_lookups,
                                                   function_plan.calls.back());
       }
