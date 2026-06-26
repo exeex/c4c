@@ -1051,6 +1051,14 @@ std::optional<std::uint32_t> gpr_register_number_for_value(
   return home == nullptr ? std::nullopt : gpr_register_number_for_home(*home);
 }
 
+std::optional<std::uint32_t> fpr_register_number_for_value(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  const auto* home = prepared_value_home_for(names, lookups, value);
+  return home == nullptr ? std::nullopt : fpr_register_number_for_home(*home);
+}
+
 std::optional<std::uint32_t> gpr_register_number_for_value_name(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     c4c::ValueNameId value_name) {
@@ -1301,6 +1309,68 @@ bool append_rv64_load_base_to_register(RiscvEncodedFragment& fragment,
                             *funct3,
                             base_register,
                             offset));
+  return true;
+}
+
+bool append_rv64_store_fpr_to_stack(RiscvEncodedFragment& fragment,
+                                    std::uint32_t source_register,
+                                    std::int32_t offset,
+                                    c4c::backend::bir::TypeKind type) {
+  if (!fits_signed_12_bit_immediate(offset) ||
+      type != c4c::backend::bir::TypeKind::F64) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_s_type(0x27, 3, 2, source_register, offset));  // fsd
+  return true;
+}
+
+bool append_rv64_store_fpr_to_base(RiscvEncodedFragment& fragment,
+                                   std::uint32_t source_register,
+                                   std::uint32_t base_register,
+                                   std::int32_t offset,
+                                   c4c::backend::bir::TypeKind type) {
+  if (!fits_signed_12_bit_immediate(offset) ||
+      type != c4c::backend::bir::TypeKind::F64) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_s_type(0x27,
+                            3,
+                            base_register,
+                            source_register,
+                            offset));  // fsd
+  return true;
+}
+
+bool append_rv64_load_stack_to_fpr(RiscvEncodedFragment& fragment,
+                                   std::uint32_t destination_register,
+                                   std::int32_t offset,
+                                   c4c::backend::bir::TypeKind type) {
+  if (!fits_signed_12_bit_immediate(offset) ||
+      type != c4c::backend::bir::TypeKind::F64) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_i_type(0x07, destination_register, 3, 2, offset));  // fld
+  return true;
+}
+
+bool append_rv64_load_base_to_fpr(RiscvEncodedFragment& fragment,
+                                  std::uint32_t destination_register,
+                                  std::uint32_t base_register,
+                                  std::int32_t offset,
+                                  c4c::backend::bir::TypeKind type) {
+  if (!fits_signed_12_bit_immediate(offset) ||
+      type != c4c::backend::bir::TypeKind::F64) {
+    return false;
+  }
+  append_le32(fragment.bytes,
+              encode_i_type(0x07,
+                            destination_register,
+                            3,
+                            base_register,
+                            offset));  // fld
   return true;
 }
 
@@ -1935,6 +2005,34 @@ bool append_rv64_move_value_to_register(
                                              *size_bytes);
   }
   return false;
+}
+
+std::optional<std::uint32_t> append_rv64_prepare_f64_value_for_store(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t scratch_fpr,
+    std::uint32_t scratch_gpr,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  if (value.type != c4c::backend::bir::TypeKind::F64) {
+    return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    if (value.immediate_bits >
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      return std::nullopt;
+    }
+    append_rv64_load_immediate(
+        fragment,
+        scratch_gpr,
+        static_cast<std::int64_t>(value.immediate_bits));
+    if (!append_rv64_gpr_to_fpr_move(
+            fragment, scratch_fpr, scratch_gpr, value.type)) {
+      return std::nullopt;
+    }
+    return scratch_fpr;
+  }
+  return fpr_register_number_for_value(names, lookups, value);
 }
 
 std::optional<std::uint32_t> rv64_branch_funct3(
@@ -3798,6 +3896,13 @@ std::optional<std::int32_t> prepared_frame_slot_absolute_offset(
     if (slot_it == stack_layout.frame_slots.end()) {
       return std::nullopt;
     }
+    const auto slot_byte_offset =
+        static_cast<std::size_t>(access->address.byte_offset);
+    if (slot_byte_offset > slot_it->size_bytes ||
+        slot_it->size_bytes - slot_byte_offset < size_bytes ||
+        slot_it->align_bytes > size_bytes) {
+      return std::nullopt;
+    }
     slot_offset = slot_it->offset_bytes;
   }
   const auto offset =
@@ -4015,6 +4120,14 @@ std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     default:
       return std::nullopt;
   }
+}
+
+std::optional<std::size_t> rv64_local_memory_size_for_type(
+    c4c::backend::bir::TypeKind type) {
+  if (type == c4c::backend::bir::TypeKind::F64) {
+    return std::size_t{8};
+  }
+  return rv64_scalar_memory_size_for_type(type);
 }
 
 std::optional<std::size_t> rv64_global_scalar_memory_size_for_type(
@@ -4363,6 +4476,52 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     const c4c::backend::bir::StoreLocalInst& store,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t stack_frame_bytes) {
+  if (store.value.type == c4c::backend::bir::TypeKind::F64) {
+    constexpr std::uint32_t scratch_fpr = 0;  // ft0
+    const auto size_bytes = rv64_local_memory_size_for_type(store.value.type);
+    if (!size_bytes.has_value()) {
+      return std::nullopt;
+    }
+    const auto offset =
+        prepared_frame_slot_absolute_offset(stack_layout,
+                                            access,
+                                            stack_frame_bytes,
+                                            *size_bytes);
+    if (offset.has_value()) {
+      RiscvEncodedFragment fragment;
+      const auto source_fpr = append_rv64_prepare_f64_value_for_store(
+          fragment, scratch_fpr, 6, names, lookups, store.value);
+      if (!source_fpr.has_value() ||
+          !append_rv64_store_fpr_to_stack(
+              fragment, *source_fpr, *offset, store.value.type)) {
+        return std::nullopt;
+      }
+      return fragment;
+    }
+    const auto pointer_base =
+        prepared_pointer_value_base_offset(lookups, access, *size_bytes);
+    if (!pointer_base.has_value()) {
+      return std::nullopt;
+    }
+    RiscvEncodedFragment fragment;
+    const auto source_fpr = append_rv64_prepare_f64_value_for_store(
+        fragment,
+        scratch_fpr,
+        rv64_temporary_gpr_avoiding(pointer_base->first),
+        names,
+        lookups,
+        store.value);
+    if (!source_fpr.has_value() ||
+        !append_rv64_store_fpr_to_base(fragment,
+                                      *source_fpr,
+                                      pointer_base->first,
+                                      pointer_base->second,
+                                      store.value.type)) {
+      return std::nullopt;
+    }
+    return fragment;
+  }
+
   const auto size_bytes = rv64_scalar_memory_size_for_type(store.value.type);
   if (!size_bytes.has_value()) {
     return std::nullopt;
@@ -4475,6 +4634,42 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_load_local(
     const c4c::backend::bir::LoadLocalInst& load,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t stack_frame_bytes) {
+  if (load.result.type == c4c::backend::bir::TypeKind::F64) {
+    const auto size_bytes = rv64_local_memory_size_for_type(load.result.type);
+    if (!size_bytes.has_value()) {
+      return std::nullopt;
+    }
+    const auto destination =
+        fpr_register_number_for_value(names, lookups, load.result);
+    if (!destination.has_value()) {
+      return std::nullopt;
+    }
+    const auto offset =
+        prepared_frame_slot_absolute_offset(stack_layout,
+                                            access,
+                                            stack_frame_bytes,
+                                            *size_bytes);
+    RiscvEncodedFragment fragment;
+    if (offset.has_value()) {
+      if (!append_rv64_load_stack_to_fpr(
+              fragment, *destination, *offset, load.result.type)) {
+        return std::nullopt;
+      }
+      return fragment;
+    }
+    const auto pointer_base =
+        prepared_pointer_value_base_offset(lookups, access, *size_bytes);
+    if (!pointer_base.has_value() ||
+        !append_rv64_load_base_to_fpr(fragment,
+                                     *destination,
+                                     pointer_base->first,
+                                     pointer_base->second,
+                                     load.result.type)) {
+      return std::nullopt;
+    }
+    return fragment;
+  }
+
   const auto size_bytes = rv64_scalar_memory_size_for_type(load.result.type);
   if (!size_bytes.has_value()) {
     return std::nullopt;
@@ -6725,10 +6920,24 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
 
   const auto local_memory_diagnostic =
       [&](const std::optional<std::size_t>& size_bytes,
-          const prepare::PreparedMemoryAccess* access) -> std::optional<std::string> {
+          const prepare::PreparedMemoryAccess* access,
+          bool f64_memory = false) -> std::optional<std::string> {
     if (!size_bytes.has_value()) {
       return std::string{
           "unsupported_local_memory_access: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared local memory accesses"};
+    }
+    if (f64_memory) {
+      if (!prepared_frame_slot_absolute_offset(stack_layout,
+                                               access,
+                                               stack_frame_bytes,
+                                               *size_bytes)
+               .has_value() &&
+          !prepared_pointer_value_base_offset(&lookups, access, *size_bytes)
+               .has_value()) {
+        return std::string{
+            "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing"};
+      }
+      return std::nullopt;
     }
     if (!prepared_frame_slot_absolute_offset(stack_layout,
                                              access,
@@ -6750,7 +6959,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
   };
 
   if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst)) {
-    const auto size_bytes = rv64_scalar_memory_size_for_type(store->value.type);
+    const auto size_bytes = rv64_local_memory_size_for_type(store->value.type);
     const auto* access = prepared_memory_access_for_instruction(&lookups,
                                                                prepared_block_label,
                                                                instruction_index);
@@ -6763,7 +6972,8 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
             .has_value()) {
       return std::nullopt;
     }
-    return local_memory_diagnostic(size_bytes, access);
+    return local_memory_diagnostic(
+        size_bytes, access, store->value.type == bir::TypeKind::F64);
   }
   if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst)) {
     if (load->address.has_value() &&
@@ -6772,10 +6982,11 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
           "unsupported_global_data: RV64 object route requires prepared global-symbol memory access facts for LoadLocalInst global-address lanes"};
     }
     return local_memory_diagnostic(
-        rv64_scalar_memory_size_for_type(load->result.type),
+        rv64_local_memory_size_for_type(load->result.type),
         prepared_memory_access_for_instruction(&lookups,
                                                prepared_block_label,
-                                               instruction_index));
+                                               instruction_index),
+        load->result.type == bir::TypeKind::F64);
   }
   if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst)) {
     const auto access = prepared_memory_access_for_instruction(&lookups,

@@ -45,6 +45,15 @@ std::uint32_t read_u32(const std::vector<std::uint8_t>& bytes,
          (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
 }
 
+bool contains_u32(const std::vector<std::uint8_t>& bytes, std::uint32_t word) {
+  for (std::size_t offset = 0; offset + 4 <= bytes.size(); offset += 4) {
+    if (read_u32(bytes, offset) == word) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bir::Value null_pointer_value() {
   return bir::Value{
       .kind = bir::Value::Kind::Immediate,
@@ -2316,6 +2325,108 @@ prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_f64_local_frame_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("f64_local_frame");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto slot_name = prepared.names.slot_names.intern("%lv.d");
+  const auto result_name = prepared.names.value_names.intern("%t0");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%lv.d",
+                  .slot_id = slot_name,
+                  .value = bir::Value::immediate_f64_bits(0x40091eb851eb851full),
+                  .align_bytes = 8,
+              },
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::F64, "%t0"),
+                  .slot_name = "%lv.d",
+                  .slot_id = slot_name,
+                  .align_bytes = 8,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "f64_local_frame",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .local_slots = {bir::LocalSlot{
+          .name = "%lv.d",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::F64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{0},
+          .function_name = function_name,
+          .offset_bytes = 0,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      },
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              make_fpr_home(function_name, result_name, 1, "ft0", 0),
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 8,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{0},
+                      .byte_offset = 0,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .result_value_name = result_name,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{0},
+                      .byte_offset = 0,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_scalar_local_subobject_frame_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -2533,6 +2644,109 @@ prepare::PreparedBirModule make_prepared_pointer_value_scalar_local_module(
                       .byte_offset = 2,
                       .size_bytes = 2,
                       .align_bytes = 2,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+          },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_pointer_value_f64_local_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("f64_pointer_local");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto slot_name = prepared.names.slot_names.intern("%ptr");
+  const auto pointer_name = prepared.names.value_names.intern("%p");
+  const auto source_name = prepared.names.value_names.intern("%src");
+  const auto result_name = prepared.names.value_names.intern("%dst");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%ptr",
+                  .slot_id = slot_name,
+                  .value = bir::Value::named(bir::TypeKind::F64, "%src"),
+                  .align_bytes = 8,
+              },
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::F64, "%dst"),
+                  .slot_name = "%ptr",
+                  .slot_id = slot_name,
+                  .align_bytes = 8,
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "f64_pointer_local",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .local_slots = {bir::LocalSlot{
+          .name = "%ptr",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::F64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = pointer_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"s1"},
+              },
+              make_fpr_home(function_name, source_name, 2, "ft0", 0),
+              make_fpr_home(function_name, result_name, 3, "ft1", 1),
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 1,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                      .pointer_value_name = pointer_name,
+                      .byte_offset = 0,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .result_value_name = result_name,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                      .pointer_value_name = pointer_name,
+                      .byte_offset = 0,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
                       .can_use_base_plus_offset = true,
                   },
               },
@@ -7958,6 +8172,33 @@ int builds_prepared_scalar_local_frame_object() {
   return 0;
 }
 
+int builds_prepared_f64_local_frame_object() {
+  const auto prepared = make_prepared_f64_local_frame_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared F64 local frame RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "f64_local_frame");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared F64 local frame object to publish text/function");
+  }
+  if (text->bytes.size() < 20 || text->size_bytes != text->bytes.size() ||
+      function->value != 0 || function->size_bytes != text->bytes.size() ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared F64 local frame object text layout");
+  }
+  if (!contains_u32(text->bytes, 0xf2030053) ||
+      !contains_u32(text->bytes, 0x00013027) ||
+      !contains_u32(text->bytes, 0x00013007)) {
+    return fail("expected prepared F64 local frame to materialize immediate, fsd, and fld");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared F64 local frame object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_scalar_local_subobject_frame_object() {
   const auto prepared = make_prepared_scalar_local_subobject_frame_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -7985,6 +8226,29 @@ int builds_prepared_scalar_local_subobject_frame_object() {
   if (!module->relocations.empty()) {
     return fail("expected scalar local subobject object to need no relocations");
   }
+  return 0;
+}
+
+int rejects_prepared_f64_local_frame_fail_closed_shapes() {
+  auto prepared = make_prepared_f64_local_frame_module();
+  prepared.stack_layout.frame_slots[0].size_bytes = 1;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_f64_local_frame_module();
+  prepared.addressing.functions[0].accesses[0].address.can_use_base_plus_offset =
+      false;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing") !=
+      0) {
+    return 1;
+  }
+
   return 0;
 }
 
@@ -8109,6 +8373,33 @@ int builds_prepared_pointer_value_scalar_local_store_with_t1_base_object() {
   }
   if (!module->relocations.empty()) {
     return fail("expected pointer-value t1-base object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_pointer_value_f64_local_object() {
+  const auto prepared = make_prepared_pointer_value_f64_local_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared pointer-value F64 local RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "f64_pointer_local");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared pointer-value F64 local object to publish text/function");
+  }
+  if (text->bytes.size() != 12 || text->size_bytes != 12 ||
+      function->value != 0 || function->size_bytes != 12 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared pointer-value F64 local object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x0004b027 ||
+      read_u32(text->bytes, 4) != 0x0004b087 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected pointer-value F64 fsd/fld local sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected pointer-value F64 local object to need no relocations");
   }
   return 0;
 }
@@ -11339,10 +11630,13 @@ int main() {
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();
   status |= rejects_raw_fpr_formal_param_home_without_target_identity();
   status |= builds_prepared_scalar_local_frame_object();
+  status |= builds_prepared_f64_local_frame_object();
   status |= builds_prepared_scalar_local_subobject_frame_object();
+  status |= rejects_prepared_f64_local_frame_fail_closed_shapes();
   status |= rejects_prepared_scalar_local_subobject_fail_closed_shapes();
   status |= builds_prepared_pointer_value_scalar_local_object();
   status |= builds_prepared_pointer_value_scalar_local_store_with_t1_base_object();
+  status |= builds_prepared_pointer_value_f64_local_object();
   status |= builds_prepared_sret_stack_pointer_store_object();
   status |= rejects_prepared_sret_stack_pointer_store_fail_closed_shapes();
   status |= rejects_prepared_pointer_value_scalar_local_fail_closed_shapes();
