@@ -4531,6 +4531,88 @@ prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_scalar_gpr_stack_slot_param_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("scalar_gpr_stack_param_home");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto param_name = prepared.names.value_names.intern("%p.fmt");
+  const auto object_id = prepare::PreparedObjectId{9};
+  const auto slot_id = prepare::PreparedFrameSlotId{11};
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "scalar_gpr_stack_param_home",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = {bir::Param{
+          .type = bir::TypeKind::I32,
+          .name = "%p.fmt",
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .abi = bir::CallArgAbiInfo{
+              .type = bir::TypeKind::I32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = object_id,
+      .function_name = function_name,
+      .value_name = param_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .address_exposed = false,
+      .requires_home_slot = false,
+      .permanent_home_slot = false,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = object_id,
+      .function_name = function_name,
+      .offset_bytes = 64,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_size_bytes = 80;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 6,
+          .function_name = function_name,
+          .value_name = param_name,
+          .kind = prepare::PreparedValueHomeKind::StackSlot,
+          .slot_id = slot_id,
+          .offset_bytes = std::size_t{64},
+          .size_bytes = std::size_t{4},
+          .align_bytes = std::size_t{4},
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_fpr_formal_param_home_module(
     bool publish_target_identity) {
   prepare::PreparedBirModule prepared;
@@ -6366,6 +6448,94 @@ int rejects_byval_stack_slot_param_home_fail_closed_shapes() {
   prepared = make_prepared_byval_stack_slot_param_module();
   prepared.value_locations.functions[0].value_homes[0].slot_id = std::nullopt;
   if (expect_byval_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int expect_scalar_gpr_stack_slot_param_home_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_param_home: RV64 object route requires scalar GPR formal stack-slot homes to match prepared frame-slot facts");
+}
+
+int builds_scalar_gpr_stack_slot_param_home_object() {
+  const auto prepared = make_prepared_scalar_gpr_stack_slot_param_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared scalar GPR stack-slot formal home to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "scalar_gpr_stack_param_home");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected scalar GPR stack-slot formal object to publish text/function");
+  }
+  if (text->bytes.size() != 16 || text->size_bytes != 16 ||
+      function->value != 0 || function->size_bytes != 16 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected scalar GPR stack-slot formal object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xfb010113 ||
+      read_u32(text->bytes, 4) != 0x04a12023 ||
+      read_u32(text->bytes, 8) != 0x05010113 ||
+      read_u32(text->bytes, 12) != 0x00008067) {
+    return fail("expected scalar GPR formal to store incoming a0 into stack slot before return");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected scalar GPR stack-slot formal object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_scalar_gpr_stack_slot_param_home_fail_closed_shapes() {
+  auto prepared = make_prepared_scalar_gpr_stack_slot_param_module();
+  prepared.value_locations.functions[0].value_homes[0].offset_bytes =
+      std::size_t{68};
+  if (expect_scalar_gpr_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_gpr_stack_slot_param_module();
+  prepared.stack_layout.frame_slots[0].size_bytes = 8;
+  if (expect_scalar_gpr_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_gpr_stack_slot_param_module();
+  prepared.stack_layout.objects[0].source_kind = "local";
+  if (expect_scalar_gpr_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_gpr_stack_slot_param_module();
+  prepared.stack_layout.objects[0].address_exposed = true;
+  if (expect_scalar_gpr_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_gpr_stack_slot_param_module();
+  prepared.module.functions[0].params[0].abi->primary_class =
+      bir::AbiValueClass::Sse;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_gpr_stack_slot_param_module();
+  prepared.stack_layout.frame_size_bytes = 64;
+  if (expect_scalar_gpr_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_gpr_stack_slot_param_module();
+  prepared.value_locations.functions[0].value_homes[0].offset_bytes =
+      std::size_t{2048};
+  prepared.stack_layout.frame_slots[0].offset_bytes = 2048;
+  if (expect_scalar_gpr_stack_slot_param_home_rejection(prepared) != 0) {
     return 1;
   }
 
@@ -9482,6 +9652,8 @@ int main() {
   status |= rejects_prepared_prior_preserved_arg_call_fail_closed_shapes();
   status |= builds_byval_stack_slot_param_home_object();
   status |= rejects_byval_stack_slot_param_home_fail_closed_shapes();
+  status |= builds_scalar_gpr_stack_slot_param_home_object();
+  status |= rejects_scalar_gpr_stack_slot_param_home_fail_closed_shapes();
   status |= rejects_byval_stack_slot_pointer_access_fail_closed_shapes();
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();
   status |= rejects_raw_fpr_formal_param_home_without_target_identity();

@@ -877,6 +877,30 @@ std::uint32_t rv64_temporary_gpr_avoiding(std::uint32_t reserved_register) {
 std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type);
 
+std::optional<std::uint32_t> rv64_gpr_formal_argument_register_number(
+    const c4c::backend::bir::Function& function,
+    std::size_t param_index) {
+  if (param_index >= function.params.size()) {
+    return std::nullopt;
+  }
+  std::size_t gpr_index = 0;
+  for (std::size_t index = 0; index <= param_index; ++index) {
+    const auto& param = function.params[index];
+    if (!param.abi.has_value() || !param.abi->passed_in_register ||
+        param.abi->primary_class != c4c::backend::bir::AbiValueClass::Integer) {
+      continue;
+    }
+    if (index == param_index) {
+      break;
+    }
+    ++gpr_index;
+  }
+  if (gpr_index >= 8) {
+    return std::nullopt;
+  }
+  return static_cast<std::uint32_t>(10 + gpr_index);
+}
+
 std::optional<std::int32_t> prepared_stack_slot_home_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedValueHome& home,
@@ -4759,7 +4783,8 @@ std::optional<std::string> diagnose_unsupported_prepared_param_homes(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::bir::Function& function) {
+    const c4c::backend::bir::Function& function,
+    std::size_t stack_frame_bytes) {
   namespace prepare = c4c::backend::prepare;
 
   const auto has_supported_byval_param_stack_slot_home =
@@ -4808,7 +4833,74 @@ std::optional<std::string> diagnose_unsupported_prepared_param_homes(
                object_it->permanent_home_slot;
       };
 
-  for (const auto& param : function.params) {
+  const auto has_supported_scalar_gpr_param_stack_slot_home =
+      [&](const c4c::backend::bir::Param& param,
+          std::size_t param_index,
+          const prepare::PreparedValueHome& home) {
+        const auto size_bytes = rv64_scalar_memory_size_for_type(param.type);
+        if (param.is_byval || param.is_sret || param.is_varargs ||
+            !param.abi.has_value() || !param.abi->passed_in_register ||
+            param.abi->passed_on_stack ||
+            param.abi->primary_class != c4c::backend::bir::AbiValueClass::Integer ||
+            param.abi->type != param.type ||
+            param.abi->size_bytes != param.size_bytes ||
+            param.abi->align_bytes != param.align_bytes ||
+            !size_bytes.has_value() || *size_bytes != param.size_bytes ||
+            home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+            !home.slot_id.has_value() || !home.offset_bytes.has_value() ||
+            !home.size_bytes.has_value() || !home.align_bytes.has_value() ||
+            *home.size_bytes != param.size_bytes ||
+            *home.align_bytes != param.align_bytes ||
+            !rv64_gpr_formal_argument_register_number(function,
+                                                      param_index)
+                 .has_value()) {
+          return false;
+        }
+        const auto param_name = names.value_names.find(param.name);
+        if (param_name == c4c::kInvalidValueName ||
+            home.value_name != param_name) {
+          return false;
+        }
+        const auto frame_slot_it =
+            std::find_if(stack_layout.frame_slots.begin(),
+                         stack_layout.frame_slots.end(),
+                         [&](const prepare::PreparedFrameSlot& slot) {
+                           return slot.slot_id == *home.slot_id &&
+                                  slot.function_name == home.function_name;
+                         });
+        if (frame_slot_it == stack_layout.frame_slots.end() ||
+            frame_slot_it->offset_bytes != *home.offset_bytes ||
+            frame_slot_it->size_bytes != param.size_bytes ||
+            frame_slot_it->align_bytes != param.align_bytes ||
+            *home.offset_bytes > stack_frame_bytes ||
+            stack_frame_bytes - *home.offset_bytes < param.size_bytes ||
+            !fits_signed_12_bit_immediate(
+                static_cast<std::int64_t>(*home.offset_bytes))) {
+          return false;
+        }
+        const auto object_it =
+            std::find_if(stack_layout.objects.begin(),
+                         stack_layout.objects.end(),
+                         [&](const prepare::PreparedStackObject& object) {
+                           return object.object_id == frame_slot_it->object_id &&
+                                  object.function_name == home.function_name;
+                         });
+        return object_it != stack_layout.objects.end() &&
+               object_it->value_name == param_name &&
+               object_it->source_kind == "regalloc.spill_slot" &&
+               object_it->type == param.type &&
+               object_it->size_bytes == param.size_bytes &&
+               object_it->align_bytes == param.align_bytes &&
+               !object_it->address_exposed && !object_it->requires_home_slot &&
+               !object_it->permanent_home_slot;
+      };
+
+  for (std::size_t param_index = 0; param_index < function.params.size();
+       ++param_index) {
+    const auto& param = function.params[param_index];
+    if (param.is_varargs || param.is_sret) {
+      continue;
+    }
     const auto value = c4c::backend::bir::Value::named(param.type, param.name);
     const auto* home = prepared_value_home_for(names, lookups, value);
     if (home != nullptr &&
@@ -4825,10 +4917,69 @@ std::optional<std::string> diagnose_unsupported_prepared_param_homes(
       return std::string{
           "unsupported_byval_param_home: RV64 object route requires a prepared permanent byval frame-slot home with matching size and alignment"};
     }
+    if (!param.is_byval && home != nullptr &&
+        home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+      if (has_supported_scalar_gpr_param_stack_slot_home(param,
+                                                        param_index,
+                                                        *home)) {
+        continue;
+      }
+      const auto size_bytes = rv64_scalar_memory_size_for_type(param.type);
+      if (param.abi.has_value() && param.abi->passed_in_register &&
+          param.abi->primary_class ==
+              c4c::backend::bir::AbiValueClass::Integer &&
+          size_bytes.has_value()) {
+        return std::string{
+            "unsupported_param_home: RV64 object route requires scalar GPR formal stack-slot homes to match prepared frame-slot facts"};
+      }
+    }
     return std::string{
         "unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes"};
   }
   return std::nullopt;
+}
+
+std::optional<RiscvEncodedFragment> make_rv64_formal_entry_home_fragment(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Function& function,
+    std::size_t stack_frame_bytes) {
+  namespace prepare = c4c::backend::prepare;
+
+  RiscvEncodedFragment fragment;
+  for (std::size_t param_index = 0; param_index < function.params.size();
+       ++param_index) {
+    const auto& param = function.params[param_index];
+    if (param.is_byval || param.name.empty() || !param.abi.has_value() ||
+        !param.abi->passed_in_register ||
+        param.abi->primary_class != c4c::backend::bir::AbiValueClass::Integer) {
+      continue;
+    }
+    const auto size_bytes = rv64_scalar_memory_size_for_type(param.type);
+    if (!size_bytes.has_value() || *size_bytes != param.size_bytes) {
+      continue;
+    }
+    const auto value = c4c::backend::bir::Value::named(param.type, param.name);
+    const auto* home = prepared_value_home_for(names, lookups, value);
+    if (home == nullptr || home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+      continue;
+    }
+    const auto source_register =
+        rv64_gpr_formal_argument_register_number(function, param_index);
+    const auto stack_offset = prepared_stack_slot_home_offset(stack_layout,
+                                                             *home,
+                                                             stack_frame_bytes,
+                                                             *size_bytes);
+    if (!source_register.has_value() || !stack_offset.has_value() ||
+        !append_rv64_store_register_to_stack(fragment,
+                                            *source_register,
+                                            *stack_offset,
+                                            *size_bytes)) {
+      return std::nullopt;
+    }
+  }
+  return fragment;
 }
 
 const c4c::backend::bir::Function* find_defined_bir_function(
@@ -5524,13 +5675,6 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
         "unsupported_instruction_fragment: atomic operations are not supported by the RV64 object route");
   }
   const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
-  if (auto diagnostic =
-          diagnose_unsupported_prepared_param_homes(prepared.stack_layout,
-                                                   prepared.names,
-                                                   &lookups,
-                                                   *function)) {
-    return make_rv64_prepared_function_rejection(std::move(*diagnostic));
-  }
   RiscvObjectFunction object_function{
       .name = function_name,
       .global = true,
@@ -5545,6 +5689,14 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   if (!stack_frame_bytes.has_value()) {
     return make_rv64_prepared_function_rejection(
         "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame");
+  }
+  if (auto diagnostic =
+          diagnose_unsupported_prepared_param_homes(prepared.stack_layout,
+                                                   prepared.names,
+                                                   &lookups,
+                                                   *function,
+                                                   *stack_frame_bytes)) {
+    return make_rv64_prepared_function_rejection(std::move(*diagnostic));
   }
   if (function->is_variadic) {
     if (auto diagnostic = diagnose_first_unsupported_prepared_variadic_helper(
@@ -5593,6 +5745,19 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
           "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved GPR save slots");
     }
     object_function.fragments.push_back(std::move(*prologue));
+  }
+  auto formal_entry_homes =
+      make_rv64_formal_entry_home_fragment(prepared.stack_layout,
+                                           prepared.names,
+                                           &lookups,
+                                           *function,
+                                           *stack_frame_bytes);
+  if (!formal_entry_homes.has_value()) {
+    return make_rv64_prepared_function_rejection(
+        "unsupported_param_home: RV64 object route requires encodable scalar GPR formal stack-slot home stores");
+  }
+  if (!formal_entry_homes->bytes.empty()) {
+    object_function.fragments.push_back(std::move(*formal_entry_homes));
   }
 
   std::unordered_map<std::string, PreparedObjectCompare> compares;

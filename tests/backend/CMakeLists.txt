@@ -600,7 +600,7 @@ c4c_add_backend_codegen_object_failure_test(
   SRC "${BACKEND_CASE_ROOT}/riscv64_variadic_aggregate_overflow_helper_contract.c"
   TARGET_TRIPLE riscv64-linux-gnu
   OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_variadic_aggregate_overflow_helper_contract.o"
-  EXPECTED_DIAGNOSTICS "unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes"
+  EXPECTED_DIAGNOSTICS "unsupported_variadic_helper_lowering: RV64 va_arg_aggregate helper requires payload_write_address in a supported frame slot"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 object variadic aggregate va_arg helper_contract expected_failure cli
 )
