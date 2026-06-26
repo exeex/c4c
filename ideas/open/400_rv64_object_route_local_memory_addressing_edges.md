@@ -21,6 +21,8 @@ Representatives:
 
 - `tests/c/external/gcc_torture/src/20000722-1.c`
 - `tests/c/external/gcc_torture/src/20030910-1.c`
+- `tests/c/external/gcc_torture/src/20020225-2.c` after scalar/floating edge
+  lowering moved it past `unsupported_floating_cast`
 
 ## In Scope
 
@@ -57,3 +59,14 @@ Representatives:
 - Reject changes that turn a local-memory object-route failure into a silent
   runtime mismatch without diagnosing the new root.
 - Reject expectation rewrites or allowlist filtering.
+
+## Lifecycle Notes
+
+- 2026-06-26: Activated after closing
+  `ideas/closed/401_rv64_object_route_scalar_and_floating_edge_lowering.md`.
+  The inherited `src/20020225-2.c` representative no longer fails with
+  `unsupported_floating_cast`; it now reaches
+  `unsupported_local_memory_access` with an 8-byte `double` store to prepared
+  local union storage whose frame-slot range is reported out of bounds. Treat
+  this as local-memory/addressing work or split a producer fact repair; do not
+  compensate in floating-cast lowering.

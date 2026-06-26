@@ -1,6 +1,6 @@
 # RV64 Object Route Scalar And Floating Edge Lowering
 
-Status: Open
+Status: Closed
 Type: Follow-up repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -61,10 +61,26 @@ Representatives:
   cast facts that should have been represented by BIR/prepared lowering.
 - Reject expectation rewrites or allowlist filtering.
 
-## Lifecycle Notes
+## Completion Notes
 
-- 2026-06-26: Reactivated after closing
-  `ideas/closed/403_prepared_i16_formal_abi_publication.md`. The former
-  `src/20000403-1.c` producer ABI blocker now reaches
-  `unsupported_scalar_compare_trunc`, matching this idea's scalar edge bucket.
-  Do not fold `I16` formal ABI publication back into this object-route plan.
+- 2026-06-26: `src/20000313-1.c` and `src/20000403-1.c` moved past
+  `unsupported_scalar_compare_trunc` after reusable scalar compare publication
+  and predicate-normalization lowering.
+- 2026-06-26: `src/compare-2.c` moved to `pass`; its blocker was ordinary
+  select predicate lowering, not scalar compare/trunc publication.
+- 2026-06-26: `src/20020225-2.c` moved past `unsupported_floating_cast` after
+  reusable RV64 `SIToFP`/`UIToFP` lowering from integer homes into prepared FPR
+  destinations.
+- 2026-06-26: The remaining `src/20020225-2.c` blocker is now
+  `unsupported_local_memory_access` for local aggregate/union frame-slot
+  addressing and belongs to
+  `ideas/open/400_rv64_object_route_local_memory_addressing_edges.md`.
+- 2026-06-26: `src/int-compare.c` exposed a separate wide rematerialized
+  immediate producer-admission boundary and was split to
+  `ideas/open/404_prepared_wide_rematerialized_immediate_admission.md`.
+- 2026-06-26: `src/pr48973-2.c` exposed scalar `ashr` after global bitfield
+  load and remains in the existing instruction-fragment lowering family,
+  `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`.
+- 2026-06-26: Close gate accepted with backend CTest regression guard:
+  `test_before.log` passed 326/326, regenerated `test_after.log` passed
+  327/327, no new failures.
