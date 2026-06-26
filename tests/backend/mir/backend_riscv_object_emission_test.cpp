@@ -3890,7 +3890,8 @@ prepare::PreparedBirModule make_prepared_mixed_inline_asm_insn_module() {
   return prepared;
 }
 
-prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module() {
+prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module(
+    std::int64_t access_byte_offset = 0) {
   prepare::PreparedBirModule prepared;
   const auto function_name =
       prepared.names.function_names.intern("byval_stack_param");
@@ -4000,7 +4001,7 @@ prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module() {
           .address = prepare::PreparedAddress{
               .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
               .pointer_value_name = param_name,
-              .byte_offset = 4,
+              .byte_offset = access_byte_offset,
               .size_bytes = 4,
               .align_bytes = 4,
               .can_use_base_plus_offset = true,
@@ -5631,11 +5632,14 @@ int expect_byval_stack_slot_param_home_rejection(
       "unsupported_byval_param_home: RV64 object route requires a prepared permanent byval frame-slot home with matching size and alignment");
 }
 
-int builds_byval_stack_slot_param_home_object() {
-  const auto prepared = make_prepared_byval_stack_slot_param_module();
+int expect_byval_stack_slot_lane_load_object(std::int64_t byte_offset,
+                                             std::uint32_t expected_load,
+                                             const char* lane_description) {
+  const auto prepared = make_prepared_byval_stack_slot_param_module(byte_offset);
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
   if (!module.has_value()) {
-    return fail("expected prepared byval stack-slot parameter home to build");
+    return fail(std::string{"expected prepared byval stack-slot lane load to build for "} +
+                lane_description);
   }
   const auto* text = object::find_section(*module, ".text");
   const auto* function = object::find_symbol(*module, "byval_stack_param");
@@ -5645,16 +5649,29 @@ int builds_byval_stack_slot_param_home_object() {
   if (text->bytes.size() != 16 || text->size_bytes != 16 ||
       function->value != 0 || function->size_bytes != 16 ||
       function->section != std::optional<object::SectionId>{text->id}) {
-    return fail("expected prepared byval parameter object text layout");
+    return fail(std::string{"expected prepared byval parameter object text layout for "} +
+                lane_description);
   }
   if (read_u32(text->bytes, 0) != 0xfb010113 ||
-      read_u32(text->bytes, 4) != 0x00412503 ||
+      read_u32(text->bytes, 4) != expected_load ||
       read_u32(text->bytes, 8) != 0x05010113 ||
       read_u32(text->bytes, 12) != 0x00008067) {
-    return fail("expected prepared byval frame-slot load and return sequence");
+    return fail(std::string{"expected prepared byval frame-slot load and return sequence for "} +
+                lane_description);
   }
   if (!module->relocations.empty()) {
-    return fail("expected prepared byval parameter object to need no relocations");
+    return fail(std::string{"expected prepared byval parameter object to need no relocations for "} +
+                lane_description);
+  }
+  return 0;
+}
+
+int builds_byval_stack_slot_param_home_object() {
+  if (expect_byval_stack_slot_lane_load_object(0, 0x00012503, "offset 0") != 0) {
+    return 1;
+  }
+  if (expect_byval_stack_slot_lane_load_object(68, 0x04412503, "offset 68") != 0) {
+    return 1;
   }
   return 0;
 }
@@ -5703,6 +5720,35 @@ int expect_byval_pointer_access_rejection(
 
 int rejects_byval_stack_slot_pointer_access_fail_closed_shapes() {
   auto prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0].accesses[0].address.pointer_value_name =
+      std::nullopt;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.value_locations.functions[0].value_homes.clear();
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.value_locations.functions[0].value_homes[0].slot_id = std::nullopt;
+  if (expect_byval_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0].accesses[0].address.base_kind =
+      prepare::PreparedAddressBaseKind::None;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
   prepared.addressing.functions[0].accesses[0].address.byte_offset = 69;
   if (expect_byval_pointer_access_rejection(prepared) != 0) {
     return 1;
@@ -5719,6 +5765,32 @@ int rejects_byval_stack_slot_pointer_access_fail_closed_shapes() {
   prepared.addressing.functions[0].accesses[0].address_space =
       bir::AddressSpace::Tls;
   if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0].accesses[0].is_volatile = true;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0].accesses[0].address.align_bytes = 8;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  auto* load =
+      std::get_if<bir::LoadLocalInst>(&prepared.module.functions[0].blocks[0].insts[0]);
+  if (load == nullptr) {
+    return fail("expected mutable byval pointer fixture load");
+  }
+  load->result = bir::Value::named(bir::TypeKind::I128, "%t0");
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_local_memory_access: RV64 object route supports only 1-, 2-, 4-, and 8-byte prepared local memory accesses") !=
+      0) {
     return 1;
   }
 
