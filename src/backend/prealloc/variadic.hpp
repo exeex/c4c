@@ -41,6 +41,17 @@ struct PreparedVariadicEntryOverflowArea {
   std::optional<std::size_t> align_bytes;
 };
 
+struct PreparedRv64IncomingVariadicGprPublication {
+  std::size_t abi_gpr_index = 0;
+  std::size_t variadic_argument_index = 0;
+  std::string source_register_name;
+  PreparedFrameSlotId destination_slot_id = 0;
+  std::size_t destination_stack_offset_bytes = 0;
+  std::size_t destination_offset_bytes = 0;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+};
+
 enum class PreparedVariadicVaListFieldKind {
   GpOffset,
   FpOffset,
@@ -363,6 +374,8 @@ struct PreparedVariadicEntryPlanFunction {
   PreparedVariadicVaListLayout va_list_layout;
   PreparedVariadicEntryHelperResources helper_resources;
   std::vector<PreparedVariadicEntryHelperOperandHomes> helper_operand_homes;
+  std::vector<PreparedRv64IncomingVariadicGprPublication>
+      rv64_incoming_variadic_gpr_publications;
   std::vector<std::string> missing_required_facts;
 };
 

@@ -234,8 +234,15 @@ RiscvPreparedObjectFunctionResult make_rv64_prepared_function_rejection(
 std::optional<std::uint32_t> gpr_register_number_for_home(
     const c4c::backend::prepare::PreparedValueHome& home);
 
+std::optional<std::uint32_t> rv64_register_number(std::string_view name);
+
 std::optional<std::uint32_t> gpr_register_number_for_prior_preserved_selection(
     const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection);
+
+std::optional<std::size_t> rv64_object_stack_frame_size(
+    const c4c::backend::prepare::PreparedAddressingFunction* addressing,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout);
 
 const prepare::PreparedVariadicVaListField*
 rv64_variadic_va_list_overflow_arg_area_field(
@@ -243,6 +250,11 @@ rv64_variadic_va_list_overflow_arg_area_field(
 
 bool rv64_variadic_helper_free_entry_contract_is_complete(
     const prepare::PreparedVariadicEntryPlanFunction& entry_plan);
+
+std::optional<std::string> rv64_variadic_incoming_gpr_publications_diagnostic(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedVariadicEntryPlanFunction& entry_plan,
+    std::size_t stack_frame_bytes);
 
 std::optional<std::string> rv64_variadic_function_admission_diagnostic(
     const c4c::backend::prepare::PreparedBirModule& prepared,
@@ -273,6 +285,20 @@ std::optional<std::string> rv64_variadic_function_admission_diagnostic(
     }
     return std::string{
         "unsupported_function_admission: RV64 helper-free variadic entry requires a complete one-field overflow-area va_list contract"};
+  }
+  const auto stack_frame_bytes =
+      rv64_object_stack_frame_size(
+          prepare::find_prepared_addressing(prepared, function_name),
+          prepare::find_prepared_frame_plan(prepared, function_name),
+          prepared.stack_layout);
+  if (!stack_frame_bytes.has_value()) {
+    return std::nullopt;
+  }
+  if (auto diagnostic = rv64_variadic_incoming_gpr_publications_diagnostic(
+          prepared.stack_layout,
+          *entry_plan,
+          *stack_frame_bytes)) {
+    return diagnostic;
   }
   return std::nullopt;
 }
@@ -326,6 +352,105 @@ bool rv64_variadic_helper_free_entry_contract_is_complete(
          entry_plan.va_list_layout.fields.size() == 1 &&
          overflow_arg_area != nullptr && overflow_arg_area->offset_bytes == 0 &&
          overflow_arg_area->size_bytes == 8;
+}
+
+std::optional<std::string> rv64_variadic_incoming_gpr_publications_diagnostic(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedVariadicEntryPlanFunction& entry_plan,
+    std::size_t stack_frame_bytes) {
+  constexpr std::size_t kRv64ArgumentGprCount = 8;
+  constexpr std::size_t kRv64ArgumentGprBytes = 8;
+
+  if (!entry_plan.named_register_counts.gp.has_value()) {
+    return std::string{
+        "unsupported_function_admission: RV64 variadic entry requires prepared named GPR count before incoming GPR publication"};
+  }
+  if (!entry_plan.overflow_area.base_slot_id.has_value() ||
+      !entry_plan.overflow_area.base_stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::size_t named_gp_count =
+      std::min(*entry_plan.named_register_counts.gp, kRv64ArgumentGprCount);
+  const std::size_t expected_count = kRv64ArgumentGprCount - named_gp_count;
+  if (entry_plan.rv64_incoming_variadic_gpr_publications.size() !=
+      expected_count) {
+    return std::string{
+        "unsupported_function_admission: RV64 variadic entry requires one prepared incoming GPR publication for each post-named argument register"};
+  }
+
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *entry_plan.overflow_area.base_slot_id;
+                   });
+  if (slot_it == stack_layout.frame_slots.end() ||
+      slot_it->offset_bytes !=
+          *entry_plan.overflow_area.base_stack_offset_bytes ||
+      slot_it->size_bytes < expected_count * kRv64ArgumentGprBytes ||
+      slot_it->align_bytes > kRv64ArgumentGprBytes ||
+      slot_it->offset_bytes > stack_frame_bytes ||
+      stack_frame_bytes - slot_it->offset_bytes < slot_it->size_bytes) {
+    return std::string{
+        "unsupported_function_admission: RV64 variadic entry incoming GPR publications require a supported overflow-area backing slot"};
+  }
+
+  std::unordered_set<std::size_t> seen_abi_gprs;
+  std::unordered_set<std::size_t> seen_destination_offsets;
+  for (const auto& publication :
+       entry_plan.rv64_incoming_variadic_gpr_publications) {
+    if (!seen_abi_gprs.insert(publication.abi_gpr_index).second ||
+        !seen_destination_offsets.insert(
+             publication.destination_stack_offset_bytes)
+             .second) {
+      return std::string{
+          "unsupported_function_admission: RV64 variadic entry incoming GPR publications must not contain duplicate sources or destinations"};
+    }
+    if (publication.abi_gpr_index < named_gp_count ||
+        publication.abi_gpr_index >= kRv64ArgumentGprCount ||
+        publication.variadic_argument_index !=
+            publication.abi_gpr_index - named_gp_count) {
+      return std::string{
+          "unsupported_function_admission: RV64 variadic entry incoming GPR publication does not match the prepared post-named GPR range"};
+    }
+    std::string expected_source = "a";
+    expected_source += std::to_string(publication.abi_gpr_index);
+    if (publication.source_register_name != expected_source ||
+        rv64_register_number(publication.source_register_name) !=
+            std::optional<std::uint32_t>{
+                static_cast<std::uint32_t>(10 + publication.abi_gpr_index)}) {
+      return std::string{
+          "unsupported_function_admission: RV64 variadic entry incoming GPR publication source register is malformed"};
+    }
+    const std::size_t expected_destination_offset =
+        publication.variadic_argument_index * kRv64ArgumentGprBytes;
+    const std::size_t expected_stack_offset =
+        *entry_plan.overflow_area.base_stack_offset_bytes +
+        expected_destination_offset;
+    if (publication.destination_slot_id !=
+            *entry_plan.overflow_area.base_slot_id ||
+        publication.destination_offset_bytes != expected_destination_offset ||
+        publication.destination_stack_offset_bytes != expected_stack_offset ||
+        publication.size_bytes != kRv64ArgumentGprBytes ||
+        publication.align_bytes != kRv64ArgumentGprBytes) {
+      return std::string{
+          "unsupported_function_admission: RV64 variadic entry incoming GPR publication destination shape is malformed"};
+    }
+    if (publication.destination_stack_offset_bytes < slot_it->offset_bytes ||
+        publication.destination_stack_offset_bytes + publication.size_bytes >
+            slot_it->offset_bytes + slot_it->size_bytes ||
+        publication.destination_stack_offset_bytes > stack_frame_bytes ||
+        stack_frame_bytes - publication.destination_stack_offset_bytes <
+            publication.size_bytes ||
+        !fits_signed_12_bit_immediate(static_cast<std::int64_t>(
+            publication.destination_stack_offset_bytes))) {
+      return std::string{
+          "unsupported_function_admission: RV64 variadic entry incoming GPR publication destination is outside the prepared overflow-area backing slot"};
+    }
+  }
+
+  return std::nullopt;
 }
 
 std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(
@@ -1199,6 +1324,40 @@ void append_rv64_load_immediate(RiscvEncodedFragment& fragment,
                             0,
                             0,
                             static_cast<std::int32_t>(immediate)));
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_rv64_variadic_incoming_gpr_publications(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedVariadicEntryPlanFunction* entry_plan,
+    std::size_t stack_frame_bytes) {
+  if (entry_plan == nullptr ||
+      entry_plan->helper_resources.required_helpers.empty()) {
+    return RiscvEncodedFragment{};
+  }
+  if (auto diagnostic = rv64_variadic_incoming_gpr_publications_diagnostic(
+          stack_layout,
+          *entry_plan,
+          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  for (const auto& publication :
+       entry_plan->rv64_incoming_variadic_gpr_publications) {
+    const auto source_register =
+        rv64_register_number(publication.source_register_name);
+    if (!source_register.has_value() ||
+        !append_rv64_store_register_to_stack(
+            fragment,
+            *source_register,
+            static_cast<std::int32_t>(
+                publication.destination_stack_offset_bytes),
+            publication.size_bytes)) {
+      return std::nullopt;
+    }
+  }
+  return fragment;
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_start(
@@ -6056,6 +6215,23 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   }
   if (!formal_entry_homes->bytes.empty()) {
     object_function.fragments.push_back(std::move(*formal_entry_homes));
+  }
+  if (function->is_variadic) {
+    const auto* entry_plan =
+        prepare::find_prepared_variadic_entry_plan(prepared,
+                                                   control_flow.function_name);
+    auto incoming_gpr_publications =
+        fragment_for_rv64_variadic_incoming_gpr_publications(
+            prepared.stack_layout,
+            entry_plan,
+            *stack_frame_bytes);
+    if (!incoming_gpr_publications.has_value()) {
+      return make_rv64_prepared_function_rejection(
+          "unsupported_function_admission: RV64 variadic entry incoming GPR publications require encodable prologue stores");
+    }
+    if (!incoming_gpr_publications->bytes.empty()) {
+      object_function.fragments.push_back(std::move(*incoming_gpr_publications));
+    }
   }
 
   std::unordered_map<std::string, PreparedObjectCompare> compares;

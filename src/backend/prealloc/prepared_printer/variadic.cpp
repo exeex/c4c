@@ -315,6 +315,20 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
       }
       out << "\n";
     }
+    for (const auto& publication :
+         function_plan.rv64_incoming_variadic_gpr_publications) {
+      out << "    rv64.incoming_variadic_gpr_publication"
+          << " abi_gpr=" << publication.abi_gpr_index
+          << " variadic_arg=" << publication.variadic_argument_index
+          << " source_reg=" << publication.source_register_name
+          << " dest_slot=#" << publication.destination_slot_id
+          << " dest_stack_offset="
+          << publication.destination_stack_offset_bytes
+          << " dest_offset=" << publication.destination_offset_bytes
+          << " size=" << publication.size_bytes
+          << " align=" << publication.align_bytes
+          << "\n";
+    }
     for (const auto& fact : function_plan.missing_required_facts) {
       out << "    missing fact=" << fact << "\n";
     }

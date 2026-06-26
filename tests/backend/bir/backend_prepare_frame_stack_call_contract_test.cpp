@@ -8675,12 +8675,31 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       overflow_base_object == nullptr ||
       overflow_base_object->object_id != overflow_base_slot->object_id ||
       overflow_base_object->source_kind != "rv64_variadic_overflow_area_base" ||
-      overflow_base_slot->size_bytes != 0 ||
       overflow_base_slot->align_bytes != 8 ||
       overflow_base_slot->offset_bytes !=
           *entry_plan->overflow_area.base_stack_offset_bytes ||
       overflow_base_slot->offset_bytes % 8 != 0) {
     return fail("RV64 variadic helper missing contract: overflow base did not publish frame-slot authority");
+  }
+  if (!entry_plan->named_register_counts.gp.has_value() ||
+      *entry_plan->named_register_counts.gp > 8 ||
+      overflow_base_slot->size_bytes !=
+          (8 - *entry_plan->named_register_counts.gp) * 8 ||
+      entry_plan->rv64_incoming_variadic_gpr_publications.size() !=
+          8 - *entry_plan->named_register_counts.gp) {
+    return fail("RV64 variadic helper missing contract: incoming GPR publication authority was not prepared");
+  }
+  for (const auto& publication :
+       entry_plan->rv64_incoming_variadic_gpr_publications) {
+    if (publication.destination_slot_id !=
+            *entry_plan->overflow_area.base_slot_id ||
+        publication.destination_stack_offset_bytes < overflow_base_slot->offset_bytes ||
+        publication.destination_stack_offset_bytes + publication.size_bytes >
+            overflow_base_slot->offset_bytes + overflow_base_slot->size_bytes ||
+        publication.size_bytes != 8 ||
+        publication.align_bytes != 8) {
+      return fail("RV64 variadic helper missing contract: incoming GPR publication did not target the overflow backing slot");
+    }
   }
   const auto* aggregate_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 3);

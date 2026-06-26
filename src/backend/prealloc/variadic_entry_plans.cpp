@@ -435,6 +435,8 @@ void populate_rv64_variadic_entry_abi_facts(
   if (!function_plan.helper_resources.required_helpers.empty()) {
     append_missing_variadic_entry_fact(function_plan, "overflow_area.base_slot_id");
     append_missing_variadic_entry_fact(function_plan, "overflow_area.base_stack_offset_bytes");
+    append_missing_variadic_entry_fact(function_plan,
+                                       "rv64.incoming_variadic_gpr_publications");
   }
 }
 
@@ -1258,11 +1260,23 @@ void attach_aapcs64_variadic_entry_storage_authority(
 void attach_rv64_variadic_entry_storage_authority(
     PreparedBirModule& prepared,
     PreparedVariadicEntryPlanFunction& function_plan) {
+  constexpr std::size_t kRv64ArgumentGprCount = 8;
+  constexpr std::size_t kRv64ArgumentGprBytes = 8;
+
   if (function_plan.helper_resources.required_helpers.empty() ||
       !function_plan.overflow_area.required ||
       !function_plan.overflow_area.align_bytes.has_value()) {
     return;
   }
+
+  const std::size_t named_gp_count =
+      function_plan.named_register_counts.gp.value_or(kRv64ArgumentGprCount);
+  const std::size_t saved_gp_count =
+      named_gp_count >= kRv64ArgumentGprCount
+          ? 0
+          : kRv64ArgumentGprCount - named_gp_count;
+  const std::size_t save_area_size_bytes =
+      saved_gp_count * kRv64ArgumentGprBytes;
 
   const PreparedFrameSlot* overflow_base_slot =
       find_variadic_storage_slot(prepared,
@@ -1274,13 +1288,55 @@ void attach_rv64_variadic_entry_storage_authority(
         function_plan.function_name,
         "__rv64_variadic_overflow_area_base",
         "rv64_variadic_overflow_area_base",
-        0,
+        save_area_size_bytes,
         *function_plan.overflow_area.align_bytes);
   }
   function_plan.overflow_area.base_slot_id = overflow_base_slot->slot_id;
   function_plan.overflow_area.base_stack_offset_bytes = overflow_base_slot->offset_bytes;
   remove_missing_variadic_entry_fact(function_plan, "overflow_area.base_slot_id");
   remove_missing_variadic_entry_fact(function_plan, "overflow_area.base_stack_offset_bytes");
+}
+
+void populate_rv64_incoming_variadic_gpr_publications(
+    PreparedVariadicEntryPlanFunction& function_plan) {
+  constexpr std::size_t kRv64ArgumentGprCount = 8;
+  constexpr std::size_t kRv64ArgumentGprBytes = 8;
+
+  function_plan.rv64_incoming_variadic_gpr_publications.clear();
+
+  if (function_plan.helper_resources.required_helpers.empty() ||
+      !function_plan.named_register_counts.gp.has_value() ||
+      !function_plan.overflow_area.base_slot_id.has_value() ||
+      !function_plan.overflow_area.base_stack_offset_bytes.has_value()) {
+    return;
+  }
+
+  const std::size_t named_gp_count =
+      std::min(*function_plan.named_register_counts.gp, kRv64ArgumentGprCount);
+  for (std::size_t abi_gpr_index = named_gp_count;
+       abi_gpr_index < kRv64ArgumentGprCount;
+       ++abi_gpr_index) {
+    std::string source_register_name = "a";
+    source_register_name += std::to_string(abi_gpr_index);
+    const std::size_t destination_offset_bytes =
+        (abi_gpr_index - named_gp_count) * kRv64ArgumentGprBytes;
+    function_plan.rv64_incoming_variadic_gpr_publications.push_back(
+        PreparedRv64IncomingVariadicGprPublication{
+            .abi_gpr_index = abi_gpr_index,
+            .variadic_argument_index = abi_gpr_index - named_gp_count,
+            .source_register_name = std::move(source_register_name),
+            .destination_slot_id = *function_plan.overflow_area.base_slot_id,
+            .destination_stack_offset_bytes =
+                *function_plan.overflow_area.base_stack_offset_bytes +
+                destination_offset_bytes,
+            .destination_offset_bytes = destination_offset_bytes,
+            .size_bytes = kRv64ArgumentGprBytes,
+            .align_bytes = kRv64ArgumentGprBytes,
+        });
+  }
+
+  remove_missing_variadic_entry_fact(function_plan,
+                                     "rv64.incoming_variadic_gpr_publications");
 }
 
 }  // namespace
@@ -1375,6 +1431,7 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
       remove_missing_variadic_entry_fact(function_plan, "target_abi.va_list_layout");
       populate_rv64_variadic_entry_helper_resource_authority(function_plan);
       attach_rv64_variadic_entry_storage_authority(prepared, function_plan);
+      populate_rv64_incoming_variadic_gpr_publications(function_plan);
       populate_rv64_variadic_entry_va_start_operand_home_authority(
           prepared, function, function_plan);
     } else {

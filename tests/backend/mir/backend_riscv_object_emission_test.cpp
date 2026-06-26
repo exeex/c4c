@@ -504,6 +504,11 @@ prepare::PreparedBirModule make_prepared_variadic_helper_free_incomplete_contrac
   prepared.variadic_entry_plans.functions.push_back(
       prepare::PreparedVariadicEntryPlanFunction{
           .function_name = function_name,
+          .named_parameter_count = 1,
+          .named_register_counts =
+              prepare::PreparedVariadicEntryNamedRegisterCounts{
+                  .gp = std::size_t{8},
+              },
           .overflow_area =
               prepare::PreparedVariadicEntryOverflowArea{
                   .required = true,
@@ -525,6 +530,11 @@ prepare::PreparedBirModule make_prepared_variadic_helper_free_complete_module() 
   prepared.variadic_entry_plans.functions.push_back(
       prepare::PreparedVariadicEntryPlanFunction{
           .function_name = function_name,
+          .named_parameter_count = 1,
+          .named_register_counts =
+              prepare::PreparedVariadicEntryNamedRegisterCounts{
+                  .gp = std::size_t{8},
+              },
           .overflow_area =
               prepare::PreparedVariadicEntryOverflowArea{
                   .required = true,
@@ -565,6 +575,18 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
         .function_name = function_name,
         .offset_bytes = 72,
         .size_bytes = 8,
+        .align_bytes = 8,
+    });
+    prepared.stack_layout.frame_size_bytes = 80;
+    prepared.stack_layout.frame_alignment_bytes = 16;
+  }
+  if (include_overflow_area_initial_state) {
+    prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+        .slot_id = prepare::PreparedFrameSlotId{7},
+        .object_id = 2,
+        .function_name = function_name,
+        .offset_bytes = 8,
+        .size_bytes = 64,
         .align_bytes = 8,
     });
     prepared.stack_layout.frame_size_bytes = 80;
@@ -649,6 +671,11 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
   prepared.variadic_entry_plans.functions.push_back(
       prepare::PreparedVariadicEntryPlanFunction{
           .function_name = function_name,
+          .named_parameter_count = 1,
+          .named_register_counts =
+              prepare::PreparedVariadicEntryNamedRegisterCounts{
+                  .gp = std::size_t{8},
+              },
           .overflow_area =
               prepare::PreparedVariadicEntryOverflowArea{
                   .required = true,
@@ -656,7 +683,7 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
                                       ? std::optional<prepare::PreparedFrameSlotId>{7}
                                       : std::nullopt,
                   .base_stack_offset_bytes = include_overflow_area_initial_state
-                                                 ? std::optional<std::size_t>{64}
+                                                 ? std::optional<std::size_t>{8}
                                                  : std::nullopt,
                   .align_bytes = std::size_t{8},
               },
@@ -689,6 +716,35 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
   return prepared;
 }
 
+void add_rv64_incoming_variadic_gpr_publications(
+    prepare::PreparedVariadicEntryPlanFunction& entry_plan) {
+  constexpr std::size_t kRv64ArgumentGprCount = 8;
+  constexpr std::size_t kRv64ArgumentGprBytes = 8;
+  const std::size_t named_gp_count =
+      entry_plan.named_register_counts.gp.value_or(0);
+  for (std::size_t abi_gpr_index = named_gp_count;
+       abi_gpr_index < kRv64ArgumentGprCount;
+       ++abi_gpr_index) {
+    std::string source_register = "a";
+    source_register += std::to_string(abi_gpr_index);
+    const std::size_t destination_offset =
+        (abi_gpr_index - named_gp_count) * kRv64ArgumentGprBytes;
+    entry_plan.rv64_incoming_variadic_gpr_publications.push_back(
+        prepare::PreparedRv64IncomingVariadicGprPublication{
+            .abi_gpr_index = abi_gpr_index,
+            .variadic_argument_index = abi_gpr_index - named_gp_count,
+            .source_register_name = std::move(source_register),
+            .destination_slot_id = *entry_plan.overflow_area.base_slot_id,
+            .destination_stack_offset_bytes =
+                *entry_plan.overflow_area.base_stack_offset_bytes +
+                destination_offset,
+            .destination_offset_bytes = destination_offset,
+            .size_bytes = kRv64ArgumentGprBytes,
+            .align_bytes = kRv64ArgumentGprBytes,
+        });
+  }
+}
+
 prepare::PreparedBirModule make_prepared_variadic_va_start_missing_saved_gpr_publication_module() {
   auto prepared = make_prepared_variadic_va_start_module(
       true /*include_overflow_area_initial_state*/);
@@ -697,6 +753,19 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_missing_saved_gpr_pub
   entry_plan.named_register_counts.gp = std::size_t{1};
   entry_plan.missing_required_facts.push_back(
       "rv64.incoming_variadic_gpr_publications");
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_variadic_va_start_with_saved_gpr_publications_module() {
+  auto prepared = make_prepared_variadic_va_start_module(
+      true /*include_overflow_area_initial_state*/,
+      true /*destination_va_list_is_stack_slot*/,
+      true /*destination_address_is_gpr*/,
+      "a0");
+  auto& entry_plan = prepared.variadic_entry_plans.functions.front();
+  entry_plan.named_parameter_count = 1;
+  entry_plan.named_register_counts.gp = std::size_t{1};
+  add_rv64_incoming_variadic_gpr_publications(entry_plan);
   return prepared;
 }
 
@@ -808,6 +877,14 @@ prepare::PreparedBirModule make_prepared_variadic_aggregate_va_arg_module(
       .size_bytes = 9,
       .align_bytes = 1,
   });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = 8,
+      .object_id = 2,
+      .function_name = function_name,
+      .offset_bytes = 40,
+      .size_bytes = 0,
+      .align_bytes = 8,
+  });
   prepared.stack_layout.frame_size_bytes = 48;
   prepared.stack_layout.frame_alignment_bytes = 16;
 
@@ -887,11 +964,16 @@ prepare::PreparedBirModule make_prepared_variadic_aggregate_va_arg_module(
   prepared.variadic_entry_plans.functions.push_back(
       prepare::PreparedVariadicEntryPlanFunction{
           .function_name = function_name,
+          .named_parameter_count = 1,
+          .named_register_counts =
+              prepare::PreparedVariadicEntryNamedRegisterCounts{
+                  .gp = std::size_t{8},
+              },
           .overflow_area =
               prepare::PreparedVariadicEntryOverflowArea{
                   .required = true,
                   .base_slot_id = prepare::PreparedFrameSlotId{8},
-                  .base_stack_offset_bytes = std::size_t{64},
+                  .base_stack_offset_bytes = std::size_t{40},
                   .align_bytes = std::size_t{8},
               },
           .va_list_layout =
@@ -6423,36 +6505,89 @@ int rejects_variadic_va_start_with_missing_saved_gpr_publication_fact() {
       "unsupported_function_admission: variadic functions are not supported by the RV64 object route; missing_required_facts=[rv64.incoming_variadic_gpr_publications]");
 }
 
-int materializes_fact_complete_variadic_va_start_with_overflow_base_state() {
-  const auto prepared = make_prepared_variadic_va_start_module(
-      true /*include_overflow_area_initial_state*/);
+int materializes_fact_complete_variadic_va_start_with_saved_gpr_publications() {
+  const auto prepared =
+      make_prepared_variadic_va_start_with_saved_gpr_publications_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
   if (!module.has_value()) {
-    return fail("expected prepared va_start RV64 object module to build");
+    return fail("expected prepared saved-GPR va_start RV64 object module to build");
   }
   const auto* text = object::find_section(*module, ".text");
   const auto* function = object::find_symbol(*module, "rv64_va_start");
   if (text == nullptr || function == nullptr) {
     return fail("expected prepared va_start object to publish text/function");
   }
-  if (text->bytes.size() != 28 || text->size_bytes != 28 ||
-      function->value != 0 || function->size_bytes != 28 ||
+  if (text->bytes.size() != 56 || text->size_bytes != 56 ||
+      function->value != 0 || function->size_bytes != 56 ||
       function->section != std::optional<object::SectionId>{text->id}) {
-    return fail("expected prepared va_start object text layout");
+    return fail("expected prepared saved-GPR va_start object text layout");
   }
   if (read_u32(text->bytes, 0) != 0xfb010113 ||
-      read_u32(text->bytes, 4) != 0x04810593 ||
-      read_u32(text->bytes, 8) != 0x04010313 ||
-      read_u32(text->bytes, 12) != 0x0065b023 ||
-      read_u32(text->bytes, 16) != 0x00000513 ||
-      read_u32(text->bytes, 20) != 0x05010113 ||
-      read_u32(text->bytes, 24) != 0x00008067) {
-    return fail("expected va_start to materialize destination address before the overflow-area va_list field store");
+      read_u32(text->bytes, 4) != 0x00b13423 ||
+      read_u32(text->bytes, 8) != 0x00c13823 ||
+      read_u32(text->bytes, 12) != 0x00d13c23 ||
+      read_u32(text->bytes, 16) != 0x02e13023 ||
+      read_u32(text->bytes, 20) != 0x02f13423 ||
+      read_u32(text->bytes, 24) != 0x03013823 ||
+      read_u32(text->bytes, 28) != 0x03113c23 ||
+      read_u32(text->bytes, 32) != 0x04810513 ||
+      read_u32(text->bytes, 36) != 0x00810313 ||
+      read_u32(text->bytes, 40) != 0x00653023 ||
+      read_u32(text->bytes, 44) != 0x00000513 ||
+      read_u32(text->bytes, 48) != 0x05010113 ||
+      read_u32(text->bytes, 52) != 0x00008067) {
+    return fail("expected va_start to store incoming post-named GPRs before exposing the overflow-area pointer");
   }
   if (!module->relocations.empty()) {
     return fail("expected materialized va_start helper to need no relocations");
   }
   return 0;
+}
+
+int rejects_malformed_variadic_saved_gpr_publications() {
+  {
+    auto prepared =
+        make_prepared_variadic_va_start_with_saved_gpr_publications_module();
+    auto& publications = prepared.variadic_entry_plans.functions.front()
+                             .rv64_incoming_variadic_gpr_publications;
+    publications.back() = publications.front();
+    if (expect_prepared_rejection_diagnostic(
+            std::move(prepared),
+            "unsupported_function_admission: RV64 variadic entry incoming GPR publications must not contain duplicate sources or destinations") != 0) {
+      return 1;
+    }
+  }
+  {
+    auto prepared =
+        make_prepared_variadic_va_start_with_saved_gpr_publications_module();
+    prepared.variadic_entry_plans.functions.front()
+        .rv64_incoming_variadic_gpr_publications.front()
+        .source_register_name = "a2";
+    if (expect_prepared_rejection_diagnostic(
+            std::move(prepared),
+            "unsupported_function_admission: RV64 variadic entry incoming GPR publication source register is malformed") != 0) {
+      return 1;
+    }
+  }
+  {
+    auto prepared =
+        make_prepared_variadic_va_start_with_saved_gpr_publications_module();
+    prepared.variadic_entry_plans.functions.front()
+        .rv64_incoming_variadic_gpr_publications.front()
+        .destination_slot_id = prepare::PreparedFrameSlotId{99};
+    if (expect_prepared_rejection_diagnostic(
+            std::move(prepared),
+            "unsupported_function_admission: RV64 variadic entry incoming GPR publication destination shape is malformed") != 0) {
+      return 1;
+    }
+  }
+  auto prepared =
+      make_prepared_variadic_va_start_with_saved_gpr_publications_module();
+  auto& backing_slot = prepared.stack_layout.frame_slots[1];
+  backing_slot.size_bytes = 8;
+  return expect_prepared_rejection_diagnostic(
+      std::move(prepared),
+      "unsupported_function_admission: RV64 variadic entry incoming GPR publications require a supported overflow-area backing slot");
 }
 
 int rejects_malformed_variadic_va_start_destination_homes() {
@@ -10124,7 +10259,8 @@ int main() {
   status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
   status |= rejects_variadic_va_start_with_missing_saved_gpr_publication_fact();
   status |=
-      materializes_fact_complete_variadic_va_start_with_overflow_base_state();
+      materializes_fact_complete_variadic_va_start_with_saved_gpr_publications();
+  status |= rejects_malformed_variadic_saved_gpr_publications();
   status |= rejects_malformed_variadic_va_start_destination_homes();
   status |= lowers_fact_complete_variadic_va_end_as_noop();
   status |= rejects_malformed_variadic_va_end_direct_extern_shapes();
