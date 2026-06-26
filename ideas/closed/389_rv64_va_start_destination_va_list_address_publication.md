@@ -1,9 +1,10 @@
 # RV64 `va_start` Destination `va_list` Address Publication
 
-Status: Open
+Status: Closed
 Type: Target lowering follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: closure of `ideas/closed/388_rv64_object_route_variadic_va_end_boundary.md`
+Closed By: implementation commit `23b47a43` and Step 5 rerun commit `35c0cd2a`
 
 ## Goal
 
@@ -65,6 +66,37 @@ from idea 386, and not the same-module sret family owned by idea 387.
   route records a narrower fail-closed diagnostic with a clear owner.
 - Any later boundary is routed to an existing or new idea instead of being
   silently absorbed.
+
+## Closure Notes
+
+Idea 389 is complete. The RV64 object route now materializes the prepared
+`va_start` destination `va_list` address before stores through it. Step 5
+evidence in `build/agent_state/389_step5_va-arg-13.objdump.log` shows the
+representative `test` function now emits:
+
+```text
+addi s1,sp,72
+addi t1,sp,72
+sd t1,0(s1)
+```
+
+for the first `va_start` sequence, with the same destination-address
+materialization before the later sequence. The representative advances past
+the previous segmentation fault and now reaches a later
+`[RV64_BACKEND_RUNTIME_MISMATCH]` with `clang_exit=0` and
+`c4c_exit=Subprocess aborted`.
+
+The later abort is outside this idea's destination-address owner. It is tracked
+separately by
+`ideas/open/390_rv64_va_list_value_publication_copy_runtime_abort.md`.
+
+Close gate:
+
+- Fresh build plus backend CTest after log:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+- Regression guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+- Result: PASS, 326/326 before and 326/326 after, no new failures.
 
 ## Reviewer Reject Signals
 
