@@ -1,6 +1,6 @@
 # RV64 Object Route Move Bundle Target Shapes
 
-Status: Open
+Status: Closed
 Type: Follow-up repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -58,3 +58,20 @@ Representatives:
 - Reject MIR/RV64 fixes that fabricate move-bundle or select-publication facts
   that should have been produced by BIR/prepared lowering.
 - Reject expectation rewrites or allowlist filtering.
+
+## Lifecycle Notes
+
+- 2026-06-26: Closed after refreshed Step 1 proof found no current owned
+  move-bundle target, select-publication move, or missing-authority family in
+  the selected seed bucket. `20080519-1`, `20010604-1`, `930123-1`,
+  `20000808-1`, `20020510-1`, `20040309-1`, `20000503-1`, and `20000801-2`
+  all reported `c4cll_status=0` and `prepared_status=0`.
+- 2026-06-26: Prepared dumps exercised register, stack, stack/register
+  crossing, call argument/result, return, select-materialization, and
+  edge-preservation move shapes. All selected representatives compiled
+  successfully, no producer missing-authority gap surfaced, and no Step 2 move
+  lowering family was justified.
+- 2026-06-26: Close gate passed with the backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`. The
+  rolled-forward `test_before.log` and regenerated `test_after.log` both
+  reported 326/326 passing backend tests with no new failures.
