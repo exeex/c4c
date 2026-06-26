@@ -8,139 +8,129 @@ Current Step Title: Classify Frame-Slot Address GPR Call Argument Route
 
 ## Just Finished
 
-Step 1 audit captured the prepared/BIR instruction fragments behind the
-generic `unsupported_instruction_fragment` diagnostic for both representatives.
+Step 2 classified the active `va-arg-13.c` route as a real RV64 object-route
+support slice for GPR call arguments selected by
+`PreparedCallArgumentSourceSelectionKind::FrameSlotAddress`, not as a
+diagnostic-only or expectation route.
 
-`tests/c/external/gcc_torture/src/va-arg-13.c`:
+Selected route: teach `fragment_for_prepared_call` in
+`src/backend/mir/riscv/codegen/object_emission.cpp` to accept the
+`FrameSlotAddress` GPR argument selection when the prepared facts prove a
+same-instruction default-address-space frame-slot materialization for the
+selected local slot. The emitted object fragment should materialize the address
+directly into the destination call register with `addi dest, sp, offset`, using
+the selected frame slot/materialization offset. For the first failing call this
+means `a0 = sp + 24` for `bir.call void dummy(ptr %t7)` at `test` block 0 inst
+9, even though `%t7`'s ordinary value home remains spill slot #9 at stack offset
+48.
 
-- Exact fragment: `bir.call void dummy(ptr %t7)` in `test`, `entry`,
-  block index 0, instruction index 9. A second same-shape fragment appears
-  later as `bir.call void dummy(ptr %t14)` at instruction index 16, but the
-  traversal reaches inst 9 first.
-- Instruction kind: `bir::CallInst`, same-module direct call, void return,
-  one pointer argument.
-- Operand/types: arg0 is `ptr %t7`; call arg source records
-  `index=0 encoding=frame_slot source_value=%t7 selection=frame_slot_address
-  selection_value=%t7`.
-- Prepared value/storage facts: `%t7` has value id 15, prepared storage
-  `encoding=frame_slot bank=gpr spill_slot=slot#9+stack48 width=1 slot_id=#9
-  stack_offset=48`; value home reports `kind=stack_slot slot_id=9 offset=48`.
-  The address materialization fact for this call is
-  `block=entry inst_index=9 kind=frame_slot result=%t7 offset=24`; the
-  selection metadata points at the address-exposed local slot
-  `selection_source_slot=#7 selection_source_stack_offset=24
-  selection_source_size=8 selection_source_align=8`.
-- Prepared object-route call facts: callsite `block=0 inst=9 wrapper=same_module
-  callee=dummy args=1`; arg0 is `value_bank=gpr`, `source_encoding=frame_slot`,
-  `source_value_id=15`, `source_slot=#9`, `source_stack_offset=48`,
-  destination `gpr:call_argument#0/w1 dest_reg=a0`, with
-  `arg.source_selection=frame_slot_address`,
-  `selection_materialization_block=entry`,
-  `selection_materialization_inst=9`,
-  `selection_materialization_slot=#7`,
-  `selection_materialization_offset=24`,
-  `missing_frame_slot_arg_publication=yes`,
-  `missing_frame_slot_arg_kind=frame_slot_address`,
-  `missing_frame_slot_arg_source_materializes_address=yes`,
-  `missing_frame_slot_arg_may_emit_local_payload=no`.
-- Current diagnostic path: `prepared_function_to_object_function` walks the
-  prepared object traversal, handles an `Instruction` event, calls
-  `fragment_for_prepared_instruction`, then `fragment_for_prepared_call`.
-  The call is not a variadic helper. `fragment_for_prepared_call` accepts the
-  wrapper but rejects the GPR argument because the argument source selection is
-  `PreparedCallArgumentSourceSelectionKind::FrameSlotAddress`; the current GPR
-  argument switch only supports ordinary frame-slot values, prior
-  preservation, local frame address materialization, immediates, registers, and
-  symbol addresses. No narrower helper or memory diagnostic applies, so the
-  fallback emits
-  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64
-  object lowering`.
+Likely owned implementation file/functions:
 
-`tests/c/external/gcc_torture/src/920908-1.c`:
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `fragment_for_prepared_call`, in the GPR argument handling path currently
+  rejecting `FrameSlotAddress`
+- `prepared_frame_slot_address_call_argument_offset`, either generalized or
+  paired with a sibling helper for `FrameSlotAddress`
+- nearby RV64 encoding helpers already used by the supported local-frame
+  address path: `rv64_register_number`, `fits_signed_12_bit_immediate`,
+  `encode_i_type`, and `append_le32`
 
-- Exact fragment: `bir.call void f(ptr sret(size=4, align=4) %t8, i32 2,
-  i64 %t4, i64 %t7)` in `main`, `entry`, block index 0, instruction index 8.
-- Instruction kind: `bir::CallInst`, same-module direct call, void return with
-  ABI memory return/sret argument.
-- Operand/types: arg0 is `ptr sret(size=4, align=4) %t8`, arg1 is `i32 2`,
-  arg2 is `i64 %t4`, arg3 is `i64 %t7`; call arg sources record arg0 as
-  `encoding=frame_slot source_value=%t8 selection=frame_slot_address`, arg1
-  immediate, arg2 register `%t4`, arg3 register `%t7`.
-- Prepared value/storage facts: `%t8` has value id 17, prepared storage
-  `encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=s1 width=1`;
-  value home reports `kind=register reg=s1`. The actual memory-return home is
-  frame slot #7 at stack offset 16, size 4, align 4, from object `%t8.0`.
-  The address materialization fact is `block=entry inst_index=8 kind=frame_slot
-  result=%t8 offset=16`.
-- Prepared object-route call facts: callsite `block=0 inst=8 wrapper=same_module
-  callee=f args=4 memory_return=%t8 memory_home=frame_slot sret_arg=0
-  memory_stack_offset=16`; detailed call plan records
-  `memory_encoding=frame_slot sret_arg_index=0 memory_slot=#7
-  memory_stack_offset=16 memory_size=4 memory_align=4`. Arg0 is
-  `value_bank=aggregate_address`, `source_encoding=register`,
-  `source_value_id=17`, `source_reg=s1`, `dest_bank=none`, with
-  `arg.source_selection=local_frame_address_materialization`,
-  `selection_source_slot=#7`, `selection_source_stack_offset=16`,
-  `selection_materialization_block=entry`,
-  `selection_materialization_inst=8`,
-  `selection_materialization_slot=#7`,
-  `selection_materialization_offset=16`. Arg1 maps immediate 2 to `a1`, arg2
-  maps `%t4`/`t0` to `a2`, and arg3 maps `%t7`/`s2` to `a3`.
-- Current diagnostic path: `prepared_function_to_object_function` reaches the
-  `main` instruction event at block 0 inst 8, calls
-  `fragment_for_prepared_instruction`, then `fragment_for_prepared_call`.
-  The call is not a variadic helper. `fragment_for_prepared_call` returns empty
-  at its admission gate because `call_plan->memory_return.has_value()` is true.
-  No variadic-helper diagnostic applies and `diagnose_unsupported_prepared_instruction_fragment`
-  has no call-specific narrower diagnostic, so the fallback emits
-  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64
-  object lowering`.
+Exact prepared facts to consume:
 
-Comparison: both representatives currently fail on `bir::CallInst` object-route
-lowering, but they are separate semantic call families. `va-arg-13.c` is a
-scalar GPR pointer argument whose source selection is `FrameSlotAddress` for an
-address-exposed local frame slot. `920908-1.c` is an ABI memory-return/sret
-same-module call rejected before argument lowering by the `memory_return`
-admission gate, even though its sret address is represented as local frame
-address materialization.
+- `argument.value_bank == Gpr`
+- `argument.destination_register_bank == Gpr`
+- `argument.destination_register_name == "a0"` for the first failing call
+- `argument.destination_contiguous_width == 1`
+- `argument.source_encoding == FrameSlot`
+- `argument.source_value_id == 15`
+- `argument.source_slot_id == #9` and `argument.source_stack_offset_bytes == 48`
+  are the stored scalar value home and must not be used as the pointer payload
+  offset for this selection
+- `argument.source_selection.kind == FrameSlotAddress`
+- `selection.source_value_id == argument.source_value_id`
+- `selection.source_home_kind == StackSlot`
+- `selection.source_slot_id == #7`
+- `selection.source_stack_offset_bytes == 24`
+- `selection.source_size_bytes == 8`
+- `selection.source_align_bytes == 8`
+- `selection.address_materialization_block_label == entry`
+- `selection.address_materialization_inst_index == 9`
+- `selection.address_materialization_frame_slot_id == #7`
+- `selection.address_materialization_byte_offset == 24`
+- indexed prepared address materializations for `entry` contain exactly the
+  matching `FrameSlot` materialization at inst 9, default address space,
+  non-TLS, slot #7, byte offset 24
+- stack layout contains slot #7, the materialization offset is within that slot
+  and within the static frame, and the final SP-relative immediate fits signed
+  12-bit RV64 `addi`
+- `find_prepared_missing_frame_slot_call_argument_publication_need(argument)`
+  reports `available=yes`, `kind=frame_slot_address`,
+  `source_materializes_address=yes`, and
+  `may_emit_local_aggregate_address_payload=no`; that is evidence for address
+  materialization only, not a local payload copy
+
+Adjacent variants that must remain fail-closed:
+
+- `920908-1.c` same-module memory-return/sret calls remain owned by idea 387;
+  do not relax the `call_plan->memory_return.has_value()` admission gate under
+  this packet
+- indirect calls, callee-value calls, outgoing stack argument areas, variadic
+  wrappers, and non-same/direct fixed wrappers
+- aggregate-address/byval transports and `ByvalRegisterLane`
+- `FrameSlotAddress` without a source selection, without source value id, or
+  with non-GPR value/destination banks
+- missing destination register name, destination width other than one, or
+  destination stack placement
+- selection/source mismatches: selection value id differs from argument source
+  value id, missing selected source slot, selected slot differs from the
+  materialization slot, missing materialization block/inst/offset, duplicate
+  conflicting materializations at the same instruction, negative offset,
+  non-default address space, TLS materialization, offset outside the selected
+  slot or static frame, or an immediate outside signed 12-bit range
+- ordinary `FrameSlotValue` scalar loads should keep using
+  `prepared_frame_slot_call_argument_offset`; `FrameSlotAddress` must not load
+  from the ordinary value home slot #9/offset 48
+- `LocalFrameAddressMaterialization` should keep its existing support route;
+  the new route should not broaden register/computed-address handling beyond
+  the selected `FrameSlotAddress` frame-slot source
 
 ## Suggested Next
 
-Delegate Step 2 to classify the active frame-slot-address GPR call-argument
-family for `va-arg-13.c`. The same-module memory-return/sret family from
-`920908-1.c` has been split to
-`ideas/open/387_rv64_object_route_same_module_sret_calls.md`; do not implement
-it under the active plan unless a reviewer proves both routes share an existing
-common call-address materialization abstraction.
+Implement the classified RV64 object support slice in
+`src/backend/mir/riscv/codegen/object_emission.cpp`: add the guarded
+`FrameSlotAddress` GPR call-argument address materialization path, then add or
+extend focused object-emission coverage for the success case and fail-closed
+shape mutations before proving `va-arg-13.c`.
 
 ## Watchouts
 
-- Do not infer the missing lowering from testcase names.
-- Do not reopen idea 374 parameter-home support unless fresh evidence proves
-  the diagnostic still comes from parameter-home facts.
-- Do not downgrade expectations or add named-case-only handling.
-- `920908-1.c` also contains supported `llvm.va_arg.aggregate` helper facts in
-  `f`; the current generic diagnostic is not the variadic helper path.
-- `920908-1.c` is no longer an active implementation target for this plan; it
-  is durable evidence for idea 387.
-- `va-arg-13.c` has two same-shape `dummy` calls, but the first failing
-  fragment is block 0 inst 9; inst 16 is follow-on evidence, not the first
-  diagnostic trigger.
+- This is a semantic frame-slot address publication route; do not implement it
+  with testcase-shaped matching for `dummy`, `%t7`, slot numbers, or
+  `va-arg-13.c`.
+- The current object helper named
+  `prepared_frame_slot_address_call_argument_offset` only accepts
+  `LocalFrameAddressMaterialization` plus register/computed-address sources.
+  Reusing it requires explicit generalization for `FrameSlotAddress` rather
+  than weakening its existing guards.
+- Text emission has a related `emit_riscv_frame_slot_address_argument`, and
+  AArch64 has `materialize_missing_frame_slot_call_arguments`, but the object
+  implementation still needs encoded RV64 fragment/fixup behavior in
+  `object_emission.cpp`.
+- Keep the split sret family out of scope: `920908-1.c` is rejected by the
+  memory-return call admission gate, not by this GPR argument switch.
+- `va-arg-13.c` has a second same-shape `dummy` call at inst 16; support should
+  be general enough for both, while the first diagnostic trigger remains inst
+  9.
 
 ## Proof
 
-Audit-only. Ran read-only diagnostics/dumps without writing `test_before.log`
-or `test_after.log`:
+Classification-only. No canonical proof log was requested or written; left
+`test_before.log` and `test_after.log` untouched. Ran read-only inspection:
 
-- `build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --codegen obj tests/c/external/gcc_torture/src/va-arg-13.c -o
-  /tmp/va-arg-13.o` reproduced the generic unsupported instruction diagnostic.
-- `build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --codegen obj tests/c/external/gcc_torture/src/920908-1.c -o
-  /tmp/920908-1.o` reproduced the same generic diagnostic.
-- `build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --dump-prepared-bir --mir-focus-function test
-  tests/c/external/gcc_torture/src/va-arg-13.c`
-- `build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --dump-prepared-bir --mir-focus-function main
-  tests/c/external/gcc_torture/src/920908-1.c`
+- `git status --short`
+- `rg -n "fragment_for_prepared_call|PreparedCallArgumentSourceSelectionKind|FrameSlotAddress|prepared call|FrameSlot" src tests -S`
+- `c4c-clang-tool-ccdb find-definition /workspaces/c4c/src/backend/mir/riscv/codegen/object_emission.cpp fragment_for_prepared_call build/compile_commands.json`
+- `c4c-clang-tool-ccdb function-callees /workspaces/c4c/src/backend/mir/riscv/codegen/object_emission.cpp fragment_for_prepared_call build/compile_commands.json`
+- targeted `sed` reads of `object_emission.cpp`, `calls.hpp`,
+  `prepared_lookups.cpp`, `prepared_call_emit.cpp`, AArch64 `calls.cpp`, and
+  focused backend tests
