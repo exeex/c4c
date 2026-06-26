@@ -260,3 +260,66 @@ accepted current backend baseline on both sides:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed`
 
 Result: PASS, 326/326 before and 326/326 after, no new failures.
+
+## Reopen Classification Pass - 2026-06-26
+
+Classification artifact:
+
+- `review/354_reopen_classification_20260626.md`
+
+The reopened pass used the latest existing scan artifacts rather than rerunning
+the full 1467-case scan:
+
+- `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
+- `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
+- per-case logs under `build/rv64_gcc_c_torture_backend/`
+
+Current scan status:
+
+- total: `1467`
+- pass: `211`
+- fail: `1256`
+
+Top-level failure split:
+
+- `1214` `RV64_C4C_OBJ_COMPILE_FAIL`
+- `34` `RV64_BACKEND_RUNTIME_MISMATCH`
+- `8` `RV64_C4C_OBJ_COMPILE_TIMEOUT`
+
+The compile failures split into `770` current RV64 prepared-object
+lowering/admission failures and `444` semantic `lir_to_bir` handoff failures.
+The RV64 prepared-object failures were converted into seven new repair ideas:
+
+- `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`
+  (`385` failures)
+- `ideas/open/396_rv64_object_route_terminator_fragment_lowering_refresh.md`
+  (`88` failures)
+- `ideas/open/397_rv64_object_route_move_bundle_target_shapes.md`
+  (`92` failures)
+- `ideas/open/398_rv64_object_route_stack_frame_and_param_home_edges.md`
+  (`103` failures)
+- `ideas/open/399_rv64_object_route_global_data_and_symbol_memory.md`
+  (`30` failures)
+- `ideas/open/400_rv64_object_route_local_memory_addressing_edges.md`
+  (`30` failures)
+- `ideas/open/401_rv64_object_route_scalar_and_floating_edge_lowering.md`
+  (`42` failures)
+
+The runtime mismatch bucket was converted into one new repair/classification
+idea:
+
+- `ideas/open/402_rv64_gcc_torture_runtime_abort_and_segfault_mismatches.md`
+  (`34` failures)
+
+Buckets intentionally not converted to RV64 backend follow-up ideas in this
+pass:
+
+- `444` semantic `lir_to_bir` handoff failures. They fail before prepared
+  object handoff and need a separate semantic owner if pursued.
+- `8` compile timeouts. The current logs prove a timeout symptom but not yet
+  whether the owner is RV64 backend, semantic lowering, or an earlier compiler
+  stage.
+
+Lifecycle decision: 354 remains open and incomplete after this pass. It
+produced `8` new follow-up ideas, and those children must be closed or
+intentionally superseded before this umbrella can close again.
