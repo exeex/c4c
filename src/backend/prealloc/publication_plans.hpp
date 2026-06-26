@@ -884,6 +884,32 @@ struct PreparedStoreSourcePublicationPlans {
   std::vector<PreparedStoreSourcePublicationRecord> records;
 };
 
+struct PreparedCallArgumentValuePublicationFact {
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId call_block_label = kInvalidBlockLabel;
+  std::size_t call_instruction_index = 0;
+  std::size_t arg_index = 0;
+  PreparedValueId argument_value_id = 0;
+  ValueNameId argument_value_name = kInvalidValueName;
+  PreparedFrameSlotId argument_object_slot_id = 0;
+  std::size_t argument_object_stack_offset_bytes = 0;
+  std::size_t argument_object_size_bytes = 0;
+
+  BlockLabelId source_store_block_label = kInvalidBlockLabel;
+  std::size_t source_store_instruction_index = 0;
+  PreparedValueId payload_value_id = 0;
+  ValueNameId payload_value_name = kInvalidValueName;
+  bir::Value payload_value;
+
+  PreparedFrameSlotId destination_frame_slot_id = 0;
+  std::size_t destination_stack_offset_bytes = 0;
+  std::size_t destination_size_bytes = 0;
+};
+
+struct PreparedCallArgumentValuePublicationPlans {
+  std::vector<PreparedCallArgumentValuePublicationFact> facts;
+};
+
 [[nodiscard]] bool prepared_store_source_publication_available(
     const PreparedStoreSourcePublicationPlan& plan);
 

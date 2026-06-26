@@ -5737,6 +5737,46 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
               },
       },
   };
+  prepared.call_argument_value_publications.facts = {
+      prepare::PreparedCallArgumentValuePublicationFact{
+          .function_name = main_name,
+          .call_block_label = block_label,
+          .call_instruction_index = 0,
+          .arg_index = 0,
+          .argument_value_id = prepare::PreparedValueId{14},
+          .argument_value_name = x_name,
+          .argument_object_slot_id = prepare::PreparedFrameSlotId{7},
+          .argument_object_stack_offset_bytes = 24,
+          .argument_object_size_bytes = 8,
+          .source_store_block_label = block_label,
+          .source_store_instruction_index = 0,
+          .payload_value_id = prepare::PreparedValueId{13},
+          .payload_value_name = source_name,
+          .payload_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.src"),
+          .destination_frame_slot_id = prepare::PreparedFrameSlotId{7},
+          .destination_stack_offset_bytes = 24,
+          .destination_size_bytes = 8,
+      },
+      prepare::PreparedCallArgumentValuePublicationFact{
+          .function_name = main_name,
+          .call_block_label = block_label,
+          .call_instruction_index = 0,
+          .arg_index = 1,
+          .argument_value_id = prepare::PreparedValueId{15},
+          .argument_value_name = y_name,
+          .argument_object_slot_id = prepare::PreparedFrameSlotId{8},
+          .argument_object_stack_offset_bytes = 32,
+          .argument_object_size_bytes = 8,
+          .source_store_block_label = block_label,
+          .source_store_instruction_index = 0,
+          .payload_value_id = prepare::PreparedValueId{13},
+          .payload_value_name = source_name,
+          .payload_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.src"),
+          .destination_frame_slot_id = prepare::PreparedFrameSlotId{8},
+          .destination_stack_offset_bytes = 32,
+          .destination_size_bytes = 8,
+      },
+  };
   return prepared;
 }
 
@@ -8057,52 +8097,71 @@ int expect_frame_slot_address_arg_call_rejection(
 
 int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
   auto prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_argument_value_publications.facts.clear();
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
   prepared.store_source_publications.records.clear();
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
-  prepared.store_source_publications.records.push_back(
-      prepared.store_source_publications.records[0]);
+  prepared.call_argument_value_publications.facts.push_back(
+      prepared.call_argument_value_publications.facts[0]);
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
-  auto ambiguous = prepared.store_source_publications.records[0];
-  ambiguous.plan.source_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.y");
-  ambiguous.plan.source_value_id = prepare::PreparedValueId{15};
-  ambiguous.plan.source_value_name =
-      prepared.names.value_names.find("%lv.y");
-  prepared.store_source_publications.records.push_back(ambiguous);
+  auto ambiguous = prepared.call_argument_value_publications.facts[0];
+  ambiguous.payload_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.y");
+  ambiguous.payload_value_id = prepare::PreparedValueId{15};
+  ambiguous.payload_value_name = prepared.names.value_names.find("%lv.y");
+  prepared.call_argument_value_publications.facts.push_back(ambiguous);
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
-  prepared.store_source_publications.records[0].plan.destination_stack_offset_bytes =
-      40;
+  prepared.call_argument_value_publications.facts[0]
+      .destination_stack_offset_bytes = 40;
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
-  prepared.store_source_publications.records[0].instruction_index = 1;
+  prepared.call_argument_value_publications.facts[0]
+      .source_store_instruction_index = 1;
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
-  prepared.store_source_publications.records[0].plan.source_value =
+  prepared.call_argument_value_publications.facts[0].payload_value =
       bir::Value::named(bir::TypeKind::I64, "%lv.src");
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
-  prepared.store_source_publications.records[0].plan.source_value =
+  prepared.call_argument_value_publications.facts[0].payload_value =
       bir::Value::named(bir::TypeKind::Ptr, "%missing.payload");
+  prepared.call_argument_value_publications.facts[0].payload_value_name =
+      prepared.names.value_names.intern("%missing.payload");
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.call_argument_value_publications.facts[0].payload_value =
+      bir::Value::named(bir::TypeKind::Ptr, "%lv.x");
+  prepared.call_argument_value_publications.facts[0].payload_value_id =
+      prepare::PreparedValueId{14};
+  prepared.call_argument_value_publications.facts[0].payload_value_name =
+      prepared.names.value_names.find("%lv.x");
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }

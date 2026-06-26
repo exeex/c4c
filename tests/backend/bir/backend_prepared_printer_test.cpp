@@ -2758,6 +2758,7 @@ int complete_module_body_text_printer_rows_are_byte_stable() {
       "--- prepared-dynamic-stack-plan ---\n"
       "--- prepared-call-plans ---\n"
       "--- prepared-store-source-publications ---\n"
+      "--- prepared-call-argument-value-publications ---\n"
       "--- prepared-select-chain-materializations ---\n"
       "--- prepared-variadic-entry-plans ---\n"
       "--- prepared-regalloc ---\n"

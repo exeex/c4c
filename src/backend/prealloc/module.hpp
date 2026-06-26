@@ -51,6 +51,7 @@ struct PreparedBirModule {
   PreparedDynamicStackPlan dynamic_stack_plan;
   PreparedCallPlans call_plans;
   PreparedStoreSourcePublicationPlans store_source_publications;
+  PreparedCallArgumentValuePublicationPlans call_argument_value_publications;
   PreparedVariadicEntryPlans variadic_entry_plans;
   PreparedStoragePlans storage_plans;
   PreparedI128Carriers i128_carriers;

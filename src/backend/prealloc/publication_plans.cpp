@@ -627,6 +627,133 @@ void append_store_source_record(
   });
 }
 
+[[nodiscard]] std::optional<BlockLabelId> prepared_call_block_label(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    const PreparedCallPlan& call_plan) {
+  const auto* control_flow = find_control_flow_function(prepared.control_flow,
+                                                       function_name);
+  if (control_flow == nullptr ||
+      call_plan.block_index >= control_flow->blocks.size()) {
+    return std::nullopt;
+  }
+  const BlockLabelId block_label =
+      control_flow->blocks[call_plan.block_index].block_label;
+  return block_label != kInvalidBlockLabel
+             ? std::optional<BlockLabelId>{block_label}
+             : std::nullopt;
+}
+
+[[nodiscard]] const PreparedStoreSourcePublicationRecord*
+find_unique_call_argument_value_publication_store_source(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    const PreparedCallArgumentPlan& argument) {
+  const auto need =
+      find_prepared_missing_frame_slot_call_argument_publication_need(argument);
+  if (!need.available ||
+      need.kind != PreparedMissingFrameSlotCallArgumentPublicationKind::
+                       FrameSlotAddress ||
+      need.source_selection == nullptr ||
+      need.source_selection !=
+          (argument.source_selection.has_value() ? &*argument.source_selection
+                                                 : nullptr) ||
+      need.source_value_id != argument.source_value_id ||
+      !need.source_materializes_address ||
+      need.may_emit_local_aggregate_address_payload ||
+      !argument.source_selection->address_materialization_block_label.has_value() ||
+      !argument.source_selection->source_slot_id.has_value() ||
+      !argument.source_selection->source_stack_offset_bytes.has_value() ||
+      !argument.source_selection->source_size_bytes.has_value() ||
+      *argument.source_selection->source_size_bytes != 8) {
+    return nullptr;
+  }
+
+  const PreparedStoreSourcePublicationRecord* selected = nullptr;
+  for (const auto& record : prepared.store_source_publications.records) {
+    const auto& plan = record.plan;
+    if (record.function_name != function_name ||
+        record.block_label !=
+            *argument.source_selection->address_materialization_block_label ||
+        record.instruction_index > argument.instruction_index ||
+        !prepared_store_source_publication_available(plan) ||
+        plan.intent != PreparedStoreSourcePublicationIntent::StoreLocalPublication ||
+        plan.duplicate_publication ||
+        plan.destination_frame_slot_id != argument.source_selection->source_slot_id ||
+        plan.destination_stack_offset_bytes !=
+            argument.source_selection->source_stack_offset_bytes ||
+        plan.destination_size_bytes != 8 ||
+        plan.source_value_name == kInvalidValueName ||
+        plan.source_value_id == 0 ||
+        plan.source_value.type != bir::TypeKind::Ptr) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = &record;
+  }
+  return selected;
+}
+
+void populate_call_argument_value_publication_plans(PreparedBirModule& prepared) {
+  prepared.call_argument_value_publications.facts.clear();
+  for (const auto& function_plan : prepared.call_plans.functions) {
+    if (function_plan.function_name == kInvalidFunctionName) {
+      continue;
+    }
+    for (const auto& call_plan : function_plan.calls) {
+      const auto call_block =
+          prepared_call_block_label(prepared, function_plan.function_name, call_plan);
+      if (!call_block.has_value()) {
+        continue;
+      }
+      for (const auto& argument : call_plan.arguments) {
+        if (!argument.source_selection.has_value() ||
+            !argument.source_value_id.has_value() ||
+            !argument.source_selection->source_value_name.has_value() ||
+            !argument.source_selection->source_slot_id.has_value() ||
+            !argument.source_selection->source_stack_offset_bytes.has_value() ||
+            !argument.source_selection->source_size_bytes.has_value()) {
+          continue;
+        }
+        const auto* source =
+            find_unique_call_argument_value_publication_store_source(
+                prepared, function_plan.function_name, argument);
+        if (source == nullptr) {
+          continue;
+        }
+        const auto& plan = source->plan;
+        prepared.call_argument_value_publications.facts.push_back(
+            PreparedCallArgumentValuePublicationFact{
+                .function_name = function_plan.function_name,
+                .call_block_label = *call_block,
+                .call_instruction_index = call_plan.instruction_index,
+                .arg_index = argument.arg_index,
+                .argument_value_id = *argument.source_value_id,
+                .argument_value_name =
+                    *argument.source_selection->source_value_name,
+                .argument_object_slot_id =
+                    *argument.source_selection->source_slot_id,
+                .argument_object_stack_offset_bytes =
+                    *argument.source_selection->source_stack_offset_bytes,
+                .argument_object_size_bytes =
+                    *argument.source_selection->source_size_bytes,
+                .source_store_block_label = source->block_label,
+                .source_store_instruction_index = source->instruction_index,
+                .payload_value_id = plan.source_value_id,
+                .payload_value_name = plan.source_value_name,
+                .payload_value = plan.source_value,
+                .destination_frame_slot_id = *plan.destination_frame_slot_id,
+                .destination_stack_offset_bytes =
+                    *plan.destination_stack_offset_bytes,
+                .destination_size_bytes = plan.destination_size_bytes,
+            });
+      }
+    }
+  }
+}
+
 }  // namespace
 
 [[nodiscard]] PreparedEdgePublicationKey prepared_edge_publication_key(
@@ -1878,6 +2005,7 @@ plan_pending_prepared_store_global_publications(
 
 void populate_store_source_publication_plans(PreparedBirModule& prepared) {
   prepared.store_source_publications.records.clear();
+  prepared.call_argument_value_publications.facts.clear();
 
   for (const auto& function : prepared.module.functions) {
     const FunctionNameId function_name = prepared.names.function_names.find(function.name);
@@ -2003,6 +2131,7 @@ void populate_store_source_publication_plans(PreparedBirModule& prepared) {
       }
     }
   }
+  populate_call_argument_value_publication_plans(prepared);
 }
 
 PreparedFixedFormalStoreSourcePublication

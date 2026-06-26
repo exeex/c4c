@@ -165,6 +165,32 @@ void append_store_source_publications(std::ostringstream& out,
   }
 }
 
+void append_call_argument_value_publications(std::ostringstream& out,
+                                             const PreparedBirModule& module) {
+  out << "--- prepared-call-argument-value-publications ---\n";
+  for (const auto& fact : module.call_argument_value_publications.facts) {
+    out << "  call_arg_value_publication function="
+        << maybe_function_name(module.names, fact.function_name)
+        << " block=" << maybe_block_label(module.names, fact.call_block_label)
+        << " call_inst=" << fact.call_instruction_index
+        << " arg=" << fact.arg_index
+        << " argument=" << maybe_value_name(module.names, fact.argument_value_name)
+        << " argument_value_id=" << fact.argument_value_id
+        << " object_slot=#" << fact.argument_object_slot_id
+        << " object_stack_offset=" << fact.argument_object_stack_offset_bytes
+        << " object_size=" << fact.argument_object_size_bytes
+        << " source_store_block="
+        << maybe_block_label(module.names, fact.source_store_block_label)
+        << " source_store_inst=" << fact.source_store_instruction_index
+        << " payload=" << maybe_value_name(module.names, fact.payload_value_name)
+        << " payload_value_id=" << fact.payload_value_id
+        << " destination_slot=#" << fact.destination_frame_slot_id
+        << " destination_stack_offset=" << fact.destination_stack_offset_bytes
+        << " destination_size=" << fact.destination_size_bytes
+        << "\n";
+  }
+}
+
 void append_select_chain_materializations(std::ostringstream& out,
                                           const PreparedBirModule& module) {
   out << "--- prepared-select-chain-materializations ---\n";

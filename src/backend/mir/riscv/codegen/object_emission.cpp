@@ -2675,6 +2675,72 @@ struct PreparedFrameSlotAddressArgumentPublication {
   bir::Value source_value;
 };
 
+[[nodiscard]] const prepare::PreparedStoreSourcePublicationRecord*
+find_matching_call_argument_value_publication_store_source(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const prepare::PreparedCallArgumentValuePublicationFact& fact) {
+  const prepare::PreparedStoreSourcePublicationRecord* selected = nullptr;
+  for (const auto& record : prepared.store_source_publications.records) {
+    const auto& plan = record.plan;
+    if (record.function_name != fact.function_name ||
+        record.block_label != fact.source_store_block_label ||
+        record.instruction_index != fact.source_store_instruction_index ||
+        !prepare::prepared_store_source_publication_available(plan) ||
+        plan.intent !=
+            prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication ||
+        plan.duplicate_publication ||
+        plan.source_value_id != fact.payload_value_id ||
+        plan.source_value_name != fact.payload_value_name ||
+        plan.source_value != fact.payload_value ||
+        plan.destination_frame_slot_id != fact.destination_frame_slot_id ||
+        plan.destination_stack_offset_bytes != fact.destination_stack_offset_bytes ||
+        plan.destination_size_bytes != fact.destination_size_bytes) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = &record;
+  }
+  return selected;
+}
+
+[[nodiscard]] const prepare::PreparedCallArgumentValuePublicationFact*
+find_unique_prepared_call_argument_value_publication_fact(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    FunctionNameId function_id,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument) {
+  if (!argument.source_selection.has_value() ||
+      !argument.source_value_id.has_value() ||
+      !argument.source_selection->source_value_name.has_value() ||
+      !argument.source_selection->source_slot_id.has_value() ||
+      !argument.source_selection->source_stack_offset_bytes.has_value() ||
+      !argument.source_selection->source_size_bytes.has_value()) {
+    return nullptr;
+  }
+
+  const prepare::PreparedCallArgumentValuePublicationFact* selected = nullptr;
+  for (const auto& fact : prepared.call_argument_value_publications.facts) {
+    if (fact.function_name != function_id ||
+        fact.call_instruction_index != argument.instruction_index ||
+        fact.arg_index != argument.arg_index ||
+        fact.argument_value_id != *argument.source_value_id ||
+        fact.argument_value_name != *argument.source_selection->source_value_name ||
+        fact.argument_object_slot_id != *argument.source_selection->source_slot_id ||
+        fact.argument_object_stack_offset_bytes !=
+            *argument.source_selection->source_stack_offset_bytes ||
+        fact.argument_object_size_bytes !=
+            *argument.source_selection->source_size_bytes) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = &fact;
+  }
+  return selected;
+}
+
 std::optional<PreparedFrameSlotAddressArgumentPublication>
 prepared_frame_slot_address_call_argument_publication(
     const c4c::backend::prepare::PreparedBirModule& prepared,
@@ -2723,35 +2789,32 @@ prepared_frame_slot_address_call_argument_publication(
     return std::nullopt;
   }
 
-  const prepare::PreparedStoreSourcePublicationRecord* selected = nullptr;
-  for (const auto& record : prepared.store_source_publications.records) {
-    const auto& plan = record.plan;
-    if (record.function_name != function_id ||
-        !argument.source_selection->address_materialization_block_label.has_value() ||
-        record.block_label !=
-            *argument.source_selection->address_materialization_block_label ||
-        record.instruction_index > argument.instruction_index ||
-        !prepare::prepared_store_source_publication_available(plan) ||
-        plan.intent !=
-            prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication ||
-        plan.duplicate_publication ||
-        plan.destination_frame_slot_id != argument.source_selection->source_slot_id ||
-        plan.destination_stack_offset_bytes !=
-            argument.source_selection->source_stack_offset_bytes ||
-        plan.destination_size_bytes != 8) {
-      continue;
-    }
-    if (selected != nullptr) {
-      return std::nullopt;
-    }
-    selected = &record;
+  const auto* fact =
+      find_unique_prepared_call_argument_value_publication_fact(
+          prepared, function_id, argument);
+  if (fact == nullptr ||
+      fact->call_block_label !=
+          *argument.source_selection->address_materialization_block_label ||
+      fact->destination_frame_slot_id != *argument.source_selection->source_slot_id ||
+      fact->destination_stack_offset_bytes !=
+          *argument.source_selection->source_stack_offset_bytes ||
+      fact->destination_size_bytes != 8 ||
+      fact->payload_value_id == need.source_value_id ||
+      fact->payload_value_name == *argument.source_selection->source_value_name ||
+      fact->payload_value.type != bir::TypeKind::Ptr ||
+      !fits_signed_12_bit_immediate(
+          static_cast<std::int64_t>(fact->destination_stack_offset_bytes))) {
+    return std::nullopt;
   }
+
+  const auto* selected =
+      find_matching_call_argument_value_publication_store_source(prepared, *fact);
   if (selected == nullptr) {
     return std::nullopt;
   }
 
   const auto& plan = selected->plan;
-  bir::Value source_value = plan.source_value;
+  bir::Value source_value = fact->payload_value;
   if (plan.source_load_local != nullptr) {
     if (plan.source_load_local->slot_name.empty() ||
         plan.source_load_local->result.type != bir::TypeKind::Ptr) {
@@ -2764,18 +2827,16 @@ prepared_frame_slot_address_call_argument_publication(
   if (source_value.kind != bir::Value::Kind::Named ||
       source_value.type != bir::TypeKind::Ptr ||
       prepared_value_home_for(prepared.names, lookups, source_value) == nullptr ||
-      !plan.destination_stack_offset_bytes.has_value() ||
-      *plan.destination_stack_offset_bytes >
+      fact->destination_stack_offset_bytes >
           static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
-      !fits_signed_12_bit_immediate(
-          static_cast<std::int64_t>(*plan.destination_stack_offset_bytes))) {
+      fact->payload_value_name == *argument.source_selection->source_value_name) {
     return std::nullopt;
   }
 
   return PreparedFrameSlotAddressArgumentPublication{
       .address_offset = *address_offset,
       .destination_offset =
-          static_cast<std::int32_t>(*plan.destination_stack_offset_bytes),
+          static_cast<std::int32_t>(fact->destination_stack_offset_bytes),
       .source_value = std::move(source_value),
   };
 }

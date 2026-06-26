@@ -15,6 +15,8 @@ void append_dynamic_stack_plan(std::ostringstream& out, const PreparedBirModule&
 void append_call_plans(std::ostringstream& out, const PreparedBirModule& module);
 void append_store_source_publications(std::ostringstream& out,
                                       const PreparedBirModule& module);
+void append_call_argument_value_publications(std::ostringstream& out,
+                                             const PreparedBirModule& module);
 void append_select_chain_materializations(std::ostringstream& out,
                                           const PreparedBirModule& module);
 void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModule& module);
