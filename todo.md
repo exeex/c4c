@@ -1,58 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/387_rv64_object_route_same_module_sret_calls.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Focused Backend Coverage
+Current Step ID: 4
+Current Step Title: Implement Or Narrowly Route Sret Calls
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added the narrow RV64 object-emission prerequisite for stack-homed
-`sret_param` pointer-value local memory stores.
+Step 4 added the narrow prepared same-module RV64 `memory_return`/sret call
+route.
 
-The new object-emission route recognizes a prepared `StoreLocalInst` memory
-access with `base=pointer_value` when the pointer value is stack-homed and its
-matching stack object is an address-exposed permanent `source_kind=sret_param`
-object. The emitted sequence loads the sret pointer value from its stack home
-into a temporary GPR, materializes the scalar store value into another GPR, and
-stores through the loaded pointer plus the prepared byte offset.
+The object-emission call route now accepts a prepared same-module call with a
+frame-slot `memory_return` whose `sret_arg_index` names an aggregate-address
+argument backed by a matching `LocalFrameAddressMaterialization`. For that
+shape it materializes the hidden sret pointer with `addi a0, sp, <prepared
+frame-slot offset>` before normal call emission. Ordinary scalar argument
+emission remains on the existing prepared argument path; the focused fixture
+proves the immediate ordinary argument still lands in `a1`.
 
-Focused backend coverage now proves the accepted shape with a fixture that
-stores an `i32` through a stack-homed `%ret.sret` pointer and asserts the RV64
-sequence `ld` from the pointer home followed by an indirect `sw`. Fail-closed
-coverage preserves rejection for unsupported source kinds, non-permanent homes,
-unsupported home/register shapes, mismatched frame-slot metadata, non-default or
-volatile accesses, non-base-plus-offset access, out-of-range offset, and
-over-aligned scalar accesses.
+The route is intentionally fail-closed. It rejects non-same-module memory
+returns, non-frame-slot memory returns, missing or mismatched sret argument
+indices, missing source-selection facts, mismatched source/materialized
+frame-slot offsets, mismatched materialization frame-slot IDs, and dynamic fixed
+stack frames through the existing unsupported-instruction diagnostic.
 
-The same-module `memory_return` gate was not deleted or weakened in this
-packet.
+Focused backend coverage added and tightened:
+- `builds_prepared_same_module_sret_call_object`
+- `rejects_prepared_same_module_sret_call_fail_closed_shapes`
+
+The fail-closed coverage now explicitly proves rejection when `memory_return`
+is present on a non-`SameModule` wrapper kind and when the `memory_return` slot
+id does not match the sret argument source/materialization facts.
 
 Additional representative evidence:
-`build/agent_state/387_step3_920908-1.run.log` shows the
-`920908-1.c` object route now advances past the prior
-`unsupported_local_memory_access` boundary and reaches
-`unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`,
-which is consistent with returning to the same-module call/memory-return
-emission boundary.
+`build/agent_state/387_step4_920908-1.run.log` shows the `920908-1.c` RV64
+object runner now compiles and links the c4c object, then fails at runtime with
+`clang_exit=0 c4c_exit=Subprocess aborted`.
+
+`build/agent_state/387_step4_920908-1.c4c-disasm.log` shows the same-module
+call in `main` now uses the prepared sret object address and preserves ordinary
+arguments:
+`addi a0,sp,16`, `li a1,2`, `mv a2,t0`, `mv a3,s2`, followed by an
+`R_RISCV_CALL_PLT f` relocation. This means the prior same-module
+`memory_return` object-emission admission boundary is gone; the remaining
+representative abort is a later runtime/semantic boundary.
 
 ## Suggested Next
 
-Execute the next idea 387 packet against the now-exposed same-module
-`memory_return=%t8` call-emission boundary. Start from the Step 1 prepared call
-plan and the Step 3 representative log; do not revisit local-memory admission
-unless the new evidence contradicts this repair.
+Run the next packet against the post-call runtime mismatch for `920908-1.c`.
+Start from the Step 4 disassembly and compare callee `f` variadic aggregate
+consumption against the caller-published variadic aggregate argument payloads.
 
 ## Watchouts
 
-- The sret-param helper is intentionally separate from the existing byval
-  stack-slot pointer helper. Byval still treats stack-homed byval payload as
-  direct storage; sret loads the pointer and stores through it.
-- The next boundary should be call emission for prepared same-module
-  `memory_return` plans, not another local-memory route.
-- Do not hard-code `920908-1.c`, callee `f`, stack offsets, or the generic
-  unsupported-instruction diagnostic.
+- Do not broaden this route beyond prepared same-module frame-slot
+  `memory_return` facts without new coverage.
+- The sret address is sourced from the explicit prepared call-plan/object facts,
+  not from callee names, source filenames, or literal testcase offsets.
+- The representative now reaches runtime, so further work should not reclassify
+  this as the old `unsupported_instruction_fragment` call gate unless fresh
+  evidence contradicts the Step 4 disassembly.
 
 ## Proof
 
@@ -62,8 +70,14 @@ Delegated proof command run:
 Result: passed; `test_after.log` reports `100% tests passed, 0 tests failed
 out of 326`.
 
-Focused pre-proof also passed:
+Latest focused coverage-tightening proof used the delegated command above and
+passed.
+
+Prior focused pre-proof also passed:
 `cmake --build --preset default --target backend_riscv_object_emission_test && build/tests/backend/mir/backend_riscv_object_emission_test`.
 
-Representative evidence log:
-`build/agent_state/387_step3_920908-1.run.log`.
+Representative evidence logs:
+- `build/agent_state/387_step4_920908-1.run.log`
+- `build/agent_state/387_step4_920908-1.case.log`
+- `build/agent_state/387_step4_920908-1.compile.log`
+- `build/agent_state/387_step4_920908-1.c4c-disasm.log`

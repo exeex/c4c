@@ -2555,7 +2555,8 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
 
   if (lookups == nullptr || frame_plan == nullptr || frame_plan->has_dynamic_stack ||
       frame_plan->uses_frame_pointer_for_fixed_slots ||
-      argument.value_bank != prepare::PreparedRegisterBank::Gpr ||
+      (argument.value_bank != prepare::PreparedRegisterBank::Gpr &&
+       argument.value_bank != prepare::PreparedRegisterBank::AggregateAddress) ||
       !argument.source_selection.has_value()) {
     return std::nullopt;
   }
@@ -2667,6 +2668,66 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
   }
 
   return static_cast<std::int32_t>(offset);
+}
+
+std::optional<std::int32_t> prepared_sret_memory_return_argument_address_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    const c4c::backend::prepare::PreparedCallPlan& call_plan,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
+    std::size_t stack_frame_bytes) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (call_plan.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
+      !call_plan.memory_return.has_value() ||
+      !call_plan.memory_return->sret_arg_index.has_value() ||
+      *call_plan.memory_return->sret_arg_index != argument.arg_index ||
+      call_plan.memory_return->encoding !=
+          prepare::PreparedStorageEncodingKind::FrameSlot ||
+      !call_plan.memory_return->slot_id.has_value() ||
+      !call_plan.memory_return->stack_offset_bytes.has_value() ||
+      call_plan.memory_return->size_bytes == 0 ||
+      call_plan.memory_return->align_bytes == 0 ||
+      argument.value_bank != prepare::PreparedRegisterBank::AggregateAddress ||
+      argument.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
+      argument.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
+      argument.destination_register_bank.has_value() ||
+      argument.destination_register_name.has_value() ||
+      argument.destination_stack_offset_bytes.has_value() ||
+      argument.destination_stack_size_bytes.has_value() ||
+      !argument.source_selection.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& selection = *argument.source_selection;
+  if (selection.kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization ||
+      !selection.source_slot_id.has_value() ||
+      *selection.source_slot_id != *call_plan.memory_return->slot_id ||
+      !selection.source_stack_offset_bytes.has_value() ||
+      *selection.source_stack_offset_bytes !=
+          *call_plan.memory_return->stack_offset_bytes ||
+      !selection.source_size_bytes.has_value() ||
+      *selection.source_size_bytes < call_plan.memory_return->size_bytes ||
+      !selection.source_align_bytes.has_value() ||
+      *selection.source_align_bytes < call_plan.memory_return->align_bytes) {
+    return std::nullopt;
+  }
+
+  const auto offset =
+      prepared_frame_slot_address_call_argument_offset(stack_layout,
+                                                       lookups,
+                                                       frame_plan,
+                                                       argument,
+                                                       stack_frame_bytes);
+  if (!offset.has_value() ||
+      static_cast<std::size_t>(*offset) !=
+          *call_plan.memory_return->stack_offset_bytes) {
+    return std::nullopt;
+  }
+  return offset;
 }
 
 struct PreparedFrameSlotAddressArgumentPublication {
@@ -2862,7 +2923,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
 
   if (call_plan == nullptr || call.is_indirect || call.callee_value.has_value() ||
       call_plan->is_indirect || call_plan->indirect_callee.has_value() ||
-      call_plan->memory_return.has_value() ||
       call_plan->outgoing_stack_argument_area.has_value()) {
     return std::nullopt;
   }
@@ -2917,6 +2977,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   }
 
   std::size_t active_call_stack_adjustment = 0;
+  bool emitted_memory_return_argument = false;
   for (std::size_t arg_index = 0; arg_index < call_plan->arguments.size();
        ++arg_index) {
     const auto& argument = call_plan->arguments[arg_index];
@@ -2929,6 +2990,32 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     const auto* transport = argument.aggregate_transport.has_value()
                                 ? &*argument.aggregate_transport
                                 : nullptr;
+    if (call_plan->memory_return.has_value() &&
+        call_plan->memory_return->sret_arg_index ==
+            std::optional<std::size_t>{arg_index}) {
+      if (active_call_stack_adjustment != 0) {
+        return std::nullopt;
+      }
+      const auto offset =
+          prepared_sret_memory_return_argument_address_offset(stack_layout,
+                                                              lookups,
+                                                              frame_plan,
+                                                              *call_plan,
+                                                              argument,
+                                                              stack_frame_bytes);
+      const auto destination = rv64_register_number("a0");
+      if (!offset.has_value() || !destination.has_value()) {
+        return std::nullopt;
+      }
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                *destination,
+                                0,
+                                2,
+                                *offset));  // addi a0, sp, off
+      emitted_memory_return_argument = true;
+      continue;
+    }
     if (argument.value_bank == prepare::PreparedRegisterBank::AggregateAddress ||
         transport != nullptr) {
       if (arg_index >= call.arg_abi.size() ||
@@ -3247,6 +3334,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
               argument.source_pointer_byte_delta.value_or(0)));
       continue;
     }
+    return std::nullopt;
+  }
+  if (call_plan->memory_return.has_value() && !emitted_memory_return_argument) {
     return std::nullopt;
   }
 
