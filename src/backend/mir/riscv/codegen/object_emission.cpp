@@ -1219,6 +1219,35 @@ std::optional<std::uint32_t> rv64_branch_funct3(
   }
 }
 
+struct Rv64NormalizedBranchPredicate {
+  c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Eq;
+  c4c::backend::bir::Value lhs;
+  c4c::backend::bir::Value rhs;
+};
+
+std::optional<Rv64NormalizedBranchPredicate> normalize_rv64_branch_predicate(
+    c4c::backend::bir::BinaryOpcode opcode,
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs) {
+  if (rv64_branch_funct3(opcode).has_value()) {
+    return Rv64NormalizedBranchPredicate{
+        .opcode = opcode,
+        .lhs = lhs,
+        .rhs = rhs,
+    };
+  }
+  if (opcode == c4c::backend::bir::BinaryOpcode::Sgt &&
+      lhs.type == c4c::backend::bir::TypeKind::I32 &&
+      rhs.type == c4c::backend::bir::TypeKind::I32) {
+    return Rv64NormalizedBranchPredicate{
+        .opcode = c4c::backend::bir::BinaryOpcode::Slt,
+        .lhs = rhs,
+        .rhs = lhs,
+    };
+  }
+  return std::nullopt;
+}
+
 void append_rv64_local_jump(RiscvEncodedFragment& fragment,
                             std::string target_label) {
   const auto offset = fragment.bytes.size();
@@ -3499,7 +3528,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_compare_branch(
     std::string true_label,
     std::string false_label,
     std::size_t stack_frame_bytes) {
-  const auto funct3 = rv64_branch_funct3(opcode);
+  const auto normalized = normalize_rv64_branch_predicate(opcode, lhs, rhs);
+  if (!normalized.has_value()) {
+    return std::nullopt;
+  }
+  const auto funct3 = rv64_branch_funct3(normalized->opcode);
   if (!funct3.has_value()) {
     return std::nullopt;
   }
@@ -3510,14 +3543,14 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_compare_branch(
                                           stack_layout,
                                           names,
                                           lookups,
-                                          lhs,
+                                          normalized->lhs,
                                           stack_frame_bytes) ||
       !append_rv64_move_value_to_register(fragment,
                                           29,
                                           stack_layout,
                                           names,
                                           lookups,
-                                          rhs,
+                                          normalized->rhs,
                                           stack_frame_bytes)) {
     return std::nullopt;
   }

@@ -1,54 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/369_rv64_object_route_terminator_fragment_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit First Terminator Fragment
+Current Step ID: 3
+Current Step Title: Implement Semantic RV64 Terminator Emission
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 of `plan.md`: audited the first prepared terminator fragment
-behind the current RV64 object-route `unsupported_terminator_fragment`
-failures for `src/20000224-1.c` and `src/20000112-1.c`.
+Completed Step 2 and Step 3 of `plan.md` for the first audited terminator
+shape: added focused RV64 object-emission coverage for a prepared fused
+`sgt i32 %reg, %reg` conditional branch, then lowered that shape semantically
+by normalizing it to an RV64 `slt` branch with swapped operands.
 
-Evidence is recorded in:
-
-- `test_after.log`
-- `build/agent_state/369_step1_terminator_audit.summary.log`
-- `build/agent_state/369_step1_terminator_audit.prepared_bir.log`
-- `build/rv64_gcc_c_torture_backend/src_20000224-1.c/case.log`
-- `build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`
+The focused tests also keep adjacent fail-closed coverage for unsupported
+fused branch predicates and non-i32 `sgt` branch shapes.
 
 ## Suggested Next
 
-Implement the first allowlist-order prepared terminator shape: RV64 object
-lowering for a fused-compare conditional branch with signed greater-than i32
-register operands, observed as `compare=sgt i32 %t0, %t1` on
-`src/20000224-1.c` function `test` block `block_1`.
+Run the Step 5 representative RV64 GCC torture backend subset for
+`src/20000224-1.c` and `src/20000112-1.c` to see whether the first case now
+advances and to confirm the next first unsupported terminator shape. If the
+allowlist order remains unchanged, the likely next implementation packet is
+the pointer-null `ne` fused branch for `src/20000112-1.c`.
 
 ## Watchouts
 
-- `src/20000224-1.c` first reaches `function=test block=block_1
-  terminator=cond_branch` with prepared branch condition
-  `fused_compare condition=%t2 compare=sgt i32 %t0, %t1`; the local owner is
-  RV64 object terminator lowering because `rv64_branch_funct3` currently lacks
-  `Sgt`.
-- `src/20000112-1.c` first reaches `function=special_format block=entry
-  terminator=cond_branch` with prepared branch condition
-  `fused_compare condition=%t1 compare=ne ptr %t0, 0`; `Ne` is mapped, but the
-  pointer-typed null operand is not accepted by the current immediate/value
-  move helpers.
-- Lower the shape semantically, for example by operand normalization to a
-  supported RV64 branch predicate. Do not key behavior on testcase names,
-  labels, or prepared-BIR text matching.
+- `sgt i32` support is intentionally implemented as branch predicate
+  normalization, not by testcase names or prepared-BIR text matching.
+- The implementation does not broaden unsupported `sle` or non-i32 `sgt`
+  fused branch shapes; those remain covered by the object-emission test's
+  fail-closed assertions.
+- `src/20000112-1.c` previously reached a pointer-typed null `ne` fused branch;
+  that path was not part of this packet and still needs representative rerun
+  confirmation before implementation.
 
 ## Proof
 
 Ran the supervisor-selected proof:
 
-`mkdir -p build/agent_state && printf '%s\n' 'src/20000224-1.c' 'src/20000112-1.c' > build/agent_state/369_step1_terminator_audit.allowlist.txt && ( cmake --build build --target c4cll && ALLOWLIST=build/agent_state/369_step1_terminator_audit.allowlist.txt STOP_ON_FAILURE=0 VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh ) > test_after.log 2>&1`
+`( cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure ) > test_after.log 2>&1`
 
-Result: expected nonzero proof while auditing current unsupported failures;
-`test_after.log` contains the fresh run with both cases failing at
-`unsupported_terminator_fragment`.
+Result: passed. `test_after.log` contains the fresh build and three-test CTest
+run.

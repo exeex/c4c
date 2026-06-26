@@ -281,6 +281,118 @@ prepare::PreparedBirModule make_prepared_successor_entry_copy_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_fused_compare_branch_module(
+    bir::BinaryOpcode predicate,
+    bir::TypeKind compare_type = bir::TypeKind::I32) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("cmp_branch");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+  const auto true_label = prepared.names.block_labels.intern("is_true");
+  const auto false_label = prepared.names.block_labels.intern("is_false");
+  const auto condition_name = prepared.names.value_names.intern("%cmp");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.kind = bir::TerminatorKind::CondBranch;
+  entry.terminator.condition = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  entry.terminator.true_label = "is_true";
+  entry.terminator.false_label = "is_false";
+
+  bir::Block is_true{
+      .label = "is_true",
+      .terminator = bir::Terminator{},
+  };
+  is_true.terminator.value = bir::Value::immediate_i32(1);
+
+  bir::Block is_false{
+      .label = "is_false",
+      .terminator = bir::Terminator{},
+  };
+  is_false.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "cmp_branch",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry), std::move(is_true), std::move(is_false)},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {
+              prepare::PreparedControlFlowBlock{
+                  .block_label = entry_label,
+                  .terminator_kind = bir::TerminatorKind::CondBranch,
+                  .true_label = true_label,
+                  .false_label = false_label,
+              },
+              prepare::PreparedControlFlowBlock{
+                  .block_label = true_label,
+                  .terminator_kind = bir::TerminatorKind::Return,
+              },
+              prepare::PreparedControlFlowBlock{
+                  .block_label = false_label,
+                  .terminator_kind = bir::TerminatorKind::Return,
+              },
+          },
+      .branch_conditions =
+          {
+              prepare::PreparedBranchCondition{
+                  .function_name = function_name,
+                  .block_label = entry_label,
+                  .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+                  .condition_value = bir::Value::named(bir::TypeKind::I32, "%cmp"),
+                  .predicate = predicate,
+                  .compare_type = compare_type,
+                  .lhs = bir::Value::named(compare_type, "%lhs"),
+                  .rhs = bir::Value::named(compare_type, "%rhs"),
+                  .can_fuse_with_branch = true,
+                  .true_label = true_label,
+                  .false_label = false_label,
+              },
+          },
+  });
+
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = condition_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t2"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = lhs_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 3,
+                  .function_name = function_name,
+                  .value_name = rhs_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t1"},
+              },
+          },
+  });
+
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_direct_call_module() {
   prepare::PreparedBirModule prepared;
   const auto caller_name = prepared.names.function_names.intern("caller");
@@ -4429,6 +4541,70 @@ int builds_prepared_successor_entry_copy_from_shared_traversal() {
   return 0;
 }
 
+int builds_prepared_fused_sgt_i32_compare_branch_object() {
+  const auto prepared =
+      make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Sgt);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared fused sgt i32 compare branch RV64 object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  const auto* true_label = object::find_symbol(*module, ".Lcmp_branch_is_true");
+  const auto* false_label = object::find_symbol(*module, ".Lcmp_branch_is_false");
+  if (text == nullptr || function == nullptr || true_label == nullptr ||
+      false_label == nullptr) {
+    return fail("expected fused compare branch object symbols and text");
+  }
+  if (text->bytes.size() != 32 || text->size_bytes != 32 ||
+      function->value != 0 || function->size_bytes != 32 ||
+      true_label->value != 16 || false_label->value != 24) {
+    return fail("expected fused compare branch object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00030e13 ||
+      read_u32(text->bytes, 4) != 0x00028e93 ||
+      read_u32(text->bytes, 8) != 0x01de4063 ||
+      read_u32(text->bytes, 12) != 0x0000006f ||
+      read_u32(text->bytes, 16) != 0x00100513 ||
+      read_u32(text->bytes, 20) != 0x00008067 ||
+      read_u32(text->bytes, 24) != 0x00000513 ||
+      read_u32(text->bytes, 28) != 0x00008067) {
+    return fail("expected sgt i32 branch to lower as blt with swapped operands");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 8 ||
+      module->relocations[0].type != R_RISCV_BRANCH ||
+      module->relocations[0].symbol != true_label->id ||
+      module->relocations[0].addend != 0 ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 12 ||
+      module->relocations[1].type != R_RISCV_JAL ||
+      module->relocations[1].symbol != false_label->id ||
+      module->relocations[1].addend != 0) {
+    return fail("expected fused compare branch local relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering";
+
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Sle),
+          diagnostic) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Sgt,
+                                                    bir::TypeKind::I64),
+          diagnostic) != 0) {
+    return 1;
+  }
+  return 0;
+}
+
 int builds_prepared_rematerialized_nonzero_return_object() {
   const auto prepared = make_prepared_rematerialized_return_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -7564,6 +7740,8 @@ int main() {
   status |= builds_prepared_text_object_module_without_call_text();
   status |= rejects_prepared_critical_edge_parallel_copy_with_shared_diagnostic();
   status |= builds_prepared_successor_entry_copy_from_shared_traversal();
+  status |= builds_prepared_fused_sgt_i32_compare_branch_object();
+  status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
   status |= builds_prepared_scalar_stack_result_call_object();
