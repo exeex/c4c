@@ -1,70 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/385_rv64_ev64_insn_d_riscv_length_prefix.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove LLVM And c4c Roundtrip Compatibility
+Current Step ID: 5
+Current Step Title: Run Backend Regression And Decide Closure
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 proved LLVM and c4c roundtrip compatibility for the committed EV64
-`.insn.d` prefixed layout.
+Step 5 ran the final backend regression proof and found idea 385
+closure-ready from the executor side.
 
-Artifacts:
-
-- Proof log: `build/agent_state/385_step4/proof.log`.
-- Assertion log: `build/agent_state/385_step4/assertions.log`.
-- C-source object:
-  `build/agent_state/385_step4/riscv64_vrm_insn_d_source.c4c.o`.
-- c4c-as canonical fixture:
-  `build/agent_state/385_step4/canonical_insn_d.s`.
-- c4c-as object:
-  `build/agent_state/385_step4/canonical_insn_d.c4c-as.o`.
-- c4c objdump output assembly:
-  `build/agent_state/385_step4/canonical_insn_d.objdump.s`.
-- c4c roundtrip object:
-  `build/agent_state/385_step4/canonical_insn_d.roundtrip.o`.
-- LLVM disassembly:
-  `build/agent_state/385_step4/canonical_insn_d.llvm-objdump.log`.
-
-Byte assertions:
-
-- C-source object `.text`:
-  `3f0320140b0403001305000067800000`.
-- c4c-as canonical object `.text`:
-  `3f0320140b0403001305000067800000`.
-- c4c objdump -> c4c-as roundtrip `.text`:
-  `3f0320140b0403001305000067800000`.
-- Canonical EV64 word for
-  `.insn.d 10, 11, v6, v0, v2, v4, 3`:
-  `3f0320140b040300`.
-- First byte is `0x3f`; low seven bits `[6:0] = 0x3f`.
-
-c4c roundtrip result:
-
-- `build/c4c-objdump` extracted the canonical object and printed:
-  `.insn.d 10, 11, v6, v0, v2, v4, 3`.
-- Reassembling the extracted assembly with `build/c4c-as` reproduced the same
-  `.text` bytes exactly.
-
-LLVM result:
+Backend proof:
 
 - Command:
-  `llvm-objdump -d --triple=riscv64 build/agent_state/385_step4/canonical_insn_d.c4c-as.o`.
-- LLVM disassembly shows one EV64 row:
-  `0: 1420033f 0003040b <unknown>`.
-- The next decoded row is address `8` (`li a0, 0x0`); there is no address `4`
-  split row.
-- Conclusion: LLVM consumes the c4c-emitted EV64 bytes as one 8-byte unknown
-  instruction, matching the Step 1 prefix contract.
+  `ctest --test-dir build -L backend -j --output-on-failure > test_after.log 2>&1`
+- Result: passed.
+- `test_after.log` reports:
+  `100% tests passed, 0 tests failed out of 326`.
+
+Acceptance criteria status:
+
+- Step 1 proved LLVM RISC-V objdump consumes a standalone `0x3f` low-seven-bit
+  8-byte candidate as one unknown instruction.
+- Commit `11b36c5f Align EV64 insn.d with RISC-V length prefix` implemented
+  the c4c `.insn.d` prefixed field layout.
+- Step 4 artifacts under `build/agent_state/385_step4/` prove the committed
+  encoder emits canonical bytes `3f0320140b040300`, c4c objdump/c4c-as
+  roundtrips those bytes exactly, and LLVM shows one 8-byte unknown row at
+  address `0` with the next decoded row at `8` and no address `4` split row.
+- The final backend regression suite is green after the implementation and
+  proof commits.
+
+Conclusion: active runbook evidence is exhausted and idea 385 is ready for
+supervisor regression-guard comparison/baseline handling and plan-owner close
+decision.
 
 ## Suggested Next
 
-Run the plan-owner close decision for idea 385. The executor runbook evidence is
-exhausted: Step 1 proved the independent LLVM prefix behavior, Step 3
-implemented the c4c layout, and Step 4 proved c4c plus LLVM compatibility on
-fresh emitted objects.
+Supervisor should run its regression-guard comparison against `test_before.log`
+and then route the plan-owner close decision for idea 385 if the guard passes.
 
 ## Watchouts
 
@@ -74,22 +49,15 @@ fresh emitted objects.
 - Keep the existing seven-operand `.insn.d` surface stable; this plan moves
   fields in the binary encoding and does not add/remove operands.
 - c4c-objdump intentionally does not decode the old `major`-in-low-bits layout.
-- No root regression logs were overwritten in Step 4; evidence lives under
-  `build/agent_state/385_step4/`.
+- Executor did not compare or roll `test_before.log`; supervisor owns
+  regression guard comparison and baseline roll-forward.
 
 ## Proof
 
-Commands:
+Command:
 
 ```bash
-cmake --build --preset default --target c4cll c4c-as c4c-objdump
-build/c4cll --codegen obj --target riscv64-linux-gnu tests/backend/case/riscv64_vrm_insn_d_source.c -o build/agent_state/385_step4/riscv64_vrm_insn_d_source.c4c.o
-build/c4c-as build/agent_state/385_step4/canonical_insn_d.s -o build/agent_state/385_step4/canonical_insn_d.c4c-as.o
-build/c4c-objdump build/agent_state/385_step4/canonical_insn_d.c4c-as.o -o build/agent_state/385_step4/canonical_insn_d.objdump.s
-build/c4c-as build/agent_state/385_step4/canonical_insn_d.objdump.s -o build/agent_state/385_step4/canonical_insn_d.roundtrip.o
-llvm-objdump -d --triple=riscv64 build/agent_state/385_step4/canonical_insn_d.c4c-as.o
+ctest --test-dir build -L backend -j --output-on-failure > test_after.log 2>&1
 ```
 
-Result: passed. `build/agent_state/385_step4/assertions.log` records:
-`assertion=PASS c4c emitted prefixed EV64 bytes, c4c roundtripped them, and
-LLVM consumed the EV64 word as one 8-byte unknown instruction`.
+Result: passed. Proof log: `test_after.log`.
