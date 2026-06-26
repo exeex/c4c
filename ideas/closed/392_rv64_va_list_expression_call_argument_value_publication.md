@@ -1,9 +1,10 @@
 # RV64 Va List Expression Call-Argument Value Publication
 
-Status: Open
+Status: Closed
 Type: Target lowering follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/open/391_rv64_variadic_prologue_save_area_publication.md`
+Closed By: load-local call-argument publication repair plus RV64 `va_start`-published `va_list` load repair
 
 ## Goal
 
@@ -69,6 +70,46 @@ additional RV64 variadic prologue save-area publication.
 - `va-arg-13.c` advances past the current abort, or any remaining later
   boundary is recorded with a clear owner and split instead of silently
   expanding this idea.
+
+## Closure Notes
+
+Idea 392 is complete. The implemented route identifies explicit prepared
+`call_argument_value_publications` for `va_list` expression call arguments,
+uses the referenced store-source/publication facts as callsite authority, and
+preserves fail-closed behavior for absent, duplicate, ambiguous, or mismatched
+facts.
+
+The first completion route fixed the explicit publication branch so a
+load-local payload is not rewritten back to the local `va_list` storage object.
+Focused RV64 backend coverage now protects that source-load-local shape and
+the adjacent fail-closed guards.
+
+Post-repair runtime tracing then found the representative still needed the
+RV64 `va_start`-published `va_list` load path repaired. Commit `95019deb`
+completed that remaining idea-392-owned runtime boundary. Post-repair Step 4
+proved both the focused backend bucket and the representative:
+
+- Backend proof: `ctest --test-dir build -j --output-on-failure -R '^backend_'`
+  passed 326/326 in `test_after.log`.
+- Representative proof:
+  `build/agent_state/392_postrepair_step4_va-arg-13.run.log` records
+  `case_exit=0` and
+  `[PASS][rv64-gcc-torture-backend-obj] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-13.c`.
+- Case evidence:
+  `build/agent_state/392_postrepair_step4_va-arg-13.case.log`.
+
+Close gate:
+
+- Regression guard input: `test_before.log` and `test_after.log`, both covering
+  the backend CTest bucket with 326/326 passing.
+- Strict checker mode reported no new failures but failed because the pass
+  count did not strictly increase.
+- Non-decreasing regression mode was used for the existing backend bucket:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+- Result: PASS, 326/326 before and 326/326 after, no new failures.
+
+No separate later boundary appeared in the post-repair Step 4 representative
+proof.
 
 ## Reviewer Reject Signals
 
