@@ -1,6 +1,6 @@
 # RV64 Object Route Scalar Compare Trunc Lowering
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/372_rv64_object_route_frame_slot_address_call_args.md`
@@ -68,6 +68,43 @@ Representative evidence:
   next owner because of semantic compare/trunc repair.
 - Existing focused backend object-emission and prepared-contract coverage
   remains green.
+
+## Completion Notes
+
+Closed by the active Step 4 lifecycle decision after the implementation and
+evidence commits:
+
+- `26b76241` lowered the first supportable prepared scalar `Sge i32` compare
+  result feeding an `i32 -> i16` trunc publication, using prepared metadata
+  instead of testcase-specific constants or homes.
+- `eb6ef452` recorded the representative rerun for
+  `src/20000217-1.c`.
+- Step 1 audit evidence is in
+  `build/agent_state/375_step1_scalar_compare_trunc_audit.txt`.
+- Step 3 rerun evidence is in
+  `build/agent_state/375_step3_20000217-1.runner.log` and
+  `build/rv64_gcc_c_torture_backend/src_20000217-1.c/case.log`.
+
+The representative advanced from the scalar compare/trunc blocker to the
+separate residual:
+
+```text
+unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves
+```
+
+That residual is now owned by:
+
+- `ideas/open/376_rv64_object_route_prepared_move_bundle_target_shapes.md`
+
+Close-time regression gate used the focused backend coverage from this idea:
+
+```sh
+cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test &&
+ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: passed with no new failures and no pass-count regression.
 
 ## Reviewer Reject Signals
 
