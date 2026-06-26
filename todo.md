@@ -1,44 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/380_rv64_object_route_short_circuit_call_argument_reload.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Rerun `src/20000112-1.c`
+Current Step ID: 4
+Current Step Title: Closure or Handoff Check
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 reran the RV64 GCC torture backend object-route representative
-`src/20000112-1.c` after the call-argument reload repair. The case still fails,
-but now classifies as a runtime mismatch rather than a runner/toolchain blocker:
-clang exits 0 while the c4c-produced RV64 object route exits with a segmentation
-fault. Evidence is in `test_after.log`,
-`build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`,
-`build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`, and
-`build/agent_state/rv64_gcc_c_torture_backend_failed.txt`.
+Step 4 classified the remaining RV64 GCC torture backend object-route failure
+for `src/20000112-1.c` without implementing a new repair. The c4c binary still
+segfaults under `qemu-riscv64 -L /usr/riscv64-linux-gnu`, while the clang
+reference exits 0, but the concrete failure remains in the call-argument
+reload/prior-preservation owner family: after `strchr(fmt, '*')` returns
+`NULL` for `"ee"`, c4c enters the next `strchr` call with `a0 == NULL` instead
+of reloading or preserving the original `fmt` pointer for `strchr(fmt, 'V')`.
+The observed crash is `SIGSEGV si_addr=NULL` in the libc `strchr` path.
+Evidence is summarized in
+`build/agent_state/380_step4_20000112.classification.txt`, with supporting
+artifacts under `build/agent_state/380_step4_20000112.*`.
 
 ## Suggested Next
 
-Investigate the `src/20000112-1.c` RV64 object-route runtime segfault as the
-next distinct owner. Start from the generated objects/binaries under
-`build/rv64_gcc_c_torture_backend/src_20000112-1.c/` and compare the failing
-c4c execution against the clang reference.
+Do not close idea 380 as resolved on the current evidence. The next coherent
+packet is a repair or plan-owner split for the still-unresolved
+call-argument reload/prior-preservation route, focused on preserving or
+re-materializing the original function argument across the first failed
+`strchr` call before later short-circuit operands are evaluated.
 
 ## Watchouts
 
-This packet did not implement a new repair. The runner completed and produced
-artifacts, so the remaining issue appears to be inside the generated RV64
-object-route program behavior for `src/20000112-1.c`, not an allowlist,
-toolchain, or script failure.
+This packet did not implement a new repair and did not rerun or overwrite root
+proof logs. The classification rejects a distinct backend/runtime owner for the
+remaining crash: c4c's own `special_format` code reaches the second `strchr`
+with `a0 == 0`. Clang's reference code stores `fmt` on the stack and reloads it
+before each `strchr` call. If the plan owner decides the current runbook is
+exhausted, the follow-up should stay in the same reload/preservation initiative
+rather than opening a separate runtime-crash idea.
 
 ## Proof
 
-Supervisor-delegated proof failed as the representative result and was written
-to `test_after.log`:
+Audit/classification only; no root proof log was rerun or overwritten. Existing
+proof artifacts inspected: `test_after.log`,
+`build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`,
+`build/rv64_gcc_c_torture_backend/src_20000112-1.c/c4c.o`,
+`build/rv64_gcc_c_torture_backend/src_20000112-1.c/c4c.bin`, and
+`build/rv64_gcc_c_torture_backend/src_20000112-1.c/clang.bin`.
 
-`bash -o pipefail -c 'printf "%s\n" "src/20000112-1.c" > build/agent_state/380_step3_20000112.allowlist && ALLOWLIST=build/agent_state/380_step3_20000112.allowlist STOP_ON_FAILURE=1 VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh | tee test_after.log'`
-
-Result: `src/20000112-1.c` failed with
-`[RV64_BACKEND_RUNTIME_MISMATCH]`; `clang_exit=0`, `c4c_exit=Segmentation
-fault`, with empty stdout from both programs. The per-case log is
-`build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`.
+Diagnostic commands generated `build/agent_state/380_step4_20000112.*` via
+`riscv64-linux-gnu-objdump`, `riscv64-linux-gnu-readelf`,
+`riscv64-linux-gnu-nm`, and `qemu-riscv64`/`qemu-riscv64 -strace`. Key paths:
+`build/agent_state/380_step4_20000112.classification.txt`,
+`build/agent_state/380_step4_20000112.c4c_trace_tail.txt`,
+`build/agent_state/380_step4_20000112.c4c_qemu_L_strace.err`,
+`build/agent_state/380_step4_20000112.clang_qemu_L_strace.err`,
+`build/agent_state/380_step4_20000112.c4c_o_objdump.txt`, and
+`build/agent_state/380_step4_20000112.clang_bin_objdump.txt`.
