@@ -1,6 +1,6 @@
 # RV64 Object Route Variadic `va_end` Boundary
 
-Status: Open
+Status: Closed
 Type: Target lowering follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: closure of `ideas/closed/386_rv64_object_route_unsupported_instruction_fragment.md`
@@ -52,6 +52,20 @@ sret call family.
   the route records a narrower fail-closed diagnostic with a clear owner.
 - Any later boundary is routed to an existing or new idea instead of being
   silently absorbed.
+
+## Closure Note
+
+Closed after implementing exact-guarded RV64 object-route no-op lowering for
+direct extern `llvm.va_end.p0` calls. Focused backend coverage proved the
+selected `va_end` behavior and fail-closed adjacent shapes.
+
+`tests/c/external/gcc_torture/src/va-arg-13.c` now advances past the previous
+unresolved `llvm.va_end.p0` link boundary; readelf evidence contains no
+`llvm.va_end.p0` symbol or relocation. The next boundary is a runtime
+segmentation fault caused by RV64 `va_start` storing through the prepared
+destination `va_list` address register before that address is materialized.
+That follow-up is tracked separately in
+`ideas/open/389_rv64_va_start_destination_va_list_address_publication.md`.
 
 ## Reviewer Reject Signals
 
