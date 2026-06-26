@@ -1,6 +1,6 @@
 # RV64 Object Route Same-Module Byval Aggregate Call Arguments
 
-Status: Open
+Status: Closed
 Type: Target ABI follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/384_prepared_global_symbol_memory_access_publication.md`
@@ -78,6 +78,29 @@ publication problem.
   clearly routed next unsupported owner.
 - Raw or incomplete callsite facts remain fail-closed with diagnostics that
   identify the missing prepared fact family.
+
+## Closure Notes
+
+Closed after the active runbook completed its audit, focused contract coverage,
+RV64 lowering, representative rerun, regression repair, and broader validation
+steps. The route consumed prepared callsite and stack-copy facts for the
+supported same-module byval aggregate call-argument shape instead of matching
+`src/20030914-2.c` by name or raw BIR spelling.
+
+Proof recorded during the active plan:
+
+- Focused backend and representative proofs passed after the regression repair.
+- `src/20030914-2.c` passed and exposed no new owner for this idea.
+- Supervisor full-suite closure proof passed 3353/3353 with
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure`.
+- Targeted regression guards and proofs passed during the repair flow. No
+  matching full-suite `test_before.log` / `test_after.log` regression-guard
+  pair was used at close time; the then-current canonical logs had different
+  scopes.
+
+Remaining adjacent work stays routed to existing open ideas for aggregate
+`va_arg` helper lowering and non-register parameter homes; those were not
+expanded into this closure.
 
 ## Reviewer Reject Signals
 
