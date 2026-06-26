@@ -3894,15 +3894,26 @@ prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name =
       prepared.names.function_names.intern("byval_stack_param");
+  const auto block_label = prepared.names.block_labels.intern("entry");
   const auto param_name = prepared.names.value_names.intern("%p.pa");
+  const auto result_name = prepared.names.value_names.intern("%t0");
   const auto object_id = prepare::PreparedObjectId{18};
   const auto slot_id = prepare::PreparedFrameSlotId{0};
 
   bir::Block entry{
       .label = "entry",
+      .insts =
+          {
+              bir::LoadLocalInst{
+                  .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+                  .slot_name = "%p.pa",
+                  .align_bytes = 4,
+              },
+          },
       .terminator = bir::Terminator{},
+      .label_id = block_label,
   };
-  entry.terminator.value = bir::Value::immediate_i32(0);
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%t0");
 
   prepared.module.functions.push_back(bir::Function{
       .name = "byval_stack_param",
@@ -3928,6 +3939,9 @@ prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module() {
   });
   prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
       .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
   });
   prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
       .object_id = object_id,
@@ -3949,17 +3963,48 @@ prepare::PreparedBirModule make_prepared_byval_stack_slot_param_module() {
       .size_bytes = 72,
       .align_bytes = 4,
   });
+  prepared.stack_layout.frame_size_bytes = 72;
+  prepared.stack_layout.frame_alignment_bytes = 4;
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
-      .value_homes = {prepare::PreparedValueHome{
-          .value_id = 1,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = param_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = slot_id,
+                  .offset_bytes = std::size_t{0},
+                  .size_bytes = std::size_t{72},
+                  .align_bytes = std::size_t{4},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"a0"},
+              },
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 72,
+      .frame_alignment_bytes = 4,
+      .accesses = {prepare::PreparedMemoryAccess{
           .function_name = function_name,
-          .value_name = param_name,
-          .kind = prepare::PreparedValueHomeKind::StackSlot,
-          .slot_id = slot_id,
-          .offset_bytes = std::size_t{0},
-          .size_bytes = std::size_t{72},
-          .align_bytes = std::size_t{4},
+          .block_label = block_label,
+          .inst_index = 0,
+          .result_value_name = result_name,
+          .address = prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+              .pointer_value_name = param_name,
+              .byte_offset = 4,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .can_use_base_plus_offset = true,
+          },
       }},
   });
   return prepared;
@@ -5579,10 +5624,105 @@ int rejects_prepared_prior_preserved_arg_call_fail_closed_shapes() {
   return 0;
 }
 
-int rejects_byval_stack_slot_param_home_with_precise_diagnostic() {
+int expect_byval_stack_slot_param_home_rejection(
+    const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
-      make_prepared_byval_stack_slot_param_module(),
-      "unsupported_byval_param_home: RV64 object route does not yet lower byval aggregate parameter homes in prepared stack slots");
+      prepared,
+      "unsupported_byval_param_home: RV64 object route requires a prepared permanent byval frame-slot home with matching size and alignment");
+}
+
+int builds_byval_stack_slot_param_home_object() {
+  const auto prepared = make_prepared_byval_stack_slot_param_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared byval stack-slot parameter home to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "byval_stack_param");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared byval parameter object to publish text/function");
+  }
+  if (text->bytes.size() != 16 || text->size_bytes != 16 ||
+      function->value != 0 || function->size_bytes != 16 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared byval parameter object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xfb010113 ||
+      read_u32(text->bytes, 4) != 0x00412503 ||
+      read_u32(text->bytes, 8) != 0x05010113 ||
+      read_u32(text->bytes, 12) != 0x00008067) {
+    return fail("expected prepared byval frame-slot load and return sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared byval parameter object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_byval_stack_slot_param_home_fail_closed_shapes() {
+  auto prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.stack_layout.objects[0].source_kind = "local";
+  if (expect_byval_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.stack_layout.objects[0].permanent_home_slot = false;
+  if (expect_byval_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.stack_layout.frame_slots[0].size_bytes = 68;
+  if (expect_byval_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.value_locations.functions[0].value_homes[0].align_bytes =
+      std::size_t{8};
+  if (expect_byval_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.value_locations.functions[0].value_homes[0].slot_id = std::nullopt;
+  if (expect_byval_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int expect_byval_pointer_access_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing");
+}
+
+int rejects_byval_stack_slot_pointer_access_fail_closed_shapes() {
+  auto prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0].accesses[0].address.byte_offset = 69;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0].accesses[0].address.can_use_base_plus_offset =
+      false;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_slot_param_module();
+  prepared.addressing.functions[0].accesses[0].address_space =
+      bir::AddressSpace::Tls;
+  if (expect_byval_pointer_access_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int builds_prepared_fpr_formal_param_home_with_target_identity_object() {
@@ -8543,7 +8683,9 @@ int main() {
   status |= builds_prepared_two_arg_scalar_call_object();
   status |= builds_prepared_prior_preserved_arg_call_object();
   status |= rejects_prepared_prior_preserved_arg_call_fail_closed_shapes();
-  status |= rejects_byval_stack_slot_param_home_with_precise_diagnostic();
+  status |= builds_byval_stack_slot_param_home_object();
+  status |= rejects_byval_stack_slot_param_home_fail_closed_shapes();
+  status |= rejects_byval_stack_slot_pointer_access_fail_closed_shapes();
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();
   status |= rejects_raw_fpr_formal_param_home_without_target_identity();
   status |= builds_prepared_scalar_local_frame_object();
