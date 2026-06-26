@@ -3346,6 +3346,44 @@ prepare::PreparedBirModule make_prepared_join_transfer_select_with_published_cop
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_join_transfer_select_with_edge_compare_source_module() {
+  auto prepared = make_prepared_join_transfer_select_with_published_copies_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto cmp_name = prepared.names.value_names.intern("%rhs.cmp");
+  auto& join = prepared.module.functions.front().blocks.at(3);
+  auto* select = std::get_if<bir::SelectInst>(&join.insts.front());
+  if (select == nullptr) {
+    return prepared;
+  }
+
+  join.insts.insert(join.insts.begin(),
+                    bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Ne,
+                        .result = bir::Value::named(bir::TypeKind::I32, "%rhs.cmp"),
+                        .operand_type = bir::TypeKind::I32,
+                        .lhs = bir::Value::named(bir::TypeKind::I32, "%fallback"),
+                        .rhs = bir::Value::immediate_i32(0),
+                    });
+  select = std::get_if<bir::SelectInst>(&join.insts.at(1));
+  select->false_value = bir::Value::named(bir::TypeKind::I32, "%rhs.cmp");
+
+  auto& join_transfer =
+      prepared.control_flow.functions.front().join_transfers.front();
+  join_transfer.incomings.at(1).value =
+      bir::Value::named(bir::TypeKind::I32, "%rhs.cmp");
+  join_transfer.edge_transfers.at(1).incoming_value =
+      bir::Value::named(bir::TypeKind::I32, "%rhs.cmp");
+  auto& false_parallel_copy =
+      prepared.control_flow.functions.front().parallel_copy_bundles.at(1);
+  false_parallel_copy.moves.front().source_value =
+      bir::Value::named(bir::TypeKind::I32, "%rhs.cmp");
+
+  auto& locations = prepared.value_locations.functions.front();
+  locations.value_homes.push_back(rv64_gpr_home(4, function_name, cmp_name, "t0", 5));
+  locations.move_bundles.at(1).moves.front().from_value_id = 4;
+  return prepared;
+}
+
 bir::InlineAsmOperandMetadata inline_asm_register_operand(
     bir::InlineAsmOperandKind kind,
     std::size_t constraint_index,
@@ -6171,6 +6209,47 @@ int skips_published_prepared_join_transfer_select_carrier_object() {
   return 0;
 }
 
+int materializes_published_prepared_join_transfer_select_edge_compare_source_object() {
+  const auto prepared =
+      make_prepared_join_transfer_select_with_edge_compare_source_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected edge-compare source prepared join-transfer select RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  const auto* true_copy_label = object::find_symbol(*module, ".Lmain_pred_true");
+  const auto* false_copy_label = object::find_symbol(*module, ".Lmain_pred_false");
+  const auto* join_label = object::find_symbol(*module, ".Lmain_join");
+  const auto* select_true_label = object::find_symbol(*module, ".Lmain_join_select_1_true");
+  const auto* select_end_label = object::find_symbol(*module, ".Lmain_join_select_1_end");
+  if (text == nullptr || main_symbol == nullptr || true_copy_label == nullptr ||
+      false_copy_label == nullptr || join_label == nullptr) {
+    return fail("expected edge-compare join object to publish text/main/block labels");
+  }
+  if (select_true_label != nullptr || select_end_label != nullptr) {
+    return fail("expected edge-compare join select carrier to avoid local select labels");
+  }
+  if (text->bytes.size() != 36 || text->size_bytes != 36 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 36 ||
+      true_copy_label->value != 4 || false_copy_label->value != 12 ||
+      join_label->value != 32) {
+    return fail("expected edge-compare join object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x0000006f ||
+      read_u32(text->bytes, 4) != 0x00100513 ||
+      read_u32(text->bytes, 8) != 0x0000006f ||
+      read_u32(text->bytes, 12) != 0x00030e13 ||
+      read_u32(text->bytes, 16) != 0x00000e93 ||
+      read_u32(text->bytes, 20) != 0x01de4533 ||
+      read_u32(text->bytes, 24) != 0x00a03533 ||
+      read_u32(text->bytes, 28) != 0x0000006f ||
+      read_u32(text->bytes, 32) != 0x00008067) {
+    return fail("expected RHS predecessor edge to materialize compare directly into select result");
+  }
+  return 0;
+}
+
 int rejects_published_prepared_join_transfer_select_ambiguous_publications_object() {
   auto stack_source = make_prepared_join_transfer_select_with_published_copies_module();
   auto& false_source_home = stack_source.value_locations.functions.front().value_homes.at(1);
@@ -6202,6 +6281,30 @@ int rejects_published_prepared_join_transfer_select_ambiguous_publications_objec
       .carrier_kind = prepare::PreparedJoinTransferCarrierKind::None;
   if (rv64::build_rv64_prepared_text_object_module(non_select_carrier).has_value()) {
     return fail("expected published-copy select object path to reject non-select carrier publication");
+  }
+
+  auto stack_edge_source =
+      make_prepared_join_transfer_select_with_edge_compare_source_module();
+  auto& compare_operand_home =
+      stack_edge_source.value_locations.functions.front().value_homes.at(1);
+  compare_operand_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  compare_operand_home.register_name.reset();
+  compare_operand_home.target_register_identity.reset();
+  compare_operand_home.slot_id = prepare::PreparedFrameSlotId{8};
+  compare_operand_home.offset_bytes = 0;
+  compare_operand_home.size_bytes = std::size_t{4};
+  compare_operand_home.align_bytes = std::size_t{4};
+  stack_edge_source.stack_layout.frame_size_bytes = 4;
+  stack_edge_source.stack_layout.frame_alignment_bytes = 4;
+  stack_edge_source.stack_layout.frame_slots = {prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{8},
+      .function_name = stack_edge_source.names.function_names.find("main"),
+      .offset_bytes = 0,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  }};
+  if (rv64::build_rv64_prepared_text_object_module(stack_edge_source).has_value()) {
+    return fail("expected edge-compare select object path to reject stack operand source");
   }
   return 0;
 }
@@ -8456,6 +8559,7 @@ int main() {
   status |= rejects_prepared_scalar_compare_trunc_fail_closed_shapes();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= skips_published_prepared_join_transfer_select_carrier_object();
+  status |= materializes_published_prepared_join_transfer_select_edge_compare_source_object();
   status |= rejects_published_prepared_join_transfer_select_ambiguous_publications_object();
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_frame_slot_value_arg_call_object();

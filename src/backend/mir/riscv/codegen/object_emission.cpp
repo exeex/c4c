@@ -82,6 +82,22 @@ constexpr std::uint32_t encode_j_type(std::uint32_t opcode, std::uint32_t rd,
          ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
 }
 
+void append_fragment(RiscvEncodedFragment& destination,
+                     RiscvEncodedFragment source) {
+  const auto base_offset = destination.bytes.size();
+  destination.bytes.insert(destination.bytes.end(),
+                           source.bytes.begin(),
+                           source.bytes.end());
+  for (auto& label : source.labels) {
+    label.offset_bytes += base_offset;
+    destination.labels.push_back(std::move(label));
+  }
+  for (auto& fixup : source.fixups) {
+    fixup.offset_bytes += base_offset;
+    destination.fixups.push_back(std::move(fixup));
+  }
+}
+
 void append_le32(std::vector<std::uint8_t>& bytes, std::uint32_t word) {
   bytes.push_back(static_cast<std::uint8_t>(word & 0xffu));
   bytes.push_back(static_cast<std::uint8_t>((word >> 8) & 0xffu));
@@ -1061,6 +1077,15 @@ bool prepared_bir_value_has_name(
          !value.name.empty() && names.value_names.find(value.name) == value_name;
 }
 
+bool prepared_bir_values_have_same_name(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs) {
+  return lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+         rhs.kind == c4c::backend::bir::Value::Kind::Named && !lhs.name.empty() &&
+         !rhs.name.empty() && names.value_names.find(lhs.name) == names.value_names.find(rhs.name);
+}
+
 std::optional<c4c::backend::bir::TypeKind> prepared_bir_value_type_for_name(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::bir::Function& function,
@@ -1127,10 +1152,52 @@ std::optional<c4c::backend::bir::TypeKind> prepared_bir_value_type_for_name(
   return std::nullopt;
 }
 
+bool append_rv64_move_value_to_register(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes);
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::BinaryInst& binary,
+    std::size_t stack_frame_bytes);
+
+std::optional<prepare::PreparedValueId> prepared_value_id_for_named_value(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedFunctionLookups* lookups,
+    const bir::Value& value);
+
+bool prepared_join_transfer_edge_copies_are_published(
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::prepare::PreparedJoinTransfer& join_transfer);
+
+struct PreparedSelectEdgeSourceProducerFragment {
+  bool matched = false;
+  std::optional<RiscvEncodedFragment> fragment;
+};
+
+PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_source_producer(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move,
+    std::uint32_t destination_register,
+    std::size_t stack_frame_bytes);
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     std::size_t stack_frame_bytes,
@@ -1182,6 +1249,26 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
       }
       append_rv64_load_immediate(fragment, *destination, *move.source_immediate_i32);
       continue;
+    }
+
+    if (destination.has_value()) {
+      auto producer_fragment = fragment_for_prepared_select_edge_source_producer(
+          stack_layout,
+          names,
+          control_flow,
+          function,
+          lookups,
+          move_bundle,
+          move,
+          *destination,
+          stack_frame_bytes);
+      if (producer_fragment.matched) {
+        if (!producer_fragment.fragment.has_value()) {
+          return std::nullopt;
+        }
+        append_fragment(fragment, std::move(*producer_fragment.fragment));
+        continue;
+      }
     }
 
     const auto* source_home =
@@ -3646,6 +3733,241 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_binary(
   }
 }
 
+bool rv64_select_edge_binary_operand_is_register_or_immediate(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  if (is_rv64_null_pointer_value(value)) {
+    return true;
+  }
+  const auto immediate = integer_immediate_for_value(names, lookups, value);
+  if (immediate.has_value()) {
+    return fits_signed_12_bit_immediate(*immediate);
+  }
+  return gpr_register_number_for_value(names, lookups, value).has_value();
+}
+
+bool prepared_select_edge_binary_source_has_only_carrier_uses(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::BinaryInst& producer,
+    const c4c::backend::prepare::PreparedJoinTransfer& join_transfer) {
+  if (producer.result.kind != c4c::backend::bir::Value::Kind::Named ||
+      producer.result.name.empty()) {
+    return false;
+  }
+  const auto producer_name = names.value_names.find(producer.result.name);
+  if (producer_name == c4c::kInvalidValueName) {
+    return false;
+  }
+
+  auto uses_producer = [&](const c4c::backend::bir::Value& value) {
+    return prepared_bir_value_has_name(names, value, producer_name);
+  };
+
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+        if (uses_producer(binary->lhs) || uses_producer(binary->rhs)) {
+          return false;
+        }
+        continue;
+      }
+      if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&inst)) {
+        const bool uses_as_value =
+            uses_producer(select->true_value) || uses_producer(select->false_value);
+        if (uses_producer(select->lhs) || uses_producer(select->rhs)) {
+          return false;
+        }
+        if (!uses_as_value) {
+          continue;
+        }
+        const auto classification =
+            prepare::classify_prepared_object_select_consumer(&control_flow,
+                                                              block.label_id,
+                                                              inst);
+        if (classification.kind !=
+                prepare::PreparedObjectSelectConsumerKind::PreparedJoinTransferCarrier ||
+            classification.join_transfer != &join_transfer ||
+            !prepared_bir_values_have_same_name(names,
+                                                select->result,
+                                                join_transfer.result)) {
+          return false;
+        }
+        continue;
+      }
+      if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst)) {
+        if (uses_producer(cast->operand)) {
+          return false;
+        }
+        continue;
+      }
+      if (const auto* phi = std::get_if<c4c::backend::bir::PhiInst>(&inst)) {
+        for (const auto& incoming : phi->incomings) {
+          if (uses_producer(incoming.value)) {
+            return false;
+          }
+        }
+        continue;
+      }
+      if (const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst)) {
+        if (call->callee_value.has_value() && uses_producer(*call->callee_value)) {
+          return false;
+        }
+        for (const auto& arg : call->args) {
+          if (uses_producer(arg)) {
+            return false;
+          }
+        }
+        continue;
+      }
+      if (const auto* store = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst)) {
+        if (uses_producer(store->value)) {
+          return false;
+        }
+        continue;
+      }
+      if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
+        if (uses_producer(store->value)) {
+          return false;
+        }
+        continue;
+      }
+    }
+    if (block.terminator.value.has_value() &&
+        uses_producer(*block.terminator.value)) {
+      return false;
+    }
+    if (block.terminator.kind == c4c::backend::bir::TerminatorKind::CondBranch &&
+        uses_producer(block.terminator.condition)) {
+      return false;
+    }
+    for (const auto& lane : block.terminator.return_lanes) {
+      if (uses_producer(lane)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_source_producer(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move,
+    std::uint32_t destination_register,
+    std::size_t stack_frame_bytes) {
+  if (!move_bundle.source_parallel_copy_predecessor_label.has_value() ||
+      !move_bundle.source_parallel_copy_successor_label.has_value()) {
+    return {};
+  }
+  const auto intent = consume_edge_publication_move_intent(
+      lookups,
+      *move_bundle.source_parallel_copy_predecessor_label,
+      *move_bundle.source_parallel_copy_successor_label,
+      move.to_value_id);
+  if (intent.status != EdgePublicationMoveIntentStatus::Available ||
+      intent.publication == nullptr ||
+      intent.publication->carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+      intent.publication->source_value_id != move.from_value_id ||
+      intent.publication->source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary) {
+    return {};
+  }
+  const auto* join_transfer = intent.publication->join_transfer;
+  const auto* binary = intent.publication->source_binary;
+  if (join_transfer == nullptr || binary == nullptr ||
+      !prepared_join_transfer_edge_copies_are_published(control_flow,
+                                                        *join_transfer) ||
+      intent.publication->source_producer_block_label !=
+          join_transfer->join_block_label) {
+    return {.matched = true};
+  }
+  if (!c4c::backend::bir::is_compare_opcode(binary->opcode) ||
+      binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+      !rv64_select_edge_binary_operand_is_register_or_immediate(
+          names, lookups, binary->lhs) ||
+      !rv64_select_edge_binary_operand_is_register_or_immediate(
+          names, lookups, binary->rhs) ||
+      !prepared_select_edge_binary_source_has_only_carrier_uses(
+          names,
+          control_flow,
+          function,
+          *binary,
+          *join_transfer)) {
+    return {.matched = true};
+  }
+  const auto* destination_home = prepared_value_home_for_id(lookups, move.to_value_id);
+  const auto destination =
+      destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
+  if (!destination.has_value() || *destination != destination_register ||
+      !prepared_bir_values_have_same_name(names,
+                                          intent.publication->destination_value,
+                                          join_transfer->result)) {
+    return {.matched = true};
+  }
+
+  auto edge_binary = *binary;
+  edge_binary.result = intent.publication->destination_value;
+  auto fragment = fragment_for_prepared_binary(stack_layout,
+                                               names,
+                                               lookups,
+                                               edge_binary,
+                                               stack_frame_bytes);
+  return {.matched = true, .fragment = std::move(fragment)};
+}
+
+bool prepared_binary_is_select_edge_owned_source(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::BinaryInst& binary) {
+  if (lookups == nullptr || binary.result.kind != c4c::backend::bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto source_value_id =
+      prepared_value_id_for_named_value(names, lookups, binary.result);
+  if (!source_value_id.has_value()) {
+    return false;
+  }
+  for (const auto& publication : lookups->edge_publications.publications) {
+    if (publication.source_value_id != source_value_id ||
+        publication.source_binary != &binary ||
+        publication.source_producer_kind !=
+            prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+        publication.carrier_kind !=
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        publication.join_transfer == nullptr ||
+        !prepared_join_transfer_edge_copies_are_published(control_flow,
+                                                          *publication.join_transfer) ||
+        publication.source_producer_block_label !=
+            publication.join_transfer->join_block_label ||
+        !c4c::backend::bir::is_compare_opcode(binary.opcode) ||
+        binary.result.type != c4c::backend::bir::TypeKind::I32 ||
+        !rv64_select_edge_binary_operand_is_register_or_immediate(
+            names, lookups, binary.lhs) ||
+        !rv64_select_edge_binary_operand_is_register_or_immediate(
+            names, lookups, binary.rhs) ||
+        !prepared_select_edge_binary_source_has_only_carrier_uses(
+            names,
+            control_flow,
+            function,
+            binary,
+            *publication.join_transfer)) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
 std::string rv64_select_local_label(std::string_view function_name,
                                     std::string_view block_label,
                                     std::size_t instruction_index,
@@ -4234,6 +4556,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
 std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups& lookups,
     const c4c::backend::prepare::PreparedInlineAsmCarrierFunction* inline_asm_carriers,
     const c4c::backend::bir::Block& block,
@@ -4248,6 +4571,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
   const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
   if (call == nullptr) {
     if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+      if (prepared_binary_is_select_edge_owned_source(prepared.names,
+                                                      control_flow,
+                                                      function,
+                                                      &lookups,
+                                                      *binary)) {
+        return RiscvEncodedFragment{};
+      }
       if (auto fragment = fragment_for_prepared_frame_address_materialization(
               prepared.stack_layout,
               prepared.names,
@@ -4709,6 +5039,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
               fragment_for_prepared_move_bundle(prepared.target_profile,
                                                 prepared.stack_layout,
                                                 prepared.names,
+                                                control_flow,
                                                 *function,
                                                 &lookups,
                                                 *stack_frame_bytes,
@@ -4738,6 +5069,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
           }
           auto fragment = fragment_for_prepared_instruction(prepared,
                                                            control_flow,
+                                                           *function,
                                                            lookups,
                                                            inline_asm_carriers,
                                                            *block,
@@ -4826,6 +5158,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
          ++instruction_index) {
       auto fragment = fragment_for_prepared_instruction(prepared,
                                                        control_flow,
+                                                       *function,
                                                        lookups,
                                                        inline_asm_carriers,
                                                        block,
