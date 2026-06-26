@@ -1,83 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/392_rv64_va_list_expression_call_argument_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify The Value-Publication Route
+Current Step ID: 3
+Current Step Title: Add Focused Backend Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 classified the route as a guarded RV64 prepared/object call-argument
-value publication for frame-slot address arguments. The implementation owner is
-the existing prepared-call object fragment path around
-`fragment_for_prepared_call` and
-`prepared_frame_slot_address_call_argument_publication`, but the route must be
-backed by an explicit prepared value-publication fact rather than by
-`missing_frame_slot_arg_publication=yes` alone.
+Step 3 added focused green fail-closed backend coverage around the current RV64
+frame-slot-address call-argument publication fixture. The new cases reject an
+ambiguous second candidate store-source publication, a publication store after
+the call materialization point, a non-pointer payload source, and a pointer
+payload with no prepared source home. Existing adjacent coverage still covers
+missing publication facts, duplicate matching facts, mismatched destination
+stack offset, malformed source selection, malformed address materialization,
+and unsupported destination register shapes.
 
-Selected route: when a call argument is a frame-slot object address whose object
-was populated by a prior `StoreLocalPublication` from an initialized `va_list`
-payload, RV64 object emission should first copy the initialized payload value
-into the destination argument object, then materialize the argument object's
-address into the ABI register. For the current representative, the required
-edges are `%t7.memcpy.copy.0` value id 14 -> `%t7` value id 15 before call inst
-9 and `%t14.memcpy.copy.0` value id 18 -> `%t14` value id 19 before call inst
-16. The payload is the loaded value of `%lv.state.8`, not the address of
-`%lv.state.8` storage.
-
-Required guards for the accepted route:
-
-- The call argument has `source_encoding=frame_slot`, destination GPR bank,
-  contiguous width 1, pointer-sized source size 8, and
-  `arg.source_selection=frame_slot_address`.
-- `find_prepared_missing_frame_slot_call_argument_publication_need` is
-  available for that same argument, has kind `FrameSlotAddress`, the same
-  `source_selection` and `source_value_id`, `source_materializes_address=yes`,
-  and `may_emit_local_aggregate_address_payload=no`.
-- A distinct prepared call-argument value-publication fact exists for the same
-  function, block, and call argument. It links exactly one earlier
-  `StoreLocalPublication` record to the argument object by destination frame
-  slot id, destination stack offset, destination size 8, destination object when
-  available, and the call argument source value id/name.
-- The publication source is a pointer payload with a resolvable prepared home.
-  For the `va_list` expression case it should identify the store source value
-  (`%t7.memcpy.copy.0` / `%t14.memcpy.copy.0`) and, when produced by
-  `load_local`, retain the loaded local source (`%lv.state.8`) as provenance so
-  object emission copies the initialized value payload instead of the local
-  storage address.
-- The publication store instruction is in the same block before the call
-  materialization instruction, and the selected frame-slot address offset is
-  independently valid through the existing stack-layout/address-materialization
-  checks.
-
-Fail-closed cases belong to the RV64 prepared-call/object admission path: absent
-value-publication fact, duplicate matching facts, multiple possible earlier
-stores, mismatched function/block/call argument, mismatched destination slot or
-stack offset, non-pointer or non-8-byte source payload, missing source home,
-store after the call, malformed address materialization, or a fact that names
-the `va_list` storage address as payload authority. These should reject the RV64
-prepared call fragment instead of silently emitting an address payload.
-
-This does not reopen prior ideas. Idea 386 owns ordinary frame-slot-address GPR
-call argument lowering; this route is specifically the value copied into the
-addressed argument object. Idea 387 owns memory-return/sret calls, not this
-same-module pointer argument. Idea 388 owns `va_end`, which is not part of the
-failing call. Idea 389 owns `va_start` destination-address materialization, which
-already writes the local `va_list` object. Idea 390 owns the prepared
-frame-slot-address call-argument publication shape; this route adds a stricter
-initialized-value edge for `va_list` expression payloads. Idea 391 owns incoming
-variadic GPR save-area publication, and Step 1 evidence shows that publication
-is present.
+Accepted-route assertions for the Step 2 value-publication contract are
+deferred. The current prepared metadata surface exposes only generic
+`store_source_publications.records`; there is not yet a distinct prepared
+call-argument value-publication fact tying a specific prior
+`StoreLocalPublication` payload source to a specific frame-slot call-argument
+object and callsite. Adding an accepted test with only the generic record would
+re-bless the route Step 2 rejected as insufficient authority. Likewise, a
+storage-address-as-payload fail-closed assertion is blocked until Step 4 adds
+that explicit fact schema, because the current helper can still treat another
+pointer-valued stack home as a payload source.
 
 ## Suggested Next
 
-Execute Step 3: add focused RV64 backend coverage for the accepted
-value-publication route and fail-closed variants. The accepted case should prove
-the emitted fragment stores the initialized pointer payload into the argument
-object before materializing the object's address into the ABI register. Negative
-cases should cover missing, duplicate, ambiguous, mismatched destination,
-mismatched source, and malformed address-materialization facts.
+Execute Step 4 by introducing the explicit prepared call-argument
+value-publication fact schema and then implementing the RV64 object route
+against that fact. The first Step 4 test should assert that the initialized
+`va_list` payload is stored into the argument object before address
+materialization, and should add the currently blocked storage-address-as-payload
+fail-closed shape once the fact can distinguish payload authority from a generic
+pointer home.
 
 ## Watchouts
 
@@ -91,13 +50,12 @@ mismatched source, and malformed address-materialization facts.
   frame-slot call-argument object and callsite.
 - Preserve the distinction between the argument object's address, the local
   `va_list` storage address, and the initialized save-area pointer payload.
-- The likely implementation can extend the existing frame-slot-address
-  publication helper, but accepted/fail-closed coverage should pin the new
-  value-publication fact so the route is not inferred from testcase shape.
+- Generic `StoreLocalPublication` records are useful input facts but are not the
+  Step 392 callsite authority by themselves. Do not extend the current accepted
+  test as if that generic record were the final value-publication schema.
 
 ## Proof
 
-Todo-only classification; no implementation files or tests were changed.
 Delegated proof run:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
 Result: passed. Proof log: `test_after.log`.

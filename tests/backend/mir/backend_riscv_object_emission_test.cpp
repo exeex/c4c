@@ -8070,8 +8070,39 @@ int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
+  auto ambiguous = prepared.store_source_publications.records[0];
+  ambiguous.plan.source_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.y");
+  ambiguous.plan.source_value_id = prepare::PreparedValueId{15};
+  ambiguous.plan.source_value_name =
+      prepared.names.value_names.find("%lv.y");
+  prepared.store_source_publications.records.push_back(ambiguous);
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
   prepared.store_source_publications.records[0].plan.destination_stack_offset_bytes =
       40;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.store_source_publications.records[0].instruction_index = 1;
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.store_source_publications.records[0].plan.source_value =
+      bir::Value::named(bir::TypeKind::I64, "%lv.src");
+  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  prepared.store_source_publications.records[0].plan.source_value =
+      bir::Value::named(bir::TypeKind::Ptr, "%missing.payload");
   if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
     return 1;
   }
