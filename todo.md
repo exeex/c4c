@@ -1,65 +1,83 @@
 Status: Active
 Source Idea Path: ideas/open/392_rv64_va_list_expression_call_argument_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Capture The Va List Value Boundary
+Current Step ID: 2
+Current Step Title: Classify The Value-Publication Route
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 captured the RV64 `va_list` expression call-argument value boundary for
-`tests/c/external/gcc_torture/src/va-arg-13.c`. The initialized `va_list`
-payload source is `%lv.state.8`: prepared value id 10, register `s1`, with
-`va_start` helper operands for block 0 inst 3 and inst 12 mapping
-`dst_va_list=%lv.state.8:stack_slot:slot=#13:offset=128` and
-`dst_va_list_addr=%lv.state.8:register:reg=s1`. The variadic save-area route is
-present: `rv64.incoming_variadic_gpr_publication` stores incoming `a1` through
-`a7` into overflow/save slot #12 starting at stack offset 72, so idea 391 is not
-the current owner.
+Step 2 classified the route as a guarded RV64 prepared/object call-argument
+value publication for frame-slot address arguments. The implementation owner is
+the existing prepared-call object fragment path around
+`fragment_for_prepared_call` and
+`prepared_frame_slot_address_call_argument_publication`, but the route must be
+backed by an explicit prepared value-publication fact rather than by
+`missing_frame_slot_arg_publication=yes` alone.
 
-The first `dummy` call copies the initialized payload through
-`%t7.memcpy.copy.0`: semantic/prepared BIR loads `%lv.state.8` at inst 7,
-stores that pointer payload into destination object `%t7` at inst 8, and calls
-`dummy(ptr %t7)` at inst 9. Prepared storage records
-`%t7.memcpy.copy.0` as value id 14 in `t0`, while `%t7` is value id 15,
-frame-slot spill slot #9 at stack offset 48, with address materialization
-slot #6 offset 24. The second call mirrors this through
-`%t14.memcpy.copy.0` value id 18 into `%t14` value id 19, frame-slot spill
-slot #10 at stack offset 56, with address materialization slot #7 offset 32,
-then calls `dummy` at inst 16.
+Selected route: when a call argument is a frame-slot object address whose object
+was populated by a prior `StoreLocalPublication` from an initialized `va_list`
+payload, RV64 object emission should first copy the initialized payload value
+into the destination argument object, then materialize the argument object's
+address into the ABI register. For the current representative, the required
+edges are `%t7.memcpy.copy.0` value id 14 -> `%t7` value id 15 before call inst
+9 and `%t14.memcpy.copy.0` value id 18 -> `%t14` value id 19 before call inst
+16. The payload is the loaded value of `%lv.state.8`, not the address of
+`%lv.state.8` storage.
 
-The exact gap is that prepared call facts still model both call arguments as
-frame-slot address selections, not as value-publication copies of the initialized
-payload. Callsite inst 9 has arg0 `source_encoding=frame_slot`,
-`source_value_id=15`, `source_slot=#9`, `source_stack_offset=48`,
-`dest_reg=a0`, `arg.source_selection=frame_slot_address`,
-`missing_frame_slot_arg_publication=yes`, and
-`missing_frame_slot_arg_may_emit_local_payload=no`. Callsite inst 16 repeats the
-same shape for `source_value_id=19`, `source_slot=#10`,
-`source_stack_offset=56`. Store-source publication facts exist for inst 8
-`source=%t7.memcpy.copy.0` and inst 15 `source=%t14.memcpy.copy.0`, but they do
-not yet give the RV64 object call fragment authority to publish that initialized
-`va_list` pointer payload into the call-argument object before materializing its
-address.
+Required guards for the accepted route:
 
-Disassembly from the preserved representative confirms the object symptom after
-idea 391: c4c stores `a1` through `a7` into the save area beginning at
-`sp+0x48` and `va_start` writes `sp+0x48` into the local `va_list` object at
-`sp+0x80`, but before `dummy` it stores `s1`/`sp+0x80` into the argument object
-at `sp+0x18` and passes `a0=sp+0x18`. `dummy` loads through that argument
-object, so it receives the address of the `va_list` storage instead of the
-initialized save-area pointer payload.
+- The call argument has `source_encoding=frame_slot`, destination GPR bank,
+  contiguous width 1, pointer-sized source size 8, and
+  `arg.source_selection=frame_slot_address`.
+- `find_prepared_missing_frame_slot_call_argument_publication_need` is
+  available for that same argument, has kind `FrameSlotAddress`, the same
+  `source_selection` and `source_value_id`, `source_materializes_address=yes`,
+  and `may_emit_local_aggregate_address_payload=no`.
+- A distinct prepared call-argument value-publication fact exists for the same
+  function, block, and call argument. It links exactly one earlier
+  `StoreLocalPublication` record to the argument object by destination frame
+  slot id, destination stack offset, destination size 8, destination object when
+  available, and the call argument source value id/name.
+- The publication source is a pointer payload with a resolvable prepared home.
+  For the `va_list` expression case it should identify the store source value
+  (`%t7.memcpy.copy.0` / `%t14.memcpy.copy.0`) and, when produced by
+  `load_local`, retain the loaded local source (`%lv.state.8`) as provenance so
+  object emission copies the initialized value payload instead of the local
+  storage address.
+- The publication store instruction is in the same block before the call
+  materialization instruction, and the selected frame-slot address offset is
+  independently valid through the existing stack-layout/address-materialization
+  checks.
+
+Fail-closed cases belong to the RV64 prepared-call/object admission path: absent
+value-publication fact, duplicate matching facts, multiple possible earlier
+stores, mismatched function/block/call argument, mismatched destination slot or
+stack offset, non-pointer or non-8-byte source payload, missing source home,
+store after the call, malformed address materialization, or a fact that names
+the `va_list` storage address as payload authority. These should reject the RV64
+prepared call fragment instead of silently emitting an address payload.
+
+This does not reopen prior ideas. Idea 386 owns ordinary frame-slot-address GPR
+call argument lowering; this route is specifically the value copied into the
+addressed argument object. Idea 387 owns memory-return/sret calls, not this
+same-module pointer argument. Idea 388 owns `va_end`, which is not part of the
+failing call. Idea 389 owns `va_start` destination-address materialization, which
+already writes the local `va_list` object. Idea 390 owns the prepared
+frame-slot-address call-argument publication shape; this route adds a stricter
+initialized-value edge for `va_list` expression payloads. Idea 391 owns incoming
+variadic GPR save-area publication, and Step 1 evidence shows that publication
+is present.
 
 ## Suggested Next
 
-Execute Step 2: classify a guarded RV64 prepared/object value-publication route
-for frame-slot call arguments whose destination object was populated from an
-initialized `va_list` payload. The route should require explicit facts linking
-the `StoreLocalPublication` source payload (`%t7.memcpy.copy.0` or
-`%t14.memcpy.copy.0`) to the frame-slot argument object (`%t7` or `%t14`) before
-address materialization, and fail closed when that link is absent, duplicate, or
-ambiguous.
+Execute Step 3: add focused RV64 backend coverage for the accepted
+value-publication route and fail-closed variants. The accepted case should prove
+the emitted fragment stores the initialized pointer payload into the argument
+object before materializing the object's address into the ABI register. Negative
+cases should cover missing, duplicate, ambiguous, mismatched destination,
+mismatched source, and malformed address-materialization facts.
 
 ## Watchouts
 
@@ -67,27 +85,19 @@ ambiguous.
   `0x80`, offset `0x48`, or the abort branch.
 - Do not reopen idea 391 unless evidence shows incoming variadic GPR payloads
   are no longer stored into the backing save area.
-- Do not treat `missing_frame_slot_arg_publication=yes` alone as enough
-  authority; idea 390 already covered address-argument publication, while this
-  packet needs the initialized `va_list` value payload copied into the argument
-  object.
-- The likely owner is RV64 prepared/object call-argument value publication, not
-  variadic prologue setup, `va_start` address materialization, or `va_end`.
+- Do not treat `missing_frame_slot_arg_publication=yes` or a generic
+  `StoreLocalPublication` record alone as enough authority. Step 3/4 need an
+  explicit prepared fact tying a specific payload source store to a specific
+  frame-slot call-argument object and callsite.
+- Preserve the distinction between the argument object's address, the local
+  `va_list` storage address, and the initialized save-area pointer payload.
+- The likely implementation can extend the existing frame-slot-address
+  publication helper, but accepted/fail-closed coverage should pin the new
+  value-publication fact so the route is not inferred from testcase shape.
 
 ## Proof
 
-Evidence-only Step 1. Regenerated semantic/prepared BIR evidence and a focused
-fact-gap note under `build/agent_state/392_step1_*`; did not rerun the backend
-subset because no implementation or test files changed. The prior backend proof
-from Step 2/3/4 remains current, and the root `test_after.log` representative
-failure payload was preserved.
-
-Evidence paths:
-
-- `build/agent_state/392_step1_va-arg-13.semantic-bir.log`
-- `build/agent_state/392_step1_va-arg-13.prepared-bir.log`
-- `build/agent_state/392_step1_va-arg-13.fact-gap.log`
-- `build/agent_state/391_step5_va-arg-13.c4c-disasm.log`
-- `build/agent_state/391_step5_va-arg-13.clang-disasm.log`
-- `build/agent_state/391_step5_va-arg-13.case.log`
-- `build/agent_state/391_step5_va-arg-13.qemu-strace.log`
+Todo-only classification; no implementation files or tests were changed.
+Delegated proof run:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+Result: passed. Proof log: `test_after.log`.
