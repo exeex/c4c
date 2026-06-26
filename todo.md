@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/378_rv64_object_route_20000112_instruction_fragment_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Focused Object-Emission Coverage for same-width integer ZExt
+Current Step ID: 5
+Current Step Title: Rerun Representative Case
 
 # Current Packet
 
