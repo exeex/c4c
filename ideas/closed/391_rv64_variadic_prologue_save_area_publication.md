@@ -1,9 +1,10 @@
 # RV64 Variadic Prologue Save-Area Publication
 
-Status: Parked - save-area route complete; close pending supervisor regression-log normalization
+Status: Closed
 Type: Target lowering follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: closure of `ideas/closed/390_rv64_va_list_value_publication_copy_runtime_abort.md`
+Closed By: RV64 variadic prologue incoming-GPR save-area publication plus normalized close-gate regression proof
 
 ## Goal
 
@@ -76,21 +77,43 @@ prepared-call frame-slot-address copy, destination-address materialization, or
 - Any later boundary is routed to an existing or new idea instead of being
   silently absorbed.
 
-## Lifecycle Note
+## Closure Notes
 
-Step 5 evidence after implementation shows the RV64 variadic prologue now
-stores incoming variadic GPR payloads into the prepared backing area (`a1`
-through `a7` at the expected save slots), satisfying this idea's save-area
-publication owner. The representative still aborts at a later `va_list`
-expression/call-argument value publication boundary: the `dummy` parameter
-object receives the `va_list` slot address instead of the initialized
-save-area pointer payload.
+Idea 391 is complete as the RV64 variadic prologue save-area publication owner.
+Implementation evidence showed the RV64 variadic prologue now stores incoming
+variadic GPR payloads into the prepared backing area, including `a1` through
+`a7` at the expected save slots. That satisfies this idea's narrow owner:
+incoming variadic payloads reach the save area consumed by `va_start` /
+`va_arg`.
 
-That later boundary is split into
-`ideas/open/392_rv64_va_list_expression_call_argument_value_publication.md`.
-This idea should be closed after the supervisor can run or normalize the
-required close-gate regression logs without replacing the root representative
-failure log that Step 5 intentionally preserved.
+The representative still aborted immediately after the save-area route because
+of a later `va_list` expression/call-argument value-publication boundary: the
+`dummy` parameter object received the `va_list` slot address instead of the
+initialized save-area pointer payload. That later boundary was split to and
+closed by
+`ideas/closed/392_rv64_va_list_expression_call_argument_value_publication.md`.
+Post-repair evidence for idea 392 records `va-arg-13.c` passing with
+`case_exit=0`, so no later representative boundary remains for idea 391.
+
+Closure preconditions were verified in Step 1:
+
+- idea 392 is closed
+- `va-arg-13.c` representative proof is green
+- idea 391 remains the save-area publication owner rather than the later
+  call-argument publication owner
+
+Close gate:
+
+- Regression guard input: `test_before.log` and `test_after.log`, both
+  covering the backend CTest bucket with 326/326 passing.
+- Guard command:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+- Result: PASS, 326/326 before and 326/326 after, no new failures.
+- Evidence log:
+  `build/agent_state/391_closure_step2_regression_guard.log`.
+
+The plan-owner reran the same close-gate command before closure and received
+the same PASS result.
 
 ## Reviewer Reject Signals
 
