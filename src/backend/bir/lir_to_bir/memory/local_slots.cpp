@@ -1158,18 +1158,12 @@ bool BirFunctionLowerer::lower_memory_load_inst(
 
       const std::string temp_name =
           load.result.str() + ".global.aggregate.load." + std::to_string(byte_offset);
-      lowered_insts->push_back(bir::LoadLocalInst{
+      lowered_insts->push_back(bir::LoadGlobalInst{
           .result = bir::Value::named(slot_type_it->second, temp_name),
-          .slot_name = slot_name,
-          .address =
-              bir::MemoryAddress{
-                  .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
-                  .base_name = global_name,
-                  .byte_offset = static_cast<std::int64_t>(byte_offset),
-                  .size_bytes = slot_size,
-                  .align_bytes = std::max(slot_size, aggregate_layout->align_bytes),
-                  .base_link_name_id = global_it->second.link_name_id,
-              },
+          .global_name = global_name,
+          .global_name_id = global_it->second.link_name_id,
+          .byte_offset = byte_offset,
+          .align_bytes = std::max(slot_size, aggregate_layout->align_bytes),
       });
       lowered_insts->push_back(bir::StoreLocalInst{
           .slot_name = slot_name,

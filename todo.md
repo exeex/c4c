@@ -8,31 +8,32 @@ Current Step Title: Publish Global-Symbol Memory-Access Facts
 
 ## Just Finished
 
-Step 3 stamped `bir::MemoryAddress::base_link_name_id` from
-`global_it->second.link_name_id` in
-`src/backend/bir/lir_to_bir/memory/local_slots.cpp` for aggregate
-`LirOperandKind::Global` load lanes emitted as `LoadLocalInst` facts.
+Step 3 canonicalized aggregate `LirOperandKind::Global` load lanes in
+`src/backend/bir/lir_to_bir/memory/local_slots.cpp` to emit
+`bir::LoadGlobalInst` with authoritative `global_name`, `global_name_id`,
+byte offset, and alignment, then store the lane value into the aggregate leaf
+slot.
 
-The producer now preserves semantic global-symbol identity alongside the
-existing raw symbol spelling, byte offset, size, alignment, and default address
-facts. No RV64 fallback inference from raw `LoadLocalInst addr <global>`
-spelling was added, and the raw/no-id prepared-contract test remains
+The previous `LoadLocalInst` plus prepared `GlobalSymbol` address fact shape is
+no longer used for supportable aggregate global lanes, so RV64 object emission
+can consume the existing prepared global-load path without raw spelling
+inference. The focused prepared-stack-layout contract now expects the supported
+lane as `LoadGlobalInst`, while the raw/no-id `LoadLocalInst` fixture remains
 fail-closed.
 
 ## Suggested Next
 
-Run the representative `src/20030914-2.c` RV64 torture proof to confirm the
-prepared global-symbol publication reaches the previous boundary, then classify
-the next residual shape or close/escalate the runbook if no in-scope boundary
-remains.
+Run the representative `src/20030914-2.c` RV64 torture proof again to confirm
+the canonicalized producer shape reaches the object route, then classify the
+next residual boundary.
 
 ## Watchouts
 
-- The new prepared-contract test intentionally leaves the raw/no-id
-  `LoadLocalInst` global lane unpublished, so future work should not weaken
-  that fail-closed behavior.
-- RV64 object emission should continue consuming explicit prepared facts and
-  must not infer global-symbol memory facts from raw spelling.
+- Raw/no-id `LoadLocalInst` global lanes intentionally remain unpublished and
+  fail-closed.
+- RV64 object emission should continue consuming explicit `LoadGlobalInst`
+  prepared facts and must not infer global-symbol memory facts from raw
+  `LoadLocalInst` spelling.
 - Keep `plan.md` and this `todo.md` pointed at
   `ideas/open/384_prepared_global_symbol_memory_access_publication.md`.
 

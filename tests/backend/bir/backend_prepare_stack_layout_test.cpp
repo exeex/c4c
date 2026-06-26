@@ -3272,18 +3272,12 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .result = bir::Value::named(bir::TypeKind::Ptr, "@g.raw.materialization"),
       .operand = bir::Value::named(bir::TypeKind::Ptr, "unused.raw.materialization.source"),
   });
-  entry.insts.push_back(bir::LoadLocalInst{
+  entry.insts.push_back(bir::LoadGlobalInst{
       .result = bir::Value::named(bir::TypeKind::I32, "local.global.lane.loaded"),
+      .global_name = "g.aggregate.contract",
+      .global_name_id = aggregate_global_id,
+      .byte_offset = 24,
       .align_bytes = 4,
-      .address =
-          bir::MemoryAddress{
-              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
-              .base_name = "g.aggregate.contract",
-              .byte_offset = 24,
-              .size_bytes = 4,
-              .align_bytes = 4,
-              .base_link_name_id = aggregate_global_id,
-          },
   });
   entry.insts.push_back(bir::LoadLocalInst{
       .result = bir::Value::named(bir::TypeKind::I32, "local.global.raw.loaded"),
@@ -5175,7 +5169,7 @@ int check_link_name_authoritative_global_access_activation(
   const auto* local_global_lane_access =
       prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 13);
   if (local_global_lane_access == nullptr) {
-    return fail("expected LoadLocalInst global lane with LinkNameId to publish prepared access");
+    return fail("expected LoadGlobalInst global lane with LinkNameId to publish prepared access");
   }
   const auto& local_global_lane_address = local_global_lane_access->address;
   const auto& local_global_lane_provenance = local_global_lane_address.provenance;
@@ -5214,7 +5208,7 @@ int check_link_name_authoritative_global_access_activation(
       !local_global_lane_provenance.requested_range.end_available ||
       local_global_lane_provenance.requested_range.overflowed ||
       local_global_lane_provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
-    return fail("expected LoadLocalInst global lane to preserve semantic prepared contract facts");
+    return fail("expected LoadGlobalInst global lane to preserve semantic prepared contract facts");
   }
 
   if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 14) !=
