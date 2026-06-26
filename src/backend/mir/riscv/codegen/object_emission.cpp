@@ -18,6 +18,7 @@
 #include <unordered_set>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace c4c::backend::riscv::codegen {
 namespace {
@@ -2192,12 +2193,160 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     }
   }
 
+  std::size_t active_call_stack_adjustment = 0;
   for (std::size_t arg_index = 0; arg_index < call_plan->arguments.size();
        ++arg_index) {
     const auto& argument = call_plan->arguments[arg_index];
     if (argument.arg_index != arg_index ||
-        argument.destination_contiguous_width != 1 ||
-        !argument.destination_register_bank.has_value()) {
+        argument.destination_contiguous_width != 1) {
+      return std::nullopt;
+    }
+    const auto* selection =
+        argument.source_selection.has_value() ? &*argument.source_selection : nullptr;
+    const auto* transport = argument.aggregate_transport.has_value()
+                                ? &*argument.aggregate_transport
+                                : nullptr;
+    if (argument.value_bank == prepare::PreparedRegisterBank::AggregateAddress ||
+        transport != nullptr) {
+      if (arg_index >= call.arg_abi.size() ||
+          argument.value_bank != prepare::PreparedRegisterBank::AggregateAddress ||
+          argument.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
+          argument.source_register_bank !=
+              prepare::PreparedRegisterBank::AggregateAddress ||
+          argument.destination_register_bank.has_value() ||
+          argument.destination_register_name.has_value() ||
+          argument.destination_stack_offset_bytes.has_value() ||
+          argument.destination_stack_size_bytes.has_value() ||
+          selection == nullptr ||
+          selection->kind != prepare::PreparedCallArgumentSourceSelectionKind::
+                                 LocalFrameAddressMaterialization ||
+          !selection->source_stack_offset_bytes.has_value() ||
+          transport == nullptr ||
+          transport->kind != prepare::PreparedAggregateTransportKind::StackCopy ||
+          !transport->source_stack_offset_bytes.has_value() ||
+          transport->source_stack_offset_bytes !=
+              selection->source_stack_offset_bytes ||
+          transport->destination_stack_offset_bytes.has_value() ||
+          transport->destination_stack_size_bytes.has_value() ||
+          transport->payload_size_bytes == 0 ||
+          transport->copy_size_bytes == 0 ||
+          transport->copy_align_bytes == 0 ||
+          transport->payload_align_bytes == 0 ||
+          transport->copy_size_bytes > transport->payload_size_bytes ||
+          transport->copy_size_bytes > 128 ||
+          !transport->lanes.empty()) {
+        return std::nullopt;
+      }
+      const auto& abi = call.arg_abi[arg_index];
+      if (abi.type != bir::TypeKind::Ptr ||
+          !abi.byval_copy ||
+          abi.primary_class != bir::AbiValueClass::Memory ||
+          abi.size_bytes != transport->copy_size_bytes ||
+          abi.align_bytes != transport->copy_align_bytes) {
+        return std::nullopt;
+      }
+      const std::size_t stack_copy_size =
+          align_riscv_stack_slot(transport->copy_size_bytes, 16);
+      if (stack_copy_size == 0 ||
+          stack_copy_size >
+              static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+          active_call_stack_adjustment >
+              std::numeric_limits<std::size_t>::max() - stack_copy_size ||
+          !fits_signed_12_bit_immediate(
+              -static_cast<std::int32_t>(stack_copy_size))) {
+        return std::nullopt;
+      }
+      const std::size_t pending_stack_adjustment =
+          active_call_stack_adjustment + stack_copy_size;
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                2,
+                                0,
+                                2,
+                                -static_cast<std::int32_t>(stack_copy_size)));
+      std::vector<bool> covered(transport->copy_size_bytes, false);
+      for (const auto& chunk : transport->chunks) {
+        if (*transport->source_stack_offset_bytes >
+            std::numeric_limits<std::size_t>::max() -
+                transport->payload_size_bytes) {
+          return std::nullopt;
+        }
+        if (chunk.kind !=
+                prepare::PreparedAggregateTransportChunkKind::RequiredPayload ||
+            chunk.size_bytes == 0 ||
+            chunk.payload_offset_bytes > transport->copy_size_bytes ||
+            chunk.destination_offset_bytes > transport->copy_size_bytes ||
+            chunk.size_bytes >
+                transport->copy_size_bytes - chunk.payload_offset_bytes ||
+            chunk.size_bytes >
+                transport->copy_size_bytes - chunk.destination_offset_bytes ||
+            chunk.source_offset_bytes < *transport->source_stack_offset_bytes ||
+            chunk.size_bytes >
+                *transport->source_stack_offset_bytes +
+                    transport->payload_size_bytes - chunk.source_offset_bytes ||
+            chunk.source_offset_bytes >
+                std::numeric_limits<std::size_t>::max() -
+                    pending_stack_adjustment) {
+          return std::nullopt;
+        }
+        std::size_t byte_offset = 0;
+        while (byte_offset < chunk.size_bytes) {
+          std::size_t width = 1;
+          const std::size_t remaining = chunk.size_bytes - byte_offset;
+          const std::size_t source_offset =
+              chunk.source_offset_bytes + pending_stack_adjustment + byte_offset;
+          const std::size_t destination_offset =
+              chunk.destination_offset_bytes + byte_offset;
+          if (remaining >= 8 && source_offset % 8 == 0 &&
+              destination_offset % 8 == 0) {
+            width = 8;
+          } else if (remaining >= 4 && source_offset % 4 == 0 &&
+                     destination_offset % 4 == 0) {
+            width = 4;
+          } else if (remaining >= 2 && source_offset % 2 == 0 &&
+                     destination_offset % 2 == 0) {
+            width = 2;
+          }
+          if (source_offset >
+                  static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+              destination_offset >
+                  static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+              !append_rv64_load_stack_to_register(fragment,
+                                                  28,
+                                                  static_cast<std::int32_t>(
+                                                      source_offset),
+                                                  width) ||
+              !append_rv64_store_register_to_stack(fragment,
+                                                   28,
+                                                   static_cast<std::int32_t>(
+                                                       destination_offset),
+                                                   width)) {
+            return std::nullopt;
+          }
+          for (std::size_t byte = 0; byte < width; ++byte) {
+            const std::size_t destination_byte = destination_offset + byte;
+            if (covered[destination_byte]) {
+              return std::nullopt;
+            }
+            covered[destination_byte] = true;
+          }
+          byte_offset += width;
+        }
+      }
+      for (bool byte_covered : covered) {
+        if (!byte_covered) {
+          return std::nullopt;
+        }
+      }
+      const auto destination = rv64_register_number("a0");
+      if (!destination.has_value()) {
+        return std::nullopt;
+      }
+      append_rv64_move(fragment, *destination, 2);
+      active_call_stack_adjustment = pending_stack_adjustment;
+      continue;
+    }
+    if (!argument.destination_register_bank.has_value()) {
       return std::nullopt;
     }
     if (*argument.destination_register_bank == prepare::PreparedRegisterBank::Fpr) {
@@ -2355,6 +2504,22 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
       .symbol_name = *call_plan->direct_callee_name,
       .addend = 0,
   });
+
+  if (active_call_stack_adjustment != 0) {
+    if (active_call_stack_adjustment >
+            static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+        !fits_signed_12_bit_immediate(
+            static_cast<std::int32_t>(active_call_stack_adjustment))) {
+      return std::nullopt;
+    }
+    append_le32(fragment.bytes,
+                encode_i_type(0x13,
+                              2,
+                              0,
+                              2,
+                              static_cast<std::int32_t>(
+                                  active_call_stack_adjustment)));
+  }
 
   if (call.result.has_value() != call_plan->result.has_value()) {
     return std::nullopt;

@@ -7,7 +7,6 @@
 #include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/calls.hpp"
 
-#include <charconv>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -27,96 +26,6 @@ std::optional<std::string_view> riscv_gpr_argument_register(std::size_t index) {
     case 7: return std::string_view{"a7"};
     default: return std::nullopt;
   }
-}
-
-struct ByvalPayloadField {
-  std::size_t payload_offset = 0;
-  std::size_t source_stack_offset = 0;
-  std::size_t size_bytes = 0;
-};
-
-const c4c::backend::prepare::PreparedStackObject* stack_object_for_id(
-    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
-    c4c::backend::prepare::PreparedObjectId object_id) {
-  for (const auto& object : stack_layout.objects) {
-    if (object.object_id == object_id) {
-      return &object;
-    }
-  }
-  return nullptr;
-}
-
-std::optional<std::size_t> aggregate_member_payload_offset(
-    std::string_view aggregate_name,
-    std::string_view object_name) {
-  if (aggregate_name.empty() ||
-      object_name.size() <= aggregate_name.size() + 1 ||
-      object_name.substr(0, aggregate_name.size()) != aggregate_name ||
-      object_name[aggregate_name.size()] != '.') {
-    return std::nullopt;
-  }
-  const std::string_view suffix = object_name.substr(aggregate_name.size() + 1);
-  std::size_t offset = 0;
-  const auto* first = suffix.data();
-  const auto* last = suffix.data() + suffix.size();
-  const auto parsed = std::from_chars(first, last, offset);
-  if (parsed.ec != std::errc{} || parsed.ptr != last) {
-    return std::nullopt;
-  }
-  return offset;
-}
-
-std::optional<std::vector<ByvalPayloadField>> byval_payload_fields_for_argument(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    c4c::FunctionNameId function_name,
-    std::string_view aggregate_name,
-    std::size_t payload_size) {
-  if (payload_size == 0 || payload_size > 128 || aggregate_name.empty()) {
-    return std::nullopt;
-  }
-
-  std::vector<ByvalPayloadField> fields;
-  std::vector<bool> covered(payload_size, false);
-  for (const auto& slot : prepared.stack_layout.frame_slots) {
-    if (slot.function_name != function_name || slot.size_bytes == 0) {
-      continue;
-    }
-    const auto* object = stack_object_for_id(prepared.stack_layout, slot.object_id);
-    if (object == nullptr || object->function_name != function_name) {
-      continue;
-    }
-    const std::string_view object_name =
-        c4c::backend::prepare::prepared_stack_object_name(prepared.names, *object);
-    const auto payload_offset =
-        aggregate_member_payload_offset(aggregate_name, object_name);
-    if (!payload_offset.has_value() ||
-        *payload_offset > payload_size ||
-        slot.size_bytes > payload_size - *payload_offset ||
-        (slot.size_bytes != 1 && slot.size_bytes != 4 && slot.size_bytes != 8)) {
-      continue;
-    }
-    for (std::size_t byte = 0; byte < slot.size_bytes; ++byte) {
-      if (covered[*payload_offset + byte]) {
-        return std::nullopt;
-      }
-      covered[*payload_offset + byte] = true;
-    }
-    fields.push_back(ByvalPayloadField{
-        .payload_offset = *payload_offset,
-        .source_stack_offset = slot.offset_bytes,
-        .size_bytes = slot.size_bytes,
-    });
-  }
-
-  if (fields.empty()) {
-    return std::nullopt;
-  }
-  for (bool byte_covered : covered) {
-    if (!byte_covered) {
-      return std::nullopt;
-    }
-  }
-  return fields;
 }
 
 std::optional<std::int64_t> prepared_frame_slot_address_offset_for_value(
@@ -278,23 +187,91 @@ bool emit_riscv_callee_saved_gpr_preservation_effect(
   return true;
 }
 
+bool emit_riscv_stack_copy_chunk(std::string& out,
+                                 std::size_t source_offset,
+                                 std::size_t destination_offset,
+                                 std::size_t width_bytes) {
+  if (source_offset >
+          static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
+      destination_offset >
+          static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
+      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(source_offset)) ||
+      !fits_signed_12_bit_immediate(
+          static_cast<std::int64_t>(destination_offset))) {
+    return false;
+  }
+
+  const auto source_text = std::to_string(source_offset);
+  const auto destination_text = std::to_string(destination_offset);
+  switch (width_bytes) {
+    case 8:
+      out += "    ld t3, " + source_text + "(sp)\n";
+      out += "    sd t3, " + destination_text + "(sp)\n";
+      return true;
+    case 4:
+      out += "    lw t3, " + source_text + "(sp)\n";
+      out += "    sw t3, " + destination_text + "(sp)\n";
+      return true;
+    case 2:
+      out += "    lh t3, " + source_text + "(sp)\n";
+      out += "    sh t3, " + destination_text + "(sp)\n";
+      return true;
+    case 1:
+      out += "    lb t3, " + source_text + "(sp)\n";
+      out += "    sb t3, " + destination_text + "(sp)\n";
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool emit_riscv_stack_copy_chunk_range(std::string& out,
+                                       std::size_t source_offset,
+                                       std::size_t destination_offset,
+                                       std::size_t size_bytes) {
+  std::size_t byte_offset = 0;
+  while (byte_offset < size_bytes) {
+    std::size_t width = 1;
+    const std::size_t remaining = size_bytes - byte_offset;
+    if (remaining >= 8 && (source_offset + byte_offset) % 8 == 0 &&
+        (destination_offset + byte_offset) % 8 == 0) {
+      width = 8;
+    } else if (remaining >= 4 && (source_offset + byte_offset) % 4 == 0 &&
+               (destination_offset + byte_offset) % 4 == 0) {
+      width = 4;
+    } else if (remaining >= 2 && (source_offset + byte_offset) % 2 == 0 &&
+               (destination_offset + byte_offset) % 2 == 0) {
+      width = 2;
+    }
+    if (!emit_riscv_stack_copy_chunk(out,
+                                     source_offset + byte_offset,
+                                     destination_offset + byte_offset,
+                                     width)) {
+      return false;
+    }
+    byte_offset += width;
+  }
+  return true;
+}
+
 bool emit_riscv_byval_aggregate_address_argument(
     std::string& out,
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    c4c::FunctionNameId function_name,
     const c4c::backend::prepare::PreparedCallArgumentPlan& plan,
-    const c4c::backend::bir::Value& argument,
     const c4c::backend::bir::CallArgAbiInfo* argument_abi,
-    const PreparedCurrentInstructionContext& context,
     std::size_t& active_stack_adjustment_bytes) {
   namespace prepare = c4c::backend::prepare;
 
+  const auto* selection =
+      plan.source_selection.has_value() ? &*plan.source_selection : nullptr;
+  const auto* transport =
+      plan.aggregate_transport.has_value() ? &*plan.aggregate_transport : nullptr;
   const auto destination_register = riscv_gpr_argument_register(plan.arg_index);
   if (!destination_register.has_value() ||
       plan.value_bank != prepare::PreparedRegisterBank::AggregateAddress ||
       plan.source_encoding != prepare::PreparedStorageEncodingKind::Register ||
       plan.source_register_bank !=
-          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::AggregateAddress} ||
       !plan.source_register_name.has_value() ||
       plan.source_register_name->empty() ||
       plan.destination_register_bank.has_value() ||
@@ -302,112 +279,101 @@ bool emit_riscv_byval_aggregate_address_argument(
       plan.destination_contiguous_width != 1 ||
       plan.destination_stack_offset_bytes.has_value() ||
       plan.destination_stack_size_bytes.has_value() ||
-      plan.aggregate_transport.has_value()) {
+      selection == nullptr ||
+      selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization ||
+      !selection->source_stack_offset_bytes.has_value() ||
+      transport == nullptr ||
+      transport->kind != prepare::PreparedAggregateTransportKind::StackCopy ||
+      !transport->source_stack_offset_bytes.has_value() ||
+      transport->source_stack_offset_bytes != selection->source_stack_offset_bytes ||
+      transport->destination_stack_offset_bytes.has_value() ||
+      transport->destination_stack_size_bytes.has_value() ||
+      transport->payload_size_bytes == 0 ||
+      transport->copy_size_bytes == 0 ||
+      transport->copy_align_bytes == 0 ||
+      transport->payload_align_bytes == 0 ||
+      transport->copy_size_bytes > transport->payload_size_bytes ||
+      transport->copy_size_bytes > 128 ||
+      !transport->lanes.empty()) {
     return false;
   }
 
-  if (argument.kind == c4c::backend::bir::Value::Kind::Named &&
-      !argument.name.empty() &&
-      argument_abi != nullptr &&
-      argument_abi->byval_copy &&
-      argument_abi->size_bytes > 0 &&
-      argument_abi->size_bytes <= 128 &&
-      argument_abi->align_bytes <= 16) {
-    const auto fields = byval_payload_fields_for_argument(
-        prepared,
-        function_name,
-        argument.name,
-        argument_abi->size_bytes);
-    if (fields.has_value()) {
-      const std::size_t payload_size =
-          align_riscv_stack_slot(argument_abi->size_bytes, 16);
-      if (payload_size == 0 ||
-          payload_size > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
-          active_stack_adjustment_bytes >
-              std::numeric_limits<std::size_t>::max() - payload_size ||
-          !fits_signed_12_bit_immediate(-static_cast<std::int64_t>(payload_size))) {
-        return false;
-      }
-      const std::size_t pending_stack_adjustment =
-          active_stack_adjustment_bytes + payload_size;
-      std::string payload_out;
-      payload_out += "    addi sp, sp, -";
-      payload_out += std::to_string(payload_size);
-      payload_out += "\n";
-      for (const auto& field : *fields) {
-        if (field.source_stack_offset >
+  if (argument_abi == nullptr ||
+      argument_abi->type != c4c::backend::bir::TypeKind::Ptr ||
+      !argument_abi->byval_copy ||
+      argument_abi->primary_class != c4c::backend::bir::AbiValueClass::Memory ||
+      argument_abi->size_bytes != transport->copy_size_bytes ||
+      argument_abi->align_bytes != transport->copy_align_bytes) {
+    return false;
+  }
+
+  const std::size_t stack_copy_size =
+      align_riscv_stack_slot(transport->copy_size_bytes, 16);
+  if (stack_copy_size == 0 ||
+      stack_copy_size >
+          static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
+      active_stack_adjustment_bytes >
+          std::numeric_limits<std::size_t>::max() - stack_copy_size ||
+      !fits_signed_12_bit_immediate(-static_cast<std::int64_t>(stack_copy_size))) {
+    return false;
+  }
+  const std::size_t pending_stack_adjustment =
+      active_stack_adjustment_bytes + stack_copy_size;
+  std::string payload_out;
+  payload_out += "    addi sp, sp, -";
+  payload_out += std::to_string(stack_copy_size);
+  payload_out += "\n";
+  std::vector<bool> covered(transport->copy_size_bytes, false);
+  for (const auto& chunk : transport->chunks) {
+    if (*transport->source_stack_offset_bytes >
+        std::numeric_limits<std::size_t>::max() - transport->payload_size_bytes) {
+      return false;
+    }
+    if (chunk.kind != prepare::PreparedAggregateTransportChunkKind::RequiredPayload ||
+        chunk.size_bytes == 0 ||
+        chunk.payload_offset_bytes > transport->copy_size_bytes ||
+        chunk.destination_offset_bytes > transport->copy_size_bytes ||
+        chunk.size_bytes > transport->copy_size_bytes - chunk.payload_offset_bytes ||
+        chunk.size_bytes > transport->copy_size_bytes - chunk.destination_offset_bytes ||
+        chunk.source_offset_bytes < *transport->source_stack_offset_bytes ||
+        chunk.size_bytes >
+            *transport->source_stack_offset_bytes + transport->payload_size_bytes -
+                chunk.source_offset_bytes ||
+        chunk.source_offset_bytes >
             std::numeric_limits<std::size_t>::max() - pending_stack_adjustment) {
-          return false;
-        }
-        const std::size_t adjusted_source_offset =
-            field.source_stack_offset + pending_stack_adjustment;
-        if (adjusted_source_offset >
-                static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
-            field.payload_offset >
-                static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
-          return false;
-        }
-        if (!fits_signed_12_bit_immediate(
-                static_cast<std::int64_t>(adjusted_source_offset)) ||
-            !fits_signed_12_bit_immediate(
-                static_cast<std::int64_t>(field.payload_offset))) {
-          return false;
-        }
-        if (field.size_bytes == 8) {
-          payload_out +=
-              "    ld t3, " + std::to_string(adjusted_source_offset) + "(sp)\n";
-          payload_out +=
-              "    sd t3, " + std::to_string(field.payload_offset) + "(sp)\n";
-        } else if (field.size_bytes == 4) {
-          payload_out +=
-              "    lw t3, " + std::to_string(adjusted_source_offset) + "(sp)\n";
-          payload_out +=
-              "    sw t3, " + std::to_string(field.payload_offset) + "(sp)\n";
-        } else if (field.size_bytes == 1) {
-          payload_out +=
-              "    lb t3, " + std::to_string(adjusted_source_offset) + "(sp)\n";
-          payload_out +=
-              "    sb t3, " + std::to_string(field.payload_offset) + "(sp)\n";
-        } else {
-          return false;
-        }
-      }
-      payload_out += "    mv ";
-      payload_out += *destination_register;
-      payload_out += ", sp\n";
-      out += payload_out;
-      active_stack_adjustment_bytes = pending_stack_adjustment;
-      return true;
+      return false;
     }
-  }
-
-  if (context.lookups != nullptr && plan.source_value_id.has_value()) {
-    const auto stack_offset = prepared_frame_slot_address_offset_for_value(
-        prepared,
-        function_name,
-        context,
-        *plan.source_value_id);
-    if (stack_offset.has_value()) {
-      if (*stack_offset < 0 ||
-          !fits_signed_12_bit_immediate(*stack_offset)) {
+    const std::size_t adjusted_source_offset =
+        chunk.source_offset_bytes + pending_stack_adjustment;
+    if (!emit_riscv_stack_copy_chunk_range(payload_out,
+                                           adjusted_source_offset,
+                                           chunk.destination_offset_bytes,
+                                           chunk.size_bytes)) {
+      return false;
+    }
+    for (std::size_t byte = 0; byte < chunk.size_bytes; ++byte) {
+      const std::size_t destination_byte = chunk.destination_offset_bytes + byte;
+      if (covered[destination_byte]) {
         return false;
       }
-      out += "    addi ";
-      out += *destination_register;
-      out += ", sp, ";
-      out += std::to_string(*stack_offset);
-      out += "\n";
-      return true;
+      covered[destination_byte] = true;
     }
   }
-
-  if (*plan.source_register_name != *destination_register) {
-    out += "    mv ";
-    out += *destination_register;
-    out += ", ";
-    out += *plan.source_register_name;
-    out += "\n";
+  for (bool byte_covered : covered) {
+    if (!byte_covered) {
+      return false;
+    }
   }
+  if (covered.empty()) {
+    return false;
+  }
+  payload_out += "    mv ";
+  payload_out += *destination_register;
+  payload_out += ", sp\n";
+  out += payload_out;
+  active_stack_adjustment_bytes = pending_stack_adjustment;
   return true;
 }
 
@@ -502,16 +468,11 @@ std::optional<std::string> emit_riscv_simple_call(
     if (plan == nullptr || plan->arg_index != arg_index) {
       return std::nullopt;
     }
-    if (emit_riscv_byval_aggregate_address_argument(out,
-                                                    prepared,
-                                                    function_name,
-                                                    *plan,
-                                                    call.args[arg_index],
-                                                    arg_index < call.arg_abi.size()
-                                                        ? &call.arg_abi[arg_index]
-                                                        : nullptr,
-                                                    context,
-                                                    active_stack_adjustment_bytes)) {
+    if (emit_riscv_byval_aggregate_address_argument(
+            out,
+            *plan,
+            arg_index < call.arg_abi.size() ? &call.arg_abi[arg_index] : nullptr,
+            active_stack_adjustment_bytes)) {
       continue;
     }
     if (plan->value_bank != prepare::PreparedRegisterBank::Gpr ||

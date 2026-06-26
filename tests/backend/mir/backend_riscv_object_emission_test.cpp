@@ -1010,6 +1010,236 @@ prepare::PreparedBirModule make_prepared_scalar_same_module_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_byval_stack_copy_same_module_call_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto callee_name = prepared.names.function_names.intern("consume_pair");
+  const auto main_name = prepared.names.function_names.intern("main");
+  const auto payload_name = prepared.names.value_names.intern("%lv.pair");
+  const auto result_name = prepared.names.value_names.intern("%main.t0");
+  const auto source_slot_id = prepare::PreparedFrameSlotId{7};
+  const auto source_object_id = prepare::PreparedObjectId{9};
+
+  bir::Block callee_entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+  };
+  callee_entry.terminator.value = bir::Value::immediate_i32(5);
+
+  bir::CallInst call;
+  call.result = bir::Value::named(bir::TypeKind::I32, "%main.t0");
+  call.callee = "consume_pair";
+  call.args = {bir::Value::named(bir::TypeKind::Ptr, "%lv.pair"),
+               bir::Value::immediate_i32(19)};
+  call.arg_types = {bir::TypeKind::Ptr, bir::TypeKind::I32};
+  call.arg_abi = {
+      bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 24,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_in_register = false,
+          .byval_copy = true,
+      },
+      bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  };
+  call.return_type = bir::TypeKind::I32;
+  bir::Block main_entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+  main_entry.terminator.value =
+      bir::Value::named(bir::TypeKind::I32, "%main.t0");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "consume_pair",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(callee_entry)},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(main_entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = callee_name,
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = main_name,
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = source_object_id,
+      .function_name = main_name,
+      .value_name = payload_name,
+      .source_kind = "local",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 24,
+      .align_bytes = 8,
+      .address_exposed = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = source_slot_id,
+      .object_id = source_object_id,
+      .function_name = main_name,
+      .offset_bytes = 96,
+      .size_bytes = 24,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_size_bytes = 128;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = main_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 3,
+                  .function_name = main_name,
+                  .value_name = payload_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = source_slot_id,
+                  .offset_bytes = std::size_t{96},
+                  .size_bytes = std::size_t{24},
+                  .align_bytes = std::size_t{8},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 4,
+                  .function_name = main_name,
+                  .value_name = result_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = main_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::SameModule,
+          .direct_callee_name = std::string{"consume_pair"},
+          .arguments =
+              {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::AggregateAddress,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = prepare::PreparedValueId{3},
+                      .source_register_name = std::string{"s2"},
+                      .source_slot_id = source_slot_id,
+                      .source_stack_offset_bytes = std::size_t{96},
+                      .source_register_bank =
+                          prepare::PreparedRegisterBank::AggregateAddress,
+                      .source_selection =
+                          prepare::PreparedCallArgumentSourceSelection{
+                              .kind = prepare::PreparedCallArgumentSourceSelectionKind::
+                                  LocalFrameAddressMaterialization,
+                              .source_value_id = prepare::PreparedValueId{3},
+                              .source_value_name = payload_name,
+                              .source_home_kind =
+                                  prepare::PreparedValueHomeKind::StackSlot,
+                              .source_slot_id = source_slot_id,
+                              .source_stack_offset_bytes = std::size_t{96},
+                              .source_size_bytes = std::size_t{24},
+                              .source_align_bytes = std::size_t{8},
+                          },
+                      .aggregate_transport =
+                          prepare::PreparedAggregateTransportPlan{
+                              .kind = prepare::PreparedAggregateTransportKind::StackCopy,
+                              .payload_size_bytes = 24,
+                              .payload_align_bytes = 8,
+                              .copy_size_bytes = 24,
+                              .copy_align_bytes = 8,
+                              .source_slot_id = source_slot_id,
+                              .source_stack_offset_bytes = std::size_t{96},
+                              .chunks =
+                                  {
+                                      prepare::PreparedAggregateTransportChunk{
+                                          .chunk_index = 0,
+                                          .kind = prepare::PreparedAggregateTransportChunkKind::
+                                              RequiredPayload,
+                                          .payload_offset_bytes = 0,
+                                          .source_offset_bytes = 96,
+                                          .destination_offset_bytes = 0,
+                                          .size_bytes = 8,
+                                          .align_bytes = 8,
+                                          .preferred_width_bytes = std::size_t{8},
+                                      },
+                                      prepare::PreparedAggregateTransportChunk{
+                                          .chunk_index = 1,
+                                          .kind = prepare::PreparedAggregateTransportChunkKind::
+                                              RequiredPayload,
+                                          .payload_offset_bytes = 8,
+                                          .source_offset_bytes = 104,
+                                          .destination_offset_bytes = 8,
+                                          .size_bytes = 8,
+                                          .align_bytes = 8,
+                                          .preferred_width_bytes = std::size_t{8},
+                                      },
+                                      prepare::PreparedAggregateTransportChunk{
+                                          .chunk_index = 2,
+                                          .kind = prepare::PreparedAggregateTransportChunkKind::
+                                              RequiredPayload,
+                                          .payload_offset_bytes = 16,
+                                          .source_offset_bytes = 112,
+                                          .destination_offset_bytes = 16,
+                                          .size_bytes = 8,
+                                          .align_bytes = 8,
+                                          .preferred_width_bytes = std::size_t{8},
+                                      },
+                                  },
+                              .scratch_requirements =
+                                  {prepare::PreparedAggregateTransportScratchRequirement{
+                                      .kind = prepare::PreparedAggregateTransportScratchKind::
+                                          GeneralPurpose,
+                                      .width_bytes = 8,
+                                  }},
+                          },
+                  },
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 1,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+                      .source_literal = bir::Value::immediate_i32(19),
+                      .destination_register_name = std::string{"a1"},
+                      .destination_contiguous_width = 1,
+                      .destination_register_bank =
+                          prepare::PreparedRegisterBank::Gpr,
+                  },
+              },
+          .result = prepare::PreparedCallResultPlan{
+              .instruction_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_storage_kind =
+                  prepare::PreparedMoveStorageKind::Register,
+              .destination_value_id = 4,
+              .source_register_name = std::string{"a0"},
+              .source_contiguous_width = 1,
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_register_name = std::string{"t0"},
+              .destination_contiguous_width = 1,
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          },
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedValueHome make_fpr_home(c4c::FunctionNameId function_name,
                                          c4c::ValueNameId value_name,
                                          prepare::PreparedValueId value_id,
@@ -5366,6 +5596,104 @@ int builds_prepared_scalar_same_module_call_object() {
   return 0;
 }
 
+int builds_prepared_byval_stack_copy_same_module_call_object() {
+  const auto prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared RV64 byval stack-copy call object to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* callee = object::find_symbol(module, "consume_pair");
+  const auto* main = object::find_symbol(module, "main");
+  if (text == nullptr || callee == nullptr || main == nullptr) {
+    return fail("expected prepared byval stack-copy call object to publish text/functions");
+  }
+  if (text->bytes.size() != 92 || text->size_bytes != 92 ||
+      callee->value != 0 || callee->size_bytes != 16 ||
+      main->value != 16 || main->size_bytes != 76) {
+    return fail("expected prepared byval stack-copy call object text layout");
+  }
+
+  const std::size_t base = main->value + 8;
+  const std::uint32_t expected_words[] = {
+      0xfe010113,  // addi sp, sp, -32
+      0x08013e03,  // ld t3, 128(sp)
+      0x01c13023,  // sd t3, 0(sp)
+      0x08813e03,  // ld t3, 136(sp)
+      0x01c13423,  // sd t3, 8(sp)
+      0x09013e03,  // ld t3, 144(sp)
+      0x01c13823,  // sd t3, 16(sp)
+      0x00010513,  // mv a0, sp
+      0x01300593,  // li a1, 19
+  };
+  for (std::size_t index = 0;
+       index < sizeof(expected_words) / sizeof(expected_words[0]);
+       ++index) {
+    if (read_u32(text->bytes, base + index * 4) != expected_words[index]) {
+      return fail("expected prepared byval stack-copy call to consume explicit stack-copy chunks");
+    }
+  }
+  if (module.relocations.size() != 1 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[0].offset != base + 36 ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != callee->id) {
+    return fail("expected byval stack-copy same-module call relocation");
+  }
+  if (read_u32(text->bytes, base + 44) != 0x02010113 ||
+      read_u32(text->bytes, base + 48) != 0x00050293 ||
+      read_u32(text->bytes, base + 52) != 0x00028513 ||
+      read_u32(text->bytes, base + 56) != 0x08813083 ||
+      read_u32(text->bytes, base + 60) != 0x09010113 ||
+      read_u32(text->bytes, base + 64) != 0x00008067) {
+    return fail("expected byval stack-copy call to restore stack and publish result");
+  }
+  return 0;
+}
+
+int expect_byval_stack_copy_call_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+}
+
+int rejects_prepared_byval_stack_copy_call_fail_closed_shapes() {
+  auto prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0].aggregate_transport =
+      std::nullopt;
+  if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0].aggregate_transport->kind =
+      prepare::PreparedAggregateTransportKind::ByvalRegisterLanes;
+  if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0]
+      .aggregate_transport->source_stack_offset_bytes = std::nullopt;
+  if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_byval_stack_copy_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0]
+      .aggregate_transport->chunks.front().kind =
+      prepare::PreparedAggregateTransportChunkKind::FallbackOnly;
+  if (expect_byval_stack_copy_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int builds_prepared_scalar_stack_result_call_object() {
   const auto prepared = make_prepared_scalar_stack_result_call_module();
   const auto result =
@@ -8955,6 +9283,8 @@ int main() {
   status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
+  status |= builds_prepared_byval_stack_copy_same_module_call_object();
+  status |= rejects_prepared_byval_stack_copy_call_fail_closed_shapes();
   status |= builds_prepared_scalar_stack_result_call_object();
   status |= builds_prepared_scalar_stack_result_call_with_inferred_gpr_banks_object();
   status |= rejects_prepared_scalar_stack_result_call_fail_closed_shapes();
