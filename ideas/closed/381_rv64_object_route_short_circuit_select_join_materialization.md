@@ -1,8 +1,10 @@
 # RV64 Object Route Short-Circuit Select Join Materialization
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/closed/380_rv64_object_route_short_circuit_call_argument_reload.md`
+
+Closed: 2026-06-26
 
 ## Goal
 
@@ -92,3 +94,20 @@ more call-argument preservation work.
   required materialization.
 - Reject weakening or deleting focused idea 379/380 coverage to make the new
   owner appear isolated.
+
+## Closure Note
+
+Idea 381 is accepted as complete. The RV64 object route now materializes
+supported short-circuit select/join edge producers before join consumers read
+them, and the focused backend proof for the admitted behavior plus idea 379 and
+idea 380 coverage remained green.
+
+Closure evidence:
+
+- Step 2 implementation commit: `d2d290ea Materialize RV64 select edge producers`
+- Step 3 representative rerun commit:
+  `f0e92a52 [todo_only] record 20000112 select join rerun`
+- Representative `src/20000112-1.c` passed through the RV64 GCC torture backend
+  allowlist path after the repair.
+- Close-time regression guard passed on matching focused 13-test CTest logs:
+  before passed=13 failed=0 total=13; after passed=13 failed=0 total=13.

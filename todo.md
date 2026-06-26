@@ -1,35 +1,35 @@
 Status: Active
-Source Idea Path: ideas/open/381_rv64_object_route_short_circuit_select_join_materialization.md
+Source Idea Path: ideas/open/370_rv64_object_route_byval_aggregate_param_homes.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Rerun src/20000112-1.c
+Current Step ID: 1
+Current Step Title: Audit Byval Parameter-Home Facts
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 reran the idea 381 representative `src/20000112-1.c` after commit
-`d2d290ea` using the supervisor-selected RV64 GCC torture backend allowlist.
-The representative now passes.
-
-Allowlist artifact:
-`build/agent_state/381_step3_20000112.allowlist`.
+Idea 381 was accepted for closure and archived. Idea 370 is now active as the
+next concrete open child repair under the RV64 gcc_torture prepared-shape
+umbrella.
 
 ## Suggested Next
 
-Hand back to the supervisor for acceptance review and any broader lifecycle or
-regression-log handling they want before commit/close decisions.
+Execute Step 1 from `plan.md`: audit the prepared ABI/home facts for the
+`src/20030914-2.c` byval aggregate parameter-home boundary and record the
+smallest supportable shape or refined unsupported boundary.
 
 ## Watchouts
 
-No Step 3 failure classification was needed. The source representative passed,
-so it advanced past the prior select/join materialization owner.
+Do not infer aggregate layout or stack placement from source syntax or assumed
+ABI state. Progress must consume explicit prepared parameter-home, frame, and
+aggregate facts and keep unsupported byval shapes fail-closed.
 
 ## Proof
 
-Canonical Step 3 proof passed and its full output is preserved in
-`test_after.log`:
+Lifecycle-only activation; no code proof required for the new Step 1 packet.
 
-`bash -o pipefail -c 'mkdir -p build/agent_state && printf "%s\n" "src/20000112-1.c" > build/agent_state/381_step3_20000112.allowlist && ALLOWLIST=build/agent_state/381_step3_20000112.allowlist STOP_ON_FAILURE=1 VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh | tee test_after.log'`
+Close-time regression guard for idea 381 passed before this activation:
 
-Result: `src/20000112-1.c` passed; total=1 passed=1 failed=0.
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: before passed=13 failed=0 total=13; after passed=13 failed=0 total=13.
