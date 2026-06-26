@@ -1,164 +1,153 @@
-# RV64 Object Route Instruction Fragment Lowering Runbook
+# Prepared I16 Formal ABI Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/395_rv64_object_route_instruction_fragment_lowering.md
-Activated after: ideas/closed/407_prepared_i16_same_module_call_arg_abi_publication.md
+Source Idea: ideas/open/403_prepared_i16_formal_abi_publication.md
+Reopened from: ideas/closed/403_prepared_i16_formal_abi_publication.md
+Supersedes active runbook from: ideas/open/395_rv64_object_route_instruction_fragment_lowering.md
 
 ## Purpose
 
-Repair the RV64 prepared-object route bucket where prepared BIR instructions
-reach object emission but are rejected as unsupported instruction fragments.
+Repair the producer-side prepared ABI/home metadata gap where callee `i16`
+formals in argument registers publish a physical register but no GPR bank.
 
 ## Goal
 
-Classify and lower reusable RV64 instruction-fragment families so the current
-representatives advance without testcase-shaped shortcuts or producer-boundary
-violations.
+Make direct-call `I16` formals publish target-consumable prepared register-bank
+facts before RV64 object emission consumes them.
 
 ## Core Rule
 
-RV64 object emission may lower explicit prepared instruction facts. It must not
-reconstruct missing producer ABI facts, BIR control/data-flow semantics, source
-testcase intent, or filename-specific behavior.
+Fix the producer-side formal ABI/home publication path. Do not teach RV64
+`object_emission.cpp` or scalar instruction lowering to infer a GPR bank from
+formal order, type width, or a bankless physical register name.
 
 ## Read First
 
+- `ideas/open/403_prepared_i16_formal_abi_publication.md`
 - `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`
 - `ideas/closed/407_prepared_i16_same_module_call_arg_abi_publication.md`
-- `ideas/closed/403_prepared_i16_formal_abi_publication.md`
-- `tests/c/external/gcc_torture/src/20000223-1.c`
+- `build/agent_state/395_step1_reclassify_after407_dumps/divmod-1.prepared.txt`
+- `build/agent_state/395_step1_reclassify_after407_probe.log`
 - `tests/c/external/gcc_torture/src/divmod-1.c`
-- Current RV64 gcc_torture backend probe artifacts under `build/agent_state/`
-  and `build/rv64_gcc_c_torture_backend/`
+- `src/backend/prealloc/legalize.cpp` and the producer path that publishes
+  direct formal ABI/home facts
 
 ## Current Targets
 
-- Primary source-idea representative:
-  `src/20000223-1.c`, the original dominant-bucket representative for
-  `unsupported_instruction_fragment`.
-- Corrected residual representative:
-  `src/divmod-1.c`, after closed idea 407 completed same-module `i16`
-  frame-slot call-argument destination publication.
-- Nearby same-fragment cases selected by the supervisor from current RV64
-  gcc_torture backend artifacts.
+- Primary representative: `tests/c/external/gcc_torture/src/divmod-1.c`.
+- Live failing shape: `bir.sext i16 %p.x to i32` in `div2` reaches RV64 object
+  emission with `%p.x` published as `encoding=register bank=none reg=a0`.
+- Non-targets: corrected 407 caller-side call-argument facts remain complete;
+  `src/20000223-1.c` passes the current representative probe.
 
 ## Non-Goals
 
-- Do not reopen closed idea 407 unless fresh prepared dumps again show the old
-  same-module `i16` call-argument producer regression:
-  `source_encoding=frame_slot ... dest_bank=none`,
-  `call_arg_stack_to_stack`, or `placement=none:call_argument`.
-- Do not reopen closed idea 403 unless fresh evidence shows incoming `i16`
-  formal ABI publication regressed.
-- Do not infer scalar call-argument registers, destination banks, parameter
-  homes, or ABI policy in `src/backend/riscv/rv64/object_emission.cpp`.
-- Do not absorb terminator lowering, move-bundle target shapes, stack-frame
-  admission, parameter-home, global data, or runtime-mismatch work owned by
-  separate open ideas.
-- Do not rewrite gcc_torture expectations, mark cases unsupported, weaken
-  allowlists, or special-case testcase filenames.
+- Do not implement 395 RV64 opcode lowering while the `I16` formal bank fact is
+  incomplete.
+- Do not infer GPR bank in RV64 object emission from `reg=a0`, parameter order,
+  formal type, or callee ABI convention.
+- Do not reopen corrected 407 unless fresh prepared dumps again show the old
+  same-module `i16` caller-side producer regression.
+- Do not redesign aggregate, byval, sret, variadic, or stack-passed argument
+  handling.
+- Do not rewrite gcc_torture expectations, change allowlists, or add
+  filename-specific handling for `divmod-1.c`.
 
 ## Working Model
 
-Closed 407 now records that `src/divmod-1.c` frame-slot same-module `i16`
-producer facts are complete: `value_bank=gpr`,
-`dest_placement=gpr:call_argument#N/w1`, `dest_reg=aN`, `dest_bank=gpr`, and
-`missing_frame_slot_arg_publication=yes`. The remaining `divmod-1.c` failure is
-generic `unsupported_instruction_fragment` and routes back to 395.
+Previous 403 work repaired one `I16` formal ABI publication surface, but the
+current `divmod-1.c` proof exposes another same producer contract failure: a
+callee `i16` formal is already assigned to argument register `a0`, yet its
+prepared storage has `bank=none`. The RV64 scalar `SExt` lowering path exists,
+but it correctly rejects bankless prepared register homes.
 
-The next packet must reclassify the prepared instruction shape now visible at
-the RV64 object-emission boundary and decide whether it is a true instruction
-lowering gap or a different owner. Likely arithmetic/cast candidates observed
-during prior classification include `bir.sext`, `bir.sdiv`, `bir.srem`,
-`bir.urem`, `bir.shl`, and `bir.trunc`, but the first reachable object-lowering
-opcode still needs executor proof.
+The producer must publish explicit GPR bank metadata for direct `I16` formals
+that are physically in GPR argument registers. Once this is fixed, `divmod-1.c`
+can return to 395 to find the next true RV64 instruction-fragment boundary.
 
 ## Execution Rules
 
-- Keep each packet tied to one concrete prepared instruction-fragment family.
-- Inspect prepared dumps and object-route diagnostics before editing target
-  emission.
-- Prefer semantic RV64 lowering that applies to a same-fragment family.
-- If a representative lacks required prepared facts, stop and route that
-  producer boundary instead of compensating in the RV64 emitter.
+- Keep implementation packets scoped to direct/callee `I16` formal ABI or home
+  publication.
+- Inspect prepared dumps before changing code and record the exact formal
+  storage facts in `todo.md`.
+- Prefer repairing existing scalar-width handling near the formal ABI/home
+  publication path over adding a parallel classifier.
+- Preserve existing behavior for `I1`, `I8`, `I32`, `I64`, pointer, aggregate,
+  variadic, byval, and stack-passed formals unless local proof requires a
+  narrow supporting adjustment.
 - Use the supervisor-selected proof command and record exact results in
   `todo.md`.
-- If a repaired case object-compiles and links, include qemu comparison in the
-  proof.
-- Treat diagnostic-only churn, expectation rewrites, allowlist-only progress,
-  and named-case green proof as route failures.
+- Treat diagnostic-only churn, expectation rewrites, RV64 consumer inference,
+  and single-case green proof as insufficient progress.
 
-## Step 1: Reclassify Current Instruction-Fragment Residuals
+## Step 1: Reconfirm The Bankless I16 Formal Register Gap
 
-Goal: identify the concrete prepared instruction fragments currently blocking
-395 after the corrected 407 close.
+Goal: identify the exact producer path and facts that publish callee `I16`
+formals with physical argument registers but no GPR bank.
 
 Actions:
 
-- Reproduce or inspect the supervisor-selected RV64 gcc_torture backend probe
-  for `src/divmod-1.c`, `src/20000223-1.c`, and any nearby same-fragment cases.
-- Dump or inspect prepared BIR for each representative and name the exact
-  instruction opcode, operand facts, value banks, placements, and source/dest
-  facts that reach object emission.
-- Confirm `src/divmod-1.c` still has complete same-module `i16`
-  call-argument destination facts before assigning the residual to 395.
-- Map each rejection to the RV64 object-route code that emits
-  `unsupported_instruction_fragment`.
-- Decide whether `src/divmod-1.c` and `src/20000223-1.c` share a reusable
-  lowering route or require separate packets.
+- Inspect the fresh `src/divmod-1.c` prepared dump and name each `I16` formal
+  with `encoding=register`, physical register, bank, width, and use site.
+- Confirm corrected 407 caller-side facts remain complete so the blocker is
+  not a call-argument destination publication regression.
+- Compare against supported scalar formal widths that publish complete GPR
+  bank facts.
+- Trace the producer path that creates formal ABI/home storage facts and decide
+  the first implementation packet owner.
 
 Completion check:
 
-- `todo.md` records the concrete instruction-fragment family for the first
-  executor packet, the representative set, and the exact supervisor-delegated
-  proof command.
-- Any non-395 residual is routed with precise evidence instead of patched in
-  RV64 object emission.
+- `todo.md` names the concrete producer function or helper family to repair,
+  the observed bankless `I16` formal facts, contrasting supported facts, and
+  the supervisor-delegated proof command.
+- If the failure is not this formal ABI/home publication gap, stop and request
+  lifecycle review instead of patching RV64 object emission.
 
-## Step 2: Lower The First Valid Instruction-Fragment Family
+## Step 2: Publish GPR Bank Facts For Direct I16 Formals
 
-Goal: add reusable RV64 object lowering for the first classified prepared
-instruction-fragment family when all required prepared facts are explicit.
+Goal: repair the producer path so direct `I16` formals in GPR argument
+registers publish complete target-consumable register-bank metadata.
 
 Actions:
 
-- Update the RV64 object route to consume the prepared instruction facts for
-  the selected family.
-- Preserve existing diagnostics for unsupported or incomplete prepared facts.
-- Add or update focused backend coverage where the repo has a matching test
-  surface for the instruction family.
-- Keep changes narrow to the selected instruction semantics and existing
-  prepared-object contracts.
+- Extend the selected producer path for `I16` using the same semantic pattern
+  as adjacent supported scalar integer widths.
+- Ensure prepared formal storage records include the correct GPR bank when the
+  formal is physically in an ABI GPR register.
+- Preserve precise diagnostics for unsupported formal shapes that still lack
+  legitimate prepared ABI/home facts.
+- Add or update focused backend or prepared tests if a local test surface
+  already exists for formal ABI publication.
 
 Completion check:
 
-- The selected representative no longer fails with the same
-  `unsupported_instruction_fragment` diagnostic.
-- Nearby same-fragment cases examined by the executor either advance together
-  or are explicitly classified as separate owners.
-- Existing backend tests for adjacent instruction lowering remain green.
+- Fresh `src/divmod-1.c` prepared dump no longer shows `i16` callee formals
+  with `encoding=register bank=none reg=aN` as the blocking shape.
+- Existing supported scalar formal cases remain supported.
+- RV64 object emission does not gain scalar formal ABI inference.
 
-## Step 3: Prove Representatives And Bucket Movement
+## Step 3: Prove Divmod And Route Residuals
 
-Goal: prove the lowering advanced 395 without hiding runtime or ownership
-failures.
+Goal: prove the producer repair removes the `src/divmod-1.c` bankless formal
+blocker without crossing the prepared-object consumer boundary.
 
 Actions:
 
-- Run the supervisor-selected narrow RV64 gcc_torture backend probe for the
-  repaired representative and same-fragment additions.
-- If a case object-compiles and links, inspect qemu comparison rather than
-  stopping at compile success.
+- Run the supervisor-selected build and narrow RV64 gcc_torture backend proof
+  for `src/divmod-1.c` and any focused same-family formal tests.
+- Inspect fresh prepared dumps for `%p.x`, `%p.y`, and any other `I16` formals
+  involved in `div2`, `div4`, `mod2`, and `mod4`.
 - Run the supervisor-selected backend CTest subset for the implementation
   slice.
-- Classify any remaining failure as the same instruction-fragment family, a
-  distinct target-emission family, or a producer-fact gap that needs a separate
-  source idea.
+- Classify any newly exposed later failure as inside this idea, back in 395,
+  owned by another open idea, or requiring a new producer-side split.
 
 Completion check:
 
-- `todo.md` records exact proof commands, results, and residual ownership.
+- `todo.md` records exact proof results and states whether this idea is
+  complete, needs another `I16` formal publication packet, or should be routed
+  to another owner.
 - No expectation rewrites, unsupported downgrades, allowlist filtering, or
   filename-specific fixes are used as acceptance evidence.
-- The supervisor has enough evidence to continue with another 395 packet,
-  request route review, or ask the plan owner for close/deactivation handling.

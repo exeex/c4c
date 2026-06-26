@@ -1,6 +1,6 @@
 # Prepared I16 Formal ABI Publication
 
-Status: Closed
+Status: Open
 Type: Follow-up producer repair idea
 Parent: `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`
 
@@ -75,6 +75,13 @@ inside the consumer.
   `ideas/open/401_rv64_object_route_scalar_and_floating_edge_lowering.md`.
 - Close gate passed using canonical backend regression logs in non-decreasing
   mode: 326 passed before, 326 passed after, no new failing tests.
+- 2026-06-26: Reopened after active 395 Step 1 classified `src/divmod-1.c` as
+  a producer-side callee formal `I16` register-bank publication gap. The first
+  live unsupported fragment is `bir.sext i16 %p.x to i32`, where `%p.x` is
+  physically in `a0` but prepared storage publishes `encoding=register
+  bank=none reg=a0`. Existing RV64 `SExt` lowering cannot consume that
+  bankless prepared formal without reconstructing producer ABI policy in the
+  object emitter.
 
 ## Reviewer Reject Signals
 
