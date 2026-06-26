@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/386_rv64_object_route_unsupported_instruction_fragment.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Capture Unsupported Instruction Fragment Evidence
+Current Step ID: 2
+Current Step Title: Classify Frame-Slot Address GPR Call Argument Route
 
 # Current Packet
 
@@ -106,10 +106,12 @@ address materialization.
 
 ## Suggested Next
 
-Delegate Step 2 to classify these as two call-lowering families: frame-slot
-address GPR call arguments versus same-module memory-return/sret calls. Keep
-them split unless the classifier finds an existing common call-address
-materialization abstraction that already owns both.
+Delegate Step 2 to classify the active frame-slot-address GPR call-argument
+family for `va-arg-13.c`. The same-module memory-return/sret family from
+`920908-1.c` has been split to
+`ideas/open/387_rv64_object_route_same_module_sret_calls.md`; do not implement
+it under the active plan unless a reviewer proves both routes share an existing
+common call-address materialization abstraction.
 
 ## Watchouts
 
@@ -119,6 +121,8 @@ materialization abstraction that already owns both.
 - Do not downgrade expectations or add named-case-only handling.
 - `920908-1.c` also contains supported `llvm.va_arg.aggregate` helper facts in
   `f`; the current generic diagnostic is not the variadic helper path.
+- `920908-1.c` is no longer an active implementation target for this plan; it
+  is durable evidence for idea 387.
 - `va-arg-13.c` has two same-shape `dummy` calls, but the first failing
   fragment is block 0 inst 9; inst 16 is follow-on evidence, not the first
   diagnostic trigger.
