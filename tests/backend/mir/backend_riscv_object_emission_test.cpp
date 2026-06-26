@@ -4519,6 +4519,42 @@ int builds_prepared_scalar_stack_result_call_object() {
   return 0;
 }
 
+int builds_prepared_scalar_stack_result_call_with_inferred_gpr_banks_object() {
+  auto prepared = make_prepared_scalar_stack_result_call_module();
+  auto& result_plan = *prepared.call_plans.functions[0].calls[0].result;
+  result_plan.value_bank = prepare::PreparedRegisterBank::None;
+  result_plan.source_register_bank = prepare::PreparedRegisterBank::None;
+
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared scalar stack-result call with inferred GPR banks "
+                "to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* callee = object::find_symbol(module, "add_three");
+  const auto* main = object::find_symbol(module, "main");
+  if (text == nullptr || callee == nullptr || main == nullptr) {
+    return fail("expected inferred-bank scalar stack-result call object to publish "
+                "text/functions");
+  }
+  if (module.relocations.size() != 1 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != callee->id ||
+      module.relocations[0].offset < main->value ||
+      module.relocations[0].offset + 8 >= text->bytes.size()) {
+    return fail("expected inferred-bank scalar stack-result same-module call relocation");
+  }
+  if (read_u32(text->bytes, module.relocations[0].offset + 8) != 0x00a11223) {
+    return fail("expected inferred-bank scalar i16 call result to publish from a0 "
+                "into stack slot");
+  }
+  return 0;
+}
+
 int expect_scalar_stack_result_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
@@ -4530,6 +4566,13 @@ int rejects_prepared_scalar_stack_result_call_fail_closed_shapes() {
   auto prepared = make_prepared_scalar_stack_result_call_module();
   prepared.call_plans.functions[0].calls[0].result->source_register_name =
       std::nullopt;
+  if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_result_call_module();
+  prepared.call_plans.functions[0].calls[0].result->source_storage_kind =
+      prepare::PreparedMoveStorageKind::None;
   if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
     return 1;
   }
@@ -7524,6 +7567,7 @@ int main() {
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
   status |= builds_prepared_scalar_stack_result_call_object();
+  status |= builds_prepared_scalar_stack_result_call_with_inferred_gpr_banks_object();
   status |= rejects_prepared_scalar_stack_result_call_fail_closed_shapes();
   status |= builds_prepared_fpr_same_module_call_object();
   status |= preserves_missing_variadic_entry_plan_diagnostic();

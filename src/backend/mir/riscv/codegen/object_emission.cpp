@@ -2009,9 +2009,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     if (result.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot) {
       const auto late_publication =
           prepare::find_prepared_call_result_late_publication(result);
-      if (!late_publication.source_register_publication_available ||
-          result.value_bank != prepare::PreparedRegisterBank::Gpr ||
-          result.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
+      const bool scalar_gpr_value_bank =
+          result.value_bank == prepare::PreparedRegisterBank::None ||
+          result.value_bank == prepare::PreparedRegisterBank::Gpr;
+      const bool scalar_gpr_source_bank =
+          !result.source_register_bank.has_value() ||
+          result.source_register_bank == prepare::PreparedRegisterBank::None ||
+          result.source_register_bank == prepare::PreparedRegisterBank::Gpr;
+      const bool source_register_publication_available =
+          late_publication.source_register_publication_available ||
+          (result.source_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+           result.source_register_name.has_value());
+      if (!source_register_publication_available || !scalar_gpr_value_bank ||
+          !scalar_gpr_source_bank ||
           !result.source_register_name.has_value() ||
           !result.destination_value_id.has_value() ||
           !result.destination_slot_id.has_value() ||

@@ -2,82 +2,64 @@ Status: Active
 Source Idea Path: ideas/open/377_rv64_object_route_instruction_fragment_lowering.md
 Source Plan Path: plan.md
 Current Step ID: 4
-Current Step Title: Residual Instruction-Fragment Audit
+Current Step Title: Repair Residual Call-Result Stack Publication
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 follow-up / Step 5 preparation: Residual Instruction-Fragment Audit
-completed for the single `src/20000217-1.c` RV64 gcc-torture backend object
-representative after scalar integer call-result stack-slot publication support.
+Step 2-4 continuation: repaired scalar integer stack-slot call-result
+publication in `fragment_for_prepared_call()` when prepared result banks are
+`None` but the result has explicit source-register metadata, register source
+storage, scalar integer BIR result type, matching stack-slot destination facts,
+and late source-register publication evidence.
 
-A temporary diagnostic-only formatter at the generic object-route rejection site
-identified the precise residual, then the formatter was removed and `c4cll` was
-rebuilt back from source. The representative still stops at:
+The focused object-emission fixture now covers the explicit
+`value_bank=None` / `source_register_bank=None` call-result plan and still
+rejects missing register-source publication, explicit FPR source bank,
+multi-width destinations, missing or mismatched stack-slot destination facts,
+pointer results, non-scalar results, and unsupported destination storage.
 
-```text
-unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering
-```
-
-The residual is not a distinct downstream owner. It is still `main`'s ordinary
-same-module `bir.call i16 showbug(ptr %lv.x, ptr %lv.y)`, with both pointer
-arguments accepted as local-frame-address materializations into `a0`/`a1`.
-The result publication is the i16 call result from ABI register `a0` to `%t2`'s
-stack-slot home, slot `#12` at stack offset `4`, size `2`, with late
-source-register publication available.
-
-Rejection site: `fragment_for_prepared_call()` reaches the stack-slot
-call-result publication branch but returns `nullopt` because the prepared result
-plan reports `value_bank=None` and `source_register_bank=None`, while the branch
-currently requires both to be `Gpr`. The failure then falls through to the
-generic `unsupported_instruction_fragment` diagnostic.
-
-The prior Step 1 call-result blocker is therefore not gone in this checkout; it
-remains in scope for idea 377 as a narrower scalar integer stack-slot
-call-result publication variant, not a lifecycle handoff.
+The single `src/20000217-1.c` RV64 gcc-torture backend object representative
+now passes. The audited call-result blocker is fixed in this checkout.
 
 ## Suggested Next
 
-Run a focused implementation packet in `fragment_for_prepared_call()` for scalar
-integer stack-slot call-result publication when prepared late-publication facts,
-the ABI source register, the BIR result type, and the destination stack home are
-sufficient even though the result plan's prepared banks are `None`.
+Step 5 closure/handoff review is ready. The representative no longer exposes an
+in-scope instruction-fragment residual for idea 377.
 
 ## Watchouts
 
 - The admitted lowering is metadata-driven; it does not key on function names,
   value ids, frame-slot ids, concrete registers beyond prepared ABI/source
   metadata, instruction indexes, source syntax, or prepared-BIR text.
-- Preserve fail-closed behavior for pointer results, non-scalar sizes,
-  missing source register/name, mismatched destination slot/offset, FPR/VREG
-  cases, multi-lane widths, and unsupported destination homes.
-- Do not close or hand off idea 377 on the current evidence; this is still the
-  audited call-result publication family.
+- Explicit `source_register_bank=None` is accepted only in the scalar integer
+  stack-slot call-result publication path; explicit FPR/VREG-style cases remain
+  fail-closed.
+- A temporary diagnostic probe was used during implementation and removed before
+  the final proof. The final source rebuild and tests came from clean source.
 
 ## Proof
 
-Audit-only packet. No root-level logs were written. A temporary diagnostic probe
-required rebuilding `c4cll`; after removing the probe, `c4cll` was rebuilt back
-from source:
+Focused proof passed and wrote the canonical root proof log:
 
 ```sh
-cmake --build build --target c4cll
+cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log
 ```
 
-Diagnostic capture commands wrote only delegated `build/agent_state/` artifacts:
+Representative proof passed:
 
 ```sh
-build/c4cll -I . --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000217-1.c > build/agent_state/377_step4_residual_20000217-1.prepared-bir.txt 2> build/agent_state/377_step4_residual_20000217-1.prepared-bir.err
-build/c4cll -I . --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000217-1.c -o build/agent_state/377_step4_residual_20000217-1.o > build/agent_state/377_step4_residual_20000217-1.codegen-obj.log 2>&1
+ALLOWLIST=build/agent_state/377_step4_bank_none_20000217-1.allowlist.txt STOP_ON_FAILURE=1 VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/377_step4_bank_none_20000217-1.runner.log 2>&1
 ```
 
-Result: object-route compile exited `2`, as expected for the residual audit.
+Result: `src/20000217-1.c` passed (`total=1 passed=1 failed=0`).
 
 Artifact paths:
 
-- `build/agent_state/377_step4_residual_instruction_fragment_audit.txt`
-- `build/agent_state/377_step4_residual_20000217-1.codegen-obj.log`
-- `build/agent_state/377_step4_residual_20000217-1.codegen-obj.rc`
-- `build/agent_state/377_step4_residual_20000217-1.prepared-bir.txt`
-- `build/agent_state/377_step4_residual_20000217-1.prepared-bir.err`
+- `test_after.log`
+- `build/agent_state/377_step4_bank_none_20000217-1.allowlist.txt`
+- `build/agent_state/377_step4_bank_none_20000217-1.runner.log`
+- `build/rv64_gcc_c_torture_backend/src_20000217-1.c/case.log`
+- diagnostic-only implementation artifacts under
+  `build/agent_state/377_step4_bank_none_20000217-1.*`
