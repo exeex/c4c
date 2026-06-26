@@ -640,6 +640,96 @@ prepare::PreparedBirModule make_prepared_variadic_va_start_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_variadic_va_end_module(
+    std::string prepared_callee = "llvm.va_end.p0",
+    std::size_t arg_count = 1) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("rv64_va_end");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+
+  bir::CallInst va_end;
+  va_end.callee = "llvm.va_end.p0";
+  va_end.return_type = bir::TypeKind::Void;
+  for (std::size_t i = 0; i < arg_count; ++i) {
+    va_end.args.push_back(
+        bir::Value::named(bir::TypeKind::Ptr, i == 0 ? "%ap" : "%extra"));
+    va_end.arg_types.push_back(bir::TypeKind::Ptr);
+  }
+  bir::Block entry{
+      .label = "entry",
+      .insts = {va_end},
+      .terminator = bir::Terminator{},
+      .label_id = entry_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "rv64_va_end",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .is_variadic = true,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.variadic_entry_plans.functions.push_back(
+      prepare::PreparedVariadicEntryPlanFunction{
+          .function_name = function_name,
+          .overflow_area =
+              prepare::PreparedVariadicEntryOverflowArea{
+                  .required = true,
+                  .base_slot_id = prepare::PreparedFrameSlotId{7},
+                  .base_stack_offset_bytes = std::size_t{64},
+                  .align_bytes = std::size_t{8},
+              },
+          .va_list_layout =
+              prepare::PreparedVariadicVaListLayout{
+                  .required = true,
+                  .size_bytes = std::size_t{8},
+                  .align_bytes = std::size_t{8},
+                  .fields = {prepare::PreparedVariadicVaListField{
+                      .kind = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+                      .offset_bytes = 0,
+                      .size_bytes = 8,
+                  }},
+              },
+      });
+
+  prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 0,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::move(prepared_callee),
+  };
+  for (std::size_t i = 0; i < arg_count; ++i) {
+    call_plan.arguments.push_back(prepare::PreparedCallArgumentPlan{
+        .instruction_index = 0,
+        .arg_index = i,
+        .value_bank = prepare::PreparedRegisterBank::Gpr,
+        .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+        .source_value_id = prepare::PreparedValueId{i + 1},
+        .source_register_name = std::string{i == 0 ? "s1" : "s2"},
+        .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+        .destination_register_name = std::string{i == 0 ? "a0" : "a1"},
+        .destination_contiguous_width = 1,
+        .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+    });
+  }
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {std::move(call_plan)},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_variadic_aggregate_va_arg_module(
     bool include_access_plan_payload_write_address) {
   prepare::PreparedBirModule prepared;
@@ -6242,6 +6332,56 @@ int materializes_fact_complete_variadic_va_start_with_overflow_base_state() {
   return 0;
 }
 
+int lowers_fact_complete_variadic_va_end_as_noop() {
+  const auto prepared = make_prepared_variadic_va_end_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared va_end RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "rv64_va_end");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared va_end object to publish text/function");
+  }
+  if (text->bytes.empty() || text->size_bytes != text->bytes.size() ||
+      function->value != 0 || function->size_bytes != text->bytes.size() ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared va_end object to publish one text function");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected va_end no-op lowering to need no relocations");
+  }
+  if (object::find_symbol(*module, "llvm.va_end.p0") != nullptr) {
+    return fail("expected va_end no-op lowering to avoid an extern symbol");
+  }
+  return 0;
+}
+
+int rejects_malformed_variadic_va_end_direct_extern_shapes() {
+  auto mismatched_callee =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(
+          make_prepared_variadic_va_end_module("not.llvm.va_end.p0"));
+  if (mismatched_callee.ok() || mismatched_callee.module.has_value()) {
+    return fail("expected mismatched prepared va_end callee plan to reject");
+  }
+  if (mismatched_callee.diagnostic !=
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") {
+    return fail("expected mismatched va_end plan to fail closed before call relocation");
+  }
+
+  auto multiple_args =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(
+          make_prepared_variadic_va_end_module("llvm.va_end.p0", 2));
+  if (multiple_args.ok() || multiple_args.module.has_value()) {
+    return fail("expected malformed two-argument va_end call to reject");
+  }
+  if (multiple_args.diagnostic !=
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") {
+    return fail("expected malformed va_end arity to fail closed before call relocation");
+  }
+  return 0;
+}
+
 int materializes_fact_complete_variadic_aggregate_va_arg_helper() {
   const auto prepared =
       make_prepared_variadic_aggregate_va_arg_module(true);
@@ -9768,6 +9908,8 @@ int main() {
   status |= rejects_fact_complete_variadic_va_start_without_overflow_base_state();
   status |=
       materializes_fact_complete_variadic_va_start_with_overflow_base_state();
+  status |= lowers_fact_complete_variadic_va_end_as_noop();
+  status |= rejects_malformed_variadic_va_end_direct_extern_shapes();
   status |=
       materializes_fact_complete_variadic_aggregate_va_arg_helper();
   status |=

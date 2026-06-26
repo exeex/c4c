@@ -1344,6 +1344,35 @@ fragment_for_prepared_variadic_va_arg_aggregate(
   return fragment;
 }
 
+std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_end(
+    const c4c::backend::prepare::PreparedCallPlan* call_plan,
+    const c4c::backend::bir::CallInst& call) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (call.callee != "llvm.va_end.p0" || call_plan == nullptr ||
+      call.is_indirect || call.callee_value.has_value() ||
+      call_plan->is_indirect || call_plan->indirect_callee.has_value() ||
+      call_plan->memory_return.has_value() ||
+      call_plan->outgoing_stack_argument_area.has_value() ||
+      call_plan->wrapper_kind !=
+          prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
+      !call_plan->direct_callee_name.has_value() ||
+      *call_plan->direct_callee_name != call.callee ||
+      call.return_type != c4c::backend::bir::TypeKind::Void ||
+      call.args.size() != 1 || call.arg_types.size() != 1 ||
+      call.arg_types[0] != c4c::backend::bir::TypeKind::Ptr ||
+      call.args[0].type != c4c::backend::bir::TypeKind::Ptr ||
+      call_plan->arguments.size() != 1) {
+    return std::nullopt;
+  }
+  return RiscvEncodedFragment{};
+}
+
+bool is_rv64_variadic_va_end_call(
+    const c4c::backend::bir::CallInst& call) {
+  return call.callee == "llvm.va_end.p0";
+}
+
 const c4c::backend::prepare::PreparedValueHome* prepared_value_home_for_id(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     c4c::backend::prepare::PreparedValueId value_id) {
@@ -5577,6 +5606,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       prepare::find_prepared_call_plans(prepared, control_flow.function_name),
       block_index,
       instruction_index);
+  if (auto fragment = fragment_for_prepared_variadic_va_end(call_plan, *call)) {
+    return fragment;
+  }
+  if (is_rv64_variadic_va_end_call(*call)) {
+    return std::nullopt;
+  }
   const auto* inline_asm_carrier =
       find_prepared_inline_asm_carrier(inline_asm_carriers, block_index, instruction_index);
   return fragment_for_prepared_call(prepared,
