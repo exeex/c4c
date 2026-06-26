@@ -121,6 +121,7 @@ std::optional<bir::CallArgAbiInfo> direct_bir_call_arg_abi_repair(
       return abi;
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
     case bir::TypeKind::I32:
     case bir::TypeKind::I64:
     case bir::TypeKind::Ptr:
