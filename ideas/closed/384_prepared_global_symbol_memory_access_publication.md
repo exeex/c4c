@@ -1,6 +1,6 @@
 # Prepared Global-Symbol Memory Access Publication
 
-Status: Open
+Status: Closed
 Type: Upstream prepared-data contract follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/383_rv64_global_aggregate_lane_materialization.md`
@@ -90,3 +90,33 @@ producer/contract before target object emission consumes it.
   shape.
 - Reject retaining the exact `unsupported_global_data` failure for the
   representative behind renamed helpers or moved diagnostics.
+
+## Closure Notes
+
+Closed after the producer path for aggregate global load lanes was repaired to
+publish canonical `bir.load_global` instructions and matching prepared
+`base=global_symbol` memory-access records. The representative
+`src/20030914-2.c` now publishes global-symbol lane facts through offset `68`,
+including symbol identity, offset, access size, alignment, and
+base-plus-offset support, and RV64 object emission consumes those explicit
+facts without reintroducing raw `LoadLocalInst addr <global>` inference.
+
+The focused prepared-contract and RV64 object-emission tests passed after the
+producer change. The representative advanced beyond the old
+`unsupported_global_data` boundary and now stops at a distinct same-module call
+lowering boundary:
+
+```text
+%t1 = bir.call i32 f(ptr byval(size=72, align=4) %t0, i32 4660)
+unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering
+```
+
+That next boundary is not a prepared global-symbol publication gap. It is
+handed off to
+`ideas/open/386_rv64_object_route_same_module_byval_aggregate_call_args.md`.
+
+Close-time regression guard used matching focused backend logs:
+
+- `test_before.log`: passed=2 failed=0 total=2
+- `test_after.log`: passed=2 failed=0 total=2
+- no newly failing tests

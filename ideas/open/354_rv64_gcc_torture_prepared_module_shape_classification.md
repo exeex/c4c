@@ -192,10 +192,26 @@ New follow-up child ideas:
 - `ideas/open/374_rv64_object_route_non_register_param_homes.md`
 - `ideas/open/375_rv64_object_route_scalar_compare_trunc_lowering.md`
 - `ideas/closed/383_rv64_global_aggregate_lane_materialization.md`
-- `ideas/open/384_prepared_global_symbol_memory_access_publication.md`
+- `ideas/closed/384_prepared_global_symbol_memory_access_publication.md`
+- `ideas/open/386_rv64_object_route_same_module_byval_aggregate_call_args.md`
 
 These follow-ups intentionally keep the residual buckets outside this
 classification umbrella's implementation scope. Idea 354 remains open until
 the new follow-up children are closed or intentionally superseded and a final
 closure review confirms the child set covers the dominant prepared-module-shape
 failures without testcase overfit.
+
+## Follow-up After 384
+
+Idea 384 closed the prepared global-symbol publication boundary for
+`src/20030914-2.c`. The representative now reaches a same-module call with a
+byval aggregate/address argument:
+
+```text
+%t1 = bir.call i32 f(ptr byval(size=72, align=4) %t0, i32 4660)
+```
+
+That boundary is split into child idea
+`ideas/open/386_rv64_object_route_same_module_byval_aggregate_call_args.md`.
+It is distinct from closed byval parameter-home idea 370 because the current
+failure is call argument lowering, not entry parameter-home admission.
