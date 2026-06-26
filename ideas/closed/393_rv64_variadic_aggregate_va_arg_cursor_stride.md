@@ -1,9 +1,10 @@
 # RV64 Variadic Aggregate Va Arg Cursor Stride
 
-Status: Open
+Status: Closed
 Type: Target lowering follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/387_rv64_object_route_same_module_sret_calls.md`
+Closed By: RV64 aggregate `va_arg` cursor stride repair plus Step 5 routing evidence
 
 ## Goal
 
@@ -67,6 +68,36 @@ consumption/layout.
 - `920908-1.c` advances past the current aggregate `va_arg` abort, or any
   remaining later boundary is recorded with a clear owner and split instead of
   expanding this idea.
+
+## Closure Notes
+
+The aggregate `va_arg` cursor-stride acceptance is satisfied. Step 5 evidence
+in `build/agent_state/393_step5_analysis.log` shows both aggregate helpers now
+carry `payload_size=4`, `copy_size=4`, `source_slot=8`,
+`progression_stride=8`, and `overflow_stride=8`.
+
+The representative advances past the owned aggregate boundary:
+
+- the first aggregate read observes `10`
+- the second aggregate read observes `20`
+- both prior abort branches are skipped
+
+The supervisor full backend proof for the implementation was accepted before
+closure: backend CTest remained 326/326 with no new failures. The plan-owner
+close gate was rerun as lifecycle-only validation with the accepted current
+backend baseline on both sides because `test_after.log` currently contains
+representative evidence, not a CTest after-log:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed`
+
+Result: PASS, 326/326 before and 326/326 after, no new failures.
+
+The remaining representative failure is a later same-module sret/callee
+`%ret.sret` home-publication boundary. `main` passes the sret address in `a0`,
+but callee `f` later loads stack-homed `%ret.sret` from `0(sp)` without a prior
+callee-side publication/save of incoming `a0` into the `%ret.sret` home slot.
+That boundary is split to
+`ideas/open/394_rv64_same_module_sret_callee_home_publication.md`.
 
 ## Reviewer Reject Signals
 
