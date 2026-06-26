@@ -1,6 +1,6 @@
 # Prepared I16 Same-Module Call Argument ABI Publication
 
-Status: Closed
+Status: Open
 Type: Follow-up producer repair idea
 Parent: `ideas/open/395_rv64_object_route_instruction_fragment_lowering.md`
 
@@ -117,3 +117,10 @@ formal publication.
   326/326 passing backend tests, with no new failures. The lifecycle-only
   close comparison used `--allow-non-decreasing-passed` because the accepted
   backend pass count remained unchanged.
+- 2026-06-26: Reopened after active 395 Step 1 reclassification and supervisor
+  clean-rebuild confirmation showed the close was premature. The fresh
+  `src/divmod-1.c` prepared dump still publishes frame-slot same-module `i16`
+  call arguments with `value_bank=gpr` but `dest_bank=none` and
+  `reason=call_arg_stack_to_stack`; `src/20000223-1.c` passes. This remains
+  the producer-side same-module `i16` call-argument ABI publication boundary,
+  not an RV64 object-emission opcode-lowering packet.
