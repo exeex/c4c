@@ -8,19 +8,17 @@ Current Step Title: Broader Guard And Closure Review
 
 ## Just Finished
 
-Step 4: Rerun Representative And Route Next Boundary completed the
-representative rerun for `src/20030914-2.c`.
+Step 5: Broader Guard And Closure Review completed broader validation for the
+repaired RV64 byval aggregate call-argument route.
 
-Supervisor-provided proof showed
-`llvm_gcc_c_torture_src_20030914_2_c` passes through the RV64 object route.
-The representative rerun did not expose a new distinct boundary, so execution
-can move to Step 5 broader guard and closure review.
+Supervisor-provided full-suite proof passed 3353/3353. No expectation or
+allowlist downgrade was accepted, and this active plan is ready for
+plan-owner closure review.
 
 ## Suggested Next
 
-Run Step 5 validation and closure review: choose the appropriate broader guard
-for the repaired RV64 byval aggregate call-argument route, then decide whether
-the active plan can close or needs lifecycle follow-up.
+Ask the plan owner to perform closure review for the active plan and decide
+whether the linked source idea can close or needs lifecycle follow-up.
 
 ## Watchouts
 
@@ -41,13 +39,31 @@ the active plan can close or needs lifecycle follow-up.
 - The dump expectation is intentionally stricter than the old failed snippet:
   it requires the explicit local-frame source selection and the byval stack-copy
   facts instead of reverting to `prior_preservation`.
+- Step 5 accepted validation results only; it did not accept expectation
+  rewrites, allowlist changes, or testcase-shaped downgrades as progress.
 
 ## Proof
 
-Supervisor-provided proof command:
+Supervisor-provided Step 5 proof command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_20030914_2_c$'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure
 ```
 
-Result: passed 1/1. Canonical proof log: `test_after.log`.
+Result: passed 3353/3353.
+
+Earlier supervisor proofs after regression repair also passed:
+
+```sh
+ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+Result: passed 324/324.
+
+```sh
+ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_20030914_2_c$'
+```
+
+Result: passed 1/1.
+
+Canonical proof log: `test_after.log`.
