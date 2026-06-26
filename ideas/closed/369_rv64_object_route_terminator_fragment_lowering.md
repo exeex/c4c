@@ -1,6 +1,6 @@
 # RV64 Object Route Terminator Fragment Lowering
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -61,6 +61,36 @@ string constant bucket.
   or pass result is documented.
 - Existing focused object-emission and prepared control-flow coverage remains
   green.
+
+## Completion Note
+
+Closed after the representative terminator-fragment blockers were audited and
+repaired with semantic RV64 object-route lowering:
+
+- `src/20000224-1.c` first failed on a fused conditional branch compare
+  `sgt i32 %reg, %reg`; RV64 emission now lowers it by normalizing to a
+  supported signed less-than branch form.
+- `src/20000112-1.c` next failed on a fused pointer-null branch compare
+  `ne ptr %reg, 0`; RV64 emission now lowers that supported null-compare branch
+  form while adjacent pointer compare variants remain fail-closed.
+
+Focused backend object-emission tests cover the admitted branch shapes and
+nearby rejected shapes. The representative rerun now has
+`src/20000224-1.c` passing, while `src/20000112-1.c` has advanced beyond the
+terminator-fragment owner to:
+
+```text
+unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering
+```
+
+That residual owner is outside this terminator-fragment idea and has been
+handed off to
+`ideas/open/378_rv64_object_route_20000112_instruction_fragment_lowering.md`.
+
+Close-time regression guard used the accepted full-suite baseline
+`test_baseline.log` and fresh full-suite `test_after.log`; both report
+`3353` passed, `0` failed, and the monotonic guard passed with non-decreasing
+pass-count mode.
 
 ## Reviewer Reject Signals
 
