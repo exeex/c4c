@@ -1978,7 +1978,6 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   if (call_plan->result.has_value()) {
     const auto& result = *call_plan->result;
     if (result.source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-        result.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
         result.source_contiguous_width != 1 ||
         result.destination_contiguous_width != 1) {
       return std::nullopt;
@@ -2006,6 +2005,49 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         return std::nullopt;
       }
       return fragment;
+    }
+    if (result.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot) {
+      const auto late_publication =
+          prepare::find_prepared_call_result_late_publication(result);
+      if (!late_publication.source_register_publication_available ||
+          result.value_bank != prepare::PreparedRegisterBank::Gpr ||
+          result.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
+          !result.source_register_name.has_value() ||
+          !result.destination_value_id.has_value() ||
+          !result.destination_slot_id.has_value() ||
+          !result.destination_stack_offset_bytes.has_value() ||
+          !call.result.has_value()) {
+        return std::nullopt;
+      }
+      const auto source = rv64_register_number(*result.source_register_name);
+      const auto* destination_home =
+          prepared_value_home_for_id(lookups, *result.destination_value_id);
+      if (call.result->type == c4c::backend::bir::TypeKind::Ptr) {
+        return std::nullopt;
+      }
+      const auto size_bytes = rv64_scalar_memory_size_for_type(call.result->type);
+      if (!source.has_value() || destination_home == nullptr ||
+          !size_bytes.has_value() ||
+          destination_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+          destination_home->slot_id != result.destination_slot_id ||
+          destination_home->offset_bytes != result.destination_stack_offset_bytes) {
+        return std::nullopt;
+      }
+      const auto destination_offset = prepared_stack_slot_home_offset(
+          stack_layout, *destination_home, stack_frame_bytes, *size_bytes);
+      if (!destination_offset.has_value() ||
+          static_cast<std::size_t>(*destination_offset) !=
+              *result.destination_stack_offset_bytes ||
+          !append_rv64_store_register_to_stack(fragment,
+                                              *source,
+                                              *destination_offset,
+                                              *size_bytes)) {
+        return std::nullopt;
+      }
+      return fragment;
+    }
+    if (result.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
+      return std::nullopt;
     }
     if (result.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
         result.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||

@@ -1527,6 +1527,64 @@ prepare::PreparedBirModule make_prepared_i16_local_store_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_scalar_stack_result_call_module() {
+  auto prepared = make_prepared_scalar_same_module_call_module();
+  const auto main_name = prepared.names.function_names.intern("main");
+
+  auto& main = prepared.module.functions[1];
+  main.return_type = bir::TypeKind::Void;
+  main.return_size_bytes = 0;
+  main.return_align_bytes = 1;
+  auto& call = std::get<bir::CallInst>(main.blocks[0].insts[0]);
+  call.result->type = bir::TypeKind::I16;
+  call.arg_types[0] = bir::TypeKind::I16;
+  call.return_type = bir::TypeKind::I16;
+  main.blocks[0].terminator.value = std::nullopt;
+
+  auto& result_home = prepared.value_locations.functions[1].value_homes[0];
+  result_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  result_home.register_name = std::nullopt;
+  result_home.slot_id = prepare::PreparedFrameSlotId{12};
+  result_home.offset_bytes = 4;
+  result_home.size_bytes = 2;
+  result_home.align_bytes = 2;
+
+  auto& result = *prepared.call_plans.functions[0].calls[0].result;
+  result.value_bank = prepare::PreparedRegisterBank::Gpr;
+  result.destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  result.destination_register_name = std::nullopt;
+  result.destination_register_bank = std::nullopt;
+  result.destination_slot_id = prepare::PreparedFrameSlotId{12};
+  result.destination_stack_offset_bytes = 4;
+  result.destination_contiguous_width = 1;
+
+  prepared.frame_plan.functions = {
+      prepare::PreparedFramePlanFunction{
+          .function_name = prepared.names.function_names.intern("add_three"),
+          .frame_size_bytes = 0,
+          .frame_alignment_bytes = 1,
+      },
+      prepare::PreparedFramePlanFunction{
+          .function_name = main_name,
+          .frame_size_bytes = 16,
+          .frame_alignment_bytes = 4,
+          .frame_slot_order = {prepare::PreparedFrameSlotId{12}},
+      },
+  };
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 4;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{12},
+          .function_name = main_name,
+          .offset_bytes = 4,
+          .size_bytes = 2,
+          .align_bytes = 2,
+      },
+  };
+  return prepared;
+}
+
 prepare::PreparedValueHome make_fpr_home(c4c::FunctionNameId function_name,
                                          c4c::ValueNameId value_name,
                                          prepare::PreparedValueId value_id,
@@ -4429,6 +4487,119 @@ int builds_prepared_scalar_same_module_call_object() {
       module->relocations[0].symbol != callee->id) {
     return fail("expected scalar same-module call relocation at call pair");
   }
+  return 0;
+}
+
+int builds_prepared_scalar_stack_result_call_object() {
+  const auto prepared = make_prepared_scalar_stack_result_call_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared scalar stack-result call RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* callee = object::find_symbol(module, "add_three");
+  const auto* main = object::find_symbol(module, "main");
+  if (text == nullptr || callee == nullptr || main == nullptr) {
+    return fail("expected prepared scalar stack-result call object to publish text/functions");
+  }
+  if (module.relocations.size() != 1 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != callee->id ||
+      module.relocations[0].offset < main->value ||
+      module.relocations[0].offset + 8 >= text->bytes.size()) {
+    return fail("expected scalar stack-result same-module call relocation");
+  }
+  if (read_u32(text->bytes, module.relocations[0].offset + 8) != 0x00a11223) {
+    return fail("expected scalar i16 call result to publish from a0 into stack slot");
+  }
+  return 0;
+}
+
+int expect_scalar_stack_result_call_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+}
+
+int rejects_prepared_scalar_stack_result_call_fail_closed_shapes() {
+  auto prepared = make_prepared_scalar_stack_result_call_module();
+  prepared.call_plans.functions[0].calls[0].result->source_register_name =
+      std::nullopt;
+  if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_result_call_module();
+  prepared.call_plans.functions[0].calls[0].result->source_register_bank =
+      prepare::PreparedRegisterBank::Fpr;
+  if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_result_call_module();
+  prepared.call_plans.functions[0].calls[0].result->destination_contiguous_width = 2;
+  if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_result_call_module();
+  prepared.call_plans.functions[0].calls[0].result->destination_slot_id =
+      std::nullopt;
+  if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_result_call_module();
+  prepared.call_plans.functions[0].calls[0].result->destination_stack_offset_bytes = 6;
+  if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_result_call_module();
+  prepared.value_locations.functions[1].value_homes[0].slot_id =
+      prepare::PreparedFrameSlotId{13};
+  if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_result_call_module();
+  if (auto* call = std::get_if<bir::CallInst>(
+          &prepared.module.functions[1].blocks[0].insts[0])) {
+    call->result->type = bir::TypeKind::F32;
+  }
+  if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_result_call_module();
+  if (auto* call = std::get_if<bir::CallInst>(
+          &prepared.module.functions[1].blocks[0].insts[0])) {
+    call->result->type = bir::TypeKind::Ptr;
+    call->return_type = bir::TypeKind::Ptr;
+  }
+  prepared.value_locations.functions[1].value_homes[0].offset_bytes = 8;
+  prepared.value_locations.functions[1].value_homes[0].size_bytes = 8;
+  prepared.value_locations.functions[1].value_homes[0].align_bytes = 8;
+  prepared.call_plans.functions[0].calls[0].result->destination_stack_offset_bytes = 8;
+  prepared.stack_layout.frame_slots[0].offset_bytes = 8;
+  prepared.stack_layout.frame_slots[0].size_bytes = 8;
+  prepared.stack_layout.frame_slots[0].align_bytes = 8;
+  if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_stack_result_call_module();
+  prepared.call_plans.functions[0].calls[0].result->destination_storage_kind =
+      prepare::PreparedMoveStorageKind::None;
+  if (expect_scalar_stack_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
   return 0;
 }
 
@@ -7352,6 +7523,8 @@ int main() {
   status |= builds_prepared_successor_entry_copy_from_shared_traversal();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
+  status |= builds_prepared_scalar_stack_result_call_object();
+  status |= rejects_prepared_scalar_stack_result_call_fail_closed_shapes();
   status |= builds_prepared_fpr_same_module_call_object();
   status |= preserves_missing_variadic_entry_plan_diagnostic();
   status |= preserves_missing_variadic_required_facts_diagnostic();

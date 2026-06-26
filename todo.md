@@ -1,72 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/377_rv64_object_route_instruction_fragment_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit First Instruction Fragment
+Current Step ID: 3
+Current Step Title: Prove Focused Backend Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Audit First Instruction Fragment completed for
-`tests/c/external/gcc_torture/src/20000217-1.c`.
+Steps 2-3: Implement Focused Instruction Lowering and Prove Focused Backend
+Coverage completed for scalar integer call-result publication from a prepared
+ABI result register to a prepared stack-slot home.
 
-The first rejected ordinary prepared instruction fragment is in `main`, block
-`entry`, at the same-module direct `bir.call i16 showbug(ptr %lv.x, ptr %lv.y)`.
-The prepared call arguments are local frame address materializations for
-`%lv.x` and `%lv.y`, selected from frame slots `#4` and `#5` and passed in ABI
-GPRs `a0` and `a1`. The rejected result shape is scalar integer call-result
-publication from ABI register `a0` to `%t2`'s stack-slot home: slot `#12`,
-stack offset `4`, type `i16`, `late_publication=yes`,
-`late_source_register=yes`.
+`fragment_for_prepared_call()` now admits the focused result shape when
+prepared metadata shows a one-lane GPR source register, a stack-slot
+destination, a destination value id, matching destination slot/offset facts, a
+matching prepared stack-slot value home, and a supported scalar integer result
+size. The emitted publication stores the ABI result register to the prepared
+stack offset after the call pair.
 
-Rejection site: `fragment_for_prepared_instruction()` dispatches the call to
-`fragment_for_prepared_call()`. That helper accepts the same-module/direct
-wrapper and the local-frame-address GPR arguments, but rejects this result plan
-because non-FPR call results currently require register-to-register
-publication. The specific diagnostic helper has no call-result case, so the
-route falls through to the generic
-`unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`.
-
-Evidence artifacts:
-- `build/agent_state/377_step1_instruction_fragment_audit.txt`
-- `build/agent_state/377_step1_20000217-1.prepared-bir.txt`
-- `build/agent_state/377_step1_20000217-1.codegen-obj.log`
-- `build/agent_state/377_step1_diag_probe.log`
+Focused backend tests cover an admitted `i16` result publication from `a0` to
+stack slot offset `4`, and fail-closed adjacent shapes for missing source
+register, FPR/source-bank mismatch, multi-lane destination width, missing
+destination slot, destination offset drift, destination home drift, non-integer
+result type, pointer-typed result publication with otherwise matching 8-byte
+stack-slot metadata, and unsupported destination storage.
 
 ## Suggested Next
 
-Implement focused RV64 object lowering for supported scalar integer call-result
-publication from an ABI result register to a prepared stack-slot home in
-`fragment_for_prepared_call()`, with focused backend tests for the admitted
-shape and fail-closed adjacent result shapes.
+Step 4: rerun the single `src/20000217-1.c` RV64 gcc-torture backend object
+representative with the supervisor-selected allowlist/stop-on-failure command,
+then record whether the prior call-result publication blocker is gone and
+whether the representative passes or advances to a distinct next owner.
 
 ## Watchouts
 
-- Do not key behavior on testcase names, value ids, frame slots, registers,
-  instruction indexes, source syntax, or prepared-BIR text matching.
-- Do not reopen idea 375 compare/trunc or idea 376 move-bundle ownership.
-- The diagnostic probe was temporary and removed before completion; it only
-  identified `main` block index `0`, instruction index `2` as the generic
-  rejection owner.
-- The next slice should use prepared call-result metadata, not the probed
-  indices or this representative's concrete value names.
+- The admitted lowering is metadata-driven; it does not key on function names,
+  value ids, frame-slot ids, concrete registers beyond prepared ABI/source
+  metadata, instruction indexes, source syntax, or prepared-BIR text.
+- FPR/non-integer, pointer-typed result publication, non-stack destination,
+  missing home, mismatched home/plan slot facts, offset drift, and multi-lane
+  result plans remain rejected by the object route.
+- The supported fixture keeps callee arithmetic on an already-supported i32
+  path and isolates the caller-side `i16` stack-result publication.
 
 ## Proof
 
-Audit-only packet. Regenerated prepared and object-route evidence under
-`build/agent_state/377_step1_*`.
-
-Commands run:
+Supervisor-selected proof passed and wrote `test_after.log`:
 
 ```sh
-build/c4cll --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000217-1.c > build/agent_state/377_step1_20000217-1.prepared-bir.txt 2>&1
-build/c4cll --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000217-1.c -o build/agent_state/377_step1_20000217-1.o > build/agent_state/377_step1_20000217-1.codegen-obj.log 2>&1
-cmake --build build --target c4cll
-build/c4cll --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000217-1.c -o build/agent_state/377_step1_diag_probe.o > build/agent_state/377_step1_diag_probe.log 2>&1
-cmake --build build --target c4cll
+cmake --build build --target c4cll backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_riscv_object_emission_test && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_riscv_object_emission)$' --output-on-failure > test_after.log
 ```
 
-The first `--codegen obj` and diagnostic probe commands exited nonzero as
-expected for the unsupported object-route shape. No root-level logs were
-written.
+Focused subset used: `backend_prepare_frame_stack_call_contract`,
+`backend_prepared_printer`, `backend_riscv_object_emission`.
