@@ -1,9 +1,10 @@
 # RV64 Object Route Same-Module Sret Calls
 
-Status: Open
+Status: Closed
 Type: Target lowering follow-up
 Parent: `ideas/open/386_rv64_object_route_unsupported_instruction_fragment.md`
 Exposed By: Step 1 evidence from idea 386.
+Closed By: stack-homed sret parameter stores plus same-module frame-slot memory_return/sret call support
 
 ## Goal
 
@@ -63,6 +64,49 @@ classifying ordinary argument lowering.
 - `920908-1.c` is rerun and documented against the new boundary.
 - Any later boundary is routed to an existing or new owner instead of being
   folded silently into this idea.
+
+## Closure Notes
+
+Idea 387 is complete. Step 1 refreshed the representative evidence and
+confirmed the same-module call carried `call_plan->memory_return` plus an sret
+address represented through local frame address materialization. Step 2
+classified the first support gap as stack-homed sret parameter pointer-value
+stores. Commit `726c0025` added that support. Commit `1ab46b0b` then added
+same-module frame-slot memory_return/sret call support.
+
+Focused backend proof passed for the code slices, and `test_before.log` is the
+current accepted backend baseline from Step 4 with 326/326 backend tests
+passing. Step 5 reran the representative and proved the previous same-module
+sret object-emission boundary is gone:
+
+- `main` materializes the sret object address into `a0`.
+- ordinary arguments are published into `a1`, `a2`, and `a3`.
+- the object links and runs far enough to enter callee `f`.
+- qemu evidence shows `f` entry receives `a2=10` and `a3=20`.
+
+The remaining `920908-1.c` abort is a later owner, not an idea-387 sret owner.
+Step 5 analysis shows c4c's callee-side variadic aggregate `va_arg` consumes
+the first aggregate payload correctly, then advances the variadic cursor by 4
+bytes instead of advancing to the next 8-byte variadic GPR save-area slot. The
+second aggregate read therefore observes `0` instead of `20` and branches to
+`abort()`. Evidence:
+
+- `build/agent_state/387_step5_analysis.log`
+- `build/agent_state/387_step5_920908-1.run.log`
+- `test_after.log`
+
+That later boundary is split to
+`ideas/open/393_rv64_variadic_aggregate_va_arg_cursor_stride.md`.
+
+Close gate:
+
+- Canonical `test_after.log` is the Step 5 representative log and no longer
+  contains a CTest summary.
+- Because Step 5 was todo-only and `test_before.log` is the current accepted
+  backend baseline from Step 4, the plan owner used that current backend
+  baseline as both sides of the non-regression close check:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed`
+- Result: PASS, 326/326 before and 326/326 after, no new failures.
 
 ## Reviewer Reject Signals
 
