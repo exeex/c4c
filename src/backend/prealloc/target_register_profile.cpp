@@ -76,6 +76,7 @@ template <std::size_t N>
   switch (type) {
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
     case bir::TypeKind::I32:
     case bir::TypeKind::I64:
     case bir::TypeKind::Ptr:

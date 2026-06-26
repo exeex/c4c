@@ -3269,6 +3269,66 @@ bir::Module make_riscv_fpr_formal_identity_contract_module(std::string_view targ
   return module;
 }
 
+bir::Module make_riscv_i16_formal_identity_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-linux-gnu";
+
+  bir::Function function;
+  function.name = "riscv_i16_formal_identity_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I16,
+      .name = "%p.x",
+      .size_bytes = 2,
+      .align_bytes = 2,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I16,
+          .size_bytes = 2,
+          .align_bytes = 2,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I16,
+      .name = "%p.y",
+      .size_bytes = 2,
+      .align_bytes = 2,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I16,
+          .size_bytes = 2,
+          .align_bytes = 2,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .operand = bir::Value::named(bir::TypeKind::I16, "%p.x"),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t1"),
+      .operand = bir::Value::named(bir::TypeKind::I16, "%p.y"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t2"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "%t1"),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "%t2")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int check_riscv_fpr_formal_home_publishes_target_identity(std::string_view target_triple) {
   const auto prepared =
       prepare_riscv_float_abi_module(
@@ -3313,6 +3373,61 @@ int check_riscv_fpr_formal_home_publishes_target_identity(std::string_view targe
       result_identity.register_class != prepare::PreparedRegisterClass::Float ||
       result_identity.physical_index != 0) {
     return fail("rv64 FPR formal identity contract: FPExt result identity did not name physical ft0");
+  }
+  return 0;
+}
+
+int check_riscv_i16_formal_home_publishes_gpr_identity() {
+  const auto prepared =
+      prepare_riscv_module(make_riscv_i16_formal_identity_contract_module());
+  const auto* locations =
+      prepare::find_prepared_value_location_function(
+          prepared, "riscv_i16_formal_identity_contract");
+  const auto* storage_plan =
+      find_storage_plan_function(prepared, "riscv_i16_formal_identity_contract");
+  const auto* x_home = locations == nullptr
+                           ? nullptr
+                           : prepare::find_prepared_value_home(
+                                 prepared.names, *locations, "%p.x");
+  const auto* y_home = locations == nullptr
+                           ? nullptr
+                           : prepare::find_prepared_value_home(
+                                 prepared.names, *locations, "%p.y");
+  const auto* x_storage =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "%p.x");
+  const auto* y_storage =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "%p.y");
+
+  if (x_home == nullptr || y_home == nullptr ||
+      x_storage == nullptr || y_storage == nullptr) {
+    return fail("rv64 i16 formal identity contract: missing prepared formal facts");
+  }
+  const auto check_home = [](const prepare::PreparedValueHome& home,
+                             const char* register_name,
+                             std::size_t physical_index) -> bool {
+    return home.kind == prepare::PreparedValueHomeKind::Register &&
+           home.register_name == std::optional<std::string>{register_name} &&
+           home.target_register_identity.has_value() &&
+           home.target_register_identity->target_arch == c4c::TargetArch::Riscv64 &&
+           home.target_register_identity->bank == prepare::PreparedRegisterBank::Gpr &&
+           home.target_register_identity->register_class ==
+               prepare::PreparedRegisterClass::General &&
+           home.target_register_identity->physical_index == physical_index;
+  };
+  if (!check_home(*x_home, "a0", 10) || !check_home(*y_home, "a1", 11)) {
+    return fail("rv64 i16 formal identity contract: formal did not publish GPR identity");
+  }
+
+  const auto check_storage =
+      [](const prepare::PreparedStoragePlanValue& storage,
+         const char* register_name) -> bool {
+    return storage.encoding == prepare::PreparedStorageEncodingKind::Register &&
+           storage.bank == prepare::PreparedRegisterBank::Gpr &&
+           storage.register_name == std::optional<std::string>{register_name} &&
+           storage.occupied_register_names == std::vector<std::string>{register_name};
+  };
+  if (!check_storage(*x_storage, "a0") || !check_storage(*y_storage, "a1")) {
+    return fail("rv64 i16 formal identity contract: storage did not publish GPR register facts");
   }
   return 0;
 }
@@ -9032,6 +9147,10 @@ int main() {
   }
   if (const int rc = check_riscv_fpr_formal_home_publishes_target_identity(
           "riscv64-linux-gnu");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_riscv_i16_formal_home_publishes_gpr_identity();
       rc != 0) {
     return rc;
   }
