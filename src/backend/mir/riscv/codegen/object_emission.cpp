@@ -2355,6 +2355,18 @@ std::optional<unsigned> rv64_integer_type_bits(c4c::backend::bir::TypeKind type)
   }
 }
 
+bool rv64_fixed_integer_type(c4c::backend::bir::TypeKind type) {
+  switch (type) {
+    case c4c::backend::bir::TypeKind::I8:
+    case c4c::backend::bir::TypeKind::I16:
+    case c4c::backend::bir::TypeKind::I32:
+    case c4c::backend::bir::TypeKind::I64:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool rv64_floating_type(c4c::backend::bir::TypeKind type) {
   return type == c4c::backend::bir::TypeKind::F32 ||
          type == c4c::backend::bir::TypeKind::F64;
@@ -2905,6 +2917,24 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_cast(
                                             *size_bytes);
   if (!destination.has_value() && !destination_stack_offset.has_value()) {
     return std::nullopt;
+  }
+
+  if (cast.opcode == c4c::backend::bir::CastOpcode::ZExt &&
+      *result_bits == *source_bits) {
+    if (!rv64_fixed_integer_type(cast.operand.type) ||
+        !rv64_fixed_integer_type(cast.result.type) ||
+        !destination.has_value()) {
+      return std::nullopt;
+    }
+    const auto* source_home = prepared_value_home_for(names, lookups, cast.operand);
+    const auto source =
+        source_home == nullptr ? std::nullopt : gpr_register_number_for_home(*source_home);
+    if (!source.has_value()) {
+      return std::nullopt;
+    }
+    RiscvEncodedFragment fragment;
+    append_rv64_move(fragment, *destination, *source);
+    return fragment;
   }
 
   const std::uint32_t destination_register = destination.value_or(30);

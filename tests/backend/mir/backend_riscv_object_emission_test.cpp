@@ -2173,6 +2173,97 @@ prepare::PreparedBirModule make_prepared_global_i8_zext_load_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_same_width_integer_zext_module(
+    bir::CastOpcode opcode = bir::CastOpcode::ZExt,
+    bir::TypeKind operand_type = bir::TypeKind::I32,
+    bir::TypeKind result_type = bir::TypeKind::I32,
+    prepare::PreparedValueHomeKind source_home_kind =
+        prepare::PreparedValueHomeKind::Register,
+    prepare::PreparedValueHomeKind result_home_kind =
+        prepare::PreparedValueHomeKind::Register) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("same_width_zext");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("%in");
+  const auto result_name = prepared.names.value_names.intern("%out");
+  const std::size_t operand_size_bytes =
+      operand_type == bir::TypeKind::I64 || operand_type == bir::TypeKind::Ptr
+          ? 8
+          : 4;
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::CastInst{
+                  .opcode = opcode,
+                  .result = bir::Value::named(result_type, "%out"),
+                  .operand = bir::Value::named(operand_type, "%in"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "same_width_zext",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = {bir::Param{
+          .type = operand_type,
+          .name = "%in",
+          .size_bytes = operand_size_bytes,
+          .align_bytes = operand_size_bytes,
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+
+  prepare::PreparedValueHome source_home{
+      .value_id = 1,
+      .function_name = function_name,
+      .value_name = source_name,
+      .kind = source_home_kind,
+      .register_name = std::string{"t0"},
+  };
+  if (source_home_kind == prepare::PreparedValueHomeKind::StackSlot) {
+    source_home.register_name = std::nullopt;
+    source_home.slot_id = prepare::PreparedFrameSlotId{0};
+    source_home.offset_bytes = 0;
+    source_home.size_bytes = 4;
+    source_home.align_bytes = 4;
+  }
+  prepare::PreparedValueHome result_home{
+      .value_id = 2,
+      .function_name = function_name,
+      .value_name = result_name,
+      .kind = result_home_kind,
+      .register_name = std::string{"s2"},
+  };
+  if (result_home_kind == prepare::PreparedValueHomeKind::StackSlot) {
+    result_home.register_name = std::nullopt;
+    result_home.slot_id = prepare::PreparedFrameSlotId{1};
+    result_home.offset_bytes = 8;
+    result_home.size_bytes = 4;
+    result_home.align_bytes = 4;
+  }
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {std::move(source_home), std::move(result_home)},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_global_store_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -7446,6 +7537,67 @@ int emits_prepared_global_i8_load_and_zext_instruction() {
   return 0;
 }
 
+int emits_prepared_same_width_i32_zext_gpr_copy() {
+  const auto prepared = make_prepared_same_width_integer_zext_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared same-width i32 zext GPR cast to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  if (text == nullptr || text->bytes.size() < 8) {
+    return fail("expected same-width zext copy and return text");
+  }
+  const auto copy = read_u32(text->bytes, 0);
+  if ((copy & 0x7fU) != 0x13U || ((copy >> 7) & 0x1fU) != 18U ||
+      ((copy >> 12) & 0x7U) != 0U || ((copy >> 15) & 0x1fU) != 5U ||
+      ((copy >> 20) & 0xfffU) != 0U) {
+    return fail("expected same-width zext to publish prepared GPR copy");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize same-width zext object");
+  }
+  return 0;
+}
+
+int rejects_prepared_same_width_zext_fail_closed_shapes() {
+  const std::string unsupported_instruction =
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_same_width_integer_zext_module(bir::CastOpcode::SExt),
+          unsupported_instruction) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_same_width_integer_zext_module(bir::CastOpcode::ZExt,
+                                                       bir::TypeKind::Ptr,
+                                                       bir::TypeKind::Ptr),
+          unsupported_instruction) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_same_width_integer_zext_module(
+              bir::CastOpcode::ZExt,
+              bir::TypeKind::I32,
+              bir::TypeKind::I32,
+              prepare::PreparedValueHomeKind::StackSlot),
+          "unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes") !=
+      0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_same_width_integer_zext_module(
+              bir::CastOpcode::ZExt,
+              bir::TypeKind::I32,
+              bir::TypeKind::I32,
+              prepare::PreparedValueHomeKind::Register,
+              prepare::PreparedValueHomeKind::StackSlot),
+          unsupported_instruction) != 0) {
+    return 1;
+  }
+  return 0;
+}
+
 int emits_prepared_global_store_relocations_and_instruction() {
   const auto prepared = make_prepared_global_store_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -7934,6 +8086,8 @@ int main() {
   status |= emits_prepared_global_address_relocations_to_object_symbol();
   status |= emits_prepared_global_load_relocations_and_instruction();
   status |= emits_prepared_global_i8_load_and_zext_instruction();
+  status |= emits_prepared_same_width_i32_zext_gpr_copy();
+  status |= rejects_prepared_same_width_zext_fail_closed_shapes();
   status |= emits_prepared_global_store_relocations_and_instruction();
   status |= emits_prepared_global_i16_store_instruction();
   status |= serializes_rv64_relocatable_elf_contract();
