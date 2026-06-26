@@ -5744,6 +5744,20 @@ int skips_published_prepared_join_transfer_select_carrier_object() {
   if (select_true_label != nullptr || select_end_label != nullptr) {
     return fail("expected published-copy join select carrier to avoid local select labels");
   }
+  if (text->bytes.size() != 24 || text->size_bytes != 24 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 24 ||
+      true_copy_label->value != 4 || false_copy_label->value != 12 ||
+      join_label->value != 20) {
+    return fail("expected published-copy join object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x0000006f ||
+      read_u32(text->bytes, 4) != 0x00100513 ||
+      read_u32(text->bytes, 8) != 0x0000006f ||
+      read_u32(text->bytes, 12) != 0x00030513 ||
+      read_u32(text->bytes, 16) != 0x0000006f ||
+      read_u32(text->bytes, 20) != 0x00008067) {
+    return fail("expected predecessor terminators to publish select edge copies before jumps");
+  }
   bool saw_select_local_relocation = false;
   for (const auto& relocation : module->relocations) {
     if (relocation.type != R_RISCV_JAL && relocation.type != R_RISCV_BRANCH) {
@@ -5764,6 +5778,41 @@ int skips_published_prepared_join_transfer_select_carrier_object() {
   }
   if (saw_select_local_relocation) {
     return fail("expected published-copy join select carrier to need no select relocations");
+  }
+  return 0;
+}
+
+int rejects_published_prepared_join_transfer_select_ambiguous_publications_object() {
+  auto stack_source = make_prepared_join_transfer_select_with_published_copies_module();
+  auto& false_source_home = stack_source.value_locations.functions.front().value_homes.at(1);
+  false_source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  false_source_home.register_name.reset();
+  false_source_home.target_register_identity.reset();
+  false_source_home.slot_id = prepare::PreparedFrameSlotId{7};
+  false_source_home.offset_bytes = 0;
+  false_source_home.size_bytes = std::size_t{4};
+  false_source_home.align_bytes = std::size_t{4};
+  stack_source.stack_layout.frame_size_bytes = 4;
+  stack_source.stack_layout.frame_alignment_bytes = 4;
+  stack_source.stack_layout.frame_slots = {prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{7},
+      .function_name = stack_source.names.function_names.find("main"),
+      .offset_bytes = 0,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  }};
+  if (rv64::build_rv64_prepared_text_object_module(stack_source).has_value()) {
+    return fail("expected published-copy select object path to reject stack-source publication");
+  }
+
+  auto non_select_carrier =
+      make_prepared_join_transfer_select_with_published_copies_module();
+  non_select_carrier.control_flow.functions.front()
+      .parallel_copy_bundles.front()
+      .moves.front()
+      .carrier_kind = prepare::PreparedJoinTransferCarrierKind::None;
+  if (rv64::build_rv64_prepared_text_object_module(non_select_carrier).has_value()) {
+    return fail("expected published-copy select object path to reject non-select carrier publication");
   }
   return 0;
 }
@@ -8016,6 +8065,7 @@ int main() {
   status |= rejects_prepared_scalar_compare_trunc_fail_closed_shapes();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= skips_published_prepared_join_transfer_select_carrier_object();
+  status |= rejects_published_prepared_join_transfer_select_ambiguous_publications_object();
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_frame_slot_value_arg_call_object();
   status |= rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes();

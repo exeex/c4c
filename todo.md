@@ -1,61 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/379_rv64_object_route_20000112_runtime_join_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit First Runtime Publication Mismatch
+Current Step ID: 2
+Current Step Title: Implement the First Semantic Publication Repair
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 audit identified the first incorrect runtime publication shape in
-`src/20000112-1.c`: a `select_materialization`/phi-edge join publication at
-`special_format` `logic.end.7`, where predecessor terminators must publish the
-chosen incoming value into the join result home before the join block consumes
-it.
+Step 2 implemented the first semantic RV64 object-route publication repair for
+prepared predecessor-terminator `select_materialization` parallel copies.
+The shared edge-publication adapter now accepts authoritative immediate
+sources carried by `PreparedMoveResolution::source_immediate_i32`, so an
+immediate incoming value can publish directly into the join result register
+without requiring a separate source home. The object route now validates
+predecessor-terminator select-publication bundles before using the existing
+move-bundle emitter, admitting only immediate-to-GPR and GPR-to-GPR moves and
+rejecting adjacent stack-source or non-select-carrier shapes.
 
-Required semantic operands and homes:
-- Join result `%t13`/value_id 5 has register home `t0`.
-- Skip incoming `logic.skip.5 -> logic.end.7` is immediate `1` and must be
-  materialized into `%t13`'s home before entering the join.
-- RHS incoming `logic.rhs.end.6 -> logic.end.7` is `%t9`/value_id 4, also in
-  `t0`, after booleanizing `%t8`.
-- The RHS call result `%t8`/value_id 3 has register home `s2`; it is not the
-  join result and is undefined/stale on the skip edge.
-
-Prepared evidence names this as `join_transfer logic.end.7 result=%t13
-kind=phi_edge carrier=select_materialization ownership=authoritative_branch_pair`
-with `parallel_copy logic.skip.5 -> logic.end.7` moving `1 -> %t13` at the
-predecessor terminator. The object route emits `li t0,1` in the skip block, but
-the join block immediately evaluates `s2 != 0` (`mv t3,s2; ...; snez t0,t0`)
-instead of consuming `%t13`'s published home. This loses the skip-edge
-publication and reads the RHS pointer home, producing the wrong short-circuit
-value before the next branch.
+Focused object coverage now asserts the published select carrier is skipped at
+the join, predecessor terminators emit the expected `li` and `mv` publication
+bytes before their jumps, and unsupported adjacent publication shapes remain
+fail-closed.
 
 ## Suggested Next
 
-Implement the RV64 object-route lowering for prepared predecessor-terminator
-parallel-copy publications whose carrier is `select_materialization`, starting
-with immediate-to-register and same-bank register-to-register moves into the
-join result home.
+Run Step 3 for `src/20000112-1.c` through the supervisor-provided RV64 GCC
+torture allowlist command, then record whether the representative passes or
+advances to a distinct next owner.
 
 ## Watchouts
 
-The repair should key off prepared `join_transfer`/`parallel_copy` metadata,
-move kind, source/destination homes, and value bank. Do not key off testcase
-name, C source spelling, exact value ids, physical register names, block labels,
-instruction indexes, objdump addresses, or log text. Keep terminator lowering
-and same-width `ZExt` lowering closed.
+The object route still intentionally rejects select-publication stack sources,
+cycle-temp moves, non-predecessor execution, and carrier drift. The validator
+uses prepared publication and parallel-copy metadata; do not loosen it through
+testcase names, exact labels, hard-coded value ids, or physical-register
+special cases. The next packet should not broaden into CFG reconstruction or
+register allocation replacement if the representative exposes a different
+owner.
 
 ## Proof
 
-Audit-only packet. No code change or build proof was required, and no root
-proof logs were regenerated. Evidence inspected:
-`ideas/open/379_rv64_object_route_20000112_runtime_join_publication.md`,
-`build/agent_state/378_step1_20000112.semantic_bir.log`,
-`build/agent_state/378_step1_20000112.prepared_bir.log`,
-`build/agent_state/378_step5_20000112.c4c_objdump.log`,
-`build/agent_state/378_step5_20000112.qemu_strace.err`,
-`build/agent_state/378_step5_20000112.qemu_strace.out`,
-`build/rv64_gcc_c_torture_backend/src_20000112-1.c/case.log`,
-`test_before.log`, and `test_after.log`.
+Ran the supervisor-selected proof command:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_riscv_prepared_edge_publication|backend_riscv_object_emission|backend_codegen_route_riscv64_(short_circuit_select_false_lhs|compare_result_select_false_arm|pointer_typed_select_publication)|backend_rv64_runtime_riscv64_(short_circuit_select_false_lhs|compare_result_select_false_arm|pointer_typed_select_publication))$' | tee test_after.log`
+
+Result: passed, 8/8 tests green. Proof log: `test_after.log`.

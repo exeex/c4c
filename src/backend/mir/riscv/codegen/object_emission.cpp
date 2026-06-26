@@ -2,6 +2,7 @@
 
 #include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/target_register_profile.hpp"
+#include "emit.hpp"
 #include "prepared_frame_emit.hpp"
 #include "rv64_line_assembler.hpp"
 
@@ -23,6 +24,7 @@ namespace {
 
 namespace object = c4c::backend::mir::object;
 namespace prepare = c4c::backend::prepare;
+namespace bir = c4c::backend::bir;
 
 constexpr std::uint16_t kElfMachineRiscv = 243;
 constexpr std::uint32_t kRiscvElfFlagsRv64DoubleFloatAbi = 0x5;
@@ -3477,6 +3479,140 @@ bool prepared_join_transfer_edge_copies_are_published(
       });
 }
 
+std::optional<prepare::PreparedValueId> prepared_value_id_for_named_value(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedFunctionLookups* lookups,
+    const bir::Value& value) {
+  if (lookups == nullptr || value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto value_id_it = lookups->value_homes.value_ids.find(value_name);
+  if (value_id_it == lookups->value_homes.value_ids.end()) {
+    return std::nullopt;
+  }
+  return value_id_it->second;
+}
+
+bool prepared_select_publication_move_is_rv64_object_admitted(
+    const EdgePublicationMoveIntent& intent) {
+  if (intent.status != EdgePublicationMoveIntentStatus::Available ||
+      intent.destination_register.empty() ||
+      intent.destination_stack_offset_bytes.has_value() ||
+      intent.source_stack_offset_bytes.has_value() ||
+      intent.source_memory_byte_offset.has_value() ||
+      intent.source_pointer_byte_delta.has_value()) {
+    return false;
+  }
+
+  const auto destination = rv64_register_number(intent.destination_register);
+  if (!destination.has_value()) {
+    return false;
+  }
+
+  if (intent.source_immediate_i32.has_value()) {
+    if (!intent.source_register.empty() ||
+        !fits_signed_12_bit_immediate(*intent.source_immediate_i32)) {
+      return false;
+    }
+    return true;
+  }
+
+  if (intent.source_register.empty()) {
+    return false;
+  }
+  const auto source = rv64_register_number(intent.source_register);
+  if (!source.has_value()) {
+    return false;
+  }
+  return true;
+}
+
+bool prepared_predecessor_select_publication_bundle_is_rv64_object_admitted(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedFunctionLookups* lookups,
+    const prepare::PreparedParallelCopyBundle& bundle) {
+  if (bundle.execution_site !=
+      prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return true;
+  }
+
+  bool has_select_publication = false;
+  for (const auto& move : bundle.moves) {
+    const auto destination_value_id =
+        prepared_value_id_for_named_value(names, lookups, move.destination_value);
+    const auto intent =
+        destination_value_id.has_value()
+            ? consume_edge_publication_move_intent(lookups,
+                                                   bundle.predecessor_label,
+                                                   bundle.successor_label,
+                                                   *destination_value_id)
+            : EdgePublicationMoveIntent{};
+    has_select_publication =
+        has_select_publication ||
+        move.carrier_kind ==
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        (intent.publication != nullptr &&
+         intent.publication->carrier_kind ==
+             prepare::PreparedJoinTransferCarrierKind::SelectMaterialization);
+  }
+  if (!has_select_publication) {
+    return true;
+  }
+
+  for (const auto& step : bundle.steps) {
+    if (step.kind != prepare::PreparedParallelCopyStepKind::Move ||
+        step.uses_cycle_temp_source) {
+      return false;
+    }
+    const auto* move = prepare::find_prepared_parallel_copy_move_for_step(
+        bundle,
+        step);
+    if (move == nullptr) {
+      return false;
+    }
+    const auto destination_value_id =
+        prepared_value_id_for_named_value(names, lookups, move->destination_value);
+    if (!destination_value_id.has_value()) {
+      if (move->carrier_kind ==
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization) {
+        return false;
+      }
+      continue;
+    }
+    const auto intent = consume_edge_publication_move_intent(
+        lookups,
+        bundle.predecessor_label,
+        bundle.successor_label,
+        *destination_value_id);
+    const bool is_select_publication =
+        move->carrier_kind ==
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        (intent.publication != nullptr &&
+         intent.publication->carrier_kind ==
+             prepare::PreparedJoinTransferCarrierKind::SelectMaterialization);
+    if (!is_select_publication) {
+      continue;
+    }
+    if (bundle.execution_block_label != bundle.predecessor_label ||
+        bundle.has_cycle ||
+        move->carrier_kind !=
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        intent.publication == nullptr ||
+        intent.publication->parallel_copy_bundle != &bundle ||
+        intent.publication->carrier_kind !=
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        !prepared_select_publication_move_is_rv64_object_admitted(intent)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::optional<std::string> diagnose_unsupported_prepared_param_homes(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -4260,6 +4396,14 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                 .prepared_consumer_category = diagnostic->category,
                 .diagnostic = std::move(diagnostic->message),
             };
+          }
+          if (classification.parallel_copy_bundle != nullptr &&
+              !prepared_predecessor_select_publication_bundle_is_rv64_object_admitted(
+                  prepared.names,
+                  &lookups,
+                  *classification.parallel_copy_bundle)) {
+            return make_rv64_prepared_function_rejection(
+                "unsupported_move_bundle_target_shape: prepared select publication move bundle requires unsupported RV64 moves");
           }
           auto fragment =
               fragment_for_prepared_move_bundle(prepared.target_profile,

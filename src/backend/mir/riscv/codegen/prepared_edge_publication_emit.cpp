@@ -495,14 +495,25 @@ RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
     return intent;
   }
-  if (publication->source_home == nullptr) {
-    intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
-    return intent;
-  }
-  const auto source_operand = render_prepared_source_operand(intent, *publication);
-  if (!source_operand.has_value()) {
-    intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
-    return intent;
+  std::optional<std::string> source_operand;
+  if (publication->source_value_kind == bir::Value::Kind::Immediate &&
+      publication->move->source_immediate_i32.has_value()) {
+    if (publication->source_value.immediate !=
+        *publication->move->source_immediate_i32) {
+      intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
+      return intent;
+    }
+    intent.source_immediate_i32 = *publication->move->source_immediate_i32;
+  } else {
+    if (publication->source_home == nullptr) {
+      intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
+      return intent;
+    }
+    source_operand = render_prepared_source_operand(intent, *publication);
+    if (!source_operand.has_value()) {
+      intent.status = EdgePublicationMoveIntentStatus::UnsupportedSourceHome;
+      return intent;
+    }
   }
   if (publication->destination_home == nullptr) {
     intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
@@ -519,7 +530,8 @@ RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
       }
       intent.destination_register = *destination_home.register_name;
       intent.instruction_text =
-          "li " + intent.destination_register + ", " + *source_operand;
+          "li " + intent.destination_register + ", " +
+          std::to_string(*intent.source_immediate_i32);
     } else if (intent.source_stack_offset_bytes.has_value()) {
       const auto typed =
           prepare::prepare_same_width_i32_stack_source_publication(publication);
@@ -614,9 +626,9 @@ RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
         return intent;
       }
       intent.destination_register = *destination_home.register_name;
-      if (intent.destination_register != *source_operand) {
+      if (intent.destination_register != intent.source_register) {
         intent.instruction_text =
-            "mv " + intent.destination_register + ", " + *source_operand;
+            "mv " + intent.destination_register + ", " + intent.source_register;
       }
     }
     return intent;
