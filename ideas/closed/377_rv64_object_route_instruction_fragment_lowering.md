@@ -1,6 +1,6 @@
 # RV64 Object Route Instruction Fragment Lowering
 
-Status: Open
+Status: Closed
 Type: Repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/376_rv64_object_route_prepared_move_bundle_target_shapes.md`
@@ -79,6 +79,15 @@ slice.
   distinct next owner because of semantic instruction-fragment repair.
 - Existing focused backend object-emission and prepared-contract coverage
   remains green.
+
+## Completion Note
+
+Closed after the first unsupported instruction fragment was audited as
+`main`'s same-module `bir.call i16 showbug(ptr %lv.x, ptr %lv.y)` with scalar
+integer ABI-register result publication from `a0` to a stack-slot home. The
+route now admits the focused scalar integer stack-slot call-result publication
+shape, keeps adjacent unsupported shapes fail-closed, and the single
+`src/20000217-1.c` RV64 gcc-torture backend object representative passes.
 
 ## Reviewer Reject Signals
 
