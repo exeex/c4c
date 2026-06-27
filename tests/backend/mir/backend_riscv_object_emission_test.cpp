@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <variant>
@@ -1315,6 +1316,74 @@ prepare::PreparedBirModule make_prepared_rematerialized_return_module() {
                   .value_name = t1_name,
                   .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
                   .immediate_i32 = 4,
+              },
+          },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_wide_rematerialized_return_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+  const auto base_name = prepared.names.value_names.intern("%wide.base");
+  const auto min_name = prepared.names.value_names.intern("%wide.min");
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Sub,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%wide.base"),
+                  .operand_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::immediate_i32(0),
+                  .rhs = bir::Value::immediate_i32(2147483647),
+              },
+              bir::BinaryInst{
+                  .opcode = bir::BinaryOpcode::Sub,
+                  .result = bir::Value::named(bir::TypeKind::I32, "%wide.min"),
+                  .operand_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%wide.base"),
+                  .rhs = bir::Value::immediate_i32(1),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = entry_label,
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%wide.min");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = base_name,
+                  .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+                  .immediate_i32 = -2147483647,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = min_name,
+                  .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+                  .immediate_i32 = std::numeric_limits<std::int32_t>::min(),
               },
           },
   });
@@ -7534,6 +7603,34 @@ int builds_prepared_rematerialized_nonzero_return_object() {
   return 0;
 }
 
+int builds_prepared_traversed_wide_rematerialized_return_object() {
+  const auto prepared = make_prepared_wide_rematerialized_return_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared wide immediate-return RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected prepared wide immediate-return object to publish text/main");
+  }
+  if (text->bytes.size() != 16 || text->size_bytes != 16 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 16 ||
+      main_symbol->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared wide immediate-return object to contain one load-immediate return fragment");
+  }
+  if (read_u32(text->bytes, 0) != 0xf8000513 ||
+      read_u32(text->bytes, 4) != 0x00c51513 ||
+      read_u32(text->bytes, 8) != 0x00c51513 ||
+      read_u32(text->bytes, 12) != 0x00008067) {
+    return fail("expected wide rematerialized return to materialize INT_MIN then ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared wide immediate-return object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_scalar_same_module_call_object() {
   const auto prepared = make_prepared_scalar_same_module_call_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -12454,6 +12551,7 @@ int main() {
   status |= builds_prepared_fused_ne_ptr_null_compare_branch_object();
   status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
   status |= builds_prepared_rematerialized_nonzero_return_object();
+  status |= builds_prepared_traversed_wide_rematerialized_return_object();
   status |= builds_prepared_scalar_same_module_call_object();
   status |= builds_prepared_byval_stack_copy_same_module_call_object();
   status |= rejects_prepared_byval_stack_copy_call_fail_closed_shapes();

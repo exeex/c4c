@@ -6992,6 +6992,21 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
   return std::nullopt;
 }
 
+bool prepared_binary_result_is_rematerializable_i32_immediate(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::BinaryInst& binary) {
+  if (c4c::backend::bir::is_compare_opcode(binary.opcode) ||
+      binary.result.type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+  const auto* home = prepared_value_home_for(names, lookups, binary.result);
+  return home != nullptr &&
+         home->kind == c4c::backend::prepare::PreparedValueHomeKind::
+                           RematerializableImmediate &&
+         home->immediate_i32.has_value();
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
@@ -7015,6 +7030,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                       function,
                                                       &lookups,
                                                       *binary)) {
+        return RiscvEncodedFragment{};
+      }
+      if (prepared_binary_result_is_rematerializable_i32_immediate(
+              prepared.names,
+              &lookups,
+              *binary)) {
         return RiscvEncodedFragment{};
       }
       if (auto fragment = fragment_for_prepared_frame_address_materialization(
