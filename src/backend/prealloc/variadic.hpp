@@ -314,6 +314,12 @@ struct PreparedVariadicScalarVaArgOperandHomes {
   PreparedVariadicScalarVaArgAccessPlan scalar_access_plan;
 };
 
+struct PreparedVariadicAggregateVaArgOperandHomes {
+  PreparedValueHome source_va_list;
+  PreparedValueHome aggregate_destination_payload;
+  PreparedVariadicAggregateVaArgAccessPlan aggregate_access_plan;
+};
+
 struct PreparedVariadicEntryHelperOperandHomes {
   PreparedVariadicEntryHelperKind helper = PreparedVariadicEntryHelperKind::VaStart;
   std::size_t block_index = 0;
@@ -321,6 +327,8 @@ struct PreparedVariadicEntryHelperOperandHomes {
   mutable std::optional<PreparedVariadicVaStartOperandHomes> va_start_operand_homes;
   mutable std::optional<PreparedVariadicScalarVaArgOperandHomes>
       scalar_va_arg_operand_homes;
+  mutable std::optional<PreparedVariadicAggregateVaArgOperandHomes>
+      aggregate_va_arg_operand_homes;
   std::optional<PreparedValueHome> destination_va_list;
   std::optional<PreparedValueHome> destination_va_list_address;
   std::optional<PreparedValueHome> source_va_list;
@@ -406,6 +414,52 @@ inline void publish_prepared_variadic_scalar_va_arg_operand_homes(
   };
 }
 
+[[nodiscard]] inline const PreparedVariadicAggregateVaArgOperandHomes*
+find_prepared_variadic_aggregate_va_arg_operand_homes(
+    const PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (homes.helper != PreparedVariadicEntryHelperKind::VaArgAggregate) {
+    return nullptr;
+  }
+  if (!homes.aggregate_va_arg_operand_homes.has_value() &&
+      homes.source_va_list.has_value() &&
+      homes.aggregate_destination_payload.has_value() &&
+      homes.aggregate_access_plan.has_value() &&
+      is_complete_prepared_variadic_aggregate_va_arg_access_plan(
+          *homes.aggregate_access_plan)) {
+    homes.aggregate_va_arg_operand_homes =
+        PreparedVariadicAggregateVaArgOperandHomes{
+            .source_va_list = *homes.source_va_list,
+            .aggregate_destination_payload =
+                *homes.aggregate_destination_payload,
+            .aggregate_access_plan = *homes.aggregate_access_plan,
+        };
+  }
+  if (!homes.aggregate_va_arg_operand_homes.has_value()) {
+    return nullptr;
+  }
+  return &*homes.aggregate_va_arg_operand_homes;
+}
+
+inline void publish_prepared_variadic_aggregate_va_arg_operand_homes(
+    PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (homes.helper != PreparedVariadicEntryHelperKind::VaArgAggregate ||
+      !homes.source_va_list.has_value() ||
+      !homes.aggregate_destination_payload.has_value() ||
+      !homes.aggregate_access_plan.has_value() ||
+      !is_complete_prepared_variadic_aggregate_va_arg_access_plan(
+          *homes.aggregate_access_plan)) {
+    homes.aggregate_va_arg_operand_homes = std::nullopt;
+    return;
+  }
+  homes.aggregate_va_arg_operand_homes =
+      PreparedVariadicAggregateVaArgOperandHomes{
+          .source_va_list = *homes.source_va_list,
+          .aggregate_destination_payload =
+              *homes.aggregate_destination_payload,
+          .aggregate_access_plan = *homes.aggregate_access_plan,
+      };
+}
+
 [[nodiscard]] inline bool has_complete_prepared_variadic_va_start_operand_homes(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
   return find_prepared_variadic_va_start_operand_homes(homes) != nullptr;
@@ -418,12 +472,8 @@ inline void publish_prepared_variadic_scalar_va_arg_operand_homes(
 
 [[nodiscard]] inline bool has_complete_prepared_variadic_aggregate_va_arg_access_plan(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
-  return homes.helper == PreparedVariadicEntryHelperKind::VaArgAggregate &&
-         homes.source_va_list.has_value() &&
-         homes.aggregate_destination_payload.has_value() &&
-         homes.aggregate_access_plan.has_value() &&
-         is_complete_prepared_variadic_aggregate_va_arg_access_plan(
-             *homes.aggregate_access_plan);
+  return find_prepared_variadic_aggregate_va_arg_operand_homes(homes) !=
+         nullptr;
 }
 
 [[nodiscard]] inline bool has_complete_prepared_variadic_va_copy_operand_homes(

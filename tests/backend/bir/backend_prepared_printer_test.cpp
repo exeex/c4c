@@ -6524,6 +6524,11 @@ int main() {
     std::cerr << "[FAIL] AAPCS64 variadic aggregate va_arg carrier cannot represent a complete access plan\n";
     return EXIT_FAILURE;
   }
+  if (prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+          complete_aggregate_homes) == nullptr) {
+    std::cerr << "[FAIL] AAPCS64 variadic aggregate va_arg carrier cannot expose a typed legacy payload\n";
+    return EXIT_FAILURE;
+  }
   if (aggregate_homes == nullptr ||
       !aggregate_homes->aggregate_access_plan.has_value() ||
       aggregate_homes->aggregate_access_plan->source_class !=
@@ -6554,6 +6559,15 @@ int main() {
     std::cerr << "[FAIL] AAPCS64 variadic aggregate va_arg carrier missed prepared access-plan facts\n";
     return EXIT_FAILURE;
   }
+  const auto* typed_aggregate_homes =
+      prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+          *aggregate_homes);
+  if (typed_aggregate_homes == nullptr ||
+      typed_aggregate_homes->aggregate_access_plan.payload_size_bytes != 8 ||
+      typed_aggregate_homes->aggregate_access_plan.payload_align_bytes != 4) {
+    std::cerr << "[FAIL] AAPCS64 variadic aggregate va_arg carrier did not publish typed payloads\n";
+    return EXIT_FAILURE;
+  }
   if (hfa_aggregate_homes == nullptr ||
       !hfa_aggregate_homes->aggregate_access_plan.has_value() ||
       hfa_aggregate_homes->aggregate_access_plan->source_class !=
@@ -6579,6 +6593,8 @@ int main() {
   }
   if (missing_aggregate_homes == nullptr ||
       missing_aggregate_homes->aggregate_access_plan.has_value() ||
+      prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+          *missing_aggregate_homes) != nullptr ||
       std::find(aapcs64_helper_family_entry_plan->missing_required_facts.begin(),
                 aapcs64_helper_family_entry_plan->missing_required_facts.end(),
                 "helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ==
@@ -6847,6 +6863,19 @@ int main() {
           std::optional<std::size_t>{8} ||
       rv64_hfa_shaped_aggregate_homes->aggregate_access_plan->register_save_lane_count.has_value()) {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not materialize aggregate overflow va_arg plans\n";
+    return EXIT_FAILURE;
+  }
+  const auto* typed_rv64_aggregate_homes =
+      prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+          *rv64_aggregate_homes);
+  const auto* typed_rv64_hfa_shaped_aggregate_homes =
+      prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+          *rv64_hfa_shaped_aggregate_homes);
+  if (typed_rv64_aggregate_homes == nullptr ||
+      typed_rv64_aggregate_homes->aggregate_access_plan.payload_size_bytes != 8 ||
+      typed_rv64_hfa_shaped_aggregate_homes == nullptr ||
+      typed_rv64_hfa_shaped_aggregate_homes->aggregate_access_plan.payload_size_bytes != 4) {
+    std::cerr << "[FAIL] RV64 variadic helper-family carrier did not publish typed aggregate va_arg payloads\n";
     return EXIT_FAILURE;
   }
   if (rv64_va_copy_homes == nullptr ||

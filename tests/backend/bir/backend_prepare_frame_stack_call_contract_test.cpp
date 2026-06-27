@@ -9235,6 +9235,14 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
           std::optional<std::size_t>{8}) {
     return fail("AAPCS64 variadic helper-family frame contract: lost aggregate va_arg access-plan carrier facts");
   }
+  const auto* typed_aggregate_homes =
+      prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+          *aggregate_homes);
+  if (typed_aggregate_homes == nullptr ||
+      typed_aggregate_homes->aggregate_access_plan.payload_size_bytes != 8 ||
+      typed_aggregate_homes->aggregate_access_plan.payload_align_bytes != 4) {
+    return fail("AAPCS64 variadic helper-family frame contract: aggregate va_arg typed payload was not published");
+  }
   if (!va_arg_i32_homes->scalar_access_plan.has_value() ||
       va_arg_i32_homes->scalar_access_plan->source_class !=
           prepare::PreparedVariadicScalarVaArgSourceClass::GpRegisterSaveArea ||
@@ -9457,6 +9465,14 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       aggregate_homes->aggregate_access_plan->progression_stride_bytes !=
           std::optional<std::size_t>{8}) {
     return fail("RV64 variadic helper missing contract: aggregate va_arg overflow operand homes were not materialized");
+  }
+  const auto* typed_rv64_aggregate_homes =
+      prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+          *aggregate_homes);
+  if (typed_rv64_aggregate_homes == nullptr ||
+      typed_rv64_aggregate_homes->aggregate_access_plan.payload_size_bytes != 8 ||
+      typed_rv64_aggregate_homes->aggregate_access_plan.payload_align_bytes != 4) {
+    return fail("RV64 variadic helper missing contract: aggregate va_arg typed payload was not published");
   }
   if (has_missing_fact("target_abi.variadic_entry_state") ||
       has_missing_fact("target_abi.va_list_layout") ||

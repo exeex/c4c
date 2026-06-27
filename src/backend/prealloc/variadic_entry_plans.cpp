@@ -1098,6 +1098,7 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
           homes.aggregate_access_plan =
               make_aapcs64_aggregate_va_arg_access_plan(
                   prepared, function_plan, homes, block, instruction_index, *call);
+          publish_prepared_variadic_aggregate_va_arg_operand_homes(homes);
           if (!has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes)) {
             append_missing_variadic_entry_fact(
                 function_plan,
@@ -1221,6 +1222,7 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
           homes.aggregate_access_plan =
               make_rv64_aggregate_va_arg_access_plan(
                   prepared, function_plan, homes, block, *call);
+          publish_prepared_variadic_aggregate_va_arg_operand_homes(homes);
           if (has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes) &&
               homes.aggregate_access_plan->payload_write_address.has_value()) {
             remove_missing_variadic_entry_fact(
