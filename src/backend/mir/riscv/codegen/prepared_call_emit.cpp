@@ -403,6 +403,10 @@ bool emit_riscv_byval_aggregate_address_argument(
 
   const auto* selection =
       plan.source_selection.has_value() ? &*plan.source_selection : nullptr;
+  const auto route =
+      selection != nullptr
+          ? prepare::as_local_frame_address_materialization_route(*selection)
+          : std::nullopt;
   const auto* transport =
       plan.aggregate_transport.has_value() ? &*plan.aggregate_transport : nullptr;
   const auto destination_register = riscv_gpr_argument_register(plan.arg_index);
@@ -423,11 +427,11 @@ bool emit_riscv_byval_aggregate_address_argument(
       selection->kind !=
           prepare::PreparedCallArgumentSourceSelectionKind::
               LocalFrameAddressMaterialization ||
-      !selection->source_stack_offset_bytes.has_value() ||
+      !route.has_value() ||
       transport == nullptr ||
       transport->kind != prepare::PreparedAggregateTransportKind::StackCopy ||
       !transport->source_stack_offset_bytes.has_value() ||
-      transport->source_stack_offset_bytes != selection->source_stack_offset_bytes ||
+      *transport->source_stack_offset_bytes != route->source_stack_offset_bytes ||
       transport->destination_stack_offset_bytes.has_value() ||
       transport->destination_stack_size_bytes.has_value() ||
       transport->payload_size_bytes == 0 ||
@@ -624,24 +628,30 @@ std::optional<std::string> emit_riscv_simple_call(
     }
     const auto* source_selection =
         plan->source_selection.has_value() ? &*plan->source_selection : nullptr;
-    if (source_selection != nullptr &&
-        source_selection->kind ==
-            prepare::PreparedCallArgumentSourceSelectionKind::
-                LocalFrameAddressMaterialization) {
-      if (!source_selection->source_stack_offset_bytes.has_value() ||
-          *source_selection->source_stack_offset_bytes >
+    const auto local_materialization_route =
+        source_selection != nullptr
+            ? prepare::as_local_frame_address_materialization_route(
+                  *source_selection)
+            : std::nullopt;
+    if (local_materialization_route.has_value()) {
+      if (local_materialization_route->source_stack_offset_bytes >
               static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
-          *source_selection->source_stack_offset_bytes >
+          local_materialization_route->source_stack_offset_bytes >
               static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) -
                   active_stack_adjustment_bytes ||
           !fits_signed_12_bit_immediate(static_cast<std::int64_t>(
-              *source_selection->source_stack_offset_bytes +
+              local_materialization_route->source_stack_offset_bytes +
               active_stack_adjustment_bytes))) {
         return std::nullopt;
       }
       out += "    addi " + *plan->destination_register_name + ", sp, " +
-             std::to_string(*source_selection->source_stack_offset_bytes +
+             std::to_string(local_materialization_route->source_stack_offset_bytes +
                             active_stack_adjustment_bytes) + "\n";
+    } else if (source_selection != nullptr &&
+               source_selection->kind ==
+                   prepare::PreparedCallArgumentSourceSelectionKind::
+                       LocalFrameAddressMaterialization) {
+      return std::nullopt;
     } else if (source_selection != nullptr &&
                source_selection->kind ==
                    prepare::PreparedCallArgumentSourceSelectionKind::

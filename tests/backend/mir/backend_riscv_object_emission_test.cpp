@@ -1670,11 +1670,17 @@ prepare::PreparedBirModule make_prepared_byval_stack_copy_same_module_call_modul
                               .source_value_id = prepare::PreparedValueId{3},
                               .source_value_name = payload_name,
                               .source_home_kind =
-                                  prepare::PreparedValueHomeKind::StackSlot,
+                                  prepare::PreparedValueHomeKind::Register,
                               .source_slot_id = source_slot_id,
                               .source_stack_offset_bytes = std::size_t{96},
                               .source_size_bytes = std::size_t{24},
                               .source_align_bytes = std::size_t{8},
+                              .source_pointer_byte_delta = std::int64_t{0},
+                              .address_materialization_block_label =
+                                  c4c::BlockLabelId{1},
+                              .address_materialization_inst_index = std::size_t{0},
+                              .address_materialization_frame_slot_id = source_slot_id,
+                              .address_materialization_byte_offset = std::int64_t{96},
                           },
                       .aggregate_transport =
                           prepare::PreparedAggregateTransportPlan{
@@ -6046,11 +6052,12 @@ prepare::PreparedBirModule make_prepared_same_module_sret_call_module() {
                               .source_value_id = prepare::PreparedValueId{1},
                               .source_value_name = ret_value_name,
                               .source_home_kind =
-                                  prepare::PreparedValueHomeKind::StackSlot,
+                                  prepare::PreparedValueHomeKind::Register,
                               .source_slot_id = ret_slot_id,
                               .source_stack_offset_bytes = std::size_t{16},
                               .source_size_bytes = std::size_t{4},
                               .source_align_bytes = std::size_t{4},
+                              .source_pointer_byte_delta = std::int64_t{0},
                               .address_materialization_block_label = block_label,
                               .address_materialization_inst_index = std::size_t{0},
                               .address_materialization_frame_slot_id = ret_slot_id,

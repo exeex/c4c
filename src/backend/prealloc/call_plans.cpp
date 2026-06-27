@@ -2631,24 +2631,23 @@ plan_prepared_aggregate_transport(const PreparedNameTables& names,
   const auto& selection = *argument.source_selection;
   if (selection.kind ==
       PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization) {
+    const auto route = as_local_frame_address_materialization_route(selection);
     if (abi.type != bir::TypeKind::Ptr || !abi.byval_copy ||
         abi.primary_class != bir::AbiValueClass::Memory ||
         abi.size_bytes == 0 || abi.align_bytes == 0 ||
-        !selection.source_stack_offset_bytes.has_value() ||
-        !selection.source_size_bytes.has_value() ||
-        !selection.source_align_bytes.has_value() ||
-        *selection.source_size_bytes < abi.size_bytes) {
+        !route.has_value() ||
+        route->source_size_bytes < abi.size_bytes) {
       return std::nullopt;
     }
 
     PreparedAggregateTransportPlan plan{
         .kind = PreparedAggregateTransportKind::StackCopy,
-        .payload_size_bytes = *selection.source_size_bytes,
-        .payload_align_bytes = *selection.source_align_bytes,
+        .payload_size_bytes = route->source_size_bytes,
+        .payload_align_bytes = route->source_align_bytes,
         .copy_size_bytes = abi.size_bytes,
         .copy_align_bytes = abi.align_bytes,
-        .source_slot_id = selection.source_slot_id,
-        .source_stack_offset_bytes = selection.source_stack_offset_bytes,
+        .source_slot_id = route->source_slot_id,
+        .source_stack_offset_bytes = route->source_stack_offset_bytes,
         .destination_stack_offset_bytes = argument.destination_stack_offset_bytes,
         .destination_stack_size_bytes = argument.destination_stack_size_bytes,
         .chunks = {},
@@ -2657,8 +2656,8 @@ plan_prepared_aggregate_transport(const PreparedNameTables& names,
     };
 
     constexpr std::size_t max_chunk_size = 8;
-    if (selection.source_value_name.has_value()) {
-      const auto aggregate_name = names.value_names.spelling(*selection.source_value_name);
+    if (route->source_value_name != kInvalidValueName) {
+      const auto aggregate_name = names.value_names.spelling(route->source_value_name);
       plan.chunks = collect_byval_stack_copy_store_chunks(stack_layout,
                                                           function,
                                                           addressing,
@@ -2678,10 +2677,10 @@ plan_prepared_aggregate_transport(const PreparedNameTables& names,
             .chunk_index = chunk_index,
             .kind = PreparedAggregateTransportChunkKind::RequiredPayload,
             .payload_offset_bytes = payload_offset,
-            .source_offset_bytes = *selection.source_stack_offset_bytes + payload_offset,
+            .source_offset_bytes = route->source_stack_offset_bytes + payload_offset,
             .destination_offset_bytes = payload_offset,
             .size_bytes = chunk_size,
-            .align_bytes = std::min<std::size_t>(*selection.source_align_bytes,
+            .align_bytes = std::min<std::size_t>(route->source_align_bytes,
                                                   chunk_size),
             .preferred_width_bytes = chunk_size,
             .fallback_width_bytes = {},

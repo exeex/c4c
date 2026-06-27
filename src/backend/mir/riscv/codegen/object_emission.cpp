@@ -2805,35 +2805,61 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
   const bool frame_slot_address_selection =
       selection.kind ==
       prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress;
+  const auto local_route =
+      local_frame_address_selection
+          ? prepare::as_local_frame_address_materialization_route(selection)
+          : std::nullopt;
   if ((!local_frame_address_selection && !frame_slot_address_selection) ||
       (local_frame_address_selection &&
        argument.source_encoding != prepare::PreparedStorageEncodingKind::Register &&
        argument.source_encoding !=
            prepare::PreparedStorageEncodingKind::ComputedAddress) ||
+      (local_frame_address_selection && !local_route.has_value()) ||
       (frame_slot_address_selection &&
        (argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
         !argument.source_value_id.has_value() ||
         !argument.source_slot_id.has_value() ||
+        !selection.source_slot_id.has_value() ||
         selection.source_home_kind !=
             prepare::PreparedValueHomeKind::StackSlot ||
         !selection.source_value_id.has_value() ||
         *selection.source_value_id != *argument.source_value_id)) ||
-      !selection.source_slot_id.has_value() ||
       !selection.address_materialization_block_label.has_value() ||
       !selection.address_materialization_inst_index.has_value() ||
       !selection.address_materialization_frame_slot_id.has_value() ||
       !selection.address_materialization_byte_offset.has_value() ||
       *selection.address_materialization_byte_offset < 0 ||
-      *selection.source_slot_id != *selection.address_materialization_frame_slot_id ||
+      (frame_slot_address_selection &&
+       *selection.source_slot_id != *selection.address_materialization_frame_slot_id) ||
       (argument.source_value_id.has_value() && selection.source_value_id.has_value() &&
        *argument.source_value_id != *selection.source_value_id)) {
     return std::nullopt;
   }
 
+  const auto source_slot_id =
+      local_route.has_value() ? local_route->source_slot_id
+                              : *selection.source_slot_id;
+  const std::optional<std::size_t> source_stack_offset_bytes =
+      local_route.has_value()
+          ? std::optional<std::size_t>{local_route->source_stack_offset_bytes}
+          : selection.source_stack_offset_bytes;
+  const auto materialization_block_label =
+      local_route.has_value() ? local_route->address_materialization_block_label
+                              : *selection.address_materialization_block_label;
+  const auto materialization_inst_index =
+      local_route.has_value() ? local_route->address_materialization_inst_index
+                              : *selection.address_materialization_inst_index;
+  const auto materialization_frame_slot_id =
+      local_route.has_value() ? local_route->address_materialization_frame_slot_id
+                              : *selection.address_materialization_frame_slot_id;
+  const auto materialization_byte_offset =
+      local_route.has_value() ? local_route->address_materialization_byte_offset
+                              : *selection.address_materialization_byte_offset;
+
   const auto materializations =
       prepare::find_indexed_prepared_address_materializations(
           &lookups->address_materializations,
-          *selection.address_materialization_block_label);
+          materialization_block_label);
   if (materializations == nullptr) {
     return std::nullopt;
   }
@@ -2841,8 +2867,7 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
   const prepare::PreparedAddressMaterialization* selected = nullptr;
   for (const auto* materialization : *materializations) {
     if (materialization == nullptr ||
-        materialization->inst_index !=
-            *selection.address_materialization_inst_index ||
+        materialization->inst_index != materialization_inst_index ||
         materialization->kind !=
             prepare::PreparedAddressMaterializationKind::FrameSlot) {
       continue;
@@ -2856,15 +2881,14 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
          materialization->result_value_name == selection.source_value_name);
     if (same_selected_value &&
         (materialization->frame_slot_id !=
-             selection.address_materialization_frame_slot_id ||
+             materialization_frame_slot_id ||
          materialization->byte_offset !=
-             *selection.address_materialization_byte_offset)) {
+             materialization_byte_offset)) {
       return std::nullopt;
     }
     if (materialization->frame_slot_id !=
-            selection.address_materialization_frame_slot_id ||
-        materialization->byte_offset !=
-            *selection.address_materialization_byte_offset) {
+            materialization_frame_slot_id ||
+        materialization->byte_offset != materialization_byte_offset) {
       continue;
     }
     if (selected != nullptr) {
@@ -2886,16 +2910,15 @@ std::optional<std::int32_t> prepared_frame_slot_address_call_argument_offset(
       std::find_if(stack_layout.frame_slots.begin(),
                    stack_layout.frame_slots.end(),
                    [&](const prepare::PreparedFrameSlot& slot) {
-                     return slot.slot_id == *selection.source_slot_id;
+                     return slot.slot_id == source_slot_id;
                    });
   if (slot_it == stack_layout.frame_slots.end()) {
     return std::nullopt;
   }
 
-  const auto offset =
-      static_cast<std::size_t>(*selection.address_materialization_byte_offset);
-  if ((selection.source_stack_offset_bytes.has_value() &&
-       *selection.source_stack_offset_bytes != offset) ||
+  const auto offset = static_cast<std::size_t>(materialization_byte_offset);
+  if ((source_stack_offset_bytes.has_value() &&
+       *source_stack_offset_bytes != offset) ||
       offset < slot_it->offset_bytes ||
       offset > slot_it->offset_bytes + slot_it->size_bytes ||
       offset > stack_frame_bytes ||
@@ -2937,18 +2960,14 @@ std::optional<std::int32_t> prepared_sret_memory_return_argument_address_offset(
   }
 
   const auto& selection = *argument.source_selection;
-  if (selection.kind !=
-          prepare::PreparedCallArgumentSourceSelectionKind::
-              LocalFrameAddressMaterialization ||
-      !selection.source_slot_id.has_value() ||
-      *selection.source_slot_id != *call_plan.memory_return->slot_id ||
-      !selection.source_stack_offset_bytes.has_value() ||
-      *selection.source_stack_offset_bytes !=
+  const auto route =
+      prepare::as_local_frame_address_materialization_route(selection);
+  if (!route.has_value() ||
+      route->source_slot_id != *call_plan.memory_return->slot_id ||
+      route->source_stack_offset_bytes !=
           *call_plan.memory_return->stack_offset_bytes ||
-      !selection.source_size_bytes.has_value() ||
-      *selection.source_size_bytes < call_plan.memory_return->size_bytes ||
-      !selection.source_align_bytes.has_value() ||
-      *selection.source_align_bytes < call_plan.memory_return->align_bytes) {
+      route->source_size_bytes < call_plan.memory_return->size_bytes ||
+      route->source_align_bytes < call_plan.memory_return->align_bytes) {
     return std::nullopt;
   }
 
@@ -3223,6 +3242,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     }
     const auto* selection =
         argument.source_selection.has_value() ? &*argument.source_selection : nullptr;
+    const auto local_materialization_route =
+        selection != nullptr
+            ? prepare::as_local_frame_address_materialization_route(*selection)
+            : std::nullopt;
     const auto* transport = argument.aggregate_transport.has_value()
                                 ? &*argument.aggregate_transport
                                 : nullptr;
@@ -3266,12 +3289,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
           selection == nullptr ||
           selection->kind != prepare::PreparedCallArgumentSourceSelectionKind::
                                  LocalFrameAddressMaterialization ||
-          !selection->source_stack_offset_bytes.has_value() ||
+          !local_materialization_route.has_value() ||
           transport == nullptr ||
           transport->kind != prepare::PreparedAggregateTransportKind::StackCopy ||
           !transport->source_stack_offset_bytes.has_value() ||
-          transport->source_stack_offset_bytes !=
-              selection->source_stack_offset_bytes ||
+          *transport->source_stack_offset_bytes !=
+              local_materialization_route->source_stack_offset_bytes ||
           transport->destination_stack_offset_bytes.has_value() ||
           transport->destination_stack_size_bytes.has_value() ||
           transport->payload_size_bytes == 0 ||

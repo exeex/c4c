@@ -1,6 +1,6 @@
 # Prepared Call Argument Contract Plan
 
-Status: Published for idea 414 LocalFrameAddressMaterialization Step 3
+Status: Published for idea 414 LocalFrameAddressMaterialization Step 4
 Source Idea: `ideas/open/414_typed_prepared_call_argument_contracts.md`
 
 This document records the typed prepared call-argument route contract as it is
@@ -250,3 +250,23 @@ Contradictory producer facts report `producer_incoherent`:
 - materialization frame-slot id that contradicts the selected source slot id
 - materialization byte offset that contradicts the selected source stack offset
 - preservation or byval-lane payloads mixed into this route
+
+## LocalFrameAddressMaterialization Step 4 Consumer Scope
+
+Selected consumers now obtain local materialization facts through
+`as_local_frame_address_materialization_route` instead of recovering them from
+the compatibility bag:
+
+- `plan_prepared_aggregate_transport` requires the typed route before creating
+  byval stack-copy transport from a local materialization source.
+- RV64 simple call emission and prepared object call emission require the typed
+  route for local aggregate-address arguments and compare aggregate transport
+  offsets against the typed route.
+- RV64 object-emission address-offset validation uses the typed local route
+  while preserving the existing `FrameSlotAddress` publication route.
+- AArch64 selected local frame-address sources run the producer verifier plus
+  typed route query before materializing the memory operand.
+
+Hand-authored RV64 prepared fixtures now publish coherent local-materialization
+source-home, pointer-delta, and materialization payload facts expected from the
+producer.

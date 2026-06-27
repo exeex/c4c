@@ -1741,24 +1741,13 @@ StackFrameSlotCallOperandOwner::selected_local_frame_address_source(
     const prepare::PreparedValueHome& source_home,
     const prepare::PreparedCallArgumentSourceSelection& selection,
     std::size_t instruction_index) {
-  if (selection.kind !=
-          prepare::PreparedCallArgumentSourceSelectionKind::
-              LocalFrameAddressMaterialization ||
-      !selection.source_size_bytes.has_value() ||
-      !selection.source_align_bytes.has_value()) {
-    return std::nullopt;
-  }
-  const auto frame_slot_id =
-      selection.address_materialization_frame_slot_id.has_value()
-          ? selection.address_materialization_frame_slot_id
-          : selection.source_slot_id;
-  std::optional<std::int64_t> byte_offset;
-  if (selection.address_materialization_byte_offset.has_value()) {
-    byte_offset = selection.address_materialization_byte_offset;
-  } else if (selection.source_stack_offset_bytes.has_value()) {
-    byte_offset = static_cast<std::int64_t>(*selection.source_stack_offset_bytes);
-  }
-  if (!frame_slot_id.has_value() || !byte_offset.has_value()) {
+  const auto route_report =
+      prepare::
+          verify_prepared_local_frame_address_materialization_source_route_contract(
+              &selection);
+  const auto route =
+      prepare::as_local_frame_address_materialization_route(selection);
+  if (route_report.fail_closed || !route.has_value()) {
     return std::nullopt;
   }
   return MemoryOperand{
@@ -1767,25 +1756,16 @@ StackFrameSlotCallOperandOwner::selected_local_frame_address_source(
       .function_name = context.function.control_flow != nullptr
                            ? context.function.control_flow->function_name
                            : c4c::kInvalidFunctionName,
-      .block_label = selection.address_materialization_block_label.has_value()
-                         ? *selection.address_materialization_block_label
-                         : (context.control_flow_block != nullptr
-                                ? context.control_flow_block->block_label
-                                : c4c::kInvalidBlockLabel),
-      .instruction_index =
-          selection.address_materialization_inst_index.value_or(instruction_index),
-      .result_value_id = selection.source_value_id.has_value()
-                             ? selection.source_value_id
-                             : argument.source_value_id,
-      .result_value_name = selection.source_value_name.has_value()
-                               ? selection.source_value_name
-                               : std::optional<c4c::ValueNameId>{source_home.value_name},
+      .block_label = route->address_materialization_block_label,
+      .instruction_index = route->address_materialization_inst_index,
+      .result_value_id = route->source_value_id,
+      .result_value_name = route->source_value_name,
       .base_kind = MemoryBaseKind::FrameSlot,
-      .frame_slot_id = frame_slot_id,
-      .byte_offset = *byte_offset,
+      .frame_slot_id = route->address_materialization_frame_slot_id,
+      .byte_offset = route->address_materialization_byte_offset,
       .byte_offset_is_prepared_snapshot = true,
-      .size_bytes = *selection.source_size_bytes,
-      .align_bytes = *selection.source_align_bytes,
+      .size_bytes = route->source_size_bytes,
+      .align_bytes = route->source_align_bytes,
       .can_use_base_plus_offset = true,
       .uses_frame_pointer_base = fixed_slots_use_frame_pointer(context.function),
   };

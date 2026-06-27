@@ -3,35 +3,31 @@
 Status: Active
 Source Idea Path: ideas/open/414_typed_prepared_call_argument_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Producer-Side Verification
+Current Step ID: 4
+Current Step Title: Migrate Target Consumers
 
 ## Just Finished
 
-Completed Step 3 producer-side verifier coverage for
+Completed Step 4 consumer migration for
 `LocalFrameAddressMaterialization`.
 
-Added `PreparedLocalFrameAddressMaterializationSourceRouteContractStatus`,
-status spelling, classifier, and
-`verify_prepared_local_frame_address_materialization_source_route_contract` in
-`src/backend/prealloc/prepared_contract_verifier.*`.
+`plan_prepared_aggregate_transport`, RV64 call emission, RV64 object-emission
+address validation, and AArch64 selected local frame-address source handling now
+consume `as_local_frame_address_materialization_route` instead of recovering
+local materialization fields directly from the compatibility bag.
 
-Missing source identity, source home, pointer base identity when required,
-pointer delta, source slot, stack offset, extent/alignment, and materialization
-location/slot/offset facts classify as `producer_missing`.
+AArch64 selected local frame-address source handling also runs
+`verify_prepared_local_frame_address_materialization_source_route_contract`
+before constructing the prepared memory operand.
 
-Wrong source-home kind, negative materialization offset, materialization
-slot/offset contradictions, and preservation/byval-lane cross-route payloads
-classify as `producer_incoherent`.
-
-Focused coverage in
-`tests/backend/bir/backend_prealloc_prepared_contract_verifier_test.cpp` checks
-coherent, missing, and incoherent route reports.
+Updated hand-authored RV64 prepared fixtures to publish coherent
+local-materialization source-home, pointer-delta, and materialization payload
+facts.
 
 ## Suggested Next
 
-Begin Step 4 by migrating RV64/AArch64 consumers to the typed local
-materialization route plus verifier checks.
+Begin Step 5 by running broader default validation and recording the next route
+decision or lifecycle review request.
 
 ## Watchouts
 
@@ -48,5 +44,5 @@ materialization route plus verifier checks.
 ## Proof
 
 Selected delegated proof passed: 17/17 tests, with monotonic regression guard
-PASS against the matching 16/16 baseline. Proof command:
+PASS against the matching 17/17 baseline. Proof command:
 `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_call_boundary_classification$|backend_prepare_frame_stack_call_contract$|backend_prealloc_prepared_contract_verifier$|backend_riscv_object_emission$|backend_aarch64_call_boundary_owner$|backend_(dump|codegen_route)_riscv64_byval_|backend_codegen_route_aarch64_(prepared_call_boundary_scalability|alu_unpublished_load_local_after_call|alu_unpublished_load_local_call_boundary|hfa_result_home_publication_contract)$)' ) > test_after.log 2>&1`
