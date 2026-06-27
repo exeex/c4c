@@ -23,7 +23,9 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                             module::ModuleLoweringDiagnosticKind kind,
                             const module::BlockLoweringContext& context,
                             std::size_t instruction_index,
-                            std::string message) {
+                            std::string message,
+                            std::optional<prepare::PreparedContractVerificationReport>
+                                prepared_contract_report = std::nullopt) {
   diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
       .kind = kind,
       .function_name = context.function.control_flow != nullptr
@@ -34,6 +36,7 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                          : c4c::kInvalidBlockLabel,
       .instruction_index = instruction_index,
       .instruction_family = module::InstructionLoweringFamily::Call,
+      .prepared_contract_report = std::move(prepared_contract_report),
       .message = std::move(message),
   });
 }
@@ -1188,33 +1191,50 @@ const prepare::PreparedVariadicEntryPlanFunction* require_prepared_variadic_entr
                                                        function_name)
           : nullptr;
   if (entry_plan == nullptr) {
+    const auto contract_report =
+        prepare::verify_prepared_variadic_entry_plan_contract(
+            entry_plan, function_name);
     append_call_diagnostic(
         diagnostics,
         module::ModuleLoweringDiagnosticKind::MissingPreparedCallPlan,
         context,
         instruction_index,
-        "AArch64 variadic entry helper lowering requires a PreparedVariadicEntryPlanFunction");
+        "AArch64 variadic entry helper lowering requires a PreparedVariadicEntryPlanFunction",
+        contract_report);
     return nullptr;
   }
   const auto& missing = entry_plan->missing_required_facts;
   if (!missing.empty()) {
+    const auto contract_report =
+        prepare::verify_prepared_variadic_entry_plan_contract(
+            entry_plan, function_name);
     append_call_diagnostic(
         diagnostics,
         module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
         context,
         instruction_index,
-        variadic_entry_missing_fact_message(missing));
+        variadic_entry_missing_fact_message(missing),
+        contract_report);
     return nullptr;
   }
   if (const auto missing_consumption_fact =
           missing_variadic_entry_helper_consumption_fact(*entry_plan);
       !missing_consumption_fact.empty()) {
+    prepare::PreparedContractVerificationReport contract_report{
+        .fact_family =
+            prepare::PreparedContractFactFamily::VariadicEntryHelperOperandHomes,
+        .owner_class = prepare::PreparedContractOwnerClass::ProducerMissing,
+        .function_name = entry_plan->function_name,
+        .fail_closed = true,
+        .detail = variadic_entry_missing_fact_message(missing_consumption_fact),
+    };
     append_call_diagnostic(
         diagnostics,
         module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
         context,
         instruction_index,
-        variadic_entry_missing_fact_message(missing_consumption_fact));
+        contract_report.detail,
+        std::move(contract_report));
     return nullptr;
   }
   return entry_plan;

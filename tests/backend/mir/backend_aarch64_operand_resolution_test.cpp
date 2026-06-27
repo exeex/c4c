@@ -1,5 +1,6 @@
 #include "src/backend/mir/aarch64/codegen/operands.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
+#include "src/backend/mir/aarch64/codegen/variadic.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
@@ -293,6 +294,46 @@ int literals_labels_symbols_and_register_spellings_are_narrow() {
   return 0;
 }
 
+int variadic_entry_missing_plan_reports_prepared_contract() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("variadic.fn");
+
+  auto context = make_context(prepared, function_name);
+  context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, prepared.control_flow.functions.front());
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto* entry_plan = aarch64_codegen::require_prepared_variadic_entry_plan(
+      aarch64_module::BlockLoweringContext{
+          .function = context,
+          .control_flow_block = &prepared.control_flow.functions.front().blocks.front(),
+          .block_index = 0,
+      },
+      4,
+      diagnostics);
+  if (entry_plan != nullptr) {
+    return fail("expected missing variadic entry plan to fail closed");
+  }
+  if (diagnostics.entries.empty() ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingPreparedCallPlan) {
+    return fail("expected missing prepared call plan diagnostic");
+  }
+  if (!diagnostics.entries.front().prepared_contract_report.has_value()) {
+    return fail("expected variadic prepared contract report on diagnostic");
+  }
+  const auto& report = *diagnostics.entries.front().prepared_contract_report;
+  if (report.fact_family !=
+          prepare::PreparedContractFactFamily::VariadicEntryHelperOperandHomes ||
+      report.owner_class != prepare::PreparedContractOwnerClass::ProducerMissing ||
+      !report.fail_closed ||
+      report.function_name != function_name) {
+    return fail("expected producer-missing variadic contract report");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -307,6 +348,10 @@ int main() {
     return status;
   }
   if (const int status = literals_labels_symbols_and_register_spellings_are_narrow();
+      status != 0) {
+    return status;
+  }
+  if (const int status = variadic_entry_missing_plan_reports_prepared_contract();
       status != 0) {
     return status;
   }

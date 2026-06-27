@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/prealloc/call_plans.hpp"
+#include "src/backend/prealloc/prepared_contract_verifier.hpp"
 #include "src/backend/prealloc/regalloc/call_return_abi.hpp"
 #include "src/backend/prealloc/variadic.hpp"
 
@@ -425,6 +426,147 @@ int verify_missing_and_mismatched_statuses() {
   return 0;
 }
 
+int verify_call_boundary_contract_reports() {
+  const auto call_plan = sample_call_plan();
+  const auto placement = sample_gpr_placement();
+  const prepare::PreparedMoveBundle empty_bundle{
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .block_index = 3,
+      .instruction_index = 9,
+  };
+  const prepare::PreparedMoveResolution missing_binding{
+      .from_value_id = 10,
+      .to_value_id = 10,
+      .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_abi_index = 0,
+      .destination_register_name = "x0",
+      .destination_register_placement = placement,
+  };
+  const prepare::PreparedMoveResolution mismatched_result{
+      .from_value_id = 0,
+      .to_value_id = 777,
+      .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_register_name = "x0",
+      .destination_register_placement = placement,
+  };
+  const prepare::PreparedMoveBundle result_mismatch_bundle{
+      .phase = prepare::PreparedMovePhase::AfterCall,
+      .block_index = 3,
+      .instruction_index = 9,
+      .abi_bindings = {binding_for(mismatched_result)},
+  };
+  const prepare::PreparedMoveResolution unsupported_op{
+      .from_value_id = 10,
+      .to_value_id = 10,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp,
+  };
+
+  const auto no_binding_classification =
+      prepare::classify_prepared_call_boundary_move(
+          call_plan, empty_bundle, missing_binding);
+  const auto mismatched_result_classification =
+      prepare::classify_prepared_call_boundary_move(
+          call_plan, result_mismatch_bundle, mismatched_result);
+  const auto unsupported_op_classification =
+      prepare::classify_prepared_call_boundary_move(
+          call_plan, empty_bundle, unsupported_op);
+
+  const auto no_binding_report =
+      prepare::verify_prepared_call_boundary_move_contract(
+          no_binding_classification);
+  const auto mismatched_result_report =
+      prepare::verify_prepared_call_boundary_move_contract(
+          mismatched_result_classification);
+  const auto unsupported_op_report =
+      prepare::verify_prepared_call_boundary_move_contract(
+          unsupported_op_classification);
+
+  if (!expect(no_binding_report.fact_family ==
+                  prepare::PreparedContractFactFamily::
+                      CallBoundaryArgumentResultPlan,
+              "missing binding report should use call-boundary fact family") ||
+      !expect(no_binding_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing binding should classify as producer missing") ||
+      !expect(no_binding_report.fail_closed,
+              "missing binding report should fail closed") ||
+      !expect(mismatched_result_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "mismatched result should classify as producer incoherent") ||
+      !expect(unsupported_op_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::
+                      TargetUnsupportedButCoherent,
+              "unsupported op should classify as target unsupported coherent") ||
+      !expect(prepare::prepared_contract_fact_family_name(
+                  no_binding_report.fact_family) ==
+                  std::string_view{"call_boundary_argument_result_plan"},
+              "call-boundary report family spelling mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_variadic_contract_reports() {
+  const auto function_name = c4c::FunctionNameId{7};
+  const auto missing_entry =
+      prepare::verify_prepared_variadic_entry_plan_contract(nullptr, function_name);
+  prepare::PreparedVariadicEntryHelperOperandHomes incomplete_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+      .block_index = 2,
+      .instruction_index = 5,
+      .destination_va_list = prepare::PreparedValueHome{
+          .value_id = 44,
+          .function_name = function_name,
+          .kind = prepare::PreparedValueHomeKind::StackSlot,
+          .slot_id = prepare::PreparedFrameSlotId{3},
+          .offset_bytes = std::size_t{32},
+      },
+  };
+  const auto incoherent_homes =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          &incomplete_homes,
+          function_name,
+          prepare::PreparedVariadicEntryHelperKind::VaStart,
+          2,
+          5);
+  const auto missing_homes =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          nullptr,
+          function_name,
+          prepare::PreparedVariadicEntryHelperKind::VaArg,
+          2,
+          6);
+
+  if (!expect(missing_entry.fact_family ==
+                  prepare::PreparedContractFactFamily::
+                      VariadicEntryHelperOperandHomes,
+              "missing variadic entry should use variadic helper fact family") ||
+      !expect(missing_entry.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing variadic entry should classify as producer missing") ||
+      !expect(incoherent_homes.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "incomplete variadic homes should classify as producer incoherent") ||
+      !expect(incoherent_homes.fail_closed,
+              "incomplete variadic homes should fail closed") ||
+      !expect(missing_homes.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing variadic homes should classify as producer missing") ||
+      !expect(prepare::prepared_contract_owner_class_name(
+                  incoherent_homes.owner_class) ==
+                  std::string_view{"producer_incoherent"},
+              "variadic owner spelling mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int verify_runtime_placeholder_identity_helper_contract() {
   c4c::backend::bir::NameTables names;
 
@@ -507,6 +649,12 @@ int main() {
     return rc;
   }
   if (const int rc = verify_missing_and_mismatched_statuses(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = verify_call_boundary_contract_reports(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = verify_variadic_contract_reports(); rc != 0) {
     return rc;
   }
   if (const int rc = verify_runtime_placeholder_identity_helper_contract(); rc != 0) {

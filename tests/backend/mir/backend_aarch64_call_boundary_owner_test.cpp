@@ -4,6 +4,7 @@
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
+#include "src/backend/prealloc/prepared_contract_verifier.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
 
@@ -285,6 +286,95 @@ int byval_callee_entry_consumes_byval_frame_slot() {
       publication->inline_asm_template.find("str x0, [sp]") == std::string::npos ||
       publication->inline_asm_template.find("str x1, [sp, #8]") == std::string::npos) {
     return fail("expected byval callee entry to consume ABI GPR lanes into the byval frame slot");
+  }
+  return 0;
+}
+
+int missing_call_argument_binding_exposes_prepared_contract_report() {
+  constexpr auto function_name = c4c::FunctionNameId{4251};
+  constexpr auto block_label = c4c::BlockLabelId{4252};
+  constexpr auto value_id = prepare::PreparedValueId{4253};
+  constexpr auto value_name = c4c::ValueNameId{4254};
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = value_id,
+          .function_name = function_name,
+          .value_name = value_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"x20"},
+          .size_bytes = std::size_t{8},
+          .align_bytes = std::size_t{8},
+      }},
+      .move_bundles = {prepare::PreparedMoveBundle{
+          .function_name = function_name,
+          .phase = prepare::PreparedMovePhase::BeforeCall,
+          .block_index = 0,
+          .instruction_index = 4,
+          .moves = {prepare::PreparedMoveResolution{
+              .from_value_id = value_id,
+              .to_value_id = value_id,
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_abi_index = std::size_t{0},
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              .reason = "call_argument_missing_abi_binding",
+          }},
+      }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 4,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"takes_i64"},
+      .arguments = {prepare::PreparedCallArgumentPlan{
+          .instruction_index = 4,
+          .arg_index = 0,
+          .value_bank = prepare::PreparedRegisterBank::Gpr,
+          .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+          .source_value_id = value_id,
+          .source_register_name = std::string{"x20"},
+          .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+      }},
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 4, diagnostics);
+  if (!lowered.empty() || diagnostics.entries.size() != 1) {
+    return fail("expected missing call argument ABI binding to reject through the consumer diagnostic surface");
+  }
+  const auto& diagnostic = diagnostics.entries.front();
+  if (!diagnostic.prepared_contract_report.has_value()) {
+    return fail("expected missing call argument ABI binding diagnostic to carry a prepared contract report");
+  }
+  const auto& report = *diagnostic.prepared_contract_report;
+  if (report.fact_family !=
+          prepare::PreparedContractFactFamily::CallBoundaryArgumentResultPlan ||
+      report.owner_class != prepare::PreparedContractOwnerClass::ProducerMissing ||
+      !report.fail_closed ||
+      report.value_id != value_id ||
+      report.detail.find("missing_abi_binding") == std::string::npos) {
+    return fail("expected missing call argument ABI binding to classify as producer-missing call-boundary contract failure");
   }
   return 0;
 }
@@ -1063,6 +1153,110 @@ int f128_call_result_publishes_q_register_to_prepared_register_home() {
   return 0;
 }
 
+int mismatched_call_result_plan_exposes_prepared_contract_report() {
+  constexpr auto function_name = c4c::FunctionNameId{4481};
+  constexpr auto block_label = c4c::BlockLabelId{4482};
+  constexpr auto result_value_id = prepare::PreparedValueId{4483};
+  constexpr auto mismatched_result_value_id = prepare::PreparedValueId{4484};
+  constexpr auto result_value_name = c4c::ValueNameId{4485};
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = result_value_id,
+          .function_name = function_name,
+          .value_name = result_value_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"x8"},
+          .size_bytes = std::size_t{8},
+          .align_bytes = std::size_t{8},
+      }},
+      .move_bundles = {prepare::PreparedMoveBundle{
+          .function_name = function_name,
+          .phase = prepare::PreparedMovePhase::AfterCall,
+          .block_index = 0,
+          .instruction_index = 9,
+          .moves = {prepare::PreparedMoveResolution{
+              .from_value_id = prepare::PreparedValueId{0},
+              .to_value_id = result_value_id,
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_register_name = std::string{"x0"},
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              .reason = "call_result_mismatched_plan",
+          }},
+          .abi_bindings = {prepare::PreparedAbiBinding{
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_register_name = std::string{"x0"},
+              .destination_register_placement =
+                  prepare::PreparedRegisterPlacement{
+                      .bank = prepare::PreparedRegisterBank::Gpr,
+                      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+                      .slot_index = 0,
+                      .contiguous_width = 1,
+                  },
+          }},
+      }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 9,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"returns_i64"},
+      .result = prepare::PreparedCallResultPlan{
+          .instruction_index = 9,
+          .value_bank = prepare::PreparedRegisterBank::Gpr,
+          .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .destination_value_id = mismatched_result_value_id,
+          .source_register_name = std::string{"x0"},
+          .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+          .destination_register_name = std::string{"x8"},
+          .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+      },
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_after_call_moves(block_context, call_plan, 9, diagnostics);
+  if (!lowered.empty() || diagnostics.entries.size() != 1) {
+    return fail("expected mismatched call result plan to reject through the consumer diagnostic surface");
+  }
+  const auto& diagnostic = diagnostics.entries.front();
+  if (!diagnostic.prepared_contract_report.has_value()) {
+    return fail("expected mismatched call result diagnostic to carry a prepared contract report");
+  }
+  const auto& report = *diagnostic.prepared_contract_report;
+  if (report.fact_family !=
+          prepare::PreparedContractFactFamily::CallBoundaryArgumentResultPlan ||
+      report.owner_class != prepare::PreparedContractOwnerClass::ProducerIncoherent ||
+      !report.fail_closed ||
+      report.value_id != prepare::PreparedValueId{0} ||
+      report.detail.find("mismatched_call_result_plan") == std::string::npos) {
+    return fail("expected mismatched call result plan to classify as producer-incoherent call-boundary contract failure");
+  }
+  return 0;
+}
+
 int callee_saved_preservation_uses_shared_boundary_effects() {
   constexpr auto function_name = c4c::FunctionNameId{4501};
   constexpr auto block_label = c4c::BlockLabelId{4502};
@@ -1189,12 +1383,14 @@ int main() {
   int status = 0;
   status |= byval_caller_publishes_composite_gpr_lanes_not_object_pointer();
   status |= byval_callee_entry_consumes_byval_frame_slot();
+  status |= missing_call_argument_binding_exposes_prepared_contract_report();
   status |= f128_hfa_call_boundary_requires_structured_q_register_authority();
   status |= scalar_call_result_publishes_gpr_to_prepared_stack_home();
   status |= route6_result_source_register_evidence_preserves_prepared_publication();
   status |= hfa_lane0_call_result_publishes_fpr_to_prepared_stack_home_without_move_bundle();
   status |= f128_hfa_lane0_call_result_publishes_q_register_to_prepared_stack_home();
   status |= f128_call_result_publishes_q_register_to_prepared_register_home();
+  status |= mismatched_call_result_plan_exposes_prepared_contract_report();
   status |= callee_saved_preservation_uses_shared_boundary_effects();
   return status == 0 ? 0 : 1;
 }

@@ -1,6 +1,8 @@
 #pragma once
 
+#include "calls.hpp"
 #include "decoded_home_storage.hpp"
+#include "variadic.hpp"
 
 #include <string>
 #include <string_view>
@@ -65,5 +67,22 @@ struct PreparedContractVerificationReport {
 [[nodiscard]] PreparedContractVerificationReport
 verify_prepared_decoded_home_storage_contract(
     const PreparedDecodedHomeStorage& decoded);
+
+[[nodiscard]] PreparedContractVerificationReport
+verify_prepared_call_boundary_move_contract(
+    const PreparedCallBoundaryMoveClassification& classification);
+
+[[nodiscard]] PreparedContractVerificationReport
+verify_prepared_variadic_entry_plan_contract(
+    const PreparedVariadicEntryPlanFunction* entry_plan,
+    FunctionNameId function_name);
+
+[[nodiscard]] PreparedContractVerificationReport
+verify_prepared_variadic_entry_helper_operand_homes_contract(
+    const PreparedVariadicEntryHelperOperandHomes* homes,
+    FunctionNameId function_name,
+    PreparedVariadicEntryHelperKind expected_helper,
+    std::size_t block_index,
+    std::size_t instruction_index);
 
 }  // namespace c4c::backend::prepare

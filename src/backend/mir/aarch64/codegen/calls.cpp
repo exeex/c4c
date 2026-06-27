@@ -23,6 +23,7 @@
 #include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/calls.hpp"
 #include "../../../prealloc/control_flow.hpp"
+#include "../../../prealloc/prepared_contract_verifier.hpp"
 #include "../../../prealloc/publication_plans.hpp"
 #include "../../../prealloc/select_chain_lookups.hpp"
 #include "../../../prealloc/stack_layout/stack_layout.hpp"
@@ -93,7 +94,9 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                             module::ModuleLoweringDiagnosticKind kind,
                             const module::BlockLoweringContext& context,
                             std::size_t instruction_index,
-                            std::string message) {
+                            std::string message,
+                            std::optional<prepare::PreparedContractVerificationReport>
+                                prepared_contract_report = std::nullopt) {
   diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
       .kind = kind,
       .function_name = context.function.control_flow != nullptr
@@ -104,8 +107,19 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                          : c4c::kInvalidBlockLabel,
       .instruction_index = instruction_index,
       .instruction_family = module::InstructionLoweringFamily::Call,
+      .prepared_contract_report = std::move(prepared_contract_report),
       .message = std::move(message),
   });
+}
+
+[[nodiscard]] std::optional<prepare::PreparedContractVerificationReport>
+failed_call_boundary_contract_report(
+    const prepare::PreparedCallBoundaryMoveClassification& classification) {
+  if (prepare::prepared_call_boundary_move_classification_available(
+          classification)) {
+    return std::nullopt;
+  }
+  return prepare::verify_prepared_call_boundary_move_contract(classification);
 }
 
 const prepare::PreparedCallPlan* require_prepared_call_plan(
@@ -4075,7 +4089,8 @@ std::optional<module::MachineInstruction> BeforeCallMoveLocalOwner::instruction(
         module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
         context,
         instruction_index,
-        "AArch64 call-argument move lowering requires selected prepared register source and destination");
+        "AArch64 call-argument move lowering requires selected prepared register source and destination",
+        failed_call_boundary_contract_report(classification));
     return std::nullopt;
   }
 
@@ -4686,7 +4701,8 @@ std::optional<module::MachineInstruction> AfterCallMoveLocalOwner::instruction(
         module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
         context,
         instruction_index,
-        "AArch64 call-result move lowering requires selected prepared register source and destination");
+        "AArch64 call-result move lowering requires selected prepared register source and destination",
+        failed_call_boundary_contract_report(classification));
     return std::nullopt;
   }
 
@@ -6810,6 +6826,17 @@ lower_scalar_call_argument_producers(
             *variadic_entry_plan, context.block_index, instruction_index);
     if (variadic_helper_operand_homes == nullptr ||
         !variadic_helper_operand_homes_complete(*variadic_helper_operand_homes)) {
+      const auto function_name =
+          context.function.control_flow != nullptr
+              ? context.function.control_flow->function_name
+              : c4c::kInvalidFunctionName;
+      auto contract_report =
+          prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+              variadic_helper_operand_homes,
+              function_name,
+              *variadic_helper,
+              context.block_index,
+              instruction_index);
       std::string message =
           "AArch64 variadic entry helper lowering requires prepared helper operand-home facts";
       const auto missing_consumption_fact =
@@ -6822,7 +6849,8 @@ lower_scalar_call_argument_producers(
           module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
           context,
           instruction_index,
-          std::move(message));
+          std::move(message),
+          std::move(contract_report));
       return std::nullopt;
     }
   }
