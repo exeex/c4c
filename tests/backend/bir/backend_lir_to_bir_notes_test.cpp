@@ -9,6 +9,7 @@
 #include <optional>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -208,6 +209,7 @@ lir::LirCallSignature void_call_signature(
 LirModule make_admitted_scalar_float_globals_module();
 LirModule make_f128_scalar_constant_binop_fails_closed_module();
 LirModule make_admitted_scalar_i16_globals_module();
+LirModule make_admitted_i16_scalar_bitfield_binops_module();
 int expect_aarch64_extern_data_global_uses_got_policy();
 LirModule make_admitted_aggregate_pointer_field_global_module();
 LirModule make_admitted_aggregate_zero_sized_member_global_module();
@@ -382,6 +384,41 @@ int expect_f128_scalar_constant_binop_fails_closed() {
                      "semantic family")) {
     return fail("missing module summary for unsupported F128 scalar constant");
   }
+  return 0;
+}
+
+int expect_admitted_i16_scalar_bitfield_binops() {
+  auto result = try_lower_to_bir_with_options(
+      make_admitted_i16_scalar_bitfield_binops_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected semantic BIR lowering to admit I16 scalar bitfield binops");
+  }
+
+  const auto& insts = result.module->functions.front().blocks.front().insts;
+  constexpr std::array<c4c::backend::bir::BinaryOpcode, 4> expected_opcodes = {
+      c4c::backend::bir::BinaryOpcode::LShr,
+      c4c::backend::bir::BinaryOpcode::And,
+      c4c::backend::bir::BinaryOpcode::Shl,
+      c4c::backend::bir::BinaryOpcode::Or,
+  };
+  if (insts.size() != expected_opcodes.size()) {
+    return fail("I16 scalar bitfield binops should lower to the expected binary instructions");
+  }
+  for (std::size_t index = 0; index < expected_opcodes.size(); ++index) {
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&insts[index]);
+    if (binary == nullptr || binary->opcode != expected_opcodes[index] ||
+        binary->operand_type != TypeKind::I16 || binary->result.type != TypeKind::I16 ||
+        binary->rhs.type != TypeKind::I16) {
+      return fail("I16 scalar bitfield binops should preserve opcode and I16 operand typing");
+    }
+  }
+  const auto* clear_mask = std::get_if<c4c::backend::bir::BinaryInst>(&insts[1]);
+  if (clear_mask == nullptr ||
+      clear_mask->rhs != c4c::backend::bir::Value::immediate_i16(
+                             static_cast<std::int16_t>(-65505))) {
+    return fail("I16 scalar bitfield masks should preserve truncated signed immediate semantics");
+  }
+
   return 0;
 }
 
@@ -7871,6 +7908,54 @@ LirModule make_admitted_float_scalar_binop_module() {
   return module;
 }
 
+LirModule make_admitted_i16_scalar_bitfield_binops_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "admitted_i16_scalar_bitfield_binops";
+  function.signature_text = "define void @admitted_i16_scalar_bitfield_binops()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%shr"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::LShr,
+      .type_str = "i16",
+      .lhs = LirOperand("32767"),
+      .rhs = LirOperand("5"),
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%clr"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::And,
+      .type_str = "i16",
+      .lhs = LirOperand("%shr"),
+      .rhs = LirOperand("-65505"),
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%vs"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Shl,
+      .type_str = "i16",
+      .lhs = LirOperand("%clr"),
+      .rhs = LirOperand("5"),
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%comb"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Or,
+      .type_str = "i16",
+      .lhs = LirOperand("%clr"),
+      .rhs = LirOperand("%vs"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_f128_scalar_constant_binop_fails_closed_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
@@ -9434,6 +9519,12 @@ int main() {
           "scalar-binop semantic-family note");
       admitted_float_scalar_binop_status != 0) {
     return admitted_float_scalar_binop_status;
+  }
+
+  if (const int i16_scalar_bitfield_binops_status =
+          expect_admitted_i16_scalar_bitfield_binops();
+      i16_scalar_bitfield_binops_status != 0) {
+    return i16_scalar_bitfield_binops_status;
   }
 
   if (const int f128_scalar_constant_status =

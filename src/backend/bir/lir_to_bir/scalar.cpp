@@ -380,6 +380,8 @@ std::optional<bir::Value> BirFunctionLowerer::lower_value(
       return bir::Value::immediate_i1(*parsed != 0);
     case bir::TypeKind::I8:
       return bir::Value::immediate_i8(static_cast<std::int8_t>(*parsed));
+    case bir::TypeKind::I16:
+      return bir::Value::immediate_i16(static_cast<std::int16_t>(*parsed));
     case bir::TypeKind::I32:
       return bir::Value::immediate_i32(static_cast<std::int32_t>(*parsed));
     case bir::TypeKind::I64:
