@@ -1,6 +1,6 @@
 # Prepared Call Argument Contract Plan
 
-Status: Published for idea 414 FrameSlotValue Step 4
+Status: Published for idea 414 LocalFrameAddressMaterialization Step 2
 Source Idea: `ideas/open/414_typed_prepared_call_argument_contracts.md`
 
 This document records the typed prepared call-argument route contract as it is
@@ -195,3 +195,33 @@ route boundary.
 The selected consumers now treat absent or incoherent `FrameSlotValue` typed
 facts as fail-closed prepared-producer issues, not target permission to recover
 source homes or stack offsets from optional-bag fragments.
+
+## LocalFrameAddressMaterialization Step 2 Route Scope
+
+The third migrated payload is the `LocalFrameAddressMaterialization` route.
+Its typed view is
+`PreparedCallArgumentLocalFrameAddressMaterializationRoute`, exposed through
+`as_local_frame_address_materialization_route`.
+
+Required route facts:
+
+- source value id and source value name
+- source-home kind of `Register` or `PointerBasePlusOffset`
+- source pointer byte delta, including zero
+- selected source frame-slot id
+- selected source stack byte offset
+- selected source byte extent and alignment
+- complete address materialization block label, instruction index,
+  materialized frame-slot id, and adjusted byte offset
+
+Rejected compatibility-bag combinations:
+
+- missing any required fact above
+- negative adjusted materialization byte offset
+- materialization frame-slot id that contradicts the selected source slot id
+- materialization byte offset that contradicts the selected source stack offset
+- preservation payload fields
+- byval-lane payload fields
+
+The shared missing frame-slot publication classifier now requires this typed
+view before classifying `LocalFrameAddressMaterialization`.

@@ -147,6 +147,22 @@ struct PreparedCallArgumentFrameSlotValueRoute {
   std::size_t source_align_bytes = 1;
 };
 
+struct PreparedCallArgumentLocalFrameAddressMaterializationRoute {
+  PreparedValueId source_value_id = 0;
+  ValueNameId source_value_name = kInvalidValueName;
+  PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
+  std::optional<PreparedValueId> source_base_value_id;
+  std::int64_t source_pointer_byte_delta = 0;
+  PreparedFrameSlotId source_slot_id = 0;
+  std::size_t source_stack_offset_bytes = 0;
+  std::size_t source_size_bytes = 0;
+  std::size_t source_align_bytes = 1;
+  BlockLabelId address_materialization_block_label = kInvalidBlockLabel;
+  std::size_t address_materialization_inst_index = 0;
+  PreparedFrameSlotId address_materialization_frame_slot_id = 0;
+  std::int64_t address_materialization_byte_offset = 0;
+};
+
 [[nodiscard]] inline bool prepared_call_argument_source_selection_has_preservation_payload(
     const PreparedCallArgumentSourceSelection& selection) {
   return selection.preserved_call_block_index.has_value() ||
@@ -264,6 +280,59 @@ as_frame_slot_value_source_route(
       .source_stack_offset_bytes = *selection.source_stack_offset_bytes,
       .source_size_bytes = *selection.source_size_bytes,
       .source_align_bytes = *selection.source_align_bytes,
+  };
+}
+
+[[nodiscard]] inline std::optional<
+    PreparedCallArgumentLocalFrameAddressMaterializationRoute>
+as_local_frame_address_materialization_route(
+    const PreparedCallArgumentSourceSelection& selection) {
+  if (selection.kind !=
+          PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization ||
+      !selection.source_value_id.has_value() ||
+      !selection.source_value_name.has_value() ||
+      !selection.source_home_kind.has_value() ||
+      (*selection.source_home_kind != PreparedValueHomeKind::Register &&
+       *selection.source_home_kind !=
+           PreparedValueHomeKind::PointerBasePlusOffset) ||
+      !selection.source_pointer_byte_delta.has_value() ||
+      !selection.source_slot_id.has_value() ||
+      !selection.source_stack_offset_bytes.has_value() ||
+      !selection.source_size_bytes.has_value() ||
+      !selection.source_align_bytes.has_value() ||
+      !selection.address_materialization_block_label.has_value() ||
+      !selection.address_materialization_inst_index.has_value() ||
+      !selection.address_materialization_frame_slot_id.has_value() ||
+      !selection.address_materialization_byte_offset.has_value() ||
+      *selection.address_materialization_byte_offset < 0 ||
+      *selection.address_materialization_frame_slot_id != *selection.source_slot_id ||
+      static_cast<std::size_t>(*selection.address_materialization_byte_offset) !=
+          *selection.source_stack_offset_bytes ||
+      prepared_call_argument_source_selection_has_preservation_payload(selection) ||
+      selection.byval_lane_extent_bytes.has_value() ||
+      selection.byval_lane_source_instruction_index.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedCallArgumentLocalFrameAddressMaterializationRoute{
+      .source_value_id = *selection.source_value_id,
+      .source_value_name = *selection.source_value_name,
+      .source_home_kind = *selection.source_home_kind,
+      .source_base_value_id = selection.source_base_value_id,
+      .source_pointer_byte_delta = *selection.source_pointer_byte_delta,
+      .source_slot_id = *selection.source_slot_id,
+      .source_stack_offset_bytes = *selection.source_stack_offset_bytes,
+      .source_size_bytes = *selection.source_size_bytes,
+      .source_align_bytes = *selection.source_align_bytes,
+      .address_materialization_block_label =
+          *selection.address_materialization_block_label,
+      .address_materialization_inst_index =
+          *selection.address_materialization_inst_index,
+      .address_materialization_frame_slot_id =
+          *selection.address_materialization_frame_slot_id,
+      .address_materialization_byte_offset =
+          *selection.address_materialization_byte_offset,
   };
 }
 
@@ -578,6 +647,10 @@ find_prepared_missing_frame_slot_call_argument_publication_need(
       kind = PreparedMissingFrameSlotCallArgumentPublicationKind::PriorPreservation;
       break;
     case PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization:
+      if (!as_local_frame_address_materialization_route(*argument.source_selection)
+               .has_value()) {
+        return {};
+      }
       kind = PreparedMissingFrameSlotCallArgumentPublicationKind::
           LocalFrameAddressMaterialization;
       source_materializes_address = true;
