@@ -1,6 +1,6 @@
 # LIR To BIR Packed Bitfield Scalar Binop Semantics
 
-Status: Open
+Status: Closed
 Type: Producer-side semantic lowering follow-up
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/409_prepared_packed_fp128_global_initializer_admission.md`
@@ -78,3 +78,21 @@ packet.
   scalar-binop semantic family.
 - Reject expectation downgrades, unsupported markers, allowlist filtering, or
   diagnostic-only churn claimed as capability progress.
+
+## Lifecycle Notes
+
+- 2026-06-27: Closed after semantic LIR-to-BIR repair in implementation commit
+  `84f868c3` admitted I16 scalar-binop immediates for the packed bitfield
+  operation chain without touching RV64 object emission.
+- 2026-06-27: Closure proof for `20040709-2.c` reported `dump_bir_status=0`,
+  `prepared_status=0`, and `c4cll_status=0`. The old
+  `semantic lir_to_bir function 'fn1A' failed in scalar-binop semantic family`
+  residual is absent, fresh semantic BIR preserves the expected `lshr`, `and`,
+  `zext`, `add`, `trunc`, `shl`, and `or` packed-bitfield operations, and the
+  prepared dump includes `prepared.summary @fn1A` / `prepared.func @fn1A`.
+- 2026-06-27: The representative now succeeds through the RV64 object route
+  with no later residual in the accepted Step 3 proof.
+- 2026-06-27: Close gate passed with the backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`. The
+  rolled-forward `test_before.log` and regenerated `test_after.log` both
+  reported 326/326 passing backend tests with no new failures.
