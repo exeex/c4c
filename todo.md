@@ -3,12 +3,31 @@
 Status: Active
 Source Idea Path: ideas/open/415_prepared_value_materialization_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Map Pointer Materialization Boundaries
+Current Step ID: 2
+Current Step Title: Add Typed Pointer Materialization Fact
 
 ## Just Finished
 
-Mapped current `PointerBasePlusOffset` producer and consumer boundaries.
+Implemented the Step 2 typed pointer materialization fact.
+
+Step 2 implementation:
+
+- Added `PreparedPointerBasePlusOffsetFact` as a typed view over coherent
+  `PreparedValueHomeKind::PointerBasePlusOffset` homes.
+- The query preserves destination value id, function name, destination value
+  name, base value name, optional base symbol name, and signed byte delta.
+- The query exposes target-admission facts for zero-delta direct base-register
+  copy and signed-12 pointer byte deltas.
+- The query rejects missing destination identity, missing or invalid base value
+  name, missing byte delta, wrong home kind, and cross-family immediate
+  payloads.
+- Updated
+  `docs/prepared_fact_contracts/value_materialization_contract_plan.md` with
+  the pointer materialization fact contract.
+- Added focused fact-query tests for coherent pointer facts, zero and large
+  deltas, missing base/delta/identity, cross-family payloads, and wrong kind.
+
+Step 1 boundary summary:
 
 Producer boundary:
 
@@ -55,9 +74,8 @@ Selected consumer migration candidate:
 
 ## Suggested Next
 
-Begin Step 2 by adding `PreparedPointerBasePlusOffsetFact` and a compatibility
-query in `src/backend/prealloc/value_locations.hpp`, then cover coherent and
-rejected payloads in `tests/backend/bir/backend_prealloc_decoded_home_storage_test.cpp`.
+Run the Step 2 focused proof command, then add producer-side verifier statuses
+for the pointer fact in Step 3.
 
 ## Watchouts
 
@@ -70,5 +88,7 @@ rejected payloads in `tests/backend/bir/backend_prealloc_decoded_home_storage_te
 
 Step 1 inventory-only update; no build required.
 
-Suggested Step 2 focused proof command:
+Step 2 focused proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prealloc_decoded_home_storage$'`.
+
+Result: passed, 1/1 tests.

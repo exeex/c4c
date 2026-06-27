@@ -4,7 +4,33 @@ Source idea: `ideas/open/415_prepared_value_materialization_contracts.md`
 
 ## Current Slice
 
-Step 2 starts with `PreparedValueHomeKind::RematerializableImmediate` integer
+The current slice adds `PreparedValueHomeKind::PointerBasePlusOffset` facts.
+The typed view is `PreparedPointerBasePlusOffsetFact`, exposed by
+`as_pointer_base_plus_offset_fact`.
+
+The fact is intentionally a compatibility view over existing value-home state:
+
+- destination identity: prepared value id, function name id, and value name id
+- base identity: base value name id plus optional base symbol name id
+- payload: signed pointer byte delta, including zero
+- target admission: whether a consumer may use a direct base-register copy for
+  zero delta and whether the delta fits a signed 12-bit immediate field
+
+Rejected records fail closed by returning no fact:
+
+- value home is not `PointerBasePlusOffset`
+- missing function name or destination value name identity
+- missing or invalid base value name
+- missing pointer byte delta
+- cross-family immediate payload is also present
+
+This slice does not add target-local pointer-expression recovery. Producer-side
+diagnostics and target consumer migration are reserved for the next steps in
+the runbook.
+
+## Completed Immediate Slice
+
+The first slice added `PreparedValueHomeKind::RematerializableImmediate` integer
 facts. The typed view is
 `PreparedRematerializableIntegerImmediateFact`, exposed by
 `as_rematerializable_integer_immediate_fact`.
@@ -23,9 +49,7 @@ Rejected records fail closed by returning no fact:
 - cross-family `immediate_f128` payload is also present
 - missing function name or value name identity
 
-This slice does not add target-local BIR expression recovery. Producer-side
-diagnostics and target consumer migration are reserved for the next steps in
-the runbook.
+This slice did not add target-local BIR expression recovery.
 
 ## Producer Verification
 

@@ -446,6 +446,93 @@ int verify_rematerializable_integer_immediate_fact_query() {
   return 0;
 }
 
+int verify_pointer_base_plus_offset_fact_query() {
+  const auto function_name = static_cast<c4c::FunctionNameId>(32);
+  const auto value_name = static_cast<c4c::ValueNameId>(42);
+  const auto base_value_name = static_cast<c4c::ValueNameId>(43);
+  const auto base_symbol_name = static_cast<c4c::LinkNameId>(44);
+  const prepare::PreparedValueHome pointer_home{
+      .value_id = 0,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+      .pointer_base_value_name = base_value_name,
+      .pointer_base_symbol_name = base_symbol_name,
+      .pointer_byte_delta = 12,
+  };
+  const auto fact = prepare::as_pointer_base_plus_offset_fact(pointer_home);
+  if (!expect(fact.has_value(),
+              "coherent pointer base-plus-offset home should expose a typed fact") ||
+      !expect(fact->value_id == 0 && fact->function_name == function_name &&
+                  fact->value_name == value_name,
+              "pointer fact should preserve destination identity") ||
+      !expect(fact->base_value_name == base_value_name &&
+                  fact->base_symbol_name == std::optional<c4c::LinkNameId>{base_symbol_name},
+              "pointer fact should preserve base value and optional symbol identity") ||
+      !expect(fact->byte_delta == 12,
+              "pointer fact should expose signed byte delta") ||
+      !expect(!fact->admits_direct_base_register_copy &&
+                  fact->fits_signed_12_bit_byte_delta,
+              "small nonzero pointer delta should be signed-12 admitted only")) {
+    return 1;
+  }
+
+  prepare::PreparedValueHome zero_delta = pointer_home;
+  zero_delta.pointer_byte_delta = 0;
+  const auto zero_delta_fact = prepare::as_pointer_base_plus_offset_fact(zero_delta);
+  if (!expect(zero_delta_fact.has_value(),
+              "zero-delta pointer home should still expose a typed fact") ||
+      !expect(zero_delta_fact->admits_direct_base_register_copy &&
+                  zero_delta_fact->fits_signed_12_bit_byte_delta,
+              "zero-delta pointer fact should admit direct base-register copy")) {
+    return 1;
+  }
+
+  prepare::PreparedValueHome large_delta = pointer_home;
+  large_delta.pointer_byte_delta = 4096;
+  const auto large_delta_fact = prepare::as_pointer_base_plus_offset_fact(large_delta);
+  if (!expect(large_delta_fact.has_value(),
+              "large coherent pointer delta should still expose a fact") ||
+      !expect(!large_delta_fact->fits_signed_12_bit_byte_delta,
+              "large pointer delta should not be signed-12 admitted")) {
+    return 1;
+  }
+
+  prepare::PreparedValueHome missing_base = pointer_home;
+  missing_base.pointer_base_value_name.reset();
+  prepare::PreparedValueHome invalid_base = pointer_home;
+  invalid_base.pointer_base_value_name = c4c::kInvalidValueName;
+  prepare::PreparedValueHome missing_delta = pointer_home;
+  missing_delta.pointer_byte_delta.reset();
+  prepare::PreparedValueHome missing_identity = pointer_home;
+  missing_identity.value_name = c4c::kInvalidValueName;
+  prepare::PreparedValueHome cross_family_i32 = pointer_home;
+  cross_family_i32.immediate_i32 = 7;
+  prepare::PreparedValueHome cross_family_f128 = pointer_home;
+  cross_family_f128.immediate_f128 =
+      c4c::backend::bir::Value::F128Payload{.low_bits = 1, .high_bits = 2};
+  prepare::PreparedValueHome wrong_kind = pointer_home;
+  wrong_kind.kind = prepare::PreparedValueHomeKind::StackSlot;
+  if (!expect(!prepare::as_pointer_base_plus_offset_fact(missing_base).has_value(),
+              "missing pointer base should reject typed pointer fact") ||
+      !expect(!prepare::as_pointer_base_plus_offset_fact(invalid_base).has_value(),
+              "invalid pointer base should reject typed pointer fact") ||
+      !expect(!prepare::as_pointer_base_plus_offset_fact(missing_delta).has_value(),
+              "missing pointer byte delta should reject typed pointer fact") ||
+      !expect(!prepare::as_pointer_base_plus_offset_fact(missing_identity).has_value(),
+              "missing destination identity should reject typed pointer fact") ||
+      !expect(!prepare::as_pointer_base_plus_offset_fact(cross_family_i32).has_value(),
+              "cross-family i32 payload should reject typed pointer fact") ||
+      !expect(!prepare::as_pointer_base_plus_offset_fact(cross_family_f128).has_value(),
+              "cross-family f128 payload should reject typed pointer fact") ||
+      !expect(!prepare::as_pointer_base_plus_offset_fact(wrong_kind).has_value(),
+              "non-pointer homes should reject typed pointer fact")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int verify_diagnostic_builders() {
   const auto missing = prepare::build_prepared_decoded_home_storage_diagnostic(
       prepare::PreparedDecodedHomeStorage{
@@ -657,6 +744,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (verify_rematerializable_integer_immediate_fact_query() != 0) {
+    return EXIT_FAILURE;
+  }
+  if (verify_pointer_base_plus_offset_fact_query() != 0) {
     return EXIT_FAILURE;
   }
   if (verify_diagnostic_builders() != 0) {

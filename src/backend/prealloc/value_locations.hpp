@@ -93,6 +93,17 @@ struct PreparedRematerializableIntegerImmediateFact {
   bool fits_signed_12_bit_immediate = false;
 };
 
+struct PreparedPointerBasePlusOffsetFact {
+  PreparedValueId value_id = 0;
+  FunctionNameId function_name = kInvalidFunctionName;
+  ValueNameId value_name = kInvalidValueName;
+  ValueNameId base_value_name = kInvalidValueName;
+  std::optional<LinkNameId> base_symbol_name;
+  std::int64_t byte_delta = 0;
+  bool admits_direct_base_register_copy = false;
+  bool fits_signed_12_bit_byte_delta = false;
+};
+
 [[nodiscard]] constexpr bool prepared_signed_12_bit_immediate_range_contains(
     std::int64_t value) {
   return value >= -2048 && value <= 2047;
@@ -115,6 +126,31 @@ as_rematerializable_integer_immediate_fact(const PreparedValueHome& home) {
       .signed_interpretation = true,
       .fits_signed_12_bit_immediate =
           prepared_signed_12_bit_immediate_range_contains(*home.immediate_i32),
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedPointerBasePlusOffsetFact>
+as_pointer_base_plus_offset_fact(const PreparedValueHome& home) {
+  if (home.kind != PreparedValueHomeKind::PointerBasePlusOffset ||
+      home.function_name == kInvalidFunctionName ||
+      home.value_name == kInvalidValueName ||
+      !home.pointer_base_value_name.has_value() ||
+      *home.pointer_base_value_name == kInvalidValueName ||
+      !home.pointer_byte_delta.has_value() ||
+      home.immediate_i32.has_value() ||
+      home.immediate_f128.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedPointerBasePlusOffsetFact{
+      .value_id = home.value_id,
+      .function_name = home.function_name,
+      .value_name = home.value_name,
+      .base_value_name = *home.pointer_base_value_name,
+      .base_symbol_name = home.pointer_base_symbol_name,
+      .byte_delta = *home.pointer_byte_delta,
+      .admits_direct_base_register_copy = *home.pointer_byte_delta == 0,
+      .fits_signed_12_bit_byte_delta =
+          prepared_signed_12_bit_immediate_range_contains(*home.pointer_byte_delta),
   };
 }
 
