@@ -55,3 +55,10 @@ Repair reproduction/proof:
 
 Result: passed; all three direct AArch64 binaries accept the scalar FP
 `va_arg` prepared access plan.
+
+Route review recorded:
+`review/idea416_step4_route_review.md` found the route on track, with no
+testcase-overfit pattern, and recommended a narrowed Step 4 cleanup packet
+before target-consumer migration: review remaining verifier/report call sites
+that still depend on generic optional-bag completeness for variadic helper
+operand homes, then regenerate canonical proof logs.
