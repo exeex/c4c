@@ -3,38 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/414_typed_prepared_call_argument_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Introduce Typed Local Materialization Payload and Bridge Accessor
+Current Step ID: 3
+Current Step Title: Add Producer-Side Verification
 
 ## Just Finished
 
-Completed Step 2 typed payload/accessor work for
+Completed Step 3 producer-side verifier coverage for
 `LocalFrameAddressMaterialization`.
 
-Added `PreparedCallArgumentLocalFrameAddressMaterializationRoute` and
-`as_local_frame_address_materialization_route` in
-`src/backend/prealloc/calls.hpp` without adding optional fields to
-`PreparedCallArgumentSourceSelection`.
+Added `PreparedLocalFrameAddressMaterializationSourceRouteContractStatus`,
+status spelling, classifier, and
+`verify_prepared_local_frame_address_materialization_source_route_contract` in
+`src/backend/prealloc/prepared_contract_verifier.*`.
 
-The typed query requires source value id/name, source-home kind of `Register`
-or `PointerBasePlusOffset`, source pointer byte delta, source slot, source
-stack offset, source extent/alignment, and complete adjusted address
-materialization facts. It rejects negative adjusted materialization offsets,
-slot/offset contradictions, preservation payloads, byval-lane payloads, and
-missing required facts.
+Missing source identity, source home, pointer base identity when required,
+pointer delta, source slot, stack offset, extent/alignment, and materialization
+location/slot/offset facts classify as `producer_missing`.
 
-`find_prepared_missing_frame_slot_call_argument_publication_need` now requires
-the typed query before classifying `LocalFrameAddressMaterialization`. Focused
-coverage in `backend_prepare_frame_stack_call_contract_test.cpp` checks valid
-typed route exposure, rejected invalid bags, and publication-bridge visibility.
+Wrong source-home kind, negative materialization offset, materialization
+slot/offset contradictions, and preservation/byval-lane cross-route payloads
+classify as `producer_incoherent`.
 
-Updated `docs/prepared_fact_contracts/call_argument_contract_plan.md` with the
-local-materialization Step 2 route scope.
+Focused coverage in
+`tests/backend/bir/backend_prealloc_prepared_contract_verifier_test.cpp` checks
+coherent, missing, and incoherent route reports.
 
 ## Suggested Next
 
-Begin Step 3 by adding producer-side verifier statuses and reports for
-`LocalFrameAddressMaterialization`.
+Begin Step 4 by migrating RV64/AArch64 consumers to the typed local
+materialization route plus verifier checks.
 
 ## Watchouts
 
@@ -50,6 +47,6 @@ Begin Step 3 by adding producer-side verifier statuses and reports for
 
 ## Proof
 
-Selected delegated proof passed: 16/16 tests, with monotonic regression guard
+Selected delegated proof passed: 17/17 tests, with monotonic regression guard
 PASS against the matching 16/16 baseline. Proof command:
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_call_boundary_classification$|backend_prepare_frame_stack_call_contract$|backend_riscv_object_emission$|backend_aarch64_call_boundary_owner$|backend_(dump|codegen_route)_riscv64_byval_|backend_codegen_route_aarch64_(prepared_call_boundary_scalability|alu_unpublished_load_local_after_call|alu_unpublished_load_local_call_boundary|hfa_result_home_publication_contract)$)' ) > test_after.log 2>&1`
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_call_boundary_classification$|backend_prepare_frame_stack_call_contract$|backend_prealloc_prepared_contract_verifier$|backend_riscv_object_emission$|backend_aarch64_call_boundary_owner$|backend_(dump|codegen_route)_riscv64_byval_|backend_codegen_route_aarch64_(prepared_call_boundary_scalability|alu_unpublished_load_local_after_call|alu_unpublished_load_local_call_boundary|hfa_result_home_publication_contract)$)' ) > test_after.log 2>&1`

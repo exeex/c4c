@@ -299,6 +299,93 @@ prepared_frame_slot_value_source_route_contract_status_name(
   return "unknown";
 }
 
+enum class PreparedLocalFrameAddressMaterializationSourceRouteContractStatus {
+  Coherent,
+  MissingRoute,
+  MissingSourceValueId,
+  MissingSourceValueName,
+  MissingSourceHomeKind,
+  MissingSourceBaseValueId,
+  MissingPointerByteDelta,
+  MissingSourceSlot,
+  MissingStackOffset,
+  MissingExtent,
+  MissingAlignment,
+  MissingMaterializationLocation,
+  MissingMaterializationFrameSlot,
+  MissingMaterializationByteOffset,
+  NegativeMaterializationByteOffset,
+  ConflictingSourceHomeKind,
+  ConflictingMaterializationFrameSlot,
+  ConflictingMaterializationByteOffset,
+  ConflictingCrossRoutePayload,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_local_frame_address_materialization_source_route_contract_status_name(
+    PreparedLocalFrameAddressMaterializationSourceRouteContractStatus status) {
+  switch (status) {
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        Coherent:
+      return "coherent";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingRoute:
+      return "missing_route";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingSourceValueId:
+      return "missing_source_value_id";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingSourceValueName:
+      return "missing_source_value_name";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingSourceHomeKind:
+      return "missing_source_home_kind";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingSourceBaseValueId:
+      return "missing_source_base_value_id";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingPointerByteDelta:
+      return "missing_pointer_byte_delta";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingSourceSlot:
+      return "missing_source_slot";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingStackOffset:
+      return "missing_stack_offset";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingExtent:
+      return "missing_extent";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingAlignment:
+      return "missing_alignment";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingMaterializationLocation:
+      return "missing_materialization_location";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingMaterializationFrameSlot:
+      return "missing_materialization_frame_slot";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        MissingMaterializationByteOffset:
+      return "missing_materialization_byte_offset";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        NegativeMaterializationByteOffset:
+      return "negative_materialization_byte_offset";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        ConflictingSourceHomeKind:
+      return "conflicting_source_home_kind";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        ConflictingMaterializationFrameSlot:
+      return "conflicting_materialization_frame_slot";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        ConflictingMaterializationByteOffset:
+      return "conflicting_materialization_byte_offset";
+    case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+        ConflictingCrossRoutePayload:
+      return "conflicting_cross_route_payload";
+  }
+  return "unknown";
+}
+
 struct PreparedSelectedLocalStorageContractFacts {
   FunctionNameId function_name = kInvalidFunctionName;
   std::optional<PreparedObjectId> object_id;
@@ -409,6 +496,14 @@ classify_prepared_frame_slot_value_source_route_contract(
 
 [[nodiscard]] PreparedContractVerificationReport
 verify_prepared_frame_slot_value_source_route_contract(
+    const PreparedCallArgumentSourceSelection* selection);
+
+[[nodiscard]] PreparedLocalFrameAddressMaterializationSourceRouteContractStatus
+classify_prepared_local_frame_address_materialization_source_route_contract(
+    const PreparedCallArgumentSourceSelection* selection);
+
+[[nodiscard]] PreparedContractVerificationReport
+verify_prepared_local_frame_address_materialization_source_route_contract(
     const PreparedCallArgumentSourceSelection* selection);
 
 }  // namespace c4c::backend::prepare

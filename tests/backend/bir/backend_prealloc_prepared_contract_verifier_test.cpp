@@ -84,6 +84,26 @@ prepare::PreparedCallArgumentSourceSelection coherent_frame_slot_value_route() {
   };
 }
 
+prepare::PreparedCallArgumentSourceSelection
+coherent_local_frame_address_materialization_route() {
+  return prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::
+          LocalFrameAddressMaterialization,
+      .source_value_id = prepare::PreparedValueId{53},
+      .source_value_name = c4c::ValueNameId{59},
+      .source_home_kind = prepare::PreparedValueHomeKind::Register,
+      .source_slot_id = prepare::PreparedFrameSlotId{61},
+      .source_stack_offset_bytes = std::size_t{64},
+      .source_size_bytes = std::size_t{16},
+      .source_align_bytes = std::size_t{8},
+      .source_pointer_byte_delta = std::int64_t{0},
+      .address_materialization_block_label = c4c::BlockLabelId{67},
+      .address_materialization_inst_index = std::size_t{3},
+      .address_materialization_frame_slot_id = prepare::PreparedFrameSlotId{61},
+      .address_materialization_byte_offset = std::int64_t{64},
+  };
+}
+
 int verify_selected_local_storage_contract_reports() {
   const auto coherent =
       prepare::verify_prepared_selected_local_storage_contract(
@@ -326,6 +346,128 @@ int verify_frame_slot_value_source_route_contract_reports() {
   return 0;
 }
 
+int verify_local_frame_address_materialization_source_route_contract_reports() {
+  auto coherent_route = coherent_local_frame_address_materialization_route();
+  const auto coherent =
+      prepare::
+          verify_prepared_local_frame_address_materialization_source_route_contract(
+              &coherent_route);
+
+  auto missing_delta = coherent_local_frame_address_materialization_route();
+  missing_delta.source_pointer_byte_delta = std::nullopt;
+  const auto missing_delta_report =
+      prepare::
+          verify_prepared_local_frame_address_materialization_source_route_contract(
+              &missing_delta);
+
+  auto missing_base = coherent_local_frame_address_materialization_route();
+  missing_base.source_home_kind =
+      prepare::PreparedValueHomeKind::PointerBasePlusOffset;
+  missing_base.source_base_value_id = std::nullopt;
+  const auto missing_base_report =
+      prepare::
+          verify_prepared_local_frame_address_materialization_source_route_contract(
+              &missing_base);
+
+  auto wrong_home = coherent_local_frame_address_materialization_route();
+  wrong_home.source_home_kind = prepare::PreparedValueHomeKind::StackSlot;
+  const auto wrong_home_report =
+      prepare::
+          verify_prepared_local_frame_address_materialization_source_route_contract(
+              &wrong_home);
+
+  auto missing_location = coherent_local_frame_address_materialization_route();
+  missing_location.address_materialization_block_label = std::nullopt;
+  const auto missing_location_report =
+      prepare::
+          verify_prepared_local_frame_address_materialization_source_route_contract(
+              &missing_location);
+
+  auto mismatched_slot = coherent_local_frame_address_materialization_route();
+  mismatched_slot.address_materialization_frame_slot_id =
+      prepare::PreparedFrameSlotId{62};
+  const auto mismatched_slot_report =
+      prepare::
+          verify_prepared_local_frame_address_materialization_source_route_contract(
+              &mismatched_slot);
+
+  auto mismatched_offset = coherent_local_frame_address_materialization_route();
+  mismatched_offset.address_materialization_byte_offset = std::int64_t{63};
+  const auto mismatched_offset_report =
+      prepare::
+          verify_prepared_local_frame_address_materialization_source_route_contract(
+              &mismatched_offset);
+
+  auto cross_route = coherent_local_frame_address_materialization_route();
+  cross_route.byval_lane_extent_bytes = std::size_t{8};
+  const auto cross_route_report =
+      prepare::
+          verify_prepared_local_frame_address_materialization_source_route_contract(
+              &cross_route);
+
+  const auto missing_route_report =
+      prepare::
+          verify_prepared_local_frame_address_materialization_source_route_contract(
+              nullptr);
+
+  if (!expect(coherent.owner_class == prepare::PreparedContractOwnerClass::Coherent,
+              "complete local materialization route should be coherent") ||
+      !expect(!coherent.fail_closed,
+              "coherent local materialization route should not fail closed") ||
+      !expect(coherent.fact_family ==
+                  prepare::PreparedContractFactFamily::CallArgumentTypedRoute,
+              "local materialization route should identify typed route family") ||
+      !expect(missing_delta_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing pointer delta should classify as producer missing") ||
+      !expect(prepare::
+                  classify_prepared_local_frame_address_materialization_source_route_contract(
+                      &missing_delta) ==
+                  prepare::
+                      PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+                          MissingPointerByteDelta,
+              "missing pointer delta should have precise route status") ||
+      !expect(missing_base_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing pointer base identity should classify as producer missing") ||
+      !expect(prepare::
+                  classify_prepared_local_frame_address_materialization_source_route_contract(
+                      &missing_base) ==
+                  prepare::
+                      PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+                          MissingSourceBaseValueId,
+              "missing pointer base identity should have precise route status") ||
+      !expect(wrong_home_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "wrong local materialization home kind should classify as producer incoherent") ||
+      !expect(missing_location_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing materialization location should classify as producer missing") ||
+      !expect(mismatched_slot_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "contradictory local materialization slot should classify as producer incoherent") ||
+      !expect(mismatched_offset_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "contradictory local materialization offset should classify as producer incoherent") ||
+      !expect(cross_route_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "cross-route local materialization payload should classify as producer incoherent") ||
+      !expect(missing_route_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "absent local materialization route should classify as producer missing") ||
+      !expect(prepare::
+                  prepared_local_frame_address_materialization_source_route_contract_status_name(
+                      prepare::
+                          PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
+                              ConflictingMaterializationByteOffset) ==
+                  std::string_view{"conflicting_materialization_byte_offset"},
+              "local materialization offset status spelling mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -340,6 +482,11 @@ int main() {
     return rc;
   }
   if (const int rc = verify_frame_slot_value_source_route_contract_reports();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc =
+          verify_local_frame_address_materialization_source_route_contract_reports();
       rc != 0) {
     return rc;
   }
