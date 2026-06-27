@@ -33851,7 +33851,7 @@ int direct_global_select_chain_call_argument_falls_back_to_prepared_dependency()
   return 0;
 }
 
-int scalar_call_argument_source_producer_reads_bir_materialization() {
+int scalar_call_argument_source_producer_reads_prepared_materialization() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -34123,22 +34123,35 @@ int scalar_call_argument_source_producer_reads_bir_materialization() {
   aarch64_codegen::BlockScalarLoweringState scalar_state;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto lowered = aarch64_codegen::lower_scalar_call_argument_producers(
-      route_only_block_context,
+      block_context,
       prepared.call_plans.functions.front().calls.front(),
       call->args,
       1,
       scalar_state,
       diagnostics);
   if (lowered.size() != 1 || !diagnostics.empty()) {
-    return fail("expected BIR source-producer fact to materialize scalar call argument without prepared producer lookup");
+    return fail("expected coherent prepared binary producer fact to materialize scalar call argument");
   }
   aarch64_module::MachineBlock block;
   block.instructions = lowered;
   const auto printed = print_route_block(function_name, block);
   if (!printed.ok ||
       printed.assembly.find("add w9, w2, w3") == std::string::npos) {
-    return fail("expected BIR source-producer materialization to emit the scalar add before the call: " +
+    return fail("expected prepared binary producer materialization to emit the scalar add before the call: " +
                 (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  aarch64_codegen::BlockScalarLoweringState route_only_scalar_state;
+  aarch64_module::ModuleLoweringDiagnostics route_only_diagnostics;
+  const auto route_only_lowered =
+      aarch64_codegen::lower_scalar_call_argument_producers(
+          route_only_block_context,
+          prepared.call_plans.functions.front().calls.front(),
+          call->args,
+          1,
+          route_only_scalar_state,
+          route_only_diagnostics);
+  if (!route_only_lowered.empty() || !route_only_diagnostics.empty()) {
+    return fail("expected Route 6-only binary producer materialization to fail closed without prepared typed fact");
   }
 
   struct ScalarArgumentProducerLowering {
@@ -34203,6 +34216,19 @@ int scalar_call_argument_source_producer_reads_bir_materialization() {
                ? 0
                : fail(std::string{message} + ": " + rejected.assembly);
   };
+  auto incoherent_binary_lookups = prepared_lookups;
+  incoherent_binary_lookups.edge_publication_source_producers
+      .producers_by_value_name[sum_name]
+      .binary = nullptr;
+  const auto incoherent_rejected =
+      lower_current_scalar_argument_producers(incoherent_binary_lookups);
+  if (!incoherent_rejected.ok ||
+      incoherent_rejected.instruction_count != 0 ||
+      incoherent_rejected.assembly.find("add w9, w2, w3") !=
+          std::string::npos) {
+    return fail("expected incoherent prepared binary producer fact to reject scalar call-argument materialization: " +
+                incoherent_rejected.assembly);
+  }
 
   auto& mutable_block = prepared.module.functions.front().blocks.front();
   auto* mutable_call = std::get_if<bir::CallInst>(&mutable_block.insts[1]);
@@ -35661,7 +35687,7 @@ int main() {
     return status;
   }
   if (const int status =
-          scalar_call_argument_source_producer_reads_bir_materialization();
+          scalar_call_argument_source_producer_reads_prepared_materialization();
       status != 0) {
     return status;
   }

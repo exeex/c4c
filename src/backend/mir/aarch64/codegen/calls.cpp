@@ -6486,6 +6486,49 @@ struct ScalarCallArgumentSourceProducerMaterialization {
 };
 
 [[nodiscard]] std::optional<ScalarCallArgumentSourceProducerMaterialization>
+verified_scalar_call_argument_binary_producer_materialization(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedEdgePublicationSourceProducerLookups* source_producers,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      context.function.prepared == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    const auto report =
+        prepare::
+            verify_prepared_call_argument_binary_producer_materialization_contract(
+                nullptr);
+    if (report.fail_closed) {
+      return std::nullopt;
+    }
+    return std::nullopt;
+  }
+  const auto fact =
+      prepare::find_prepared_call_argument_binary_producer_materialization_fact(
+          context.function.prepared->names,
+          source_producers,
+          context.control_flow_block->block_label,
+          context.bir_block,
+          value,
+          before_instruction_index);
+  const auto report =
+      prepare::verify_prepared_call_argument_binary_producer_materialization_contract(
+          fact.has_value() ? &*fact : nullptr);
+  if (report.fail_closed || !fact.has_value()) {
+    return std::nullopt;
+  }
+  return ScalarCallArgumentSourceProducerMaterialization{
+      .producer_kind = fact->producer_kind,
+      .producer_instruction = fact->producer_instruction,
+      .binary = fact->binary,
+      .producer_instruction_index = fact->producer_instruction_index,
+      .materializable = fact->materializable,
+  };
+}
+
+[[nodiscard]] std::optional<ScalarCallArgumentSourceProducerMaterialization>
 find_scalar_call_argument_source_producer_materialization(
     const module::BlockLoweringContext& context,
     const bir::CallInst* call_inst,
@@ -6528,6 +6571,11 @@ find_scalar_call_argument_source_producer_materialization(
           record.materialization.scalar_materialization_available) {
         const auto prepared_kind =
             route6_call_argument_source_producer_kind(record.producer.kind);
+        if (prepared_kind ==
+            prepare::PreparedEdgePublicationSourceProducerKind::Binary) {
+          return verified_scalar_call_argument_binary_producer_materialization(
+              context, source_producers, value, before_instruction_index);
+        }
         return ScalarCallArgumentSourceProducerMaterialization{
             .producer_kind = prepared_kind,
             .producer_instruction =
@@ -6551,6 +6599,11 @@ find_scalar_call_argument_source_producer_materialization(
           context, source_producers, value, before_instruction_index);
   if (!prepared_materialization.has_value()) {
     return std::nullopt;
+  }
+  if (prepared_materialization->producer.producer.kind ==
+      prepare::PreparedEdgePublicationSourceProducerKind::Binary) {
+    return verified_scalar_call_argument_binary_producer_materialization(
+        context, source_producers, value, before_instruction_index);
   }
   return ScalarCallArgumentSourceProducerMaterialization{
       .producer_kind = prepared_materialization->producer.producer.kind,
