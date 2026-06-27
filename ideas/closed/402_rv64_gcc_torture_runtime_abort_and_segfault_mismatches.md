@@ -1,6 +1,6 @@
 # RV64 gcc_torture Runtime Abort And Segfault Mismatches
 
-Status: Open
+Status: Closed
 Type: Follow-up repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 
@@ -62,3 +62,25 @@ should not be treated as classification-only progress.
   the producer defect to a separate semantic idea.
 - Reject keeping abort and segfault failures lumped together after evidence
   shows separate root causes that need separate owners.
+
+## Lifecycle Notes
+
+- 2026-06-27: Closed after runtime representative triage split the active
+  segfault and abort families. The `20070212-2.c` frame-slot local-address
+  segfault family was repaired by implementation commit `9b2ff12e`, and Step 3
+  proof showed `dump_bir_status=0`, `prepared_status=0`,
+  `c4c_bin_objdump_status=0`, `clang_qemu_status=0`, `c4c_qemu_status=0`, and
+  `c4c_qemu_strace_status=0`.
+- 2026-06-27: The repaired `20070212-2.c` proof still publishes explicit
+  frame-slot address materialization facts for `%lv.param.i1` and
+  `%lv.param.j1`, and object evidence materializes those addresses before
+  storing `%lv.f1`.
+- 2026-06-27: The remaining `20000113-1.c` abort is a distinct runtime owner:
+  `dump_bir_status=0`, `prepared_status=0`, `c4c_bin_objdump_status=0`,
+  `clang_qemu_status=0`, `c4c_qemu_status=134`, and
+  `c4c_qemu_strace_status=134`. It is routed to
+  `ideas/open/411_rv64_object_route_rhs_bitfield_boolean_select_abort.md`.
+- 2026-06-27: Close gate passed with the backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`. The
+  rolled-forward `test_before.log` and regenerated `test_after.log` both
+  reported 326/326 passing backend tests with no new failures.
