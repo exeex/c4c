@@ -9076,6 +9076,129 @@ int check_rv64_variadic_entry_helper_missing_contract() {
   return 0;
 }
 
+bir::Module make_rv64_variadic_entry_frame_slot_va_start_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "rv64_variadic_entry_frame_slot_va_start_contract";
+  function.is_variadic = true;
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "head",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_start.p0",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "heap.ap"),
+      .callee = "malloc",
+      .args = {bir::Value::immediate_i64(8)},
+      .arg_types = {bir::TypeKind::I64},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "clobber.ap"),
+      .callee = "malloc",
+      .args = {bir::Value::immediate_i64(8)},
+      .arg_types = {bir::TypeKind::I64},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_start.p0",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "heap.ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "head")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int check_rv64_variadic_entry_frame_slot_va_start_address_contract() {
+  const auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      make_rv64_variadic_entry_frame_slot_va_start_module(),
+      riscv_target_profile(),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+  const auto function_id =
+      prepared.names.function_names.find("rv64_variadic_entry_frame_slot_va_start_contract");
+  const auto* entry_plan = prepare::find_prepared_variadic_entry_plan(prepared, function_id);
+  if (entry_plan == nullptr ||
+      entry_plan->helper_resources.required_helpers.size() != 1 ||
+      entry_plan->helper_resources.required_helpers.front() !=
+          prepare::PreparedVariadicEntryHelperKind::VaStart ||
+      entry_plan->helper_operand_homes.size() != 2) {
+    return fail("RV64 frame-slot va_start address contract: missing helper homes");
+  }
+  const auto has_missing_fact = [&](std::string_view fact) {
+    return std::find(entry_plan->missing_required_facts.begin(),
+                     entry_plan->missing_required_facts.end(),
+                     fact) != entry_plan->missing_required_facts.end();
+  };
+  if (has_missing_fact("helper_operand_homes.va_start.destination_va_list") ||
+      has_missing_fact("helper_operand_homes.va_start.destination_va_list_address")) {
+    return fail("RV64 frame-slot va_start address contract: retained missing va_start helper facts");
+  }
+
+  const auto* register_va_start_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 0);
+  const auto* frame_slot_va_start_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 3);
+  if (register_va_start_homes == nullptr ||
+      frame_slot_va_start_homes == nullptr ||
+      !prepare::has_complete_prepared_variadic_va_start_operand_homes(
+          *register_va_start_homes) ||
+      !prepare::has_complete_prepared_variadic_va_start_operand_homes(
+          *frame_slot_va_start_homes)) {
+    return fail("RV64 frame-slot va_start address contract: incomplete va_start operand homes");
+  }
+  if (register_va_start_homes->destination_va_list_address->kind !=
+          prepare::PreparedValueHomeKind::Register ||
+      !register_va_start_homes->destination_va_list_address->register_name.has_value()) {
+    return fail("RV64 frame-slot va_start address contract: register-backed address path regressed");
+  }
+  if (frame_slot_va_start_homes->destination_va_list_address->kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      !frame_slot_va_start_homes->destination_va_list_address->slot_id.has_value() ||
+      !frame_slot_va_start_homes->destination_va_list_address->offset_bytes.has_value() ||
+      !frame_slot_va_start_homes->destination_va_list_address->size_bytes.has_value() ||
+      !frame_slot_va_start_homes->destination_va_list_address->align_bytes.has_value() ||
+      frame_slot_va_start_homes->destination_va_list_address->value_name !=
+          frame_slot_va_start_homes->destination_va_list->value_name ||
+      frame_slot_va_start_homes->destination_va_list_address->slot_id ==
+          frame_slot_va_start_homes->destination_va_list->slot_id) {
+    return fail("RV64 frame-slot va_start address contract: frame-slot address home was not published distinctly");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -9266,6 +9389,11 @@ int main() {
     return rc;
   }
   if (const int rc = check_rv64_variadic_entry_helper_missing_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc =
+          check_rv64_variadic_entry_frame_slot_va_start_address_contract();
+      rc != 0) {
     return rc;
   }
   return EXIT_SUCCESS;

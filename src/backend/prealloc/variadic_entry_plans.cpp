@@ -328,6 +328,20 @@ PreparedFrameSlot& append_variadic_storage_slot(PreparedBirModule& prepared,
   };
 }
 
+[[nodiscard]] bool is_supported_rv64_va_start_destination_address_home(
+    const PreparedValueHome& home) {
+  if (home.kind == PreparedValueHomeKind::Register) {
+    return home.register_name.has_value();
+  }
+  if (home.kind == PreparedValueHomeKind::StackSlot) {
+    return home.slot_id.has_value() &&
+           home.offset_bytes.has_value() &&
+           home.size_bytes.has_value() &&
+           home.align_bytes.has_value();
+  }
+  return false;
+}
+
 void populate_aapcs64_variadic_entry_abi_facts(
     PreparedVariadicEntryPlanFunction& function_plan) {
   if (function_plan.helper_resources.required_helpers.empty()) {
@@ -1148,8 +1162,8 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
             if (homes.destination_va_list_address.has_value()) {
               homes.destination_va_list = materialize_va_start_destination_home(
                   prepared, function_plan, "rv64", *homes.destination_va_list_address);
-              if (homes.destination_va_list_address->kind !=
-                  PreparedValueHomeKind::Register) {
+              if (!is_supported_rv64_va_start_destination_address_home(
+                      *homes.destination_va_list_address)) {
                 homes.destination_va_list_address = std::nullopt;
               }
             }
