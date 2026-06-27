@@ -303,10 +303,16 @@ is_complete_prepared_variadic_aggregate_va_arg_access_plan(
          *plan.progression_stride_bytes > 0;
 }
 
+struct PreparedVariadicVaStartOperandHomes {
+  PreparedValueHome destination_va_list;
+  PreparedValueHome destination_va_list_address;
+};
+
 struct PreparedVariadicEntryHelperOperandHomes {
   PreparedVariadicEntryHelperKind helper = PreparedVariadicEntryHelperKind::VaStart;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
+  mutable std::optional<PreparedVariadicVaStartOperandHomes> va_start_operand_homes;
   std::optional<PreparedValueHome> destination_va_list;
   std::optional<PreparedValueHome> destination_va_list_address;
   std::optional<PreparedValueHome> source_va_list;
@@ -316,11 +322,43 @@ struct PreparedVariadicEntryHelperOperandHomes {
   std::optional<PreparedVariadicAggregateVaArgAccessPlan> aggregate_access_plan;
 };
 
+[[nodiscard]] inline const PreparedVariadicVaStartOperandHomes*
+find_prepared_variadic_va_start_operand_homes(
+    const PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (homes.helper != PreparedVariadicEntryHelperKind::VaStart) {
+    return nullptr;
+  }
+  if (!homes.va_start_operand_homes.has_value() &&
+      homes.destination_va_list.has_value() &&
+      homes.destination_va_list_address.has_value()) {
+    homes.va_start_operand_homes = PreparedVariadicVaStartOperandHomes{
+        .destination_va_list = *homes.destination_va_list,
+        .destination_va_list_address = *homes.destination_va_list_address,
+    };
+  }
+  if (!homes.va_start_operand_homes.has_value()) {
+    return nullptr;
+  }
+  return &*homes.va_start_operand_homes;
+}
+
+inline void publish_prepared_variadic_va_start_operand_homes(
+    PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (homes.helper != PreparedVariadicEntryHelperKind::VaStart ||
+      !homes.destination_va_list.has_value() ||
+      !homes.destination_va_list_address.has_value()) {
+    homes.va_start_operand_homes = std::nullopt;
+    return;
+  }
+  homes.va_start_operand_homes = PreparedVariadicVaStartOperandHomes{
+      .destination_va_list = *homes.destination_va_list,
+      .destination_va_list_address = *homes.destination_va_list_address,
+  };
+}
+
 [[nodiscard]] inline bool has_complete_prepared_variadic_va_start_operand_homes(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
-  return homes.helper == PreparedVariadicEntryHelperKind::VaStart &&
-         homes.destination_va_list.has_value() &&
-         homes.destination_va_list_address.has_value();
+  return find_prepared_variadic_va_start_operand_homes(homes) != nullptr;
 }
 
 [[nodiscard]] inline bool has_complete_prepared_variadic_scalar_va_arg_access_plan(

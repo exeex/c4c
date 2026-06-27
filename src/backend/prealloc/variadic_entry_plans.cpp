@@ -1068,6 +1068,7 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
                                                homes,
                                                homes.destination_va_list_address,
                                                "destination_va_list_address");
+          publish_prepared_variadic_va_start_operand_homes(homes);
           break;
         case PreparedVariadicEntryHelperKind::VaArg:
           if (call->result.has_value()) {
@@ -1176,6 +1177,7 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
                                                homes,
                                                homes.destination_va_list_address,
                                                "destination_va_list_address");
+          publish_prepared_variadic_va_start_operand_homes(homes);
           if (has_complete_prepared_variadic_va_start_operand_homes(homes)) {
             function_plan.helper_operand_homes.push_back(std::move(homes));
           }

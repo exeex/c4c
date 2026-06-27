@@ -6746,6 +6746,12 @@ int main() {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not materialize va_start operand homes\n";
     return EXIT_FAILURE;
   }
+  const auto* rv64_typed_va_start_homes =
+      prepare::find_prepared_variadic_va_start_operand_homes(*rv64_va_start_homes);
+  if (rv64_typed_va_start_homes == nullptr) {
+    std::cerr << "[FAIL] RV64 variadic helper-family carrier did not publish typed va_start operand homes\n";
+    return EXIT_FAILURE;
+  }
   if (rv64_va_start_homes->destination_va_list->kind !=
           prepare::PreparedValueHomeKind::StackSlot ||
       !rv64_va_start_homes->destination_va_list->slot_id.has_value() ||
@@ -6753,6 +6759,15 @@ int main() {
           prepare::PreparedValueHomeKind::Register ||
       !rv64_va_start_homes->destination_va_list_address->register_name.has_value()) {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not distinguish va_start storage from the prepared GPR address\n";
+    return EXIT_FAILURE;
+  }
+  if (rv64_typed_va_start_homes->destination_va_list.kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      !rv64_typed_va_start_homes->destination_va_list.slot_id.has_value() ||
+      rv64_typed_va_start_homes->destination_va_list_address.kind !=
+          prepare::PreparedValueHomeKind::Register ||
+      !rv64_typed_va_start_homes->destination_va_list_address.register_name.has_value()) {
+    std::cerr << "[FAIL] RV64 variadic helper-family typed va_start payload did not preserve storage/address homes\n";
     return EXIT_FAILURE;
   }
   const auto* rv64_aggregate_homes =

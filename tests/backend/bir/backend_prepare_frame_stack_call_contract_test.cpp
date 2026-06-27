@@ -9335,6 +9335,11 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       !prepare::has_complete_prepared_variadic_va_start_operand_homes(*va_start_homes)) {
     return fail("RV64 variadic helper missing contract: va_start operand homes were not materialized");
   }
+  const auto* typed_va_start_homes =
+      prepare::find_prepared_variadic_va_start_operand_homes(*va_start_homes);
+  if (typed_va_start_homes == nullptr) {
+    return fail("RV64 variadic helper missing contract: va_start typed operand homes were not published");
+  }
   if (va_start_homes->destination_va_list->kind !=
           prepare::PreparedValueHomeKind::StackSlot ||
       !va_start_homes->destination_va_list->slot_id.has_value() ||
@@ -9342,6 +9347,29 @@ int check_rv64_variadic_entry_helper_missing_contract() {
           prepare::PreparedValueHomeKind::Register ||
       !va_start_homes->destination_va_list_address->register_name.has_value()) {
     return fail("RV64 variadic helper missing contract: va_start storage and address homes were not distinguished");
+  }
+  prepare::PreparedVariadicEntryHelperOperandHomes mismatched_optional_va_start{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaArg,
+      .destination_va_list = *va_start_homes->destination_va_list,
+      .destination_va_list_address = *va_start_homes->destination_va_list_address,
+  };
+  prepare::publish_prepared_variadic_va_start_operand_homes(
+      mismatched_optional_va_start);
+  prepare::PreparedVariadicEntryHelperOperandHomes incomplete_optional_va_start{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+      .destination_va_list = *va_start_homes->destination_va_list,
+  };
+  prepare::publish_prepared_variadic_va_start_operand_homes(
+      incomplete_optional_va_start);
+  if (prepare::find_prepared_variadic_va_start_operand_homes(
+          mismatched_optional_va_start) != nullptr ||
+      prepare::has_complete_prepared_variadic_va_start_operand_homes(
+          mismatched_optional_va_start) ||
+      prepare::find_prepared_variadic_va_start_operand_homes(
+          incomplete_optional_va_start) != nullptr ||
+      prepare::has_complete_prepared_variadic_va_start_operand_homes(
+          incomplete_optional_va_start)) {
+    return fail("RV64 variadic helper missing contract: invalid optional-bag combinations looked like typed va_start payloads");
   }
   const auto* overflow_base_slot =
       prepare::find_prepared_frame_slot(prepared.stack_layout,
