@@ -39,6 +39,7 @@ enum class PreparedContractOwnerClass {
 
 enum class PreparedContractFactFamily {
   ValueHomeTypedStorage,
+  ValueMaterializationFact,
   CallBoundaryArgumentResultPlan,
   CallArgumentTypedRoute,
   VariadicEntryHelperOperandHomes,
@@ -61,6 +62,8 @@ enum class PreparedContractFactFamily {
   switch (family) {
     case PreparedContractFactFamily::ValueHomeTypedStorage:
       return "value_home_typed_storage";
+    case PreparedContractFactFamily::ValueMaterializationFact:
+      return "value_materialization_fact";
     case PreparedContractFactFamily::CallBoundaryArgumentResultPlan:
       return "call_boundary_argument_result_plan";
     case PreparedContractFactFamily::CallArgumentTypedRoute:
@@ -109,6 +112,42 @@ enum class PreparedSelectedLocalStorageContractStatus {
   ConflictingMemoryProvenance,
   UnsupportedButCoherent,
 };
+
+enum class PreparedRematerializableIntegerImmediateContractStatus {
+  Coherent,
+  MissingValueHome,
+  MissingValueId,
+  MissingFunctionName,
+  MissingValueName,
+  MissingImmediatePayload,
+  ConflictingHomeKind,
+  ConflictingCrossFamilyPayload,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_rematerializable_integer_immediate_contract_status_name(
+    PreparedRematerializableIntegerImmediateContractStatus status) {
+  switch (status) {
+    case PreparedRematerializableIntegerImmediateContractStatus::Coherent:
+      return "coherent";
+    case PreparedRematerializableIntegerImmediateContractStatus::MissingValueHome:
+      return "missing_value_home";
+    case PreparedRematerializableIntegerImmediateContractStatus::MissingValueId:
+      return "missing_value_id";
+    case PreparedRematerializableIntegerImmediateContractStatus::MissingFunctionName:
+      return "missing_function_name";
+    case PreparedRematerializableIntegerImmediateContractStatus::MissingValueName:
+      return "missing_value_name";
+    case PreparedRematerializableIntegerImmediateContractStatus::MissingImmediatePayload:
+      return "missing_immediate_payload";
+    case PreparedRematerializableIntegerImmediateContractStatus::ConflictingHomeKind:
+      return "conflicting_home_kind";
+    case PreparedRematerializableIntegerImmediateContractStatus::
+        ConflictingCrossFamilyPayload:
+      return "conflicting_cross_family_payload";
+  }
+  return "unknown";
+}
 
 [[nodiscard]] constexpr std::string_view
 prepared_selected_local_storage_contract_status_name(
@@ -465,6 +504,14 @@ verify_prepared_variadic_entry_helper_operand_homes_contract(
     PreparedVariadicEntryHelperKind expected_helper,
     std::size_t block_index,
     std::size_t instruction_index);
+
+[[nodiscard]] PreparedRematerializableIntegerImmediateContractStatus
+classify_prepared_rematerializable_integer_immediate_contract(
+    const PreparedValueHome* home);
+
+[[nodiscard]] PreparedContractVerificationReport
+verify_prepared_rematerializable_integer_immediate_contract(
+    const PreparedValueHome* home);
 
 [[nodiscard]] PreparedSelectedLocalStorageContractStatus
 classify_prepared_selected_local_storage_contract(

@@ -26,3 +26,26 @@ Rejected records fail closed by returning no fact:
 This slice does not add target-local BIR expression recovery. Producer-side
 diagnostics and target consumer migration are reserved for the next steps in
 the runbook.
+
+## Producer Verification
+
+Step 3 adds
+`PreparedRematerializableIntegerImmediateContractStatus` plus
+`verify_prepared_rematerializable_integer_immediate_contract`.
+
+Producer-missing statuses:
+
+- `missing_value_home`
+- `missing_value_id`
+- `missing_function_name`
+- `missing_value_name`
+- `missing_immediate_payload`
+
+Producer-incoherent statuses:
+
+- `conflicting_home_kind`
+- `conflicting_cross_family_payload`
+
+Reports use the `value_materialization_fact` fact family and fail closed for
+every non-coherent status. Coherent reports preserve function, value id, and
+value name identity without emitting diagnostic detail.

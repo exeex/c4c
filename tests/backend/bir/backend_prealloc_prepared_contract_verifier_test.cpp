@@ -104,6 +104,99 @@ coherent_local_frame_address_materialization_route() {
   };
 }
 
+prepare::PreparedValueHome coherent_rematerializable_integer_immediate_home() {
+  return prepare::PreparedValueHome{
+      .value_id = prepare::PreparedValueId{71},
+      .function_name = c4c::FunctionNameId{73},
+      .value_name = c4c::ValueNameId{79},
+      .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+      .immediate_i32 = std::int64_t{511},
+  };
+}
+
+int verify_rematerializable_integer_immediate_contract_reports() {
+  auto coherent_home = coherent_rematerializable_integer_immediate_home();
+  const auto coherent =
+      prepare::verify_prepared_rematerializable_integer_immediate_contract(
+          &coherent_home);
+
+  auto missing_payload = coherent_rematerializable_integer_immediate_home();
+  missing_payload.immediate_i32 = std::nullopt;
+  const auto missing_payload_report =
+      prepare::verify_prepared_rematerializable_integer_immediate_contract(
+          &missing_payload);
+
+  auto missing_identity = coherent_rematerializable_integer_immediate_home();
+  missing_identity.value_name = c4c::kInvalidValueName;
+  const auto missing_identity_report =
+      prepare::verify_prepared_rematerializable_integer_immediate_contract(
+          &missing_identity);
+
+  auto wrong_home = coherent_rematerializable_integer_immediate_home();
+  wrong_home.kind = prepare::PreparedValueHomeKind::Register;
+  const auto wrong_home_report =
+      prepare::verify_prepared_rematerializable_integer_immediate_contract(
+          &wrong_home);
+
+  auto cross_family = coherent_rematerializable_integer_immediate_home();
+  cross_family.immediate_f128 =
+      c4c::backend::bir::Value::F128Payload{.low_bits = 1, .high_bits = 2};
+  const auto cross_family_report =
+      prepare::verify_prepared_rematerializable_integer_immediate_contract(
+          &cross_family);
+
+  const auto missing_home_report =
+      prepare::verify_prepared_rematerializable_integer_immediate_contract(
+          nullptr);
+
+  if (!expect(coherent.owner_class == prepare::PreparedContractOwnerClass::Coherent,
+              "complete rematerializable integer immediate should be coherent") ||
+      !expect(!coherent.fail_closed,
+              "coherent rematerializable integer immediate should not fail closed") ||
+      !expect(coherent.fact_family ==
+                  prepare::PreparedContractFactFamily::ValueMaterializationFact,
+              "rematerializable integer immediate should identify materialization family") ||
+      !expect(coherent.value_id == prepare::PreparedValueId{71} &&
+                  coherent.function_name == c4c::FunctionNameId{73} &&
+                  coherent.value_name == c4c::ValueNameId{79},
+              "coherent rematerializable integer immediate should preserve identity") ||
+      !expect(missing_payload_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing immediate payload should classify as producer missing") ||
+      !expect(prepare::classify_prepared_rematerializable_integer_immediate_contract(
+                  &missing_payload) ==
+                  prepare::PreparedRematerializableIntegerImmediateContractStatus::
+                      MissingImmediatePayload,
+              "missing immediate payload should have precise status") ||
+      !expect(missing_identity_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing value identity should classify as producer missing") ||
+      !expect(wrong_home_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "wrong immediate home kind should classify as producer incoherent") ||
+      !expect(cross_family_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "cross-family immediate payload should classify as producer incoherent") ||
+      !expect(missing_home_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "absent immediate value home should classify as producer missing") ||
+      !expect(prepare::
+                  prepared_rematerializable_integer_immediate_contract_status_name(
+                      prepare::
+                          PreparedRematerializableIntegerImmediateContractStatus::
+                              ConflictingCrossFamilyPayload) ==
+                  std::string_view{"conflicting_cross_family_payload"},
+              "rematerializable immediate status spelling mismatch") ||
+      !expect(prepare::prepared_contract_fact_family_name(
+                  prepare::PreparedContractFactFamily::ValueMaterializationFact) ==
+                  std::string_view{"value_materialization_fact"},
+              "value materialization fact family spelling mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int verify_selected_local_storage_contract_reports() {
   const auto coherent =
       prepare::verify_prepared_selected_local_storage_contract(
@@ -471,6 +564,10 @@ int verify_local_frame_address_materialization_source_route_contract_reports() {
 }  // namespace
 
 int main() {
+  if (const int rc = verify_rematerializable_integer_immediate_contract_reports();
+      rc != 0) {
+    return rc;
+  }
   if (const int rc = verify_selected_local_storage_contract_reports(); rc != 0) {
     return rc;
   }

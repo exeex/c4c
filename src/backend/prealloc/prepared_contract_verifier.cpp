@@ -42,6 +42,28 @@ namespace {
   return PreparedContractOwnerClass::ProducerIncoherent;
 }
 
+[[nodiscard]] PreparedContractOwnerClass
+owner_for_rematerializable_integer_immediate_status(
+    PreparedRematerializableIntegerImmediateContractStatus status) {
+  switch (status) {
+    case PreparedRematerializableIntegerImmediateContractStatus::Coherent:
+      return PreparedContractOwnerClass::Coherent;
+    case PreparedRematerializableIntegerImmediateContractStatus::MissingValueHome:
+    case PreparedRematerializableIntegerImmediateContractStatus::MissingValueId:
+    case PreparedRematerializableIntegerImmediateContractStatus::MissingFunctionName:
+    case PreparedRematerializableIntegerImmediateContractStatus::MissingValueName:
+    case PreparedRematerializableIntegerImmediateContractStatus::
+        MissingImmediatePayload:
+      return PreparedContractOwnerClass::ProducerMissing;
+    case PreparedRematerializableIntegerImmediateContractStatus::
+        ConflictingHomeKind:
+    case PreparedRematerializableIntegerImmediateContractStatus::
+        ConflictingCrossFamilyPayload:
+      return PreparedContractOwnerClass::ProducerIncoherent;
+  }
+  return PreparedContractOwnerClass::ProducerIncoherent;
+}
+
 [[nodiscard]] PreparedContractOwnerClass owner_for_selected_local_storage_status(
     PreparedSelectedLocalStorageContractStatus status) {
   switch (status) {
@@ -320,6 +342,33 @@ owner_for_local_frame_address_materialization_source_route_status(
   out << " instruction_index=" << instruction_index;
   if (homes != nullptr && homes->helper != expected_helper) {
     out << " actual_helper=" << prepared_variadic_entry_helper_kind_name(homes->helper);
+  }
+  return out.str();
+}
+
+[[nodiscard]] std::string rematerializable_integer_immediate_detail(
+    const PreparedValueHome* home,
+    PreparedRematerializableIntegerImmediateContractStatus status) {
+  std::ostringstream out;
+  out << "prepared rematerializable integer immediate contract status="
+      << prepared_rematerializable_integer_immediate_contract_status_name(status);
+  if (home == nullptr) {
+    return out.str();
+  }
+  out << " function_name=" << home->function_name;
+  out << " value_id=" << home->value_id;
+  out << " value_name=" << home->value_name;
+  out << " home_kind=" << prepared_value_home_kind_name(home->kind);
+  if (home->immediate_i32.has_value()) {
+    out << " immediate_i32=" << *home->immediate_i32;
+    out << " width_bits=32 signed_interpretation=true";
+    out << " fits_signed_12_bit_immediate="
+        << (prepared_signed_12_bit_immediate_range_contains(*home->immediate_i32)
+                ? "true"
+                : "false");
+  }
+  if (home->immediate_f128.has_value()) {
+    out << " has_immediate_f128=true";
   }
   return out.str();
 }
@@ -612,6 +661,56 @@ verify_prepared_variadic_entry_helper_operand_homes_contract(
       .detail = coherent ? std::string{}
                          : variadic_helper_homes_detail(
                                homes, expected_helper, block_index, instruction_index),
+  };
+}
+
+PreparedRematerializableIntegerImmediateContractStatus
+classify_prepared_rematerializable_integer_immediate_contract(
+    const PreparedValueHome* home) {
+  if (home == nullptr) {
+    return PreparedRematerializableIntegerImmediateContractStatus::MissingValueHome;
+  }
+  if (home->kind != PreparedValueHomeKind::RematerializableImmediate) {
+    return PreparedRematerializableIntegerImmediateContractStatus::
+        ConflictingHomeKind;
+  }
+  if (home->value_id == 0) {
+    return PreparedRematerializableIntegerImmediateContractStatus::MissingValueId;
+  }
+  if (home->function_name == kInvalidFunctionName) {
+    return PreparedRematerializableIntegerImmediateContractStatus::
+        MissingFunctionName;
+  }
+  if (home->value_name == kInvalidValueName) {
+    return PreparedRematerializableIntegerImmediateContractStatus::MissingValueName;
+  }
+  if (home->immediate_f128.has_value()) {
+    return PreparedRematerializableIntegerImmediateContractStatus::
+        ConflictingCrossFamilyPayload;
+  }
+  if (!home->immediate_i32.has_value()) {
+    return PreparedRematerializableIntegerImmediateContractStatus::
+        MissingImmediatePayload;
+  }
+  return PreparedRematerializableIntegerImmediateContractStatus::Coherent;
+}
+
+PreparedContractVerificationReport
+verify_prepared_rematerializable_integer_immediate_contract(
+    const PreparedValueHome* home) {
+  const auto status =
+      classify_prepared_rematerializable_integer_immediate_contract(home);
+  const auto owner = owner_for_rematerializable_integer_immediate_status(status);
+  return PreparedContractVerificationReport{
+      .fact_family = PreparedContractFactFamily::ValueMaterializationFact,
+      .owner_class = owner,
+      .function_name = home != nullptr ? home->function_name : kInvalidFunctionName,
+      .value_id = home != nullptr ? home->value_id : PreparedValueId{0},
+      .value_name = home != nullptr ? home->value_name : kInvalidValueName,
+      .fail_closed = owner != PreparedContractOwnerClass::Coherent,
+      .detail = owner == PreparedContractOwnerClass::Coherent
+                    ? std::string{}
+                    : rematerializable_integer_immediate_detail(home, status),
   };
 }
 

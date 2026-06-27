@@ -3,12 +3,12 @@
 Status: Active
 Source Idea Path: ideas/open/415_prepared_value_materialization_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add the First Typed Materialization Fact
+Current Step ID: 3
+Current Step Title: Add Producer-Side Verification
 
 ## Just Finished
 
-Completed Step 2 typed materialization fact for rematerializable integer
+Completed Step 3 producer-side verification for rematerializable integer
 immediates.
 
 Current value-home payloads live in `PreparedValueHome`:
@@ -68,11 +68,23 @@ Step 2 implementation:
 - Created `docs/prepared_fact_contracts/value_materialization_contract_plan.md`
   to track this materialization family.
 
+Step 3 implementation:
+
+- Added `PreparedRematerializableIntegerImmediateContractStatus` for coherent,
+  missing, and incoherent selected-family records.
+- Added `verify_prepared_rematerializable_integer_immediate_contract` with the
+  `value_materialization_fact` fact family.
+- Missing value home, value id, function name, value name, or i32 payload map
+  to `producer_missing`.
+- Wrong home kind and cross-family f128 payload map to `producer_incoherent`.
+- Focused verifier tests cover coherent reports, missing payload, missing
+  identity, wrong kind, cross-family payload, absent home, status spelling, and
+  fact-family spelling.
+
 ## Suggested Next
 
-Begin Step 3 by adding producer-side verifier statuses and reports for
-`PreparedRematerializableIntegerImmediateFact`, including missing payload,
-missing identity, and cross-family payload cases.
+Begin Step 4 by migrating selected RV64 rematerialized integer immediate
+consumers to the typed query and producer-side verifier.
 
 ## Watchouts
 
@@ -83,7 +95,7 @@ missing identity, and cross-family payload cases.
 
 ## Proof
 
-Focused proof command:
+Step 2 focused proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prealloc_decoded_home_storage$'`.
 
 Result: passed, 1/1 tests.
@@ -92,3 +104,13 @@ Regression guard:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
 Result: PASS; before 1/1, after 1/1, no new failing tests.
+
+Step 3 focused proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_decoded_home_storage|backend_prealloc_prepared_contract_verifier)$'`.
+
+Result: passed, 2/2 tests.
+
+Regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: PASS; before 2/2, after 2/2, no new failing tests.
