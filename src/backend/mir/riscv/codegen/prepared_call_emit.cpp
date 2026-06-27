@@ -87,72 +87,58 @@ std::optional<std::int64_t> verified_prepared_selected_frame_slot_address_offset
   facts.function_name = function_name;
   facts.alias_authority_required = true;
 
-  if (selection.kind !=
-      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
+  const auto route_report =
+      prepare::verify_prepared_frame_slot_address_source_route_contract(&selection);
+  const auto route = prepare::as_frame_slot_address_source_route(selection);
+  if (route_report.fail_closed || !route.has_value()) {
     return std::nullopt;
   }
 
-  facts.has_extent = selection.source_size_bytes.has_value();
-  facts.size_bytes = selection.source_size_bytes.value_or(0);
-  facts.has_alignment = selection.source_align_bytes.has_value();
-  facts.align_bytes = selection.source_align_bytes.value_or(0);
-  facts.has_byte_range = selection.source_stack_offset_bytes.has_value() &&
-                         selection.address_materialization_byte_offset.has_value();
-  facts.byte_offset = selection.source_stack_offset_bytes.value_or(0);
-
-  const auto selected_slot_id = selection.address_materialization_frame_slot_id
-                                    .value_or(selection.source_slot_id.value_or(0));
-  if (selection.source_slot_id.has_value() ||
-      selection.address_materialization_frame_slot_id.has_value()) {
-    facts.frame_slot_id = selected_slot_id;
-  }
-
-  const bool selection_slot_coherent =
-      selection.source_slot_id.has_value() &&
-      selection.address_materialization_frame_slot_id.has_value() &&
-      selection.source_slot_id == selection.address_materialization_frame_slot_id;
-  facts.has_alias_authority = selection_slot_coherent;
+  facts.has_extent = true;
+  facts.size_bytes = route->source_size_bytes;
+  facts.has_alignment = true;
+  facts.align_bytes = route->source_align_bytes;
+  facts.has_byte_range = route->address_materialization.has_value();
+  facts.byte_offset = route->source_stack_offset_bytes;
+  facts.frame_slot_id = route->address_materialization.has_value()
+                            ? route->address_materialization->frame_slot_id
+                            : route->source_slot_id;
+  facts.has_alias_authority = route->address_materialization.has_value();
   facts.conflicting_alias_authority =
-      (selection.source_slot_id.has_value() &&
-       selection.address_materialization_frame_slot_id.has_value() &&
-       selection.source_slot_id != selection.address_materialization_frame_slot_id) ||
-      (plan.source_value_id.has_value() && selection.source_value_id.has_value() &&
-       plan.source_value_id != selection.source_value_id);
+      plan.source_value_id.has_value() && route->source_value_id.has_value() &&
+      plan.source_value_id != route->source_value_id;
 
-  if (context.lookups == nullptr ||
-      !selection.address_materialization_block_label.has_value() ||
-      !selection.address_materialization_inst_index.has_value()) {
+  if (context.lookups == nullptr || !route->address_materialization.has_value()) {
     const auto report = prepare::verify_prepared_selected_local_storage_contract(facts);
     return report.fail_closed ? std::nullopt
                               : std::optional<std::int64_t>{
                                     static_cast<std::int64_t>(facts.byte_offset)};
   }
 
-  if (*selection.address_materialization_block_label != context.block_label ||
-      *selection.address_materialization_inst_index != context.instruction_index) {
+  if (route->address_materialization->block_label != context.block_label ||
+      route->address_materialization->instruction_index != context.instruction_index) {
     facts.conflicting_memory_provenance = true;
   }
 
   const auto* materializations =
       prepare::find_indexed_prepared_address_materializations(
           &context.lookups->address_materializations,
-          *selection.address_materialization_block_label);
+          route->address_materialization->block_label);
   const prepare::PreparedAddressMaterialization* selected_materialization = nullptr;
   bool ambiguous_materialization = false;
   if (materializations != nullptr) {
     for (const auto* materialization : *materializations) {
       if (materialization == nullptr ||
           materialization->inst_index !=
-              *selection.address_materialization_inst_index ||
+              route->address_materialization->instruction_index ||
           materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
           materialization->function_name != function_name ||
           materialization->result_value_id != plan.source_value_id ||
           !materialization->frame_slot_id.has_value()) {
         continue;
       }
-      if (selection.address_materialization_frame_slot_id.has_value() &&
-          materialization->frame_slot_id !=
-              selection.address_materialization_frame_slot_id) {
+      if (materialization->frame_slot_id !=
+          route->address_materialization->frame_slot_id) {
         continue;
       }
       if (selected_materialization != nullptr) {
@@ -176,12 +162,10 @@ std::optional<std::int64_t> verified_prepared_selected_frame_slot_address_offset
       facts.frame_slot_id = *selected_materialization->frame_slot_id;
     }
     if (selected_materialization->byte_offset < 0 ||
-        !selection.address_materialization_byte_offset.has_value() ||
         selected_materialization->byte_offset !=
-            *selection.address_materialization_byte_offset ||
-        (selection.source_stack_offset_bytes.has_value() &&
-         selected_materialization->byte_offset !=
-             static_cast<std::int64_t>(*selection.source_stack_offset_bytes))) {
+            route->address_materialization->byte_offset ||
+        selected_materialization->byte_offset !=
+            static_cast<std::int64_t>(route->source_stack_offset_bytes)) {
       facts.conflicting_byte_range = true;
     }
   }
@@ -205,8 +189,7 @@ std::optional<std::int64_t> verified_prepared_selected_frame_slot_address_offset
         (facts.has_alignment && frame_slot->align_bytes != facts.align_bytes);
     facts.conflicting_byte_range =
         facts.conflicting_byte_range ||
-        (selection.source_stack_offset_bytes.has_value() &&
-         frame_slot->offset_bytes != *selection.source_stack_offset_bytes);
+        frame_slot->offset_bytes != route->source_stack_offset_bytes;
   }
   if (frame_plan == nullptr ||
       frame_plan->has_dynamic_stack ||
@@ -245,11 +228,7 @@ bool emit_riscv_frame_slot_address_argument(
       source_selection != nullptr
           ? verified_prepared_selected_frame_slot_address_offset(
                 prepared, function_name, plan, *source_selection, context)
-          : prepared_frame_slot_address_offset_for_value(
-                prepared,
-                function_name,
-                context,
-                *plan.source_value_id);
+          : std::nullopt;
   if (!stack_offset.has_value() || *stack_offset < 0 ||
       active_stack_adjustment_bytes >
           static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||

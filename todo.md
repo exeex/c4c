@@ -3,46 +3,41 @@
 Status: Active
 Source Idea Path: ideas/open/414_typed_prepared_call_argument_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Producer-Side Verification
+Current Step ID: 4
+Current Step Title: Migrate Target Consumers for the Selected Route
 
 ## Just Finished
 
-Completed Step 3 producer-side verification for the first migrated route.
-Added `PreparedContractFactFamily::CallArgumentTypedRoute`,
-`PreparedFrameSlotAddressSourceRouteContractStatus`,
-`classify_prepared_frame_slot_address_source_route_contract`, and
-`verify_prepared_frame_slot_address_source_route_contract`.
+Completed Step 4 for the first migrated `FrameSlotAddress` consumers. RV64
+`verified_prepared_selected_frame_slot_address_offset` now verifies and consumes
+`PreparedCallArgumentFrameSlotAddressRoute` before reading route facts, and
+`emit_riscv_frame_slot_address_argument` no longer falls back to target-side
+address-materialization scanning when the typed source selection is absent.
 
-The verifier classifies missing selected `FrameSlotAddress` route facts as
-`producer_missing`: absent route, missing source slot, missing source stack
-offset, missing extent, and missing alignment. It classifies contradictory
-payloads as `producer_incoherent`: non-stack source-home kind, partial address
-materialization, materialization slot/source slot mismatch, and mixed
-preservation/byval/source-base/pointer-delta payload.
+AArch64 `StackFrameSlotCallOperandOwner::selected_frame_slot_source` now
+verifies and consumes `PreparedCallArgumentFrameSlotAddressRoute` for
+`FrameSlotAddress`. The legacy optional-bag path remains only for unmigrated
+`FrameSlotValue` handling.
 
-Focused verifier coverage in
-`backend_prealloc_prepared_contract_verifier_test.cpp` checks coherent,
-producer-missing, and producer-incoherent reports plus the typed-route fact
-family spelling. The call-argument contract plan now records the Step 3
-producer-owned status boundary.
+The call-argument contract plan now records the Step 4 RV64/AArch64 migration
+scope and keeps the next route decision deferred to Step 5.
 
 ## Suggested Next
 
-Begin Step 4 by migrating RV64/AArch64 `FrameSlotAddress` consumers to require
-the typed route and consume the Step 3 verifier result at fail-closed sites
-instead of reconstructing missing route facts.
+Begin Step 5 by running the supervisor-selected broad validation and deciding
+the next route candidate.
 
 ## Watchouts
 
 - Do not add new optional fields to `PreparedCallArgumentSourceSelection`.
 - Do not infer argument homes in RV64/AArch64 when producer facts are absent.
 - Do not use named torture-file handling or expectation weakening as progress.
-- Existing producers still write the compatibility bag, so Step 4 should keep
-  using the typed bridge/verifier instead of reading bag fields directly in
-  target consumers.
-- Step 3 provides a verifier report but does not yet attach it to every
-  RV64/AArch64 target fail-closed path; that is the Step 4 migration.
+- Existing producers still write the compatibility bag for unmigrated route
+  families; do not generalize the FrameSlotAddress bridge to those routes until
+  their typed payloads exist.
+- Step 4 intentionally leaves sret memory-return fallback and unmigrated
+  `FrameSlotValue`/preservation/byval paths in place; Step 5 should decide the
+  next route rather than broadening this slice.
 - `ByvalRegisterLane`, `FrameSlotValue`, `LocalFrameAddressMaterialization`, and
   `PriorPreservation` remain unmigrated route families.
 

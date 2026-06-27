@@ -1,6 +1,6 @@
 # Prepared Call Argument Contract Plan
 
-Status: Published for idea 414 Step 3
+Status: Published for idea 414 Step 4
 Source Idea: `ideas/open/414_typed_prepared_call_argument_contracts.md`
 
 This document records the typed prepared call-argument route contract as it is
@@ -98,7 +98,26 @@ These diagnostics are intentionally producer-owned. RV64 and AArch64 target
 work should consume the verifier report at required-route fail-closed sites
 instead of treating an absent typed view as permission to reconstruct the route.
 
+## Step 4 Consumer Migration
+
+Step 4 migrates the first RV64/AArch64 `FrameSlotAddress` consumers to the
+typed route boundary.
+
+- RV64 `emit_riscv_frame_slot_address_argument` no longer falls back to scanning
+  indexed prepared address materializations when no source selection is present.
+  Its selected frame-slot address helper verifies
+  `PreparedCallArgumentFrameSlotAddressRoute` before reading route facts.
+- AArch64 `StackFrameSlotCallOperandOwner::selected_frame_slot_source` verifies
+  and consumes `PreparedCallArgumentFrameSlotAddressRoute` for
+  `FrameSlotAddress`; the old optional-bag path remains only for unmigrated
+  `FrameSlotValue` route handling.
+
+The selected consumers now treat an absent or incoherent typed route as a
+fail-closed prepared-producer issue, not as permission to recover stack offsets
+or materialization identity locally.
+
 ## Next Contract Step
 
-Step 4 should migrate the selected RV64/AArch64 consumers to use the typed
-route and verifier result exhaustively for `FrameSlotAddress`.
+Step 5 should broaden validation and decide whether the next route should be
+`FrameSlotValue`, `LocalFrameAddressMaterialization`, `PriorPreservation`, or
+`ByvalRegisterLane`.
