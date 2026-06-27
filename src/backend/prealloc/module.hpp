@@ -8,6 +8,7 @@
 #include "frame.hpp"
 #include "liveness.hpp"
 #include "names.hpp"
+#include "object_data.hpp"
 #include "regalloc.hpp"
 #include "runtime_helpers.hpp"
 #include "special_carriers.hpp"
@@ -54,6 +55,7 @@ struct PreparedBirModule {
   PreparedCallArgumentValuePublicationPlans call_argument_value_publications;
   PreparedVariadicEntryPlans variadic_entry_plans;
   PreparedStoragePlans storage_plans;
+  PreparedObjectDataPlans object_data;
   PreparedI128Carriers i128_carriers;
   PreparedF128Carriers f128_carriers;
   PreparedAtomicOperations atomic_operations;

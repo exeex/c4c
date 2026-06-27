@@ -137,6 +137,10 @@ int expect_prepared_rejection_diagnostic(
   return 0;
 }
 
+void publish_prepared_object_data(prepare::PreparedBirModule& prepared) {
+  prepare::populate_prepared_object_data_plans(prepared);
+}
+
 std::optional<object::ObjectModule> make_minimal_call_module() {
   return rv64::build_rv64_text_object_module({
       rv64::RiscvObjectFunction{
@@ -1259,6 +1263,7 @@ prepare::PreparedBirModule make_prepared_global_address_module() {
       .address_materialization_policy =
           bir::GlobalAddressMaterializationPolicy::Direct,
   });
+  publish_prepared_object_data(prepared);
   return prepared;
 }
 
@@ -3865,6 +3870,7 @@ prepare::PreparedBirModule make_prepared_global_load_module(bool publish_access 
         }},
     });
   }
+  publish_prepared_object_data(prepared);
   return prepared;
 }
 
@@ -3967,6 +3973,7 @@ prepare::PreparedBirModule make_prepared_global_i8_zext_load_module() {
           },
       }},
   });
+  publish_prepared_object_data(prepared);
   return prepared;
 }
 
@@ -4008,6 +4015,7 @@ prepare::PreparedBirModule make_prepared_global_aggregate_lane_load_module() {
     aggregate.initializer_elements.push_back(bir::Value::immediate_i32(lane));
   }
   prepared.module.globals.push_back(std::move(aggregate));
+  publish_prepared_object_data(prepared);
   prepared.module.functions.push_back(bir::Function{
       .name = "main",
       .return_type = bir::TypeKind::I32,
@@ -4281,6 +4289,7 @@ prepare::PreparedBirModule make_prepared_global_store_module() {
           },
       }},
   });
+  publish_prepared_object_data(prepared);
   return prepared;
 }
 
@@ -4348,6 +4357,7 @@ prepare::PreparedBirModule make_prepared_global_i16_store_module() {
           },
       }},
   });
+  publish_prepared_object_data(prepared);
   return prepared;
 }
 
@@ -11830,16 +11840,21 @@ int rejects_unsupported_prepared_floating_cast_with_precise_diagnostic() {
 int rejects_prepared_data_without_asm_fallback() {
   auto prepared = make_prepared_direct_call_module();
   const auto target = prepared.module.names.link_names.intern("target");
+  const auto global_name = prepared.module.names.link_names.intern("g");
   prepared.module.globals.push_back(bir::Global{
       .name = "g",
+      .link_name_id = global_name,
       .type = bir::TypeKind::Ptr,
       .size_bytes = 8,
       .align_bytes = 8,
       .initializer = bir::Value::named_symbol_pointer("@target", target),
   });
+  publish_prepared_object_data(prepared);
   return expect_prepared_rejection_diagnostic(
       prepared,
-      "unsupported_global_data: RV64 object route supports only immediate scalar and immediate linear global storage");
+      "unsupported_global_data: prepared selected object-data contract status=unsupported_but_coherent object_label_id=" +
+          std::to_string(global_name) +
+          " object_size_bytes=8 emitted_byte_count=0 zero_fill_byte_count=0");
 }
 
 int emits_prepared_writable_i32_global_object_storage() {
@@ -11853,6 +11868,7 @@ int emits_prepared_writable_i32_global_object_storage() {
       .align_bytes = 4,
       .initializer = bir::Value::immediate_i32(7),
   });
+  publish_prepared_object_data(prepared);
 
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
   if (!module.has_value()) {
@@ -11879,6 +11895,44 @@ int emits_prepared_writable_i32_global_object_storage() {
   return 0;
 }
 
+int rejects_prepared_global_object_storage_without_prepared_data_facts() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto link_name = prepared.module.names.link_names.intern("counter");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "counter",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(7),
+  });
+
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_global_data: prepared selected object-data contract status=missing_object_label object_size_bytes=0 emitted_byte_count=0 zero_fill_byte_count=0");
+}
+
+int rejects_prepared_global_object_storage_incoherent_prepared_data_facts() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto link_name = prepared.module.names.link_names.intern("counter");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "counter",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(7),
+  });
+  publish_prepared_object_data(prepared);
+  prepared.object_data.globals.front().conflicting_emitted_bytes = true;
+
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_global_data: prepared selected object-data contract status=conflicting_emitted_bytes object_label_id=" +
+          std::to_string(link_name) +
+          " object_size_bytes=4 emitted_byte_count=4 zero_fill_byte_count=0");
+}
+
 int emits_prepared_linear_i8_global_object_storage() {
   auto prepared = make_prepared_direct_call_module();
   const auto link_name = prepared.module.names.link_names.intern("bytes");
@@ -11896,6 +11950,7 @@ int emits_prepared_linear_i8_global_object_storage() {
               bir::Value::immediate_i8(3),
           },
   });
+  publish_prepared_object_data(prepared);
 
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
   if (!module.has_value()) {
@@ -11933,6 +11988,7 @@ int emits_prepared_zero_global_bss_storage() {
               bir::Value::immediate_i32(0),
           },
   });
+  publish_prepared_object_data(prepared);
 
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
   if (!module.has_value()) {
@@ -11970,6 +12026,7 @@ int emits_prepared_constant_f64_global_object_storage() {
       .align_bytes = 8,
       .initializer = bir::Value::immediate_f64_bits(0x3ff0000000000000ull),
   });
+  publish_prepared_object_data(prepared);
 
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
   if (!module.has_value()) {
@@ -12789,6 +12846,9 @@ int main() {
   status |= rejects_unsupported_prepared_floating_cast_with_precise_diagnostic();
   status |= rejects_prepared_data_without_asm_fallback();
   status |= emits_prepared_writable_i32_global_object_storage();
+  status |= rejects_prepared_global_object_storage_without_prepared_data_facts();
+  status |=
+      rejects_prepared_global_object_storage_incoherent_prepared_data_facts();
   status |= emits_prepared_linear_i8_global_object_storage();
   status |= emits_prepared_zero_global_bss_storage();
   status |= emits_prepared_constant_f64_global_object_storage();

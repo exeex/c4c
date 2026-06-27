@@ -8,6 +8,7 @@
 #include "inline_asm.hpp"
 #include "intrinsics.hpp"
 #include "label_identity.hpp"
+#include "object_data.hpp"
 #include "regalloc_placement_identity.hpp"
 #include "special_carriers.hpp"
 #include "storage_plans.hpp"
@@ -48,6 +49,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_variadic_entry_plans(prepared_);
   populate_frame_plan(prepared_);
   populate_storage_plans(prepared_);
+  populate_prepared_object_data_plans(prepared_);
   populate_i128_carriers(prepared_);
   populate_f128_carriers(prepared_);
   populate_atomic_operations(prepared_);

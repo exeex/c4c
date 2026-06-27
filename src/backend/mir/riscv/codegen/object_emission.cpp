@@ -1,5 +1,6 @@
 #include "object_emission.hpp"
 
+#include "../../../prealloc/prepared_contract_verifier.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
 #include "../../../prealloc/target_register_profile.hpp"
 #include "emit.hpp"
@@ -8431,120 +8432,60 @@ std::string rv64_prepared_object_text_label(
   return constant.name;
 }
 
-void append_unsigned_le_bytes(std::vector<std::uint8_t>& bytes,
-                              std::uint64_t value,
-                              std::size_t size_bytes) {
-  for (std::size_t offset = 0; offset < size_bytes; ++offset) {
-    bytes.push_back(static_cast<std::uint8_t>((value >> (offset * 8)) & 0xffu));
+prepare::PreparedSelectedObjectDataContractFacts
+rv64_selected_object_data_contract_facts(
+    const prepare::PreparedGlobalObjectData* object_data) {
+  if (object_data == nullptr) {
+    return prepare::PreparedSelectedObjectDataContractFacts{};
   }
+  return prepare::PreparedSelectedObjectDataContractFacts{
+      .object_label = object_data->object_label,
+      .object_size_bytes = object_data->object_size_bytes,
+      .emitted_byte_count = object_data->emitted_bytes.size(),
+      .zero_fill_byte_count = object_data->zero_fill_byte_count,
+      .has_object_label = object_data->has_object_label,
+      .has_publication_identity = object_data->has_publication_identity,
+      .requires_emitted_bytes = object_data->requires_emitted_bytes,
+      .has_emitted_bytes = object_data->has_emitted_bytes,
+      .requires_zero_fill = object_data->requires_zero_fill,
+      .has_zero_fill = object_data->has_zero_fill,
+      .requires_relocation = object_data->requires_relocation,
+      .has_relocation = object_data->has_relocation,
+      .has_object_byte_range = object_data->has_object_byte_range,
+      .requires_unsupported_marker = object_data->requires_unsupported_marker,
+      .has_unsupported_marker = object_data->has_unsupported_marker,
+      .conflicting_object_label = object_data->conflicting_object_label,
+      .conflicting_publication_identity =
+          object_data->conflicting_publication_identity,
+      .conflicting_emitted_bytes = object_data->conflicting_emitted_bytes,
+      .conflicting_zero_fill = object_data->conflicting_zero_fill,
+      .conflicting_relocation = object_data->conflicting_relocation,
+      .conflicting_object_byte_range =
+          object_data->conflicting_object_byte_range,
+      .conflicting_unsupported_marker =
+          object_data->conflicting_unsupported_marker,
+      .unsupported_but_coherent = object_data->unsupported_but_coherent,
+      .invalid_pre_prepared_initializer_semantics =
+          object_data->invalid_pre_prepared_initializer_semantics,
+  };
 }
 
-std::optional<std::size_t> rv64_immediate_value_size_bytes(
-    c4c::backend::bir::TypeKind type) {
-  namespace bir = c4c::backend::bir;
-
-  switch (type) {
-    case bir::TypeKind::I1:
-    case bir::TypeKind::I8:
-      return 1;
-    case bir::TypeKind::I16:
-      return 2;
-    case bir::TypeKind::I32:
-    case bir::TypeKind::F32:
-      return 4;
-    case bir::TypeKind::I64:
-    case bir::TypeKind::F64:
-      return 8;
-    default:
-      return std::nullopt;
-  }
-}
-
-std::optional<std::vector<std::uint8_t>> rv64_immediate_value_bytes(
-    const c4c::backend::bir::Value& value) {
-  namespace bir = c4c::backend::bir;
-
-  if (value.kind != bir::Value::Kind::Immediate) {
+std::optional<std::string> rv64_prepared_object_data_contract_diagnostic(
+    const prepare::PreparedGlobalObjectData* object_data) {
+  const auto report = prepare::verify_prepared_selected_object_data_contract(
+      rv64_selected_object_data_contract_facts(object_data));
+  if (report.owner_class == prepare::PreparedContractOwnerClass::Coherent) {
     return std::nullopt;
   }
-  const auto size_bytes = rv64_immediate_value_size_bytes(value.type);
-  if (!size_bytes.has_value()) {
-    return std::nullopt;
-  }
-
-  std::uint64_t payload = 0;
-  switch (value.type) {
-    case bir::TypeKind::I1:
-    case bir::TypeKind::I8:
-      payload = static_cast<std::uint64_t>(value.immediate) & 0xffu;
-      break;
-    case bir::TypeKind::I16:
-      payload = static_cast<std::uint64_t>(value.immediate) & 0xffffu;
-      break;
-    case bir::TypeKind::I32:
-      payload = static_cast<std::uint64_t>(value.immediate) & 0xffffffffu;
-      break;
-    case bir::TypeKind::I64:
-      payload = static_cast<std::uint64_t>(value.immediate);
-      break;
-    case bir::TypeKind::F32:
-      payload = value.immediate_bits & 0xffffffffu;
-      break;
-    case bir::TypeKind::F64:
-      payload = value.immediate_bits;
-      break;
-    default:
-      return std::nullopt;
-  }
-
-  std::vector<std::uint8_t> bytes;
-  bytes.reserve(*size_bytes);
-  append_unsigned_le_bytes(bytes, payload, *size_bytes);
-  return bytes;
+  return "unsupported_global_data: " + report.detail;
 }
 
-std::optional<std::vector<std::uint8_t>> rv64_prepared_global_initializer_bytes(
-    const c4c::backend::bir::Global& global) {
-  if (global.is_extern || global.is_thread_local ||
-      global.initializer_symbol_name.has_value() ||
-      global.initializer_symbol_name_id != c4c::kInvalidLinkName) {
-    return std::nullopt;
+std::string rv64_prepared_object_data_label(
+    const prepare::PreparedGlobalObjectData& object_data) {
+  if (!object_data.object_label.has_value()) {
+    return {};
   }
-
-  if (global.initializer.has_value() && global.initializer_elements.empty()) {
-    if (global.initializer->type != global.type) {
-      return std::nullopt;
-    }
-    auto bytes = rv64_immediate_value_bytes(*global.initializer);
-    if (!bytes.has_value() || bytes->size() != global.size_bytes) {
-      return std::nullopt;
-    }
-    return bytes;
-  }
-
-  if (!global.initializer_elements.empty() && !global.initializer.has_value()) {
-    std::vector<std::uint8_t> bytes;
-    bytes.reserve(global.size_bytes);
-    for (const auto& element : global.initializer_elements) {
-      auto element_bytes = rv64_immediate_value_bytes(element);
-      if (!element_bytes.has_value()) {
-        return std::nullopt;
-      }
-      bytes.insert(bytes.end(), element_bytes->begin(), element_bytes->end());
-    }
-    if (bytes.size() != global.size_bytes) {
-      return std::nullopt;
-    }
-    return bytes;
-  }
-
-  return std::nullopt;
-}
-
-bool bytes_are_all_zero(const std::vector<std::uint8_t>& bytes) {
-  return std::all_of(bytes.begin(), bytes.end(), [](std::uint8_t byte) {
-    return byte == 0;
-  });
+  return object_data.object_label_text;
 }
 
 std::optional<std::string> append_rv64_prepared_data_objects(
@@ -8583,17 +8524,6 @@ std::optional<std::string> append_rv64_prepared_data_objects(
   }
 
   for (const auto& global : prepared.module.globals) {
-    const auto label = rv64_prepared_object_global_label(prepared.module, global);
-    if (label.empty()) {
-      return "unsupported_global_data: RV64 object route cannot emit unnamed prepared global";
-    }
-
-    if (global.is_thread_local ||
-        global.address_materialization_policy ==
-            c4c::backend::bir::GlobalAddressMaterializationPolicy::GotRequired) {
-      return "unsupported_global_data: RV64 object route does not emit TLS or GOT-required global storage";
-    }
-
     if (global.is_extern && !global.initializer.has_value() &&
         !global.initializer_symbol_name.has_value() &&
         global.initializer_symbol_name_id == c4c::kInvalidLinkName &&
@@ -8601,46 +8531,68 @@ std::optional<std::string> append_rv64_prepared_data_objects(
       continue;
     }
 
+    const auto* object_data = prepare::find_prepared_global_object_data(
+        prepared.object_data, global.link_name_id);
+    if (auto diagnostic =
+            rv64_prepared_object_data_contract_diagnostic(object_data)) {
+      return diagnostic;
+    }
+
+    const auto label = rv64_prepared_object_data_label(*object_data);
+    if (label.empty()) {
+      return "unsupported_global_data: RV64 object route cannot emit unnamed prepared global";
+    }
+
     const auto* existing = object::find_symbol(object_module, label);
-    if (global.align_bytes == 0 ||
+    if (object_data->align_bytes == 0 ||
         (existing != nullptr && !object::is_undefined_symbol(*existing))) {
       return "unsupported_global_data: RV64 object route cannot emit prepared global symbol";
     }
 
-    const auto bytes = rv64_prepared_global_initializer_bytes(global);
-    if (!bytes.has_value()) {
-      return "unsupported_global_data: RV64 object route supports only immediate scalar and immediate linear global storage";
+    object::SectionRecord* section = nullptr;
+    switch (object_data->section_kind) {
+      case prepare::PreparedObjectDataSectionKind::Bss:
+        section = &object::get_or_create_section(object_module,
+                                                 ".bss",
+                                                 object::SectionKind::Bss,
+                                                 object_data->align_bytes,
+                                                 true,
+                                                 false,
+                                                 true);
+        break;
+      case prepare::PreparedObjectDataSectionKind::ReadOnlyData:
+        section = &object::get_or_create_section(object_module,
+                                                 ".rodata",
+                                                 object::SectionKind::Data,
+                                                 object_data->align_bytes,
+                                                 true,
+                                                 false,
+                                                 false);
+        break;
+      case prepare::PreparedObjectDataSectionKind::Data:
+        section = &object::get_or_create_section(object_module,
+                                                 ".data",
+                                                 object::SectionKind::Data,
+                                                 object_data->align_bytes,
+                                                 true,
+                                                 false,
+                                                 true);
+        break;
     }
 
-    auto& section =
-        !global.is_constant && bytes_are_all_zero(*bytes)
-            ? object::get_or_create_section(object_module,
-                                            ".bss",
-                                            object::SectionKind::Bss,
-                                            global.align_bytes,
-                                            true,
-                                            false,
-                                            true)
-            : object::get_or_create_section(object_module,
-                                            global.is_constant ? ".rodata" : ".data",
-                                            object::SectionKind::Data,
-                                            global.align_bytes,
-                                            true,
-                                            false,
-                                            !global.is_constant);
-
-    object::align_section(section, global.align_bytes, 0);
+    object::align_section(*section, object_data->align_bytes, 0);
     const auto offset =
-        section.kind == object::SectionKind::Bss
-            ? object::reserve_section_bytes(section, bytes->size())
-            : object::append_section_bytes(section, *bytes);
+        section->kind == object::SectionKind::Bss
+            ? object::reserve_section_bytes(*section,
+                                            object_data->zero_fill_byte_count)
+            : object::append_section_bytes(*section, object_data->emitted_bytes);
     object::define_symbol(object_module,
                           label,
                           object::SymbolBinding::Global,
                           object::SymbolKind::Object,
-                          section.id,
+                          section->id,
                           offset,
-                          bytes->size());
+                          object_data->object_size_bytes);
   }
   return std::nullopt;
 }
