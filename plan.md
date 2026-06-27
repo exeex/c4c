@@ -1,27 +1,26 @@
-# Typed Prepared Call Argument Contracts Runbook: FrameSlotValue
+# Typed Prepared Call Argument Contracts Runbook: LocalFrameAddressMaterialization
 
 Status: Active
 Source Idea: ideas/open/414_typed_prepared_call_argument_contracts.md
 
 ## Purpose
 
-Continue replacing the optional-field call-argument source-selection bag with
-typed prepared call-argument route contracts. The completed
-`FrameSlotAddress` route is the pattern; this runbook migrates
-`FrameSlotValue`.
+Continue replacing optional-field call-argument source-selection routes with
+typed prepared contracts. `FrameSlotAddress` and `FrameSlotValue` are already
+migrated; this runbook migrates `LocalFrameAddressMaterialization`.
 
 ## Goal
 
-`FrameSlotValue` call-argument routes must carry complete producer-owned
-source value/home/storage facts, and RV64/AArch64 consumers must stop reading
-that route through ad hoc optional-field combinations.
+`LocalFrameAddressMaterialization` routes must carry complete producer-owned
+facts for local aggregate/byval pointer address publication, and target
+consumers must stop reading those facts from ad hoc optional-field
+combinations.
 
 ## Core Rule
 
-Do not add new optional fields to `PreparedCallArgumentSourceSelection`. The
-`FrameSlotValue` migration must add a typed payload, producer-side completeness
-checking, compatibility accessors, and exhaustive target consumption for the
-selected route.
+Do not add optional fields to `PreparedCallArgumentSourceSelection`. This route
+needs its own typed payload, producer-side verifier, and explicit target
+consumption.
 
 ## Read First
 
@@ -34,171 +33,145 @@ selected route.
 
 ## Current Targets
 
-- `PreparedCallArgumentSourceSelectionKind::FrameSlotValue`
+- `PreparedCallArgumentSourceSelectionKind::LocalFrameAddressMaterialization`
 - `PreparedCallArgumentSourceSelection` compatibility accessors in
   `src/backend/prealloc/calls.hpp`
 - Producer selection in `src/backend/prealloc/call_plans.cpp`
+- Aggregate transport interaction in `plan_prepared_aggregate_transport`
 - Prepared verifier/report surfaces in
   `src/backend/prealloc/prepared_contract_verifier.*`
-- RV64/AArch64 consumers that currently read frame-slot value fields directly
-- Focused tests in `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`
-  and `tests/backend/bir/backend_prealloc_prepared_contract_verifier_test.cpp`
+- RV64/AArch64 consumers that use local-frame address materialization for
+  aggregate/byval pointer arguments
 
 ## Non-Goals
 
-- Do not change ABI policy for aggregate, variadic, preservation, byval, or
-  local address materialization routes.
-- Do not rewrite the already migrated `FrameSlotAddress` route except for
-  shared helper cleanup needed by `FrameSlotValue`.
-- Do not add target-side fallback inference for missing source slots, stack
-  offsets, value identity, extents, or alignments.
-- Do not weaken expectations, supported-path contracts, or allowlists.
+- Do not merge `LocalFrameAddressMaterialization` with `ByvalRegisterLane`.
+- Do not alter ABI policy for byval aggregates or variadic calls.
+- Do not rewrite completed `FrameSlotAddress` or `FrameSlotValue` route
+  contracts except for shared helper cleanup.
+- Do not weaken supported-path tests or expectation contracts.
 
 ## Working Model
 
-- The optional-field bag is a staged compatibility input only.
-- `FrameSlotValue` requires selected source value identity, stack-slot source
-  home identity, selected source slot, source stack byte offset, source extent,
-  and source alignment.
-- Missing required fields are producer-missing facts. Contradictory route/home
-  payloads are producer-incoherent facts.
-- Unmigrated routes stay on explicit compatibility paths until their own typed
-  payloads are introduced.
+- This route describes a local frame address derived from a prepared
+  materialization, not a loaded value from the slot.
+- Required facts include source/base value identity, selected pointer byte
+  delta, materialization block/instruction, materialized frame-slot id,
+  materialized byte offset, selected stack offset, source extent, and source
+  alignment.
+- Byval aggregate transport may consume the same storage facts, but byval lane
+  register payloads remain a separate route.
 
 ## Execution Rules
 
-- Keep source intent in the linked idea; track routine progress in `todo.md`.
-- Reuse the `FrameSlotAddress` typed payload/verifier/test pattern where it
-  applies, but do not merge the two routes into a vague shared bag.
-- Cite the same taxonomy rows as the first route:
-  `TAX-FAM-CALL-ARG-TYPED-ROUTES-PLACEHOLDER-001`,
-  `TAX-FAM-CALL-BOUNDARY-ARG-RESULT-001`, call-route portions of
+- Track routine progress in `todo.md`; do not edit the source idea unless a
+  separate initiative is discovered.
+- Reuse the `FrameSlotAddress` and `FrameSlotValue` typed-route patterns where
+  they apply, but keep this payload route-specific.
+- Cite taxonomy rows `TAX-FAM-CALL-ARG-TYPED-ROUTES-PLACEHOLDER-001`,
+  `TAX-FAM-CALL-BOUNDARY-ARG-RESULT-001`,
+  `TAX-FAM-MEMORY-ACCESS-PLACEHOLDER-001`, call-route portions of
   `TAX-FAM-PUBLICATION-FACTS-PLACEHOLDER-001`, and storage/home portions of
   `TAX-FAM-VALUE-HOME-TYPED-STORAGE-001`.
-- Use audit rows `418-AUD-A64-FRAME-SLOT-PUBLICATION-REVIEW-001` and
-  `418-AUD-A64-CALL-COHERENT-001` first; cite RV64 call rows only where the
-  selected RV64 path actually consumes `FrameSlotValue`.
+- Use audit rows `418-AUD-RV64-BYVAL-COHERENT-001`,
+  `418-AUD-A64-FRAME-SLOT-PUBLICATION-REVIEW-001`, and
+  `418-AUD-A64-CALL-COHERENT-001` where the selected consumers match.
 - For every code-changing step, run the supervisor-delegated build plus narrow
-  tests. Escalate to default CTest at the broad-validation checkpoint.
+  tests. Run default CTest at the broad-validation checkpoint.
 
-## Step 1: Confirm FrameSlotValue Route Boundary
+## Step 1: Confirm LocalFrameAddressMaterialization Boundary
 
-Goal: identify the exact producer fields and consumer entry points for
-`FrameSlotValue`.
+Goal: identify required producer fields and consumer entry points for
+`LocalFrameAddressMaterialization`.
 
-Primary target: `FrameSlotValue` construction in `call_plans.cpp` and current
-RV64/AArch64 consumers.
+Primary target: `call_plans.cpp` construction paths and aggregate transport
+consumers.
 
 Actions:
 
-- Inspect every `FrameSlotValue` producer path and record required fields.
-- Identify which existing consumers use `source_value_id`,
-  `source_value_name`, `source_home_kind`, `source_slot_id`,
-  `source_stack_offset_bytes`, `source_size_bytes`, and
-  `source_align_bytes`.
-- Confirm whether any materialization, preservation, byval, source-base, or
-  pointer-delta payload is valid for `FrameSlotValue`.
-- Update `todo.md` with the selected compatibility accessor shape and proof
-  expectations for Step 2.
+- Inspect register and computed-address producer branches.
+- Record required materialization fields, pointer-delta fields, source
+  identity, stack offset, extent, and alignment.
+- Identify consumer sites in RV64/AArch64 and aggregate transport.
+- Decide whether any byval coupling requires a separate idea before Step 2.
 
 Completion check:
 
-- Required and rejected `FrameSlotValue` fields are known.
-- The target consumer list is concrete enough for a bounded Step 2/3/4
-  migration.
+- Required and rejected fields are known.
+- Consumer entry points are concrete enough for typed-payload migration.
 
-## Step 2: Introduce Typed FrameSlotValue Payload and Bridge Accessor
+## Step 2: Introduce Typed Local Materialization Payload and Bridge Accessor
 
-Goal: represent `FrameSlotValue` with a typed payload while preserving staged
-compatibility with old producers.
+Goal: expose a typed route while preserving staged compatibility.
 
 Primary target: `src/backend/prealloc/calls.hpp`.
 
 Actions:
 
-- Add a typed `FrameSlotValue` route payload with only valid fields for that
-  route.
-- Add an `as_frame_slot_value_source_route` compatibility query.
-- Reject missing required fields, non-stack source homes, cross-route payloads,
-  and any contradictory optional-bag combinations.
-- Update `docs/prepared_fact_contracts/call_argument_contract_plan.md` with the
-  Step 2 `FrameSlotValue` scope.
-- Add focused tests for valid and rejected typed route queries.
+- Add a typed `LocalFrameAddressMaterialization` payload.
+- Add an `as_local_frame_address_materialization_route` compatibility query.
+- Reject missing required materialization/source/range facts and cross-route
+  payloads.
+- Update the contract plan and focused route-query tests.
 
 Completion check:
 
-- `FrameSlotValue` can be constructed and queried through typed APIs.
-- No optional fields are added to `PreparedCallArgumentSourceSelection`.
-- The code builds with the compatibility bridge in place.
+- The typed query exposes only coherent local-address materialization facts.
+- The optional-field bag is not extended.
 
 ## Step 3: Add Producer-Side Verification
 
-Goal: classify missing and contradictory `FrameSlotValue` producer facts before
+Goal: classify missing and contradictory local materialization facts before
 target consumers attempt recovery.
 
 Primary target: `src/backend/prealloc/prepared_contract_verifier.*`.
 
 Actions:
 
-- Add `FrameSlotValue` verifier statuses for missing route, value identity,
-  stack-slot home identity, slot, stack offset, extent, and alignment.
-- Classify cross-route payloads and wrong source-home kinds as
+- Add route statuses for missing source identity, base identity where required,
+  pointer delta, materialization location, frame-slot id, byte offset, extent,
+  alignment, and stack offset.
+- Classify cross-route payloads and contradictory slot/offset/range facts as
   `producer_incoherent`.
-- Add focused verifier tests for coherent, missing, and incoherent reports.
-- Update the contract plan with the verifier statuses.
+- Add focused verifier tests.
 
 Completion check:
 
-- Missing required `FrameSlotValue` facts report `producer_missing`.
-- Contradictory `FrameSlotValue` facts report `producer_incoherent`.
-- The verifier test subset passes.
+- Missing facts report `producer_missing`.
+- Contradictions report `producer_incoherent`.
 
-## Step 4: Migrate Target Consumers for FrameSlotValue
+## Step 4: Migrate Target Consumers
 
-Goal: make selected RV64/AArch64 consumers use the typed route instead of
-reading optional-bag fields directly.
+Goal: make selected consumers use the typed local materialization route.
 
-Primary target: current frame-slot value call-argument lowering/publication
-consumers.
+Primary target: RV64/AArch64 aggregate/byval local-address lowering and
+publication helpers.
 
 Actions:
 
-- Replace direct optional-bag reads for `FrameSlotValue` with
-  `as_frame_slot_value_source_route` plus verifier checks.
-- Preserve explicit compatibility for unmigrated routes only.
-- Keep missing typed facts fail-closed; do not reconstruct stack offsets or
-  source homes from raw argument order, ABI type, or target-local guesses.
-- Add or update focused tests that prove coherent `FrameSlotValue` behavior and
-  rejected missing/contradictory route facts.
+- Replace direct optional-bag reads with the typed query plus verifier checks.
+- Keep `ByvalRegisterLane` payloads on their compatibility path.
+- Do not infer stack offsets, source homes, or byval payload ranges from target
+  ABI shape when typed facts are missing.
+- Add or update focused consumer tests.
 
 Completion check:
 
-- Migrated consumers are exhaustive over the typed `FrameSlotValue` route.
-- Missing typed facts produce explicit producer-owned diagnostics or
-  fail-closed behavior before lowering recovery.
-- Focused RV64/AArch64 route tests pass without expectation weakening.
+- Migrated consumers are exhaustive over the typed route.
+- Missing typed facts fail closed before target recovery.
 
 ## Step 5: Broaden Validation and Decide the Next Route
 
-Goal: prove the `FrameSlotValue` migration did not regress normal CTest and
-choose the next route boundary.
-
-Primary target: default CTest and route-candidate notes in `todo.md`.
+Goal: prove the migration did not regress default CTest and choose the next
+route boundary.
 
 Actions:
 
-- Run the delegated broad validation, normally
-  `ctest --test-dir build -j --output-on-failure` after a build.
-- Inspect any RV64 gcc_torture movement and classify regressions as precise
-  fail-closed diagnostics or unacceptable behavior changes.
-- Record proof and remaining route candidates in `todo.md`.
-- If the next route exposes a separate initiative, create a new open idea
-  through the lifecycle process instead of expanding this runbook.
+- Run build plus default `ctest --test-dir build -j --output-on-failure`.
+- Inspect any RV64 gcc_torture movement.
+- Record the next candidate in `todo.md`.
 
 Completion check:
 
 - Default CTest does not regress.
-- Any RV64 gcc_torture regression is explained as a precise fail-closed
-  contract diagnostic.
-- `todo.md` identifies the next route candidate or notes that lifecycle review
-  is required.
+- `todo.md` identifies the next route or requests lifecycle review.
