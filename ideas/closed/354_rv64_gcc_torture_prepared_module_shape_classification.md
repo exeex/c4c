@@ -1,6 +1,6 @@
 # RV64 gcc_torture Prepared Module Shape Classification
 
-Status: Open
+Status: Closed
 Type: Umbrella analysis idea
 Closed By: Final child-coverage audit and classification closeout
 Reopened: 2026-06-26 by user request after fresh RV64 gcc_torture backend scan
@@ -219,16 +219,20 @@ That boundary is split into child idea
 It is distinct from closed byval parameter-home idea 370 because the current
 failure is call argument lowering, not entry parameter-home admission.
 
-## Closure Notes
+## Historical Closeout Notes Before Reopen
 
-Idea 354's umbrella acceptance criteria are satisfied. The prepared-module
-shape failures were classified from actual scan data in
+These notes record the earlier 354 closeout before the 2026-06-26 reopen. They
+are preserved as historical evidence, but the final lifecycle decision is the
+later `Final Reopen Closeout - 2026-06-27` section.
+
+At that earlier checkpoint, the original prepared-module-shape failures were
+classified from actual scan data in
 `review/354_prepared_shape_classification.md`, including counts and
 representative cases for the original `1012` opaque prepared-module-shape
 failures. Non-backend or not-yet-actionable families were explicitly separated
 from repairable RV64 object-route buckets.
 
-Child and residual owner audit:
+Historical child and residual owner audit at that checkpoint:
 
 - original child set 355-359: closed
 - upstream/continuation chain 360-367: closed
@@ -237,29 +241,22 @@ Child and residual owner audit:
 - global/data and same-module byval follow-ups 383, 384, and 386: closed
 - later representative/runtime owner chain 387-394: closed
 
-Idea 385 remains open but is unrelated EV64 `.insn.d` length-prefix work, not a
-child or blocker for this RV64 gcc_torture prepared-module-shape umbrella.
+Idea 385 was unrelated EV64 `.insn.d` length-prefix work, not a child or
+blocker for this RV64 gcc_torture prepared-module-shape umbrella. It is also
+closed in the final repository state.
 
-The Step 2 closeout evidence reviewed:
+The historical closeout evidence reviewed:
 
 - `review/354_prepared_shape_classification.md`
 - `build/agent_state/354_step3_representative_refresh.log`
-- `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
-- `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
 
-Current scan artifacts timestamped 2026-06-26 06:09 cover `1467` cases:
-`208` pass and `1259` fail. Those remaining failures are structured diagnostics
-or semantic handoff/runtime families, not opaque unclassified
-prepared-module-shape buckets. No unowned prepared-module-shape bucket was
-found after comparing residual diagnostics with the closed child set 355-394,
-so no Step 3 residual-owner split was needed.
+The earlier closeout used then-current scan artifacts. In the final 2026-06-27
+closure state, `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv` is
+only a one-case `src/int-compare.c` representative artifact and is not the
+basis for final closure.
 
-The plan-owner close gate was rerun as lifecycle-only validation against the
-accepted current backend baseline on both sides:
-
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed`
-
-Result: PASS, 326/326 before and 326/326 after, no new failures.
+The historical plan-owner close gate passed with 326/326 backend tests and no
+new failures.
 
 ## Reopen Classification Pass - 2026-06-26
 
@@ -323,3 +320,43 @@ pass:
 Lifecycle decision: 354 remains open and incomplete after this pass. It
 produced `8` new follow-up ideas, and those children must be closed or
 intentionally superseded before this umbrella can close again.
+
+## Final Reopen Closeout - 2026-06-27
+
+The reopened umbrella is closed after Step 1 and Step 2 lifecycle audits
+confirmed the generated child and residual owner chain is complete.
+
+Closure evidence:
+
+- Step 1 audit artifact
+  `build/agent_state/354_step1_child_closure_audit/child_closure_audit.txt`
+  showed `ideas/open/` contains only 354 and ideas 395 through 411 are all
+  archived under `ideas/closed/` with `Status: Closed`.
+- A supervisor cross-check confirmed ideas 355 through 394 are also under
+  `ideas/closed/`.
+- Step 2 audit artifact
+  `build/agent_state/354_step2_residual_coverage/residual_coverage_audit.txt`
+  reviewed the original classification in
+  `review/354_prepared_shape_classification.md` and the reopened
+  classification in `review/354_reopen_classification_20260626.md`.
+- The reopened classification converted `770` RV64 prepared-object route
+  diagnostics to ideas 395 through 401 and `34` runtime mismatches to idea
+  402; their split follow-ups through 411 are closed.
+- The `444` semantic `lir_to_bir` handoff diagnostics are documented as
+  outside this RV64 prepared-shape umbrella unless pursued by separate
+  semantic ownership.
+- The `8` timeout diagnostics remain documented as a symptom bucket not
+  assigned to RV64 backend versus semantic/frontend ownership from the
+  available logs.
+- The current
+  `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv` is only a
+  one-case `src/int-compare.c` representative artifact, so this closeout
+  intentionally relies on the saved review artifacts plus the closed child
+  chain audit rather than treating that file as a current full scan.
+- No concrete unowned residual owner was found.
+
+Close gate:
+
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+- Result: PASS, 326/326 before and 326/326 after, no new failures.
