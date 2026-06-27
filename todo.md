@@ -1,74 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/413_prepared_contract_verifier_and_owner_taxonomy.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Publish The Taxonomy Matrix
+Current Step ID: 5
+Current Step Title: Acceptance Validation And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Publish The Taxonomy Matrix: published
-`docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md` as
-the durable idea 413 handoff artifact for idea 418 and ideas 414-417.
+Step 5 - Acceptance Validation And Close Readiness: recorded supervisor-run
+acceptance validation and close-readiness review for idea 413.
 
-Files changed:
+Accepted completion evidence:
 
-- `docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md`
-- `todo.md`
+- The prepared contract verifier/report surface is in place before selected
+  target consumers.
+- The selected value-home typed-storage, call-boundary argument/result plan,
+  and variadic helper operand-home/access-plan fact families produce
+  owner-classified diagnostics.
+- The taxonomy matrix exists as the downstream handoff for idea 418 and ideas
+  414-417.
+- Supervisor-run default CTest passed with 3355/3355 tests and no accepted
+  regression.
 
-Documented selected row IDs:
+Close-readiness review notes:
 
-- `TAX-FAM-VALUE-HOME-TYPED-STORAGE-001`
-- `TAX-FAM-CALL-BOUNDARY-ARG-RESULT-001`
-- `TAX-FAM-VARIADIC-HELPER-OPERAND-HOMES-001`
-
-Documented placeholder/follow-up row IDs:
-
-- `TAX-FAM-CALL-ARG-TYPED-ROUTES-PLACEHOLDER-001`
-- `TAX-FAM-VALUE-MATERIALIZATION-PLACEHOLDER-001`
-- `TAX-FAM-MEMORY-ACCESS-PLACEHOLDER-001`
-- `TAX-FAM-HELPER-OPERAND-TYPED-PLACEHOLDER-001`
-- `TAX-FAM-PUBLICATION-FACTS-PLACEHOLDER-001`
-- `TAX-FAM-GLOBAL-INITIALIZER-STORAGE-PLACEHOLDER-001`
-
-Evidence recorded in the document:
-
-- Owner classes and report fields from
-  `src/backend/prealloc/prepared_contract_verifier.hpp`.
-- Selected family classification behavior from
-  `src/backend/prealloc/prepared_contract_verifier.cpp`.
-- AArch64 diagnostic attachment points from
-  `src/backend/mir/aarch64/module/module.hpp`,
-  `src/backend/mir/aarch64/codegen/operands.cpp`,
-  `src/backend/mir/aarch64/codegen/calls.cpp`, and
-  `src/backend/mir/aarch64/codegen/variadic.cpp`.
-- Focused backend tests from
-  `tests/backend/bir/backend_prealloc_decoded_home_storage_test.cpp`,
-  `tests/backend/bir/backend_prealloc_call_boundary_classification_test.cpp`,
-  `tests/backend/mir/backend_aarch64_operand_resolution_test.cpp`, and
-  `tests/backend/mir/backend_aarch64_call_boundary_owner_test.cpp`.
+- No expectation weakening, unsupported downgrade, or target-side recovery of
+  producer facts was accepted as progress.
+- The completed work stays within idea 413: downstream contract migrations
+  remain assigned to idea 418 and ideas 414-417.
 
 ## Suggested Next
 
-Proceed to Step 5 acceptance validation and close readiness. The next packet
-should run the supervisor-selected final validation, review the diff for
-testcase overfit or expectation weakening, and decide whether idea 413 is ready
-for lifecycle close handling.
+Supervisor should hand this active lifecycle state to the plan owner to close
+idea 413 or otherwise transition lifecycle state based on the completed Step 5
+acceptance record.
 
 ## Watchouts
 
-The matrix reserves row IDs for memory-access, publication, value
-materialization, typed call-argument, helper-operand, and global initializer
-follow-up work, but those rows are placeholders. Downstream ideas should refine
-them after idea 418 audits concrete target consumer sites. No implementation,
-test, build output, README, plan, or source idea files were touched in this
-docs-only packet.
+This packet only records the supervisor-run acceptance result in `todo.md`.
+Do not interpret Step 5 as completing downstream taxonomy consumers; placeholder
+rows in the matrix still belong to idea 418 and ideas 414-417.
 
 ## Proof
 
-Docs-only packet; no build or test command was delegated or run. Proof is the
-published matrix artifact plus source/file-reference evidence recorded there and
-in this `todo.md` packet. This docs-only proof relies on the accepted Step 3
-backend validation, which recorded 326/326 backend tests passed before
-supervisor regression-log roll-forward.
+No local validation was rerun for this packet. The supervisor already ran:
+
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure' |& tee test_after.log`
+
+Accepted proof result: `test_after.log` records the supervisor-run default CTest
+passed with 3355/3355 tests.
