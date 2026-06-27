@@ -5642,6 +5642,106 @@ int check_missing_local_aggregate_frame_slot_address_source_selection_contract()
   return 0;
 }
 
+int check_frame_slot_address_source_route_bridge_contract() {
+  prepare::PreparedCallArgumentSourceSelection selection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+      .source_value_id = prepare::PreparedValueId{41},
+      .source_value_name = c4c::ValueNameId{42},
+      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+      .source_slot_id = prepare::PreparedFrameSlotId{7},
+      .source_stack_offset_bytes = std::size_t{64},
+      .source_size_bytes = std::size_t{8},
+      .source_align_bytes = std::size_t{8},
+      .address_materialization_block_label = c4c::BlockLabelId{3},
+      .address_materialization_inst_index = std::size_t{9},
+      .address_materialization_frame_slot_id = prepare::PreparedFrameSlotId{7},
+      .address_materialization_byte_offset = std::int64_t{64},
+  };
+
+  const auto route = prepare::as_frame_slot_address_source_route(selection);
+  if (!route.has_value() ||
+      route->source_value_id !=
+          std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{41}} ||
+      route->source_value_name !=
+          std::optional<c4c::ValueNameId>{c4c::ValueNameId{42}} ||
+      route->source_home_kind !=
+          std::optional<prepare::PreparedValueHomeKind>{
+              prepare::PreparedValueHomeKind::StackSlot} ||
+      route->source_slot_id != prepare::PreparedFrameSlotId{7} ||
+      route->source_stack_offset_bytes != 64 ||
+      route->source_size_bytes != 8 ||
+      route->source_align_bytes != 8 ||
+      !route->address_materialization.has_value() ||
+      route->address_materialization->block_label != c4c::BlockLabelId{3} ||
+      route->address_materialization->instruction_index != 9 ||
+      route->address_materialization->frame_slot_id !=
+          prepare::PreparedFrameSlotId{7} ||
+      route->address_materialization->byte_offset != 64) {
+    return fail(
+        "frame-slot address route bridge contract: valid route did not expose typed payload");
+  }
+
+  auto missing_required = selection;
+  missing_required.source_size_bytes = std::nullopt;
+  if (prepare::as_frame_slot_address_source_route(missing_required).has_value()) {
+    return fail(
+        "frame-slot address route bridge contract: missing required extent was accepted");
+  }
+
+  auto partial_materialization = selection;
+  partial_materialization.address_materialization_byte_offset = std::nullopt;
+  if (prepare::as_frame_slot_address_source_route(partial_materialization)
+          .has_value()) {
+    return fail(
+        "frame-slot address route bridge contract: partial materialization was accepted");
+  }
+
+  auto contradictory_materialization = selection;
+  contradictory_materialization.address_materialization_frame_slot_id =
+      prepare::PreparedFrameSlotId{8};
+  if (prepare::as_frame_slot_address_source_route(contradictory_materialization)
+          .has_value()) {
+    return fail(
+        "frame-slot address route bridge contract: contradictory materialization slot was accepted");
+  }
+
+  auto cross_route_payload = selection;
+  cross_route_payload.preserved_call_instruction_index = std::size_t{11};
+  if (prepare::as_frame_slot_address_source_route(cross_route_payload).has_value()) {
+    return fail(
+        "frame-slot address route bridge contract: cross-route preservation payload was accepted");
+  }
+
+  prepare::PreparedCallArgumentPlan argument;
+  argument.source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot;
+  argument.source_value_id = prepare::PreparedValueId{41};
+  argument.destination_register_bank = prepare::PreparedRegisterBank::Gpr;
+  argument.destination_contiguous_width = 1;
+  argument.source_selection = selection;
+  const auto publication_need =
+      prepare::find_prepared_missing_frame_slot_call_argument_publication_need(
+          argument);
+  if (!publication_need.available ||
+      publication_need.kind !=
+          prepare::PreparedMissingFrameSlotCallArgumentPublicationKind::
+              FrameSlotAddress ||
+      publication_need.source_selection != &*argument.source_selection) {
+    return fail(
+        "frame-slot address route bridge contract: valid typed route was not visible to publication bridge");
+  }
+
+  argument.source_selection = contradictory_materialization;
+  const auto rejected_publication_need =
+      prepare::find_prepared_missing_frame_slot_call_argument_publication_need(
+          argument);
+  if (rejected_publication_need.available) {
+    return fail(
+        "frame-slot address route bridge contract: contradictory typed route remained visible to publication bridge");
+  }
+
+  return 0;
+}
+
 prepare::PreparedBirModule make_rv64_same_module_byval_stack_copy_contract_module(
     bool publish_byval_metadata,
     bool duplicate_payload_materialization) {
@@ -9295,6 +9395,10 @@ int main() {
   }
   if (const int rc =
           check_missing_local_aggregate_frame_slot_address_source_selection_contract();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_frame_slot_address_source_route_bridge_contract();
       rc != 0) {
     return rc;
   }

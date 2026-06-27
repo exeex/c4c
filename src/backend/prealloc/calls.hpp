@@ -118,6 +118,104 @@ struct PreparedCallArgumentSourceSelection {
   return selection.kind != PreparedCallArgumentSourceSelectionKind::None;
 }
 
+struct PreparedCallArgumentFrameSlotAddressMaterializationRoute {
+  BlockLabelId block_label = 0;
+  std::size_t instruction_index = 0;
+  PreparedFrameSlotId frame_slot_id = 0;
+  std::int64_t byte_offset = 0;
+};
+
+struct PreparedCallArgumentFrameSlotAddressRoute {
+  std::optional<PreparedValueId> source_value_id;
+  std::optional<ValueNameId> source_value_name;
+  std::optional<PreparedValueHomeKind> source_home_kind;
+  PreparedFrameSlotId source_slot_id = 0;
+  std::size_t source_stack_offset_bytes = 0;
+  std::size_t source_size_bytes = 0;
+  std::size_t source_align_bytes = 1;
+  std::optional<PreparedCallArgumentFrameSlotAddressMaterializationRoute>
+      address_materialization;
+};
+
+[[nodiscard]] inline bool prepared_call_argument_source_selection_has_preservation_payload(
+    const PreparedCallArgumentSourceSelection& selection) {
+  return selection.preserved_call_block_index.has_value() ||
+         selection.preserved_call_instruction_index.has_value() ||
+         selection.preservation_route != PreparedCallPreservationRoute::Unknown ||
+         selection.preserved_register_name.has_value() ||
+         selection.preserved_register_bank.has_value() ||
+         selection.preserved_register_contiguous_width.has_value() ||
+         !selection.preserved_occupied_register_names.empty() ||
+         selection.preserved_register_placement.has_value() ||
+         selection.preserved_stack_slot_id.has_value() ||
+         selection.preserved_stack_offset_bytes.has_value() ||
+         selection.preserved_stack_size_bytes.has_value() ||
+         selection.preserved_stack_align_bytes.has_value() ||
+         selection.preserved_callee_saved_save_index.has_value() ||
+         selection.preserved_spill_slot_placement.has_value();
+}
+
+[[nodiscard]] inline std::optional<PreparedCallArgumentFrameSlotAddressRoute>
+as_frame_slot_address_source_route(
+    const PreparedCallArgumentSourceSelection& selection) {
+  if (selection.kind != PreparedCallArgumentSourceSelectionKind::FrameSlotAddress ||
+      !selection.source_slot_id.has_value() ||
+      !selection.source_stack_offset_bytes.has_value() ||
+      !selection.source_size_bytes.has_value() ||
+      !selection.source_align_bytes.has_value() ||
+      selection.source_base_value_id.has_value() ||
+      selection.source_pointer_byte_delta.has_value() ||
+      prepared_call_argument_source_selection_has_preservation_payload(selection) ||
+      selection.byval_lane_extent_bytes.has_value() ||
+      selection.byval_lane_source_instruction_index.has_value()) {
+    return std::nullopt;
+  }
+
+  if (selection.source_home_kind.has_value() &&
+      *selection.source_home_kind != PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+
+  const bool has_any_materialization =
+      selection.address_materialization_block_label.has_value() ||
+      selection.address_materialization_inst_index.has_value() ||
+      selection.address_materialization_frame_slot_id.has_value() ||
+      selection.address_materialization_byte_offset.has_value();
+  const bool has_complete_materialization =
+      selection.address_materialization_block_label.has_value() &&
+      selection.address_materialization_inst_index.has_value() &&
+      selection.address_materialization_frame_slot_id.has_value() &&
+      selection.address_materialization_byte_offset.has_value();
+  if (has_any_materialization && !has_complete_materialization) {
+    return std::nullopt;
+  }
+  if (has_complete_materialization &&
+      *selection.address_materialization_frame_slot_id != *selection.source_slot_id) {
+    return std::nullopt;
+  }
+
+  PreparedCallArgumentFrameSlotAddressRoute route{
+      .source_value_id = selection.source_value_id,
+      .source_value_name = selection.source_value_name,
+      .source_home_kind = selection.source_home_kind,
+      .source_slot_id = *selection.source_slot_id,
+      .source_stack_offset_bytes = *selection.source_stack_offset_bytes,
+      .source_size_bytes = *selection.source_size_bytes,
+      .source_align_bytes = *selection.source_align_bytes,
+      .address_materialization = std::nullopt,
+  };
+  if (has_complete_materialization) {
+    route.address_materialization =
+        PreparedCallArgumentFrameSlotAddressMaterializationRoute{
+            .block_label = *selection.address_materialization_block_label,
+            .instruction_index = *selection.address_materialization_inst_index,
+            .frame_slot_id = *selection.address_materialization_frame_slot_id,
+            .byte_offset = *selection.address_materialization_byte_offset,
+        };
+  }
+  return route;
+}
+
 enum class PreparedAggregateTransportKind {
   None,
   StackCopy,
@@ -411,6 +509,10 @@ find_prepared_missing_frame_slot_call_argument_publication_need(
   bool source_materializes_address = false;
   switch (argument.source_selection->kind) {
     case PreparedCallArgumentSourceSelectionKind::FrameSlotAddress:
+      if (!as_frame_slot_address_source_route(*argument.source_selection)
+               .has_value()) {
+        return {};
+      }
       kind = PreparedMissingFrameSlotCallArgumentPublicationKind::FrameSlotAddress;
       source_materializes_address = true;
       break;
