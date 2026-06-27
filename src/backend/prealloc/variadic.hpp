@@ -320,6 +320,11 @@ struct PreparedVariadicAggregateVaArgOperandHomes {
   PreparedVariadicAggregateVaArgAccessPlan aggregate_access_plan;
 };
 
+struct PreparedVariadicVaCopyOperandHomes {
+  PreparedValueHome destination_va_list;
+  PreparedValueHome source_va_list;
+};
+
 struct PreparedVariadicEntryHelperOperandHomes {
   PreparedVariadicEntryHelperKind helper = PreparedVariadicEntryHelperKind::VaStart;
   std::size_t block_index = 0;
@@ -329,6 +334,8 @@ struct PreparedVariadicEntryHelperOperandHomes {
       scalar_va_arg_operand_homes;
   mutable std::optional<PreparedVariadicAggregateVaArgOperandHomes>
       aggregate_va_arg_operand_homes;
+  mutable std::optional<PreparedVariadicVaCopyOperandHomes>
+      va_copy_operand_homes;
   std::optional<PreparedValueHome> destination_va_list;
   std::optional<PreparedValueHome> destination_va_list_address;
   std::optional<PreparedValueHome> source_va_list;
@@ -337,6 +344,35 @@ struct PreparedVariadicEntryHelperOperandHomes {
   std::optional<PreparedVariadicScalarVaArgAccessPlan> scalar_access_plan;
   std::optional<PreparedVariadicAggregateVaArgAccessPlan> aggregate_access_plan;
 };
+
+[[nodiscard]] inline bool prepared_variadic_value_home_matches(
+    const PreparedValueHome& lhs,
+    const PreparedValueHome& rhs) {
+  if (lhs.value_id != rhs.value_id ||
+      lhs.function_name != rhs.function_name ||
+      lhs.value_name != rhs.value_name ||
+      lhs.kind != rhs.kind) {
+    return false;
+  }
+  switch (lhs.kind) {
+    case PreparedValueHomeKind::Register:
+      return lhs.register_name == rhs.register_name;
+    case PreparedValueHomeKind::StackSlot:
+      return lhs.slot_id == rhs.slot_id &&
+             lhs.offset_bytes == rhs.offset_bytes &&
+             lhs.size_bytes == rhs.size_bytes &&
+             lhs.align_bytes == rhs.align_bytes;
+    case PreparedValueHomeKind::RematerializableImmediate:
+      return lhs.immediate_i32 == rhs.immediate_i32;
+    case PreparedValueHomeKind::PointerBasePlusOffset:
+      return lhs.pointer_base_value_name == rhs.pointer_base_value_name &&
+             lhs.pointer_base_symbol_name == rhs.pointer_base_symbol_name &&
+             lhs.pointer_byte_delta == rhs.pointer_byte_delta;
+    case PreparedValueHomeKind::None:
+      return true;
+  }
+  return false;
+}
 
 [[nodiscard]] inline const PreparedVariadicVaStartOperandHomes*
 find_prepared_variadic_va_start_operand_homes(
@@ -460,6 +496,49 @@ inline void publish_prepared_variadic_aggregate_va_arg_operand_homes(
       };
 }
 
+[[nodiscard]] inline const PreparedVariadicVaCopyOperandHomes*
+find_prepared_variadic_va_copy_operand_homes(
+    const PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (homes.helper != PreparedVariadicEntryHelperKind::VaCopy) {
+    return nullptr;
+  }
+  if (!homes.destination_va_list.has_value() ||
+      !homes.source_va_list.has_value()) {
+    homes.va_copy_operand_homes = std::nullopt;
+    return nullptr;
+  }
+  if (homes.va_copy_operand_homes.has_value()) {
+    if (!prepared_variadic_value_home_matches(
+            homes.va_copy_operand_homes->destination_va_list,
+            *homes.destination_va_list) ||
+        !prepared_variadic_value_home_matches(
+            homes.va_copy_operand_homes->source_va_list,
+            *homes.source_va_list)) {
+      return nullptr;
+    }
+  } else {
+    homes.va_copy_operand_homes = PreparedVariadicVaCopyOperandHomes{
+        .destination_va_list = *homes.destination_va_list,
+        .source_va_list = *homes.source_va_list,
+    };
+  }
+  return &*homes.va_copy_operand_homes;
+}
+
+inline void publish_prepared_variadic_va_copy_operand_homes(
+    PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (homes.helper != PreparedVariadicEntryHelperKind::VaCopy ||
+      !homes.destination_va_list.has_value() ||
+      !homes.source_va_list.has_value()) {
+    homes.va_copy_operand_homes = std::nullopt;
+    return;
+  }
+  homes.va_copy_operand_homes = PreparedVariadicVaCopyOperandHomes{
+      .destination_va_list = *homes.destination_va_list,
+      .source_va_list = *homes.source_va_list,
+  };
+}
+
 [[nodiscard]] inline bool has_complete_prepared_variadic_va_start_operand_homes(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
   return find_prepared_variadic_va_start_operand_homes(homes) != nullptr;
@@ -478,9 +557,7 @@ inline void publish_prepared_variadic_aggregate_va_arg_operand_homes(
 
 [[nodiscard]] inline bool has_complete_prepared_variadic_va_copy_operand_homes(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
-  return homes.helper == PreparedVariadicEntryHelperKind::VaCopy &&
-         homes.destination_va_list.has_value() &&
-         homes.source_va_list.has_value();
+  return find_prepared_variadic_va_copy_operand_homes(homes) != nullptr;
 }
 
 [[nodiscard]] inline bool has_complete_prepared_variadic_entry_helper_operand_homes(

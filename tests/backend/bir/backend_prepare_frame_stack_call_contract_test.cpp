@@ -9208,6 +9208,15 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
       !copy_homes->source_va_list.has_value()) {
     return fail("AAPCS64 variadic helper-family frame contract: lost aggregate va_arg or va_copy operand homes");
   }
+  const auto* typed_copy_homes =
+      prepare::find_prepared_variadic_va_copy_operand_homes(*copy_homes);
+  if (typed_copy_homes == nullptr ||
+      typed_copy_homes->destination_va_list.value_name !=
+          copy_homes->destination_va_list->value_name ||
+      typed_copy_homes->source_va_list.value_name !=
+          copy_homes->source_va_list->value_name) {
+    return fail("AAPCS64 variadic helper-family frame contract: va_copy typed payload was not published");
+  }
   if (!aggregate_homes->aggregate_access_plan.has_value() ||
       aggregate_homes->aggregate_access_plan->source_class !=
           prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea ||
@@ -9544,6 +9553,15 @@ int check_rv64_variadic_entry_helper_missing_contract() {
   if (va_copy_homes == nullptr ||
       !prepare::has_complete_prepared_variadic_va_copy_operand_homes(*va_copy_homes)) {
     return fail("RV64 variadic helper missing contract: va_copy operand homes were not materialized");
+  }
+  const auto* typed_rv64_va_copy_homes =
+      prepare::find_prepared_variadic_va_copy_operand_homes(*va_copy_homes);
+  if (typed_rv64_va_copy_homes == nullptr ||
+      typed_rv64_va_copy_homes->destination_va_list.value_name !=
+          va_copy_homes->destination_va_list->value_name ||
+      typed_rv64_va_copy_homes->source_va_list.value_name !=
+          va_copy_homes->source_va_list->value_name) {
+    return fail("RV64 variadic helper missing contract: va_copy typed payload was not published");
   }
   return 0;
 }

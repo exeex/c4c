@@ -858,6 +858,126 @@ int verify_variadic_aggregate_va_arg_helper_operand_home_reports() {
   return 0;
 }
 
+int verify_variadic_va_copy_helper_operand_home_reports() {
+  auto destination = coherent_va_start_stack_home();
+  auto source = coherent_va_start_address_home();
+  prepare::PreparedVariadicEntryHelperOperandHomes coherent_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaCopy,
+      .block_index = 1,
+      .instruction_index = 5,
+      .destination_va_list = destination,
+      .source_va_list = source,
+  };
+  prepare::publish_prepared_variadic_va_copy_operand_homes(coherent_homes);
+
+  prepare::PreparedVariadicEntryHelperOperandHomes legacy_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaCopy,
+      .block_index = 1,
+      .instruction_index = 5,
+      .destination_va_list = destination,
+      .source_va_list = source,
+  };
+
+  prepare::PreparedVariadicEntryHelperOperandHomes wrong_helper_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+      .block_index = 1,
+      .instruction_index = 5,
+      .destination_va_list = destination,
+      .source_va_list = source,
+  };
+  prepare::publish_prepared_variadic_va_copy_operand_homes(wrong_helper_homes);
+
+  prepare::PreparedVariadicEntryHelperOperandHomes incomplete_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaCopy,
+      .block_index = 1,
+      .instruction_index = 5,
+      .destination_va_list = destination,
+  };
+  prepare::publish_prepared_variadic_va_copy_operand_homes(incomplete_homes);
+
+  auto stale_homes = coherent_homes;
+  stale_homes.source_va_list = std::nullopt;
+
+  const auto coherent =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          &coherent_homes,
+          c4c::FunctionNameId{107},
+          prepare::PreparedVariadicEntryHelperKind::VaCopy,
+          1,
+          5);
+  const auto legacy =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          &legacy_homes,
+          c4c::FunctionNameId{107},
+          prepare::PreparedVariadicEntryHelperKind::VaCopy,
+          1,
+          5);
+  const auto wrong_helper =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          &wrong_helper_homes,
+          c4c::FunctionNameId{107},
+          prepare::PreparedVariadicEntryHelperKind::VaCopy,
+          1,
+          5);
+  const auto incomplete =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          &incomplete_homes,
+          c4c::FunctionNameId{107},
+          prepare::PreparedVariadicEntryHelperKind::VaCopy,
+          1,
+          5);
+  const auto stale =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          &stale_homes,
+          c4c::FunctionNameId{107},
+          prepare::PreparedVariadicEntryHelperKind::VaCopy,
+          1,
+          5);
+
+  if (!expect(prepare::find_prepared_variadic_va_copy_operand_homes(
+                  coherent_homes) != nullptr,
+              "coherent va_copy helper homes should expose a typed payload") ||
+      !expect(prepare::find_prepared_variadic_va_copy_operand_homes(
+                  legacy_homes) != nullptr,
+              "complete legacy va_copy optional fields should expose a typed payload") ||
+      !expect(prepare::find_prepared_variadic_va_copy_operand_homes(
+                  wrong_helper_homes) == nullptr,
+              "wrong-helper optional va_copy fields should not expose a typed payload") ||
+      !expect(prepare::find_prepared_variadic_va_copy_operand_homes(
+                  incomplete_homes) == nullptr,
+              "incomplete va_copy optional fields should not expose a typed payload") ||
+      !expect(prepare::find_prepared_variadic_va_copy_operand_homes(
+                  stale_homes) == nullptr,
+              "stale va_copy typed payload should not mask missing optional source home") ||
+      !expect(coherent.owner_class == prepare::PreparedContractOwnerClass::Coherent,
+              "typed va_copy helper homes should verify as coherent") ||
+      !expect(!coherent.fail_closed,
+              "typed va_copy helper homes should not fail closed") ||
+      !expect(legacy.owner_class == prepare::PreparedContractOwnerClass::Coherent,
+              "complete legacy va_copy optional fields should verify as coherent") ||
+      !expect(!legacy.fail_closed,
+              "complete legacy va_copy optional fields should not fail closed") ||
+      !expect(wrong_helper.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "wrong-helper va_copy optional fields should classify as producer incoherent") ||
+      !expect(wrong_helper.fail_closed,
+              "wrong-helper va_copy optional fields should fail closed") ||
+      !expect(incomplete.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "incomplete va_copy optional fields should classify as producer incoherent") ||
+      !expect(incomplete.fail_closed,
+              "incomplete va_copy optional fields should fail closed") ||
+      !expect(stale.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "stale va_copy typed payload should classify as producer incoherent") ||
+      !expect(stale.fail_closed,
+              "stale va_copy typed payload should fail closed")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int verify_rematerializable_integer_immediate_contract_reports() {
   auto coherent_home = coherent_rematerializable_integer_immediate_home();
   const auto coherent =
@@ -1425,6 +1545,10 @@ int main() {
   }
   if (const int rc =
           verify_variadic_aggregate_va_arg_helper_operand_home_reports();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = verify_variadic_va_copy_helper_operand_home_reports();
       rc != 0) {
     return rc;
   }

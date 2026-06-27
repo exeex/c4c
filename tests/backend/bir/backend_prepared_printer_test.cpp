@@ -6702,6 +6702,15 @@ int main() {
                        "AAPCS64 variadic va_copy operand homes")) {
     return EXIT_FAILURE;
   }
+  const auto* aapcs64_va_copy_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *aapcs64_helper_family_entry_plan, 0, 7);
+  if (aapcs64_va_copy_homes == nullptr ||
+      prepare::find_prepared_variadic_va_copy_operand_homes(
+          *aapcs64_va_copy_homes) == nullptr) {
+    std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier did not publish typed va_copy payloads\n";
+    return EXIT_FAILURE;
+  }
   auto rv64_helper_family_prepared =
       prepare_aapcs64_variadic_entry_helper_family_dump_module();
   rv64_helper_family_prepared =
@@ -6881,6 +6890,11 @@ int main() {
   if (rv64_va_copy_homes == nullptr ||
       !prepare::has_complete_prepared_variadic_va_copy_operand_homes(*rv64_va_copy_homes)) {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not materialize va_copy operand homes\n";
+    return EXIT_FAILURE;
+  }
+  if (prepare::find_prepared_variadic_va_copy_operand_homes(
+          *rv64_va_copy_homes) == nullptr) {
+    std::cerr << "[FAIL] RV64 variadic helper-family carrier did not publish typed va_copy payloads\n";
     return EXIT_FAILURE;
   }
   if (!expect_contains(rv64_helper_family_dump,

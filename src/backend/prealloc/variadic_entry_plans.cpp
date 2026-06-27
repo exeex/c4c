@@ -1120,6 +1120,7 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
                                                "destination_va_list");
           require_variadic_helper_operand_home(
               function_plan, homes, homes.source_va_list, "source_va_list");
+          publish_prepared_variadic_va_copy_operand_homes(homes);
           break;
       }
 
@@ -1272,6 +1273,7 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
                                                "destination_va_list");
           require_variadic_helper_operand_home(
               function_plan, homes, homes.source_va_list, "source_va_list");
+          publish_prepared_variadic_va_copy_operand_homes(homes);
           function_plan.helper_operand_homes.push_back(std::move(homes));
           break;
       }
