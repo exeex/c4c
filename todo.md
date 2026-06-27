@@ -3,35 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/416_prepared_helper_operand_home_contracts.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Move Completeness Verification to Typed Payloads
+Current Step ID: Step 5
+Current Step Title: Migrate AArch64 Helper Lowering
 
 ## Just Finished
 
-Step 4 cleanup is complete for verifier/report paths. The verifier already
-classifies `va_start`, scalar `va_arg`, aggregate `va_arg`, and `va_copy`
-coherence through typed helper payload accessors. The prepared variadic printer
-now also prints scalar and aggregate access-plan detail through the typed
-payload accessors, so incoherent or incomplete optional-bag rows report
-`<none>` instead of treating partial legacy access-plan fields as coherent
-report data. Remaining generic completeness references are limited to producer
-compatibility, typed-accessor wrapper helpers, and tests that assert the
-transition behavior.
+Step 5 started the AArch64 target-consumer migration. AArch64 variadic helper
+record construction for `va_start`, scalar `va_arg`, aggregate `va_arg`, and
+`va_copy` now obtains operand homes/access plans through the typed helper
+payload accessors instead of dereferencing legacy optional-bag fields directly.
+The AArch64 va_list field-address lookup and helper-completeness check also
+route through typed accessors. Target instruction record tests now assert that
+selected helper call records expose typed payloads for all four helper
+families while preserving existing supported lowering behavior and diagnostics.
 
 ## Suggested Next
 
-Proceed to Step 5: migrate AArch64 target consumers to use the typed helper
-payload accessors for variadic helper operand homes while preserving existing
-diagnostics and without inferring operand homes in target lowering.
+Continue Step 5 by auditing any remaining AArch64 variadic-helper target
+consumer/report paths for legacy optional-bag reads, then decide whether the
+AArch64 migration is complete or needs a final cleanup packet before RV64.
 
 ## Watchouts
 
 - Do not edit the source idea for routine execution notes.
 - Do not infer helper operand homes in target lowering.
 - Do not weaken tests or expectations to claim progress.
-- Keep the old optional-bag fields until the AArch64/RV64 consumer migration
-  steps; typed accessors intentionally preserve compatibility derivation and
-  refresh from complete legacy rows.
+- Keep the old optional-bag fields until both AArch64 and RV64 consumer
+  migrations are complete; typed accessors intentionally preserve
+  compatibility derivation and refresh from complete legacy rows.
 - Existing RV64 producer behavior still only pushes complete `va_start` homes,
   but pushes scalar `va_arg`, aggregate `va_arg`, and `va_copy` rows in more
   incomplete states so diagnostics can name helper-specific missing facts.
@@ -41,14 +40,15 @@ diagnostics and without inferring operand homes in target lowering.
 - Stale typed payloads must not mask missing or incomplete optional facts.
   Complete rewritten legacy rows intentionally refresh the derived typed cache
   for compatibility with existing mutable target fixtures.
-- Remaining generic helper completeness references after this cleanup are
-  intentional: the RV64/AAPCS64 producer path still uses them for compatibility
-  gating, the wrappers in `variadic.hpp` delegate to typed accessors, and
-  focused tests assert complete/incomplete transitional behavior.
+- AArch64 target lowering should not infer or synthesize helper homes; missing
+  or incoherent helper facts should continue to fail closed through the
+  existing diagnostics.
+- RV64 target consumers are not migrated yet and should be handled in a later
+  owned packet.
 
 ## Proof
 
-Ran the supervisor-selected Step 4 proof:
-`cmake --build build --target backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test backend_prealloc_prepared_contract_verifier_test && ctest --test-dir build --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_prealloc_prepared_contract_verifier)$' > test_after.log 2>&1`
+Ran the supervisor-selected Step 5 proof:
+`cmake --build build --target backend_aarch64_instruction_dispatch_test backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test && ctest --test-dir build --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer)$' > test_after.log 2>&1`
 
 Result: passed; `test_after.log` contains 3/3 passing tests.

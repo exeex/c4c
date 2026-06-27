@@ -1193,6 +1193,16 @@ int variadic_entry_helper_call_records_select_prepared_va_start() {
       helper_payload->direct_callee_label != "llvm.va_start.p0") {
     return fail("expected va_start call record to select prepared machine-node facts");
   }
+  const auto* typed_va_start =
+      prepare::find_prepared_variadic_va_start_operand_homes(
+          *helper_payload->source_variadic_helper_operand_homes);
+  if (typed_va_start == nullptr ||
+      typed_va_start->destination_va_list.register_name !=
+          helper_payload->variadic_va_start->destination_va_list.register_name ||
+      typed_va_start->destination_va_list_address.slot_id !=
+          helper_payload->variadic_va_start->destination_va_list_address.slot_id) {
+    return fail("expected va_start call record to expose typed helper payload");
+  }
   if (missing_payload == nullptr ||
       missing_entry_call.selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::MissingRequiredFacts ||
@@ -1370,6 +1380,16 @@ int scalar_va_arg_call_record_requires_prepared_access_plan() {
       selected_gp_payload->variadic_scalar_va_arg->result_home.register_name !=
           std::optional<std::string>{"w0"}) {
     return fail("expected scalar gp va_arg call record to select prepared access plan");
+  }
+  const auto* typed_scalar_va_arg =
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+          *selected_gp_payload->source_variadic_helper_operand_homes);
+  if (typed_scalar_va_arg == nullptr ||
+      typed_scalar_va_arg->source_va_list.register_name !=
+          std::optional<std::string>{"x2"} ||
+      typed_scalar_va_arg->scalar_access_plan.source_class !=
+          prepare::PreparedVariadicScalarVaArgSourceClass::GpRegisterSaveArea) {
+    return fail("expected scalar va_arg call record to expose typed helper payload");
   }
 
   auto fp_plan =
@@ -1658,6 +1678,16 @@ int aggregate_va_arg_call_record_requires_prepared_access_plan() {
           prepare::PreparedFrameSlotId{6}) {
     return fail("expected aggregate va_arg call record to select prepared access plan");
   }
+  const auto* typed_aggregate_va_arg =
+      prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+          *selected_payload->source_variadic_helper_operand_homes);
+  if (typed_aggregate_va_arg == nullptr ||
+      typed_aggregate_va_arg->source_va_list.register_name !=
+          std::optional<std::string>{"x3"} ||
+      typed_aggregate_va_arg->aggregate_access_plan.copy_size_bytes !=
+          std::optional<std::size_t>{24}) {
+    return fail("expected aggregate va_arg call record to expose typed helper payload");
+  }
 
   return 0;
 }
@@ -1786,6 +1816,16 @@ int va_copy_call_record_selects_prepared_layout_field_copies() {
       selected_payload->variadic_va_copy->field_copies[1].destination_offset_bytes != 8 ||
       selected_payload->variadic_va_copy->scratch_register_count != 1) {
     return fail("expected va_copy call record to select prepared layout field copies");
+  }
+  const auto* typed_va_copy =
+      prepare::find_prepared_variadic_va_copy_operand_homes(
+          *selected_payload->source_variadic_helper_operand_homes);
+  if (typed_va_copy == nullptr ||
+      typed_va_copy->destination_va_list.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{10} ||
+      typed_va_copy->source_va_list.register_name !=
+          std::optional<std::string>{"x4"}) {
+    return fail("expected va_copy call record to expose typed helper payload");
   }
 
   variadic_entry.va_list_layout.fields.front().size_bytes = 0;

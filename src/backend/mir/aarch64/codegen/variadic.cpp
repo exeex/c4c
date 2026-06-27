@@ -82,7 +82,8 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
 [[nodiscard]] std::optional<VariadicVaStartRecord> make_variadic_va_start_record(
     const prepare::PreparedVariadicEntryPlanFunction& entry,
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
-  if (!prepare::has_complete_prepared_variadic_va_start_operand_homes(homes) ||
+  const auto* payload = prepare::find_prepared_variadic_va_start_operand_homes(homes);
+  if (payload == nullptr ||
       !entry.named_register_counts.gp.has_value() ||
       !entry.named_register_counts.fp.has_value() ||
       !entry.va_list_layout.size_bytes.has_value() ||
@@ -109,8 +110,8 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   }
 
   return VariadicVaStartRecord{
-      .destination_va_list = *homes.destination_va_list,
-      .destination_va_list_address = *homes.destination_va_list_address,
+      .destination_va_list = payload->destination_va_list,
+      .destination_va_list_address = payload->destination_va_list_address,
       .named_gp_register_count = *entry.named_register_counts.gp,
       .named_fp_register_count = *entry.named_register_counts.fp,
       .va_list_size_bytes = *entry.va_list_layout.size_bytes,
@@ -144,10 +145,12 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
 make_variadic_scalar_va_arg_record(
     const prepare::PreparedVariadicEntryPlanFunction& entry,
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
-  if (!prepare::has_complete_prepared_variadic_scalar_va_arg_access_plan(homes)) {
+  const auto* payload =
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(homes);
+  if (payload == nullptr) {
     return std::nullopt;
   }
-  const auto& plan = *homes.scalar_access_plan;
+  const auto& plan = payload->scalar_access_plan;
   if (!entry.register_save_area.slot_id.has_value() ||
       !entry.register_save_area.stack_offset_bytes.has_value() ||
       !entry.register_save_area.size_bytes.has_value() ||
@@ -169,7 +172,7 @@ make_variadic_scalar_va_arg_record(
       .value_type = plan.value_type,
       .value_size_bytes = plan.value_size_bytes,
       .value_align_bytes = plan.value_align_bytes,
-      .source_va_list = *homes.source_va_list,
+      .source_va_list = payload->source_va_list,
       .result_home = *plan.result_home,
       .source_field = *plan.source_field,
       .source_field_offset_bytes = *plan.source_field_offset_bytes,
@@ -204,10 +207,12 @@ make_variadic_scalar_va_arg_record(
 make_variadic_aggregate_va_arg_record(
     const prepare::PreparedVariadicEntryPlanFunction& entry,
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
-  if (!prepare::has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes)) {
+  const auto* payload =
+      prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(homes);
+  if (payload == nullptr) {
     return std::nullopt;
   }
-  const auto& plan = *homes.aggregate_access_plan;
+  const auto& plan = payload->aggregate_access_plan;
   if (!entry.register_save_area.slot_id.has_value() ||
       !entry.register_save_area.stack_offset_bytes.has_value() ||
       !entry.register_save_area.size_bytes.has_value() ||
@@ -226,13 +231,14 @@ make_variadic_aggregate_va_arg_record(
 
   std::optional<prepare::PreparedValueHome> source_va_list_address;
   for (const auto& helper_homes : entry.helper_operand_homes) {
-    if (helper_homes.helper != prepare::PreparedVariadicEntryHelperKind::VaStart ||
-        !helper_homes.destination_va_list.has_value() ||
-        !helper_homes.destination_va_list_address.has_value()) {
+    const auto* va_start_payload =
+        prepare::find_prepared_variadic_va_start_operand_homes(helper_homes);
+    if (va_start_payload == nullptr) {
       continue;
     }
-    if (helper_homes.destination_va_list->value_id == homes.source_va_list->value_id) {
-      source_va_list_address = *helper_homes.destination_va_list_address;
+    if (va_start_payload->destination_va_list.value_id ==
+        payload->source_va_list.value_id) {
+      source_va_list_address = va_start_payload->destination_va_list_address;
       break;
     }
   }
@@ -244,7 +250,7 @@ make_variadic_aggregate_va_arg_record(
       .instruction_index = plan.instruction_index,
       .payload_size_bytes = plan.payload_size_bytes,
       .payload_align_bytes = plan.payload_align_bytes,
-      .source_va_list = *homes.source_va_list,
+      .source_va_list = payload->source_va_list,
       .source_va_list_address = source_va_list_address,
       .destination_payload_home = *plan.destination_payload_home,
       .source_field = *plan.source_field,
@@ -289,7 +295,8 @@ make_variadic_aggregate_va_arg_record(
 [[nodiscard]] std::optional<VariadicVaCopyRecord> make_variadic_va_copy_record(
     const prepare::PreparedVariadicEntryPlanFunction& entry,
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
-  if (!prepare::has_complete_prepared_variadic_va_copy_operand_homes(homes) ||
+  const auto* payload = prepare::find_prepared_variadic_va_copy_operand_homes(homes);
+  if (payload == nullptr ||
       !entry.va_list_layout.size_bytes.has_value() ||
       !entry.va_list_layout.align_bytes.has_value() ||
       entry.va_list_layout.fields.empty() ||
@@ -313,8 +320,8 @@ make_variadic_aggregate_va_arg_record(
   }
 
   return VariadicVaCopyRecord{
-      .destination_va_list = *homes.destination_va_list,
-      .source_va_list = *homes.source_va_list,
+      .destination_va_list = payload->destination_va_list,
+      .source_va_list = payload->source_va_list,
       .va_list_size_bytes = *entry.va_list_layout.size_bytes,
       .va_list_align_bytes = *entry.va_list_layout.align_bytes,
       .field_copies = std::move(field_copies),
@@ -1101,11 +1108,12 @@ print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg
     return std::nullopt;
   }
   for (const auto& homes : entry_plan->helper_operand_homes) {
-    if (homes.helper != prepare::PreparedVariadicEntryHelperKind::VaStart ||
-        !homes.destination_va_list.has_value()) {
+    const auto* payload =
+        prepare::find_prepared_variadic_va_start_operand_homes(homes);
+    if (payload == nullptr) {
       continue;
     }
-    const auto& va_list_home = *homes.destination_va_list;
+    const auto& va_list_home = payload->destination_va_list;
     const auto base_name =
         prepare::prepared_value_name(context.function.prepared->names,
                                      va_list_home.value_name);
@@ -1242,7 +1250,19 @@ const prepare::PreparedVariadicEntryPlanFunction* require_prepared_variadic_entr
 
 bool variadic_helper_operand_homes_complete(
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
-  return prepare::has_complete_prepared_variadic_entry_helper_operand_homes(homes);
+  switch (homes.helper) {
+    case prepare::PreparedVariadicEntryHelperKind::VaStart:
+      return prepare::find_prepared_variadic_va_start_operand_homes(homes) != nullptr;
+    case prepare::PreparedVariadicEntryHelperKind::VaArg:
+      return prepare::find_prepared_variadic_scalar_va_arg_operand_homes(homes) !=
+             nullptr;
+    case prepare::PreparedVariadicEntryHelperKind::VaArgAggregate:
+      return prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+                 homes) != nullptr;
+    case prepare::PreparedVariadicEntryHelperKind::VaCopy:
+      return prepare::find_prepared_variadic_va_copy_operand_homes(homes) != nullptr;
+  }
+  return false;
 }
 
 std::string variadic_helper_missing_consumption_fact_message(
