@@ -3,6 +3,7 @@
 #include "prepared_frame_emit.hpp"
 
 #include "../../../prealloc/addressing.hpp"
+#include "../../../prealloc/prepared_contract_verifier.hpp"
 
 #include <optional>
 #include <string>
@@ -176,11 +177,16 @@ std::optional<std::string> render_edge_publication_source_operand(
     return std::to_string(publication.source_memory_byte_offset) + "(" +
            intent.source_memory_base_register + ")";
   }
-  if (source_home.kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
-      source_home.pointer_base_value_name.has_value() &&
-      source_home.pointer_byte_delta.has_value()) {
+  if (source_home.kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset) {
+    const auto pointer_report =
+        prepare::verify_prepared_pointer_base_plus_offset_contract(&source_home);
+    const auto pointer_fact =
+        prepare::as_pointer_base_plus_offset_fact(source_home);
+    if (pointer_report.fail_closed || !pointer_fact.has_value()) {
+      return std::nullopt;
+    }
     const auto base_id_it =
-        lookups->value_homes.value_ids.find(*source_home.pointer_base_value_name);
+        lookups->value_homes.value_ids.find(pointer_fact->base_value_name);
     if (base_id_it == lookups->value_homes.value_ids.end()) {
       return std::nullopt;
     }
@@ -193,8 +199,8 @@ std::optional<std::string> render_edge_publication_source_operand(
     }
     intent.source_pointer_base_value_id = base_id_it->second;
     intent.source_pointer_base_register = *base_home_it->second->register_name;
-    intent.source_pointer_byte_delta = *source_home.pointer_byte_delta;
-    return std::to_string(*source_home.pointer_byte_delta);
+    intent.source_pointer_byte_delta = pointer_fact->byte_delta;
+    return std::to_string(pointer_fact->byte_delta);
   }
   return std::nullopt;
 }

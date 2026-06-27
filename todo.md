@@ -3,13 +3,31 @@
 Status: Active
 Source Idea Path: ideas/open/415_prepared_value_materialization_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Producer-Side Verification
+Current Step ID: 4
+Current Step Title: Migrate Selected Pointer Consumer
 
 ## Just Finished
 
-Implemented Step 3 producer-side verification for typed pointer materialization
-facts.
+Implemented Step 4 selected RV64 pointer consumer migration.
+
+Step 4 implementation:
+
+- Migrated RV64 edge-publication pointer source materialization in
+  `src/backend/mir/riscv/codegen/prepared_edge_publication_emit.cpp` from raw
+  `pointer_base_value_name`/`pointer_byte_delta` reads to
+  `verify_prepared_pointer_base_plus_offset_contract` plus
+  `as_pointer_base_plus_offset_fact`.
+- Preserved existing target checks for resolving the prepared base value to a
+  register home, destination-register support, zero-delta moves, signed-12
+  add-immediate materialization, and large-delta materialization.
+- Added RV64 fail-closed coverage for missing destination identity and
+  cross-family immediate payloads, in addition to existing missing base,
+  missing delta, unresolved base, aliasing, and destination-form coverage.
+- Updated
+  `docs/prepared_fact_contracts/value_materialization_contract_plan.md` with
+  the migrated pointer consumer.
+
+Step 3 implementation:
 
 Step 3 implementation:
 
@@ -95,8 +113,7 @@ Selected consumer migration candidate:
 
 ## Suggested Next
 
-Run the Step 3 focused proof command, then migrate the selected RV64 edge
-publication consumer in Step 4.
+Run the Step 4 focused proof command, then broaden validation in Step 5.
 
 ## Watchouts
 
@@ -118,3 +135,8 @@ Step 3 focused proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_decoded_home_storage|backend_prealloc_prepared_contract_verifier)$'`.
 
 Result: passed, 2/2 tests.
+
+Step 4 focused proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_decoded_home_storage|backend_prealloc_prepared_contract_verifier|backend_riscv_prepared_edge_publication)$'`.
+
+Result: passed, 3/3 tests.

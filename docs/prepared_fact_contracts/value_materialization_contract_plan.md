@@ -52,6 +52,19 @@ value name identity without emitting diagnostic detail. Prepared value id `0`
 remains valid; pointer base identity and pointer byte delta carry their own
 missing-state checks.
 
+## Migrated Pointer Consumers
+
+Step 4 migrates RV64 edge publication pointer source materialization in
+`prepared_edge_publication_emit.cpp` to
+`verify_prepared_pointer_base_plus_offset_contract` plus
+`as_pointer_base_plus_offset_fact`.
+
+The migrated consumer keeps its existing target checks for base-register
+availability, destination register support, signed-12 add-immediate emission,
+and large-delta materialization. It now fails closed before target emission for
+missing destination identity, missing or invalid base identity, missing byte
+delta, wrong home kind, or cross-family immediate payloads.
+
 ## Completed Immediate Slice
 
 The first slice added `PreparedValueHomeKind::RematerializableImmediate` integer

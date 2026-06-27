@@ -1359,6 +1359,28 @@ int check_pointer_base_fail_closed_forms() {
     return 1;
   }
 
+  set_pointer_source(ids.base_name, 4);
+  auto& source_home = prepared.value_locations.functions.front().value_homes.front();
+  source_home.value_name = c4c::kInvalidValueName;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V pointer-base helper should reject homes without destination identity")) {
+    return 1;
+  }
+  source_home.value_name = ids.source_name;
+
+  source_home.immediate_i32 = 7;
+  lookups = make_lookups(prepared);
+  intent = riscv::consume_edge_publication_move_intent(
+      &lookups, ids.predecessor, ids.successor, 2);
+  if (!expect(intent.status == riscv::EdgePublicationMoveIntentStatus::UnsupportedSourceHome,
+              "RISC-V pointer-base helper should reject cross-family immediate payloads")) {
+    return 1;
+  }
+  source_home.immediate_i32.reset();
+
   set_pointer_source(prepared.names.value_names.intern("%missing_base"), 4);
   lookups = make_lookups(prepared);
   intent = riscv::consume_edge_publication_move_intent(
