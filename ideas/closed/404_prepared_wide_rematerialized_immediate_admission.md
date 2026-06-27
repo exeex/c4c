@@ -1,6 +1,6 @@
 # Prepared Wide Rematerialized Immediate Admission
 
-Status: Open
+Status: Closed
 Type: Follow-up repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Discovered From: `ideas/closed/401_rv64_object_route_scalar_and_floating_edge_lowering.md`
@@ -69,3 +69,30 @@ constant semantics.
 - Reject claiming progress if the same no-home wide rematerialized immediate
   failure remains behind a renamed diagnostic.
 - Reject expectation downgrades, unsupported markers, or allowlist filtering.
+
+## Lifecycle Notes
+
+- 2026-06-27: Closed after implementation commit `29d6c33c` admitted prepared
+  rematerialized binary immediates for named I32 non-compare binary producers
+  whose result already has explicit `PreparedValueHomeKind::RematerializableImmediate`
+  facts with `imm_i32`. The repair kept constant semantics in the
+  producer/prepared contract instead of reconstructing arbitrary BIR
+  expression semantics in RV64 object emission.
+- 2026-06-27: Focused coverage in
+  `tests/backend/mir/backend_riscv_object_emission_test.cpp` proves a
+  traversed wide rematerialized `sub 0, 2147483647` then subtract-one producer
+  chain and verifies `INT_MIN` materialization through the existing
+  load-immediate path.
+- 2026-06-27: Step 3 closure proof commit `296b51b4c` showed
+  `tests/c/external/gcc_torture/src/int-compare.c` now reports
+  `dump_bir_status=0`, `prepared_status=0`, `codegen_obj_status=0`, and
+  `runner_status=0`; the representative runner reported `total=1 passed=1
+  failed=0`.
+- 2026-06-27: The old `RV64_C4C_OBJ_COMPILE_FAIL` /
+  `unsupported_instruction_fragment` for `%t6/%t7`-style rematerialized I32
+  wide-immediate producer chains is absent, and no fresh residual appeared in
+  the representative proof.
+- 2026-06-27: Close gate passed with the backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`. The
+  rolled-forward `test_before.log` and regenerated `test_after.log` both
+  reported 326/326 passing backend tests with no new failures.
