@@ -1006,13 +1006,17 @@ std::optional<std::int64_t> integer_immediate_for_value(
     return value.immediate;
   }
   const auto* home = prepared_value_home_for(names, lookups, value);
-  if (home == nullptr ||
-      home->kind != c4c::backend::prepare::PreparedValueHomeKind::
-                        RematerializableImmediate ||
-      !home->immediate_i32.has_value()) {
+  if (home == nullptr) {
     return std::nullopt;
   }
-  return home->immediate_i32;
+  const auto report =
+      prepare::verify_prepared_rematerializable_integer_immediate_contract(home);
+  if (report.owner_class != prepare::PreparedContractOwnerClass::Coherent) {
+    return std::nullopt;
+  }
+  const auto fact = prepare::as_rematerializable_integer_immediate_fact(*home);
+  return fact.has_value() ? std::optional<std::int64_t>{fact->signed_value}
+                          : std::nullopt;
 }
 
 bool is_rv64_null_pointer_value(const c4c::backend::bir::Value& value) {
@@ -1922,12 +1926,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
       return std::nullopt;
     }
     if (source_home->kind ==
-            prepare::PreparedValueHomeKind::RematerializableImmediate &&
-        source_home->immediate_i32.has_value()) {
-      if (!fits_signed_12_bit_immediate(*source_home->immediate_i32)) {
+        prepare::PreparedValueHomeKind::RematerializableImmediate) {
+      const auto report =
+          prepare::verify_prepared_rematerializable_integer_immediate_contract(
+              source_home);
+      if (report.owner_class != prepare::PreparedContractOwnerClass::Coherent) {
         return std::nullopt;
       }
-      append_rv64_load_immediate(fragment, *destination, *source_home->immediate_i32);
+      const auto fact =
+          prepare::as_rematerializable_integer_immediate_fact(*source_home);
+      if (!fact.has_value() || !fact->fits_signed_12_bit_immediate) {
+        return std::nullopt;
+      }
+      append_rv64_load_immediate(fragment, *destination, fact->signed_value);
       continue;
     }
 
@@ -7031,10 +7042,13 @@ bool prepared_binary_result_is_rematerializable_i32_immediate(
     return false;
   }
   const auto* home = prepared_value_home_for(names, lookups, binary.result);
-  return home != nullptr &&
-         home->kind == c4c::backend::prepare::PreparedValueHomeKind::
-                           RematerializableImmediate &&
-         home->immediate_i32.has_value();
+  if (home == nullptr) {
+    return false;
+  }
+  const auto report =
+      prepare::verify_prepared_rematerializable_integer_immediate_contract(home);
+  return report.owner_class == prepare::PreparedContractOwnerClass::Coherent &&
+         prepare::as_rematerializable_integer_immediate_fact(*home).has_value();
 }
 
 std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(

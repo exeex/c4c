@@ -49,3 +49,18 @@ Producer-incoherent statuses:
 Reports use the `value_materialization_fact` fact family and fail closed for
 every non-coherent status. Coherent reports preserve function, value id, and
 value name identity without emitting diagnostic detail.
+
+## Migrated Consumers
+
+Step 4 migrates selected RV64 consumers to
+`verify_prepared_rematerializable_integer_immediate_contract` plus
+`as_rematerializable_integer_immediate_fact`:
+
+- `prepared_scalar_emit.cpp` prepared integer immediate lookup
+- `object_emission.cpp` integer immediate lookup for named BIR values
+- `object_emission.cpp` before-return rematerialized immediate moves
+- `object_emission.cpp` rematerializable binary-result detection
+
+Non-rematerializable homes keep their existing fall-through behavior. A
+rematerializable integer immediate with missing identity, missing payload, or a
+cross-family payload fails closed before the target consumes the immediate.

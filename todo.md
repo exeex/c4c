@@ -3,12 +3,12 @@
 Status: Active
 Source Idea Path: ideas/open/415_prepared_value_materialization_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Producer-Side Verification
+Current Step ID: 4
+Current Step Title: Migrate Selected Consumers
 
 ## Just Finished
 
-Completed Step 3 producer-side verification for rematerializable integer
+Completed Step 4 selected consumer migration for rematerializable integer
 immediates.
 
 Current value-home payloads live in `PreparedValueHome`:
@@ -81,10 +81,22 @@ Step 3 implementation:
   identity, wrong kind, cross-family payload, absent home, status spelling, and
   fact-family spelling.
 
+Step 4 implementation:
+
+- Migrated RV64 prepared scalar immediate lookup to the typed verifier/query.
+- Migrated RV64 object integer immediate lookup to the typed verifier/query.
+- Migrated RV64 before-return rematerialized immediate moves to the typed
+  verifier/query and its signed-12 target-admission fact.
+- Migrated RV64 rematerializable binary-result detection to the typed
+  verifier/query.
+- Added an RV64 object rejection test proving an invalid prepared immediate
+  identity fails closed instead of being consumed from raw `immediate_i32`.
+
 ## Suggested Next
 
-Begin Step 4 by migrating selected RV64 rematerialized integer immediate
-consumers to the typed query and producer-side verifier.
+Begin Step 5 with broader validation for the rematerializable integer immediate
+family and decide whether the next materialization family needs a follow-up
+runbook.
 
 ## Watchouts
 
@@ -114,3 +126,13 @@ Regression guard:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
 Result: PASS; before 2/2, after 2/2, no new failing tests.
+
+Step 4 focused proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_decoded_home_storage|backend_prealloc_prepared_contract_verifier|backend_riscv_object_emission|backend_riscv_prepared_edge_publication)$'`.
+
+Result: passed, 4/4 tests.
+
+Regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: PASS; before 4/4, after 4/4, no new failing tests.

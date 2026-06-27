@@ -7650,6 +7650,15 @@ int builds_prepared_traversed_wide_rematerialized_return_object() {
   return 0;
 }
 
+int rejects_prepared_rematerialized_return_without_typed_immediate_fact() {
+  auto prepared = make_prepared_rematerialized_return_module();
+  prepared.value_locations.functions.front().value_homes.at(1).value_name =
+      c4c::kInvalidValueName;
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+}
+
 int builds_prepared_scalar_same_module_call_object() {
   const auto prepared = make_prepared_scalar_same_module_call_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -12715,6 +12724,7 @@ int main() {
   status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_traversed_wide_rematerialized_return_object();
+  status |= rejects_prepared_rematerialized_return_without_typed_immediate_fact();
   status |= builds_prepared_scalar_same_module_call_object();
   status |= builds_prepared_byval_stack_copy_same_module_call_object();
   status |= rejects_prepared_byval_stack_copy_call_fail_closed_shapes();

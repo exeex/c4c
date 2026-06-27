@@ -6,6 +6,7 @@
 
 #include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/module.hpp"
+#include "../../../prealloc/prepared_contract_verifier.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -83,11 +84,17 @@ std::optional<std::int64_t> prepared_immediate_i32_for_value(
   if (home == nullptr) {
     return std::nullopt;
   }
-  if (home->kind != c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate ||
-      !home->immediate_i32.has_value()) {
+  const auto report =
+      c4c::backend::prepare::
+          verify_prepared_rematerializable_integer_immediate_contract(home);
+  if (report.owner_class !=
+      c4c::backend::prepare::PreparedContractOwnerClass::Coherent) {
     return std::nullopt;
   }
-  return home->immediate_i32;
+  const auto fact =
+      c4c::backend::prepare::as_rematerializable_integer_immediate_fact(*home);
+  return fact.has_value() ? std::optional<std::int64_t>{fact->signed_value}
+                          : std::nullopt;
 }
 
 std::optional<std::int64_t> simple_or_prepared_integer_immediate(
