@@ -1089,6 +1089,7 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
             append_missing_variadic_entry_fact(
                 function_plan, "helper_operand_homes.va_arg.scalar_access_plan");
           }
+          publish_prepared_variadic_scalar_va_arg_operand_homes(homes);
           break;
         case PreparedVariadicEntryHelperKind::VaArgAggregate:
           populate_aggregate_va_arg_operand_homes(
@@ -1210,6 +1211,7 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
             append_missing_variadic_entry_fact(
                 function_plan, "helper_operand_homes.va_arg.scalar_access_plan");
           }
+          publish_prepared_variadic_scalar_va_arg_operand_homes(homes);
           function_plan.helper_operand_homes.push_back(std::move(homes));
           break;
         case PreparedVariadicEntryHelperKind::VaArgAggregate:

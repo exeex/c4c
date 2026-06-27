@@ -9265,6 +9265,18 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
       !va_arg_f64_homes->scalar_access_plan->result_home.has_value()) {
     return fail("AAPCS64 variadic helper-family frame contract: lost scalar va_arg access-plan carrier facts");
   }
+  const auto* typed_va_arg_i32_homes =
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+          *va_arg_i32_homes);
+  const auto* typed_va_arg_f64_homes =
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+          *va_arg_f64_homes);
+  if (typed_va_arg_i32_homes == nullptr ||
+      typed_va_arg_i32_homes->scalar_access_plan.value_size_bytes != 4 ||
+      typed_va_arg_f64_homes == nullptr ||
+      typed_va_arg_f64_homes->scalar_access_plan.value_size_bytes != 8) {
+    return fail("AAPCS64 variadic helper-family frame contract: scalar va_arg typed payloads were not published");
+  }
   const auto* register_save_slot =
       prepare::find_prepared_frame_slot(prepared.stack_layout,
                                         *entry_plan->register_save_area.slot_id);
@@ -9503,6 +9515,15 @@ int check_rv64_variadic_entry_helper_missing_contract() {
       !va_arg_f64_homes->scalar_result.has_value() ||
       va_arg_f64_homes->scalar_access_plan.has_value()) {
     return fail("RV64 variadic helper missing contract: scalar va_arg facts were not consumed or precisely diagnosed");
+  }
+  const auto* typed_rv64_va_arg_i32_homes =
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+          *va_arg_i32_homes);
+  if (typed_rv64_va_arg_i32_homes == nullptr ||
+      typed_rv64_va_arg_i32_homes->scalar_access_plan.value_size_bytes != 4 ||
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+          *va_arg_f64_homes) != nullptr) {
+    return fail("RV64 variadic helper missing contract: scalar va_arg typed payload completeness regressed");
   }
   if (va_copy_homes == nullptr ||
       !prepare::has_complete_prepared_variadic_va_copy_operand_homes(*va_copy_homes)) {

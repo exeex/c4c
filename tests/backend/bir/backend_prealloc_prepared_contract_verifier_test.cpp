@@ -156,6 +156,29 @@ prepare::PreparedValueHome coherent_va_start_address_home() {
   };
 }
 
+prepare::PreparedVariadicScalarVaArgAccessPlan coherent_scalar_va_arg_access_plan(
+    const prepare::PreparedValueHome& scalar_result) {
+  return prepare::PreparedVariadicScalarVaArgAccessPlan{
+      .source_class =
+          prepare::PreparedVariadicScalarVaArgSourceClass::OverflowArgArea,
+      .value_type = bir::TypeKind::I32,
+      .value_size_bytes = 4,
+      .value_align_bytes = 4,
+      .result_home = scalar_result,
+      .source_field = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .source_field_offset_bytes = std::size_t{0},
+      .source_slot_size_bytes = std::size_t{4},
+      .progression_field =
+          prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .progression_field_offset_bytes = std::size_t{0},
+      .progression_stride_bytes = std::size_t{4},
+      .overflow_source_field =
+          prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .overflow_source_field_offset_bytes = std::size_t{0},
+      .overflow_stride_bytes = std::size_t{4},
+  };
+}
+
 int verify_call_argument_binary_producer_materialization_fact_query() {
   prepare::PreparedNameTables names;
   const auto block_label = names.block_labels.intern("fact.entry");
@@ -582,6 +605,118 @@ int verify_variadic_va_start_helper_operand_home_reports() {
               "incomplete va_start optional fields should classify as producer incoherent") ||
       !expect(incomplete.fail_closed,
               "incomplete va_start optional fields should fail closed")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_variadic_scalar_va_arg_helper_operand_home_reports() {
+  auto source = coherent_va_start_address_home();
+  auto result = coherent_va_start_stack_home();
+  auto access_plan = coherent_scalar_va_arg_access_plan(result);
+  prepare::PreparedVariadicEntryHelperOperandHomes coherent_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaArg,
+      .block_index = 1,
+      .instruction_index = 3,
+      .source_va_list = source,
+      .scalar_result = result,
+      .scalar_access_plan = access_plan,
+  };
+  prepare::publish_prepared_variadic_scalar_va_arg_operand_homes(coherent_homes);
+
+  prepare::PreparedVariadicEntryHelperOperandHomes legacy_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaArg,
+      .block_index = 1,
+      .instruction_index = 3,
+      .source_va_list = source,
+      .scalar_result = result,
+      .scalar_access_plan = access_plan,
+  };
+
+  prepare::PreparedVariadicEntryHelperOperandHomes wrong_helper_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+      .block_index = 1,
+      .instruction_index = 3,
+      .source_va_list = source,
+      .scalar_result = result,
+      .scalar_access_plan = access_plan,
+  };
+  prepare::publish_prepared_variadic_scalar_va_arg_operand_homes(
+      wrong_helper_homes);
+
+  auto incomplete_plan = access_plan;
+  incomplete_plan.progression_stride_bytes = std::nullopt;
+  prepare::PreparedVariadicEntryHelperOperandHomes incomplete_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaArg,
+      .block_index = 1,
+      .instruction_index = 3,
+      .source_va_list = source,
+      .scalar_result = result,
+      .scalar_access_plan = incomplete_plan,
+  };
+  prepare::publish_prepared_variadic_scalar_va_arg_operand_homes(
+      incomplete_homes);
+
+  const auto coherent =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          &coherent_homes,
+          c4c::FunctionNameId{107},
+          prepare::PreparedVariadicEntryHelperKind::VaArg,
+          1,
+          3);
+  const auto legacy =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          &legacy_homes,
+          c4c::FunctionNameId{107},
+          prepare::PreparedVariadicEntryHelperKind::VaArg,
+          1,
+          3);
+  const auto wrong_helper =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          &wrong_helper_homes,
+          c4c::FunctionNameId{107},
+          prepare::PreparedVariadicEntryHelperKind::VaArg,
+          1,
+          3);
+  const auto incomplete =
+      prepare::verify_prepared_variadic_entry_helper_operand_homes_contract(
+          &incomplete_homes,
+          c4c::FunctionNameId{107},
+          prepare::PreparedVariadicEntryHelperKind::VaArg,
+          1,
+          3);
+
+  if (!expect(prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+                  coherent_homes) != nullptr,
+              "coherent scalar va_arg helper homes should expose a typed payload") ||
+      !expect(prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+                  legacy_homes) != nullptr,
+              "complete legacy scalar va_arg optional fields should expose a typed payload") ||
+      !expect(prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+                  wrong_helper_homes) == nullptr,
+              "wrong-helper optional scalar va_arg fields should not expose a typed payload") ||
+      !expect(prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+                  incomplete_homes) == nullptr,
+              "incomplete scalar va_arg optional fields should not expose a typed payload") ||
+      !expect(coherent.owner_class == prepare::PreparedContractOwnerClass::Coherent,
+              "typed scalar va_arg helper homes should verify as coherent") ||
+      !expect(!coherent.fail_closed,
+              "typed scalar va_arg helper homes should not fail closed") ||
+      !expect(legacy.owner_class == prepare::PreparedContractOwnerClass::Coherent,
+              "complete legacy scalar va_arg optional fields should verify as coherent") ||
+      !expect(!legacy.fail_closed,
+              "complete legacy scalar va_arg optional fields should not fail closed") ||
+      !expect(wrong_helper.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "wrong-helper scalar va_arg optional fields should classify as producer incoherent") ||
+      !expect(wrong_helper.fail_closed,
+              "wrong-helper scalar va_arg optional fields should fail closed") ||
+      !expect(incomplete.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "incomplete scalar va_arg optional fields should classify as producer incoherent") ||
+      !expect(incomplete.fail_closed,
+              "incomplete scalar va_arg optional fields should fail closed")) {
     return 1;
   }
 
@@ -1145,6 +1280,11 @@ int main() {
     return rc;
   }
   if (const int rc = verify_variadic_va_start_helper_operand_home_reports();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc =
+          verify_variadic_scalar_va_arg_helper_operand_home_reports();
       rc != 0) {
     return rc;
   }

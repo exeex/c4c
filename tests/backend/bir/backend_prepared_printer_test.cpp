@@ -6460,6 +6460,19 @@ int main() {
     std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier missed scalar va_arg access-plan facts\n";
     return EXIT_FAILURE;
   }
+  const auto* typed_scalar_i32_homes =
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+          *scalar_i32_homes);
+  const auto* typed_scalar_f64_homes =
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+          *scalar_f64_homes);
+  if (typed_scalar_i32_homes == nullptr ||
+      typed_scalar_i32_homes->scalar_access_plan.value_size_bytes != 4 ||
+      typed_scalar_f64_homes == nullptr ||
+      typed_scalar_f64_homes->scalar_access_plan.value_size_bytes != 8) {
+    std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier did not publish typed scalar va_arg payloads\n";
+    return EXIT_FAILURE;
+  }
   prepare::PreparedValueHome aggregate_payload_home{
       .value_name = c4c::kInvalidValueName,
       .kind = prepare::PreparedValueHomeKind::StackSlot,
@@ -6798,6 +6811,16 @@ int main() {
       rv64_scalar_f64_homes == nullptr ||
       rv64_scalar_f64_homes->scalar_access_plan.has_value()) {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not consume or precisely diagnose scalar va_arg plans\n";
+    return EXIT_FAILURE;
+  }
+  const auto* typed_rv64_scalar_i32_homes =
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+          *rv64_scalar_i32_homes);
+  if (typed_rv64_scalar_i32_homes == nullptr ||
+      typed_rv64_scalar_i32_homes->scalar_access_plan.value_size_bytes != 4 ||
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+          *rv64_scalar_f64_homes) != nullptr) {
+    std::cerr << "[FAIL] RV64 variadic helper-family carrier exposed incorrect scalar va_arg typed payload completeness\n";
     return EXIT_FAILURE;
   }
   if (rv64_aggregate_homes == nullptr ||
