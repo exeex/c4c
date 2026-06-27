@@ -1,81 +1,74 @@
 Status: Active
 Source Idea Path: ideas/open/413_prepared_contract_verifier_and_owner_taxonomy.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Three Fact-Family Classifications
+Current Step ID: 4
+Current Step Title: Publish The Taxonomy Matrix
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Implement Three Fact-Family Classifications: added prepared contract
-verifier classifications for the remaining selected families, call boundary
-argument/result plans and variadic entry helper operand-home/access-plan facts,
-without adding target fallback inference. Tightened the call-boundary
-argument/result plan family so failed AArch64 call-boundary move consumers
-attach the shared prepared contract report on the normal module-lowering
-diagnostic surface instead of leaving the verifier helper as a standalone API.
+Step 4 - Publish The Taxonomy Matrix: published
+`docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md` as
+the durable idea 413 handoff artifact for idea 418 and ideas 414-417.
 
 Files changed:
 
-- `src/backend/prealloc/prepared_contract_verifier.hpp`
-- `src/backend/prealloc/prepared_contract_verifier.cpp`
-- `src/backend/mir/aarch64/codegen/variadic.cpp`
-- `src/backend/mir/aarch64/codegen/calls.cpp`
-- `tests/backend/bir/backend_prealloc_call_boundary_classification_test.cpp`
-- `tests/backend/mir/backend_aarch64_call_boundary_owner_test.cpp`
-- `tests/backend/mir/backend_aarch64_operand_resolution_test.cpp`
+- `docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md`
+- `todo.md`
 
-Implemented classifications:
+Documented selected row IDs:
 
-- `verify_prepared_call_boundary_move_contract` wraps the existing
-  `classify_prepared_call_boundary_move` statuses into the shared owner
-  taxonomy. Missing call argument/result plans and ABI bindings classify as
-  `producer_missing`, mismatched result plans and missing ABI indices classify
-  as `producer_incoherent`, and unsupported move op kinds classify as
-  `target_unsupported_but_coherent`.
-- `verify_prepared_variadic_entry_plan_contract` classifies missing or
-  incomplete variadic entry-plan authority as `producer_missing` before
-  AArch64 variadic consumers lower helper calls.
-- `verify_prepared_variadic_entry_helper_operand_homes_contract` classifies
-  missing helper operand-home/access-plan facts as `producer_missing` and
-  present-but-incomplete facts as `producer_incoherent`.
+- `TAX-FAM-VALUE-HOME-TYPED-STORAGE-001`
+- `TAX-FAM-CALL-BOUNDARY-ARG-RESULT-001`
+- `TAX-FAM-VARIADIC-HELPER-OPERAND-HOMES-001`
 
-Target boundary wiring:
+Documented placeholder/follow-up row IDs:
 
-- AArch64 variadic entry-plan diagnostics from
-  `require_prepared_variadic_entry_plan` now attach a target-neutral prepared
-  contract report.
-- AArch64 variadic helper operand-home/access-plan rejection in call lowering
-  now attaches the shared report before returning `std::nullopt`.
-- AArch64 call-boundary argument/result move rejection now attaches the shared
-  call-boundary report when the prepared classifier exposes missing or
-  incoherent argument/result plan authority. Focused tests assert the exposed
-  report for a missing call argument ABI binding and a mismatched call result
-  plan.
-- The existing value-home/typed-storage Step 2 classification remains in place,
-  so the three selected families now all have report coverage.
+- `TAX-FAM-CALL-ARG-TYPED-ROUTES-PLACEHOLDER-001`
+- `TAX-FAM-VALUE-MATERIALIZATION-PLACEHOLDER-001`
+- `TAX-FAM-MEMORY-ACCESS-PLACEHOLDER-001`
+- `TAX-FAM-HELPER-OPERAND-TYPED-PLACEHOLDER-001`
+- `TAX-FAM-PUBLICATION-FACTS-PLACEHOLDER-001`
+- `TAX-FAM-GLOBAL-INITIALIZER-STORAGE-PLACEHOLDER-001`
+
+Evidence recorded in the document:
+
+- Owner classes and report fields from
+  `src/backend/prealloc/prepared_contract_verifier.hpp`.
+- Selected family classification behavior from
+  `src/backend/prealloc/prepared_contract_verifier.cpp`.
+- AArch64 diagnostic attachment points from
+  `src/backend/mir/aarch64/module/module.hpp`,
+  `src/backend/mir/aarch64/codegen/operands.cpp`,
+  `src/backend/mir/aarch64/codegen/calls.cpp`, and
+  `src/backend/mir/aarch64/codegen/variadic.cpp`.
+- Focused backend tests from
+  `tests/backend/bir/backend_prealloc_decoded_home_storage_test.cpp`,
+  `tests/backend/bir/backend_prealloc_call_boundary_classification_test.cpp`,
+  `tests/backend/mir/backend_aarch64_operand_resolution_test.cpp`, and
+  `tests/backend/mir/backend_aarch64_call_boundary_owner_test.cpp`.
 
 ## Suggested Next
 
-Proceed to Step 4 by publishing
-`docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md` with
-rows for the three selected verifier families and placeholders for remaining
-prepared contract follow-up work.
+Proceed to Step 5 acceptance validation and close readiness. The next packet
+should run the supervisor-selected final validation, review the diff for
+testcase overfit or expectation weakening, and decide whether idea 413 is ready
+for lifecycle close handling.
 
 ## Watchouts
 
-Call-boundary classification deliberately reuses existing prealloc status
-authority; do not duplicate or replace it in target code. The target consumer
-only attaches the report at existing fail-closed rejection points so specialized
-prepared call-boundary lowerings that are already coherent remain intact.
-Variadic helper reports classify missing and incoherent helper/access-plan
-facts, but broader publication facts such as edge/block publication remain
-outside this packet.
+The matrix reserves row IDs for memory-access, publication, value
+materialization, typed call-argument, helper-operand, and global initializer
+follow-up work, but those rows are placeholders. Downstream ideas should refine
+them after idea 418 audits concrete target consumer sites. No implementation,
+test, build output, README, plan, or source idea files were touched in this
+docs-only packet.
 
 ## Proof
 
-Delegated proof:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R '\''^backend_'\''' |& tee test_after.log'`
-passed. `test_after.log` records 326/326 backend tests passed.
+Docs-only packet; no build or test command was delegated or run. Proof is the
+published matrix artifact plus source/file-reference evidence recorded there and
+in this `todo.md` packet. This docs-only proof relies on the accepted Step 3
+backend validation, which recorded 326/326 backend tests passed before
+supervisor regression-log roll-forward.
