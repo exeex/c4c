@@ -189,10 +189,12 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
       append_home("aggregate_dst", homes.aggregate_destination_payload);
       if (homes.helper == PreparedVariadicEntryHelperKind::VaArg) {
         out << " scalar_access_plan=";
-        if (!homes.scalar_access_plan.has_value()) {
+        const auto* payload =
+            find_prepared_variadic_scalar_va_arg_operand_homes(homes);
+        if (payload == nullptr) {
           out << "<none>";
         } else {
-          const auto& plan = *homes.scalar_access_plan;
+          const auto& plan = payload->scalar_access_plan;
           out << "source_class="
               << prepared_variadic_scalar_va_arg_source_class_name(plan.source_class)
               << ":type=" << type_kind_name(plan.value_type)
@@ -236,10 +238,12 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
         }
       } else if (homes.helper == PreparedVariadicEntryHelperKind::VaArgAggregate) {
         out << " aggregate_access_plan=";
-        if (!homes.aggregate_access_plan.has_value()) {
+        const auto* payload =
+            find_prepared_variadic_aggregate_va_arg_operand_homes(homes);
+        if (payload == nullptr) {
           out << "<none>";
         } else {
-          const auto& plan = *homes.aggregate_access_plan;
+          const auto& plan = payload->aggregate_access_plan;
           out << "source_class="
               << prepared_variadic_aggregate_va_arg_source_class_name(plan.source_class)
               << ":payload_size=" << plan.payload_size_bytes
