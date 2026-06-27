@@ -1,8 +1,24 @@
 # Prepared Contract Verifier And Owner Taxonomy
 
-Status: Open
+Status: Closed
 Type: Follow-up contract refactor idea
 Parent: `ideas/closed/412_prepared_fact_contract_normalization_analysis.md`
+
+## Completion Note
+
+Closed after active Step 5 acceptance validation. The prepared contract
+verifier/report surface now runs before selected target consumers; value-home
+typed-storage, call-boundary argument/result plan, and variadic helper
+operand-home/access-plan families produce owner-classified diagnostics; and
+`docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md`
+exists as the handoff artifact for ideas 418 and 414-417.
+
+Default CTest acceptance was recorded by the supervisor as 3355/3355 passing in
+`test_after.log`. Earlier implementation slices also passed the backend subset
+at 326/326, but the available canonical logs were different scopes
+(`test_before.log` backend-only and `test_after.log` default CTest), so closure
+does not claim a matching-scope regression-guard comparison. Downstream
+contract migrations remain open under ideas 418 and 414-417.
 
 ## Goal
 
