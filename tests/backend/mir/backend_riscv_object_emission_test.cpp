@@ -8153,6 +8153,17 @@ int rejects_variadic_va_start_with_missing_saved_gpr_publication_fact() {
 int materializes_fact_complete_variadic_va_start_with_saved_gpr_publications() {
   const auto prepared =
       make_prepared_variadic_va_start_with_saved_gpr_publications_module();
+  const auto& va_start_homes =
+      prepared.variadic_entry_plans.functions.front().helper_operand_homes.front();
+  const auto* typed_va_start =
+      prepare::find_prepared_variadic_va_start_operand_homes(va_start_homes);
+  if (typed_va_start == nullptr ||
+      typed_va_start->destination_va_list.kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      typed_va_start->destination_va_list_address.register_name !=
+          std::optional<std::string>{"a0"}) {
+    return fail("expected RV64 va_start fixture to expose typed helper payload");
+  }
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
   if (!module.has_value()) {
     return fail("expected prepared saved-GPR va_start RV64 object module to build");
@@ -8341,6 +8352,17 @@ int rejects_malformed_variadic_va_end_direct_extern_shapes() {
 int materializes_fact_complete_variadic_aggregate_va_arg_helper() {
   const auto prepared =
       make_prepared_variadic_aggregate_va_arg_module(true);
+  const auto& aggregate_homes =
+      prepared.variadic_entry_plans.functions.front().helper_operand_homes.front();
+  const auto* typed_aggregate =
+      prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+          aggregate_homes);
+  if (typed_aggregate == nullptr ||
+      typed_aggregate->source_va_list.register_name !=
+          std::optional<std::string>{"s1"} ||
+      !typed_aggregate->aggregate_access_plan.payload_write_address.has_value()) {
+    return fail("expected RV64 aggregate va_arg fixture to expose typed helper payload");
+  }
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
   if (!module.has_value()) {
     return fail("expected prepared aggregate va_arg RV64 object module to build");

@@ -3,36 +3,39 @@
 Status: Active
 Source Idea Path: ideas/open/416_prepared_helper_operand_home_contracts.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Migrate AArch64 Helper Lowering
+Current Step ID: Step 6
+Current Step Title: Migrate RV64 Helper Lowering
 
 ## Just Finished
 
-Step 5 AArch64 cleanup is complete. AArch64 variadic helper record
-construction for `va_start`, scalar `va_arg`, aggregate `va_arg`, and
-`va_copy` obtains operand homes/access plans through the typed helper payload
-accessors instead of dereferencing legacy optional-bag fields directly. The
-AArch64 va_list field-address lookup and helper-completeness check also route
-through typed accessors. The final audit migrated remaining consumer-like test
-assertions to typed accessors; remaining optional-bag reads in owned AArch64
-tests are fixture setup/mutation scaffolding for constructing complete or
-incomplete helper rows, not target consumer/report paths.
+Step 6 started the RV64 target-consumer migration in the object route. RV64
+`va_start` and aggregate `va_arg` helper diagnostics/fragments now obtain
+operand homes/access plans through typed helper payload accessors instead of
+directly consuming legacy optional-bag fields. The object-route helper
+coherence check now dispatches by helper kind to typed accessors, and
+`rv64_va_start_destination_load_offset(...)` selects the prior `va_start`
+payload through the typed accessor before reading destination homes. The
+aggregate `payload_write_address` requirement remains an RV64 object-route
+support check on the typed aggregate access plan. RV64 object-emission tests now
+assert typed payload exposure for the supported `va_start` and aggregate
+`va_arg` fixtures.
 
 ## Suggested Next
 
-Proceed to Step 6: migrate RV64 target consumers to use typed variadic helper
-payload accessors while preserving existing RV64 diagnostics and without
-inferring operand homes in target lowering.
+Continue Step 6 by auditing remaining RV64 variadic-helper object-route
+consumer/report paths for direct optional-bag reads, including unsupported
+helper diagnostics for scalar `va_arg`/`va_copy`, then decide whether RV64
+migration is complete or needs one final cleanup packet.
 
 ## Watchouts
 
 - Do not edit the source idea for routine execution notes.
 - Do not infer helper operand homes in target lowering.
 - Do not weaken tests or expectations to claim progress.
-- Keep the old optional-bag fields until RV64 consumer migration is complete
-  and the later cleanup step can remove or quarantine compatibility storage;
-  typed accessors intentionally preserve compatibility derivation and refresh
-  from complete legacy rows.
+- Keep the old optional-bag fields until RV64 consumer migration is fully
+  audited and the later cleanup step can remove or quarantine compatibility
+  storage; typed accessors intentionally preserve compatibility derivation and
+  refresh from complete legacy rows.
 - Existing RV64 producer behavior still only pushes complete `va_start` homes,
   but pushes scalar `va_arg`, aggregate `va_arg`, and `va_copy` rows in more
   incomplete states so diagnostics can name helper-specific missing facts.
@@ -42,16 +45,17 @@ inferring operand homes in target lowering.
 - Stale typed payloads must not mask missing or incomplete optional facts.
   Complete rewritten legacy rows intentionally refresh the derived typed cache
   for compatibility with existing mutable target fixtures.
-- AArch64 target lowering now uses typed helper payload accessors for helper
-  consumption; do not reintroduce optional-bag consumption there.
-- RV64 target consumers are not migrated yet and should be handled in a later
-  owned packet.
-- Remaining AArch64 optional-bag reads are in test fixture setup/mutation code
-  that deliberately constructs complete or incomplete helper rows.
+- AArch64 target lowering already uses typed helper payload accessors for
+  helper consumption; do not reintroduce optional-bag consumption there.
+- RV64 aggregate `payload_write_address` is still object-route-specific
+  support data on the typed aggregate access plan, not generic typed payload
+  completeness.
+- Do not infer helper operand homes from stack layout, BIR shape, or source
+  spelling in RV64 lowering.
 
 ## Proof
 
-Ran the supervisor-selected Step 5 proof:
-`cmake --build build --target backend_aarch64_instruction_dispatch_test backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test && ctest --test-dir build --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer)$' > test_after.log 2>&1`
+Ran the supervisor-selected Step 6 proof:
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_cli_riscv64_variadic_entry_missing_contract_obj|backend_dump_riscv64_variadic_aggregate_overflow_helper_contract|backend_cli_riscv64_variadic_aggregate_overflow_helper_contract_obj)$' > test_after.log 2>&1`
 
-Result: passed; `test_after.log` contains 3/3 passing tests.
+Result: passed; `test_after.log` contains 6/6 passing tests.

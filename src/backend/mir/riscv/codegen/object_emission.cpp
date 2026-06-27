@@ -460,6 +460,11 @@ std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(
     const prepare::PreparedVariadicEntryPlanFunction& entry_plan,
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes,
     std::size_t stack_frame_bytes) {
+  const auto* payload = prepare::find_prepared_variadic_va_start_operand_homes(homes);
+  if (payload == nullptr) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared va_start helper operand homes"};
+  }
   if (auto diagnostic = rv64_variadic_va_start_runtime_state_diagnostic(entry_plan)) {
     return diagnostic;
   }
@@ -472,11 +477,8 @@ std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(
         "unsupported_variadic_helper_lowering: RV64 va_start helper requires a supported overflow-arg-area va_list field"};
   }
   const auto destination_address =
-      homes.destination_va_list_address.has_value()
-          ? gpr_register_number_for_home(*homes.destination_va_list_address)
-          : std::nullopt;
-  if (!homes.destination_va_list_address.has_value() ||
-      homes.destination_va_list_address->kind !=
+      gpr_register_number_for_home(payload->destination_va_list_address);
+  if (payload->destination_va_list_address.kind !=
           prepare::PreparedValueHomeKind::Register ||
       !destination_address.has_value()) {
     return std::string{
@@ -490,9 +492,8 @@ std::optional<std::string> rv64_variadic_va_start_materialization_diagnostic(
     return std::string{
         "unsupported_variadic_helper_lowering: RV64 va_start helper requires destination va_list in a supported prepared stack-slot home"};
   }
-  if (!homes.destination_va_list.has_value() ||
-      !prepared_stack_slot_home_offset(stack_layout,
-                                       *homes.destination_va_list,
+  if (!prepared_stack_slot_home_offset(stack_layout,
+                                       payload->destination_va_list,
                                        stack_frame_bytes,
                                        *entry_plan.va_list_layout.size_bytes)
            .has_value()) {
@@ -514,6 +515,12 @@ rv64_variadic_va_arg_aggregate_materialization_diagnostic(
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes,
     std::size_t stack_frame_bytes) {
   constexpr std::size_t kMaxSupportedCopySize = 128;
+  const auto* payload =
+      prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(homes);
+  if (payload == nullptr) {
+    return std::string{
+        "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared va_arg_aggregate helper operand homes"};
+  }
 
   const auto* overflow_field =
       rv64_variadic_va_list_overflow_arg_area_field(entry_plan);
@@ -525,9 +532,8 @@ rv64_variadic_va_arg_aggregate_materialization_diagnostic(
     return std::string{
         "unsupported_variadic_helper_lowering: RV64 va_arg_aggregate helper requires a supported overflow-arg-area va_list field"};
   }
-  if (!homes.source_va_list.has_value() ||
-      homes.source_va_list->kind != prepare::PreparedValueHomeKind::Register ||
-      !gpr_register_number_for_home(*homes.source_va_list).has_value()) {
+  if (payload->source_va_list.kind != prepare::PreparedValueHomeKind::Register ||
+      !gpr_register_number_for_home(payload->source_va_list).has_value()) {
     return std::string{
         "unsupported_variadic_helper_lowering: RV64 va_arg_aggregate helper requires source va_list in a prepared GPR home"};
   }
@@ -535,13 +541,12 @@ rv64_variadic_va_arg_aggregate_materialization_diagnostic(
     return std::string{
         "unsupported_variadic_helper_lowering: RV64 va_arg_aggregate helper requires prepared scratch registers"};
   }
-  if (!homes.aggregate_access_plan.has_value() ||
-      !homes.aggregate_access_plan->payload_write_address.has_value()) {
+  const auto& plan = payload->aggregate_access_plan;
+  if (!plan.payload_write_address.has_value()) {
     return std::string{
         "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared va_arg_aggregate helper operand homes"};
   }
 
-  const auto& plan = *homes.aggregate_access_plan;
   if (plan.source_class !=
           prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea ||
       plan.source_field != prepare::PreparedVariadicVaListFieldKind::OverflowArgArea ||
@@ -631,16 +636,42 @@ std::optional<std::string> diagnose_unsupported_prepared_variadic_helper_fragmen
     diagnostic += " helper operand homes";
     return diagnostic;
   }
-  if (!prepare::has_complete_prepared_variadic_entry_helper_operand_homes(*homes)) {
+  bool has_typed_payload = false;
+  switch (*helper) {
+    case prepare::PreparedVariadicEntryHelperKind::VaStart:
+      has_typed_payload =
+          prepare::find_prepared_variadic_va_start_operand_homes(*homes) !=
+          nullptr;
+      break;
+    case prepare::PreparedVariadicEntryHelperKind::VaArg:
+      has_typed_payload =
+          prepare::find_prepared_variadic_scalar_va_arg_operand_homes(*homes) !=
+          nullptr;
+      break;
+    case prepare::PreparedVariadicEntryHelperKind::VaArgAggregate:
+      has_typed_payload =
+          prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(
+              *homes) != nullptr;
+      break;
+    case prepare::PreparedVariadicEntryHelperKind::VaCopy:
+      has_typed_payload =
+          prepare::find_prepared_variadic_va_copy_operand_homes(*homes) !=
+          nullptr;
+      break;
+  }
+  if (!has_typed_payload) {
     std::string diagnostic =
         "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared ";
     diagnostic += prepare::prepared_variadic_entry_helper_kind_name(*helper);
     diagnostic += " helper operand homes";
     return diagnostic;
   }
-  if (*helper == prepare::PreparedVariadicEntryHelperKind::VaArgAggregate &&
-      (!homes->aggregate_access_plan.has_value() ||
-       !homes->aggregate_access_plan->payload_write_address.has_value())) {
+  const auto* aggregate_payload =
+      *helper == prepare::PreparedVariadicEntryHelperKind::VaArgAggregate
+          ? prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(*homes)
+          : nullptr;
+  if (aggregate_payload != nullptr &&
+      !aggregate_payload->aggregate_access_plan.payload_write_address.has_value()) {
     return std::string{
         "unsupported_variadic_helper_lowering: RV64 object route requires complete prepared va_arg_aggregate helper operand homes"};
   }
@@ -1511,8 +1542,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_start(
       *entry_plan,
       block_index,
       instruction_index);
+  const auto* payload =
+      homes != nullptr ? prepare::find_prepared_variadic_va_start_operand_homes(*homes)
+                       : nullptr;
   if (homes == nullptr || homes->helper != *helper ||
-      !prepare::has_complete_prepared_variadic_va_start_operand_homes(*homes) ||
+      payload == nullptr ||
       rv64_variadic_va_start_materialization_diagnostic(prepared.stack_layout,
                                                         *entry_plan,
                                                         *homes,
@@ -1523,10 +1557,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_variadic_va_start(
   const auto* overflow_field =
       rv64_variadic_va_list_overflow_arg_area_field(*entry_plan);
   const auto destination =
-      gpr_register_number_for_home(*homes->destination_va_list_address);
+      gpr_register_number_for_home(payload->destination_va_list_address);
   const auto destination_offset =
       prepared_stack_slot_home_offset(prepared.stack_layout,
-                                      *homes->destination_va_list,
+                                      payload->destination_va_list,
                                       stack_frame_bytes,
                                       *entry_plan->va_list_layout.size_bytes);
   if (overflow_field == nullptr || !destination.has_value() ||
@@ -1577,8 +1611,12 @@ fragment_for_prepared_variadic_va_arg_aggregate(
       *entry_plan,
       block_index,
       instruction_index);
+  const auto* payload =
+      homes != nullptr
+          ? prepare::find_prepared_variadic_aggregate_va_arg_operand_homes(*homes)
+          : nullptr;
   if (homes == nullptr || homes->helper != *helper ||
-      !prepare::has_complete_prepared_variadic_entry_helper_operand_homes(*homes) ||
+      payload == nullptr ||
       rv64_variadic_va_arg_aggregate_materialization_diagnostic(
           prepared.stack_layout,
           *entry_plan,
@@ -1589,11 +1627,11 @@ fragment_for_prepared_variadic_va_arg_aggregate(
 
   const auto* overflow_field =
       rv64_variadic_va_list_overflow_arg_area_field(*entry_plan);
-  const auto va_list_base = gpr_register_number_for_home(*homes->source_va_list);
+  const auto va_list_base = gpr_register_number_for_home(payload->source_va_list);
   if (overflow_field == nullptr || !va_list_base.has_value()) {
     return std::nullopt;
   }
-  const auto& plan = *homes->aggregate_access_plan;
+  const auto& plan = payload->aggregate_access_plan;
   const auto& write_address = *plan.payload_write_address;
 
   constexpr std::array<std::uint32_t, 3> scratch_candidates = {6, 7, 28};
@@ -4271,29 +4309,33 @@ std::optional<std::int32_t> rv64_va_start_destination_load_offset(
   }
 
   const prepare::PreparedVariadicEntryHelperOperandHomes* selected = nullptr;
+  const prepare::PreparedVariadicVaStartOperandHomes* selected_payload = nullptr;
   for (const auto& homes : entry_plan->helper_operand_homes) {
+    const auto* payload =
+        prepare::find_prepared_variadic_va_start_operand_homes(homes);
     if (homes.helper != prepare::PreparedVariadicEntryHelperKind::VaStart ||
         homes.block_index != block_index ||
         homes.instruction_index >= instruction_index ||
-        !prepare::has_complete_prepared_variadic_va_start_operand_homes(homes) ||
-        homes.destination_va_list_address->kind !=
+        payload == nullptr ||
+        payload->destination_va_list_address.kind !=
             prepare::PreparedValueHomeKind::Register ||
-        homes.destination_va_list_address->value_name != value_name ||
-        homes.destination_va_list->kind != prepare::PreparedValueHomeKind::StackSlot ||
-        !homes.destination_va_list->size_bytes.has_value() ||
-        *homes.destination_va_list->size_bytes != size_bytes) {
+        payload->destination_va_list_address.value_name != value_name ||
+        payload->destination_va_list.kind != prepare::PreparedValueHomeKind::StackSlot ||
+        !payload->destination_va_list.size_bytes.has_value() ||
+        *payload->destination_va_list.size_bytes != size_bytes) {
       continue;
     }
     if (selected == nullptr ||
         homes.instruction_index > selected->instruction_index) {
       selected = &homes;
+      selected_payload = payload;
     }
   }
-  if (selected == nullptr) {
+  if (selected == nullptr || selected_payload == nullptr) {
     return std::nullopt;
   }
   return prepared_stack_slot_home_offset(prepared.stack_layout,
-                                         *selected->destination_va_list,
+                                         selected_payload->destination_va_list,
                                          stack_frame_bytes,
                                          size_bytes);
 }
