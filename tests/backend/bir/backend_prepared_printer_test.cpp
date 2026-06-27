@@ -6574,9 +6574,7 @@ int main() {
       .aggregate_access_plan = complete_aggregate_plan,
   };
   if (!prepare::is_complete_prepared_variadic_aggregate_va_arg_access_plan(
-          complete_aggregate_plan) ||
-      !prepare::has_complete_prepared_variadic_aggregate_va_arg_access_plan(
-          complete_aggregate_homes)) {
+          complete_aggregate_plan)) {
     std::cerr << "[FAIL] AAPCS64 variadic aggregate va_arg carrier cannot represent a complete access plan\n";
     return EXIT_FAILURE;
   }
@@ -6835,8 +6833,8 @@ int main() {
       prepare::find_prepared_variadic_entry_helper_operand_homes(
           *rv64_helper_family_entry_plan, 0, 0);
   if (rv64_va_start_homes == nullptr ||
-      !prepare::has_complete_prepared_variadic_va_start_operand_homes(
-          *rv64_va_start_homes)) {
+      prepare::find_prepared_variadic_va_start_operand_homes(
+          *rv64_va_start_homes) == nullptr) {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not materialize va_start operand homes\n";
     return EXIT_FAILURE;
   }
@@ -6944,7 +6942,7 @@ int main() {
     return EXIT_FAILURE;
   }
   if (rv64_va_copy_homes == nullptr ||
-      !prepare::has_complete_prepared_variadic_va_copy_operand_homes(*rv64_va_copy_homes)) {
+      prepare::find_prepared_variadic_va_copy_operand_homes(*rv64_va_copy_homes) == nullptr) {
     std::cerr << "[FAIL] RV64 variadic helper-family carrier did not materialize va_copy operand homes\n";
     return EXIT_FAILURE;
   }
