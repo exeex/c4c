@@ -8,34 +8,31 @@ Current Step Title: Migrate RV64 Helper Lowering
 
 ## Just Finished
 
-Step 6 started the RV64 target-consumer migration in the object route. RV64
-`va_start` and aggregate `va_arg` helper diagnostics/fragments now obtain
-operand homes/access plans through typed helper payload accessors instead of
-directly consuming legacy optional-bag fields. The object-route helper
-coherence check now dispatches by helper kind to typed accessors, and
-`rv64_va_start_destination_load_offset(...)` selects the prior `va_start`
-payload through the typed accessor before reading destination homes. The
-aggregate `payload_write_address` requirement remains an RV64 object-route
-support check on the typed aggregate access plan. RV64 object-emission tests now
-assert typed payload exposure for the supported `va_start` and aggregate
-`va_arg` fixtures.
+Step 6 RV64 object-route migration is complete. RV64 `va_start` and aggregate
+`va_arg` helper diagnostics/fragments obtain operand homes/access plans through
+typed helper payload accessors instead of directly consuming legacy optional-bag
+fields. The object-route helper coherence check dispatches by helper kind to
+typed accessors, and `rv64_va_start_destination_load_offset(...)` selects the
+prior `va_start` payload through the typed accessor before reading destination
+homes. The final audit found no remaining direct optional-bag consumer/report
+reads in `object_emission.cpp`; remaining optional-bag references in the owned
+RV64 test are fixture setup/mutation scaffolding. The aggregate
+`payload_write_address` requirement remains an RV64 object-route support check
+on the typed aggregate access plan.
 
 ## Suggested Next
 
-Continue Step 6 by auditing remaining RV64 variadic-helper object-route
-consumer/report paths for direct optional-bag reads, including unsupported
-helper diagnostics for scalar `va_arg`/`va_copy`, then decide whether RV64
-migration is complete or needs one final cleanup packet.
+Proceed to the next plan step: remove or quarantine legacy optional-bag
+compatibility storage once all remaining prepared/target consumers are ready,
+while preserving typed accessor compatibility until the cleanup is explicit.
 
 ## Watchouts
 
 - Do not edit the source idea for routine execution notes.
 - Do not infer helper operand homes in target lowering.
 - Do not weaken tests or expectations to claim progress.
-- Keep the old optional-bag fields until RV64 consumer migration is fully
-  audited and the later cleanup step can remove or quarantine compatibility
-  storage; typed accessors intentionally preserve compatibility derivation and
-  refresh from complete legacy rows.
+- Step 6 is complete for RV64 object-route consumers; keep the old optional-bag
+  fields until the explicit compatibility-storage cleanup step.
 - Existing RV64 producer behavior still only pushes complete `va_start` homes,
   but pushes scalar `va_arg`, aggregate `va_arg`, and `va_copy` rows in more
   incomplete states so diagnostics can name helper-specific missing facts.
@@ -52,6 +49,8 @@ migration is complete or needs one final cleanup packet.
   completeness.
 - Do not infer helper operand homes from stack layout, BIR shape, or source
   spelling in RV64 lowering.
+- Remaining RV64 optional-bag reads are in test fixture setup/mutation code
+  that deliberately constructs complete or incomplete helper rows.
 
 ## Proof
 
