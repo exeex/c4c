@@ -137,6 +137,16 @@ struct PreparedCallArgumentFrameSlotAddressRoute {
       address_materialization;
 };
 
+struct PreparedCallArgumentFrameSlotValueRoute {
+  PreparedValueId source_value_id = 0;
+  ValueNameId source_value_name = kInvalidValueName;
+  PreparedValueHomeKind source_home_kind = PreparedValueHomeKind::None;
+  PreparedFrameSlotId source_slot_id = 0;
+  std::size_t source_stack_offset_bytes = 0;
+  std::size_t source_size_bytes = 0;
+  std::size_t source_align_bytes = 1;
+};
+
 [[nodiscard]] inline bool prepared_call_argument_source_selection_has_preservation_payload(
     const PreparedCallArgumentSourceSelection& selection) {
   return selection.preserved_call_block_index.has_value() ||
@@ -214,6 +224,47 @@ as_frame_slot_address_source_route(
         };
   }
   return route;
+}
+
+[[nodiscard]] inline bool
+prepared_call_argument_source_selection_has_address_materialization_payload(
+    const PreparedCallArgumentSourceSelection& selection) {
+  return selection.address_materialization_block_label.has_value() ||
+         selection.address_materialization_inst_index.has_value() ||
+         selection.address_materialization_frame_slot_id.has_value() ||
+         selection.address_materialization_byte_offset.has_value();
+}
+
+[[nodiscard]] inline std::optional<PreparedCallArgumentFrameSlotValueRoute>
+as_frame_slot_value_source_route(
+    const PreparedCallArgumentSourceSelection& selection) {
+  if (selection.kind != PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
+      !selection.source_value_id.has_value() ||
+      !selection.source_value_name.has_value() ||
+      selection.source_home_kind !=
+          std::optional<PreparedValueHomeKind>{PreparedValueHomeKind::StackSlot} ||
+      !selection.source_slot_id.has_value() ||
+      !selection.source_stack_offset_bytes.has_value() ||
+      !selection.source_size_bytes.has_value() ||
+      !selection.source_align_bytes.has_value() ||
+      selection.source_base_value_id.has_value() ||
+      selection.source_pointer_byte_delta.has_value() ||
+      prepared_call_argument_source_selection_has_address_materialization_payload(
+          selection) ||
+      prepared_call_argument_source_selection_has_preservation_payload(selection) ||
+      selection.byval_lane_extent_bytes.has_value() ||
+      selection.byval_lane_source_instruction_index.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedCallArgumentFrameSlotValueRoute{
+      .source_value_id = *selection.source_value_id,
+      .source_value_name = *selection.source_value_name,
+      .source_home_kind = *selection.source_home_kind,
+      .source_slot_id = *selection.source_slot_id,
+      .source_stack_offset_bytes = *selection.source_stack_offset_bytes,
+      .source_size_bytes = *selection.source_size_bytes,
+      .source_align_bytes = *selection.source_align_bytes,
+  };
 }
 
 enum class PreparedAggregateTransportKind {
@@ -517,6 +568,10 @@ find_prepared_missing_frame_slot_call_argument_publication_need(
       source_materializes_address = true;
       break;
     case PreparedCallArgumentSourceSelectionKind::FrameSlotValue:
+      if (!as_frame_slot_value_source_route(*argument.source_selection)
+               .has_value()) {
+        return {};
+      }
       kind = PreparedMissingFrameSlotCallArgumentPublicationKind::FrameSlotValue;
       break;
     case PreparedCallArgumentSourceSelectionKind::PriorPreservation:

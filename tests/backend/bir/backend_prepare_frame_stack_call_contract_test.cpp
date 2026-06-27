@@ -5742,6 +5742,96 @@ int check_frame_slot_address_source_route_bridge_contract() {
   return 0;
 }
 
+int check_frame_slot_value_source_route_bridge_contract() {
+  prepare::PreparedCallArgumentSourceSelection selection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+      .source_value_id = prepare::PreparedValueId{51},
+      .source_value_name = c4c::ValueNameId{52},
+      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+      .source_slot_id = prepare::PreparedFrameSlotId{9},
+      .source_stack_offset_bytes = std::size_t{72},
+      .source_size_bytes = std::size_t{4},
+      .source_align_bytes = std::size_t{4},
+  };
+
+  const auto route = prepare::as_frame_slot_value_source_route(selection);
+  if (!route.has_value() ||
+      route->source_value_id != prepare::PreparedValueId{51} ||
+      route->source_value_name != c4c::ValueNameId{52} ||
+      route->source_home_kind != prepare::PreparedValueHomeKind::StackSlot ||
+      route->source_slot_id != prepare::PreparedFrameSlotId{9} ||
+      route->source_stack_offset_bytes != 72 ||
+      route->source_size_bytes != 4 ||
+      route->source_align_bytes != 4) {
+    return fail(
+        "frame-slot value route bridge contract: valid route did not expose typed payload");
+  }
+
+  auto missing_identity = selection;
+  missing_identity.source_value_name = std::nullopt;
+  if (prepare::as_frame_slot_value_source_route(missing_identity).has_value()) {
+    return fail(
+        "frame-slot value route bridge contract: missing source value name was accepted");
+  }
+
+  auto missing_offset = selection;
+  missing_offset.source_stack_offset_bytes = std::nullopt;
+  if (prepare::as_frame_slot_value_source_route(missing_offset).has_value()) {
+    return fail(
+        "frame-slot value route bridge contract: missing source stack offset was accepted");
+  }
+
+  auto wrong_home = selection;
+  wrong_home.source_home_kind = prepare::PreparedValueHomeKind::Register;
+  if (prepare::as_frame_slot_value_source_route(wrong_home).has_value()) {
+    return fail(
+        "frame-slot value route bridge contract: non-stack source home was accepted");
+  }
+
+  auto address_payload = selection;
+  address_payload.address_materialization_inst_index = std::size_t{3};
+  if (prepare::as_frame_slot_value_source_route(address_payload).has_value()) {
+    return fail(
+        "frame-slot value route bridge contract: address materialization payload was accepted");
+  }
+
+  auto cross_route_payload = selection;
+  cross_route_payload.byval_lane_extent_bytes = std::size_t{4};
+  if (prepare::as_frame_slot_value_source_route(cross_route_payload).has_value()) {
+    return fail(
+        "frame-slot value route bridge contract: byval lane payload was accepted");
+  }
+
+  prepare::PreparedCallArgumentPlan argument;
+  argument.source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot;
+  argument.source_value_id = prepare::PreparedValueId{51};
+  argument.destination_register_bank = prepare::PreparedRegisterBank::Gpr;
+  argument.destination_contiguous_width = 1;
+  argument.source_selection = selection;
+  const auto publication_need =
+      prepare::find_prepared_missing_frame_slot_call_argument_publication_need(
+          argument);
+  if (!publication_need.available ||
+      publication_need.kind !=
+          prepare::PreparedMissingFrameSlotCallArgumentPublicationKind::
+              FrameSlotValue ||
+      publication_need.source_selection != &*argument.source_selection) {
+    return fail(
+        "frame-slot value route bridge contract: valid typed route was not visible to publication bridge");
+  }
+
+  argument.source_selection = address_payload;
+  const auto rejected_publication_need =
+      prepare::find_prepared_missing_frame_slot_call_argument_publication_need(
+          argument);
+  if (rejected_publication_need.available) {
+    return fail(
+        "frame-slot value route bridge contract: invalid typed route remained visible to publication bridge");
+  }
+
+  return 0;
+}
+
 prepare::PreparedBirModule make_rv64_same_module_byval_stack_copy_contract_module(
     bool publish_byval_metadata,
     bool duplicate_payload_materialization) {
@@ -9399,6 +9489,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_frame_slot_address_source_route_bridge_contract();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_frame_slot_value_source_route_bridge_contract();
       rc != 0) {
     return rc;
   }

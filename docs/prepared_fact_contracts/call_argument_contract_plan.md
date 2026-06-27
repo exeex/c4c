@@ -1,6 +1,6 @@
 # Prepared Call Argument Contract Plan
 
-Status: Published for idea 414 Step 4
+Status: Published for idea 414 FrameSlotValue Step 2
 Source Idea: `ideas/open/414_typed_prepared_call_argument_contracts.md`
 
 This document records the typed prepared call-argument route contract as it is
@@ -116,8 +116,36 @@ The selected consumers now treat an absent or incoherent typed route as a
 fail-closed prepared-producer issue, not as permission to recover stack offsets
 or materialization identity locally.
 
-## Next Contract Step
+## FrameSlotAddress Validation Result
 
-Step 5 should broaden validation and decide whether the next route should be
-`FrameSlotValue`, `LocalFrameAddressMaterialization`, `PriorPreservation`, or
-`ByvalRegisterLane`.
+The `FrameSlotAddress` migration passed default CTest and selected
+`FrameSlotValue` as the next route candidate.
+
+## FrameSlotValue Step 2 Route Scope
+
+The second migrated payload is the `FrameSlotValue` source route. Its typed
+view is `PreparedCallArgumentFrameSlotValueRoute`, exposed through
+`as_frame_slot_value_source_route`.
+
+Required route facts:
+
+- source value id
+- source value name
+- stack-slot source-home kind
+- selected source frame-slot id
+- selected source stack byte offset
+- selected source byte extent
+- selected source alignment
+
+Rejected compatibility-bag combinations:
+
+- missing any required fact above
+- non-stack source-home kind
+- address-materialization payload fields
+- source-base or pointer-delta payload fields
+- preservation payload fields
+- byval-lane payload fields
+
+The shared missing frame-slot publication classifier now requires this typed
+view before classifying `FrameSlotValue`, so invalid old optional-bag
+combinations are absent from the typed publication bridge.
