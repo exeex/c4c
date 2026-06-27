@@ -1,6 +1,6 @@
 # Prepared Storage Layout And Initializer Contracts
 
-Status: Open
+Status: Closed
 Type: Follow-up contract refactor idea
 Parent: `ideas/closed/412_prepared_fact_contract_normalization_analysis.md`
 Depends On: initial taxonomy from `ideas/open/413_prepared_contract_verifier_and_owner_taxonomy.md` and target-consumer findings from `ideas/open/418_prepared_target_consumer_boundary_audit.md`
@@ -70,3 +70,36 @@ emission still inspects BIR globals directly for simple storage shapes.
 - Reject diagnostics-only churn that leaves contradictory one-byte aggregate
   slots or unsupported initializer forms reaching targets.
 - Reject expectation rewrites, allowlist filtering, or unsupported downgrades.
+
+## Completion Note
+
+Closed after Step 6 close-readiness for the selected runbook scope. The
+published contract plan is
+`docs/prepared_fact_contracts/storage_initializer_contract_plan.md`; it names
+the consumed 413 taxonomy rows, 418 audit rows, selected local/global payloads,
+classification rules, and Idea 415 materialization boundary.
+
+The implementation migrated one selected local-memory consumer path and one
+selected RV64 global/object-data consumer path to producer-owned prepared
+facts. Missing or contradictory selected storage/object facts fail closed with
+producer-owned classification, and complete but not-yet-lowerable selected
+object-data forms are classified as `target_unsupported_but_coherent`.
+
+Selected-scope boundaries remain intentionally outside this closed slice:
+string constants stay on the existing path, relocation-bearing globals are
+modeled but not lowered from prepared relocation records, pointer/symbol
+initializer forms remain `target_unsupported_but_coherent`, and extern global
+declarations without initializer storage still bypass selected object-data
+verification as declarations. Any follow-up relocation support should publish
+producer-owned relocation facts and consume those facts in the target instead
+of reconstructing relocations from raw BIR initializer shape.
+
+Close proof: supervisor-accepted full-suite baseline
+`test_baseline.log` records commit
+`7d3f8d784ae34aebebeb6b2211107183cb302ccb` with `3356/3356` tests passing.
+Route review in `review/417_step6_route_review.md` found no blocking overfit,
+expectation weakening, allowlist filtering, unsupported downgrades, or
+target-side raw layout/initializer reconstruction in the selected paths. The
+available canonical logs did not include a matching full-suite `test_after.log`
+for a strict before/after regression-guard comparison, and lifecycle close did
+not modify test logs.
