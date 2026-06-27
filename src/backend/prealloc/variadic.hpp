@@ -374,22 +374,125 @@ struct PreparedVariadicEntryHelperOperandHomes {
   return false;
 }
 
+[[nodiscard]] inline bool prepared_variadic_value_homes_match(
+    const std::vector<PreparedValueHome>& lhs,
+    const std::vector<PreparedValueHome>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < lhs.size(); ++index) {
+    if (!prepared_variadic_value_home_matches(lhs[index], rhs[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] inline bool prepared_variadic_scalar_va_arg_access_plan_matches(
+    const PreparedVariadicScalarVaArgAccessPlan& lhs,
+    const PreparedVariadicScalarVaArgAccessPlan& rhs) {
+  if (lhs.source_class != rhs.source_class ||
+      lhs.value_type != rhs.value_type ||
+      lhs.value_size_bytes != rhs.value_size_bytes ||
+      lhs.value_align_bytes != rhs.value_align_bytes ||
+      lhs.source_field != rhs.source_field ||
+      lhs.source_field_offset_bytes != rhs.source_field_offset_bytes ||
+      lhs.source_slot_size_bytes != rhs.source_slot_size_bytes ||
+      lhs.progression_field != rhs.progression_field ||
+      lhs.progression_field_offset_bytes != rhs.progression_field_offset_bytes ||
+      lhs.progression_stride_bytes != rhs.progression_stride_bytes ||
+      lhs.overflow_source_field != rhs.overflow_source_field ||
+      lhs.overflow_source_field_offset_bytes !=
+          rhs.overflow_source_field_offset_bytes ||
+      lhs.overflow_stride_bytes != rhs.overflow_stride_bytes ||
+      lhs.result_home.has_value() != rhs.result_home.has_value()) {
+    return false;
+  }
+  return !lhs.result_home.has_value() ||
+         prepared_variadic_value_home_matches(*lhs.result_home, *rhs.result_home);
+}
+
+[[nodiscard]] inline bool
+prepared_variadic_aggregate_payload_write_address_matches(
+    const PreparedVariadicAggregatePayloadWriteAddress& lhs,
+    const PreparedVariadicAggregatePayloadWriteAddress& rhs) {
+  return lhs.result_value_name == rhs.result_value_name &&
+         lhs.materialization_block_label == rhs.materialization_block_label &&
+         lhs.materialization_instruction_index ==
+             rhs.materialization_instruction_index &&
+         lhs.frame_slot_id == rhs.frame_slot_id &&
+         lhs.stack_offset_bytes == rhs.stack_offset_bytes;
+}
+
+[[nodiscard]] inline bool prepared_variadic_aggregate_va_arg_access_plan_matches(
+    const PreparedVariadicAggregateVaArgAccessPlan& lhs,
+    const PreparedVariadicAggregateVaArgAccessPlan& rhs) {
+  if (lhs.source_class != rhs.source_class ||
+      lhs.block_index != rhs.block_index ||
+      lhs.instruction_index != rhs.instruction_index ||
+      lhs.payload_size_bytes != rhs.payload_size_bytes ||
+      lhs.payload_align_bytes != rhs.payload_align_bytes ||
+      lhs.source_field != rhs.source_field ||
+      lhs.source_field_offset_bytes != rhs.source_field_offset_bytes ||
+      lhs.source_payload_offset_bytes != rhs.source_payload_offset_bytes ||
+      lhs.source_slot_size_bytes != rhs.source_slot_size_bytes ||
+      lhs.copy_size_bytes != rhs.copy_size_bytes ||
+      lhs.copy_align_bytes != rhs.copy_align_bytes ||
+      lhs.progression_field != rhs.progression_field ||
+      lhs.progression_field_offset_bytes != rhs.progression_field_offset_bytes ||
+      lhs.progression_stride_bytes != rhs.progression_stride_bytes ||
+      lhs.overflow_source_field_offset_bytes !=
+          rhs.overflow_source_field_offset_bytes ||
+      lhs.overflow_stride_bytes != rhs.overflow_stride_bytes ||
+      lhs.register_save_lane_count != rhs.register_save_lane_count ||
+      lhs.register_save_lane_size_bytes != rhs.register_save_lane_size_bytes ||
+      lhs.destination_payload_home.has_value() !=
+          rhs.destination_payload_home.has_value() ||
+      lhs.payload_write_address.has_value() !=
+          rhs.payload_write_address.has_value() ||
+      !prepared_variadic_value_homes_match(
+          lhs.register_save_lane_destination_homes,
+          rhs.register_save_lane_destination_homes)) {
+    return false;
+  }
+  if (lhs.destination_payload_home.has_value() &&
+      !prepared_variadic_value_home_matches(*lhs.destination_payload_home,
+                                            *rhs.destination_payload_home)) {
+    return false;
+  }
+  return !lhs.payload_write_address.has_value() ||
+         prepared_variadic_aggregate_payload_write_address_matches(
+             *lhs.payload_write_address, *rhs.payload_write_address);
+}
+
 [[nodiscard]] inline const PreparedVariadicVaStartOperandHomes*
 find_prepared_variadic_va_start_operand_homes(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
   if (homes.helper != PreparedVariadicEntryHelperKind::VaStart) {
     return nullptr;
   }
-  if (!homes.va_start_operand_homes.has_value() &&
-      homes.destination_va_list.has_value() &&
-      homes.destination_va_list_address.has_value()) {
+  if (!homes.destination_va_list.has_value() ||
+      !homes.destination_va_list_address.has_value()) {
+    homes.va_start_operand_homes = std::nullopt;
+    return nullptr;
+  }
+  if (homes.va_start_operand_homes.has_value()) {
+    if (!prepared_variadic_value_home_matches(
+            homes.va_start_operand_homes->destination_va_list,
+            *homes.destination_va_list) ||
+        !prepared_variadic_value_home_matches(
+            homes.va_start_operand_homes->destination_va_list_address,
+            *homes.destination_va_list_address)) {
+      homes.va_start_operand_homes = PreparedVariadicVaStartOperandHomes{
+          .destination_va_list = *homes.destination_va_list,
+          .destination_va_list_address = *homes.destination_va_list_address,
+      };
+    }
+  } else {
     homes.va_start_operand_homes = PreparedVariadicVaStartOperandHomes{
         .destination_va_list = *homes.destination_va_list,
         .destination_va_list_address = *homes.destination_va_list_address,
     };
-  }
-  if (!homes.va_start_operand_homes.has_value()) {
-    return nullptr;
   }
   return &*homes.va_start_operand_homes;
 }
@@ -414,20 +517,37 @@ find_prepared_variadic_scalar_va_arg_operand_homes(
   if (homes.helper != PreparedVariadicEntryHelperKind::VaArg) {
     return nullptr;
   }
-  if (!homes.scalar_va_arg_operand_homes.has_value() &&
-      homes.source_va_list.has_value() &&
-      homes.scalar_result.has_value() &&
-      homes.scalar_access_plan.has_value() &&
-      is_complete_prepared_variadic_scalar_va_arg_access_plan(
+  if (!homes.source_va_list.has_value() ||
+      !homes.scalar_result.has_value() ||
+      !homes.scalar_access_plan.has_value() ||
+      !is_complete_prepared_variadic_scalar_va_arg_access_plan(
           *homes.scalar_access_plan)) {
+    homes.scalar_va_arg_operand_homes = std::nullopt;
+    return nullptr;
+  }
+  if (homes.scalar_va_arg_operand_homes.has_value()) {
+    if (!prepared_variadic_value_home_matches(
+            homes.scalar_va_arg_operand_homes->source_va_list,
+            *homes.source_va_list) ||
+        !prepared_variadic_value_home_matches(
+            homes.scalar_va_arg_operand_homes->scalar_result,
+            *homes.scalar_result) ||
+        !prepared_variadic_scalar_va_arg_access_plan_matches(
+            homes.scalar_va_arg_operand_homes->scalar_access_plan,
+            *homes.scalar_access_plan)) {
+      homes.scalar_va_arg_operand_homes =
+          PreparedVariadicScalarVaArgOperandHomes{
+              .source_va_list = *homes.source_va_list,
+              .scalar_result = *homes.scalar_result,
+              .scalar_access_plan = *homes.scalar_access_plan,
+          };
+    }
+  } else {
     homes.scalar_va_arg_operand_homes = PreparedVariadicScalarVaArgOperandHomes{
         .source_va_list = *homes.source_va_list,
         .scalar_result = *homes.scalar_result,
         .scalar_access_plan = *homes.scalar_access_plan,
     };
-  }
-  if (!homes.scalar_va_arg_operand_homes.has_value()) {
-    return nullptr;
   }
   return &*homes.scalar_va_arg_operand_homes;
 }
@@ -456,12 +576,33 @@ find_prepared_variadic_aggregate_va_arg_operand_homes(
   if (homes.helper != PreparedVariadicEntryHelperKind::VaArgAggregate) {
     return nullptr;
   }
-  if (!homes.aggregate_va_arg_operand_homes.has_value() &&
-      homes.source_va_list.has_value() &&
-      homes.aggregate_destination_payload.has_value() &&
-      homes.aggregate_access_plan.has_value() &&
-      is_complete_prepared_variadic_aggregate_va_arg_access_plan(
+  if (!homes.source_va_list.has_value() ||
+      !homes.aggregate_destination_payload.has_value() ||
+      !homes.aggregate_access_plan.has_value() ||
+      !is_complete_prepared_variadic_aggregate_va_arg_access_plan(
           *homes.aggregate_access_plan)) {
+    homes.aggregate_va_arg_operand_homes = std::nullopt;
+    return nullptr;
+  }
+  if (homes.aggregate_va_arg_operand_homes.has_value()) {
+    if (!prepared_variadic_value_home_matches(
+            homes.aggregate_va_arg_operand_homes->source_va_list,
+            *homes.source_va_list) ||
+        !prepared_variadic_value_home_matches(
+            homes.aggregate_va_arg_operand_homes->aggregate_destination_payload,
+            *homes.aggregate_destination_payload) ||
+        !prepared_variadic_aggregate_va_arg_access_plan_matches(
+            homes.aggregate_va_arg_operand_homes->aggregate_access_plan,
+            *homes.aggregate_access_plan)) {
+      homes.aggregate_va_arg_operand_homes =
+          PreparedVariadicAggregateVaArgOperandHomes{
+              .source_va_list = *homes.source_va_list,
+              .aggregate_destination_payload =
+                  *homes.aggregate_destination_payload,
+              .aggregate_access_plan = *homes.aggregate_access_plan,
+          };
+    }
+  } else {
     homes.aggregate_va_arg_operand_homes =
         PreparedVariadicAggregateVaArgOperandHomes{
             .source_va_list = *homes.source_va_list,
@@ -469,9 +610,6 @@ find_prepared_variadic_aggregate_va_arg_operand_homes(
                 *homes.aggregate_destination_payload,
             .aggregate_access_plan = *homes.aggregate_access_plan,
         };
-  }
-  if (!homes.aggregate_va_arg_operand_homes.has_value()) {
-    return nullptr;
   }
   return &*homes.aggregate_va_arg_operand_homes;
 }
@@ -514,7 +652,10 @@ find_prepared_variadic_va_copy_operand_homes(
         !prepared_variadic_value_home_matches(
             homes.va_copy_operand_homes->source_va_list,
             *homes.source_va_list)) {
-      return nullptr;
+      homes.va_copy_operand_homes = PreparedVariadicVaCopyOperandHomes{
+          .destination_va_list = *homes.destination_va_list,
+          .source_va_list = *homes.source_va_list,
+      };
     }
   } else {
     homes.va_copy_operand_homes = PreparedVariadicVaCopyOperandHomes{

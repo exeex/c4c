@@ -405,6 +405,25 @@ owner_for_call_argument_binary_producer_materialization_status(
   return out.str();
 }
 
+[[nodiscard]] bool has_coherent_typed_variadic_helper_payload(
+    const PreparedVariadicEntryHelperOperandHomes& homes,
+    PreparedVariadicEntryHelperKind expected_helper) {
+  if (homes.helper != expected_helper) {
+    return false;
+  }
+  switch (expected_helper) {
+    case PreparedVariadicEntryHelperKind::VaStart:
+      return find_prepared_variadic_va_start_operand_homes(homes) != nullptr;
+    case PreparedVariadicEntryHelperKind::VaArg:
+      return find_prepared_variadic_scalar_va_arg_operand_homes(homes) != nullptr;
+    case PreparedVariadicEntryHelperKind::VaArgAggregate:
+      return find_prepared_variadic_aggregate_va_arg_operand_homes(homes) != nullptr;
+    case PreparedVariadicEntryHelperKind::VaCopy:
+      return find_prepared_variadic_va_copy_operand_homes(homes) != nullptr;
+  }
+  return false;
+}
+
 [[nodiscard]] std::string rematerializable_integer_immediate_detail(
     const PreparedValueHome* home,
     PreparedRematerializableIntegerImmediateContractStatus status) {
@@ -770,8 +789,7 @@ verify_prepared_variadic_entry_helper_operand_homes_contract(
     };
   }
   const bool coherent =
-      homes->helper == expected_helper &&
-      has_complete_prepared_variadic_entry_helper_operand_homes(*homes);
+      has_coherent_typed_variadic_helper_payload(*homes, expected_helper);
   return PreparedContractVerificationReport{
       .fact_family =
           PreparedContractFactFamily::VariadicEntryHelperOperandHomes,
