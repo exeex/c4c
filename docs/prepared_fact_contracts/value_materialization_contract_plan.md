@@ -28,6 +28,30 @@ This slice does not add target-local pointer-expression recovery. Producer-side
 diagnostics and target consumer migration are reserved for the next steps in
 the runbook.
 
+## Pointer Producer Verification
+
+Step 3 adds `PreparedPointerBasePlusOffsetContractStatus` plus
+`verify_prepared_pointer_base_plus_offset_contract`.
+
+Producer-missing statuses:
+
+- `missing_value_home`
+- `missing_function_name`
+- `missing_value_name`
+- `missing_pointer_base`
+- `missing_pointer_byte_delta`
+
+Producer-incoherent statuses:
+
+- `conflicting_home_kind`
+- `conflicting_cross_family_payload`
+
+Reports use the `value_materialization_fact` fact family and fail closed for
+every non-coherent status. Coherent reports preserve function, value id, and
+value name identity without emitting diagnostic detail. Prepared value id `0`
+remains valid; pointer base identity and pointer byte delta carry their own
+missing-state checks.
+
 ## Completed Immediate Slice
 
 The first slice added `PreparedValueHomeKind::RematerializableImmediate` integer

@@ -146,6 +146,41 @@ prepared_rematerializable_integer_immediate_contract_status_name(
   return "unknown";
 }
 
+enum class PreparedPointerBasePlusOffsetContractStatus {
+  Coherent,
+  MissingValueHome,
+  MissingFunctionName,
+  MissingValueName,
+  MissingPointerBase,
+  MissingPointerByteDelta,
+  ConflictingHomeKind,
+  ConflictingCrossFamilyPayload,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_pointer_base_plus_offset_contract_status_name(
+    PreparedPointerBasePlusOffsetContractStatus status) {
+  switch (status) {
+    case PreparedPointerBasePlusOffsetContractStatus::Coherent:
+      return "coherent";
+    case PreparedPointerBasePlusOffsetContractStatus::MissingValueHome:
+      return "missing_value_home";
+    case PreparedPointerBasePlusOffsetContractStatus::MissingFunctionName:
+      return "missing_function_name";
+    case PreparedPointerBasePlusOffsetContractStatus::MissingValueName:
+      return "missing_value_name";
+    case PreparedPointerBasePlusOffsetContractStatus::MissingPointerBase:
+      return "missing_pointer_base";
+    case PreparedPointerBasePlusOffsetContractStatus::MissingPointerByteDelta:
+      return "missing_pointer_byte_delta";
+    case PreparedPointerBasePlusOffsetContractStatus::ConflictingHomeKind:
+      return "conflicting_home_kind";
+    case PreparedPointerBasePlusOffsetContractStatus::ConflictingCrossFamilyPayload:
+      return "conflicting_cross_family_payload";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] constexpr std::string_view
 prepared_selected_local_storage_contract_status_name(
     PreparedSelectedLocalStorageContractStatus status) {
@@ -508,6 +543,14 @@ classify_prepared_rematerializable_integer_immediate_contract(
 
 [[nodiscard]] PreparedContractVerificationReport
 verify_prepared_rematerializable_integer_immediate_contract(
+    const PreparedValueHome* home);
+
+[[nodiscard]] PreparedPointerBasePlusOffsetContractStatus
+classify_prepared_pointer_base_plus_offset_contract(
+    const PreparedValueHome* home);
+
+[[nodiscard]] PreparedContractVerificationReport
+verify_prepared_pointer_base_plus_offset_contract(
     const PreparedValueHome* home);
 
 [[nodiscard]] PreparedSelectedLocalStorageContractStatus

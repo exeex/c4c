@@ -114,6 +114,18 @@ prepare::PreparedValueHome coherent_rematerializable_integer_immediate_home() {
   };
 }
 
+prepare::PreparedValueHome coherent_pointer_base_plus_offset_home() {
+  return prepare::PreparedValueHome{
+      .value_id = prepare::PreparedValueId{1},
+      .function_name = c4c::FunctionNameId{83},
+      .value_name = c4c::ValueNameId{89},
+      .kind = prepare::PreparedValueHomeKind::PointerBasePlusOffset,
+      .pointer_base_value_name = c4c::ValueNameId{97},
+      .pointer_base_symbol_name = c4c::LinkNameId{101},
+      .pointer_byte_delta = std::int64_t{12},
+  };
+}
+
 int verify_rematerializable_integer_immediate_contract_reports() {
   auto coherent_home = coherent_rematerializable_integer_immediate_home();
   const auto coherent =
@@ -191,6 +203,103 @@ int verify_rematerializable_integer_immediate_contract_reports() {
                   prepare::PreparedContractFactFamily::ValueMaterializationFact) ==
                   std::string_view{"value_materialization_fact"},
               "value materialization fact family spelling mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_pointer_base_plus_offset_contract_reports() {
+  auto coherent_home = coherent_pointer_base_plus_offset_home();
+  const auto coherent =
+      prepare::verify_prepared_pointer_base_plus_offset_contract(&coherent_home);
+
+  auto missing_base = coherent_pointer_base_plus_offset_home();
+  missing_base.pointer_base_value_name = std::nullopt;
+  const auto missing_base_report =
+      prepare::verify_prepared_pointer_base_plus_offset_contract(&missing_base);
+
+  auto invalid_base = coherent_pointer_base_plus_offset_home();
+  invalid_base.pointer_base_value_name = c4c::kInvalidValueName;
+  const auto invalid_base_report =
+      prepare::verify_prepared_pointer_base_plus_offset_contract(&invalid_base);
+
+  auto missing_delta = coherent_pointer_base_plus_offset_home();
+  missing_delta.pointer_byte_delta = std::nullopt;
+  const auto missing_delta_report =
+      prepare::verify_prepared_pointer_base_plus_offset_contract(&missing_delta);
+
+  auto missing_identity = coherent_pointer_base_plus_offset_home();
+  missing_identity.value_name = c4c::kInvalidValueName;
+  const auto missing_identity_report =
+      prepare::verify_prepared_pointer_base_plus_offset_contract(&missing_identity);
+
+  auto wrong_home = coherent_pointer_base_plus_offset_home();
+  wrong_home.kind = prepare::PreparedValueHomeKind::Register;
+  const auto wrong_home_report =
+      prepare::verify_prepared_pointer_base_plus_offset_contract(&wrong_home);
+
+  auto cross_family_i32 = coherent_pointer_base_plus_offset_home();
+  cross_family_i32.immediate_i32 = std::int64_t{7};
+  const auto cross_family_i32_report =
+      prepare::verify_prepared_pointer_base_plus_offset_contract(&cross_family_i32);
+
+  auto cross_family_f128 = coherent_pointer_base_plus_offset_home();
+  cross_family_f128.immediate_f128 =
+      c4c::backend::bir::Value::F128Payload{.low_bits = 1, .high_bits = 2};
+  const auto cross_family_f128_report =
+      prepare::verify_prepared_pointer_base_plus_offset_contract(&cross_family_f128);
+
+  const auto missing_home_report =
+      prepare::verify_prepared_pointer_base_plus_offset_contract(nullptr);
+
+  if (!expect(coherent.owner_class == prepare::PreparedContractOwnerClass::Coherent,
+              "complete pointer base-plus-offset should be coherent") ||
+      !expect(!coherent.fail_closed,
+              "coherent pointer base-plus-offset should not fail closed") ||
+      !expect(coherent.fact_family ==
+                  prepare::PreparedContractFactFamily::ValueMaterializationFact,
+              "pointer base-plus-offset should identify materialization family") ||
+      !expect(coherent.value_id == prepare::PreparedValueId{1} &&
+                  coherent.function_name == c4c::FunctionNameId{83} &&
+                  coherent.value_name == c4c::ValueNameId{89},
+              "coherent pointer base-plus-offset should preserve identity") ||
+      !expect(missing_base_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing pointer base should classify as producer missing") ||
+      !expect(prepare::classify_prepared_pointer_base_plus_offset_contract(
+                  &invalid_base) ==
+                  prepare::PreparedPointerBasePlusOffsetContractStatus::
+                      MissingPointerBase,
+              "invalid pointer base should have precise missing-base status") ||
+      !expect(missing_delta_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing pointer delta should classify as producer missing") ||
+      !expect(prepare::classify_prepared_pointer_base_plus_offset_contract(
+                  &missing_delta) ==
+                  prepare::PreparedPointerBasePlusOffsetContractStatus::
+                      MissingPointerByteDelta,
+              "missing pointer delta should have precise status") ||
+      !expect(missing_identity_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing pointer destination identity should classify as producer missing") ||
+      !expect(wrong_home_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "wrong pointer home kind should classify as producer incoherent") ||
+      !expect(cross_family_i32_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "cross-family pointer i32 payload should classify as producer incoherent") ||
+      !expect(cross_family_f128_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "cross-family pointer f128 payload should classify as producer incoherent") ||
+      !expect(missing_home_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "absent pointer value home should classify as producer missing") ||
+      !expect(prepare::prepared_pointer_base_plus_offset_contract_status_name(
+                  prepare::PreparedPointerBasePlusOffsetContractStatus::
+                      ConflictingCrossFamilyPayload) ==
+                  std::string_view{"conflicting_cross_family_payload"},
+              "pointer materialization status spelling mismatch")) {
     return 1;
   }
 
@@ -566,6 +675,9 @@ int verify_local_frame_address_materialization_source_route_contract_reports() {
 int main() {
   if (const int rc = verify_rematerializable_integer_immediate_contract_reports();
       rc != 0) {
+    return rc;
+  }
+  if (const int rc = verify_pointer_base_plus_offset_contract_reports(); rc != 0) {
     return rc;
   }
   if (const int rc = verify_selected_local_storage_contract_reports(); rc != 0) {

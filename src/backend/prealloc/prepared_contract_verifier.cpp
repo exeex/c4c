@@ -63,6 +63,24 @@ owner_for_rematerializable_integer_immediate_status(
   return PreparedContractOwnerClass::ProducerIncoherent;
 }
 
+[[nodiscard]] PreparedContractOwnerClass owner_for_pointer_base_plus_offset_status(
+    PreparedPointerBasePlusOffsetContractStatus status) {
+  switch (status) {
+    case PreparedPointerBasePlusOffsetContractStatus::Coherent:
+      return PreparedContractOwnerClass::Coherent;
+    case PreparedPointerBasePlusOffsetContractStatus::MissingValueHome:
+    case PreparedPointerBasePlusOffsetContractStatus::MissingFunctionName:
+    case PreparedPointerBasePlusOffsetContractStatus::MissingValueName:
+    case PreparedPointerBasePlusOffsetContractStatus::MissingPointerBase:
+    case PreparedPointerBasePlusOffsetContractStatus::MissingPointerByteDelta:
+      return PreparedContractOwnerClass::ProducerMissing;
+    case PreparedPointerBasePlusOffsetContractStatus::ConflictingHomeKind:
+    case PreparedPointerBasePlusOffsetContractStatus::ConflictingCrossFamilyPayload:
+      return PreparedContractOwnerClass::ProducerIncoherent;
+  }
+  return PreparedContractOwnerClass::ProducerIncoherent;
+}
+
 [[nodiscard]] PreparedContractOwnerClass owner_for_selected_local_storage_status(
     PreparedSelectedLocalStorageContractStatus status) {
   switch (status) {
@@ -365,6 +383,43 @@ owner_for_local_frame_address_materialization_source_route_status(
         << (prepared_signed_12_bit_immediate_range_contains(*home->immediate_i32)
                 ? "true"
                 : "false");
+  }
+  if (home->immediate_f128.has_value()) {
+    out << " has_immediate_f128=true";
+  }
+  return out.str();
+}
+
+[[nodiscard]] std::string pointer_base_plus_offset_detail(
+    const PreparedValueHome* home,
+    PreparedPointerBasePlusOffsetContractStatus status) {
+  std::ostringstream out;
+  out << "prepared pointer base-plus-offset contract status="
+      << prepared_pointer_base_plus_offset_contract_status_name(status);
+  if (home == nullptr) {
+    return out.str();
+  }
+  out << " function_name=" << home->function_name;
+  out << " value_id=" << home->value_id;
+  out << " value_name=" << home->value_name;
+  out << " home_kind=" << prepared_value_home_kind_name(home->kind);
+  if (home->pointer_base_value_name.has_value()) {
+    out << " pointer_base_value_name=" << *home->pointer_base_value_name;
+  }
+  if (home->pointer_base_symbol_name.has_value()) {
+    out << " pointer_base_symbol_name=" << *home->pointer_base_symbol_name;
+  }
+  if (home->pointer_byte_delta.has_value()) {
+    out << " pointer_byte_delta=" << *home->pointer_byte_delta;
+    out << " admits_direct_base_register_copy="
+        << (*home->pointer_byte_delta == 0 ? "true" : "false");
+    out << " fits_signed_12_bit_byte_delta="
+        << (prepared_signed_12_bit_immediate_range_contains(*home->pointer_byte_delta)
+                ? "true"
+                : "false");
+  }
+  if (home->immediate_i32.has_value()) {
+    out << " has_immediate_i32=true";
   }
   if (home->immediate_f128.has_value()) {
     out << " has_immediate_f128=true";
@@ -707,6 +762,53 @@ verify_prepared_rematerializable_integer_immediate_contract(
       .detail = owner == PreparedContractOwnerClass::Coherent
                     ? std::string{}
                     : rematerializable_integer_immediate_detail(home, status),
+  };
+}
+
+PreparedPointerBasePlusOffsetContractStatus
+classify_prepared_pointer_base_plus_offset_contract(
+    const PreparedValueHome* home) {
+  if (home == nullptr) {
+    return PreparedPointerBasePlusOffsetContractStatus::MissingValueHome;
+  }
+  if (home->kind != PreparedValueHomeKind::PointerBasePlusOffset) {
+    return PreparedPointerBasePlusOffsetContractStatus::ConflictingHomeKind;
+  }
+  if (home->function_name == kInvalidFunctionName) {
+    return PreparedPointerBasePlusOffsetContractStatus::MissingFunctionName;
+  }
+  if (home->value_name == kInvalidValueName) {
+    return PreparedPointerBasePlusOffsetContractStatus::MissingValueName;
+  }
+  if (home->immediate_i32.has_value() || home->immediate_f128.has_value()) {
+    return PreparedPointerBasePlusOffsetContractStatus::
+        ConflictingCrossFamilyPayload;
+  }
+  if (!home->pointer_base_value_name.has_value() ||
+      *home->pointer_base_value_name == kInvalidValueName) {
+    return PreparedPointerBasePlusOffsetContractStatus::MissingPointerBase;
+  }
+  if (!home->pointer_byte_delta.has_value()) {
+    return PreparedPointerBasePlusOffsetContractStatus::MissingPointerByteDelta;
+  }
+  return PreparedPointerBasePlusOffsetContractStatus::Coherent;
+}
+
+PreparedContractVerificationReport
+verify_prepared_pointer_base_plus_offset_contract(
+    const PreparedValueHome* home) {
+  const auto status = classify_prepared_pointer_base_plus_offset_contract(home);
+  const auto owner = owner_for_pointer_base_plus_offset_status(status);
+  return PreparedContractVerificationReport{
+      .fact_family = PreparedContractFactFamily::ValueMaterializationFact,
+      .owner_class = owner,
+      .function_name = home != nullptr ? home->function_name : kInvalidFunctionName,
+      .value_id = home != nullptr ? home->value_id : PreparedValueId{0},
+      .value_name = home != nullptr ? home->value_name : kInvalidValueName,
+      .fail_closed = owner != PreparedContractOwnerClass::Coherent,
+      .detail = owner == PreparedContractOwnerClass::Coherent
+                    ? std::string{}
+                    : pointer_base_plus_offset_detail(home, status),
   };
 }
 

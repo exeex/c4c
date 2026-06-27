@@ -3,12 +3,33 @@
 Status: Active
 Source Idea Path: ideas/open/415_prepared_value_materialization_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Typed Pointer Materialization Fact
+Current Step ID: 3
+Current Step Title: Add Producer-Side Verification
 
 ## Just Finished
 
-Implemented the Step 2 typed pointer materialization fact.
+Implemented Step 3 producer-side verification for typed pointer materialization
+facts.
+
+Step 3 implementation:
+
+- Added `PreparedPointerBasePlusOffsetContractStatus` for coherent, missing,
+  and incoherent pointer materialization records.
+- Added `classify_prepared_pointer_base_plus_offset_contract` and
+  `verify_prepared_pointer_base_plus_offset_contract` using the
+  `value_materialization_fact` fact family.
+- Missing value home, function name, destination value name, base value name,
+  or pointer byte delta map to `producer_missing`.
+- Wrong home kind and cross-family immediate payloads map to
+  `producer_incoherent`.
+- Focused verifier tests cover coherent reports, missing/invalid base, missing
+  delta, missing identity, wrong kind, cross-family i32/f128 payloads, absent
+  home, and status spelling.
+- Updated
+  `docs/prepared_fact_contracts/value_materialization_contract_plan.md` with
+  the pointer producer-verification contract.
+
+Step 2 implementation:
 
 Step 2 implementation:
 
@@ -74,8 +95,8 @@ Selected consumer migration candidate:
 
 ## Suggested Next
 
-Run the Step 2 focused proof command, then add producer-side verifier statuses
-for the pointer fact in Step 3.
+Run the Step 3 focused proof command, then migrate the selected RV64 edge
+publication consumer in Step 4.
 
 ## Watchouts
 
@@ -92,3 +113,8 @@ Step 2 focused proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_prealloc_decoded_home_storage$'`.
 
 Result: passed, 1/1 tests.
+
+Step 3 focused proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_decoded_home_storage|backend_prealloc_prepared_contract_verifier)$'`.
+
+Result: passed, 2/2 tests.
