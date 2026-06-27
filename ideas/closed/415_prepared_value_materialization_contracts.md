@@ -1,6 +1,6 @@
 # Prepared Value Materialization Contracts
 
-Status: Open
+Status: Closed
 Type: Follow-up contract refactor idea
 Parent: `ideas/closed/412_prepared_fact_contract_normalization_analysis.md`
 Depends On: initial taxonomy from `ideas/open/413_prepared_contract_verifier_and_owner_taxonomy.md` and target-consumer findings from `ideas/open/418_prepared_target_consumer_boundary_audit.md`
@@ -55,6 +55,17 @@ BIR expression semantics.
   not regress.
 - RV64 gcc_torture pass count may temporarily drop only when cases become
   precise fail-closed materialization diagnostics.
+
+## Completion Note
+
+Closed after the materialization contract sequence covered rematerialized
+immediates, pointer base-plus-offset values, and selected same-block producer
+chains. The final active runbook migrated the selected AArch64 scalar
+call-argument same-block binary producer materialization path to typed prepared
+facts, producer-side verifier coverage, and fail-closed target consumption.
+Close validation used the full-suite baseline in `test_baseline.log` and the
+latest default CTest run recorded by `todo.md` and
+`build/Testing/Temporary/LastTest.log`: `3356/3356` tests passed.
 
 ## Reviewer Reject Signals
 
