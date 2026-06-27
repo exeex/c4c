@@ -3,12 +3,22 @@
 Status: Active
 Source Idea Path: ideas/open/415_prepared_value_materialization_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate Selected Pointer Consumer
+Current Step ID: 5
+Current Step Title: Broaden Validation and Decide Remaining Producer Chains
 
 ## Just Finished
 
-Implemented Step 4 selected RV64 pointer consumer migration.
+Completed Step 5 broad validation for pointer base-plus-offset materialization
+facts.
+
+Step 5 scope:
+
+- Ran build plus default CTest.
+- Compared full-suite movement against the accepted baseline log.
+- Remaining same-block producer-chain materialization needs another follow-up
+  runbook before the source idea can close.
+
+Step 4 implementation:
 
 Step 4 implementation:
 
@@ -113,7 +123,9 @@ Selected consumer migration candidate:
 
 ## Suggested Next
 
-Run the Step 4 focused proof command, then broaden validation in Step 5.
+Request lifecycle review now that the pointer family runbook steps are
+complete. The source idea is not complete; the next recommended runbook should
+target same-block producer-chain materialization facts.
 
 ## Watchouts
 
@@ -140,3 +152,13 @@ Step 4 focused proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_decoded_home_storage|backend_prealloc_prepared_contract_verifier|backend_riscv_prepared_edge_publication)$'`.
 
 Result: passed, 3/3 tests.
+
+Step 5 broad proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`.
+
+Result: passed, 3356/3356 tests.
+
+Regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: PASS; before 3356/3356, after 3356/3356, no new failing tests.
