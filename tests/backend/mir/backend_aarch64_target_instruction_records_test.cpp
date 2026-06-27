@@ -1170,9 +1170,6 @@ int variadic_entry_helper_call_records_select_prepared_va_start() {
       helper_payload->source_variadic_entry != &variadic_entry ||
       helper_payload->source_variadic_helper_operand_homes !=
           &variadic_entry.helper_operand_homes.front() ||
-      !helper_payload->source_variadic_helper_operand_homes->destination_va_list.has_value() ||
-      !helper_payload->source_variadic_helper_operand_homes
-           ->destination_va_list_address.has_value() ||
       helper_payload->source_variadic_entry->helper_resources.scratch_register_count !=
           std::optional<std::size_t>{1} ||
       helper_payload->source_variadic_entry->helper_resources.scratch_stack_bytes !=
@@ -1323,8 +1320,8 @@ int scalar_va_arg_call_record_requires_prepared_access_plan() {
       helper_payload->source_variadic_entry != &variadic_entry ||
       helper_payload->source_variadic_helper_operand_homes !=
           &variadic_entry.helper_operand_homes.front() ||
-      !helper_payload->source_variadic_helper_operand_homes->source_va_list.has_value() ||
-      !helper_payload->source_variadic_helper_operand_homes->scalar_result.has_value()) {
+      prepare::find_prepared_variadic_scalar_va_arg_operand_homes(
+          *helper_payload->source_variadic_helper_operand_homes) != nullptr) {
     return fail("expected scalar va_arg call record to stop on missing prepared access plan");
   }
 

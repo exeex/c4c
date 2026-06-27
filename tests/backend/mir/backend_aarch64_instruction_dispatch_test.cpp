@@ -14819,13 +14819,6 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
           std::optional<std::size_t>{1} ||
       complete_call->source_variadic_entry->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
-      !complete_call->source_variadic_helper_operand_homes->destination_va_list.has_value() ||
-      !complete_call->source_variadic_helper_operand_homes
-           ->destination_va_list_address.has_value() ||
-      complete_call->source_variadic_helper_operand_homes->destination_va_list->register_name !=
-          std::optional<std::string>{"x3"} ||
-      complete_call->source_variadic_helper_operand_homes->destination_va_list_address->slot_id !=
-          std::optional<prepare::PreparedFrameSlotId>{7} ||
       complete_call->variadic_va_start->register_save_area_slot_id !=
           prepare::PreparedFrameSlotId{5} ||
       complete_call->variadic_va_start->overflow_area_base_slot_id !=
@@ -14835,6 +14828,16 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
       complete_call->variadic_va_start->destination_va_list.register_name !=
           std::optional<std::string>{"x3"}) {
     return fail("expected selected va_start helper record to expose prepared storage, scratch, and operand-home authority");
+  }
+  const auto* typed_va_start =
+      prepare::find_prepared_variadic_va_start_operand_homes(
+          *complete_call->source_variadic_helper_operand_homes);
+  if (typed_va_start == nullptr ||
+      typed_va_start->destination_va_list.register_name !=
+          complete_call->variadic_va_start->destination_va_list.register_name ||
+      typed_va_start->destination_va_list_address.slot_id !=
+          complete_call->variadic_va_start->destination_va_list_address.slot_id) {
+    return fail("expected selected va_start helper record to expose typed operand-home authority");
   }
 
   return 0;
