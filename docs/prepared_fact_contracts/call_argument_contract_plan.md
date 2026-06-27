@@ -1,6 +1,6 @@
 # Prepared Call Argument Contract Plan
 
-Status: Published for idea 414 Step 2
+Status: Published for idea 414 Step 3
 Source Idea: `ideas/open/414_typed_prepared_call_argument_contracts.md`
 
 This document records the typed prepared call-argument route contract as it is
@@ -72,8 +72,33 @@ through `as_frame_slot_address_source_route`. Invalid old optional-field
 combinations are therefore absent from the typed API and from shared
 frame-slot publication classification.
 
+## Step 3 Verification
+
+Step 3 adds `verify_prepared_frame_slot_address_source_route_contract` as the
+producer-side report surface for the same route boundary. The verifier reports
+`PreparedContractFactFamily::CallArgumentTypedRoute`.
+
+Producer-missing statuses:
+
+- missing selected `FrameSlotAddress` route
+- missing source frame-slot id
+- missing source stack byte offset
+- missing source extent
+- missing source alignment
+
+Producer-incoherent statuses:
+
+- non-stack source-home kind
+- partial address materialization payload
+- materialization frame-slot id contradicts the selected source slot id
+- preservation, byval-lane, source-base, or pointer-delta payload mixed into
+  the frame-slot address route
+
+These diagnostics are intentionally producer-owned. RV64 and AArch64 target
+work should consume the verifier report at required-route fail-closed sites
+instead of treating an absent typed view as permission to reconstruct the route.
+
 ## Next Contract Step
 
-Step 3 should add producer-side diagnostics for the same required and rejected
-facts so invalid `FrameSlotAddress` selections fail with a producer-owned
-classification before RV64 or AArch64 lowering can recover the missing route.
+Step 4 should migrate the selected RV64/AArch64 consumers to use the typed
+route and verifier result exhaustively for `FrameSlotAddress`.

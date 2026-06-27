@@ -3,56 +3,46 @@
 Status: Active
 Source Idea Path: ideas/open/414_typed_prepared_call_argument_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Introduce Typed Route Payloads and Bridge Accessors
+Current Step ID: 3
+Current Step Title: Add Producer-Side Verification
 
 ## Just Finished
 
-Completed Step 2 for the first migrated route. Added
-`PreparedCallArgumentFrameSlotAddressRoute` plus
-`as_frame_slot_address_source_route` as the typed compatibility bridge for
-`PreparedCallArgumentSourceSelectionKind::FrameSlotAddress`, without adding new
-optional fields to `PreparedCallArgumentSourceSelection`.
+Completed Step 3 producer-side verification for the first migrated route.
+Added `PreparedContractFactFamily::CallArgumentTypedRoute`,
+`PreparedFrameSlotAddressSourceRouteContractStatus`,
+`classify_prepared_frame_slot_address_source_route_contract`, and
+`verify_prepared_frame_slot_address_source_route_contract`.
 
-The typed bridge exposes only the frame-slot address route facts: source slot,
-source stack byte offset, extent, alignment, optional source value/home identity,
-and an optional complete address-materialization subpayload. It rejects missing
-required facts, partial materialization payloads, materialization slot/source
-slot contradictions, non-stack source-home kinds, preservation payloads,
-byval-lane payloads, source-base payloads, and pointer-delta payloads.
+The verifier classifies missing selected `FrameSlotAddress` route facts as
+`producer_missing`: absent route, missing source slot, missing source stack
+offset, missing extent, and missing alignment. It classifies contradictory
+payloads as `producer_incoherent`: non-stack source-home kind, partial address
+materialization, materialization slot/source slot mismatch, and mixed
+preservation/byval/source-base/pointer-delta payload.
 
-`find_prepared_missing_frame_slot_call_argument_publication_need` now uses the
-typed route query for `FrameSlotAddress`, so contradictory old optional-bag
-combinations are not visible through the shared missing frame-slot publication
-bridge. Focused coverage in
-`backend_prepare_frame_stack_call_contract_test.cpp` checks valid typed route
-exposure, rejected contradictions, and publication-bridge visibility.
-
-Created `docs/prepared_fact_contracts/call_argument_contract_plan.md` with the
-Step 2 route scope and consumed rows:
-`TAX-FAM-CALL-ARG-TYPED-ROUTES-PLACEHOLDER-001`,
-`TAX-FAM-CALL-BOUNDARY-ARG-RESULT-001`, call-route portions of
-`TAX-FAM-PUBLICATION-FACTS-PLACEHOLDER-001`, storage/home portions of
-`TAX-FAM-VALUE-HOME-TYPED-STORAGE-001`,
-`418-AUD-RV64-FRAME-SLOT-CALL-RECOVERY-001`, and
-`418-AUD-A64-FRAME-SLOT-PUBLICATION-REVIEW-001`.
+Focused verifier coverage in
+`backend_prealloc_prepared_contract_verifier_test.cpp` checks coherent,
+producer-missing, and producer-incoherent reports plus the typed-route fact
+family spelling. The call-argument contract plan now records the Step 3
+producer-owned status boundary.
 
 ## Suggested Next
 
-Begin Step 3 by adding producer-side verification/diagnostics for
-`FrameSlotAddress` route requirements and contradictions, using the typed route
-query as the shared validity boundary.
+Begin Step 4 by migrating RV64/AArch64 `FrameSlotAddress` consumers to require
+the typed route and consume the Step 3 verifier result at fail-closed sites
+instead of reconstructing missing route facts.
 
 ## Watchouts
 
 - Do not add new optional fields to `PreparedCallArgumentSourceSelection`.
 - Do not infer argument homes in RV64/AArch64 when producer facts are absent.
 - Do not use named torture-file handling or expectation weakening as progress.
-- Step 2 currently makes invalid `FrameSlotAddress` bags absent from typed
-  publication classification; Step 3 should turn those same failures into
-  producer-owned diagnostics instead of silent target omission.
-- Existing producers still write the compatibility bag, so Step 3 should verify
-  both generated selections and any direct helper inputs before target lowering.
+- Existing producers still write the compatibility bag, so Step 4 should keep
+  using the typed bridge/verifier instead of reading bag fields directly in
+  target consumers.
+- Step 3 provides a verifier report but does not yet attach it to every
+  RV64/AArch64 target fail-closed path; that is the Step 4 migration.
 - `ByvalRegisterLane`, `FrameSlotValue`, `LocalFrameAddressMaterialization`, and
   `PriorPreservation` remain unmigrated route families.
 

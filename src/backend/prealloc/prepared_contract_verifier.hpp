@@ -40,6 +40,7 @@ enum class PreparedContractOwnerClass {
 enum class PreparedContractFactFamily {
   ValueHomeTypedStorage,
   CallBoundaryArgumentResultPlan,
+  CallArgumentTypedRoute,
   VariadicEntryHelperOperandHomes,
   StorageObjectExtent,
   StorageAlignment,
@@ -62,6 +63,8 @@ enum class PreparedContractFactFamily {
       return "value_home_typed_storage";
     case PreparedContractFactFamily::CallBoundaryArgumentResultPlan:
       return "call_boundary_argument_result_plan";
+    case PreparedContractFactFamily::CallArgumentTypedRoute:
+      return "call_argument_typed_route";
     case PreparedContractFactFamily::VariadicEntryHelperOperandHomes:
       return "variadic_entry_helper_operand_homes";
     case PreparedContractFactFamily::StorageObjectExtent:
@@ -203,6 +206,50 @@ prepared_selected_object_data_contract_status_name(
   return "unknown";
 }
 
+enum class PreparedFrameSlotAddressSourceRouteContractStatus {
+  Coherent,
+  MissingRoute,
+  MissingSourceSlot,
+  MissingStackOffset,
+  MissingExtent,
+  MissingAlignment,
+  ConflictingSourceHomeKind,
+  PartialAddressMaterialization,
+  ConflictingMaterializationFrameSlot,
+  ConflictingCrossRoutePayload,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_frame_slot_address_source_route_contract_status_name(
+    PreparedFrameSlotAddressSourceRouteContractStatus status) {
+  switch (status) {
+    case PreparedFrameSlotAddressSourceRouteContractStatus::Coherent:
+      return "coherent";
+    case PreparedFrameSlotAddressSourceRouteContractStatus::MissingRoute:
+      return "missing_route";
+    case PreparedFrameSlotAddressSourceRouteContractStatus::MissingSourceSlot:
+      return "missing_source_slot";
+    case PreparedFrameSlotAddressSourceRouteContractStatus::MissingStackOffset:
+      return "missing_stack_offset";
+    case PreparedFrameSlotAddressSourceRouteContractStatus::MissingExtent:
+      return "missing_extent";
+    case PreparedFrameSlotAddressSourceRouteContractStatus::MissingAlignment:
+      return "missing_alignment";
+    case PreparedFrameSlotAddressSourceRouteContractStatus::ConflictingSourceHomeKind:
+      return "conflicting_source_home_kind";
+    case PreparedFrameSlotAddressSourceRouteContractStatus::
+        PartialAddressMaterialization:
+      return "partial_address_materialization";
+    case PreparedFrameSlotAddressSourceRouteContractStatus::
+        ConflictingMaterializationFrameSlot:
+      return "conflicting_materialization_frame_slot";
+    case PreparedFrameSlotAddressSourceRouteContractStatus::
+        ConflictingCrossRoutePayload:
+      return "conflicting_cross_route_payload";
+  }
+  return "unknown";
+}
+
 struct PreparedSelectedLocalStorageContractFacts {
   FunctionNameId function_name = kInvalidFunctionName;
   std::optional<PreparedObjectId> object_id;
@@ -298,5 +345,13 @@ classify_prepared_selected_object_data_contract(
 [[nodiscard]] PreparedContractVerificationReport
 verify_prepared_selected_object_data_contract(
     const PreparedSelectedObjectDataContractFacts& facts);
+
+[[nodiscard]] PreparedFrameSlotAddressSourceRouteContractStatus
+classify_prepared_frame_slot_address_source_route_contract(
+    const PreparedCallArgumentSourceSelection* selection);
+
+[[nodiscard]] PreparedContractVerificationReport
+verify_prepared_frame_slot_address_source_route_contract(
+    const PreparedCallArgumentSourceSelection* selection);
 
 }  // namespace c4c::backend::prepare

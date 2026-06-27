@@ -96,6 +96,31 @@ namespace {
   return PreparedContractOwnerClass::ProducerIncoherent;
 }
 
+[[nodiscard]] PreparedContractOwnerClass
+owner_for_frame_slot_address_source_route_status(
+    PreparedFrameSlotAddressSourceRouteContractStatus status) {
+  switch (status) {
+    case PreparedFrameSlotAddressSourceRouteContractStatus::Coherent:
+      return PreparedContractOwnerClass::Coherent;
+    case PreparedFrameSlotAddressSourceRouteContractStatus::MissingRoute:
+    case PreparedFrameSlotAddressSourceRouteContractStatus::MissingSourceSlot:
+    case PreparedFrameSlotAddressSourceRouteContractStatus::MissingStackOffset:
+    case PreparedFrameSlotAddressSourceRouteContractStatus::MissingExtent:
+    case PreparedFrameSlotAddressSourceRouteContractStatus::MissingAlignment:
+      return PreparedContractOwnerClass::ProducerMissing;
+    case PreparedFrameSlotAddressSourceRouteContractStatus::
+        ConflictingSourceHomeKind:
+    case PreparedFrameSlotAddressSourceRouteContractStatus::
+        PartialAddressMaterialization:
+    case PreparedFrameSlotAddressSourceRouteContractStatus::
+        ConflictingMaterializationFrameSlot:
+    case PreparedFrameSlotAddressSourceRouteContractStatus::
+        ConflictingCrossRoutePayload:
+      return PreparedContractOwnerClass::ProducerIncoherent;
+  }
+  return PreparedContractOwnerClass::ProducerIncoherent;
+}
+
 [[nodiscard]] PreparedContractFactFamily fact_family_for_selected_local_storage_status(
     PreparedSelectedLocalStorageContractStatus status) {
   switch (status) {
@@ -256,6 +281,48 @@ namespace {
   out << " object_size_bytes=" << facts.object_size_bytes;
   out << " emitted_byte_count=" << facts.emitted_byte_count;
   out << " zero_fill_byte_count=" << facts.zero_fill_byte_count;
+  return out.str();
+}
+
+[[nodiscard]] bool frame_slot_address_selection_has_cross_route_payload(
+    const PreparedCallArgumentSourceSelection& selection) {
+  return selection.source_base_value_id.has_value() ||
+         selection.source_pointer_byte_delta.has_value() ||
+         prepared_call_argument_source_selection_has_preservation_payload(selection) ||
+         selection.byval_lane_extent_bytes.has_value() ||
+         selection.byval_lane_source_instruction_index.has_value();
+}
+
+[[nodiscard]] std::string frame_slot_address_source_route_detail(
+    const PreparedCallArgumentSourceSelection* selection,
+    PreparedFrameSlotAddressSourceRouteContractStatus status) {
+  std::ostringstream out;
+  out << "prepared frame-slot address source route contract status="
+      << prepared_frame_slot_address_source_route_contract_status_name(status);
+  if (selection == nullptr) {
+    return out.str();
+  }
+  out << " selection_kind="
+      << prepared_call_argument_source_selection_kind_name(selection->kind);
+  if (selection->source_value_id.has_value()) {
+    out << " source_value_id=" << *selection->source_value_id;
+  }
+  if (selection->source_value_name.has_value()) {
+    out << " source_value_name=" << *selection->source_value_name;
+  }
+  if (selection->source_slot_id.has_value()) {
+    out << " source_slot_id=" << *selection->source_slot_id;
+  }
+  if (selection->source_stack_offset_bytes.has_value()) {
+    out << " source_stack_offset_bytes="
+        << *selection->source_stack_offset_bytes;
+  }
+  if (selection->source_size_bytes.has_value()) {
+    out << " source_size_bytes=" << *selection->source_size_bytes;
+  }
+  if (selection->source_align_bytes.has_value()) {
+    out << " source_align_bytes=" << *selection->source_align_bytes;
+  }
   return out.str();
 }
 
@@ -494,6 +561,80 @@ PreparedContractVerificationReport verify_prepared_selected_object_data_contract
       .detail = owner == PreparedContractOwnerClass::Coherent
                     ? std::string{}
                     : selected_object_data_detail(facts, status),
+  };
+}
+
+PreparedFrameSlotAddressSourceRouteContractStatus
+classify_prepared_frame_slot_address_source_route_contract(
+    const PreparedCallArgumentSourceSelection* selection) {
+  if (selection == nullptr ||
+      selection->kind != PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
+    return PreparedFrameSlotAddressSourceRouteContractStatus::MissingRoute;
+  }
+  if (!selection->source_slot_id.has_value()) {
+    return PreparedFrameSlotAddressSourceRouteContractStatus::MissingSourceSlot;
+  }
+  if (!selection->source_stack_offset_bytes.has_value()) {
+    return PreparedFrameSlotAddressSourceRouteContractStatus::MissingStackOffset;
+  }
+  if (!selection->source_size_bytes.has_value()) {
+    return PreparedFrameSlotAddressSourceRouteContractStatus::MissingExtent;
+  }
+  if (!selection->source_align_bytes.has_value()) {
+    return PreparedFrameSlotAddressSourceRouteContractStatus::MissingAlignment;
+  }
+  if (selection->source_home_kind.has_value() &&
+      *selection->source_home_kind != PreparedValueHomeKind::StackSlot) {
+    return PreparedFrameSlotAddressSourceRouteContractStatus::
+        ConflictingSourceHomeKind;
+  }
+
+  const bool has_any_materialization =
+      selection->address_materialization_block_label.has_value() ||
+      selection->address_materialization_inst_index.has_value() ||
+      selection->address_materialization_frame_slot_id.has_value() ||
+      selection->address_materialization_byte_offset.has_value();
+  const bool has_complete_materialization =
+      selection->address_materialization_block_label.has_value() &&
+      selection->address_materialization_inst_index.has_value() &&
+      selection->address_materialization_frame_slot_id.has_value() &&
+      selection->address_materialization_byte_offset.has_value();
+  if (has_any_materialization && !has_complete_materialization) {
+    return PreparedFrameSlotAddressSourceRouteContractStatus::
+        PartialAddressMaterialization;
+  }
+  if (has_complete_materialization &&
+      *selection->address_materialization_frame_slot_id !=
+          *selection->source_slot_id) {
+    return PreparedFrameSlotAddressSourceRouteContractStatus::
+        ConflictingMaterializationFrameSlot;
+  }
+  if (frame_slot_address_selection_has_cross_route_payload(*selection)) {
+    return PreparedFrameSlotAddressSourceRouteContractStatus::
+        ConflictingCrossRoutePayload;
+  }
+  return PreparedFrameSlotAddressSourceRouteContractStatus::Coherent;
+}
+
+PreparedContractVerificationReport
+verify_prepared_frame_slot_address_source_route_contract(
+    const PreparedCallArgumentSourceSelection* selection) {
+  const auto status =
+      classify_prepared_frame_slot_address_source_route_contract(selection);
+  const auto owner = owner_for_frame_slot_address_source_route_status(status);
+  return PreparedContractVerificationReport{
+      .fact_family = PreparedContractFactFamily::CallArgumentTypedRoute,
+      .owner_class = owner,
+      .value_id = selection != nullptr && selection->source_value_id.has_value()
+                      ? *selection->source_value_id
+                      : PreparedValueId{0},
+      .value_name = selection != nullptr && selection->source_value_name.has_value()
+                        ? *selection->source_value_name
+                        : kInvalidValueName,
+      .fail_closed = owner != PreparedContractOwnerClass::Coherent,
+      .detail = owner == PreparedContractOwnerClass::Coherent
+                    ? std::string{}
+                    : frame_slot_address_source_route_detail(selection, status),
   };
 }
 

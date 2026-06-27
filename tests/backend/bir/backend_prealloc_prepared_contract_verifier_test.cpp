@@ -1,7 +1,10 @@
 #include "src/backend/prealloc/prepared_contract_verifier.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string_view>
 
 namespace {
@@ -48,6 +51,23 @@ prepare::PreparedSelectedObjectDataContractFacts coherent_object_data() {
       .requires_relocation = true,
       .has_relocation = true,
       .has_object_byte_range = true,
+  };
+}
+
+prepare::PreparedCallArgumentSourceSelection coherent_frame_slot_address_route() {
+  return prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress,
+      .source_value_id = prepare::PreparedValueId{19},
+      .source_value_name = c4c::ValueNameId{23},
+      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+      .source_slot_id = prepare::PreparedFrameSlotId{29},
+      .source_stack_offset_bytes = std::size_t{32},
+      .source_size_bytes = std::size_t{8},
+      .source_align_bytes = std::size_t{8},
+      .address_materialization_block_label = c4c::BlockLabelId{31},
+      .address_materialization_inst_index = std::size_t{5},
+      .address_materialization_frame_slot_id = prepare::PreparedFrameSlotId{29},
+      .address_materialization_byte_offset = std::int64_t{32},
   };
 }
 
@@ -164,6 +184,70 @@ int verify_selected_object_data_contract_reports() {
   return 0;
 }
 
+int verify_frame_slot_address_source_route_contract_reports() {
+  auto coherent_route = coherent_frame_slot_address_route();
+  const auto coherent =
+      prepare::verify_prepared_frame_slot_address_source_route_contract(
+          &coherent_route);
+
+  auto missing = coherent_frame_slot_address_route();
+  missing.source_stack_offset_bytes = std::nullopt;
+  const auto missing_report =
+      prepare::verify_prepared_frame_slot_address_source_route_contract(
+          &missing);
+
+  auto incoherent = coherent_frame_slot_address_route();
+  incoherent.address_materialization_frame_slot_id =
+      prepare::PreparedFrameSlotId{30};
+  const auto incoherent_report =
+      prepare::verify_prepared_frame_slot_address_source_route_contract(
+          &incoherent);
+
+  auto cross_route = coherent_frame_slot_address_route();
+  cross_route.byval_lane_extent_bytes = std::size_t{8};
+  const auto cross_route_report =
+      prepare::verify_prepared_frame_slot_address_source_route_contract(
+          &cross_route);
+
+  const auto missing_route_report =
+      prepare::verify_prepared_frame_slot_address_source_route_contract(nullptr);
+
+  if (!expect(coherent.owner_class == prepare::PreparedContractOwnerClass::Coherent,
+              "complete frame-slot address route should be coherent") ||
+      !expect(!coherent.fail_closed,
+              "coherent frame-slot address route should not fail closed") ||
+      !expect(coherent.fact_family ==
+                  prepare::PreparedContractFactFamily::CallArgumentTypedRoute,
+              "frame-slot address route should identify typed route family") ||
+      !expect(missing_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing frame-slot address stack offset should classify as producer missing") ||
+      !expect(missing_report.fail_closed,
+              "missing frame-slot address route fact should fail closed") ||
+      !expect(prepare::classify_prepared_frame_slot_address_source_route_contract(
+                  &missing) ==
+                  prepare::PreparedFrameSlotAddressSourceRouteContractStatus::
+                      MissingStackOffset,
+              "missing stack offset should have precise route status") ||
+      !expect(incoherent_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "contradictory materialization slot should classify as producer incoherent") ||
+      !expect(cross_route_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "cross-route payload should classify as producer incoherent") ||
+      !expect(missing_route_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "absent frame-slot address route should classify as producer missing") ||
+      !expect(prepare::prepared_contract_fact_family_name(
+                  prepare::PreparedContractFactFamily::CallArgumentTypedRoute) ==
+                  std::string_view{"call_argument_typed_route"},
+              "typed call-argument route family spelling mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -171,6 +255,10 @@ int main() {
     return rc;
   }
   if (const int rc = verify_selected_object_data_contract_reports(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = verify_frame_slot_address_source_route_contract_reports();
+      rc != 0) {
     return rc;
   }
   return EXIT_SUCCESS;
