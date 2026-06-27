@@ -67,3 +67,15 @@ argument homes from formal order, type, or callee facts.
 - Reject expectation rewrites, allowlist filtering, or weaker test contracts.
 - Reject a route that leaves the old contradictory optional combinations
   accepted behind a renamed API.
+
+## Closure Note
+
+Closed after migrating the prepared call-argument typed routes covered by this
+idea through `FrameSlotAddress`, `FrameSlotValue`, and
+`LocalFrameAddressMaterialization`. The final route added a typed payload and
+bridge accessor, producer-side verifier statuses/reports, RV64/AArch64
+consumer migration, coherent prepared-fixture updates, and broad validation.
+
+Close proof: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure` passed 3356/3356 tests, and the close-scope regression
+guard passed against the accepted 3356/3356 full-suite baseline.
