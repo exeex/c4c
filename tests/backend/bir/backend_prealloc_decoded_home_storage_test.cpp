@@ -387,7 +387,7 @@ int verify_rematerializable_integer_immediate_fact_query() {
   const auto function_name = static_cast<c4c::FunctionNameId>(31);
   const auto value_name = static_cast<c4c::ValueNameId>(41);
   const prepare::PreparedValueHome small_immediate{
-      .value_id = 7,
+      .value_id = 0,
       .function_name = function_name,
       .value_name = value_name,
       .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
@@ -397,7 +397,7 @@ int verify_rematerializable_integer_immediate_fact_query() {
       prepare::as_rematerializable_integer_immediate_fact(small_immediate);
   if (!expect(small_fact.has_value(),
               "coherent rematerializable i32 immediate should expose a typed fact") ||
-      !expect(small_fact->value_id == 7 && small_fact->function_name == function_name &&
+      !expect(small_fact->value_id == 0 && small_fact->function_name == function_name &&
                   small_fact->value_name == value_name,
               "rematerializable immediate fact should preserve source identity") ||
       !expect(small_fact->signed_value == 1024 && small_fact->width_bits == 32 &&

@@ -49,7 +49,6 @@ owner_for_rematerializable_integer_immediate_status(
     case PreparedRematerializableIntegerImmediateContractStatus::Coherent:
       return PreparedContractOwnerClass::Coherent;
     case PreparedRematerializableIntegerImmediateContractStatus::MissingValueHome:
-    case PreparedRematerializableIntegerImmediateContractStatus::MissingValueId:
     case PreparedRematerializableIntegerImmediateContractStatus::MissingFunctionName:
     case PreparedRematerializableIntegerImmediateContractStatus::MissingValueName:
     case PreparedRematerializableIntegerImmediateContractStatus::
@@ -673,9 +672,6 @@ classify_prepared_rematerializable_integer_immediate_contract(
   if (home->kind != PreparedValueHomeKind::RematerializableImmediate) {
     return PreparedRematerializableIntegerImmediateContractStatus::
         ConflictingHomeKind;
-  }
-  if (home->value_id == 0) {
-    return PreparedRematerializableIntegerImmediateContractStatus::MissingValueId;
   }
   if (home->function_name == kInvalidFunctionName) {
     return PreparedRematerializableIntegerImmediateContractStatus::

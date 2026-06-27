@@ -106,7 +106,7 @@ coherent_local_frame_address_materialization_route() {
 
 prepare::PreparedValueHome coherent_rematerializable_integer_immediate_home() {
   return prepare::PreparedValueHome{
-      .value_id = prepare::PreparedValueId{71},
+      .value_id = prepare::PreparedValueId{0},
       .function_name = c4c::FunctionNameId{73},
       .value_name = c4c::ValueNameId{79},
       .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
@@ -156,7 +156,7 @@ int verify_rematerializable_integer_immediate_contract_reports() {
       !expect(coherent.fact_family ==
                   prepare::PreparedContractFactFamily::ValueMaterializationFact,
               "rematerializable integer immediate should identify materialization family") ||
-      !expect(coherent.value_id == prepare::PreparedValueId{71} &&
+      !expect(coherent.value_id == prepare::PreparedValueId{0} &&
                   coherent.function_name == c4c::FunctionNameId{73} &&
                   coherent.value_name == c4c::ValueNameId{79},
               "coherent rematerializable integer immediate should preserve identity") ||

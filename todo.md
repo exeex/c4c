@@ -3,13 +3,12 @@
 Status: Active
 Source Idea Path: ideas/open/415_prepared_value_materialization_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate Selected Consumers
+Current Step ID: 5
+Current Step Title: Broaden Validation and Decide Next Family
 
 ## Just Finished
 
-Completed Step 4 selected consumer migration for rematerializable integer
-immediates.
+Completed Step 5 broad validation for rematerializable integer immediates.
 
 Current value-home payloads live in `PreparedValueHome`:
 
@@ -59,8 +58,9 @@ Step 2 implementation:
 
 - Added `PreparedRematerializableIntegerImmediateFact` as a typed view over
   coherent `PreparedValueHomeKind::RematerializableImmediate` integer homes.
-- The query requires source value id, function name, value name, signed i32
-  payload, and no cross-family f128 payload.
+- The query preserves source value id and requires function name, value name,
+  signed i32 payload, and no cross-family f128 payload. Prepared value id `0`
+  is valid for the first prepared value.
 - The query exposes 32-bit signed interpretation and signed-12 target range
   admission for consumers that need immediate-field legality.
 - Added focused tests for coherent facts, large-but-coherent facts, missing
@@ -74,8 +74,8 @@ Step 3 implementation:
   missing, and incoherent selected-family records.
 - Added `verify_prepared_rematerializable_integer_immediate_contract` with the
   `value_materialization_fact` fact family.
-- Missing value home, value id, function name, value name, or i32 payload map
-  to `producer_missing`.
+- Missing value home, function name, value name, or i32 payload map to
+  `producer_missing`.
 - Wrong home kind and cross-family f128 payload map to `producer_incoherent`.
 - Focused verifier tests cover coherent reports, missing payload, missing
   identity, wrong kind, cross-family payload, absent home, status spelling, and
@@ -92,11 +92,23 @@ Step 4 implementation:
 - Added an RV64 object rejection test proving an invalid prepared immediate
   identity fails closed instead of being consumed from raw `immediate_i32`.
 
+Step 5 implementation:
+
+- Corrected the typed immediate query and verifier to treat prepared value id
+  `0` as valid for the first prepared value.
+- Preserved fail-closed behavior for missing function name, missing value name,
+  missing i32 payload, wrong home kind, and cross-family f128 payload.
+- Reran the focused RV64/prealloc proof after the correction.
+- Ran full default CTest and regression guard against the accepted full
+  baseline.
+- Next materialization family recommendation: `PointerBasePlusOffset` should
+  get a follow-up lifecycle slice/runbook, because it needs base identity,
+  byte-delta provenance, and target scheduling authority beyond the integer
+  immediate family handled here.
+
 ## Suggested Next
 
-Begin Step 5 with broader validation for the rematerializable integer immediate
-family and decide whether the next materialization family needs a follow-up
-runbook.
+Request lifecycle review now that the active runbook steps are complete.
 
 ## Watchouts
 
@@ -136,3 +148,18 @@ Regression guard:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
 Result: PASS; before 4/4, after 4/4, no new failing tests.
+
+Step 5 focused correction proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_decoded_home_storage|backend_prealloc_prepared_contract_verifier|backend_riscv_object_emission|backend_riscv_prepared_edge_publication)$'`.
+
+Result: passed, 4/4 tests.
+
+Step 5 broad proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`.
+
+Result: passed, 3356/3356 tests.
+
+Regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: PASS; before 3356/3356, after 3356/3356, no new failing tests.

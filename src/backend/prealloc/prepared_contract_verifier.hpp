@@ -116,7 +116,6 @@ enum class PreparedSelectedLocalStorageContractStatus {
 enum class PreparedRematerializableIntegerImmediateContractStatus {
   Coherent,
   MissingValueHome,
-  MissingValueId,
   MissingFunctionName,
   MissingValueName,
   MissingImmediatePayload,
@@ -132,8 +131,6 @@ prepared_rematerializable_integer_immediate_contract_status_name(
       return "coherent";
     case PreparedRematerializableIntegerImmediateContractStatus::MissingValueHome:
       return "missing_value_home";
-    case PreparedRematerializableIntegerImmediateContractStatus::MissingValueId:
-      return "missing_value_id";
     case PreparedRematerializableIntegerImmediateContractStatus::MissingFunctionName:
       return "missing_function_name";
     case PreparedRematerializableIntegerImmediateContractStatus::MissingValueName:

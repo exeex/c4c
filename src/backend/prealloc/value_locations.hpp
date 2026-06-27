@@ -102,7 +102,7 @@ struct PreparedRematerializableIntegerImmediateFact {
 as_rematerializable_integer_immediate_fact(const PreparedValueHome& home) {
   if (home.kind != PreparedValueHomeKind::RematerializableImmediate ||
       !home.immediate_i32.has_value() || home.immediate_f128.has_value() ||
-      home.value_id == 0 || home.function_name == kInvalidFunctionName ||
+      home.function_name == kInvalidFunctionName ||
       home.value_name == kInvalidValueName) {
     return std::nullopt;
   }

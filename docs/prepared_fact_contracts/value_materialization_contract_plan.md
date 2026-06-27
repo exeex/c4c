@@ -21,7 +21,7 @@ Rejected records fail closed by returning no fact:
 - value home is not `RematerializableImmediate`
 - missing `immediate_i32`
 - cross-family `immediate_f128` payload is also present
-- missing value id, function name, or value name identity
+- missing function name or value name identity
 
 This slice does not add target-local BIR expression recovery. Producer-side
 diagnostics and target consumer migration are reserved for the next steps in
@@ -36,7 +36,6 @@ Step 3 adds
 Producer-missing statuses:
 
 - `missing_value_home`
-- `missing_value_id`
 - `missing_function_name`
 - `missing_value_name`
 - `missing_immediate_payload`
@@ -48,7 +47,9 @@ Producer-incoherent statuses:
 
 Reports use the `value_materialization_fact` fact family and fail closed for
 every non-coherent status. Coherent reports preserve function, value id, and
-value name identity without emitting diagnostic detail.
+value name identity without emitting diagnostic detail. Prepared value id `0`
+is valid for the first prepared value; function and value names carry the
+invalid sentinels for missing identity.
 
 ## Migrated Consumers
 
