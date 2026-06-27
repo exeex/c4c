@@ -1,4 +1,5 @@
 #include "src/backend/prealloc/decoded_home_storage.hpp"
+#include "src/backend/prealloc/prepared_contract_verifier.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -519,6 +520,67 @@ int verify_diagnostic_builders() {
   return 0;
 }
 
+int verify_contract_reports() {
+  const auto missing = prepare::verify_prepared_decoded_home_storage_contract(
+      prepare::PreparedDecodedHomeStorage{
+          .source = prepare::PreparedDecodedHomeStorageSource::None,
+          .kind = prepare::PreparedDecodedHomeStorageKind::None,
+          .status = prepare::PreparedDecodedHomeStorageStatus::MissingAuthority,
+          .value_id = 910,
+      });
+  if (!expect(missing.fact_family ==
+                  prepare::PreparedContractFactFamily::ValueHomeTypedStorage,
+              "missing authority contract family mismatch") ||
+      !expect(missing.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing authority owner-class mismatch") ||
+      !expect(missing.fail_closed,
+              "missing authority contract report should fail closed")) {
+    return 1;
+  }
+
+  const auto missing_register =
+      prepare::verify_prepared_decoded_home_storage_contract(
+          prepare::PreparedDecodedHomeStorage{
+              .source = prepare::PreparedDecodedHomeStorageSource::ValueHome,
+              .kind = prepare::PreparedDecodedHomeStorageKind::Register,
+              .status =
+                  prepare::PreparedDecodedHomeStorageStatus::MissingRegisterPlacement,
+              .value_id = 911,
+          });
+  if (!expect(missing_register.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "missing register placement owner-class mismatch") ||
+      !expect(missing_register.detail ==
+                  "value-home register spelling is diagnostic-only until typed placement exists",
+              "missing register placement report detail mismatch")) {
+    return 1;
+  }
+
+  const auto unsupported =
+      prepare::verify_prepared_decoded_home_storage_contract(
+          prepare::PreparedDecodedHomeStorage{
+              .source = prepare::PreparedDecodedHomeStorageSource::StoragePlan,
+              .kind = prepare::PreparedDecodedHomeStorageKind::ComputedAddress,
+              .status =
+                  prepare::PreparedDecodedHomeStorageStatus::UnsupportedStorageEncoding,
+              .value_id = 912,
+          });
+  if (!expect(unsupported.owner_class ==
+                  prepare::PreparedContractOwnerClass::TargetUnsupportedButCoherent,
+              "unsupported storage owner-class mismatch") ||
+      !expect(prepare::prepared_contract_owner_class_name(unsupported.owner_class) ==
+                  "target_unsupported_but_coherent",
+              "owner-class name mismatch") ||
+      !expect(prepare::prepared_contract_fact_family_name(unsupported.fact_family) ==
+                  "value_home_typed_storage",
+              "fact-family name mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -532,6 +594,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (verify_diagnostic_builders() != 0) {
+    return EXIT_FAILURE;
+  }
+  if (verify_contract_reports() != 0) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

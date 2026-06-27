@@ -263,6 +263,15 @@ int literals_labels_symbols_and_register_spellings_are_narrow() {
           aarch64_module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority) {
     return fail("expected missing typed register authority diagnostic");
   }
+  if (!diagnostics.entries.front().prepared_contract_report.has_value()) {
+    return fail("expected prepared contract report on fail-closed value home");
+  }
+  const auto& report = *diagnostics.entries.front().prepared_contract_report;
+  if (report.fact_family != prepare::PreparedContractFactFamily::ValueHomeTypedStorage ||
+      report.owner_class != prepare::PreparedContractOwnerClass::ProducerIncoherent ||
+      !report.fail_closed || report.value_id != value_id) {
+    return fail("expected producer-incoherent value-home contract report");
+  }
 
   const auto immediate = aarch64_codegen::resolve_immediate_operand(mir::Immediate{
       .kind = mir::ImmediateKind::Signed,

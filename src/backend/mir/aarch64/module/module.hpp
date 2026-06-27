@@ -4,6 +4,7 @@
 #include "../codegen/instruction.hpp"
 #include "../../mir.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/prepared_contract_verifier.hpp"
 #include "../../../prealloc/prepared_object_traversal.hpp"
 #include "../../../prealloc/value_locations.hpp"
 
@@ -63,6 +64,7 @@ struct ModuleLoweringDiagnostic {
   InstructionLoweringFamily instruction_family = InstructionLoweringFamily::Unknown;
   std::optional<prepare::PreparedObjectConsumerDiagnosticCategory>
       prepared_consumer_category;
+  std::optional<prepare::PreparedContractVerificationReport> prepared_contract_report;
   prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
   std::string message;

@@ -175,9 +175,12 @@ void diagnose_decoded_failure(const prepare::PreparedDecodedHomeStorage& decoded
                               module::ModuleLoweringDiagnostics& diagnostics) {
   const auto prepared_diagnostic =
       prepare::build_prepared_decoded_home_storage_diagnostic(decoded);
+  const auto contract_report =
+      prepare::verify_prepared_decoded_home_storage_contract(decoded);
   diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
       .kind = diagnostic_kind_for_prepared_failure(prepared_diagnostic.category),
       .function_name = prepared_diagnostic.function_name,
+      .prepared_contract_report = contract_report,
       .value_id = prepared_diagnostic.value_id,
       .value_name = prepared_diagnostic.value_name,
       .message = prepared_diagnostic.message,
@@ -199,7 +202,7 @@ std::optional<ResolvedOperand> resolve_value_operand(
     return std::nullopt;
   }
 
-  const auto decoded = prepare::decode_prepared_home_storage(
+  auto decoded = prepare::decode_prepared_home_storage(
       prepare::PreparedHomeStorageDecodeInputs{
           .regalloc = context.regalloc,
           .storage_plan = context.storage_plan,
@@ -207,17 +210,20 @@ std::optional<ResolvedOperand> resolve_value_operand(
           .value_home_lookups = context.value_home_lookups,
       },
       value_id);
-  if (auto resolved = make_decoded_operand(decoded, diagnostics)) {
-    return resolved;
+  if (decoded.function_name == c4c::kInvalidFunctionName) {
+    decoded.function_name = context.control_flow->function_name;
   }
-  if (decoded.source != prepare::PreparedDecodedHomeStorageSource::None) {
+  const auto contract_report =
+      prepare::verify_prepared_decoded_home_storage_contract(decoded);
+  if (contract_report.fail_closed) {
     diagnose_decoded_failure(decoded, diagnostics);
     return std::nullopt;
   }
 
-  auto missing_decoded = decoded;
-  missing_decoded.function_name = context.control_flow->function_name;
-  diagnose_decoded_failure(missing_decoded, diagnostics);
+  if (auto resolved = make_decoded_operand(decoded, diagnostics)) {
+    return resolved;
+  }
+  diagnose_decoded_failure(decoded, diagnostics);
   return std::nullopt;
 }
 
