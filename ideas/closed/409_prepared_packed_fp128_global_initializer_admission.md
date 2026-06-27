@@ -1,6 +1,6 @@
 # Prepared Packed And FP128 Global Initializer Admission
 
-Status: Open
+Status: Closed
 Type: Producer-side follow-up repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/399_rv64_object_route_global_data_and_symbol_memory.md`
@@ -77,3 +77,28 @@ forms, or reject them with a precise producer-side diagnostic.
   packed/`fp128` producer admission boundary.
 - Reject expectation downgrades, unsupported markers, allowlist filtering, or
   diagnostic-only churn claimed as capability progress.
+
+## Lifecycle Notes
+
+- 2026-06-27: Closed after producer-side repair in
+  `src/backend/bir/lir_to_bir/global_initializers.cpp` admitted LLVM packed
+  aggregate initializer delimiters `<{ ... }>` in the aggregate initializer
+  walker while reusing existing aggregate layout authority and leaving RV64
+  object emission untouched.
+- 2026-06-27: Focused coverage in
+  `tests/backend/bir/backend_lir_to_bir_notes_test.cpp` proves an integer-only
+  packed `%struct.PackedInts = type <{ i16, i32, i16 }>` global is admitted as
+  byte-addressable aggregate storage with `type=I8`, `size_bytes=8`,
+  `align_bytes=1`, and explicit initializer lanes.
+- 2026-06-27: `20040709-2.c` no longer stops on the old bootstrap global
+  admission diagnostic (`only scalar integer/pointer globals, linear
+  integer-array globals, and aggregate-backed globals with honest byte-address
+  semantics`). The current residual is before prepared handoff in semantic
+  scalar-binop lowering for `fn1A`, which uses bitfield-style scalar ops over
+  packed `%struct.A`; that boundary is split into
+  `ideas/open/410_lir_to_bir_packed_bitfield_scalar_binop_semantics.md`.
+- 2026-06-27: Close gate passed with the backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`. The
+  rolled-forward `test_before.log` and regenerated `test_after.log` both
+  reported 326/326 passing backend tests with no new failures. The accepted
+  broader baseline candidate was monotonic at 3355/3355.

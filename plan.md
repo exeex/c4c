@@ -1,138 +1,139 @@
-# Prepared Packed And FP128 Global Initializer Admission Runbook
+# LIR To BIR Packed Bitfield Scalar Binop Semantics Runbook
 
 Status: Active
-Source Idea: ideas/open/409_prepared_packed_fp128_global_initializer_admission.md
-Activated after: ideas/closed/399_rv64_object_route_global_data_and_symbol_memory.md
+Source Idea: ideas/open/410_lir_to_bir_packed_bitfield_scalar_binop_semantics.md
+Activated after: ideas/closed/409_prepared_packed_fp128_global_initializer_admission.md
 
 ## Purpose
 
-Repair the producer-side global initializer admission boundary where packed
-aggregate and `fp128` global forms stop before prepared handoff.
+Repair the semantic LIR-to-BIR scalar-binop boundary exposed after packed
+aggregate global initializer admission advanced `20040709-2.c`.
 
 ## Goal
 
-Publish explicit prepared global storage facts for supportable packed
-aggregate and `fp128` initializer forms, or preserve precise producer-side
-unsupported diagnostics when the byte layout or object representation is not
-yet supportable.
+Lower the first supportable bitfield-style scalar operation chain over packed
+aggregate field storage while preserving width, signedness, truncation, and
+packed-field semantics.
 
 ## Core Rule
 
-Prepared producers must own packed aggregate layout and `fp128` initializer
-admission. RV64 object emission must not reconstruct initializer bytes,
-aggregate layout, or floating representation from source shape when prepared
-facts are missing.
+The repair belongs to semantic LIR-to-BIR lowering. Do not patch RV64 object
+emission or global initializer admission to compensate for missing semantic
+scalar facts.
 
 ## Read First
 
-- `ideas/open/409_prepared_packed_fp128_global_initializer_admission.md`
-- `ideas/closed/399_rv64_object_route_global_data_and_symbol_memory.md`
+- `ideas/open/410_lir_to_bir_packed_bitfield_scalar_binop_semantics.md`
+- `ideas/closed/409_prepared_packed_fp128_global_initializer_admission.md`
 - `tests/c/external/gcc_torture/src/20040709-2.c`
-- Current refresh artifacts under `build/agent_state/399_step1_global_refresh/`
+- Current proof artifacts under `build/agent_state/409_step3_packed_global_proof/`
 
 ## Current Targets
 
 - Primary representative: `tests/c/external/gcc_torture/src/20040709-2.c`
-- Focused backend/prepared tests covering global initializer admission,
-  aggregate global storage, floating or extended-precision global storage, and
-  RV64 object emission where relevant.
+- Failing function: `fn1A`
+- Operation shape: bitfield-style `load i16`, `lshr`, `and`, `zext`, `add`,
+  `trunc`, `shl`, `or`, and `store i16` over packed `%struct.A`.
 
 ## Non-Goals
 
-- Do not reopen RV64 object-emitter global-data lowering from idea 399 without
-  fresh prepared facts proving a target-side bug.
-- Do not teach RV64 object emission to synthesize packed aggregate layout,
-  `fp128` bytes, or source-level global initializer semantics.
-- Do not absorb direct-call semantic, memset runtime, or vector local alloca
-  failures from the same 399 refresh.
-- Do not downgrade expectations, filter allowlists, or use testcase-specific
-  branches.
+- Do not reopen packed aggregate global initializer admission from idea 409.
+- Do not implement RV64 object-route scalar compare/trunc or instruction
+  fragment lowering from this pre-prepared semantic failure.
+- Do not infer semantic scalar facts in RV64 object emission.
+- Do not make broad bitfield/frontend rewrites outside the observed semantic
+  LIR-to-BIR scalar-binop boundary.
+- Do not use filename-specific branches, expectation rewrites, unsupported
+  downgrades, or allowlist filtering.
 
 ## Working Model
 
-Idea 399 proved the current RV64 object-route global-data representatives are
-green. The remaining `20040709-2.c` evidence stops before prepared handoff at
-bootstrap global admission. The visible shape is many packed aggregate globals,
-including `fp128`-containing globals. Step 1 should classify the exact
-producer admission rule and determine the first supportable initializer family.
+After idea 409, `20040709-2.c` no longer stops on bootstrap global admission.
+The object-route compile completes, but prepared dump stops before handoff:
+
+```text
+semantic lir_to_bir function 'fn1A' failed in scalar-binop semantic family
+```
+
+Step 1 should identify the first unsupported scalar-binop operation and the
+semantic lowering owner before any implementation starts.
 
 ## Execution Rules
 
 - Start with classification proof before implementation.
-- Keep the repair in producer/prepared global admission unless evidence proves
-  a consumer contract defect.
-- Preserve byte layout, field packing, alignment, endian representation,
-  floating width, and initializer identity.
-- Preserve precise unsupported diagnostics for unsupported or ambiguous global
-  initializer forms.
+- Keep each implementation packet tied to one concrete scalar-binop semantic
+  family.
+- Inspect LIR/HIR/BIR diagnostics before editing semantic lowering.
+- Preserve integer width, signedness, extension, truncation, mask, shift, OR,
+  and packed-field store semantics.
 - Use the supervisor-selected proof command and record exact results in
   `todo.md`.
-- Treat RV64 target inference, diagnostic-only churn, expectation rewrites, and
-  named-case green proof as route failures.
+- Treat target-emitter changes, diagnostic-only churn, expectation rewrites,
+  and named-case green proof as route failures.
 
-## Step 1: Classify Packed And FP128 Global Admission
+## Step 1: Classify The Fn1A Scalar Binop Residual
 
-Goal: identify the producer admission rule blocking `20040709-2.c` and the
-first supportable packed/`fp128` initializer family.
+Goal: identify the first unsupported semantic scalar-binop operation in
+`fn1A` and name the supportable lowering family.
 
 Actions:
 
-- Reproduce or inspect the fresh object-route compile and prepared dump for
-  `20040709-2.c`.
-- Record the rejected global declarations, initializer forms, packed aggregate
-  layout, `fp128` fields, alignment, byte-size facts, and first diagnostic.
-- Locate the producer/global admission code that rejects the current forms.
-- Decide whether the first repair packet should support packed integer
-  aggregate globals, `fp128` global payloads, mixed packed aggregate storage,
-  or a narrower producer diagnostic split.
+- Reproduce or inspect the fresh `20040709-2.c` prepared-dump failure.
+- Record the exact LIR/semantic operation sequence around `fn1A`.
+- Locate the semantic LIR-to-BIR code that classifies the failure as
+  `scalar-binop semantic family`.
+- Decide whether the first repair packet is logical right shift, mask/and,
+  zero-extension, truncation, shift-left, OR, or a composed bitfield update
+  family.
+- Route unrelated residuals to lifecycle review instead of expanding this
+  idea.
 
 Completion check:
 
-- `todo.md` records the exact producer diagnostic, the first supportable
-  initializer family, the intended producer file/function area, and the
+- `todo.md` records the exact first unsupported scalar-binop form, the intended
+  semantic lowering file/function area, the representative set, and the
   supervisor-delegated proof command.
-- Any non-409 residual is routed with precise evidence instead of patched in
-  RV64 object emission.
+- Any non-410 residual is routed with precise evidence.
 
-## Step 2: Publish The First Supported Initializer Facts
+## Step 2: Lower The First Supported Scalar Binop Family
 
-Goal: make prepared output publish explicit global storage facts for the first
-supportable packed/`fp128` global initializer family.
+Goal: implement semantic LIR-to-BIR lowering for the first classified
+bitfield-style scalar-binop family.
 
 Actions:
 
-- Update the producer/prepared global admission path to emit explicit storage
-  facts for the selected supported initializer family.
-- Preserve fail-closed behavior for unsupported or ambiguous forms.
-- Add or update focused backend/prepared coverage for supported and
-  unsupported global initializer admission.
+- Update semantic LIR-to-BIR lowering for the selected scalar-binop operation
+  or narrow composed family.
+- Preserve width, signedness, extension/truncation, and packed-field storage
+  semantics.
+- Add or update focused semantic/backend coverage for supported and rejected
+  adjacent forms.
 
 Completion check:
 
-- `20040709-2.c` advances past the selected producer admission failure, or the
-  selected supportable family is proven by focused coverage with a precise
-  residual owner for the representative.
-- Focused tests prove the facts are present and unsupported adjacent forms are
-  still precise.
+- `20040709-2.c` advances past the selected `fn1A` scalar-binop failure, or
+  focused coverage proves the family with a precise residual owner for the
+  representative.
+- Existing backend/semantic lowering tests remain green.
 
 ## Step 3: Prove Representative And Residual Ownership
 
-Goal: prove the producer repair advanced 409 without hiding target-side or
-runtime residuals.
+Goal: prove the scalar-binop repair advanced 410 without hiding later
+prepared, object-route, or runtime residuals.
 
 Actions:
 
 - Run the supervisor-selected `20040709-2.c` object-route compile plus
   prepared dump proof.
 - Run the supervisor-selected backend CTest subset.
-- If the case advances to an RV64 object-route, link, qemu, runtime mismatch,
-  or unrelated semantic boundary, classify it separately instead of absorbing
-  it into 409.
+- If the case advances to another semantic, prepared, RV64 object-route, link,
+  qemu, or runtime boundary, classify it separately.
 
 Completion check:
 
 - `todo.md` records exact proof commands, results, and residual ownership.
-- No expectation rewrites, unsupported downgrades, allowlist filtering, target
-  inference, or filename-specific fixes are used as acceptance evidence.
+- No expectation rewrites, unsupported downgrades, allowlist filtering,
+  target-emitter inference, or filename-specific fixes are used as acceptance
+  evidence.
 - The supervisor has enough evidence to continue, request route review, or ask
   the plan owner for close/deactivation handling.
