@@ -1,6 +1,6 @@
 # RV64 Object Route RHS Bitfield Boolean Select Abort
 
-Status: Open
+Status: Closed
 Type: Runtime follow-up repair idea
 Parent: `ideas/open/354_rv64_gcc_torture_prepared_module_shape_classification.md`
 Split From: `ideas/closed/402_rv64_gcc_torture_runtime_abort_and_segfault_mismatches.md`
@@ -83,3 +83,20 @@ family and should not be folded back into generic runtime triage.
   object emission if the proof shows the producer is wrong.
 - Reject expectation downgrades, qemu weakening, allowlist filtering, or
   diagnostic-only churn claimed as runtime progress.
+
+## Lifecycle Notes
+
+- 2026-06-27: Closed after implementation commit `8691bcfe` repaired the
+  runtime abort by scheduling RV64 select edge producer chains.
+- 2026-06-27: Step 3 closure proof commit `2ab26303` showed focused
+  `backend_riscv_object_emission` passed and the representative runner
+  completed with `runner_status=0`.
+- 2026-06-27: Fresh proof for both `src/20000113-1.c` and the 402 guard
+  `src/20070212-2.c` reported `dump_bir_status=0`, `prepared_status=0`,
+  `c4c_bin_objdump_status=0`, `clang_qemu_status=0`, and
+  `c4c_qemu_status=0`. The old `20000113-1.c` `SIGIOT`/abort residual is
+  absent and no fresh residual appeared.
+- 2026-06-27: Close gate passed with the backend regression guard over
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`. The
+  rolled-forward `test_before.log` and regenerated `test_after.log` both
+  reported 326/326 passing backend tests with no new failures.
