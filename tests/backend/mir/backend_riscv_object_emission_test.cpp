@@ -1,5 +1,7 @@
 #include "src/backend/mir/object/model.hpp"
 #include "src/backend/mir/riscv/codegen/object_emission.hpp"
+#include "src/backend/mir/riscv/codegen/prepared_call_emit.hpp"
+#include "src/backend/mir/riscv/codegen/prepared_emit_context.hpp"
 #include "src/backend/mir/riscv/codegen/rv64_line_assembler.hpp"
 #include "src/backend/prealloc/control_flow.hpp"
 #include "src/backend/prealloc/module.hpp"
@@ -10263,6 +10265,103 @@ int records_prepared_frame_slot_address_arg_missing_publication_need() {
   return 0;
 }
 
+void route_frame_slot_address_args_through_prepared_call_emit(
+    prepare::PreparedBirModule& prepared) {
+  auto& call_plan = prepared.call_plans.functions[0].calls[0];
+  call_plan.preserved_values.clear();
+  auto& args = call_plan.arguments;
+  args[0].source_encoding = prepare::PreparedStorageEncodingKind::Register;
+  args[0].source_register_name = std::string{"s1"};
+  args[0].source_register_bank = prepare::PreparedRegisterBank::Gpr;
+  args[1].source_encoding = prepare::PreparedStorageEncodingKind::Register;
+  args[1].source_register_name = std::string{"s2"};
+  args[1].source_register_bank = prepare::PreparedRegisterBank::Gpr;
+}
+
+std::optional<std::string> emit_prepared_frame_slot_address_arg_call_text(
+    const prepare::PreparedBirModule& prepared) {
+  const auto main_name = prepared.names.function_names.find("main");
+  const auto block_label = prepared.names.block_labels.find("entry");
+  const auto& call = std::get<bir::CallInst>(
+      prepared.module.functions[1].blocks[0].insts[0]);
+  const auto lookups =
+      prepare::make_prepared_function_lookups(prepared,
+                                              prepared.control_flow.functions[1]);
+  const rv64::PreparedCurrentInstructionContext context{
+      .names = prepared.names,
+      .lookups = &lookups,
+      .block_label = block_label,
+      .instruction_index = 0,
+  };
+  return rv64::emit_riscv_simple_call(prepared, main_name, call, 0, context);
+}
+
+int emits_prepared_frame_slot_address_arg_call_from_selected_storage_facts() {
+  auto prepared = make_prepared_frame_slot_address_arg_call_module();
+  route_frame_slot_address_args_through_prepared_call_emit(prepared);
+
+  const auto emitted = emit_prepared_frame_slot_address_arg_call_text(prepared);
+  if (!emitted.has_value()) {
+    return fail("expected prepared call emitter to lower verified frame-slot-address args");
+  }
+  if (emitted->find("    addi a0, sp, 24\n") == std::string::npos ||
+      emitted->find("    addi a1, sp, 32\n") == std::string::npos ||
+      emitted->find("    call sink\n") == std::string::npos) {
+    return fail("expected prepared call emitter to use verified selected local storage offsets");
+  }
+  return 0;
+}
+
+int expect_prepared_frame_slot_address_arg_emit_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  const auto emitted = emit_prepared_frame_slot_address_arg_call_text(prepared);
+  if (emitted.has_value()) {
+    return fail("expected prepared call emitter to fail closed on selected local storage facts");
+  }
+  return 0;
+}
+
+int rejects_prepared_frame_slot_address_arg_emit_selected_storage_fail_closed() {
+  auto prepared = make_prepared_frame_slot_address_arg_call_module();
+  route_frame_slot_address_args_through_prepared_call_emit(prepared);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->source_size_bytes = std::nullopt;
+  if (expect_prepared_frame_slot_address_arg_emit_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  route_frame_slot_address_args_through_prepared_call_emit(prepared);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->source_align_bytes = std::nullopt;
+  if (expect_prepared_frame_slot_address_arg_emit_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  route_frame_slot_address_args_through_prepared_call_emit(prepared);
+  prepared.call_plans.functions[0]
+      .calls[0]
+      .arguments[0]
+      .source_selection->source_size_bytes = 4;
+  if (expect_prepared_frame_slot_address_arg_emit_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_frame_slot_address_arg_call_module();
+  route_frame_slot_address_args_through_prepared_call_emit(prepared);
+  prepared.stack_layout.frame_slots[0].offset_bytes = 28;
+  if (expect_prepared_frame_slot_address_arg_emit_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int expect_frame_slot_address_arg_call_rejection(
     const prepare::PreparedBirModule& prepared) {
   return expect_prepared_rejection_diagnostic(
@@ -12627,6 +12726,8 @@ int main() {
   status |= builds_prepared_frame_slot_address_arg_call_object();
   status |= builds_prepared_frame_slot_address_arg_call_load_local_payload_object();
   status |= records_prepared_frame_slot_address_arg_missing_publication_need();
+  status |= emits_prepared_frame_slot_address_arg_call_from_selected_storage_facts();
+  status |= rejects_prepared_frame_slot_address_arg_emit_selected_storage_fail_closed();
   status |= rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes();
   status |= builds_prepared_inline_asm_insn_r_object();
   status |= builds_structured_prepared_inline_asm_insn_r_object_without_text_reparse();

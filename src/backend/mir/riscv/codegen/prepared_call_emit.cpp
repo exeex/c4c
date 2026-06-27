@@ -6,7 +6,10 @@
 
 #include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/calls.hpp"
+#include "../../../prealloc/prepared_contract_verifier.hpp"
+#include "../../../prealloc/stack_layout/stack_layout.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -72,6 +75,158 @@ std::optional<std::int64_t> prepared_frame_slot_address_offset_for_value(
   return selected_offset;
 }
 
+std::optional<std::int64_t> verified_prepared_selected_frame_slot_address_offset(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& plan,
+    const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection,
+    const PreparedCurrentInstructionContext& context) {
+  namespace prepare = c4c::backend::prepare;
+
+  prepare::PreparedSelectedLocalStorageContractFacts facts;
+  facts.function_name = function_name;
+  facts.alias_authority_required = true;
+
+  if (selection.kind !=
+      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
+    return std::nullopt;
+  }
+
+  facts.has_extent = selection.source_size_bytes.has_value();
+  facts.size_bytes = selection.source_size_bytes.value_or(0);
+  facts.has_alignment = selection.source_align_bytes.has_value();
+  facts.align_bytes = selection.source_align_bytes.value_or(0);
+  facts.has_byte_range = selection.source_stack_offset_bytes.has_value() &&
+                         selection.address_materialization_byte_offset.has_value();
+  facts.byte_offset = selection.source_stack_offset_bytes.value_or(0);
+
+  const auto selected_slot_id = selection.address_materialization_frame_slot_id
+                                    .value_or(selection.source_slot_id.value_or(0));
+  if (selection.source_slot_id.has_value() ||
+      selection.address_materialization_frame_slot_id.has_value()) {
+    facts.frame_slot_id = selected_slot_id;
+  }
+
+  const bool selection_slot_coherent =
+      selection.source_slot_id.has_value() &&
+      selection.address_materialization_frame_slot_id.has_value() &&
+      selection.source_slot_id == selection.address_materialization_frame_slot_id;
+  facts.has_alias_authority = selection_slot_coherent;
+  facts.conflicting_alias_authority =
+      (selection.source_slot_id.has_value() &&
+       selection.address_materialization_frame_slot_id.has_value() &&
+       selection.source_slot_id != selection.address_materialization_frame_slot_id) ||
+      (plan.source_value_id.has_value() && selection.source_value_id.has_value() &&
+       plan.source_value_id != selection.source_value_id);
+
+  if (context.lookups == nullptr ||
+      !selection.address_materialization_block_label.has_value() ||
+      !selection.address_materialization_inst_index.has_value()) {
+    const auto report = prepare::verify_prepared_selected_local_storage_contract(facts);
+    return report.fail_closed ? std::nullopt
+                              : std::optional<std::int64_t>{
+                                    static_cast<std::int64_t>(facts.byte_offset)};
+  }
+
+  if (*selection.address_materialization_block_label != context.block_label ||
+      *selection.address_materialization_inst_index != context.instruction_index) {
+    facts.conflicting_memory_provenance = true;
+  }
+
+  const auto* materializations =
+      prepare::find_indexed_prepared_address_materializations(
+          &context.lookups->address_materializations,
+          *selection.address_materialization_block_label);
+  const prepare::PreparedAddressMaterialization* selected_materialization = nullptr;
+  bool ambiguous_materialization = false;
+  if (materializations != nullptr) {
+    for (const auto* materialization : *materializations) {
+      if (materialization == nullptr ||
+          materialization->inst_index !=
+              *selection.address_materialization_inst_index ||
+          materialization->kind != prepare::PreparedAddressMaterializationKind::FrameSlot ||
+          materialization->function_name != function_name ||
+          materialization->result_value_id != plan.source_value_id ||
+          !materialization->frame_slot_id.has_value()) {
+        continue;
+      }
+      if (selection.address_materialization_frame_slot_id.has_value() &&
+          materialization->frame_slot_id !=
+              selection.address_materialization_frame_slot_id) {
+        continue;
+      }
+      if (selected_materialization != nullptr) {
+        ambiguous_materialization = true;
+        break;
+      }
+      selected_materialization = materialization;
+    }
+  }
+
+  if (ambiguous_materialization) {
+    facts.conflicting_byte_range = true;
+  }
+  if (selected_materialization != nullptr) {
+    facts.has_memory_provenance =
+        selected_materialization->address_space == c4c::backend::bir::AddressSpace::Default &&
+        !selected_materialization->is_thread_local &&
+        !selected_materialization->has_tls_address_space &&
+        selected_materialization->byte_offset >= 0;
+    if (selected_materialization->frame_slot_id.has_value()) {
+      facts.frame_slot_id = *selected_materialization->frame_slot_id;
+    }
+    if (selected_materialization->byte_offset < 0 ||
+        !selection.address_materialization_byte_offset.has_value() ||
+        selected_materialization->byte_offset !=
+            *selection.address_materialization_byte_offset ||
+        (selection.source_stack_offset_bytes.has_value() &&
+         selected_materialization->byte_offset !=
+             static_cast<std::int64_t>(*selection.source_stack_offset_bytes))) {
+      facts.conflicting_byte_range = true;
+    }
+  }
+
+  const auto* frame_slot =
+      facts.frame_slot_id.has_value()
+          ? prepare::find_frame_slot_by_id(prepared.stack_layout, *facts.frame_slot_id)
+          : nullptr;
+  const auto* frame_plan = prepare::find_prepared_frame_plan(prepared, function_name);
+  if (frame_slot == nullptr) {
+    facts.has_memory_provenance = false;
+  } else {
+    if (frame_slot->function_name != function_name) {
+      facts.conflicting_memory_provenance = true;
+    }
+    facts.conflicting_extent =
+        facts.conflicting_extent ||
+        (facts.has_extent && frame_slot->size_bytes != facts.size_bytes);
+    facts.conflicting_alignment =
+        facts.conflicting_alignment ||
+        (facts.has_alignment && frame_slot->align_bytes != facts.align_bytes);
+    facts.conflicting_byte_range =
+        facts.conflicting_byte_range ||
+        (selection.source_stack_offset_bytes.has_value() &&
+         frame_slot->offset_bytes != *selection.source_stack_offset_bytes);
+  }
+  if (frame_plan == nullptr ||
+      frame_plan->has_dynamic_stack ||
+      frame_plan->uses_frame_pointer_for_fixed_slots ||
+      !facts.frame_slot_id.has_value() ||
+      std::find(frame_plan->frame_slot_order.begin(),
+                frame_plan->frame_slot_order.end(),
+                *facts.frame_slot_id) == frame_plan->frame_slot_order.end()) {
+    facts.conflicting_memory_provenance = true;
+  }
+
+  const auto report = prepare::verify_prepared_selected_local_storage_contract(facts);
+  if (report.fail_closed || facts.byte_offset >
+                                static_cast<std::size_t>(
+                                    std::numeric_limits<std::int64_t>::max())) {
+    return std::nullopt;
+  }
+  return static_cast<std::int64_t>(facts.byte_offset);
+}
+
 bool emit_riscv_frame_slot_address_argument(
     std::string& out,
     const c4c::backend::prepare::PreparedBirModule& prepared,
@@ -84,11 +239,17 @@ bool emit_riscv_frame_slot_address_argument(
       plan.destination_register_name->empty()) {
     return false;
   }
-  const auto stack_offset = prepared_frame_slot_address_offset_for_value(
-      prepared,
-      function_name,
-      context,
-      *plan.source_value_id);
+  const auto* source_selection =
+      plan.source_selection.has_value() ? &*plan.source_selection : nullptr;
+  const auto stack_offset =
+      source_selection != nullptr
+          ? verified_prepared_selected_frame_slot_address_offset(
+                prepared, function_name, plan, *source_selection, context)
+          : prepared_frame_slot_address_offset_for_value(
+                prepared,
+                function_name,
+                context,
+                *plan.source_value_id);
   if (!stack_offset.has_value() || *stack_offset < 0 ||
       active_stack_adjustment_bytes >
           static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
@@ -522,6 +683,11 @@ std::optional<std::string> emit_riscv_simple_call(
                                                  context,
                                                  active_stack_adjustment_bytes)) {
         continue;
+      }
+      if (source_selection != nullptr &&
+          source_selection->kind ==
+              prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotAddress) {
+        return std::nullopt;
       }
       if (*plan->source_register_name != *plan->destination_register_name) {
         out += "    mv " + *plan->destination_register_name + ", " +
