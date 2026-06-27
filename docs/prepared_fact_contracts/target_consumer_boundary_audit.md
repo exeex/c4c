@@ -1,6 +1,6 @@
 # Prepared Target Consumer Boundary Audit
 
-Status: Drafted for idea 418 Step 2
+Status: Drafted for idea 418 Step 3
 Source Idea: `ideas/open/418_prepared_target_consumer_boundary_audit.md`
 
 This audit classifies RV64/RISC-V and AArch64 target prepared consumers after
@@ -54,13 +54,57 @@ instead of re-running the same target-consumer search.
 | Idea 416: prepared helper operand home contracts | `418-AUD-RV64-INLINEASM-COHERENT-001`, `418-AUD-A64-VARIADIC-COHERENT-001`, `418-AUD-A64-INLINEASM-COHERENT-001` | `TAX-FAM-VARIADIC-HELPER-OPERAND-HOMES-001`, `TAX-FAM-HELPER-OPERAND-TYPED-PLACEHOLDER-001` | No selected Step 2 defect row requires immediate cleanup for helper operands. The applicable rows are coherent reference rows that show carrier/helper facts must stay producer-owned. |
 | Idea 417: prepared storage layout and initializer contracts | `418-AUD-RV64-BYVAL-COHERENT-001`, `418-AUD-RV64-FRAME-SLOT-CALL-RECOVERY-001`, `418-AUD-RV64-GLOBAL-MEMORY-RECOVERY-001`, `418-AUD-RV64-OBJECT-GLOBAL-RECOVERY-001`, `418-AUD-A64-STACK-PRESERVE-RECOVERY-001` | `TAX-FAM-MEMORY-ACCESS-PLACEHOLDER-001`, `TAX-FAM-GLOBAL-INITIALIZER-STORAGE-PLACEHOLDER-001`, `TAX-FAM-PUBLICATION-FACTS-PLACEHOLDER-001`, storage-relevant `TAX-FAM-VALUE-HOME-TYPED-STORAGE-001` | RV64 global/object-data recovery is the clearest first cleanup or owner-decision candidate. Byval aggregate lowering is coherent reference behavior for complete transport/storage facts. |
 
-## Step 3 Candidate Decision
+## Step 3 Owner Decision
 
-The clearest low-risk Step 3 owner decision is
-`418-AUD-RV64-OBJECT-GLOBAL-RECOVERY-001` plus
-`418-AUD-RV64-GLOBAL-MEMORY-RECOVERY-001`: RV64 currently derives labels and
-initializer bytes from raw BIR globals/string constants while the taxonomy
-reserves prepared global initializer, object-data publication, and memory
-access facts. If Step 3 chooses a documentation-only owner decision, route this
-work to Idea 417 with explicit reject signals for raw initializer-byte
-reconstruction and fallback symbol spelling in target code.
+Decision: `418-AUD-RV64-OBJECT-GLOBAL-RECOVERY-001` and
+`418-AUD-RV64-GLOBAL-MEMORY-RECOVERY-001` are owned by Idea 417, with a
+secondary Idea 415 handoff only for the symbol/value-materialization portions
+of `418-AUD-RV64-GLOBAL-MEMORY-RECOVERY-001`.
+
+The target behavior disallowed by this decision is RV64 target-side recovery of
+object/global data from raw BIR or spelling fallbacks. Specifically, RV64 must
+not reconstruct initializer bytes from raw `bir::Global` initializers in
+`src/backend/mir/riscv/codegen/prepared_global_memory_emit.cpp:75`, match
+string constants by raw global names at `prepared_global_memory_emit.cpp:183`,
+fall back from link-name spelling to raw names at
+`prepared_global_memory_emit.cpp:248`, strip `@` from raw value names at
+`prepared_global_memory_emit.cpp:290`, combine prepared memory access facts with
+raw BIR load/store fields as a substitute for a complete contract at
+`prepared_global_memory_emit.cpp:505` and `:565`, fall back to raw global/text
+names in `src/backend/mir/riscv/codegen/object_emission.cpp:8409` and `:8422`,
+derive initializer bytes from BIR immediates and element lists at
+`object_emission.cpp:8463` and `:8506`, or choose `.bss`, `.data`, and
+`.rodata` publication from reconstructed bytes at `object_emission.cpp:8550`.
+
+The replacing prepared facts must be producer-owned facts in these taxonomy
+families:
+
+- `TAX-FAM-GLOBAL-INITIALIZER-STORAGE-PLACEHOLDER-001`: complete object/global
+  bytes, zero-fill, byte ranges, section eligibility, relocations, and
+  unsupported data-form markers.
+- `TAX-FAM-PUBLICATION-FACTS-PLACEHOLDER-001`: stable object labels, linkage,
+  section/publication decisions, visibility, and emitted-record identity.
+- `TAX-FAM-MEMORY-ACCESS-PLACEHOLDER-001`: load/store provenance and byte-range
+  access facts that let RV64 lower memory references without recombining BIR
+  load/store fields with partial prepared fragments.
+- `TAX-FAM-VALUE-MATERIALIZATION-PLACEHOLDER-001`: symbol/value materialization
+  facts for the global-memory helper surfaces that currently need spelling
+  fallback.
+
+Reject signals for downstream work are explicit: missing object/global bytes,
+labels, sections, relocations, zero-fill, publication identity, or memory-access
+provenance are `producer_missing`; contradictory symbol, byte-range,
+initializer, section, or publication facts are `producer_incoherent`; complete
+but unlowerable object-data forms are `target_unsupported_but_coherent`. RV64
+target code should fail closed on those classifications instead of interpreting
+raw initializer semantics or inventing fallback labels.
+
+Idea 417 should consume both audit rows as the storage-layout and initializer
+contract starting point. It should replace raw BIR/global reconstruction with
+prepared object/global data facts, then leave RV64 as a coherent target emitter
+for complete records. Idea 415 should consume only the
+`418-AUD-RV64-GLOBAL-MEMORY-RECOVERY-001` symbol/value-materialization portion:
+fallback symbol spelling and raw value-name normalization belong in prepared
+materialization facts, not in RV64 target code. Idea 415 should not take over
+object bytes, section choice, zero-fill, or initializer layout, which remain
+Idea 417 ownership.
