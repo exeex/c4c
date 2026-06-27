@@ -1,6 +1,6 @@
 # Prepared Fact Contract Normalization Analysis
 
-Status: Open
+Status: Closed
 Type: Design analysis and follow-up planning idea
 
 ## Goal
@@ -116,6 +116,28 @@ clear producer-owned fact contracts and verifier boundaries.
 - No implementation files are changed by this analysis idea.
 - No active `plan.md` / `todo.md` state is required unless this idea is later
   activated through the normal lifecycle.
+
+## Closure Notes
+
+- 2026-06-27: Closed after producing
+  `review/412_prepared_fact_contract_normalization_report.md`.
+- The report confirms the main concern: the design debt is concentrated in the
+  BIR/prealloc/prepared fact contract and target consumer interface, not in a
+  wholesale BIR IR rewrite.
+- Generated six follow-up ideas:
+  - `ideas/open/413_prepared_contract_verifier_and_owner_taxonomy.md`
+  - `ideas/open/418_prepared_target_consumer_boundary_audit.md`
+  - `ideas/open/414_typed_prepared_call_argument_contracts.md`
+  - `ideas/open/415_prepared_value_materialization_contracts.md`
+  - `ideas/open/416_prepared_helper_operand_home_contracts.md`
+  - `ideas/open/417_prepared_storage_layout_and_initializer_contracts.md`
+- The intended migration order is `413 -> 418 -> 414/415/416/417`, with 418
+  feeding target-consumer findings into the typed contract slices.
+- The generated ideas explicitly preserve the user guardrail: RV64 gcc_torture
+  is evidence and may temporarily regress during contract normalization, but
+  default `ctest --test-dir build -j --output-on-failure` / normal CTest must
+  not regress.
+- No implementation files were changed by this analysis.
 
 ## Reviewer Reject Signals
 
