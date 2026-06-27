@@ -593,6 +593,17 @@ std::string_view strip_typed_initializer_prefix(std::string_view init_text,
 
 namespace {
 
+std::optional<std::string_view> aggregate_struct_initializer_body(std::string_view text) {
+  if (text.size() >= 2 && text.front() == '{' && text.back() == '}') {
+    return text.substr(1, text.size() - 2);
+  }
+  if (text.size() >= 4 && text.substr(0, 2) == "<{" &&
+      text.substr(text.size() - 2) == "}>") {
+    return text.substr(2, text.size() - 4);
+  }
+  return std::nullopt;
+}
+
 std::optional<std::string_view> structured_type_name_for_ref(
     const c4c::codegen::lir::LirTypeRef& type_ref,
     const BackendStructuredLayoutTable& structured_layouts) {
@@ -774,11 +785,11 @@ bool lower_aggregate_initializer_recursive(
     return true;
   }
 
-  if (trimmed_init.front() != '{' || trimmed_init.back() != '}') {
+  const auto body = aggregate_struct_initializer_body(trimmed_init);
+  if (!body.has_value()) {
     return false;
   }
-  const auto body = trimmed_init.substr(1, trimmed_init.size() - 2);
-  const auto items = split_top_level_initializer_items(body);
+  const auto items = split_top_level_initializer_items(*body);
   if (items.size() > layout.fields.size()) {
     return false;
   }

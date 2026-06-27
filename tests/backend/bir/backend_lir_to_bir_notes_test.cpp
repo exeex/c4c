@@ -213,6 +213,7 @@ LirModule make_admitted_aggregate_pointer_field_global_module();
 LirModule make_admitted_aggregate_zero_sized_member_global_module();
 LirModule make_admitted_aggregate_string_array_field_global_module();
 LirModule make_admitted_aggregate_long_double_field_global_module();
+LirModule make_admitted_packed_integer_aggregate_global_module();
 LirModule make_structured_block_label_id_module();
 LirModule make_dynamic_indexed_gep_global_member_array_module();
 
@@ -3292,6 +3293,37 @@ int expect_admitted_aggregate_long_double_field_global() {
         c4c::backend::bir::Value::immediate_i8(expected_fp128_bytes[index])) {
       return fail("aggregate globals with fp128 fields should preserve LLVM low-word/high-word text as little-endian bytes");
     }
+  }
+
+  return 0;
+}
+
+int expect_admitted_packed_integer_aggregate_global() {
+  auto result =
+      try_lower_to_bir_with_options(make_admitted_packed_integer_aggregate_global_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected semantic BIR lowering to admit packed integer aggregate globals");
+  }
+
+  const auto find_global = [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : result.module->globals) {
+      if (global.name == name) {
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* global = find_global("gpacked_ints");
+  if (global == nullptr || global->type != TypeKind::I8 || global->size_bytes != 8 ||
+      global->align_bytes != 1 || global->initializer_elements.size() != 3) {
+    return fail("packed integer aggregate globals should lower into byte-addressable packed storage");
+  }
+  if (global->initializer_elements[0] != c4c::backend::bir::Value::immediate_i16(17) ||
+      global->initializer_elements[1] != c4c::backend::bir::Value::immediate_i32(287454020) ||
+      global->initializer_elements[2] != c4c::backend::bir::Value::immediate_i16(33)) {
+    return fail("packed integer aggregate globals should preserve the explicit initializer lanes");
   }
 
   return 0;
@@ -7634,6 +7666,48 @@ LirModule make_admitted_aggregate_long_double_field_global_module() {
   return module;
 }
 
+LirModule make_admitted_packed_integer_aggregate_global_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.PackedInts = type <{ i16, i32, i16 }>");
+
+  const c4c::StructNameId packed_id = module.struct_names.intern("%struct.PackedInts");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = packed_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i16")},
+                 lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i16")}},
+      .is_packed = true,
+  });
+
+  LirGlobal global;
+  global.name = "gpacked_ints";
+  global.qualifier = "global ";
+  global.llvm_type = "%struct.PackedInts";
+  global.llvm_type_ref = lir::LirTypeRef::struct_type("%struct.PackedInts", packed_id);
+  global.init_text = "%struct.PackedInts <{ i16 17, i32 287454020, i16 33 }>";
+  global.align_bytes = 1;
+  module.globals.push_back(std::move(global));
+
+  LirFunction function;
+  function.name = "admitted_packed_integer_aggregate_global";
+  function.signature_text = "define i32 @admitted_packed_integer_aggregate_global()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "0",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_local_memory_umbrella_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -9301,6 +9375,12 @@ int main() {
           expect_admitted_aggregate_long_double_field_global();
       aggregate_long_double_field_global_status != 0) {
     return aggregate_long_double_field_global_status;
+  }
+
+  if (const int packed_integer_aggregate_global_status =
+          expect_admitted_packed_integer_aggregate_global();
+      packed_integer_aggregate_global_status != 0) {
+    return packed_integer_aggregate_global_status;
   }
 
   if (const int local_memory_umbrella_status = expect_failure_notes(
