@@ -83,6 +83,41 @@ struct PreparedValueHome {
   std::optional<std::int64_t> pointer_byte_delta;
 };
 
+struct PreparedRematerializableIntegerImmediateFact {
+  PreparedValueId value_id = 0;
+  FunctionNameId function_name = kInvalidFunctionName;
+  ValueNameId value_name = kInvalidValueName;
+  std::int64_t signed_value = 0;
+  unsigned width_bits = 32;
+  bool signed_interpretation = true;
+  bool fits_signed_12_bit_immediate = false;
+};
+
+[[nodiscard]] constexpr bool prepared_signed_12_bit_immediate_range_contains(
+    std::int64_t value) {
+  return value >= -2048 && value <= 2047;
+}
+
+[[nodiscard]] inline std::optional<PreparedRematerializableIntegerImmediateFact>
+as_rematerializable_integer_immediate_fact(const PreparedValueHome& home) {
+  if (home.kind != PreparedValueHomeKind::RematerializableImmediate ||
+      !home.immediate_i32.has_value() || home.immediate_f128.has_value() ||
+      home.value_id == 0 || home.function_name == kInvalidFunctionName ||
+      home.value_name == kInvalidValueName) {
+    return std::nullopt;
+  }
+  return PreparedRematerializableIntegerImmediateFact{
+      .value_id = home.value_id,
+      .function_name = home.function_name,
+      .value_name = home.value_name,
+      .signed_value = *home.immediate_i32,
+      .width_bits = 32,
+      .signed_interpretation = true,
+      .fits_signed_12_bit_immediate =
+          prepared_signed_12_bit_immediate_range_contains(*home.immediate_i32),
+  };
+}
+
 // Value homes and move bundles publish backend-prepared lookup state. Block
 // indexes, instruction indexes, and physical register spellings describe the
 // prepared route only; semantic identity stays in PreparedValueId plus interned

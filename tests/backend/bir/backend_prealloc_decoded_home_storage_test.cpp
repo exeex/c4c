@@ -383,6 +383,69 @@ int verify_value_home_and_combined_decoding() {
   return 0;
 }
 
+int verify_rematerializable_integer_immediate_fact_query() {
+  const auto function_name = static_cast<c4c::FunctionNameId>(31);
+  const auto value_name = static_cast<c4c::ValueNameId>(41);
+  const prepare::PreparedValueHome small_immediate{
+      .value_id = 7,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+      .immediate_i32 = 1024,
+  };
+  const auto small_fact =
+      prepare::as_rematerializable_integer_immediate_fact(small_immediate);
+  if (!expect(small_fact.has_value(),
+              "coherent rematerializable i32 immediate should expose a typed fact") ||
+      !expect(small_fact->value_id == 7 && small_fact->function_name == function_name &&
+                  small_fact->value_name == value_name,
+              "rematerializable immediate fact should preserve source identity") ||
+      !expect(small_fact->signed_value == 1024 && small_fact->width_bits == 32 &&
+                  small_fact->signed_interpretation,
+              "rematerializable immediate fact should expose signed i32 payload") ||
+      !expect(small_fact->fits_signed_12_bit_immediate,
+              "small rematerializable immediate should be target-range admitted")) {
+    return 1;
+  }
+
+  prepare::PreparedValueHome large_immediate = small_immediate;
+  large_immediate.immediate_i32 = 4096;
+  const auto large_fact =
+      prepare::as_rematerializable_integer_immediate_fact(large_immediate);
+  if (!expect(large_fact.has_value(),
+              "large coherent rematerializable immediate should still expose a fact") ||
+      !expect(!large_fact->fits_signed_12_bit_immediate,
+              "large rematerializable immediate should not be signed-12 admitted")) {
+    return 1;
+  }
+
+  prepare::PreparedValueHome missing_payload = small_immediate;
+  missing_payload.immediate_i32.reset();
+  prepare::PreparedValueHome missing_identity = small_immediate;
+  missing_identity.value_name = c4c::kInvalidValueName;
+  prepare::PreparedValueHome cross_family_payload = small_immediate;
+  cross_family_payload.immediate_f128 =
+      c4c::backend::bir::Value::F128Payload{.low_bits = 1, .high_bits = 2};
+  prepare::PreparedValueHome wrong_kind = small_immediate;
+  wrong_kind.kind = prepare::PreparedValueHomeKind::StackSlot;
+  if (!expect(!prepare::as_rematerializable_integer_immediate_fact(missing_payload)
+                   .has_value(),
+              "missing i32 payload should reject typed immediate fact") ||
+      !expect(!prepare::as_rematerializable_integer_immediate_fact(missing_identity)
+                   .has_value(),
+              "missing value identity should reject typed immediate fact") ||
+      !expect(!prepare::as_rematerializable_integer_immediate_fact(cross_family_payload)
+                   .has_value(),
+              "cross-family immediate payloads should reject typed integer fact") ||
+      !expect(!prepare::as_rematerializable_integer_immediate_fact(wrong_kind)
+                   .has_value(),
+              "non-rematerializable homes should reject typed immediate fact")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int verify_diagnostic_builders() {
   const auto missing = prepare::build_prepared_decoded_home_storage_diagnostic(
       prepare::PreparedDecodedHomeStorage{
@@ -591,6 +654,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (verify_value_home_and_combined_decoding() != 0) {
+    return EXIT_FAILURE;
+  }
+  if (verify_rematerializable_integer_immediate_fact_query() != 0) {
     return EXIT_FAILURE;
   }
   if (verify_diagnostic_builders() != 0) {
