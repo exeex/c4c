@@ -295,6 +295,161 @@ int verify_call_argument_binary_producer_materialization_fact_query() {
   return 0;
 }
 
+int verify_call_argument_binary_producer_materialization_contract_reports() {
+  prepare::PreparedNameTables names;
+  const auto block_label = names.block_labels.intern("verify.entry");
+  const auto sum_name = names.value_names.intern("%sum");
+
+  bir::Block block;
+  block.label = "verify.entry";
+  block.label_id = block_label;
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+      .rhs = bir::Value::immediate_i32(9),
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "%stale"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Shl,
+      .result = bir::Value::named(bir::TypeKind::I32, "%shifted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+
+  const auto* sum = std::get_if<bir::BinaryInst>(&block.insts[0]);
+  const auto* shifted = std::get_if<bir::BinaryInst>(&block.insts[2]);
+  prepare::PreparedCallArgumentBinaryProducerMaterializationFact fact{
+      .destination_value_name = sum_name,
+      .destination_value_type = bir::TypeKind::I32,
+      .producer_block_label = block_label,
+      .producer_instruction_index = 0,
+      .producer_kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .producer_instruction = &block.insts[0],
+      .binary = sum,
+      .binary_opcode = bir::BinaryOpcode::Add,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+      .rhs = bir::Value::immediate_i32(9),
+      .same_block_before_call = true,
+      .materializable = true,
+  };
+
+  const auto coherent =
+      prepare::
+          verify_prepared_call_argument_binary_producer_materialization_contract(
+              &fact);
+  const auto missing =
+      prepare::
+          verify_prepared_call_argument_binary_producer_materialization_contract(
+              nullptr);
+
+  auto cross_family = fact;
+  cross_family.producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal;
+  const auto cross_family_report =
+      prepare::
+          verify_prepared_call_argument_binary_producer_materialization_contract(
+              &cross_family);
+
+  auto stale = fact;
+  stale.producer_instruction = &block.insts[1];
+  const auto stale_report =
+      prepare::
+          verify_prepared_call_argument_binary_producer_materialization_contract(
+              &stale);
+
+  auto unsupported = fact;
+  unsupported.producer_instruction = &block.insts[2];
+  unsupported.binary = shifted;
+  unsupported.binary_opcode = bir::BinaryOpcode::Shl;
+  unsupported.lhs = shifted->lhs;
+  unsupported.rhs = shifted->rhs;
+  const auto unsupported_report =
+      prepare::
+          verify_prepared_call_argument_binary_producer_materialization_contract(
+              &unsupported);
+
+  auto contradictory_opcode = fact;
+  contradictory_opcode.binary_opcode = bir::BinaryOpcode::Sub;
+  const auto contradictory_opcode_report =
+      prepare::
+          verify_prepared_call_argument_binary_producer_materialization_contract(
+              &contradictory_opcode);
+
+  auto contradictory_operands = fact;
+  contradictory_operands.rhs = bir::Value::immediate_i32(8);
+  const auto contradictory_operands_report =
+      prepare::
+          verify_prepared_call_argument_binary_producer_materialization_contract(
+              &contradictory_operands);
+
+  auto missing_authority = fact;
+  missing_authority.same_block_before_call = false;
+  const auto missing_authority_report =
+      prepare::
+          verify_prepared_call_argument_binary_producer_materialization_contract(
+              &missing_authority);
+
+  if (!expect(coherent.owner_class == prepare::PreparedContractOwnerClass::Coherent,
+              "complete call-argument binary producer fact should be coherent") ||
+      !expect(!coherent.fail_closed,
+              "coherent call-argument binary producer fact should not fail closed") ||
+      !expect(coherent.fact_family ==
+                  prepare::PreparedContractFactFamily::ValueMaterializationFact,
+              "call-argument binary producer fact should identify materialization family") ||
+      !expect(coherent.value_name == sum_name,
+              "coherent call-argument binary producer fact should preserve value identity") ||
+      !expect(missing.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing call-argument binary producer fact should classify as producer missing") ||
+      !expect(missing.fail_closed,
+              "missing call-argument binary producer fact should fail closed") ||
+      !expect(cross_family_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "cross-family call-argument producer fact should classify as producer incoherent") ||
+      !expect(stale_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "stale call-argument binary producer fact should classify as producer incoherent") ||
+      !expect(unsupported_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "unsupported call-argument binary opcode should classify as producer incoherent") ||
+      !expect(contradictory_opcode_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "contradictory call-argument binary opcode payload should classify as producer incoherent") ||
+      !expect(contradictory_operands_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "contradictory call-argument binary operands should classify as producer incoherent") ||
+      !expect(missing_authority_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing scheduling authority should classify as producer missing") ||
+      !expect(prepare::
+                  classify_prepared_call_argument_binary_producer_materialization_contract(
+                      &unsupported) ==
+                  prepare::
+                      PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+                          UnsupportedBinaryOpcode,
+              "unsupported binary opcode should have precise materialization status") ||
+      !expect(prepare::
+                  prepared_call_argument_binary_producer_materialization_contract_status_name(
+                      prepare::
+                          PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+                              ConflictingStaleInstruction) ==
+                  std::string_view{"conflicting_stale_instruction"},
+              "call-argument binary producer materialization status spelling mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int verify_rematerializable_integer_immediate_contract_reports() {
   auto coherent_home = coherent_rematerializable_integer_immediate_home();
   const auto coherent =
@@ -843,6 +998,11 @@ int verify_local_frame_address_materialization_source_route_contract_reports() {
 
 int main() {
   if (const int rc = verify_call_argument_binary_producer_materialization_fact_query();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc =
+          verify_call_argument_binary_producer_materialization_contract_reports();
       rc != 0) {
     return rc;
   }

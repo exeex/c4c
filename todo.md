@@ -3,43 +3,39 @@
 Status: Active
 Source Idea Path: ideas/open/415_prepared_value_materialization_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Typed Producer-Chain Materialization Fact
+Current Step ID: 3
+Current Step Title: Add Producer-Side Verification
 
 ## Just Finished
 
-Completed Step 2 by adding
-`PreparedCallArgumentBinaryProducerMaterializationFact` and
-`find_prepared_call_argument_binary_producer_materialization_fact` for the
-selected AArch64 scalar call-argument same-block binary producer family.
+Completed Step 3 by adding producer-side verifier classification and reports
+for `PreparedCallArgumentBinaryProducerMaterializationFact`.
 
-The typed query exposes coherent prepared facts only: destination value name and
-type, producer block/instruction identity, producer kind `Binary`, binary
-opcode, operands, and same-block-before-call scheduling authority. The existing
-compatibility query for call-argument producer materialization now routes binary
-admission through the typed fact while preserving the existing load-local path.
+Missing binary producer materialization facts now report
+`producer_missing`; cross-family producer kind, stale instruction linkage,
+contradictory destination/opcode/operand payloads, unsupported opcode/type, and
+other malformed non-null facts report `producer_incoherent`. Coherent reports
+use `value_materialization_fact`, preserve destination value identity, and omit
+diagnostic detail under the existing prepared contract verifier style.
 
-Focused coverage was added for coherent facts plus rejected missing lookup,
-cross-family load payload, unsupported opcode, mismatched destination type,
-future producer, and stale producer payload cases. Existing AArch64 dispatch
-coverage continues to cover Route 6 ambiguity/rejection and prepared fallback
-behavior without broadening target recovery.
+Focused verifier coverage was added for coherent, missing, cross-family, stale,
+unsupported, contradictory opcode, contradictory operand, and missing scheduling
+authority cases. The value materialization contract notes now document the Step
+3 binary-producer status taxonomy.
 
 ## Suggested Next
 
-Begin Step 3 by adding producer-side verifier status/report coverage for the
-typed binary call-argument producer materialization fact, mapping missing facts
-to `producer_missing` and contradictory/cross-family facts to
-`producer_incoherent`.
+Begin Step 4 by migrating the final AArch64 scalar call-argument binary
+producer materialization consumer to the typed fact plus producer-side verifier
+contract, without adding target-local expression recovery.
 
 ## Watchouts
 
 - Do not add target-local evaluators for arbitrary BIR expressions.
 - Do not weaken runtime comparison, gcc_torture, or supported-path tests.
-- `PreparedCallArgumentBinaryProducerMaterializationFact` is currently a typed
+- `PreparedCallArgumentBinaryProducerMaterializationFact` remains a typed
   compatibility view over existing prepared same-block source-producer records;
-  Step 3 should add verifier classification before Step 4 migrates the final
-  AArch64 consumer contract.
+  Step 4 should consume the verifier rather than reopen producer lookup shape.
 - Route 6-only duplicate/ambiguous facts remain target-side evidence and should
   not be treated as prepared fact coherence without prepared fallback.
 

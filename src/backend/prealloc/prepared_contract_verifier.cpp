@@ -1,6 +1,9 @@
 #include "prepared_contract_verifier.hpp"
 
+#include "publication_plans.hpp"
+
 #include <sstream>
+#include <variant>
 
 namespace c4c::backend::prepare {
 namespace {
@@ -229,6 +232,45 @@ owner_for_local_frame_address_materialization_source_route_status(
         ConflictingMaterializationByteOffset:
     case PreparedLocalFrameAddressMaterializationSourceRouteContractStatus::
         ConflictingCrossRoutePayload:
+      return PreparedContractOwnerClass::ProducerIncoherent;
+  }
+  return PreparedContractOwnerClass::ProducerIncoherent;
+}
+
+[[nodiscard]] PreparedContractOwnerClass
+owner_for_call_argument_binary_producer_materialization_status(
+    PreparedCallArgumentBinaryProducerMaterializationContractStatus status) {
+  switch (status) {
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        Coherent:
+      return PreparedContractOwnerClass::Coherent;
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingFact:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingDestinationValueName:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingProducerBlock:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingProducerInstruction:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingBinaryPayload:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingSchedulingAuthority:
+      return PreparedContractOwnerClass::ProducerMissing;
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        ConflictingProducerKind:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        ConflictingStaleInstruction:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        ConflictingDestinationPayload:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        ConflictingOpcodePayload:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        ConflictingOperandPayload:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        UnsupportedBinaryOpcode:
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        UnsupportedDestinationType:
       return PreparedContractOwnerClass::ProducerIncoherent;
   }
   return PreparedContractOwnerClass::ProducerIncoherent;
@@ -603,6 +645,31 @@ local_frame_address_materialization_selection_has_cross_route_payload(
     out << " address_materialization_byte_offset="
         << *selection->address_materialization_byte_offset;
   }
+  return out.str();
+}
+
+[[nodiscard]] std::string
+call_argument_binary_producer_materialization_detail(
+    const PreparedCallArgumentBinaryProducerMaterializationFact* fact,
+    PreparedCallArgumentBinaryProducerMaterializationContractStatus status) {
+  std::ostringstream out;
+  out << "prepared call-argument binary producer materialization contract status="
+      << prepared_call_argument_binary_producer_materialization_contract_status_name(
+             status);
+  if (fact == nullptr) {
+    return out.str();
+  }
+  out << " destination_value_name=" << fact->destination_value_name;
+  out << " destination_value_type="
+      << static_cast<unsigned>(fact->destination_value_type);
+  out << " producer_block_label=" << fact->producer_block_label;
+  out << " producer_instruction_index=" << fact->producer_instruction_index;
+  out << " producer_kind="
+      << prepared_edge_publication_source_producer_kind_name(fact->producer_kind);
+  out << " materializable=" << (fact->materializable ? "true" : "false");
+  out << " same_block_before_call="
+      << (fact->same_block_before_call ? "true" : "false");
+  out << " binary_opcode=" << static_cast<unsigned>(fact->binary_opcode);
   return out.str();
 }
 
@@ -1190,6 +1257,79 @@ verify_prepared_local_frame_address_materialization_source_route_contract(
                     ? std::string{}
                     : local_frame_address_materialization_source_route_detail(
                           selection, status),
+  };
+}
+
+PreparedCallArgumentBinaryProducerMaterializationContractStatus
+classify_prepared_call_argument_binary_producer_materialization_contract(
+    const PreparedCallArgumentBinaryProducerMaterializationFact* fact) {
+  using Status = PreparedCallArgumentBinaryProducerMaterializationContractStatus;
+
+  if (fact == nullptr) {
+    return Status::MissingFact;
+  }
+  if (fact->destination_value_name == kInvalidValueName) {
+    return Status::MissingDestinationValueName;
+  }
+  if (fact->destination_value_type == bir::TypeKind::Void ||
+      bir::is_vrm_register_type(fact->destination_value_type)) {
+    return Status::UnsupportedDestinationType;
+  }
+  if (fact->producer_block_label == kInvalidBlockLabel) {
+    return Status::MissingProducerBlock;
+  }
+  if (fact->producer_kind != PreparedEdgePublicationSourceProducerKind::Binary) {
+    return Status::ConflictingProducerKind;
+  }
+  if (fact->producer_instruction == nullptr) {
+    return Status::MissingProducerInstruction;
+  }
+  if (fact->binary == nullptr) {
+    return Status::MissingBinaryPayload;
+  }
+  const auto* instruction_binary =
+      std::get_if<bir::BinaryInst>(fact->producer_instruction);
+  if (instruction_binary == nullptr || instruction_binary != fact->binary) {
+    return Status::ConflictingStaleInstruction;
+  }
+  if (instruction_binary->result.kind != bir::Value::Kind::Named ||
+      instruction_binary->result.type != fact->destination_value_type) {
+    return Status::ConflictingDestinationPayload;
+  }
+  if (instruction_binary->opcode != fact->binary_opcode) {
+    return Status::ConflictingOpcodePayload;
+  }
+  if (instruction_binary->lhs != fact->lhs || instruction_binary->rhs != fact->rhs) {
+    return Status::ConflictingOperandPayload;
+  }
+  if (!prepared_call_argument_binary_producer_opcode_is_materializable(
+          fact->binary_opcode)) {
+    return Status::UnsupportedBinaryOpcode;
+  }
+  if (!fact->same_block_before_call || !fact->materializable) {
+    return Status::MissingSchedulingAuthority;
+  }
+  return Status::Coherent;
+}
+
+PreparedContractVerificationReport
+verify_prepared_call_argument_binary_producer_materialization_contract(
+    const PreparedCallArgumentBinaryProducerMaterializationFact* fact) {
+  const auto status =
+      classify_prepared_call_argument_binary_producer_materialization_contract(
+          fact);
+  const auto owner =
+      owner_for_call_argument_binary_producer_materialization_status(status);
+  return PreparedContractVerificationReport{
+      .fact_family = PreparedContractFactFamily::ValueMaterializationFact,
+      .owner_class = owner,
+      .value_name = fact != nullptr ? fact->destination_value_name
+                                    : kInvalidValueName,
+      .fail_closed = owner != PreparedContractOwnerClass::Coherent,
+      .detail = owner == PreparedContractOwnerClass::Coherent
+                    ? std::string{}
+                    : call_argument_binary_producer_materialization_detail(
+                          fact, status),
   };
 }
 

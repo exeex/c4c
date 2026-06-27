@@ -457,6 +457,72 @@ prepared_local_frame_address_materialization_source_route_contract_status_name(
   return "unknown";
 }
 
+enum class PreparedCallArgumentBinaryProducerMaterializationContractStatus {
+  Coherent,
+  MissingFact,
+  MissingDestinationValueName,
+  MissingProducerBlock,
+  MissingProducerInstruction,
+  MissingBinaryPayload,
+  MissingSchedulingAuthority,
+  ConflictingProducerKind,
+  ConflictingStaleInstruction,
+  ConflictingDestinationPayload,
+  ConflictingOpcodePayload,
+  ConflictingOperandPayload,
+  UnsupportedBinaryOpcode,
+  UnsupportedDestinationType,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_call_argument_binary_producer_materialization_contract_status_name(
+    PreparedCallArgumentBinaryProducerMaterializationContractStatus status) {
+  switch (status) {
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::Coherent:
+      return "coherent";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingFact:
+      return "missing_fact";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingDestinationValueName:
+      return "missing_destination_value_name";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingProducerBlock:
+      return "missing_producer_block";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingProducerInstruction:
+      return "missing_producer_instruction";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingBinaryPayload:
+      return "missing_binary_payload";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        MissingSchedulingAuthority:
+      return "missing_scheduling_authority";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        ConflictingProducerKind:
+      return "conflicting_producer_kind";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        ConflictingStaleInstruction:
+      return "conflicting_stale_instruction";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        ConflictingDestinationPayload:
+      return "conflicting_destination_payload";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        ConflictingOpcodePayload:
+      return "conflicting_opcode_payload";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        ConflictingOperandPayload:
+      return "conflicting_operand_payload";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        UnsupportedBinaryOpcode:
+      return "unsupported_binary_opcode";
+    case PreparedCallArgumentBinaryProducerMaterializationContractStatus::
+        UnsupportedDestinationType:
+      return "unsupported_destination_type";
+  }
+  return "unknown";
+}
+
 struct PreparedSelectedLocalStorageContractFacts {
   FunctionNameId function_name = kInvalidFunctionName;
   std::optional<PreparedObjectId> object_id;
@@ -592,5 +658,13 @@ classify_prepared_local_frame_address_materialization_source_route_contract(
 [[nodiscard]] PreparedContractVerificationReport
 verify_prepared_local_frame_address_materialization_source_route_contract(
     const PreparedCallArgumentSourceSelection* selection);
+
+[[nodiscard]] PreparedCallArgumentBinaryProducerMaterializationContractStatus
+classify_prepared_call_argument_binary_producer_materialization_contract(
+    const PreparedCallArgumentBinaryProducerMaterializationFact* fact);
+
+[[nodiscard]] PreparedContractVerificationReport
+verify_prepared_call_argument_binary_producer_materialization_contract(
+    const PreparedCallArgumentBinaryProducerMaterializationFact* fact);
 
 }  // namespace c4c::backend::prepare

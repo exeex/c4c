@@ -38,6 +38,37 @@ recovery, broaden Route 6 target recovery, or migrate the final AArch64
 consumer contract; producer-side verifier reports and complete consumer
 migration remain later runbook steps.
 
+## Binary Producer Verification
+
+Step 3 adds
+`PreparedCallArgumentBinaryProducerMaterializationContractStatus` plus
+`verify_prepared_call_argument_binary_producer_materialization_contract`.
+
+Producer-missing statuses:
+
+- `missing_fact`
+- `missing_destination_value_name`
+- `missing_producer_block`
+- `missing_producer_instruction`
+- `missing_binary_payload`
+- `missing_scheduling_authority`
+
+Producer-incoherent statuses:
+
+- `conflicting_producer_kind`
+- `conflicting_stale_instruction`
+- `conflicting_destination_payload`
+- `conflicting_opcode_payload`
+- `conflicting_operand_payload`
+- `unsupported_binary_opcode`
+- `unsupported_destination_type`
+
+Reports use the `value_materialization_fact` fact family and fail closed for
+every non-coherent status. Coherent reports preserve the destination value name
+identity without emitting diagnostic detail. Contradictory, cross-family,
+stale, and unsupported payloads are producer-incoherent even when a non-null
+fact object is present; an absent fact remains producer-missing.
+
 ## Previous Pointer Slice
 
 The pointer slice adds `PreparedValueHomeKind::PointerBasePlusOffset` facts.
