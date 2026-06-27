@@ -4482,10 +4482,122 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_symbol_address_materia
                                            selected->byte_offset);
 }
 
+std::optional<std::int32_t> prepared_frame_slot_address_materialization_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes) {
+  if (lookups == nullptr || value.type != bir::TypeKind::Ptr ||
+      value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto* materializations =
+      prepare::find_indexed_prepared_address_materializations(
+          &lookups->address_materializations,
+          block_label);
+  if (materializations == nullptr) {
+    return std::nullopt;
+  }
+
+  const prepare::PreparedAddressMaterialization* selected = nullptr;
+  for (const auto* materialization : *materializations) {
+    if (materialization == nullptr ||
+        materialization->inst_index != instruction_index ||
+        materialization->kind !=
+            prepare::PreparedAddressMaterializationKind::FrameSlot ||
+        materialization->result_value_name != value_name ||
+        !materialization->frame_slot_id.has_value() ||
+        materialization->byte_offset < 0 ||
+        materialization->address_space != bir::AddressSpace::Default ||
+        materialization->is_thread_local ||
+        materialization->has_tls_address_space ||
+        materialization->tls_model !=
+            prepare::PreparedTlsMaterializationModel::None ||
+        materialization->tls_thread_pointer_register !=
+            prepare::PreparedTlsThreadPointerRegister::None ||
+        materialization->tls_high_relocation !=
+            prepare::PreparedTlsRelocationKind::None ||
+        materialization->tls_low_relocation !=
+            prepare::PreparedTlsRelocationKind::None) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return std::nullopt;
+    }
+    selected = materialization;
+  }
+  if (selected == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *selected->frame_slot_id;
+                   });
+  if (slot_it == stack_layout.frame_slots.end() ||
+      selected->byte_offset < static_cast<std::int64_t>(slot_it->offset_bytes)) {
+    return std::nullopt;
+  }
+  const auto offset = static_cast<std::size_t>(selected->byte_offset);
+  if (offset > slot_it->offset_bytes + slot_it->size_bytes ||
+      offset > stack_frame_bytes ||
+      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(offset))) {
+    return std::nullopt;
+  }
+  return static_cast<std::int32_t>(offset);
+}
+
+bool append_rv64_materialize_or_move_store_value(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::Value& value,
+    std::size_t stack_frame_bytes) {
+  const auto frame_slot_address_offset =
+      prepared_frame_slot_address_materialization_offset(stack_layout,
+                                                         names,
+                                                         lookups,
+                                                         block_label,
+                                                         instruction_index,
+                                                         value,
+                                                         stack_frame_bytes);
+  if (frame_slot_address_offset.has_value()) {
+    append_le32(fragment.bytes,
+                encode_i_type(0x13,
+                              destination,
+                              0,
+                              2,
+                              *frame_slot_address_offset));  // addi rd, sp, off
+    return true;
+  }
+  return append_rv64_move_value_to_register(fragment,
+                                           destination,
+                                           stack_layout,
+                                           names,
+                                           lookups,
+                                           value,
+                                           stack_frame_bytes);
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
     const c4c::backend::bir::StoreLocalInst& store,
     const c4c::backend::prepare::PreparedMemoryAccess* access,
     std::size_t stack_frame_bytes) {
@@ -4553,13 +4665,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
                                                         *size_bytes);
     if (byval_offset.has_value()) {
       RiscvEncodedFragment fragment;
-      if (!append_rv64_move_value_to_register(fragment,
-                                              6,
-                                              stack_layout,
-                                              names,
-                                              lookups,
-                                              store.value,
-                                              stack_frame_bytes) ||
+      if (!append_rv64_materialize_or_move_store_value(fragment,
+                                                       6,
+                                                       stack_layout,
+                                                       names,
+                                                       lookups,
+                                                       block_label,
+                                                       instruction_index,
+                                                       store.value,
+                                                       stack_frame_bytes) ||
           !append_rv64_store_register_to_stack(fragment,
                                                6,
                                                *byval_offset,
@@ -4604,13 +4718,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     const std::uint32_t value_register =
         rv64_temporary_gpr_avoiding(pointer_base->first);
     RiscvEncodedFragment fragment;
-    if (!append_rv64_move_value_to_register(fragment,
-                                            value_register,
-                                            stack_layout,
-                                            names,
-                                            lookups,
-                                            store.value,
-                                            stack_frame_bytes) ||
+    if (!append_rv64_materialize_or_move_store_value(fragment,
+                                                     value_register,
+                                                     stack_layout,
+                                                     names,
+                                                     lookups,
+                                                     block_label,
+                                                     instruction_index,
+                                                     store.value,
+                                                     stack_frame_bytes) ||
         !append_rv64_store_register_to_base(fragment,
                                            value_register,
                                            pointer_base->first,
@@ -4621,13 +4737,15 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_local(
     return fragment;
   }
   RiscvEncodedFragment fragment;
-  if (!append_rv64_move_value_to_register(fragment,
-                                          6,
-                                          stack_layout,
-                                          names,
-                                          lookups,
-                                          store.value,
-                                          stack_frame_bytes)) {
+  if (!append_rv64_materialize_or_move_store_value(fragment,
+                                                   6,
+                                                   stack_layout,
+                                                   names,
+                                                   lookups,
+                                                   block_label,
+                                                   instruction_index,
+                                                   store.value,
+                                                   stack_frame_bytes)) {
     return std::nullopt;
   }
   if (!append_rv64_store_register_to_stack(fragment, 6, *offset, *size_bytes)) {
@@ -6841,6 +6959,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
           prepared.stack_layout,
           prepared.names,
           &lookups,
+          prepared_block_label,
+          instruction_index,
           *store,
           prepared_memory_access_for_instruction(
               &lookups,
