@@ -71,6 +71,19 @@ prepare::PreparedCallArgumentSourceSelection coherent_frame_slot_address_route()
   };
 }
 
+prepare::PreparedCallArgumentSourceSelection coherent_frame_slot_value_route() {
+  return prepare::PreparedCallArgumentSourceSelection{
+      .kind = prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue,
+      .source_value_id = prepare::PreparedValueId{37},
+      .source_value_name = c4c::ValueNameId{41},
+      .source_home_kind = prepare::PreparedValueHomeKind::StackSlot,
+      .source_slot_id = prepare::PreparedFrameSlotId{43},
+      .source_stack_offset_bytes = std::size_t{48},
+      .source_size_bytes = std::size_t{4},
+      .source_align_bytes = std::size_t{4},
+  };
+}
+
 int verify_selected_local_storage_contract_reports() {
   const auto coherent =
       prepare::verify_prepared_selected_local_storage_contract(
@@ -248,6 +261,71 @@ int verify_frame_slot_address_source_route_contract_reports() {
   return 0;
 }
 
+int verify_frame_slot_value_source_route_contract_reports() {
+  auto coherent_route = coherent_frame_slot_value_route();
+  const auto coherent =
+      prepare::verify_prepared_frame_slot_value_source_route_contract(
+          &coherent_route);
+
+  auto missing = coherent_frame_slot_value_route();
+  missing.source_value_name = std::nullopt;
+  const auto missing_report =
+      prepare::verify_prepared_frame_slot_value_source_route_contract(
+          &missing);
+
+  auto wrong_home = coherent_frame_slot_value_route();
+  wrong_home.source_home_kind = prepare::PreparedValueHomeKind::Register;
+  const auto wrong_home_report =
+      prepare::verify_prepared_frame_slot_value_source_route_contract(
+          &wrong_home);
+
+  auto address_payload = coherent_frame_slot_value_route();
+  address_payload.address_materialization_block_label = c4c::BlockLabelId{5};
+  const auto address_payload_report =
+      prepare::verify_prepared_frame_slot_value_source_route_contract(
+          &address_payload);
+
+  auto cross_route = coherent_frame_slot_value_route();
+  cross_route.byval_lane_extent_bytes = std::size_t{4};
+  const auto cross_route_report =
+      prepare::verify_prepared_frame_slot_value_source_route_contract(
+          &cross_route);
+
+  if (!expect(coherent.owner_class == prepare::PreparedContractOwnerClass::Coherent,
+              "complete frame-slot value route should be coherent") ||
+      !expect(!coherent.fail_closed,
+              "coherent frame-slot value route should not fail closed") ||
+      !expect(coherent.fact_family ==
+                  prepare::PreparedContractFactFamily::CallArgumentTypedRoute,
+              "frame-slot value route should identify typed route family") ||
+      !expect(missing_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing frame-slot value identity should classify as producer missing") ||
+      !expect(prepare::classify_prepared_frame_slot_value_source_route_contract(
+                  &missing) ==
+                  prepare::PreparedFrameSlotValueSourceRouteContractStatus::
+                      MissingSourceValueName,
+              "missing value name should have precise route status") ||
+      !expect(wrong_home_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "wrong frame-slot value home kind should classify as producer incoherent") ||
+      !expect(address_payload_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "address materialization payload should classify as producer incoherent") ||
+      !expect(cross_route_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "cross-route frame-slot value payload should classify as producer incoherent") ||
+      !expect(prepare::prepared_frame_slot_value_source_route_contract_status_name(
+                  prepare::PreparedFrameSlotValueSourceRouteContractStatus::
+                      ConflictingAddressMaterializationPayload) ==
+                  std::string_view{"conflicting_address_materialization_payload"},
+              "frame-slot value materialization status spelling mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -258,6 +336,10 @@ int main() {
     return rc;
   }
   if (const int rc = verify_frame_slot_address_source_route_contract_reports();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = verify_frame_slot_value_source_route_contract_reports();
       rc != 0) {
     return rc;
   }

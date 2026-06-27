@@ -250,6 +250,55 @@ prepared_frame_slot_address_source_route_contract_status_name(
   return "unknown";
 }
 
+enum class PreparedFrameSlotValueSourceRouteContractStatus {
+  Coherent,
+  MissingRoute,
+  MissingSourceValueId,
+  MissingSourceValueName,
+  MissingSourceHomeKind,
+  MissingSourceSlot,
+  MissingStackOffset,
+  MissingExtent,
+  MissingAlignment,
+  ConflictingSourceHomeKind,
+  ConflictingAddressMaterializationPayload,
+  ConflictingCrossRoutePayload,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_frame_slot_value_source_route_contract_status_name(
+    PreparedFrameSlotValueSourceRouteContractStatus status) {
+  switch (status) {
+    case PreparedFrameSlotValueSourceRouteContractStatus::Coherent:
+      return "coherent";
+    case PreparedFrameSlotValueSourceRouteContractStatus::MissingRoute:
+      return "missing_route";
+    case PreparedFrameSlotValueSourceRouteContractStatus::MissingSourceValueId:
+      return "missing_source_value_id";
+    case PreparedFrameSlotValueSourceRouteContractStatus::MissingSourceValueName:
+      return "missing_source_value_name";
+    case PreparedFrameSlotValueSourceRouteContractStatus::MissingSourceHomeKind:
+      return "missing_source_home_kind";
+    case PreparedFrameSlotValueSourceRouteContractStatus::MissingSourceSlot:
+      return "missing_source_slot";
+    case PreparedFrameSlotValueSourceRouteContractStatus::MissingStackOffset:
+      return "missing_stack_offset";
+    case PreparedFrameSlotValueSourceRouteContractStatus::MissingExtent:
+      return "missing_extent";
+    case PreparedFrameSlotValueSourceRouteContractStatus::MissingAlignment:
+      return "missing_alignment";
+    case PreparedFrameSlotValueSourceRouteContractStatus::ConflictingSourceHomeKind:
+      return "conflicting_source_home_kind";
+    case PreparedFrameSlotValueSourceRouteContractStatus::
+        ConflictingAddressMaterializationPayload:
+      return "conflicting_address_materialization_payload";
+    case PreparedFrameSlotValueSourceRouteContractStatus::
+        ConflictingCrossRoutePayload:
+      return "conflicting_cross_route_payload";
+  }
+  return "unknown";
+}
+
 struct PreparedSelectedLocalStorageContractFacts {
   FunctionNameId function_name = kInvalidFunctionName;
   std::optional<PreparedObjectId> object_id;
@@ -352,6 +401,14 @@ classify_prepared_frame_slot_address_source_route_contract(
 
 [[nodiscard]] PreparedContractVerificationReport
 verify_prepared_frame_slot_address_source_route_contract(
+    const PreparedCallArgumentSourceSelection* selection);
+
+[[nodiscard]] PreparedFrameSlotValueSourceRouteContractStatus
+classify_prepared_frame_slot_value_source_route_contract(
+    const PreparedCallArgumentSourceSelection* selection);
+
+[[nodiscard]] PreparedContractVerificationReport
+verify_prepared_frame_slot_value_source_route_contract(
     const PreparedCallArgumentSourceSelection* selection);
 
 }  // namespace c4c::backend::prepare

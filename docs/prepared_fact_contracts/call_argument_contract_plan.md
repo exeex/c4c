@@ -1,6 +1,6 @@
 # Prepared Call Argument Contract Plan
 
-Status: Published for idea 414 FrameSlotValue Step 2
+Status: Published for idea 414 FrameSlotValue Step 3
 Source Idea: `ideas/open/414_typed_prepared_call_argument_contracts.md`
 
 This document records the typed prepared call-argument route contract as it is
@@ -149,3 +149,30 @@ Rejected compatibility-bag combinations:
 The shared missing frame-slot publication classifier now requires this typed
 view before classifying `FrameSlotValue`, so invalid old optional-bag
 combinations are absent from the typed publication bridge.
+
+## FrameSlotValue Step 3 Verification
+
+Step 3 adds `verify_prepared_frame_slot_value_source_route_contract` as the
+producer-side report surface for the `FrameSlotValue` route. The verifier
+reports `PreparedContractFactFamily::CallArgumentTypedRoute`.
+
+Producer-missing statuses:
+
+- missing selected `FrameSlotValue` route
+- missing source value id
+- missing source value name
+- missing source-home kind
+- missing source frame-slot id
+- missing source stack byte offset
+- missing source extent
+- missing source alignment
+
+Producer-incoherent statuses:
+
+- non-stack source-home kind
+- address-materialization payload mixed into the frame-slot value route
+- preservation, byval-lane, source-base, or pointer-delta payload mixed into
+  the frame-slot value route
+
+These diagnostics keep `FrameSlotValue` failures producer-owned before target
+consumers migrate from optional-bag reads to typed route consumption.

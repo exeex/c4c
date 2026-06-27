@@ -3,35 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/414_typed_prepared_call_argument_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Introduce Typed FrameSlotValue Payload and Bridge Accessor
+Current Step ID: 3
+Current Step Title: Add Producer-Side Verification
 
 ## Just Finished
 
-Completed Step 2 typed payload/accessor work for `FrameSlotValue`.
+Completed Step 3 producer-side verification for `FrameSlotValue`.
 
-Added `PreparedCallArgumentFrameSlotValueRoute` and
-`as_frame_slot_value_source_route` in `src/backend/prealloc/calls.hpp` without
-adding optional fields to `PreparedCallArgumentSourceSelection`.
+Added `PreparedFrameSlotValueSourceRouteContractStatus`,
+`classify_prepared_frame_slot_value_source_route_contract`, and
+`verify_prepared_frame_slot_value_source_route_contract` using
+`PreparedContractFactFamily::CallArgumentTypedRoute`.
 
-The typed query requires source value id, source value name, stack-slot
-source-home kind, source slot, source stack byte offset, source extent, and
-source alignment. It rejects non-stack source homes, address-materialization
-payloads, source-base/pointer-delta payloads, preservation payloads, byval-lane
-payloads, and missing required facts.
+The verifier classifies missing selected `FrameSlotValue` route facts as
+`producer_missing`: absent route, source value id, source value name,
+source-home kind, source slot, source stack offset, extent, and alignment. It
+classifies contradictory payloads as `producer_incoherent`: non-stack
+source-home kind, address-materialization payloads, and mixed preservation,
+byval, source-base, or pointer-delta payloads.
 
-`find_prepared_missing_frame_slot_call_argument_publication_need` now requires
-the typed query before classifying `FrameSlotValue`. Focused coverage in
-`backend_prepare_frame_stack_call_contract_test.cpp` checks valid typed route
-exposure, rejected invalid bags, and publication-bridge visibility.
-
-Updated `docs/prepared_fact_contracts/call_argument_contract_plan.md` with the
-`FrameSlotValue` Step 2 route scope.
+Focused verifier coverage in
+`backend_prealloc_prepared_contract_verifier_test.cpp` checks coherent,
+producer-missing, and producer-incoherent reports plus status spelling. The
+call-argument contract plan now records the `FrameSlotValue` Step 3 verifier
+statuses.
 
 ## Suggested Next
 
-Begin Step 3 by adding producer-side verifier statuses and reports for
-`FrameSlotValue`.
+Begin Step 4 by migrating RV64/AArch64 `FrameSlotValue` consumers to use
+`as_frame_slot_value_source_route` plus the Step 3 verifier.
 
 ## Watchouts
 
@@ -46,7 +46,7 @@ Begin Step 3 by adding producer-side verifier statuses and reports for
 - Do not preserve the old typed-query behavior that accepts only slot or only
   stack offset; that compatibility should remain outside the typed API.
 - RV64/AArch64 consumers still read `FrameSlotValue` through the compatibility
-  bag; Step 4 owns that migration after verifier coverage exists.
+  bag; Step 4 owns that migration.
 
 ## Proof
 
