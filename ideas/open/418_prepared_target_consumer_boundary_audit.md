@@ -27,6 +27,9 @@ before more gcc_torture-driven repairs add hidden target fixups.
 - Inventory target prepared consumers that inspect raw BIR instructions,
   globals, type text, source spellings, or fallback names beyond simple
   identity lookup.
+- Consume `docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md`
+  and classify findings using the idea 413 taxonomy rather than inventing a
+  separate target-local vocabulary.
 - Classify each finding as:
   - acceptable coherent-fact lowering,
   - target scheduling over explicit prepared facts,
@@ -34,7 +37,8 @@ before more gcc_torture-driven repairs add hidden target fixups.
   - semantic BIR gap requiring a separate idea.
 - Remove or quarantine one low-risk target-side recovery path if an existing
   prepared fact already covers it.
-- Produce a short review artifact listing remaining findings and next owners.
+- Produce `docs/prepared_fact_contracts/target_consumer_boundary_audit.md`
+  listing remaining findings, row IDs, consumed taxonomy rows, and next owners.
 
 ## Out Of Scope
 
@@ -45,8 +49,9 @@ before more gcc_torture-driven repairs add hidden target fixups.
 
 ## Acceptance Criteria
 
-- A review artifact lists audited target helpers with owner classification and
-  file references.
+- The target-consumer audit artifact lists audited target helpers with owner
+  classification, file references, consumed taxonomy rows, and row IDs for
+  downstream 414-417 handoff.
 - At least one concrete cleanup or follow-up owner decision is made.
 - Default `ctest --test-dir build -j --output-on-failure` / normal CTest does
   not regress.

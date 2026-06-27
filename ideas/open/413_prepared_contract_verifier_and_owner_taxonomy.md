@@ -31,6 +31,8 @@ target-unsupported-but-coherent, or pre-prepared semantic failure.
 - Make diagnostics precise enough to route work to BIR/prepared or target
   lowering.
 - Add focused backend/prepared tests for verifier categories.
+- Produce `docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md`
+  as the durable handoff artifact for ideas 418 and 414-417.
 
 ## Out Of Scope
 
@@ -44,6 +46,8 @@ target-unsupported-but-coherent, or pre-prepared semantic failure.
 - A verifier/report surface exists and runs before target prepared consumers in
   the selected route.
 - At least three selected fact families produce owner-classified diagnostics.
+- The taxonomy artifact records the verifier categories, fact-family rows,
+  owner decisions, and follow-up row IDs that downstream ideas must cite.
 - Default `ctest --test-dir build -j --output-on-failure` / normal CTest does
   not regress.
 - RV64 gcc_torture representatives may be used as evidence, but temporary RV64

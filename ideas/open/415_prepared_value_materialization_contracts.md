@@ -4,6 +4,7 @@ Status: Open
 Type: Follow-up contract refactor idea
 Parent: `ideas/closed/412_prepared_fact_contract_normalization_analysis.md`
 Depends On: initial taxonomy from `ideas/open/413_prepared_contract_verifier_and_owner_taxonomy.md` and target-consumer findings from `ideas/open/418_prepared_target_consumer_boundary_audit.md`
+Handoff Inputs: `docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md`, `docs/prepared_fact_contracts/target_consumer_boundary_audit.md`
 
 ## Goal
 
@@ -26,6 +27,8 @@ BIR expression semantics.
 - Use the early target-consumer audit to identify which RV64/AArch64
   materialization helpers are legitimate scheduling over facts versus recovery
   of missing producer facts.
+- Cite the consumed taxonomy and target-consumer audit rows in
+  `docs/prepared_fact_contracts/value_materialization_contract_plan.md`.
 - Add verifier checks that every target-required materialization has complete
   width, signedness, source identity, and scheduling authority.
 - Migrate one or two existing RV64 producer-chain consumers to use explicit
@@ -43,6 +46,9 @@ BIR expression semantics.
 
 - Wide rematerialized values and migrated producer chains are represented as
   explicit prepared facts or rejected by a producer-side diagnostic.
+- The value-materialization contract plan names the idea 413/418 rows consumed
+  by this slice, or explicitly records that no applicable target-consumer audit
+  row exists for the selected materialization family.
 - Target consumers no longer need to infer migrated materialization semantics
   from raw BIR instruction shape.
 - Default `ctest --test-dir build -j --output-on-failure` / normal CTest does

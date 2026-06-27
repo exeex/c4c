@@ -4,6 +4,7 @@ Status: Open
 Type: Follow-up contract refactor idea
 Parent: `ideas/closed/412_prepared_fact_contract_normalization_analysis.md`
 Depends On: initial taxonomy from `ideas/open/413_prepared_contract_verifier_and_owner_taxonomy.md` and target-consumer findings from `ideas/open/418_prepared_target_consumer_boundary_audit.md`
+Handoff Inputs: `docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md`, `docs/prepared_fact_contracts/target_consumer_boundary_audit.md`
 
 ## Goal
 
@@ -26,6 +27,8 @@ emission still inspects BIR globals directly for simple storage shapes.
 - Use the early target-consumer audit to identify RV64/AArch64 storage or
   object-data paths that still inspect raw BIR/global structure to recover
   producer-owned layout or initializer facts.
+- Cite the consumed taxonomy and target-consumer audit rows in
+  `docs/prepared_fact_contracts/storage_initializer_contract_plan.md`.
 - Define normalized global initializer/storage facts: emitted bytes,
   relocations, zero-fill, symbol references, and precise unsupported outcomes.
 - Add verifier checks for contradictory slot ranges and incomplete initializer
@@ -46,6 +49,9 @@ emission still inspects BIR globals directly for simple storage shapes.
 
 - Selected local and global storage facts are coherent before target consumers
   run, or fail with producer-owned diagnostics.
+- The storage/initializer contract plan names the idea 413/418 rows consumed by
+  this slice, or explicitly records that no applicable target-consumer audit
+  row exists for the selected storage family.
 - Migrated target consumers no longer recover selected layout/initializer
   semantics from source type text or BIR global structure.
 - Default `ctest --test-dir build -j --output-on-failure` / normal CTest does
