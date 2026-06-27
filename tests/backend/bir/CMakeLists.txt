@@ -312,6 +312,28 @@ set_tests_properties(backend_prealloc_call_boundary_classification PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_prealloc_prepared_contract_verifier_test
+    "${BACKEND_TEST_ROOT}/bir/backend_prealloc_prepared_contract_verifier_test.cpp"
+)
+target_include_directories(backend_prealloc_prepared_contract_verifier_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prealloc_prepared_contract_verifier_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prealloc_prepared_contract_verifier_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prealloc_prepared_contract_verifier
+  COMMAND $<TARGET_FILE:backend_prealloc_prepared_contract_verifier_test>
+)
+set_tests_properties(backend_prealloc_prepared_contract_verifier PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 add_executable(backend_prealloc_formal_publications_test
     "${BACKEND_TEST_ROOT}/bir/backend_prealloc_formal_publications_test.cpp"
 )
