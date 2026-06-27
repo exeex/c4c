@@ -1590,6 +1590,39 @@ StackFrameSlotCallOperandOwner::selected_frame_slot_source(
     };
   }
 
+  if (expected_kind ==
+      prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue) {
+    const auto route_report =
+        prepare::verify_prepared_frame_slot_value_source_route_contract(
+            &selection);
+    const auto route = prepare::as_frame_slot_value_source_route(selection);
+    if (route_report.fail_closed || !route.has_value()) {
+      return std::nullopt;
+    }
+    return MemoryOperand{
+        .surface = RecordSurfaceKind::MachineInstructionNode,
+        .support = MemoryOperandSupportKind::Prepared,
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel,
+        .instruction_index = instruction_index,
+        .result_value_id = route->source_value_id,
+        .result_value_name = route->source_value_name,
+        .base_kind = MemoryBaseKind::FrameSlot,
+        .frame_slot_id = route->source_slot_id,
+        .byte_offset =
+            static_cast<std::int64_t>(route->source_stack_offset_bytes),
+        .byte_offset_is_prepared_snapshot = true,
+        .size_bytes = route->source_size_bytes,
+        .align_bytes = route->source_align_bytes,
+        .can_use_base_plus_offset = true,
+        .uses_frame_pointer_base = fixed_slots_use_frame_pointer(context.function),
+    };
+  }
+
   if (selection.kind != expected_kind ||
       !selection.source_slot_id.has_value() ||
       !selection.source_stack_offset_bytes.has_value() ||

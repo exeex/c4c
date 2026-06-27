@@ -1,6 +1,6 @@
 # Prepared Call Argument Contract Plan
 
-Status: Published for idea 414 FrameSlotValue Step 3
+Status: Published for idea 414 FrameSlotValue Step 4
 Source Idea: `ideas/open/414_typed_prepared_call_argument_contracts.md`
 
 This document records the typed prepared call-argument route contract as it is
@@ -176,3 +176,22 @@ Producer-incoherent statuses:
 
 These diagnostics keep `FrameSlotValue` failures producer-owned before target
 consumers migrate from optional-bag reads to typed route consumption.
+
+## FrameSlotValue Step 4 Consumer Migration
+
+Step 4 migrates the first RV64/AArch64 `FrameSlotValue` consumers to the typed
+route boundary.
+
+- AArch64 `StackFrameSlotCallOperandOwner::selected_frame_slot_source`
+  verifies and consumes `PreparedCallArgumentFrameSlotValueRoute` for
+  `FrameSlotValue`; the old optional-bag path remains only for route families
+  not migrated by this runbook.
+- RV64 object emission `prepared_frame_slot_call_argument_offset` verifies
+  `FrameSlotValue` selections with
+  `verify_prepared_frame_slot_value_source_route_contract`, consumes
+  `as_frame_slot_value_source_route`, and checks typed route value/slot/offset
+  facts against prepared value-home data before selecting the stack source.
+
+The selected consumers now treat absent or incoherent `FrameSlotValue` typed
+facts as fail-closed prepared-producer issues, not target permission to recover
+source homes or stack offsets from optional-bag fragments.

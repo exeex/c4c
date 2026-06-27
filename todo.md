@@ -3,35 +3,29 @@
 Status: Active
 Source Idea Path: ideas/open/414_typed_prepared_call_argument_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Producer-Side Verification
+Current Step ID: 4
+Current Step Title: Migrate Target Consumers for FrameSlotValue
 
 ## Just Finished
 
-Completed Step 3 producer-side verification for `FrameSlotValue`.
+Completed Step 4 for the first migrated `FrameSlotValue` consumers.
 
-Added `PreparedFrameSlotValueSourceRouteContractStatus`,
-`classify_prepared_frame_slot_value_source_route_contract`, and
-`verify_prepared_frame_slot_value_source_route_contract` using
-`PreparedContractFactFamily::CallArgumentTypedRoute`.
+AArch64 `StackFrameSlotCallOperandOwner::selected_frame_slot_source` now
+verifies and consumes `PreparedCallArgumentFrameSlotValueRoute` for
+`FrameSlotValue` instead of reading the compatibility bag directly.
 
-The verifier classifies missing selected `FrameSlotValue` route facts as
-`producer_missing`: absent route, source value id, source value name,
-source-home kind, source slot, source stack offset, extent, and alignment. It
-classifies contradictory payloads as `producer_incoherent`: non-stack
-source-home kind, address-materialization payloads, and mixed preservation,
-byval, source-base, or pointer-delta payloads.
+RV64 object emission `prepared_frame_slot_call_argument_offset` now verifies
+`FrameSlotValue` selections with
+`verify_prepared_frame_slot_value_source_route_contract`, consumes
+`as_frame_slot_value_source_route`, and checks typed route value/slot/offset
+facts against prepared value-home data before selecting the stack source.
 
-Focused verifier coverage in
-`backend_prealloc_prepared_contract_verifier_test.cpp` checks coherent,
-producer-missing, and producer-incoherent reports plus status spelling. The
-call-argument contract plan now records the `FrameSlotValue` Step 3 verifier
-statuses.
+The call-argument contract plan now records the `FrameSlotValue` Step 4
+consumer migration scope.
 
 ## Suggested Next
 
-Begin Step 4 by migrating RV64/AArch64 `FrameSlotValue` consumers to use
-`as_frame_slot_value_source_route` plus the Step 3 verifier.
+Begin Step 5 by running broad validation and deciding the next route candidate.
 
 ## Watchouts
 
@@ -45,8 +39,11 @@ Begin Step 4 by migrating RV64/AArch64 `FrameSlotValue` consumers to use
   unchanged unless the active step explicitly owns a shared boundary.
 - Do not preserve the old typed-query behavior that accepts only slot or only
   stack offset; that compatibility should remain outside the typed API.
-- RV64/AArch64 consumers still read `FrameSlotValue` through the compatibility
-  bag; Step 4 owns that migration.
+- Step 4 only migrates selected `FrameSlotValue` consumers found in Step 1; do
+  not infer that other route families are typed.
+- The next route candidate should likely be `PriorPreservation` or
+  `LocalFrameAddressMaterialization`; defer the choice to Step 5 after broad
+  validation.
 
 ## Proof
 

@@ -2653,14 +2653,18 @@ std::optional<std::int32_t> prepared_frame_slot_call_argument_offset(
       !argument.source_slot_id.has_value()) {
     return std::nullopt;
   }
+  std::optional<prepare::PreparedCallArgumentFrameSlotValueRoute>
+      frame_slot_value_route;
   if (argument.source_selection.has_value()) {
     const auto& selection = *argument.source_selection;
-    if (selection.kind !=
-            prepare::PreparedCallArgumentSourceSelectionKind::FrameSlotValue ||
-        (selection.source_value_id.has_value() &&
-         selection.source_value_id != argument.source_value_id) ||
-        (selection.source_slot_id.has_value() &&
-         selection.source_slot_id != argument.source_slot_id)) {
+    const auto route_report =
+        prepare::verify_prepared_frame_slot_value_source_route_contract(
+            &selection);
+    frame_slot_value_route =
+        prepare::as_frame_slot_value_source_route(selection);
+    if (route_report.fail_closed || !frame_slot_value_route.has_value() ||
+        frame_slot_value_route->source_value_id != *argument.source_value_id ||
+        frame_slot_value_route->source_slot_id != *argument.source_slot_id) {
       return std::nullopt;
     }
   }
@@ -2668,25 +2672,22 @@ std::optional<std::int32_t> prepared_frame_slot_call_argument_offset(
       prepared_value_home_for_id(lookups, *argument.source_value_id);
   const auto size_bytes = rv64_scalar_memory_size_for_type(argument_type);
   const auto source_size_bytes =
-      source_home == nullptr
-          ? std::optional<std::size_t>{}
-          : source_home->size_bytes.has_value()
-                ? source_home->size_bytes
-                : argument.source_selection.has_value()
-                      ? argument.source_selection->source_size_bytes
-                      : std::optional<std::size_t>{};
+      frame_slot_value_route.has_value()
+          ? std::optional<std::size_t>{frame_slot_value_route->source_size_bytes}
+          : source_home == nullptr ? std::optional<std::size_t>{}
+                                   : source_home->size_bytes;
   const auto source_align_bytes =
-      source_home == nullptr
-          ? std::optional<std::size_t>{}
-          : source_home->align_bytes.has_value()
-                ? source_home->align_bytes
-                : argument.source_selection.has_value()
-                      ? argument.source_selection->source_align_bytes
-                      : std::optional<std::size_t>{};
+      frame_slot_value_route.has_value()
+          ? std::optional<std::size_t>{frame_slot_value_route->source_align_bytes}
+          : source_home == nullptr ? std::optional<std::size_t>{}
+                                   : source_home->align_bytes;
   if (source_home == nullptr ||
       source_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
       !source_home->slot_id.has_value() ||
-      *source_home->slot_id != *argument.source_slot_id ||
+      *source_home->slot_id !=
+          (frame_slot_value_route.has_value()
+               ? frame_slot_value_route->source_slot_id
+               : *argument.source_slot_id) ||
       !source_home->offset_bytes.has_value() ||
       !size_bytes.has_value() ||
       !source_size_bytes.has_value() ||
@@ -2697,6 +2698,11 @@ std::optional<std::int32_t> prepared_frame_slot_call_argument_offset(
   }
   if (argument.source_stack_offset_bytes.has_value() &&
       *argument.source_stack_offset_bytes != *source_home->offset_bytes) {
+    return std::nullopt;
+  }
+  if (frame_slot_value_route.has_value() &&
+      frame_slot_value_route->source_stack_offset_bytes !=
+          *source_home->offset_bytes) {
     return std::nullopt;
   }
   const auto slot_it =
