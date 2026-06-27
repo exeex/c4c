@@ -3,31 +3,25 @@
 Status: Active
 Source Idea Path: ideas/open/414_typed_prepared_call_argument_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate Target Consumers
+Current Step ID: 5
+Current Step Title: Broaden Validation and Decide the Next Route
 
 ## Just Finished
 
-Completed Step 4 consumer migration for
+Completed Step 5 broad validation for
 `LocalFrameAddressMaterialization`.
 
-`plan_prepared_aggregate_transport`, RV64 call emission, RV64 object-emission
-address validation, and AArch64 selected local frame-address source handling now
-consume `as_local_frame_address_materialization_route` instead of recovering
-local materialization fields directly from the compatibility bag.
+Build plus default CTest passed after the typed payload, verifier, and consumer
+migration slices.
 
-AArch64 selected local frame-address source handling also runs
-`verify_prepared_local_frame_address_materialization_source_route_contract`
-before constructing the prepared memory operand.
-
-Updated hand-authored RV64 prepared fixtures to publish coherent
-local-materialization source-home, pointer-delta, and materialization payload
-facts.
+Broad validation exposed stale hand-authored AArch64 instruction-dispatch
+fixtures that omitted local-materialization pointer-delta and materialization
+payload facts. Those fixtures now publish coherent typed route facts.
 
 ## Suggested Next
 
-Begin Step 5 by running broader default validation and recording the next route
-decision or lifecycle review request.
+Request lifecycle review/closure for the active
+`LocalFrameAddressMaterialization` runbook.
 
 ## Watchouts
 
@@ -43,6 +37,6 @@ decision or lifecycle review request.
 
 ## Proof
 
-Selected delegated proof passed: 17/17 tests, with monotonic regression guard
-PASS against the matching 17/17 baseline. Proof command:
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_call_boundary_classification$|backend_prepare_frame_stack_call_contract$|backend_prealloc_prepared_contract_verifier$|backend_riscv_object_emission$|backend_aarch64_call_boundary_owner$|backend_(dump|codegen_route)_riscv64_byval_|backend_codegen_route_aarch64_(prepared_call_boundary_scalability|alu_unpublished_load_local_after_call|alu_unpublished_load_local_call_boundary|hfa_result_home_publication_contract)$)' ) > test_after.log 2>&1`
+Broad proof passed: 3356/3356 tests, with monotonic regression guard PASS
+against the accepted 3356/3356 full-suite baseline. Proof command:
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure ) > test_after.log 2>&1`
