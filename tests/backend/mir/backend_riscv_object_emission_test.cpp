@@ -5110,6 +5110,54 @@ prepare::PreparedBirModule make_prepared_join_transfer_select_with_edge_compare_
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_join_transfer_select_with_dependent_edge_compare_source_module() {
+  auto prepared = make_prepared_join_transfer_select_with_edge_compare_source_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto shr_name = prepared.names.value_names.intern("%rhs.shr");
+  const auto mask_name = prepared.names.value_names.intern("%rhs.mask");
+  const auto value_name = prepared.names.value_names.intern("%rhs.value");
+  auto& join = prepared.module.functions.front().blocks.at(3);
+  auto* compare = std::get_if<bir::BinaryInst>(&join.insts.front());
+  if (compare == nullptr) {
+    return prepared;
+  }
+
+  join.insts.insert(join.insts.begin(),
+                    {
+                        bir::BinaryInst{
+                            .opcode = bir::BinaryOpcode::LShr,
+                            .result = bir::Value::named(bir::TypeKind::I32, "%rhs.shr"),
+                            .operand_type = bir::TypeKind::I32,
+                            .lhs = bir::Value::named(bir::TypeKind::I32, "%fallback"),
+                            .rhs = bir::Value::immediate_i32(3),
+                        },
+                        bir::BinaryInst{
+                            .opcode = bir::BinaryOpcode::And,
+                            .result = bir::Value::named(bir::TypeKind::I32, "%rhs.mask"),
+                            .operand_type = bir::TypeKind::I32,
+                            .lhs = bir::Value::named(bir::TypeKind::I32, "%rhs.shr"),
+                            .rhs = bir::Value::immediate_i32(7),
+                        },
+                        bir::BinaryInst{
+                            .opcode = bir::BinaryOpcode::Add,
+                            .result = bir::Value::named(bir::TypeKind::I32, "%rhs.value"),
+                            .operand_type = bir::TypeKind::I32,
+                            .lhs = bir::Value::named(bir::TypeKind::I32, "%rhs.mask"),
+                            .rhs = bir::Value::immediate_i32(0),
+                        },
+                    });
+  compare = std::get_if<bir::BinaryInst>(&join.insts.at(3));
+  compare->lhs = bir::Value::named(bir::TypeKind::I32, "%rhs.value");
+  compare->rhs = bir::Value::immediate_i32(5);
+
+  auto& locations = prepared.value_locations.functions.front();
+  locations.value_homes.push_back(rv64_gpr_home(5, function_name, shr_name, "s2", 18));
+  locations.value_homes.push_back(rv64_gpr_home(6, function_name, mask_name, "s1", 9));
+  locations.value_homes.push_back(rv64_gpr_home(7, function_name, value_name, "s2", 18));
+  return prepared;
+}
+
 bir::InlineAsmOperandMetadata inline_asm_register_operand(
     bir::InlineAsmOperandKind kind,
     std::size_t constraint_index,
@@ -9774,6 +9822,41 @@ int materializes_published_prepared_join_transfer_select_edge_compare_source_obj
   return 0;
 }
 
+int materializes_published_prepared_join_transfer_select_dependent_edge_compare_source_object() {
+  const auto prepared =
+      make_prepared_join_transfer_select_with_dependent_edge_compare_source_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected dependent edge-compare source prepared join-transfer select RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  const auto* false_copy_label = object::find_symbol(*module, ".Lmain_pred_false");
+  const auto* join_label = object::find_symbol(*module, ".Lmain_join");
+  if (text == nullptr || main_symbol == nullptr || false_copy_label == nullptr ||
+      join_label == nullptr) {
+    return fail("expected dependent edge-compare join object to publish text/main/block labels");
+  }
+  if (text->bytes.size() != 76 || text->size_bytes != 76 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 76 ||
+      false_copy_label->value != 12 || join_label->value != 52) {
+    return fail("expected dependent edge-compare join object text layout");
+  }
+  if (read_u32(text->bytes, 12) != 0x00030e13 ||
+      read_u32(text->bytes, 16) != 0x00300e93 ||
+      read_u32(text->bytes, 20) != 0x01de5933 ||
+      read_u32(text->bytes, 24) != 0x00797493 ||
+      read_u32(text->bytes, 28) != 0x00048913 ||
+      read_u32(text->bytes, 32) != 0x00090e13 ||
+      read_u32(text->bytes, 36) != 0x00500e93 ||
+      read_u32(text->bytes, 40) != 0x01de4533 ||
+      read_u32(text->bytes, 44) != 0x00a03533 ||
+      read_u32(text->bytes, 48) != 0x0000006f) {
+    return fail("expected dependent RHS predecessor edge to materialize producer chain before compare");
+  }
+  return 0;
+}
+
 int rejects_published_prepared_join_transfer_select_ambiguous_publications_object() {
   auto stack_source = make_prepared_join_transfer_select_with_published_copies_module();
   auto& false_source_home = stack_source.value_locations.functions.front().value_homes.at(1);
@@ -12437,6 +12520,8 @@ int main() {
   status |= builds_prepared_normalized_sle_select_materialization_object();
   status |= skips_published_prepared_join_transfer_select_carrier_object();
   status |= materializes_published_prepared_join_transfer_select_edge_compare_source_object();
+  status |=
+      materializes_published_prepared_join_transfer_select_dependent_edge_compare_source_object();
   status |= rejects_published_prepared_join_transfer_select_ambiguous_publications_object();
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_frame_slot_value_arg_call_object();
