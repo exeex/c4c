@@ -1,51 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/417_prepared_storage_layout_and_initializer_contracts.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Migrate One Global/Object-Data Consumer Path
+Current Step ID: 6
+Current Step Title: Acceptance Validation And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 migrated the selected RV64 defined-global object-data path for
-immediate scalar, immediate linear, and zero-fill globals. Prealloc now
-publishes `PreparedGlobalObjectData` records with explicit labels, section
-publication identity, emitted bytes or zero-fill, and object byte ranges.
+Step 6 recorded acceptance validation and close-readiness evidence for the
+active prepared storage layout and initializer contracts runbook.
 
-`append_rv64_prepared_data_objects` now verifies those selected records with
-`verify_prepared_selected_object_data_contract` and emits from prepared facts
-instead of deriving labels, sections, initializer bytes, or BSS reservations
-from raw `bir::Global` initializer shape. Missing prepared records,
-contradictory emitted-byte facts, and complete unsupported initialized forms
-fail closed through the selected object-data verifier classification.
+Accepted full-suite proof is present in `test_baseline.log` for commit
+`7d3f8d784ae34aebebeb6b2211107183cb302ccb` (`7d3f8d784`): `100% tests
+passed, 0 tests failed out of 3356`.
 
-Focused `backend_riscv_object_emission` coverage proves coherent mutable,
-read-only, zero-fill, address-relocation, load, and store global object paths
-over prepared object-data facts, plus fail-closed missing and incoherent
-prepared object-data facts.
+Route review is present in `review/417_step6_route_review.md` for
+`6ca78bbe4..HEAD`, with `HEAD` at `7d3f8d784`. The reviewer found no blocking
+route issues and reported no testcase-shaped matching, no expectation
+weakening, no allowlist filtering, no supported-to-unsupported downgrades, no
+target-side raw layout or initializer reconstruction in the selected paths,
+and no blocking overfit. The reviewer judged the implementation aligned with
+Idea 417 and the runbook, with acceptable technical debt and sufficient full
+acceptance proof once this Step 6 evidence is recorded in canonical `todo.md`.
 
 ## Suggested Next
 
-Execute Step 6 acceptance validation and close-readiness review for the active
-storage/initializer contract runbook.
+Ask the plan owner to close the active runbook or convert the remaining
+selected-scope boundaries into explicit follow-up work if source-idea closure
+needs broader migration than this plan selected.
 
 ## Watchouts
 
-- String constants remain on the existing object-data emission path; this
-  packet intentionally migrated selected defined globals only.
-- Extern global declarations without initializer storage are still skipped as
-  declarations before selected object-data verification.
-- Unsupported initialized global forms now require an explicit prepared
-  unsupported marker and classify as `target_unsupported_but_coherent` rather
-  than being rediscovered from raw initializer shape in the RV64 target.
+- String constants remain on the existing object-data emission path rather
+  than this selected global-object-data migration.
+- Relocation-bearing globals are modeled in the prepared object-data contract
+  and verifier, but the selected lowered data path does not yet emit
+  relocations from prepared relocation records.
+- Pointer and symbol initializer forms are currently producer-classified as
+  `target_unsupported_but_coherent`; any follow-up relocation support should
+  publish producer-owned relocation facts and consume those facts in the target
+  instead of reconstructing relocations from raw BIR initializer shape.
+- Extern global declarations without initializer storage still bypass selected
+  object-data verification as declarations.
 
 ## Proof
 
-Ran exactly:
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prealloc_prepared_contract_verifier$|backend_riscv_object_emission$|backend_rv64_runtime_global_|backend_rv64_runtime_defined_global_array|backend_codegen_route_riscv64_external_string_literal_strlen_direct_call$|backend_codegen_route_riscv64_external_strlen_runtime_link_policy$)' ) > test_after.log 2>&1`
+No build or CTest was required for this lifecycle/todo-only evidence packet.
 
-Result: passed. `test_after.log` records 11/11 selected tests passing,
-including `backend_prealloc_prepared_contract_verifier`,
-`backend_riscv_object_emission`, the RV64 runtime global and defined global
-array tests, and the two RV64 external strlen/string-literal route tests.
+Accepted proof reused the supervisor-provided full-suite baseline:
+`test_baseline.log` records commit
+`7d3f8d784ae34aebebeb6b2211107183cb302ccb` and `100% tests passed, 0 tests
+failed out of 3356`.
+
+Reviewer proof reused `review/417_step6_route_review.md`, which recommends
+continuing the current route with no reset and recording Step 6 close-readiness
+before source-idea closure.
