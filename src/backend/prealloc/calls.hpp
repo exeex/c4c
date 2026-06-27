@@ -19,6 +19,7 @@ namespace c4c::backend::prepare {
 
 struct PreparedBirModule;
 struct PreparedControlFlowFunction;
+enum class PreparedEdgePublicationSourceProducerKind;
 struct PreparedEdgePublicationSourceProducerLookups;
 struct PreparedSameBlockScalarProducer;
 
@@ -477,8 +478,32 @@ struct PreparedCallArgumentSourceProducerMaterializationFor {
 using PreparedCallArgumentSourceProducerMaterialization =
     PreparedCallArgumentSourceProducerMaterializationFor<PreparedSameBlockScalarProducer>;
 
+struct PreparedCallArgumentBinaryProducerMaterializationFact {
+  ValueNameId destination_value_name = kInvalidValueName;
+  bir::TypeKind destination_value_type = bir::TypeKind::Void;
+  BlockLabelId producer_block_label = kInvalidBlockLabel;
+  std::size_t producer_instruction_index = 0;
+  PreparedEdgePublicationSourceProducerKind producer_kind;
+  const bir::Inst* producer_instruction = nullptr;
+  const bir::BinaryInst* binary = nullptr;
+  bir::BinaryOpcode binary_opcode = bir::BinaryOpcode::Add;
+  bir::Value lhs;
+  bir::Value rhs;
+  bool same_block_before_call = false;
+  bool materializable = false;
+};
+
 [[nodiscard]] bool prepared_call_argument_binary_producer_opcode_is_materializable(
     bir::BinaryOpcode opcode);
+
+[[nodiscard]] std::optional<PreparedCallArgumentBinaryProducerMaterializationFact>
+find_prepared_call_argument_binary_producer_materialization_fact(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index);
 
 [[nodiscard]] std::optional<PreparedCallArgumentSourceProducerMaterialization>
 find_prepared_call_argument_source_producer_materialization(

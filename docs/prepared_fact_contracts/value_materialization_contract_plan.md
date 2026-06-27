@@ -4,7 +4,43 @@ Source idea: `ideas/open/415_prepared_value_materialization_contracts.md`
 
 ## Current Slice
 
-The current slice adds `PreparedValueHomeKind::PointerBasePlusOffset` facts.
+Step 2 of the same-block producer-chain slice adds the typed
+`PreparedCallArgumentBinaryProducerMaterializationFact`, exposed by
+`find_prepared_call_argument_binary_producer_materialization_fact`.
+
+The fact is a compatibility view over existing prepared same-block source
+producer records for AArch64 scalar call-argument materialization:
+
+- destination identity: prepared value name id and BIR value type
+- producer identity: producer block label, instruction index, instruction
+  pointer, and producer kind `Binary`
+- payload: binary opcode plus left and right operand values
+- scheduling authority: same prepared block and producer instruction before the
+  call instruction
+- target admission: the opcode must be accepted by
+  `prepared_call_argument_binary_producer_opcode_is_materializable`
+
+Rejected records fail closed by returning no fact:
+
+- missing source-producer lookup table or missing producer record
+- invalid or mismatched destination value identity/type
+- producer instruction at or after the call, outside the block, or stale against
+  the BIR instruction at its recorded index
+- cross-family producer payloads such as load-local, cast, select, immediate, or
+  unknown producers
+- unsupported binary opcodes such as unsigned division, shifts, and comparisons
+
+The compatibility query
+`find_prepared_call_argument_source_producer_materialization` now routes binary
+admission through the typed fact while preserving the existing load-local
+materialization path. This slice does not add target-local BIR expression
+recovery, broaden Route 6 target recovery, or migrate the final AArch64
+consumer contract; producer-side verifier reports and complete consumer
+migration remain later runbook steps.
+
+## Previous Pointer Slice
+
+The pointer slice adds `PreparedValueHomeKind::PointerBasePlusOffset` facts.
 The typed view is `PreparedPointerBasePlusOffsetFact`, exposed by
 `as_pointer_base_plus_offset_fact`.
 

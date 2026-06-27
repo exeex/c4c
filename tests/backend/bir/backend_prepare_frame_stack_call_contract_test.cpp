@@ -4260,6 +4260,32 @@ int check_call_argument_source_producer_materializability_contract() {
     return fail(
         "call-argument producer materializability contract: ordinary binary producer should be visible");
   }
+  const auto sum_binary_fact =
+      prepare::find_prepared_call_argument_binary_producer_materialization_fact(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%sum"),
+          3);
+  if (!sum_binary_fact.has_value() ||
+      !sum_binary_fact->materializable ||
+      !sum_binary_fact->same_block_before_call ||
+      sum_binary_fact->destination_value_name != sum_name ||
+      sum_binary_fact->destination_value_type != bir::TypeKind::I32 ||
+      sum_binary_fact->producer_block_label != block_label ||
+      sum_binary_fact->producer_instruction_index != 1 ||
+      sum_binary_fact->producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+      sum_binary_fact->producer_instruction != &block.insts[1] ||
+      sum_binary_fact->binary != sum ||
+      sum_binary_fact->binary_opcode != bir::BinaryOpcode::Add ||
+      sum_binary_fact->lhs.name != "%loaded" ||
+      sum_binary_fact->rhs.kind != bir::Value::Kind::Immediate ||
+      sum_binary_fact->rhs.immediate != 9) {
+    return fail(
+        "call-argument producer materializability contract: binary producer fact should expose typed coherent payload");
+  }
   const auto sum_current_block_publication =
       prepare::find_prepared_current_block_publication_consumption(
           names,
@@ -4549,6 +4575,50 @@ int check_call_argument_source_producer_materializability_contract() {
     return fail(
         "call-argument producer materializability contract: non-covered binary producer should fail closed");
   }
+  if (prepare::find_prepared_call_argument_binary_producer_materialization_fact(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%shifted"),
+          3)
+          .has_value()) {
+    return fail(
+        "call-argument producer materializability contract: binary fact should reject unsupported opcode");
+  }
+  if (prepare::find_prepared_call_argument_binary_producer_materialization_fact(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%loaded"),
+          3)
+          .has_value()) {
+    return fail(
+        "call-argument producer materializability contract: binary fact should reject load-local cross-family payload");
+  }
+  if (prepare::find_prepared_call_argument_binary_producer_materialization_fact(
+          names,
+          nullptr,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%sum"),
+          3)
+          .has_value()) {
+    return fail(
+        "call-argument producer materializability contract: binary fact should reject missing producer table");
+  }
+  if (prepare::find_prepared_call_argument_binary_producer_materialization_fact(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I64, "%sum"),
+          3)
+          .has_value()) {
+    return fail(
+        "call-argument producer materializability contract: binary fact should reject mismatched destination type");
+  }
   if (prepare::find_prepared_call_argument_source_producer_materialization(
           names,
           &source_producers,
@@ -4559,6 +4629,30 @@ int check_call_argument_source_producer_materializability_contract() {
           .has_value()) {
     return fail(
         "call-argument producer materializability contract: future producer should fail closed");
+  }
+  if (prepare::find_prepared_call_argument_binary_producer_materialization_fact(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%sum"),
+          1)
+          .has_value()) {
+    return fail(
+        "call-argument producer materializability contract: binary fact should reject producer at or after call");
+  }
+  auto stale_source_producers = source_producers;
+  stale_source_producers.producers_by_value_name[sum_name].binary = shifted;
+  if (prepare::find_prepared_call_argument_binary_producer_materialization_fact(
+          names,
+          &stale_source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%sum"),
+          3)
+          .has_value()) {
+    return fail(
+        "call-argument producer materializability contract: binary fact should reject stale producer payload");
   }
   if (prepare::find_prepared_current_block_publication_consumption(
           names,

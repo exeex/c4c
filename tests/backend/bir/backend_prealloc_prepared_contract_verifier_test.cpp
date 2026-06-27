@@ -1,4 +1,8 @@
 #include "src/backend/prealloc/prepared_contract_verifier.hpp"
+#include "src/backend/prealloc/calls.hpp"
+#include "src/backend/prealloc/publication_plans.hpp"
+
+#include "src/backend/bir/bir.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -6,9 +10,11 @@
 #include <iostream>
 #include <optional>
 #include <string_view>
+#include <variant>
 
 namespace {
 
+namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
 bool expect(bool condition, std::string_view message) {
@@ -124,6 +130,169 @@ prepare::PreparedValueHome coherent_pointer_base_plus_offset_home() {
       .pointer_base_symbol_name = c4c::LinkNameId{101},
       .pointer_byte_delta = std::int64_t{12},
   };
+}
+
+int verify_call_argument_binary_producer_materialization_fact_query() {
+  prepare::PreparedNameTables names;
+  const auto block_label = names.block_labels.intern("fact.entry");
+  const auto loaded_name = names.value_names.intern("%loaded");
+  const auto sum_name = names.value_names.intern("%sum");
+  const auto shifted_name = names.value_names.intern("%shifted");
+
+  bir::Block block;
+  block.label = "fact.entry";
+  block.label_id = block_label;
+  block.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+      .slot_name = "slot",
+      .align_bytes = 4,
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+      .rhs = bir::Value::immediate_i32(9),
+  });
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Shl,
+      .result = bir::Value::named(bir::TypeKind::I32, "%shifted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%sum"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+
+  const auto* loaded = std::get_if<bir::LoadLocalInst>(&block.insts[0]);
+  const auto* sum = std::get_if<bir::BinaryInst>(&block.insts[1]);
+  const auto* shifted = std::get_if<bir::BinaryInst>(&block.insts[2]);
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      loaded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = block_label,
+          .instruction_index = 0,
+          .load_local = loaded,
+      });
+  source_producers.producers_by_value_name.emplace(
+      sum_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .binary = sum,
+      });
+  source_producers.producers_by_value_name.emplace(
+      shifted_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+          .block_label = block_label,
+          .instruction_index = 2,
+          .binary = shifted,
+      });
+
+  const auto coherent =
+      prepare::find_prepared_call_argument_binary_producer_materialization_fact(
+          names,
+          &source_producers,
+          block_label,
+          &block,
+          bir::Value::named(bir::TypeKind::I32, "%sum"),
+          3);
+  auto stale_source_producers = source_producers;
+  stale_source_producers.producers_by_value_name[sum_name].binary = shifted;
+
+  if (!expect(coherent.has_value(),
+              "coherent call-argument binary producer fact should be available") ||
+      !expect(coherent->materializable,
+              "coherent call-argument binary producer fact should be materializable") ||
+      !expect(coherent->same_block_before_call,
+              "coherent call-argument binary producer fact should carry scheduling authority") ||
+      !expect(coherent->destination_value_name == sum_name,
+              "call-argument binary producer fact should preserve destination identity") ||
+      !expect(coherent->destination_value_type == bir::TypeKind::I32,
+              "call-argument binary producer fact should preserve destination type") ||
+      !expect(coherent->producer_block_label == block_label,
+              "call-argument binary producer fact should preserve producer block") ||
+      !expect(coherent->producer_instruction_index == 1,
+              "call-argument binary producer fact should preserve producer instruction index") ||
+      !expect(coherent->producer_kind ==
+                  prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+              "call-argument binary producer fact should expose binary producer kind") ||
+      !expect(coherent->producer_instruction == &block.insts[1],
+              "call-argument binary producer fact should preserve instruction identity") ||
+      !expect(coherent->binary == sum,
+              "call-argument binary producer fact should preserve binary payload") ||
+      !expect(coherent->binary_opcode == bir::BinaryOpcode::Add,
+              "call-argument binary producer fact should expose binary opcode") ||
+      !expect(coherent->lhs.name == "%loaded" &&
+                  coherent->rhs.kind == bir::Value::Kind::Immediate &&
+                  coherent->rhs.immediate == 9,
+              "call-argument binary producer fact should expose operands") ||
+      !expect(!prepare::
+                   find_prepared_call_argument_binary_producer_materialization_fact(
+                       names,
+                       &source_producers,
+                       block_label,
+                       &block,
+                       bir::Value::named(bir::TypeKind::I32, "%loaded"),
+                       3)
+                   .has_value(),
+              "call-argument binary producer fact should reject cross-family load payload") ||
+      !expect(!prepare::
+                   find_prepared_call_argument_binary_producer_materialization_fact(
+                       names,
+                       &source_producers,
+                       block_label,
+                       &block,
+                       bir::Value::named(bir::TypeKind::I32, "%shifted"),
+                       3)
+                   .has_value(),
+              "call-argument binary producer fact should reject unsupported opcode") ||
+      !expect(!prepare::
+                   find_prepared_call_argument_binary_producer_materialization_fact(
+                       names,
+                       nullptr,
+                       block_label,
+                       &block,
+                       bir::Value::named(bir::TypeKind::I32, "%sum"),
+                       3)
+                   .has_value(),
+              "call-argument binary producer fact should reject missing lookup table") ||
+      !expect(!prepare::
+                   find_prepared_call_argument_binary_producer_materialization_fact(
+                       names,
+                       &source_producers,
+                       block_label,
+                       &block,
+                       bir::Value::named(bir::TypeKind::I64, "%sum"),
+                       3)
+                   .has_value(),
+              "call-argument binary producer fact should reject mismatched value type") ||
+      !expect(!prepare::
+                   find_prepared_call_argument_binary_producer_materialization_fact(
+                       names,
+                       &source_producers,
+                       block_label,
+                       &block,
+                       bir::Value::named(bir::TypeKind::I32, "%sum"),
+                       1)
+                   .has_value(),
+              "call-argument binary producer fact should reject future producer") ||
+      !expect(!prepare::
+                   find_prepared_call_argument_binary_producer_materialization_fact(
+                       names,
+                       &stale_source_producers,
+                       block_label,
+                       &block,
+                       bir::Value::named(bir::TypeKind::I32, "%sum"),
+                       3)
+                   .has_value(),
+              "call-argument binary producer fact should reject stale producer payload")) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int verify_rematerializable_integer_immediate_contract_reports() {
@@ -673,6 +842,10 @@ int verify_local_frame_address_materialization_source_route_contract_reports() {
 }  // namespace
 
 int main() {
+  if (const int rc = verify_call_argument_binary_producer_materialization_fact_query();
+      rc != 0) {
+    return rc;
+  }
   if (const int rc = verify_rematerializable_integer_immediate_contract_reports();
       rc != 0) {
     return rc;

@@ -2840,6 +2840,48 @@ bool prepared_call_argument_binary_producer_opcode_is_materializable(
   return false;
 }
 
+std::optional<PreparedCallArgumentBinaryProducerMaterializationFact>
+find_prepared_call_argument_binary_producer_materialization_fact(
+    const PreparedNameTables& names,
+    const PreparedEdgePublicationSourceProducerLookups* source_producers,
+    BlockLabelId block_label,
+    const bir::Block* block,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto producer =
+      find_prepared_same_block_scalar_producer(names,
+                                              source_producers,
+                                              block_label,
+                                              block,
+                                              value,
+                                              before_instruction_index);
+  if (!producer.has_value() ||
+      producer->producer.kind != PreparedEdgePublicationSourceProducerKind::Binary ||
+      producer->producer.binary == nullptr ||
+      producer->instruction == nullptr ||
+      !prepared_call_argument_binary_producer_opcode_is_materializable(
+          producer->producer.binary->opcode)) {
+    return std::nullopt;
+  }
+
+  return PreparedCallArgumentBinaryProducerMaterializationFact{
+      .destination_value_name = producer->value_name,
+      .destination_value_type = value.type,
+      .producer_block_label = producer->producer.block_label,
+      .producer_instruction_index = producer->instruction_index,
+      .producer_kind = producer->producer.kind,
+      .producer_instruction = producer->instruction,
+      .binary = producer->producer.binary,
+      .binary_opcode = producer->producer.binary->opcode,
+      .lhs = producer->producer.binary->lhs,
+      .rhs = producer->producer.binary->rhs,
+      .same_block_before_call = producer->producer.block_label == block_label &&
+                                producer->instruction_index <
+                                    before_instruction_index,
+      .materializable = true,
+  };
+}
+
 std::optional<PreparedCallArgumentSourceProducerMaterialization>
 find_prepared_call_argument_source_producer_materialization(
     const PreparedNameTables& names,
@@ -2862,11 +2904,16 @@ find_prepared_call_argument_source_producer_materialization(
   bool materializable = false;
   if (producer->producer.kind == PreparedEdgePublicationSourceProducerKind::LoadLocal) {
     materializable = true;
-  } else if (producer->producer.kind ==
-                 PreparedEdgePublicationSourceProducerKind::Binary &&
-             producer->producer.binary != nullptr) {
-    materializable = prepared_call_argument_binary_producer_opcode_is_materializable(
-        producer->producer.binary->opcode);
+  } else if (
+      find_prepared_call_argument_binary_producer_materialization_fact(
+          names,
+          source_producers,
+          block_label,
+          block,
+          value,
+          before_instruction_index)
+          .has_value()) {
+    materializable = true;
   }
   if (!materializable) {
     return std::nullopt;
