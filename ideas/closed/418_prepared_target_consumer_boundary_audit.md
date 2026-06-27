@@ -1,6 +1,6 @@
 # Prepared Target Consumer Boundary Audit
 
-Status: Open
+Status: Closed
 Type: Follow-up audit and cleanup idea
 Parent: `ideas/closed/412_prepared_fact_contract_normalization_analysis.md`
 Runs After: `ideas/open/413_prepared_contract_verifier_and_owner_taxonomy.md`
@@ -68,3 +68,29 @@ before more gcc_torture-driven repairs add hidden target fixups.
   materialized constants, aggregate layout, or initializer bytes.
 - Reject broad rewrites outside prepared consumer boundaries.
 - Reject expectation rewrites, allowlist filtering, or weaker runtime checks.
+
+## Completion Note
+
+Closed after Step 5 close-readiness. The published audit artifact is
+`docs/prepared_fact_contracts/target_consumer_boundary_audit.md`; it lists
+RV64/RISC-V and AArch64 target consumer rows, consumed taxonomy rows, owner
+classifications, current and required behavior, and downstream handoff rows for
+ideas 414 through 417.
+
+The required concrete cleanup or owner decision was satisfied by the Step 3
+decision for `418-AUD-RV64-OBJECT-GLOBAL-RECOVERY-001` and
+`418-AUD-RV64-GLOBAL-MEMORY-RECOVERY-001`: idea 417 owns RV64 object/global
+storage, initializer bytes, sections, relocations, labels, publication
+identity, and memory-access provenance; idea 415 owns only the
+symbol/value-materialization fallback portion of the RV64 global-memory helper
+row. The Step 4 handoff section preserves that split, and records that idea 416
+has no selected recovery row from this audit.
+
+Close proof: supervisor-recorded default
+`ctest --test-dir build -j --output-on-failure` in `test_after.log` passed
+`3355/3355`. Earlier backend subset proof covered `326/326` tests. Because the
+available canonical logs cover different scopes, this closure does not claim a
+matching-scope before/after regression-guard comparison or PASS over those
+different-scope logs. No testcase-overfit, expectation weakening, target
+fallback inference, or broad rewrite outside the prepared consumer boundary
+was present in the completed audit route.
