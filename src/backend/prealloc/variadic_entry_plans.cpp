@@ -1099,7 +1099,8 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
               make_aapcs64_aggregate_va_arg_access_plan(
                   prepared, function_plan, homes, block, instruction_index, *call);
           publish_prepared_variadic_aggregate_va_arg_operand_homes(homes);
-          if (!has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes)) {
+          if (!producer_compat_has_prepared_variadic_aggregate_va_arg_operand_homes(
+                  homes)) {
             append_missing_variadic_entry_fact(
                 function_plan,
                 "helper_operand_homes.va_arg_aggregate.aggregate_access_plan");
@@ -1181,7 +1182,7 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
                                                homes.destination_va_list_address,
                                                "destination_va_list_address");
           publish_prepared_variadic_va_start_operand_homes(homes);
-          if (has_complete_prepared_variadic_va_start_operand_homes(homes)) {
+          if (producer_compat_has_prepared_variadic_va_start_operand_homes(homes)) {
             function_plan.helper_operand_homes.push_back(std::move(homes));
           }
           break;
@@ -1200,7 +1201,8 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
               function_plan, homes, homes.source_va_list, "source_va_list");
           homes.scalar_access_plan =
               make_rv64_scalar_va_arg_access_plan(function_plan, homes, *call);
-          if (has_complete_prepared_variadic_scalar_va_arg_access_plan(homes)) {
+          if (producer_compat_has_prepared_variadic_scalar_va_arg_operand_homes(
+                  homes)) {
             remove_missing_variadic_entry_fact(
                 function_plan, "helper_operand_homes.va_arg.scalar_access_plan");
           } else if (homes.scalar_result.has_value() &&
@@ -1224,7 +1226,8 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
               make_rv64_aggregate_va_arg_access_plan(
                   prepared, function_plan, homes, block, *call);
           publish_prepared_variadic_aggregate_va_arg_operand_homes(homes);
-          if (has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes) &&
+          if (producer_compat_has_prepared_variadic_aggregate_va_arg_operand_homes(
+                  homes) &&
               homes.aggregate_access_plan->payload_write_address.has_value()) {
             remove_missing_variadic_entry_fact(
                 function_plan,
@@ -1235,7 +1238,9 @@ void populate_rv64_variadic_entry_va_start_operand_home_authority(
                 function_plan,
                 "helper_operand_homes.va_arg_aggregate.payload_write_address");
             function_plan.helper_operand_homes.push_back(std::move(homes));
-          } else if (has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes)) {
+          } else if (
+              producer_compat_has_prepared_variadic_aggregate_va_arg_operand_homes(
+                  homes)) {
             remove_missing_variadic_entry_fact(
                 function_plan,
                 "helper_operand_homes.va_arg_aggregate.aggregate_access_plan");

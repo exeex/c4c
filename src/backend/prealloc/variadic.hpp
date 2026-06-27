@@ -336,6 +336,9 @@ struct PreparedVariadicEntryHelperOperandHomes {
       aggregate_va_arg_operand_homes;
   mutable std::optional<PreparedVariadicVaCopyOperandHomes>
       va_copy_operand_homes;
+  // Legacy optional-bag storage kept for producer construction and mutable
+  // fixture compatibility. Consumers must use the typed helper payload
+  // accessors above so mismatched or incomplete rows fail closed.
   std::optional<PreparedValueHome> destination_va_list;
   std::optional<PreparedValueHome> destination_va_list_address;
   std::optional<PreparedValueHome> source_va_list;
@@ -680,40 +683,27 @@ inline void publish_prepared_variadic_va_copy_operand_homes(
   };
 }
 
-[[nodiscard]] inline bool has_complete_prepared_variadic_va_start_operand_homes(
+[[nodiscard]] inline bool producer_compat_has_prepared_variadic_va_start_operand_homes(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
   return find_prepared_variadic_va_start_operand_homes(homes) != nullptr;
 }
 
-[[nodiscard]] inline bool has_complete_prepared_variadic_scalar_va_arg_access_plan(
+[[nodiscard]] inline bool
+producer_compat_has_prepared_variadic_scalar_va_arg_operand_homes(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
   return find_prepared_variadic_scalar_va_arg_operand_homes(homes) != nullptr;
 }
 
-[[nodiscard]] inline bool has_complete_prepared_variadic_aggregate_va_arg_access_plan(
+[[nodiscard]] inline bool
+producer_compat_has_prepared_variadic_aggregate_va_arg_operand_homes(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
   return find_prepared_variadic_aggregate_va_arg_operand_homes(homes) !=
          nullptr;
 }
 
-[[nodiscard]] inline bool has_complete_prepared_variadic_va_copy_operand_homes(
+[[nodiscard]] inline bool producer_compat_has_prepared_variadic_va_copy_operand_homes(
     const PreparedVariadicEntryHelperOperandHomes& homes) {
   return find_prepared_variadic_va_copy_operand_homes(homes) != nullptr;
-}
-
-[[nodiscard]] inline bool has_complete_prepared_variadic_entry_helper_operand_homes(
-    const PreparedVariadicEntryHelperOperandHomes& homes) {
-  switch (homes.helper) {
-    case PreparedVariadicEntryHelperKind::VaStart:
-      return has_complete_prepared_variadic_va_start_operand_homes(homes);
-    case PreparedVariadicEntryHelperKind::VaArg:
-      return has_complete_prepared_variadic_scalar_va_arg_access_plan(homes);
-    case PreparedVariadicEntryHelperKind::VaArgAggregate:
-      return has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes);
-    case PreparedVariadicEntryHelperKind::VaCopy:
-      return has_complete_prepared_variadic_va_copy_operand_homes(homes);
-  }
-  return false;
 }
 
 struct PreparedVariadicEntryPlanFunction {

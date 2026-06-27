@@ -8,20 +8,18 @@ Current Step Title: Retire the Optional-Bag Consumer API
 
 ## Just Finished
 
-Step 7 continued the optional-bag consumer API retirement audit. The remaining
-test-side uses of the generic `has_complete_prepared_variadic_*` helper
-shorthands were replaced with typed payload accessor checks so focused tests no
-longer rely on the optional-bag completeness consumer API. The only remaining
-generic helper uses in the owned implementation audit are in
-`variadic_entry_plans.cpp` producer construction paths that decide whether to
-publish/remove missing facts while still filling compatibility storage.
+Step 7 is complete. The residual variadic helper completeness wrappers in
+`variadic.hpp` were renamed to `producer_compat_has_prepared_variadic_*` and
+the unused generic entry-helper completeness wrapper was removed, leaving typed
+payload accessors as the consumer-facing API. The legacy optional-bag fields in
+`PreparedVariadicEntryHelperOperandHomes` are now documented as producer
+construction and mutable fixture compatibility storage. Whole-repo audit found
+no remaining old `has_complete_prepared_variadic_*` symbols; the replacement
+producer-compat helpers are only called from `variadic_entry_plans.cpp`.
 
 ## Suggested Next
 
-Continue Step 7 with a header-level cleanup packet that owns
-`src/backend/prealloc/variadic.hpp`: rename, narrow, or document the legacy
-optional fields and generic completeness wrappers as producer compatibility
-storage, then update producer call sites if a clearer internal name is chosen.
+Proceed to Step 8: Final Validation and Closure Readiness.
 
 ## Watchouts
 
@@ -30,10 +28,12 @@ storage, then update producer call sites if a clearer internal name is chosen.
 - Do not weaken tests or expectations to claim progress.
 - Migrated target, verifier, and printer consumers use typed helper payload
   accessors; do not reintroduce direct optional-bag consumption there.
-- `PreparedVariadicEntryHelperOperandHomes` legacy optional fields and the
-  `has_complete_prepared_variadic_*` wrappers are defined in `variadic.hpp`,
-  which was not owned by this packet; they remain as producer compatibility API
-  until a header-owned cleanup can quarantine or rename them.
+- `PreparedVariadicEntryHelperOperandHomes` legacy optional fields remain as
+  documented producer/fixture compatibility storage; do not consume them from
+  target, verifier, or printer report paths.
+- The old `has_complete_prepared_variadic_*` names are gone; producer
+  construction paths use the explicit `producer_compat_has_prepared_variadic_*`
+  helpers.
 - Existing producer behavior still writes legacy optional fields while typed
   payloads derive from complete coherent rows for compatibility.
 - Aggregate `va_arg` has an RV64-only `payload_write_address` requirement that
