@@ -165,8 +165,8 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
           << " block=" << homes.block_index
           << " inst=" << homes.instruction_index;
       const auto append_home = [&](std::string_view label,
-                                   const std::optional<PreparedValueHome>& home) {
-        if (!home.has_value()) {
+                                   const PreparedValueHome* home) {
+        if (home == nullptr) {
           out << " " << label << "=<none>";
           return;
         }
@@ -182,15 +182,22 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
           out << ":offset=" << *home->offset_bytes;
         }
       };
-      append_home("dst_va_list", homes.destination_va_list);
-      append_home("dst_va_list_addr", homes.destination_va_list_address);
-      append_home("src_va_list", homes.source_va_list);
-      append_home("scalar_result", homes.scalar_result);
-      append_home("aggregate_dst", homes.aggregate_destination_payload);
-      if (homes.helper == PreparedVariadicEntryHelperKind::VaArg) {
-        out << " scalar_access_plan=";
+      if (homes.helper == PreparedVariadicEntryHelperKind::VaStart) {
+        const auto* payload =
+            find_prepared_variadic_va_start_operand_homes(homes);
+        append_home("dst_va_list",
+                    payload != nullptr ? &payload->destination_va_list : nullptr);
+        append_home("dst_va_list_addr",
+                    payload != nullptr ? &payload->destination_va_list_address
+                                       : nullptr);
+      } else if (homes.helper == PreparedVariadicEntryHelperKind::VaArg) {
         const auto* payload =
             find_prepared_variadic_scalar_va_arg_operand_homes(homes);
+        append_home("src_va_list",
+                    payload != nullptr ? &payload->source_va_list : nullptr);
+        append_home("scalar_result",
+                    payload != nullptr ? &payload->scalar_result : nullptr);
+        out << " scalar_access_plan=";
         if (payload == nullptr) {
           out << "<none>";
         } else {
@@ -237,9 +244,14 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
           }
         }
       } else if (homes.helper == PreparedVariadicEntryHelperKind::VaArgAggregate) {
-        out << " aggregate_access_plan=";
         const auto* payload =
             find_prepared_variadic_aggregate_va_arg_operand_homes(homes);
+        append_home("src_va_list",
+                    payload != nullptr ? &payload->source_va_list : nullptr);
+        append_home("aggregate_dst",
+                    payload != nullptr ? &payload->aggregate_destination_payload
+                                       : nullptr);
+        out << " aggregate_access_plan=";
         if (payload == nullptr) {
           out << "<none>";
         } else {
@@ -316,6 +328,13 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
                 << *plan.register_save_lane_size_bytes;
           }
         }
+      } else if (homes.helper == PreparedVariadicEntryHelperKind::VaCopy) {
+        const auto* payload =
+            find_prepared_variadic_va_copy_operand_homes(homes);
+        append_home("dst_va_list",
+                    payload != nullptr ? &payload->destination_va_list : nullptr);
+        append_home("src_va_list",
+                    payload != nullptr ? &payload->source_va_list : nullptr);
       }
       out << "\n";
     }

@@ -3,58 +3,49 @@
 Status: Active
 Source Idea Path: ideas/open/416_prepared_helper_operand_home_contracts.md
 Source Plan Path: plan.md
-Current Step ID: Step 6
-Current Step Title: Migrate RV64 Helper Lowering
+Current Step ID: Step 7
+Current Step Title: Retire the Optional-Bag Consumer API
 
 ## Just Finished
 
-Step 6 RV64 object-route migration is complete. RV64 `va_start` and aggregate
-`va_arg` helper diagnostics/fragments obtain operand homes/access plans through
-typed helper payload accessors instead of directly consuming legacy optional-bag
-fields. The object-route helper coherence check dispatches by helper kind to
-typed accessors, and `rv64_va_start_destination_load_offset(...)` selects the
-prior `va_start` payload through the typed accessor before reading destination
-homes. The final audit found no remaining direct optional-bag consumer/report
-reads in `object_emission.cpp`; remaining optional-bag references in the owned
-RV64 test are fixture setup/mutation scaffolding. The aggregate
-`payload_write_address` requirement remains an RV64 object-route support check
-on the typed aggregate access plan.
+Step 7 started the optional-bag consumer API retirement by quarantining the
+remaining prepared-printer report path. Variadic helper operand-home rows now
+print helper-specific homes from the typed per-helper payload accessors for
+`va_start`, scalar `va_arg`, aggregate `va_arg`, and `va_copy`; incoherent or
+incomplete rows print typed `<none>` payload fields instead of leaking unrelated
+legacy optional-bag values. The focused printer test now covers a mismatched
+legacy optional-bag row and rejects reporting it as helper-home content.
 
 ## Suggested Next
 
-Proceed to the next plan step: remove or quarantine legacy optional-bag
-compatibility storage once all remaining prepared/target consumers are ready,
-while preserving typed accessor compatibility until the cleanup is explicit.
+Continue Step 7 by auditing whether the remaining public legacy optional fields
+and generic completeness helper names can be narrowed, renamed, or documented as
+producer/test fixture compatibility storage without breaking existing setup
+paths.
 
 ## Watchouts
 
 - Do not edit the source idea for routine execution notes.
 - Do not infer helper operand homes in target lowering.
 - Do not weaken tests or expectations to claim progress.
-- Step 6 is complete for RV64 object-route consumers; keep the old optional-bag
-  fields until the explicit compatibility-storage cleanup step.
-- Existing RV64 producer behavior still only pushes complete `va_start` homes,
-  but pushes scalar `va_arg`, aggregate `va_arg`, and `va_copy` rows in more
-  incomplete states so diagnostics can name helper-specific missing facts.
+- Migrated target, verifier, and printer consumers use typed helper payload
+  accessors; do not reintroduce direct optional-bag consumption there.
+- Existing producer behavior still writes legacy optional fields while typed
+  payloads derive from complete coherent rows for compatibility.
 - Aggregate `va_arg` has an RV64-only `payload_write_address` requirement that
-  is not part of the typed aggregate payload added in this slice because the
-  existing generic completeness predicate does not require it.
+  remains object-route support data on the typed aggregate access plan, not
+  generic typed payload completeness.
 - Stale typed payloads must not mask missing or incomplete optional facts.
   Complete rewritten legacy rows intentionally refresh the derived typed cache
   for compatibility with existing mutable target fixtures.
-- AArch64 target lowering already uses typed helper payload accessors for
-  helper consumption; do not reintroduce optional-bag consumption there.
-- RV64 aggregate `payload_write_address` is still object-route-specific
-  support data on the typed aggregate access plan, not generic typed payload
-  completeness.
 - Do not infer helper operand homes from stack layout, BIR shape, or source
-  spelling in RV64 lowering.
-- Remaining RV64 optional-bag reads are in test fixture setup/mutation code
-  that deliberately constructs complete or incomplete helper rows.
+  spelling in target lowering.
+- Remaining optional-bag reads are producer construction, compatibility
+  derivation, or test fixture setup/mutation scaffolding.
 
 ## Proof
 
-Ran the supervisor-selected Step 6 proof:
-`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_riscv_object_emission|backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_cli_riscv64_variadic_entry_missing_contract_obj|backend_dump_riscv64_variadic_aggregate_overflow_helper_contract|backend_cli_riscv64_variadic_aggregate_overflow_helper_contract_obj)$' > test_after.log 2>&1`
+Ran the supervisor-selected Step 7 proof:
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_prealloc_prepared_contract_verifier|backend_prepared_printer|backend_prepare_frame_stack_call_contract|backend_prepared_object_consumer_contract|backend_riscv_object_emission|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_cli_riscv64_variadic_entry_missing_contract_obj|backend_dump_riscv64_variadic_aggregate_overflow_helper_contract|backend_cli_riscv64_variadic_aggregate_overflow_helper_contract_obj)$' > test_after.log 2>&1`
 
-Result: passed; `test_after.log` contains 6/6 passing tests.
+Result: passed; `test_after.log` contains 11/11 passing tests.

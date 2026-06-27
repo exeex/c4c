@@ -2874,6 +2874,42 @@ int complete_module_body_text_printer_rows_are_byte_stable() {
   return EXIT_SUCCESS;
 }
 
+prepare::PreparedBirModule variadic_printer_mismatched_optional_bag_fixture() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name =
+      prepared.names.function_names.intern("variadic_printer_mismatched_optional_bag");
+  const auto source_name = prepared.names.value_names.intern("legacy_src");
+  const auto result_name = prepared.names.value_names.intern("legacy_result");
+
+  prepare::PreparedValueHome source_va_list{
+      .value_name = source_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"x0"},
+  };
+  prepare::PreparedValueHome scalar_result{
+      .value_name = result_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"w0"},
+  };
+
+  prepared.variadic_entry_plans.functions.push_back(
+      prepare::PreparedVariadicEntryPlanFunction{
+          .function_name = function_name,
+          .helper_resources =
+              prepare::PreparedVariadicEntryHelperResources{
+                  .required_helpers =
+                      {prepare::PreparedVariadicEntryHelperKind::VaStart},
+              },
+          .helper_operand_homes =
+              {prepare::PreparedVariadicEntryHelperOperandHomes{
+                  .helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+                  .source_va_list = source_va_list,
+                  .scalar_result = scalar_result,
+              }},
+      });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepare_atomic_carrier_dump_module(bool complete) {
   bir::Module module;
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -6370,6 +6406,26 @@ int main() {
   if (!expect_contains(aapcs64_variadic_dump,
                        "helper_operand kind=va_start block=0 inst=0 dst_va_list=ap:",
                        "AAPCS64 variadic va_start helper operand home")) {
+    return EXIT_FAILURE;
+  }
+  const auto mismatched_optional_bag_prepared =
+      variadic_printer_mismatched_optional_bag_fixture();
+  const std::string mismatched_optional_bag_dump =
+      prepare::print(mismatched_optional_bag_prepared);
+  if (!expect_contains(
+          mismatched_optional_bag_dump,
+          "helper_operand kind=va_start block=0 inst=0 dst_va_list=<none> dst_va_list_addr=<none>",
+          "variadic helper printer typed va_start payload quarantine")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(
+          mismatched_optional_bag_dump,
+          "src_va_list=legacy_src:register",
+          "variadic helper printer legacy source-va-list optional-bag leak") ||
+      !expect_not_contains(
+          mismatched_optional_bag_dump,
+          "scalar_result=legacy_result:register",
+          "variadic helper printer legacy scalar-result optional-bag leak")) {
     return EXIT_FAILURE;
   }
   const auto aapcs64_helper_family_prepared =
