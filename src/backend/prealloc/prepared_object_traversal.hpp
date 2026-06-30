@@ -16,6 +16,7 @@ namespace c4c::backend::prepare {
 enum class PreparedObjectTraversalEventKind {
   Label,
   BlockEntryCopies,
+  BeforeInstructionCopies,
   Instruction,
   PreTerminatorCopies,
   Terminator,
@@ -125,6 +126,8 @@ enum class PreparedObjectConsumerDiagnosticCategory {
       return "label";
     case PreparedObjectTraversalEventKind::BlockEntryCopies:
       return "block_entry_copies";
+    case PreparedObjectTraversalEventKind::BeforeInstructionCopies:
+      return "before_instruction_copies";
     case PreparedObjectTraversalEventKind::Instruction:
       return "instruction";
     case PreparedObjectTraversalEventKind::PreTerminatorCopies:

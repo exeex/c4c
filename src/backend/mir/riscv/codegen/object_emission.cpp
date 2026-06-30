@@ -1884,6 +1884,15 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
     std::uint32_t destination_register,
     std::size_t stack_frame_bytes);
 
+bool prepared_move_bundle_is_authorized_cast_dependency_stack_publication(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle);
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -1895,6 +1904,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
         dependency_operand_authorities,
     std::size_t stack_frame_bytes,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
+  if (prepared_move_bundle_is_authorized_cast_dependency_stack_publication(
+          names,
+          control_flow,
+          control_flow.function_name,
+          function,
+          dependency_operand_authorities,
+          move_bundle)) {
+    return RiscvEncodedFragment{};
+  }
+
   RiscvEncodedFragment fragment;
   for (const auto& move : move_bundle.moves) {
     if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
@@ -6381,6 +6400,7 @@ rv64_select_edge_dependency_operand_current_source_register(
 
 bool prepared_cast_is_available_select_edge_dependency_authority_source(
     const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     c4c::FunctionNameId function_name,
     const c4c::backend::bir::Function& function,
     c4c::BlockLabelId block_label,
@@ -6432,20 +6452,26 @@ bool prepared_cast_is_available_select_edge_dependency_authority_source(
     return prepared_bir_value_has_name(names, value, result_name);
   };
 
-  for (const auto& block : function.blocks) {
+  for (std::size_t block_index = 0; block_index < function.blocks.size();
+       ++block_index) {
+    if (block_index >= control_flow.blocks.size()) {
+      return false;
+    }
+    const auto& block = function.blocks.at(block_index);
+    const auto use_block_label = control_flow.blocks.at(block_index).block_label;
     for (std::size_t i = 0; i < block.insts.size(); ++i) {
       const auto& inst = block.insts.at(i);
       if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
         if (uses_cast_result(binary->lhs) &&
             !is_authorized_source_producer_operand(
-                block.label_id,
+                use_block_label,
                 i,
                 prepare::PreparedDependencyOperandRole::Lhs)) {
           return false;
         }
         if (uses_cast_result(binary->rhs) &&
             !is_authorized_source_producer_operand(
-                block.label_id,
+                use_block_label,
                 i,
                 prepare::PreparedDependencyOperandRole::Rhs)) {
           return false;
@@ -6514,6 +6540,94 @@ bool prepared_cast_is_available_select_edge_dependency_authority_source(
     }
   }
   return true;
+}
+
+bool prepared_move_bundle_is_authorized_cast_dependency_stack_publication(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
+  if (dependency_operand_authorities == nullptr ||
+      move_bundle.function_name != function_name ||
+      move_bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
+      move_bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      !move_bundle.abi_bindings.empty() || move_bundle.moves.size() != 1 ||
+      move_bundle.block_index >= function.blocks.size() ||
+      move_bundle.block_index >= control_flow.blocks.size()) {
+    return false;
+  }
+  const auto& block = function.blocks.at(move_bundle.block_index);
+  const auto prepared_block_label =
+      control_flow.blocks.at(move_bundle.block_index).block_label;
+  if (move_bundle.instruction_index >= block.insts.size()) {
+    return false;
+  }
+  const auto* cast =
+      std::get_if<c4c::backend::bir::CastInst>(
+          &block.insts.at(move_bundle.instruction_index));
+  if (cast == nullptr ||
+      !prepared_cast_is_available_select_edge_dependency_authority_source(
+          names,
+          control_flow,
+          function_name,
+          function,
+          prepared_block_label,
+          move_bundle.instruction_index,
+          *dependency_operand_authorities,
+          *cast)) {
+    return false;
+  }
+  if (cast->result.kind != c4c::backend::bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto result_name = names.value_names.find(cast->result.name);
+  if (result_name == c4c::kInvalidValueName) {
+    return false;
+  }
+  const auto matching_record = std::find_if(
+      dependency_operand_authorities->records.begin(),
+      dependency_operand_authorities->records.end(),
+      [&](const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecord&
+              record) {
+        const auto& authority = record.authority;
+        return record.function_name == function_name &&
+               record.cast_producer_block_label == prepared_block_label &&
+               record.cast_producer_instruction_index ==
+                   move_bundle.instruction_index &&
+               authority.policy ==
+                   prepare::PreparedDependencyOperandMaterializationPolicy::
+                       RematerializeCastFromSource &&
+               prepare::prepared_dependency_operand_authority_available(
+                   authority) &&
+               authority.dependency_value_name == result_name &&
+               authority.cast_source_value_id.has_value() &&
+               record.source_producer_kind ==
+                   prepare::PreparedEdgePublicationSourceProducerKind::Binary &&
+               (record.cast_source_home_kind ==
+                    prepare::PreparedValueHomeKind::Register ||
+                record.cast_source_home_kind ==
+                    prepare::PreparedValueHomeKind::RematerializableImmediate);
+      });
+  if (matching_record == dependency_operand_authorities->records.end()) {
+    return false;
+  }
+  const auto& move = move_bundle.moves.front();
+  return move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+         move.destination_kind ==
+             prepare::PreparedMoveDestinationKind::Value &&
+         move.destination_storage_kind ==
+             prepare::PreparedMoveStorageKind::StackSlot &&
+         !move.uses_cycle_temp_source &&
+         !move.source_immediate_i32.has_value() &&
+         !move.destination_register_name.has_value() &&
+         !move.destination_register_placement.has_value() &&
+         move.destination_contiguous_width == 1 &&
+         move.destination_occupied_register_names.empty() &&
+         move.from_value_id == *matching_record->authority.cast_source_value_id &&
+         move.to_value_id == matching_record->authority.dependency_value_id;
 }
 
 std::optional<RiscvEncodedFragment>
@@ -8135,6 +8249,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     } else if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst)) {
       if (prepared_cast_is_available_select_edge_dependency_authority_source(
               prepared.names,
+              control_flow,
               control_flow.function_name,
               function,
               prepared_block_label,
@@ -8707,6 +8822,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
           break;
         }
         case prepare::PreparedObjectTraversalEventKind::BlockEntryCopies:
+        case prepare::PreparedObjectTraversalEventKind::BeforeInstructionCopies:
         case prepare::PreparedObjectTraversalEventKind::PreTerminatorCopies: {
           const auto classification =
               prepare::classify_prepared_object_move_bundle_consumer(event);

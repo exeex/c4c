@@ -155,6 +155,7 @@ namespace {
     PreparedObjectTraversalEventKind kind) {
   switch (kind) {
     case PreparedObjectTraversalEventKind::BlockEntryCopies:
+    case PreparedObjectTraversalEventKind::BeforeInstructionCopies:
     case PreparedObjectTraversalEventKind::PreTerminatorCopies:
       return true;
     case PreparedObjectTraversalEventKind::Label:
@@ -172,6 +173,9 @@ namespace {
     case PreparedObjectTraversalEventKind::BlockEntryCopies:
       return move_bundle.phase == PreparedMovePhase::BlockEntry &&
              move_bundle.instruction_index == 0;
+    case PreparedObjectTraversalEventKind::BeforeInstructionCopies:
+      return move_bundle.phase == PreparedMovePhase::BeforeInstruction &&
+             move_bundle.instruction_index == event.instruction_index;
     case PreparedObjectTraversalEventKind::PreTerminatorCopies:
       return move_bundle.phase == PreparedMovePhase::BeforeReturn &&
              move_bundle.instruction_index == event.instruction_index;
@@ -295,6 +299,44 @@ void append_unowned_block_entry_move_events(
     events.push_back(PreparedObjectTraversalEvent{
         .kind = PreparedObjectTraversalEventKind::BlockEntryCopies,
         .block_index = block_index,
+        .prepared_block = &block,
+        .bir_block = bir_block,
+        .move_bundle = &move_bundle,
+    });
+  }
+}
+
+[[nodiscard]] bool move_bundle_has_stack_destination(
+    const PreparedMoveBundle& move_bundle) {
+  return std::any_of(move_bundle.moves.begin(),
+                     move_bundle.moves.end(),
+                     [](const PreparedMoveResolution& move) {
+                       return move.destination_storage_kind ==
+                              PreparedMoveStorageKind::StackSlot;
+                     });
+}
+
+void append_before_instruction_stack_move_events(
+    std::vector<PreparedObjectTraversalEvent>& events,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedControlFlowBlock& block,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const bir::Block* bir_block) {
+  if (value_locations == nullptr) {
+    return;
+  }
+  for (const auto& move_bundle : value_locations->move_bundles) {
+    if (move_bundle.phase != PreparedMovePhase::BeforeInstruction ||
+        move_bundle.block_index != block_index ||
+        move_bundle.instruction_index != instruction_index ||
+        !move_bundle_has_stack_destination(move_bundle)) {
+      continue;
+    }
+    events.push_back(PreparedObjectTraversalEvent{
+        .kind = PreparedObjectTraversalEventKind::BeforeInstructionCopies,
+        .block_index = block_index,
+        .instruction_index = instruction_index,
         .prepared_block = &block,
         .bir_block = bir_block,
         .move_bundle = &move_bundle,
@@ -1007,6 +1049,13 @@ std::vector<PreparedObjectTraversalEvent> make_prepared_object_function_traversa
       for (std::size_t instruction_index = 0;
            instruction_index < bir_block->insts.size();
            ++instruction_index) {
+        append_before_instruction_stack_move_events(
+            events,
+            value_locations,
+            block,
+            block_index,
+            instruction_index,
+            bir_block);
         events.push_back(PreparedObjectTraversalEvent{
             .kind = PreparedObjectTraversalEventKind::Instruction,
             .block_index = block_index,

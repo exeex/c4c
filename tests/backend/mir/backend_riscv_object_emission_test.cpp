@@ -5696,6 +5696,20 @@ make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_modu
       .size_bytes = std::size_t{8},
       .align_bytes = std::size_t{8},
   });
+  locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = function_name,
+      .phase = prepare::PreparedMovePhase::BeforeInstruction,
+      .block_index = 3,
+      .instruction_index = 0,
+      .moves = {prepare::PreparedMoveResolution{
+          .from_value_id = 6,
+          .to_value_id = 7,
+          .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+          .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+          .destination_contiguous_width = 1,
+          .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      }},
+  });
   prepared.stack_layout.frame_size_bytes = 8;
   prepared.stack_layout.frame_alignment_bytes = 8;
   prepared.stack_layout.objects = {prepare::PreparedStackObject{
@@ -11269,10 +11283,7 @@ int rejects_prepared_join_transfer_select_cast_dependency_fail_closed_shapes() {
           .lhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs.ptr"),
           .rhs = bir::Value::named(bir::TypeKind::Ptr, "%ptr.lhs"),
       });
-  if (expect_prepared_rejection_diagnostic(
-          prepared,
-          "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") !=
-      0) {
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
     return 1;
   }
 
@@ -11296,6 +11307,13 @@ int rejects_prepared_join_transfer_select_cast_dependency_fail_closed_shapes() {
       };
     }
   }
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_module();
+  prepared.value_locations.functions.front().move_bundles.back().moves.front().from_value_id = 7;
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
     return 1;
   }
