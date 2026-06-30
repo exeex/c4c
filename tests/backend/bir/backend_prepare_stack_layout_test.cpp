@@ -5978,6 +5978,357 @@ int check_fused_pointer_branch_publication_contract() {
   return 0;
 }
 
+int check_branch_stack_load_authority_contract() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("branch_stack_load");
+  const auto entry_label = names.block_labels.intern("entry");
+  const auto true_label = names.block_labels.intern("is_true");
+  const auto false_label = names.block_labels.intern("is_false");
+  const auto condition_name = names.value_names.intern("%cmp");
+  const auto lhs_name = names.value_names.intern("%lhs");
+  const auto rhs_name = names.value_names.intern("%rhs");
+  const auto other_name = names.value_names.intern("%other");
+
+  bir::Terminator terminator;
+  terminator.kind = bir::TerminatorKind::CondBranch;
+  terminator.condition = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  terminator.true_label = "is_true";
+  terminator.false_label = "is_false";
+
+  const prepare::PreparedBranchCondition branch_condition{
+      .function_name = function_name,
+      .block_label = entry_label,
+      .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+      .condition_value = bir::Value::named(bir::TypeKind::I32, "%cmp"),
+      .predicate = bir::BinaryOpcode::Ult,
+      .compare_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "%lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs"),
+      .can_fuse_with_branch = true,
+      .true_label = true_label,
+      .false_label = false_label,
+  };
+  const prepare::PreparedValueHome condition_home{
+      .value_id = 1,
+      .function_name = function_name,
+      .value_name = condition_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{11},
+      .offset_bytes = std::size_t{88},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+  };
+  const prepare::PreparedStackObject condition_object{
+      .object_id = 11,
+      .function_name = function_name,
+      .value_name = condition_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+  const prepare::PreparedFrameSlot condition_frame_slot{
+      .slot_id = prepare::PreparedFrameSlotId{11},
+      .object_id = 11,
+      .function_name = function_name,
+      .offset_bytes = 88,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+  const prepare::PreparedValueHome lhs_home{
+      .value_id = 2,
+      .function_name = function_name,
+      .value_name = lhs_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{10},
+      .offset_bytes = std::size_t{80},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+  };
+  const prepare::PreparedStackObject lhs_object{
+      .object_id = 10,
+      .function_name = function_name,
+      .value_name = lhs_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  };
+  const prepare::PreparedFrameSlot lhs_frame_slot{
+      .slot_id = prepare::PreparedFrameSlotId{10},
+      .object_id = 10,
+      .function_name = function_name,
+      .offset_bytes = 80,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  };
+
+  const auto accepted_condition =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Condition,
+          .value_home = &condition_home,
+          .frame_slot = &condition_frame_slot,
+          .stack_object = &condition_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .pointer_status =
+              prepare::PreparedBranchStackLoadPointerStatus::NotPointer,
+          .stack_slot_fresh_at_branch = true,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (!prepare::prepared_branch_stack_load_authority_available(
+          accepted_condition) ||
+      accepted_condition.role !=
+          prepare::PreparedBranchStackLoadRole::Condition ||
+      accepted_condition.policy !=
+          prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot ||
+      accepted_condition.value_id != condition_home.value_id ||
+      accepted_condition.value_name != condition_name ||
+      accepted_condition.stack_object_id !=
+          std::optional<prepare::PreparedObjectId>{condition_object.object_id} ||
+      accepted_condition.value_type != bir::TypeKind::I32 ||
+      accepted_condition.slot_id != condition_home.slot_id ||
+      accepted_condition.stack_offset_bytes != condition_home.offset_bytes ||
+      accepted_condition.stack_size_bytes != condition_home.size_bytes ||
+      accepted_condition.stack_align_bytes != condition_home.align_bytes) {
+    return fail("expected explicit branch stack-load authority for scalar condition");
+  }
+
+  const auto missing_policy =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Condition,
+          .value_home = &condition_home,
+          .frame_slot = &condition_frame_slot,
+          .stack_object = &condition_object,
+          .pointer_status =
+              prepare::PreparedBranchStackLoadPointerStatus::NotPointer,
+          .stack_slot_fresh_at_branch = true,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (missing_policy.status !=
+      prepare::PreparedBranchStackLoadAuthorityStatus::MissingPolicy) {
+    return fail("expected missing branch stack-load policy to stay fail-closed");
+  }
+
+  const auto missing_freshness =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Condition,
+          .value_home = &condition_home,
+          .frame_slot = &condition_frame_slot,
+          .stack_object = &condition_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .pointer_status =
+              prepare::PreparedBranchStackLoadPointerStatus::NotPointer,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (missing_freshness.status !=
+      prepare::PreparedBranchStackLoadAuthorityStatus::MissingStackFreshness) {
+    return fail("expected branch stack load without freshness to stay fail-closed");
+  }
+
+  const auto missing_clobber =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Condition,
+          .value_home = &condition_home,
+          .frame_slot = &condition_frame_slot,
+          .stack_object = &condition_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .pointer_status =
+              prepare::PreparedBranchStackLoadPointerStatus::NotPointer,
+          .stack_slot_fresh_at_branch = true,
+      });
+  if (missing_clobber.status !=
+      prepare::PreparedBranchStackLoadAuthorityStatus::
+          MissingStackClobberSafety) {
+    return fail("expected branch stack load without clobber safety to stay fail-closed");
+  }
+
+  auto mismatched_home = condition_home;
+  mismatched_home.value_name = other_name;
+  const auto home_mismatch =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Condition,
+          .value_home = &mismatched_home,
+          .frame_slot = &condition_frame_slot,
+          .stack_object = &condition_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .pointer_status =
+              prepare::PreparedBranchStackLoadPointerStatus::NotPointer,
+          .stack_slot_fresh_at_branch = true,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (home_mismatch.status !=
+      prepare::PreparedBranchStackLoadAuthorityStatus::HomeValueMismatch) {
+    return fail("expected wrong branch stack-load home to stay fail-closed");
+  }
+
+  const auto missing_frame_slot =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Condition,
+          .value_home = &condition_home,
+          .stack_object = &condition_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .pointer_status =
+              prepare::PreparedBranchStackLoadPointerStatus::NotPointer,
+          .stack_slot_fresh_at_branch = true,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (missing_frame_slot.status !=
+      prepare::PreparedBranchStackLoadAuthorityStatus::MissingFrameSlot) {
+    return fail("expected branch stack load without frame slot to stay fail-closed");
+  }
+
+  auto wrong_frame_slot = condition_frame_slot;
+  wrong_frame_slot.object_id = 99;
+  const auto frame_slot_mismatch =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Condition,
+          .value_home = &condition_home,
+          .frame_slot = &wrong_frame_slot,
+          .stack_object = &condition_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .pointer_status =
+              prepare::PreparedBranchStackLoadPointerStatus::NotPointer,
+          .stack_slot_fresh_at_branch = true,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (frame_slot_mismatch.status !=
+      prepare::PreparedBranchStackLoadAuthorityStatus::FrameSlotMismatch) {
+    return fail("expected mismatched branch stack-load frame slot to stay fail-closed");
+  }
+
+  auto wrong_offset_frame_slot = condition_frame_slot;
+  wrong_offset_frame_slot.offset_bytes = 96;
+  const auto frame_slot_offset_mismatch =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Condition,
+          .value_home = &condition_home,
+          .frame_slot = &wrong_offset_frame_slot,
+          .stack_object = &condition_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .pointer_status =
+              prepare::PreparedBranchStackLoadPointerStatus::NotPointer,
+          .stack_slot_fresh_at_branch = true,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (frame_slot_offset_mismatch.status !=
+      prepare::PreparedBranchStackLoadAuthorityStatus::FrameSlotMismatch) {
+    return fail("expected mismatched branch stack-load frame offset to stay fail-closed");
+  }
+
+  auto wrong_object = condition_object;
+  wrong_object.value_name = other_name;
+  const auto object_mismatch =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Condition,
+          .value_home = &condition_home,
+          .frame_slot = &condition_frame_slot,
+          .stack_object = &wrong_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .pointer_status =
+              prepare::PreparedBranchStackLoadPointerStatus::NotPointer,
+          .stack_slot_fresh_at_branch = true,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (object_mismatch.status !=
+      prepare::PreparedBranchStackLoadAuthorityStatus::StackObjectMismatch) {
+    return fail("expected wrong branch stack-load object to stay fail-closed");
+  }
+
+  const auto pointer_unknown =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Lhs,
+          .value_home = &lhs_home,
+          .frame_slot = &lhs_frame_slot,
+          .stack_object = &lhs_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .stack_slot_fresh_at_branch = true,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (pointer_unknown.status !=
+      prepare::PreparedBranchStackLoadAuthorityStatus::PointerStatusUnknown) {
+    return fail("expected pointer branch stack load without pointer status to stay fail-closed");
+  }
+
+  const auto accepted_pointer =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Lhs,
+          .value_home = &lhs_home,
+          .frame_slot = &lhs_frame_slot,
+          .stack_object = &lhs_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .pointer_status = prepare::PreparedBranchStackLoadPointerStatus::Proven,
+          .stack_slot_fresh_at_branch = true,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (!prepare::prepared_branch_stack_load_authority_available(
+          accepted_pointer) ||
+      accepted_pointer.role != prepare::PreparedBranchStackLoadRole::Lhs ||
+      accepted_pointer.value_type != bir::TypeKind::Ptr) {
+    return fail("expected proven pointer branch stack-load authority");
+  }
+
+  const prepare::PreparedValueHome rhs_register_home{
+      .value_id = 3,
+      .function_name = function_name,
+      .value_name = rhs_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"a4"},
+  };
+  const auto register_home =
+      prepare::plan_prepared_branch_stack_load_authority({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .role = prepare::PreparedBranchStackLoadRole::Rhs,
+          .value_home = &rhs_register_home,
+          .frame_slot = &lhs_frame_slot,
+          .stack_object = &lhs_object,
+          .policy = prepare::PreparedBranchStackLoadPolicy::LoadFromStackSlot,
+          .pointer_status = prepare::PreparedBranchStackLoadPointerStatus::Proven,
+          .stack_slot_fresh_at_branch = true,
+          .stack_slot_clobber_safe_at_branch = true,
+      });
+  if (register_home.status !=
+      prepare::PreparedBranchStackLoadAuthorityStatus::UnsupportedHome) {
+    return fail("expected register-home branch value to stay outside stack-load authority");
+  }
+
+  return 0;
+}
+
 int check_dependency_operand_authority_contract() {
   prepare::PreparedNameTables names;
   const auto function_name = names.function_names.intern("dependency_operand");
@@ -8967,6 +9318,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_fused_pointer_branch_publication_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_branch_stack_load_authority_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_dependency_operand_authority_contract(); rc != 0) {

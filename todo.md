@@ -1,108 +1,112 @@
 Status: Active
 Source Idea Path: ideas/open/469_branch_stack_load_authority_metadata.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Branch Stack-Load Authority Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Metadata Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for idea 469: defined the prepared branch-stack-load
-authority metadata contract.
+Completed Step 3 for idea 469: implemented the bounded prepared
+branch-stack-load authority metadata surface and focused coverage.
 
-Decision: a bounded Step 3 metadata packet is justified. The accepted route is
-a separate `PreparedBranchStackLoadAuthority`-style surface, not a weakening of
-`PreparedFusedPointerBranchPublication` and not RV64 branch-load emission.
-Stack slot ids, offsets, homes, and object facts remain evidence only; an
-available record must explicitly authorize loading that value at that branch
-site.
+Implemented surface:
 
-Accepted available-record contract:
+- Added branch stack-load role names for `condition`, `lhs`, and `rhs`.
+- Added branch stack-load policy names with the selected
+  `load_from_stack_slot` route.
+- Added pointer-status classification with `not_pointer`, `proven`, and
+  `unknown`.
+- Added `PreparedBranchStackLoadAuthorityStatus` fail-closed statuses for
+  missing names/branch condition/terminator, unsupported terminator or branch
+  condition, condition/target mismatch, missing or unsupported branch values,
+  missing/mismatched homes, missing/mismatched frame slots,
+  missing/mismatched stack objects, missing policy, missing freshness, missing
+  clobber safety, and unknown pointer status.
+- Added `plan_prepared_branch_stack_load_authority` and
+  `prepared_branch_stack_load_authority_available`.
 
-| Area | Required fact |
+Focused coverage in `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+proves:
+
+| Case | Result |
 | --- | --- |
-| Branch identity | Prepared branch condition with function/block identity, terminator target labels, condition value, predicate, compare type, and matching raw terminator where applicable. |
-| Operand role | Explicit role for the stack-home value: `condition`, `lhs`, or `rhs`; role is not inferred from raw BIR shape or dump spelling. |
-| Value identity | Prepared value id/name, type width, and expected scalar/GPR load width for the role. |
-| Stack home | Value home is a stack slot with slot id, stack offset, size, alignment, and matching prepared stack object/frame-slot facts. |
-| Load policy | Explicit branch-site `load_from_stack_slot` policy for that branch/role/value; no policy means unavailable. |
-| Freshness | Prepared fact proves the slot contains the current value at the branch site. |
-| Clobber safety | Prepared fact proves no intervening call, helper, move bundle, or stack write invalidates the slot before the branch-site load. |
-| Scratch/order boundary | Metadata must preserve enough role/load-width information for a later consumer to choose safe scratch/order; Step 3 must not emit RV64. |
-| Pointer status | Pointer operands must have explicit acceptable pointer/provenance status; unknown pointer-value memory or external-formal ambiguity keeps the row unavailable. |
+| Scalar stack-home branch condition with coherent branch identity, frame-slot/object relation, explicit `load_from_stack_slot`, freshness, and clobber-safety | accepted |
+| Missing branch stack-load policy | `missing_policy` |
+| Missing freshness | `missing_stack_freshness` |
+| Missing clobber safety | `missing_stack_clobber_safety` |
+| Mismatched value home | `home_value_mismatch` |
+| Missing frame slot | `missing_frame_slot` |
+| Mismatched frame slot object or offset | `frame_slot_mismatch` |
+| Mismatched stack object | `stack_object_mismatch` |
+| Pointer operand without proven pointer status | `pointer_status_unknown` |
+| Pointer operand with proven status and coherent stack facts | accepted |
+| Register-home branch value presented to stack-load authority | `unsupported_home` |
 
-Unavailable/fail-closed statuses to model:
+Boundaries preserved:
 
-| Status bucket | Examples |
-| --- | --- |
-| Missing branch identity | Missing names, missing branch condition, missing terminator, unsupported terminator/branch condition, condition mismatch, target mismatch. |
-| Missing role/value/home | Missing operand role, missing value home, home value mismatch, unsupported non-stack home for this authority. |
-| Stack object mismatch | Missing stack object, slot/object mismatch, insufficient size, insufficient alignment, or out-of-range load width. |
-| Missing policy | Stack home exists but no branch-site stack-load policy is present. |
-| Freshness/clobber unavailable | Missing freshness proof, missing clobber-safety proof, or explicit clobbered/stale status. |
-| Pointer not proven | Pointer operand has unknown provenance/layout/range status, pointer-value memory gap, or external formal caveat. |
-| Adjacent owner | Select-result stack destination, block-entry stack publication gap, generic stack-to-register move, or raw-shape-only fixture. |
+- No RV64 object emission changes.
+- No weakening of `PreparedFusedPointerBranchPublication`.
+- No raw BIR, testcase-name, stack-slot-number, block-order, or dump-shape
+  inference.
+- No pointer-value/provenance repair for `%t7`.
+- No select-result/block-entry stack-destination repair for `%t22/%t23`.
+- No expectation, allowlist, unsupported-marker, baseline, or pass/fail
+  accounting changes.
 
-Representative classification under this contract:
+Artifacts:
 
-| Row | Contract status | Reason |
-| --- | --- | --- |
-| `f.block_1` condition `%t2` | Positive metadata candidate if explicit policy/freshness/clobber facts are added. | Scalar condition stack slot facts are coherent; first missing fact is branch-site load authority. |
-| `f.block_1` lhs `%t1` | Unavailable until pointer status is explicit. | Stack facts are coherent, but pointer/formal provenance remains ambiguous and cannot be accepted from slot facts alone. |
-| `f.block_1` rhs `%p.reg2` | Out of scope for stack-load metadata. | Already register-home. |
-| `f.block_4` `%t8/%t7` | Unavailable. | Missing branch stack-load authority and `%t7` pointer-value/provenance status is not proven. |
-| `f.logic.end.14` `%t23/%t22` | Unavailable, adjacent owner. | Select-result/block-entry stack destination work remains separate. |
-
-Artifact:
-`build/agent_state/469_step2_branch_stack_load_authority_contract/contract.md`.
+- `build/agent_state/469_step3_branch_stack_load_authority_metadata/summary.md`
+- `test_after.log`
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: implement or route the first metadata packet.
+Execute Step 4 from `plan.md`: residual disposition and close-readiness review.
 
-Suggested bounded packet:
+Suggested Step 4 packet:
 
 - Owned files:
-  `src/backend/prealloc/publication_plans.hpp`,
-  `src/backend/prealloc/publication_plans.cpp`,
-  `tests/backend/bir/backend_prepare_stack_layout_test.cpp`,
   `todo.md`,
   `test_after.log`,
-  `build/agent_state/469_step3_branch_stack_load_authority_metadata/**`.
-- Add a prepared metadata record/status surface for branch-stack-load authority.
-- Positive coverage should prove an available scalar stack-home branch
-  condition or operand only when branch identity, role, stack object, explicit
-  load policy, freshness, and clobber-safety are coherent.
-- Negative coverage should keep missing policy, missing freshness, missing
-  clobber-safety, mismatched role/home/object, pointer unknown, select-result
-  stack destination, GPR-only rows, and raw-shape-only fixtures unavailable.
+  `build/agent_state/469_step4_residual_disposition/**`.
+- Re-check the representative `930930-1` branch stack-home rows against the
+  new metadata surface, classifying whether each row is now available,
+  unavailable because producer freshness/clobber inputs are still absent, or
+  owned by pointer-value/provenance or select-result stack-destination work.
+- Decide whether idea 469 is close-ready as a metadata-surface slice, should
+  remain active for a collector/population/printer packet, or should route a
+  later RV64 consumer only after available records are actually populated.
 - Proof command:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 ## Watchouts
 
-- Do not edit RV64 object emission in the metadata packet.
-- Do not weaken `PreparedFusedPointerBranchPublication`; it should continue to
-  require GPR-compatible condition and operand homes.
-- Treat `PreparedDependencyOperandAuthority` as status precedent only; it is
-  select-edge dependency metadata, not the branch-site authority record.
-- Do not infer authority from raw BIR, `.prepared.out` spelling, stack-slot
-  numbering, block order, function/test names, or the `930930-1` shape.
-- Keep pointer-value/provenance repair for `%t7`, external formal provenance,
-  and select-result/block-entry stack-destination repair separate.
+- The implemented Step 3 surface is a planner/contract surface with focused
+  tests. It does not yet collect/populate records from full prepared modules or
+  print them in prepared dumps.
+- Available records now require an explicit `PreparedFrameSlot` tying the
+  value home slot id to the stack object id with matching offset, size, and
+  alignment.
+- A later RV64 consumer must require an available authority record; it must not
+  consume stack homes directly.
+- Pointer operands still require explicit proven pointer status. Unknown
+  pointer-value memory and external-formal ambiguity remain fail-closed.
+- Do not weaken existing GPR-compatible branch publication predicates.
+- Keep `%t7` pointer-value/provenance and `%t22/%t23` select-result
+  stack-destination work separate unless plan-owner selects a distinct route.
 - Do not modify `test_baseline.new.log`, `test_baseline.log`,
-  `test_before.log`, `test_after.log`, or `review/`.
+  `test_before.log`, or `review/`.
 
 ## Proof
 
-Step 2 proof:
+Step 3 proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
 Result: passed.

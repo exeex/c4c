@@ -2143,6 +2143,212 @@ bool prepared_fused_pointer_branch_publication_available(
 
 namespace {
 
+[[nodiscard]] const bir::Value* branch_stack_load_value_for_role(
+    const PreparedBranchCondition& branch_condition,
+    PreparedBranchStackLoadRole role) {
+  switch (role) {
+    case PreparedBranchStackLoadRole::Condition:
+      return &branch_condition.condition_value;
+    case PreparedBranchStackLoadRole::Lhs:
+      return branch_condition.lhs.has_value() ? &*branch_condition.lhs : nullptr;
+    case PreparedBranchStackLoadRole::Rhs:
+      return branch_condition.rhs.has_value() ? &*branch_condition.rhs : nullptr;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool prepared_stack_object_matches_branch_stack_load_home(
+    const PreparedStackObject& object,
+    const PreparedValueHome& home,
+    const PreparedFrameSlot& frame_slot,
+    bir::TypeKind value_type) {
+  return home.kind == PreparedValueHomeKind::StackSlot &&
+         home.function_name == object.function_name &&
+         home.function_name == frame_slot.function_name &&
+         home.slot_id.has_value() &&
+         *home.slot_id == frame_slot.slot_id &&
+         frame_slot.object_id == object.object_id &&
+         object.value_name.has_value() &&
+         *object.value_name == home.value_name &&
+         home.offset_bytes.has_value() &&
+         home.size_bytes.has_value() &&
+         home.align_bytes.has_value() &&
+         *home.offset_bytes == frame_slot.offset_bytes &&
+         *home.size_bytes == frame_slot.size_bytes &&
+         *home.align_bytes == frame_slot.align_bytes &&
+         object.type == value_type &&
+         object.size_bytes >= *home.size_bytes &&
+         object.align_bytes >= *home.align_bytes &&
+         *home.size_bytes > 0 &&
+         *home.align_bytes > 0;
+}
+
+[[nodiscard]] bool prepared_branch_stack_load_pointer_status_is_accepted(
+    bir::TypeKind value_type,
+    PreparedBranchStackLoadPointerStatus pointer_status) {
+  if (value_type != bir::TypeKind::Ptr) {
+    return true;
+  }
+  return pointer_status == PreparedBranchStackLoadPointerStatus::Proven;
+}
+
+}  // namespace
+
+PreparedBranchStackLoadAuthority plan_prepared_branch_stack_load_authority(
+    const PreparedBranchStackLoadAuthorityInputs& inputs) {
+  PreparedBranchStackLoadAuthority authority{
+      .role = inputs.role,
+      .policy = inputs.policy,
+      .pointer_status = inputs.pointer_status,
+      .branch_condition = inputs.branch_condition,
+      .terminator = inputs.terminator,
+      .value_home = inputs.value_home,
+      .frame_slot = inputs.frame_slot,
+      .stack_object = inputs.stack_object,
+  };
+
+  if (inputs.names == nullptr) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::MissingNames;
+    return authority;
+  }
+  if (inputs.branch_condition == nullptr) {
+    authority.status =
+        PreparedBranchStackLoadAuthorityStatus::MissingBranchCondition;
+    return authority;
+  }
+  if (inputs.terminator == nullptr) {
+    authority.status =
+        PreparedBranchStackLoadAuthorityStatus::MissingTerminator;
+    return authority;
+  }
+  if (inputs.terminator->kind != bir::TerminatorKind::CondBranch) {
+    authority.status =
+        PreparedBranchStackLoadAuthorityStatus::UnsupportedTerminator;
+    return authority;
+  }
+  if (inputs.role != PreparedBranchStackLoadRole::Condition &&
+      (inputs.branch_condition->kind !=
+           PreparedBranchConditionKind::FusedCompare ||
+       !inputs.branch_condition->can_fuse_with_branch)) {
+    authority.status =
+        PreparedBranchStackLoadAuthorityStatus::UnsupportedBranchCondition;
+    return authority;
+  }
+  if (inputs.terminator->condition.kind != bir::Value::Kind::Named ||
+      inputs.branch_condition->condition_value.kind != bir::Value::Kind::Named ||
+      inputs.terminator->condition.name !=
+          inputs.branch_condition->condition_value.name) {
+    authority.status =
+        PreparedBranchStackLoadAuthorityStatus::ConditionMismatch;
+    return authority;
+  }
+  if (inputs.branch_condition->true_label == kInvalidBlockLabel ||
+      inputs.branch_condition->false_label == kInvalidBlockLabel ||
+      prepared_block_label(*inputs.names, inputs.branch_condition->true_label) !=
+          inputs.terminator->true_label ||
+      prepared_block_label(*inputs.names, inputs.branch_condition->false_label) !=
+          inputs.terminator->false_label) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::TargetMismatch;
+    return authority;
+  }
+
+  const auto* branch_value =
+      branch_stack_load_value_for_role(*inputs.branch_condition, inputs.role);
+  if (branch_value == nullptr) {
+    authority.status =
+        PreparedBranchStackLoadAuthorityStatus::MissingBranchValue;
+    return authority;
+  }
+  authority.value_type = branch_value->type;
+  if (branch_value->kind != bir::Value::Kind::Named ||
+      branch_value->name.empty()) {
+    authority.status =
+        PreparedBranchStackLoadAuthorityStatus::UnsupportedBranchValue;
+    return authority;
+  }
+
+  if (inputs.value_home == nullptr) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::MissingValueHome;
+    return authority;
+  }
+  authority.value_id = inputs.value_home->value_id;
+  authority.value_name = inputs.value_home->value_name;
+  if (!prepared_home_names_value(*inputs.names, *inputs.value_home,
+                                 *branch_value)) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::HomeValueMismatch;
+    return authority;
+  }
+  if (inputs.value_home->kind != PreparedValueHomeKind::StackSlot) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::UnsupportedHome;
+    return authority;
+  }
+  authority.slot_id = inputs.value_home->slot_id;
+  authority.stack_offset_bytes = inputs.value_home->offset_bytes;
+  authority.stack_size_bytes = inputs.value_home->size_bytes;
+  authority.stack_align_bytes = inputs.value_home->align_bytes;
+  if (inputs.frame_slot == nullptr) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::MissingFrameSlot;
+    return authority;
+  }
+  if (inputs.stack_object == nullptr) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::MissingStackObject;
+    return authority;
+  }
+  authority.stack_object_id = inputs.stack_object->object_id;
+  if (inputs.value_home->function_name != inputs.frame_slot->function_name ||
+      !inputs.value_home->slot_id.has_value() ||
+      *inputs.value_home->slot_id != inputs.frame_slot->slot_id ||
+      inputs.frame_slot->object_id != inputs.stack_object->object_id ||
+      !inputs.value_home->offset_bytes.has_value() ||
+      *inputs.value_home->offset_bytes != inputs.frame_slot->offset_bytes ||
+      !inputs.value_home->size_bytes.has_value() ||
+      *inputs.value_home->size_bytes != inputs.frame_slot->size_bytes ||
+      !inputs.value_home->align_bytes.has_value() ||
+      *inputs.value_home->align_bytes != inputs.frame_slot->align_bytes) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::FrameSlotMismatch;
+    return authority;
+  }
+  if (!prepared_stack_object_matches_branch_stack_load_home(
+          *inputs.stack_object,
+          *inputs.value_home,
+          *inputs.frame_slot,
+          branch_value->type)) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::StackObjectMismatch;
+    return authority;
+  }
+
+  if (inputs.policy == PreparedBranchStackLoadPolicy::None) {
+    authority.status = PreparedBranchStackLoadAuthorityStatus::MissingPolicy;
+    return authority;
+  }
+  if (!inputs.stack_slot_fresh_at_branch) {
+    authority.status =
+        PreparedBranchStackLoadAuthorityStatus::MissingStackFreshness;
+    return authority;
+  }
+  if (!inputs.stack_slot_clobber_safe_at_branch) {
+    authority.status =
+        PreparedBranchStackLoadAuthorityStatus::MissingStackClobberSafety;
+    return authority;
+  }
+  if (!prepared_branch_stack_load_pointer_status_is_accepted(
+          branch_value->type, inputs.pointer_status)) {
+    authority.status =
+        PreparedBranchStackLoadAuthorityStatus::PointerStatusUnknown;
+    return authority;
+  }
+
+  authority.status = PreparedBranchStackLoadAuthorityStatus::Available;
+  return authority;
+}
+
+bool prepared_branch_stack_load_authority_available(
+    const PreparedBranchStackLoadAuthority& authority) {
+  return authority.status == PreparedBranchStackLoadAuthorityStatus::Available;
+}
+
+namespace {
+
 [[nodiscard]] const bir::Value* dependency_operand_for_role(
     const bir::BinaryInst& binary,
     PreparedDependencyOperandRole role) {

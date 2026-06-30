@@ -378,6 +378,173 @@ enum class PreparedDependencyOperandRole {
   return "unknown";
 }
 
+enum class PreparedBranchStackLoadRole {
+  Condition,
+  Lhs,
+  Rhs,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_branch_stack_load_role_name(
+    PreparedBranchStackLoadRole role) {
+  switch (role) {
+    case PreparedBranchStackLoadRole::Condition:
+      return "condition";
+    case PreparedBranchStackLoadRole::Lhs:
+      return "lhs";
+    case PreparedBranchStackLoadRole::Rhs:
+      return "rhs";
+  }
+  return "unknown";
+}
+
+enum class PreparedBranchStackLoadPolicy {
+  None,
+  LoadFromStackSlot,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_branch_stack_load_policy_name(PreparedBranchStackLoadPolicy policy) {
+  switch (policy) {
+    case PreparedBranchStackLoadPolicy::None:
+      return "none";
+    case PreparedBranchStackLoadPolicy::LoadFromStackSlot:
+      return "load_from_stack_slot";
+  }
+  return "unknown";
+}
+
+enum class PreparedBranchStackLoadPointerStatus {
+  NotPointer,
+  Proven,
+  Unknown,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_branch_stack_load_pointer_status_name(
+    PreparedBranchStackLoadPointerStatus status) {
+  switch (status) {
+    case PreparedBranchStackLoadPointerStatus::NotPointer:
+      return "not_pointer";
+    case PreparedBranchStackLoadPointerStatus::Proven:
+      return "proven";
+    case PreparedBranchStackLoadPointerStatus::Unknown:
+      return "unknown";
+  }
+  return "unknown";
+}
+
+enum class PreparedBranchStackLoadAuthorityStatus {
+  Available,
+  MissingNames,
+  MissingBranchCondition,
+  MissingTerminator,
+  UnsupportedTerminator,
+  UnsupportedBranchCondition,
+  ConditionMismatch,
+  TargetMismatch,
+  MissingBranchValue,
+  UnsupportedBranchValue,
+  MissingValueHome,
+  HomeValueMismatch,
+  UnsupportedHome,
+  MissingFrameSlot,
+  FrameSlotMismatch,
+  MissingStackObject,
+  StackObjectMismatch,
+  MissingPolicy,
+  MissingStackFreshness,
+  MissingStackClobberSafety,
+  PointerStatusUnknown,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_branch_stack_load_authority_status_name(
+    PreparedBranchStackLoadAuthorityStatus status) {
+  switch (status) {
+    case PreparedBranchStackLoadAuthorityStatus::Available:
+      return "available";
+    case PreparedBranchStackLoadAuthorityStatus::MissingNames:
+      return "missing_names";
+    case PreparedBranchStackLoadAuthorityStatus::MissingBranchCondition:
+      return "missing_branch_condition";
+    case PreparedBranchStackLoadAuthorityStatus::MissingTerminator:
+      return "missing_terminator";
+    case PreparedBranchStackLoadAuthorityStatus::UnsupportedTerminator:
+      return "unsupported_terminator";
+    case PreparedBranchStackLoadAuthorityStatus::UnsupportedBranchCondition:
+      return "unsupported_branch_condition";
+    case PreparedBranchStackLoadAuthorityStatus::ConditionMismatch:
+      return "condition_mismatch";
+    case PreparedBranchStackLoadAuthorityStatus::TargetMismatch:
+      return "target_mismatch";
+    case PreparedBranchStackLoadAuthorityStatus::MissingBranchValue:
+      return "missing_branch_value";
+    case PreparedBranchStackLoadAuthorityStatus::UnsupportedBranchValue:
+      return "unsupported_branch_value";
+    case PreparedBranchStackLoadAuthorityStatus::MissingValueHome:
+      return "missing_value_home";
+    case PreparedBranchStackLoadAuthorityStatus::HomeValueMismatch:
+      return "home_value_mismatch";
+    case PreparedBranchStackLoadAuthorityStatus::UnsupportedHome:
+      return "unsupported_home";
+    case PreparedBranchStackLoadAuthorityStatus::MissingFrameSlot:
+      return "missing_frame_slot";
+    case PreparedBranchStackLoadAuthorityStatus::FrameSlotMismatch:
+      return "frame_slot_mismatch";
+    case PreparedBranchStackLoadAuthorityStatus::MissingStackObject:
+      return "missing_stack_object";
+    case PreparedBranchStackLoadAuthorityStatus::StackObjectMismatch:
+      return "stack_object_mismatch";
+    case PreparedBranchStackLoadAuthorityStatus::MissingPolicy:
+      return "missing_policy";
+    case PreparedBranchStackLoadAuthorityStatus::MissingStackFreshness:
+      return "missing_stack_freshness";
+    case PreparedBranchStackLoadAuthorityStatus::MissingStackClobberSafety:
+      return "missing_stack_clobber_safety";
+    case PreparedBranchStackLoadAuthorityStatus::PointerStatusUnknown:
+      return "pointer_status_unknown";
+  }
+  return "unknown";
+}
+
+struct PreparedBranchStackLoadAuthorityInputs {
+  const PreparedNameTables* names = nullptr;
+  const PreparedBranchCondition* branch_condition = nullptr;
+  const bir::Terminator* terminator = nullptr;
+  PreparedBranchStackLoadRole role = PreparedBranchStackLoadRole::Condition;
+  const PreparedValueHome* value_home = nullptr;
+  const PreparedFrameSlot* frame_slot = nullptr;
+  const PreparedStackObject* stack_object = nullptr;
+  PreparedBranchStackLoadPolicy policy = PreparedBranchStackLoadPolicy::None;
+  PreparedBranchStackLoadPointerStatus pointer_status =
+      PreparedBranchStackLoadPointerStatus::Unknown;
+  bool stack_slot_fresh_at_branch = false;
+  bool stack_slot_clobber_safe_at_branch = false;
+};
+
+struct PreparedBranchStackLoadAuthority {
+  PreparedBranchStackLoadAuthorityStatus status =
+      PreparedBranchStackLoadAuthorityStatus::MissingBranchCondition;
+  PreparedBranchStackLoadRole role = PreparedBranchStackLoadRole::Condition;
+  PreparedBranchStackLoadPolicy policy = PreparedBranchStackLoadPolicy::None;
+  PreparedBranchStackLoadPointerStatus pointer_status =
+      PreparedBranchStackLoadPointerStatus::Unknown;
+  const PreparedBranchCondition* branch_condition = nullptr;
+  const bir::Terminator* terminator = nullptr;
+  const PreparedValueHome* value_home = nullptr;
+  const PreparedFrameSlot* frame_slot = nullptr;
+  const PreparedStackObject* stack_object = nullptr;
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  std::optional<PreparedObjectId> stack_object_id;
+  c4c::backend::bir::TypeKind value_type =
+      c4c::backend::bir::TypeKind::Void;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::size_t> stack_size_bytes;
+  std::optional<std::size_t> stack_align_bytes;
+};
+
 enum class PreparedDependencyOperandMaterializationPolicy {
   None,
   LoadFromStackSlot,
@@ -1476,6 +1643,13 @@ plan_prepared_fused_pointer_branch_publication(
 
 [[nodiscard]] bool prepared_fused_pointer_branch_publication_available(
     const PreparedFusedPointerBranchPublication& publication);
+
+[[nodiscard]] PreparedBranchStackLoadAuthority
+plan_prepared_branch_stack_load_authority(
+    const PreparedBranchStackLoadAuthorityInputs& inputs);
+
+[[nodiscard]] bool prepared_branch_stack_load_authority_available(
+    const PreparedBranchStackLoadAuthority& authority);
 
 [[nodiscard]] PreparedDependencyOperandAuthority
 plan_prepared_dependency_operand_authority(
