@@ -1,33 +1,33 @@
-# Edge Dependency-Operand Materialization Authority Plan
+# Dependency-Operand Authority Population Plan
 
 Status: Active
-Source Idea: ideas/open/454_edge_dependency_operand_materialization_authority.md
+Source Idea: ideas/open/455_dependency_operand_authority_population.md
 
 ## Purpose
 
-Define producer/prepared metadata for dependency operands used by edge
-source-producer rematerialization.
+Populate and expose concrete prepared dependency-operand authority records
+using the metadata surface closed by idea 454.
 
 ## Goal
 
-Classify the `%t17` dependency-operand authority gap from `20010329-1`, define
-explicit prepared policy for stack-slot load versus cast rematerialization, and
-select only a bounded producer/prepared metadata packet.
+Classify and populate the representative `%t17` dependency-operand authority
+for `20010329-1`, or record the exact missing producer fact that keeps it
+fail-closed, before any RV64 consumer work is selected.
 
 ## Core Rule
 
-Do not route to RV64 target lowering from current facts. A stack home, object
-shape, or raw `inttoptr` source is candidate evidence only; the producer must
-publish explicit dependency-operand materialization authority first.
+Do not route to RV64 target lowering from metadata type existence alone.
+Target consumers may only be reconsidered after concrete populated authority
+records exist and are visible in prepared evidence or focused tests.
 
 ## Read First
 
-- ideas/open/454_edge_dependency_operand_materialization_authority.md
-- ideas/closed/453_stack_slot_pointer_select_edge_dependency_materialization.md
-- build/agent_state/453_step4_residual_disposition/disposition.md
-- build/agent_state/453_step3_stack_slot_pointer_dependency_authority/blocker.md
-- build/agent_state/453_step2_stack_slot_pointer_dependency_contract/contract.md
-- build/agent_state/453_step1_stack_slot_pointer_dependency_audit/audit.md
+- ideas/open/455_dependency_operand_authority_population.md
+- ideas/closed/454_edge_dependency_operand_materialization_authority.md
+- build/agent_state/454_step4_residual_disposition/disposition.md
+- build/agent_state/454_step3_dependency_operand_authority_metadata/summary.md
+- build/agent_state/454_step2_dependency_operand_authority_contract/contract.md
+- build/agent_state/454_step1_dependency_operand_metadata_audit/audit.md
 - build/agent_state/453_step1_stack_slot_pointer_dependency_audit/20010329-1.prepared.out
 - src/backend/prealloc/publication_plans.cpp
 - src/backend/prealloc/publication_plans.hpp
@@ -40,12 +40,14 @@ publish explicit dependency-operand materialization authority first.
 - Dependency `%t17 = bir.inttoptr i32 %t16 to ptr`.
 - `%t17` stack-slot home `slot_id=2 offset=16`.
 - `%t16` rematerializable immediate `-2147483643`.
-- Missing prepared policy for `load_from_stack_slot` versus
-  `rematerialize_cast_from_source` versus fail-closed.
+- Concrete prepared population/printing for `load_from_stack_slot`,
+  `rematerialize_cast_from_source`, or exact fail-closed status.
 
 ## Non-Goals
 
 - RV64 consumer lowering for stack-slot pointer select-edge materialization.
+- Reworking dependency-operand metadata representation beyond minimal
+  population corrections.
 - Copying `%t18` or any successor/join-block source result on a predecessor
   edge.
 - General stack-home branch operand or condition materialization tracked by
@@ -60,22 +62,23 @@ publish explicit dependency-operand materialization authority first.
 
 ## Working Model
 
-The edge source-producer contract needs a dependency operand to be materialized
-before the compare can be rematerialized. `%t17` has two plausible policies:
-load the pointer value from its stack slot or rematerialize it from `%t16`
-through `inttoptr`. Both require producer-owned authority. This plan creates
-or rejects that authority surface before any target consumer is selected.
+Idea 454 created a planner/predicate for dependency-operand authority. This
+plan asks whether the prepared pipeline can produce concrete records for real
+edge dependency operands. The first representative is `%t17`: it may be
+eligible for explicit cast rematerialization from `%t16`, explicit stack-slot
+load only if freshness/clobber-safety are proven, or fail-closed if the
+producer cannot populate either policy.
 
 ## Execution Rules
 
 - Start with evidence classification; do not edit implementation in Step 1.
-- Treat stack-home and object metadata as candidate evidence, not authority.
+- Treat metadata type existence as insufficient authority for a real edge.
 - Keep RV64 consumer, general stack-home branch consumer, pointer-provenance,
   and generic instruction-side work separate.
-- Add focused producer/prepared tests for accepted authority and fail-closed
-  missing, stale, ambiguous, incoherent, unsupported, or non-placement-safe
-  facts.
-- Select at most one narrow metadata packet after the contract is explicit.
+- Add focused producer/prepared tests and prepared-output evidence for
+  populated authority and fail-closed missing/incoherent records.
+- Select at most one narrow producer/prepared population packet after the
+  audit is explicit.
 - Do not touch `test_baseline.new.log`, `test_before.log`, `test_after.log`,
   or `review/`.
 - Classification-only proof: `git diff --check`.
@@ -89,34 +92,34 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Dependency-Operand Metadata Evidence
+### Step 1: Audit Authority Population Evidence
 
-Inspect the 453 artifacts for `%t17` and adjacent edge dependency operands.
-Record value home, object metadata, cast/source identity, edge placement,
-freshness/clobber evidence, current prepared facts, and first missing producer
-authority. Completion means `todo.md` contains a bucket table and identifies
-whether the first packet should target load policy, cast-rematerialization
-policy, shared policy representation, or a routed blocker.
+Inspect the 454 artifacts and current prepared output for `%t17`. Record
+available edge identity, dependency operand identity, value home, object
+linkage, cast/source identity, freshness/clobber facts, current planner inputs,
+prepared printing, and first missing population fact. Completion means
+`todo.md` contains a bucket table and identifies whether the first packet is
+cast-rematerialization population, stack-load population, printer exposure, or
+a routed blocker.
 
-### Step 2: Define Dependency-Operand Authority Contract
+### Step 2: Define Population And Printing Contract
 
-Specify the prepared record or equivalent fact required for dependency-operand
-materialization, including policy kind, slot/object linkage, width, value type,
-freshness, clobber safety, cast source identity, edge placement, and
-fail-closed states. Completion means `todo.md` states accepted and rejected
-shapes, owned files/tests, and proof command.
+Specify which producer facts populate dependency-operand authority records and
+how those records become visible in prepared output or focused tests.
+Completion means `todo.md` states accepted and rejected population shapes,
+owned files/tests, and proof command.
 
-### Step 3: Implement Or Route First Producer Metadata Packet
+### Step 3: Implement Or Route First Population Packet
 
-If a coherent producer/prepared metadata packet exists, implement the smallest
-semantic change with focused coverage. If the first owner is outside prepared
-metadata, record the split or blocker instead of broadening this source.
+If a coherent producer/prepared packet exists, implement the smallest semantic
+change with focused coverage. If the first owner is outside population or
+printing, record the split or blocker instead of broadening this source.
 Completion means proof passes or canonical lifecycle state records the route
 decision.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-check the `%t17` dependency-operand authority against the Step 3 result,
+Re-check representative populated authority records against the Step 3 result,
 classify remaining residuals, and decide whether this source idea is complete.
-Completion means close, keep active with an exact remaining producer metadata
-packet, or route durable follow-up work.
+Completion means close, keep active with an exact remaining population packet,
+or route durable follow-up work.

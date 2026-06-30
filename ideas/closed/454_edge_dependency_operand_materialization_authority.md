@@ -1,11 +1,15 @@
 # Edge Dependency-Operand Materialization Authority
 
-Status: Open
+Status: Closed
 Type: Prepared producer/home metadata authority idea
 Parent: `ideas/closed/453_stack_slot_pointer_select_edge_dependency_materialization.md`
 Source Evidence: `build/agent_state/453_step4_residual_disposition/`
+Close Evidence: `build/agent_state/454_step4_residual_disposition/disposition.md`
 Owning Layer: Prepared dependency-operand materialization policy for edge
 source producers
+Closed Disposition: Complete for dependency-operand authority metadata
+representation. Follow-up:
+`ideas/open/455_dependency_operand_authority_population.md`.
 
 ## Goal
 
@@ -63,6 +67,37 @@ not infer `load_from_stack_slot` or `rematerialize_cast_from_source` from raw
   source, unsupported type, and missing edge placement.
 - No RV64 target consumer packet is selected until producer-owned authority is
   present and tested.
+
+## Completion Notes
+
+Idea 454 completed the metadata prerequisite. Step 3 added and tested the
+shared dependency-operand authority surface:
+
+- `PreparedDependencyOperandMaterializationPolicy`
+- `PreparedDependencyOperandAuthorityStatus`
+- `PreparedDependencyOperandAuthorityInputs`
+- `PreparedDependencyOperandAuthority`
+- `plan_prepared_dependency_operand_authority`
+- `prepared_dependency_operand_authority_available`
+
+Focused tests cover explicit `rematerialize_cast_from_source`, explicit
+`load_from_stack_slot` only with freshness and clobber-safety, and fail-closed
+missing or incoherent authority. No RV64 target-lowering consumer was selected.
+
+Step 4 classified remaining work as separate from this metadata representation:
+dump-visible/populated records for the representative `%t17` edge need a
+producer/prepared population or printing packet before returning to stack-slot
+pointer select-edge consumption. Raw `%t17` stack home/object metadata and raw
+`%t17 = inttoptr %t16` remain insufficient by themselves.
+
+## Validation
+
+- Step 3 backend proof passed before log roll-forward:
+  `cmake --build build -j2` plus
+  `ctest --test-dir build -j2 --output-on-failure -R '^backend_'`.
+- Step 4 lifecycle proof: `git diff --check` passed.
+- Close-time regression sanity used the rolled-forward backend guard log and
+  found no regression.
 
 ## Reviewer Reject Signals
 

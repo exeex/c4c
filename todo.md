@@ -1,52 +1,39 @@
 Status: Active
-Source Idea Path: ideas/open/454_edge_dependency_operand_materialization_authority.md
+Source Idea Path: ideas/open/455_dependency_operand_authority_population.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Authority Population Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 for idea 454. Disposition artifact:
-`build/agent_state/454_step4_residual_disposition/disposition.md`.
-
-Residual decision:
-
-- idea 454 is complete as producer/prepared authority metadata work;
-- Step 3 published the shared metadata planner and focused coverage for
-  explicit `rematerialize_cast_from_source` and explicit
-  `load_from_stack_slot` policies;
-- stack-slot loads remain fail-closed without explicit freshness and
-  clobber-safety;
-- raw `%t17` stack home/object metadata and raw `%t17 = inttoptr %t16` remain
-  insufficient authority by themselves;
-- no RV64 target lowering was changed or selected in this residual packet.
-
-Residual routing table:
-
-| Residual | Disposition | First owner |
-| --- | --- | --- |
-| Dependency-operand authority metadata surface | Complete for idea 454 | Closed by Step 3 planner/tests |
-| Dump-visible/populated records for representative edges | Separate population/printing packet if lifecycle requires prepared output records beyond the current planner/predicate surface | Plan-owner-selected producer/prepared follow-up |
-| `%t17` `load_from_stack_slot` route | Fail-closed until a producer supplies freshness and clobber-safety | Future producer packet, not RV64 inference |
-| `%t17` `rematerialize_cast_from_source` route | Supported by metadata only when explicit cast/source authority is supplied | Future population packet if the real edge should use this policy |
-| Stack-slot pointer select-edge consumer | Do not route directly from idea 454 | Plan-owner decision before returning to idea 453/consumer work |
+Closed idea 454 as complete for dependency-operand authority metadata
+representation. Step 4 separated remaining work into concrete population and
+printing for representative edge dependency operands before any RV64 consumer
+route can be selected.
 
 ## Suggested Next
 
-Plan-owner close-readiness review.
+Execute Step 1 for idea 455. Re-read:
 
-Recommended disposition: close idea 454 as complete for the dependency-operand
-authority metadata prerequisite. If lifecycle requires the new authority to be
-automatically populated or printed for the `20010329-1` `%t17` edge before any
-consumer work, split or activate a separate producer/prepared population packet
-first. Route back to the stack-slot pointer select-edge consumer only after
-plan-owner selection and only with explicit prepared authority available.
+- `ideas/open/455_dependency_operand_authority_population.md`
+- `ideas/closed/454_edge_dependency_operand_materialization_authority.md`
+- `build/agent_state/454_step4_residual_disposition/disposition.md`
+- `build/agent_state/454_step3_dependency_operand_authority_metadata/summary.md`
+- `build/agent_state/454_step2_dependency_operand_authority_contract/contract.md`
+- `build/agent_state/454_step1_dependency_operand_metadata_audit/audit.md`
+- `build/agent_state/453_step1_stack_slot_pointer_dependency_audit/20010329-1.prepared.out`
+
+Create `build/agent_state/455_step1_authority_population_audit/` and record a
+bucket table for `%t17` and adjacent edge dependency operands: edge identity,
+dependency operand identity, value home, object linkage, cast/source identity,
+freshness/clobber facts, current planner inputs, prepared printing, and first
+missing population fact. Do not edit implementation in Step 1.
 
 ## Watchouts
 
-- Do not route to RV64 target lowering from current facts.
+- Do not route to RV64 target lowering from metadata type existence alone.
 - Do not treat `%t17` stack home plus object metadata as sufficient
   `load_from_stack_slot` authority.
 - Do not treat raw `inttoptr` plus `%t16` immediate as sufficient
@@ -61,7 +48,7 @@ plan-owner selection and only with explicit prepared authority available.
 
 ## Proof
 
-Step 4 metadata/evidence-only proof:
+Lifecycle activation validation:
 
 ```sh
 git diff --check
