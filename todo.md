@@ -1,68 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/440_direct_global_return_select_chain_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First Direct-Global Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3: added focused prepared-side direct-global return authority
-coverage and recorded supporting evidence under
-`build/agent_state/440_step3_direct_global_return_authority/`.
+Completed Step 4: re-probed representative direct-global return/select-chain
+evidence and recorded residual disposition under
+`build/agent_state/440_step4_residual_disposition/`.
 
-Implementation summary:
+Residual classification:
 
-- Added `PreparedDirectGlobalReturnAuthorityStatus`,
-  `PreparedDirectGlobalReturnAuthorityInputs`,
-  `PreparedDirectGlobalReturnAuthority`,
-  `plan_prepared_direct_global_return_authority`, and
-  `prepared_direct_global_return_authority_available` in
-  `src/backend/prealloc/publication_plans.hpp/.cpp`.
-- The predicate accepts only a pointer return value with semantic global
-  `LinkNameId`, matching prepared value home/name/id, register-backed home, and
-  a matching `BeforeReturn` `FunctionReturnAbi` GPR register move for the same
-  block/instruction.
-- Focused tests in `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-  cover the coherent direct-global return shape and fail closed for raw-only,
-  missing-home, missing-ABI-move, non-pointer, unsupported-home,
-  non-global/missing-identity, mismatched-value-id, and unsupported destination
-  shapes.
-- No RV64 generic terminator lowering or idea 441 select/terminator publication
-  was implemented.
+| Bucket | Representative evidence | Disposition |
+| --- | --- | --- |
+| Direct-global return authority predicate | `20041112-1 foo.block_1` still has raw `bir.ret ptr @global`, prepared `home @global value_id=4 kind=register reg=t0`, and a matching `BeforeReturn` `FunctionReturnAbi` move to `a0`. Step 3 focused tests cover this authority predicate and fail-closed edges. | Prepared authority is complete for the intended direct-global return shape. |
+| Direct-global return consumer | Fresh RV64 object probe still fails with `unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering`. | In-scope remaining direct-global packet if narrowed to consuming explicit direct-global return authority only. |
+| Direct-global select-chain facts | Prepared dump retains `direct_global_select_chain=yes` on call-argument/select-chain rows. | Candidate facts remain separate; do not bundle them into the direct-global return consumer unless explicitly selected. |
+| Generic terminator/select publication | The object diagnostic is generic, but the representative can be classified by explicit direct-global return facts. | Out of scope for idea 440 unless constrained to direct-global authority consumption; generic terminator/select publication remains idea 441 work. |
+| Store/global publication and layout facts | Immediate store/global layout facts are already visible in the dump. | Out of scope for idea 440; covered by earlier global publication plans. |
 
 ## Suggested Next
 
-Execute Step 4: residual disposition and close-readiness review for idea 440.
-Re-probe representative direct-global return/select-chain rows, verify the
-new direct-global return authority predicate covers the intended prepared
-facts, and classify any remaining object-route failure as direct-global,
-select-chain, or out-of-scope idea 441 terminator/select publication.
+Keep idea 440 active only for the exact remaining direct-global return consumer
+packet: materialize `bir.ret ptr @global` in the RV64 object route by consuming
+`plan_prepared_direct_global_return_authority`/prepared homes and matching
+`BeforeReturn` ABI move facts as authority. Fail closed for raw-only,
+missing-authority, mismatched-home, non-global, unsupported-home, or non-GPR ABI
+return shapes. If the supervisor does not want to extend this runbook with that
+consumer packet, route it as a durable follow-up instead of closing the idea as
+complete.
 
 ## Watchouts
 
-- Keep this plan limited to direct-global return/select-chain authority.
-- Do not fold general terminator/select publication into this plan; that
-  belongs to `ideas/open/441_terminator_select_publication_authority.md`.
-- Do not infer return authority or select-chain roots from raw
-  `bir.ret ptr @global`, symbol spelling, select shape, testcase names, or one
-  dump layout.
-- Keep missing or incoherent direct-global authority fail-closed.
-- Treat existing `direct_global_select_chain=yes` rows as candidate facts until
-  a later packet defines a consuming predicate or routes them to Step 4
-  disposition.
-- Keep completed store/global publication facts from ideas 446/447 out of the
-  direct-global packet.
-- Do not treat raw `BeforeReturn` move bundles as sufficient outside
-  `plan_prepared_direct_global_return_authority`.
+- Do not implement generic RV64 terminator/select lowering in the direct-global
+  return consumer packet.
+- Do not infer return handling from raw `bir.ret ptr @global`, symbol spelling,
+  testcase names, probe instruction indexes, or raw `BeforeReturn` moves.
+- Keep `direct_global_select_chain=yes` rows separate from the first direct-global
+  return consumer packet unless the supervisor explicitly selects a select-chain
+  packet.
+- Keep completed store/global layout/source publication work from earlier ideas
+  out of this plan.
 - Do not accept or modify `test_baseline.new.log`.
-- Keep generic branch/return/select lowering out of this idea unless a
-  follow-up is explicitly narrowed to direct-global authority consumption.
+- Close-readiness decision: not close-ready as end-to-end object support; exact
+  next packet exists for direct-global return authority consumption.
 
 ## Proof
 
-Step 3 implementation validation:
+Step 4 residual-disposition validation:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
