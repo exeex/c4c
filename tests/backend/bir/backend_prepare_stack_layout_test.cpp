@@ -1025,6 +1025,132 @@ std::optional<prepare::PreparedBirModule> prepare_lir_byte_storage_overlay_modul
   return std::move(planner.prepared());
 }
 
+std::optional<prepare::PreparedBirModule>
+prepare_same_module_computed_address_formal_provenance_module(
+    bool callee_is_internal) {
+  lir::LirModule module;
+  module.target_profile = riscv_target_profile();
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  const auto global_link_name = module.link_names.intern("same_module_mem");
+  const auto callee_link_name =
+      module.link_names.intern("same_module_computed_address_callee");
+  const auto caller_link_name =
+      module.link_names.intern("same_module_computed_address_caller");
+
+  lir::LirGlobal global;
+  global.name = "same_module_mem";
+  global.link_name_id = global_link_name;
+  global.qualifier = "global ";
+  global.llvm_type = "[4 x i64]";
+  global.init_text = "zeroinitializer";
+  global.align_bytes = 8;
+  module.globals.push_back(std::move(global));
+
+  lir::LirFunction callee;
+  callee.name = "same_module_computed_address_callee";
+  callee.link_name_id = callee_link_name;
+  callee.is_internal = callee_is_internal;
+  callee.signature_text =
+      "define void @same_module_computed_address_callee(ptr %p.data)";
+  callee.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.param.data"),
+      .type_str = lir::LirTypeRef("ptr"),
+      .count = lir::LirOperand(""),
+      .align = 8,
+  });
+
+  lir::LirBlock callee_entry;
+  callee_entry.label = "entry";
+  callee_entry.insts.push_back(lir::LirStoreOp{
+      .type_str = lir::LirTypeRef("ptr"),
+      .val = lir::LirOperand("%p.data"),
+      .ptr = lir::LirOperand("%lv.param.data"),
+  });
+  for (const auto& [loaded_ptr, loaded_value] :
+       {std::pair<std::string_view, std::string_view>{"%loaded.ptr.0", "%loaded.value.0"},
+        std::pair<std::string_view, std::string_view>{"%loaded.ptr.1", "%loaded.value.1"},
+        std::pair<std::string_view, std::string_view>{"%loaded.ptr.2", "%loaded.value.2"}}) {
+    callee_entry.insts.push_back(lir::LirLoadOp{
+        .result = lir::LirOperand(std::string(loaded_ptr)),
+        .type_str = lir::LirTypeRef("ptr"),
+        .ptr = lir::LirOperand("%lv.param.data"),
+    });
+    callee_entry.insts.push_back(lir::LirLoadOp{
+        .result = lir::LirOperand(std::string(loaded_value)),
+        .type_str = lir::LirTypeRef("i64"),
+        .ptr = lir::LirOperand(std::string(loaded_ptr)),
+    });
+  }
+  callee_entry.terminator = lir::LirRet{std::nullopt, "void"};
+  callee.blocks.push_back(std::move(callee_entry));
+  module.functions.push_back(std::move(callee));
+
+  lir::LirFunction caller;
+  caller.name = "same_module_computed_address_caller";
+  caller.link_name_id = caller_link_name;
+  caller.signature_text = "define void @same_module_computed_address_caller()";
+  caller.signature_has_void_param_list = true;
+
+  lir::LirBlock caller_entry;
+  caller_entry.label = "entry";
+  caller_entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%arg.ptr"),
+      .element_type = lir::LirTypeRef("[4 x i64]"),
+      .ptr = lir::LirOperand("@same_module_mem"),
+      .inbounds = true,
+      .indices = {"i64 0", "i64 1"},
+  });
+  caller_entry.insts.push_back(lir::LirCallOp{
+      .result = lir::LirOperand(""),
+      .return_type = lir::LirTypeRef("void"),
+      .callee = lir::LirOperand("@same_module_computed_address_callee"),
+      .direct_callee_link_name_id = callee_link_name,
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr %arg.ptr",
+      .callee_signature =
+          lir::LirCallSignature{
+              .return_type_ref = lir::LirTypeRef("void"),
+              .fixed_param_types = {"ptr"},
+              .fixed_param_type_refs = {lir::LirTypeRef("ptr")},
+          },
+      .structured_args =
+          {lir::LirCallArg{
+              .type = "ptr",
+              .operand = lir::LirOperand("%arg.ptr"),
+              .type_ref = lir::LirTypeRef("ptr"),
+          }},
+  });
+  caller_entry.terminator = lir::LirRet{std::nullopt, "void"};
+  caller.blocks.push_back(std::move(caller_entry));
+  module.functions.push_back(std::move(caller));
+
+  const auto lowered_result =
+      c4c::backend::try_lower_to_bir_with_options(module, c4c::backend::BirLoweringOptions{});
+  if (!lowered_result.module.has_value()) {
+    for (const auto& note : lowered_result.notes) {
+      std::cerr << "same-module formal fixture lowering note [" << note.phase
+                << "]: " << note.message << "\n";
+    }
+    return std::nullopt;
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = *lowered_result.module;
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 int check_byte_storage_overlay_local_slot_activation(
     const prepare::PreparedBirModule& prepared) {
   const auto* object = find_stack_object(prepared, "%lv.u.0");
@@ -4970,6 +5096,85 @@ int check_global_pointer_addressed_local_slot_activation(
   return 0;
 }
 
+const prepare::PreparedMemoryAccess* find_pointer_value_access_by_result(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name,
+    std::string_view result_name) {
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
+  if (function_addressing == nullptr) {
+    return nullptr;
+  }
+  for (const auto& access : function_addressing->accesses) {
+    if (access.address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+        !access.result_value_name.has_value()) {
+      continue;
+    }
+    if (prepare::prepared_value_name(prepared.names, *access.result_value_name) ==
+        result_name) {
+      return &access;
+    }
+  }
+  return nullptr;
+}
+
+int check_same_module_computed_address_formal_provenance_activation(
+    const prepare::PreparedBirModule& prepared) {
+  for (const std::string_view result_name :
+       {"%loaded.value.0", "%loaded.value.1", "%loaded.value.2"}) {
+    const auto* access = find_pointer_value_access_by_result(
+        prepared,
+        "same_module_computed_address_callee",
+        result_name);
+    if (access == nullptr) {
+      return fail("expected same-module formal pointer loads to publish prepared addressing");
+    }
+    if (!access->address.pointer_value_name.has_value() ||
+        access->address.byte_offset != 0 ||
+        access->address.size_bytes != 8 ||
+        access->address.align_bytes != 8 ||
+        !access->address.can_use_base_plus_offset) {
+      return fail("expected same-module formal pointer loads to keep pointer-value address facts");
+    }
+    if (!prepare::prepared_pointer_value_memory_has_proven_authority(access->address)) {
+      return fail("expected same-module computed-address formal provenance to be target-consumable");
+    }
+    const auto& provenance = access->address.provenance;
+    if (provenance.base_identity.kind !=
+            bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol ||
+        provenance.base_identity.spelling != "@same_module_mem+8" ||
+        provenance.object_extent.completeness !=
+            bir::MemoryObjectExtentCompleteness::Complete ||
+        provenance.object_extent.size_bytes != 24 ||
+        provenance.requested_range.begin != 0 ||
+        provenance.requested_range.size_bytes != 8 ||
+        provenance.requested_range.end != 8 ||
+        provenance.layout_authority != bir::MemoryLayoutAuthorityKind::ScalarLayout ||
+        provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
+      return fail("expected same-module formal pointer loads to retain global range authority");
+    }
+  }
+
+  return 0;
+}
+
+int check_external_same_module_computed_address_formal_provenance_stays_fail_closed(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* access = find_pointer_value_access_by_result(
+      prepared,
+      "same_module_computed_address_callee",
+      "%loaded.value.0");
+  if (access == nullptr) {
+    return fail("expected external-linkage same-module formal fixture to publish addressing");
+  }
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(access->address)) {
+    return fail(
+        "expected external-linkage same-module formal provenance to stay fail-closed");
+  }
+
+  return 0;
+}
+
 prepare::PreparedAddress make_proven_pointer_value_memory_address(
     c4c::ValueNameId pointer_name) {
   auto requested_range = bir::make_memory_byte_range(8, 4);
@@ -6134,6 +6339,30 @@ int main() {
       prepare_global_pointer_addressed_local_slot_module();
   if (const int rc =
           check_global_pointer_addressed_local_slot_activation(global_pointer_addressed_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto same_module_formal_prepared =
+      prepare_same_module_computed_address_formal_provenance_module(true);
+  if (!same_module_formal_prepared.has_value()) {
+    return fail("same-module computed-address formal provenance fixture did not lower");
+  }
+  if (const int rc =
+          check_same_module_computed_address_formal_provenance_activation(
+              *same_module_formal_prepared);
+      rc != 0) {
+    return rc;
+  }
+  const auto external_same_module_formal_prepared =
+      prepare_same_module_computed_address_formal_provenance_module(false);
+  if (!external_same_module_formal_prepared.has_value()) {
+    return fail(
+        "external-linkage same-module computed-address formal fixture did not lower");
+  }
+  if (const int rc =
+          check_external_same_module_computed_address_formal_provenance_stays_fail_closed(
+              *external_same_module_formal_prepared);
       rc != 0) {
     return rc;
   }

@@ -1,5 +1,6 @@
 #include "lowering.hpp"
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -38,6 +39,16 @@ struct Aarch64HfaLaneName {
   std::string_view base;
   std::size_t lane_index = 0;
 };
+
+struct SameModuleFormalPointerProvenance {
+  std::string global_name;
+  c4c::LinkNameId link_name_id = c4c::kInvalidLinkName;
+  std::int64_t source_delta = 0;
+  std::size_t complete_extent_size = 0;
+};
+
+using SameModuleFormalPointerProvenanceMap =
+    std::unordered_map<std::string, std::vector<std::optional<SameModuleFormalPointerProvenance>>>;
 
 std::optional<Aarch64HfaLaneName> parse_aarch64_hfa_lane_name(std::string_view name) {
   const auto marker = name.rfind(".hfa");
@@ -261,6 +272,266 @@ std::optional<PointerAddress> merge_runtime_pointer_phi_address(
     merged_address->type_text.clear();
   }
   return merged_address;
+}
+
+std::optional<SameModuleFormalPointerProvenance> formal_pointer_provenance_from_call_arg(
+    const bir::CallArgumentSourceRelationship& source,
+    const GlobalTypes& global_types) {
+  if (source.source_encoding != bir::CallArgumentSourceEncodingKind::ComputedAddress ||
+      !source.source_base_value_name.has_value() ||
+      !source.source_pointer_byte_delta.has_value() ||
+      source.source_base_value_name->empty() ||
+      source.source_base_value_name->front() != '@' ||
+      *source.source_pointer_byte_delta < 0) {
+    return std::nullopt;
+  }
+
+  const std::string global_name = source.source_base_value_name->substr(1);
+  const auto global_it = global_types.find(global_name);
+  if (global_it == global_types.end() ||
+      !global_it->second.supports_linear_addressing ||
+      global_it->second.storage_size_bytes == 0 ||
+      static_cast<std::size_t>(*source.source_pointer_byte_delta) >=
+          global_it->second.storage_size_bytes) {
+    return std::nullopt;
+  }
+
+  return SameModuleFormalPointerProvenance{
+      .global_name = global_name,
+      .link_name_id = global_it->second.link_name_id,
+      .source_delta = *source.source_pointer_byte_delta,
+      .complete_extent_size = global_it->second.storage_size_bytes,
+  };
+}
+
+bool same_formal_pointer_provenance(
+    const SameModuleFormalPointerProvenance& lhs,
+    const SameModuleFormalPointerProvenance& rhs) {
+  return lhs.global_name == rhs.global_name &&
+         lhs.link_name_id == rhs.link_name_id &&
+         lhs.source_delta == rhs.source_delta &&
+         lhs.complete_extent_size == rhs.complete_extent_size;
+}
+
+SameModuleFormalPointerProvenanceMap collect_same_module_formal_pointer_provenance(
+    const bir::Module& module,
+    const GlobalTypes& global_types,
+    const std::unordered_set<std::string>& internally_callable_function_names,
+    const std::unordered_set<c4c::LinkNameId>& internally_callable_link_names) {
+  std::unordered_map<std::string, const bir::Function*> functions_by_name;
+  std::unordered_map<c4c::LinkNameId, const bir::Function*> functions_by_link_name;
+  for (const auto& function : module.functions) {
+    if (function.is_declaration) {
+      continue;
+    }
+    functions_by_name.emplace(function.name, &function);
+    if (function.link_name_id != c4c::kInvalidLinkName) {
+      functions_by_link_name.emplace(function.link_name_id, &function);
+    }
+  }
+
+  SameModuleFormalPointerProvenanceMap accepted;
+  std::unordered_set<std::string> rejected;
+
+  const auto reject_param = [&](const bir::Function& callee, std::size_t index) {
+    rejected.insert(callee.name + "#" + std::to_string(index));
+    if (const auto found = accepted.find(callee.name); found != accepted.end() &&
+        index < found->second.size()) {
+      found->second[index] = std::nullopt;
+    }
+  };
+
+  for (const auto& caller : module.functions) {
+    for (const auto& block : caller.blocks) {
+      for (const auto& inst : block.insts) {
+        const auto* call = std::get_if<bir::CallInst>(&inst);
+        if (call == nullptr || call->is_indirect) {
+          continue;
+        }
+        const bir::Function* callee = nullptr;
+        if (call->callee_link_name_id != c4c::kInvalidLinkName) {
+          const auto found = functions_by_link_name.find(call->callee_link_name_id);
+          if (found != functions_by_link_name.end()) {
+            callee = found->second;
+          }
+        }
+        if (callee == nullptr) {
+          const auto found = functions_by_name.find(call->callee);
+          if (found != functions_by_name.end()) {
+            callee = found->second;
+          }
+        }
+        if (callee == nullptr) {
+          continue;
+        }
+        if (internally_callable_function_names.find(callee->name) ==
+                internally_callable_function_names.end() &&
+            (callee->link_name_id == c4c::kInvalidLinkName ||
+             internally_callable_link_names.find(callee->link_name_id) ==
+                 internally_callable_link_names.end())) {
+          continue;
+        }
+
+        auto& callee_provenance = accepted[callee->name];
+        if (callee_provenance.size() < callee->params.size()) {
+          callee_provenance.resize(callee->params.size());
+        }
+
+        for (std::size_t arg_index = 0; arg_index < callee->params.size(); ++arg_index) {
+          const auto& param = callee->params[arg_index];
+          if (param.type != bir::TypeKind::Ptr || param.is_sret || param.is_byval) {
+            continue;
+          }
+          const auto key = callee->name + "#" + std::to_string(arg_index);
+          if (rejected.find(key) != rejected.end()) {
+            continue;
+          }
+          const auto* source = bir::find_call_argument_source_relationship(*call, arg_index);
+          if (source == nullptr) {
+            reject_param(*callee, arg_index);
+            continue;
+          }
+          const auto provenance =
+              formal_pointer_provenance_from_call_arg(*source, global_types);
+          if (!provenance.has_value()) {
+            reject_param(*callee, arg_index);
+            continue;
+          }
+          auto& current = callee_provenance[arg_index];
+          if (!current.has_value()) {
+            current = *provenance;
+          } else if (!same_formal_pointer_provenance(*current, *provenance)) {
+            reject_param(*callee, arg_index);
+          }
+        }
+      }
+    }
+  }
+
+  return accepted;
+}
+
+bir::MemoryAccessProvenance memory_provenance_for_same_module_formal(
+    const SameModuleFormalPointerProvenance& formal_provenance,
+    std::int64_t access_offset,
+    std::size_t access_size) {
+  const auto source_delta = static_cast<std::size_t>(formal_provenance.source_delta);
+  const auto subobject_extent =
+      source_delta <= formal_provenance.complete_extent_size
+          ? formal_provenance.complete_extent_size - source_delta
+          : 0;
+  bir::MemoryAccessProvenance provenance =
+      memory_provenance_for_base(
+          bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol,
+          "@" + formal_provenance.global_name + "+" +
+              std::to_string(formal_provenance.source_delta),
+          bir::Value::named_symbol_pointer(
+              "@" + formal_provenance.global_name,
+              formal_provenance.link_name_id),
+          subobject_extent);
+  provenance.base_identity.link_name_id = formal_provenance.link_name_id;
+  provenance.requested_range =
+      bir::make_memory_byte_range(access_offset, access_size);
+  provenance.layout_authority = bir::MemoryLayoutAuthorityKind::ScalarLayout;
+  bir::prove_memory_access_requested_range(provenance);
+  return provenance;
+}
+
+void publish_same_module_formal_pointer_provenance(
+    bir::Function* function,
+    const std::vector<std::optional<SameModuleFormalPointerProvenance>>& formal_provenance) {
+  std::unordered_map<std::string, SameModuleFormalPointerProvenance> value_provenance;
+  std::unordered_map<std::string, SameModuleFormalPointerProvenance> slot_provenance;
+  const auto seed_count = std::min(formal_provenance.size(), function->params.size());
+  for (std::size_t index = 0; index < seed_count; ++index) {
+    if (formal_provenance[index].has_value() &&
+        function->params[index].type == bir::TypeKind::Ptr &&
+        !function->params[index].is_sret &&
+        !function->params[index].is_byval &&
+        !function->params[index].name.empty()) {
+      value_provenance[function->params[index].name] = *formal_provenance[index];
+    }
+  }
+
+  for (auto& block : function->blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr &&
+          !store->address.has_value() && store->value.type == bir::TypeKind::Ptr) {
+        const auto value_it = value_provenance.find(store->value.name);
+        if (store->value.kind == bir::Value::Kind::Named &&
+            value_it != value_provenance.end()) {
+          slot_provenance[store->slot_name] = value_it->second;
+        } else {
+          slot_provenance.erase(store->slot_name);
+        }
+        continue;
+      }
+
+      if (auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr &&
+          !load->address.has_value() && load->result.type == bir::TypeKind::Ptr) {
+        const auto slot_it = slot_provenance.find(load->slot_name);
+        if (slot_it != slot_provenance.end()) {
+          value_provenance[load->result.name] = slot_it->second;
+        } else {
+          value_provenance.erase(load->result.name);
+        }
+        continue;
+      }
+
+      if (auto* binary = std::get_if<bir::BinaryInst>(&inst); binary != nullptr &&
+          binary->result.type == bir::TypeKind::Ptr) {
+        value_provenance.erase(binary->result.name);
+        continue;
+      }
+
+      auto publish_address = [&](std::optional<bir::MemoryAddress>* address) {
+        if (!address->has_value() ||
+            (*address)->base_kind != bir::MemoryAddress::BaseKind::PointerValue ||
+            (*address)->base_value.kind != bir::Value::Kind::Named) {
+          return;
+        }
+        const auto value_it = value_provenance.find((*address)->base_value.name);
+        if (value_it == value_provenance.end()) {
+          return;
+        }
+        (*address)->provenance =
+            memory_provenance_for_same_module_formal(
+                value_it->second,
+                (*address)->byte_offset,
+                (*address)->size_bytes);
+      };
+
+      if (auto* load = std::get_if<bir::LoadLocalInst>(&inst); load != nullptr) {
+        publish_address(&load->address);
+      } else if (auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
+        publish_address(&store->address);
+      } else if (auto* load = std::get_if<bir::LoadGlobalInst>(&inst); load != nullptr) {
+        publish_address(&load->address);
+      } else if (auto* store = std::get_if<bir::StoreGlobalInst>(&inst); store != nullptr) {
+        publish_address(&store->address);
+      }
+    }
+  }
+}
+
+void publish_same_module_formal_pointer_provenance(
+    bir::Module* module,
+    const GlobalTypes& global_types,
+    const std::unordered_set<std::string>& internally_callable_function_names,
+    const std::unordered_set<c4c::LinkNameId>& internally_callable_link_names) {
+  const auto provenance_by_function =
+      collect_same_module_formal_pointer_provenance(
+          *module,
+          global_types,
+          internally_callable_function_names,
+          internally_callable_link_names);
+  for (auto& function : module->functions) {
+    const auto found = provenance_by_function.find(function.name);
+    if (found == provenance_by_function.end()) {
+      continue;
+    }
+    publish_same_module_formal_pointer_provenance(&function, found->second);
+  }
 }
 
 int semantic_failure_note_rank(std::string_view message) {
@@ -1293,6 +1564,20 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     }
     function_symbols.insert_function(*function_name, function.link_name_id);
   }
+  std::unordered_set<std::string> internally_callable_function_names;
+  std::unordered_set<c4c::LinkNameId> internally_callable_link_names;
+  for (const auto& function : context.lir_module.functions) {
+    if (function.is_declaration || !function.is_internal) {
+      continue;
+    }
+    const auto function_name = function_name_for_identity(context.lir_module, function);
+    if (function_name.has_value()) {
+      internally_callable_function_names.insert(*function_name);
+    }
+    if (function.link_name_id != c4c::kInvalidLinkName) {
+      internally_callable_link_names.insert(function.link_name_id);
+    }
+  }
   const auto type_decls = build_type_decl_map(context.lir_module.type_decls);
   module.structured_types = build_bir_structured_type_spelling_context(
       context.lir_module.struct_decls,
@@ -1489,6 +1774,11 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     module.functions.push_back(std::move(*lowered_function));
   }
 
+  publish_same_module_formal_pointer_provenance(
+      &module,
+      global_types,
+      internally_callable_function_names,
+      internally_callable_link_names);
   apply_aarch64_fixed_hfa_pressure(context.target_profile.arch, module);
 
   context.note(
