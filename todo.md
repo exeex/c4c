@@ -1,47 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/464_select_carrier_alias_metadata.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Carrier-Alias Metadata Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 implementation for idea 464. Prepared carrier-alias authority
-metadata is now published/queryable in the prepared control-flow/publication
-layer, with focused positive and fail-closed coverage. No RV64 target lowering
-was touched.
+Completed Step 4 residual disposition for idea 464. The prepared
+carrier-alias metadata prerequisite is complete and close-ready as producer /
+prepared authority work. No implementation files, tests, RV64 target lowering,
+or logs were changed in this disposition packet.
 
-Implementation table:
+Residual table:
 
-| Field | Value |
+| Residual question | Disposition |
 | --- | --- |
-| Metadata surface | Added `PreparedSelectCarrierAliasAuthority*` records plus planner, availability predicate, and collector in `publication_plans` |
-| Authority keys | Function, predecessor/successor edge, join/final result, selected source, binary source-producer site, carrier values, and optional carrier value ids |
-| Use closure | Planner proves the selected source-producer result is consumed only by authorized carrier alias selects |
-| Positive coverage | Duplicate carrier aliases accepted directly and through `collect_prepared_select_carrier_alias_authorities` from a prepared module fixture |
-| Negative coverage | Missing source producer, raw-name-only/mismatched carrier result, and extra non-carrier source use stay fail-closed |
-| Files changed | `src/backend/prealloc/publication_plans.hpp`, `src/backend/prealloc/publication_plans.cpp`, `tests/backend/bir/backend_prepare_stack_layout_test.cpp` |
-| Consumer boundary | RV64 ULE rematerialization remains out of scope for idea 464; a later idea may consume this metadata |
+| Durable carrier-alias surface | Complete: Step 3 added `PreparedSelectCarrierAliasAuthority*` records, planner, availability predicate, and collector in `publication_plans`. |
+| Required keys | Covered: function, predecessor/successor edge, join/final result, selected source, binary source-producer site, carrier values, and optional carrier value ids. |
+| Use closure | Covered: the planner proves the selected source-producer result has only authorized carrier alias uses. |
+| Positive metadata coverage | Covered: duplicate carrier aliases are accepted directly and through `collect_prepared_select_carrier_alias_authorities` from a prepared module fixture. |
+| Negative metadata coverage | Covered: missing source producer, raw-name-only/mismatched carrier result, and extra non-carrier source use stay fail-closed. |
+| Exact remaining idea-464 metadata packet | None identified. |
+| Later RV64 ULE rematerialization | May be reactivated only as a separate target-consumer packet that consumes `PreparedSelectCarrierAliasAuthorityRecords`; it must not infer aliases from raw `.phi.sel` names/shape. |
 
 Artifact:
-`build/agent_state/464_step3_carrier_alias_metadata/summary.md`.
+`build/agent_state/464_step4_residual_disposition/disposition.md`.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: residual disposition and close readiness.
-Re-check that the metadata prerequisite is complete, preserve the no-RV64
-boundary for this idea, and decide whether a later RV64 ULE rematerialization
-idea can be reactivated.
-
-Suggested artifact directory:
-`build/agent_state/464_step4_residual_disposition/`.
+Plan-owner should close idea 464 as complete for prepared carrier-alias
+metadata, or separately activate a later RV64 ULE rematerialization consumer
+idea that explicitly consumes the new authority records.
 
 ## Watchouts
 
-- Do not make RV64 ULE rematerialization or target consumer changes before the
-  metadata exists.
+- Do not route RV64 ULE rematerialization back through idea 464; that is now a
+  separate target-consumer concern.
 - Do not infer duplicate-carrier authority from `%*.phi.sel*` spelling, raw
   select shape, value ids, block labels, function names, testcase names, or
   dump order.
@@ -56,10 +52,10 @@ Suggested artifact directory:
 
 ## Proof
 
-Step 3 proof:
+Step 4 proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 Result: passed.
