@@ -1,76 +1,79 @@
-# RV64 Call-Adjacent Scalar And Inline-Asm Materialization Plan
+# Prepared Inline-Asm Operand Home Carriers Plan
 
 Status: Active
-Source Idea: ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md
+Source Idea: ideas/open/432_prepared_inline_asm_operand_home_carriers.md
+Supersedes Active Runbook: `RV64 Call-Adjacent Scalar And Inline-Asm Materialization Plan`
 
 ## Purpose
 
-Turn the 38 call-adjacent `unsupported_instruction_fragment` rows into
-ordinary scalar RV64 object-lowering work without pulling in aggregate ABI or
-F128 helper-call behavior.
+Repair prepared inline-asm producer/carrier facts that block scalar GPR
+inline-asm rows after RV64 object lowering has already proven its
+complete-carrier consumer path.
 
-Goal: materialize coherent scalar call results, scalar call arguments, and
-scalar inline-asm fragments through prepared call facts and object homes.
+Goal: supported scalar GPR inline-asm inputs, outputs, and tied operands should
+reach target lowering with complete, coherent prepared operand homes.
 
 ## Core Rule
 
-Use prepared call metadata as authority. Do not infer missing call homes,
-argument bindings, return homes, inline-asm operands, or aggregate/F128
-semantics from source shape, representative filenames, or raw BIR alone.
+Prepared carriers own inline-asm operand authority. Do not make RV64 object
+lowering infer missing operand homes, tied-home relationships, or unsupported
+memory/address behavior from source shape, representative filenames, asm text,
+or raw BIR.
 
 ## Read First
 
+- `ideas/open/432_prepared_inline_asm_operand_home_carriers.md`
 - `ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md`
-- `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`
-- `docs/rv64_gcc_torture_post_contract/followup_idea_plan.md`
-- `src/backend/mir/riscv/codegen/prepared_call_emit.cpp`
-- `src/backend/mir/riscv/codegen/prepared_function_emit.cpp`
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `build/agent_state/428_step5_probe/probe_summary.tsv`
+- `docs/prepared_fact_contracts/target_consumer_boundary_audit.md`
+- `src/backend/bir/lir_to_bir/calling.cpp`
+- `src/backend/bir/bir.hpp`
+- `src/backend/prealloc/prepared_printer/inline_asm.cpp`
+- `tests/backend/bir/backend_prealloc_prepared_contract_verifier_test.cpp`
+- `tests/backend/bir/backend_prepared_object_consumer_contract_test.cpp`
 - `tests/backend/mir/backend_riscv_object_emission_test.cpp`
 
 ## Current Targets
 
-- Prepared scalar call-result publication.
-- Prepared scalar call-argument publication.
-- Prepared scalar inline-asm input/output materialization.
-- Representative evidence rows: `src/pr38533.c`, `src/pr40657.c`,
-  `src/pr45695.c`, `src/pr49279.c`, and `src/pr56982.c`.
+- Prepared inline-asm carrier operand homes for scalar GPR register outputs.
+- Prepared inline-asm carrier operand homes for scalar GPR register inputs.
+- Tied scalar GPR input/output home coherence for `=r,0`-style constraints.
+- Representative blocker facts: `missing_operand0_home` for `pr38533` and
+  `tied_input_output_home_mismatch` for `pr45695` / `pr49279`.
 
 ## Non-Goals
 
-- Aggregate `sret` or `byval` call-storage lowering.
-- F128 helper calls, long-double ABI, or runtime support.
-- Reconstructing missing prepared call metadata in the RV64 lowering layer.
-- Pointer/address publication, frame-slot address publication, or global
-  memory work unless it is already represented as a coherent scalar prepared
-  call fact.
+- RV64 target reconstruction of missing prepared inline-asm homes.
+- Memory constraints such as `=*m`, address-selection operands, clobber-only
+  `~{memory}` carriers, aggregate operands, vector operands, and F128 operands.
+- Aggregate ABI, pointer/address publication, F128 helper-call behavior, or
+  broad object-emission rewrites.
 - Expectation, allowlist, unsupported-marker, runtime-comparison, or pass/fail
   accounting changes.
 
 ## Working Model
 
-- `prepared_call_emit.cpp` owns RV64 prepared call emission around direct calls,
-  call boundary effects, immediate call arguments, and byval aggregate address
-  arguments.
-- `prepared_function_emit.cpp` already recognizes `llvm.inline_asm` and routes
-  prepared inline-asm text emission through the prepared inline-asm carrier
-  surface.
-- `object_emission.cpp` owns encoded fragments and scalar publication helpers.
-- The implementation route should extend general scalar publication where
-  prepared homes are coherent, while preserving fail-closed diagnostics for
-  unsupported constraints, missing homes, non-scalar storage, aggregate ABI,
-  and F128.
+- `src/backend/bir/lir_to_bir/calling.cpp` parses inline-asm constraints into
+  BIR metadata, including register inputs, register outputs, tied inputs,
+  memory/address operands, and clobbers.
+- Prepared inline-asm carrier construction and printing expose whether target
+  consumers receive complete operand homes or a producer-owned missing fact.
+- RV64 object lowering should consume only complete carriers; missing operand
+  homes and tied-home contradictions remain producer/carrier blockers until
+  this plan repairs or precisely rejects them.
 
 ## Execution Rules
 
-- Keep each code step semantic and type/home driven; do not key behavior to
-  `pr38533.c`, `pr40657.c`, or any other named testcase.
-- Add focused backend tests for every newly supported scalar call-adjacent
-  shape.
-- Preserve existing diagnostics for missing prepared authority; improve them
-  only if that helps distinguish producer gaps from RV64 lowering gaps.
-- After each code step, run the supervisor-delegated proof command, expected
-  to be:
+- Keep changes semantic and operand/home driven; do not key behavior to
+  `pr38533.c`, `pr45695.c`, `pr49279.c`, or instruction indexes in probe
+  dumps.
+- Add focused prepared-contract tests before treating representative probe
+  movement as progress.
+- Preserve complete-carrier `.insn r` / `.insn d` behavior.
+- Preserve fail-closed diagnostics for unsupported memory/address,
+  clobber-only, aggregate, vector, and F128 forms.
+- For each code step, run the supervisor-delegated proof command, expected to
+  be:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1
@@ -78,132 +81,101 @@ semantics from source shape, representative filenames, or raw BIR alone.
 
 - Also run `git diff --check` before returning a packet.
 
-## Step 1: Inspect Call-Adjacent Evidence And Choose First Packet
+## Step 1: Audit Inline-Asm Carrier Producer State
 
-Goal: identify the first narrow scalar call-adjacent implementation packet.
+Goal: identify the exact producer/carrier surface that emits
+`missing_operand0_home` and `tied_input_output_home_mismatch`.
 
 Actions:
 
-- Inspect the representative rows and any regenerated row TSV/log artifacts
-  for the 38 call-adjacent scalar/inline-asm failures.
-- Classify rows into scalar call result, scalar call argument, scalar
-  inline-asm, aggregate ABI, F128, and missing-prepared-fact buckets.
-- Pick the first packet that has coherent prepared call facts and a focused
-  backend test shape.
-- Record the chosen packet, rejection point, proof command, and out-of-scope
-  rows in `todo.md`.
+- Inspect the Step 5 probe artifacts for `pr38533`, `pr45695`, and `pr49279`.
+- Trace the path from LIR inline-asm constraints through BIR inline-asm
+  metadata and prepared carrier construction.
+- Classify each missing fact as missing source value home, missing result home,
+  tied operand reconciliation, unsupported operand kind, or printer-only
+  evidence.
+- Record the first implementation packet in `todo.md`.
 
 Completion check:
 
-- `todo.md` names the first implementation target, its primary files, and the
-  exact proof command.
+- `todo.md` names the first producer/carrier implementation target, the exact
+  old missing fact it should eliminate, and the proof command.
 - No implementation files are changed in this step.
 
-## Step 2: Lower Prepared Scalar Call Results
+## Step 2: Publish Scalar GPR Operand Homes
 
-Goal: publish ordinary scalar call results when prepared result placement and
-destination homes are coherent.
-
-Primary targets:
-
-- `src/backend/mir/riscv/codegen/prepared_call_emit.cpp`
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- focused tests under `tests/backend/mir/`
-
-Actions:
-
-- Follow existing prepared call-boundary planning rather than creating a
-  separate call-result route.
-- Add or extend scalar publication helpers for integer and pointer-sized
-  scalar call results whose source ABI register and destination object home are
-  both prepared.
-- Keep aggregate, F128, missing home, and mismatched plan cases fail-closed.
-- Add focused tests for register-to-stack and, if already represented by
-  prepared facts, register-to-register scalar result publication.
-
-Completion check:
-
-- Focused backend tests prove scalar call-result publication.
-- The backend subset proof passes and is saved in `test_after.log`.
-- No aggregate ABI or F128 row is accepted through this route.
-
-## Step 3: Lower Prepared Scalar Call Arguments
-
-Goal: publish ordinary scalar call arguments through prepared argument
-placement and homes.
+Goal: ensure supported scalar GPR inline-asm register inputs and outputs have
+complete prepared operand homes.
 
 Primary targets:
 
-- `src/backend/mir/riscv/codegen/prepared_call_emit.cpp`
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- focused tests under `tests/backend/mir/`
+- `src/backend/bir/lir_to_bir/calling.cpp`
+- prepared carrier construction and lookup surfaces identified in Step 1
+- focused prepared-contract tests under `tests/backend/bir/`
 
 Actions:
 
-- Materialize scalar argument movement only when the argument ABI binding,
-  source value, and required object/register home are present and coherent.
-- Reuse existing immediate-call-argument handling where it already owns the
-  shape; do not duplicate that path.
-- Preserve the existing aggregate `byval` route and do not reinterpret byval
-  objects as scalar call arguments.
-- Add focused tests for scalar register and stack argument publication that
-  exercise prepared facts rather than filename-specific cases.
+- Repair producer logic for scalar GPR register input/output operands whose
+  source values and result homes are already known.
+- Keep unsupported memory/address, clobber-only, aggregate, vector, and F128
+  operands fail-closed.
+- Add tests that assert complete carrier facts rather than relying on target
+  object output.
 
 Completion check:
 
-- Focused backend tests prove scalar call-argument publication.
+- Focused tests prove scalar GPR input/output operand homes are present.
 - The backend subset proof passes and is saved in `test_after.log`.
-- Missing bindings and aggregate/F128 arguments still reject cleanly.
+- Existing complete-carrier RV64 inline-asm tests still pass.
 
-## Step 4: Lower Prepared Scalar Inline-Asm Fragments
+## Step 3: Reconcile Tied Scalar GPR Operand Homes
 
-Goal: materialize scalar inline-asm inputs and outputs through the same
-prepared call-adjacent authority.
+Goal: make supported tied scalar GPR input/output operands publish one coherent
+home contract.
 
 Primary targets:
 
-- `src/backend/mir/riscv/codegen/prepared_function_emit.cpp`
-- `src/backend/mir/riscv/codegen/prepared_call_emit.cpp`
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- focused tests under `tests/backend/mir/`
+- tied operand handling identified in Step 1
+- focused prepared-contract tests under `tests/backend/bir/`
 
 Actions:
 
-- Use prepared inline-asm carriers and operand metadata as authority for
-  operand substitution and scalar publication.
-- Support only coherent scalar GPR-style inline-asm inputs and outputs in this
-  plan.
-- Reject unsupported constraints, missing carriers, malformed operands,
-  aggregate operands, and F128 operands.
-- Add tests that prove a general scalar inline-asm rule, including at least one
-  shape related to `%t0 = bir.call i32 llvm.inline_asm(i32 0)` without
-  keying to `src/pr38533.c`.
+- Handle `=r,0`-style tied operands by tying the input home to the output home
+  only when both sides are scalar GPR-compatible and semantically the same
+  operand contract.
+- Reject mismatches with a precise producer-owned diagnostic when the homes
+  cannot be reconciled.
+- Avoid changes to RV64 object lowering for this packet.
 
 Completion check:
 
-- Focused backend tests prove scalar inline-asm materialization.
+- Focused tests prove tied scalar GPR operand home coherence.
 - The backend subset proof passes and is saved in `test_after.log`.
-- Unsupported inline-asm constraints and non-scalar rows remain fail-closed.
+- Unsupported or incoherent tied operands still reject cleanly.
 
-## Step 5: Broader Validation And Close Readiness
+## Step 4: Re-Probe Representative Rows And Decide Close Readiness
 
-Goal: decide whether the source idea is complete or whether remaining
-call-adjacent rows need a new follow-up idea.
+Goal: determine whether the prepared producer/carrier blockers are resolved
+and whether the parked RV64 call-adjacent idea can be reconsidered.
 
 Actions:
 
-- Re-run representative RV64 object-route probes for the call-adjacent rows
-  chosen in Step 1.
-- Classify any remaining failures as in-scope missing scalar call/inline-asm
-  work or out-of-scope aggregate ABI, F128, pointer/address, global memory, or
-  missing-prepared-fact work.
+- Re-run prepared and RV64 object-route probes for `pr38533`, `pr45695`, and
+  `pr49279`.
+- Confirm that `missing_operand0_home` and
+  `tied_input_output_home_mismatch` are gone or replaced by a more precise
+  producer-owned unsupported fact.
+- Keep `pr40657` memory-constraint and `pr56982` clobber-only carrier work
+  classified outside this scalar GPR plan unless earlier steps prove a shared
+  carrier invariant requires them.
 - Run the supervisor-delegated backend proof and `git diff --check`.
-- Summarize acceptance coverage, rejected row classes, and close readiness in
-  `todo.md`.
+- Summarize whether this idea is ready for lifecycle close and whether
+  `ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md`
+  can be reactivated or closed.
 
 Completion check:
 
-- `todo.md` records whether the source idea appears ready for lifecycle close
-  review.
+- `todo.md` records close readiness for this idea and the disposition of the
+  parked RV64 call-adjacent idea.
 - No expectation, allowlist, unsupported-marker, runtime-comparison, or
   pass/fail accounting files are changed or used as progress.
