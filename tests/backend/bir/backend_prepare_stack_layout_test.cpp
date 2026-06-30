@@ -4866,6 +4866,10 @@ int check_pointer_addressed_local_slot_activation(const prepare::PreparedBirModu
       !pointer_store_access->is_volatile) {
     return fail("expected prepared addressing to preserve the pointer-indirect local store facts");
   }
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(
+          pointer_store_access->address)) {
+    return fail("expected unknown pointer-indirect local store authority to stay non-target-consumable");
+  }
 
   return 0;
 }
@@ -4930,6 +4934,10 @@ int check_global_pointer_addressed_local_slot_activation(
       !pointer_store_access->is_volatile) {
     return fail("expected prepared addressing to preserve the pointer-indirect global store facts");
   }
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(
+          pointer_store_access->address)) {
+    return fail("expected unknown pointer-indirect global store authority to stay non-target-consumable");
+  }
 
   const auto* pointer_load_access =
       prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 2);
@@ -4953,6 +4961,94 @@ int check_global_pointer_addressed_local_slot_activation(
       pointer_load_access->address_space != bir::AddressSpace::Tls ||
       pointer_load_access->is_volatile) {
     return fail("expected prepared addressing to preserve the pointer-indirect global load facts");
+  }
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(
+          pointer_load_access->address)) {
+    return fail("expected unknown pointer-indirect global load authority to stay non-target-consumable");
+  }
+
+  return 0;
+}
+
+prepare::PreparedAddress make_proven_pointer_value_memory_address(
+    c4c::ValueNameId pointer_name) {
+  auto requested_range = bir::make_memory_byte_range(8, 4);
+  return prepare::PreparedAddress{
+      .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+      .pointer_value_name = pointer_name,
+      .byte_offset = 8,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .can_use_base_plus_offset = true,
+      .provenance =
+          bir::MemoryAccessProvenance{
+              .base_identity =
+                  bir::MemoryProvenanceBaseIdentity{
+                      .kind = bir::MemoryProvenanceBaseIdentityKind::LocalSlot,
+                      .spelling = "%object",
+                  },
+              .object_extent =
+                  bir::MemoryObjectExtent{
+                      .completeness = bir::MemoryObjectExtentCompleteness::Complete,
+                      .size_bytes = 16,
+                      .size_known = true,
+                  },
+              .requested_range = requested_range,
+              .layout_authority = bir::MemoryLayoutAuthorityKind::ScalarLayout,
+              .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+          },
+  };
+}
+
+int check_pointer_value_memory_authority_contract() {
+  prepare::PreparedNameTables names;
+  const auto pointer_name = names.value_names.intern("%ptr");
+  const auto proven_address =
+      make_proven_pointer_value_memory_address(pointer_name);
+  if (!prepare::prepared_pointer_value_memory_has_proven_authority(proven_address)) {
+    return fail("expected explicit pointer-value memory authority to classify target-consumable");
+  }
+
+  auto rejected_address = proven_address;
+  rejected_address.provenance.layout_authority =
+      bir::MemoryLayoutAuthorityKind::Unknown;
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
+    return fail("expected unknown pointer-value layout authority to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.provenance.range_verdict =
+      bir::MemoryRangeVerdict::UnknownCompatible;
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
+    return fail("expected unknown-compatible pointer-value range to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.provenance.base_identity.kind =
+      bir::MemoryProvenanceBaseIdentityKind::PointerValue;
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
+    return fail("expected bare pointer-value identity to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.pointer_value_name = std::nullopt;
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
+    return fail("expected missing pointer value name to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.can_use_base_plus_offset = false;
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
+    return fail("expected non-base-plus-offset pointer value access to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.provenance.requested_range =
+      bir::make_memory_byte_range(12, 8);
+  rejected_address.provenance.range_verdict =
+      bir::MemoryRangeVerdict::ProvenOutOfBounds;
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
+    return fail("expected out-of-bounds pointer-value range to stay fail-closed");
   }
 
   return 0;
@@ -6039,6 +6135,10 @@ int main() {
   if (const int rc =
           check_global_pointer_addressed_local_slot_activation(global_pointer_addressed_prepared);
       rc != 0) {
+    return rc;
+  }
+
+  if (const int rc = check_pointer_value_memory_authority_contract(); rc != 0) {
     return rc;
   }
 
