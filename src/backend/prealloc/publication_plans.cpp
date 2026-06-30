@@ -2525,6 +2525,374 @@ collect_prepared_branch_stack_load_authorities(
   return records;
 }
 
+PreparedFrameSlotSourceFact plan_prepared_frame_slot_source_fact(
+    const PreparedFrameSlotSourceFactInputs& inputs) {
+  PreparedFrameSlotSourceFact fact{
+      .materialization_kind = inputs.materialization_kind,
+      .source_producer_kind = inputs.source_producer_kind,
+      .target_home = inputs.target_home,
+      .target_frame_slot = inputs.target_frame_slot,
+      .target_stack_object = inputs.target_stack_object,
+      .source_producer_block_label = inputs.source_producer_block_label,
+      .source_producer_instruction_index =
+          inputs.source_producer_instruction_index,
+      .materialization_block_label = inputs.materialization_block_label,
+      .materialization_instruction_index =
+          inputs.materialization_instruction_index,
+  };
+
+  if (inputs.names == nullptr) {
+    fact.status = PreparedFrameSlotSourceFactStatus::MissingNames;
+    return fact;
+  }
+  if (inputs.target_value == nullptr) {
+    fact.status = PreparedFrameSlotSourceFactStatus::MissingTargetValue;
+    return fact;
+  }
+  fact.target_type = inputs.target_value->type;
+  if (inputs.target_home == nullptr) {
+    fact.status = PreparedFrameSlotSourceFactStatus::MissingTargetHome;
+    return fact;
+  }
+  fact.target_value_id = inputs.target_home->value_id;
+  fact.target_value_name = inputs.target_home->value_name;
+  if (!prepared_home_names_value(*inputs.names,
+                                 *inputs.target_home,
+                                 *inputs.target_value)) {
+    fact.status = PreparedFrameSlotSourceFactStatus::TargetHomeMismatch;
+    return fact;
+  }
+  if (inputs.target_home->kind != PreparedValueHomeKind::StackSlot) {
+    fact.status = PreparedFrameSlotSourceFactStatus::UnsupportedTargetHome;
+    return fact;
+  }
+  fact.slot_id = inputs.target_home->slot_id;
+  fact.stack_offset_bytes = inputs.target_home->offset_bytes;
+  fact.stack_size_bytes = inputs.target_home->size_bytes;
+  fact.stack_align_bytes = inputs.target_home->align_bytes;
+  if (inputs.target_frame_slot == nullptr) {
+    fact.status = PreparedFrameSlotSourceFactStatus::MissingFrameSlot;
+    return fact;
+  }
+  if (inputs.target_stack_object == nullptr) {
+    fact.status = PreparedFrameSlotSourceFactStatus::MissingStackObject;
+    return fact;
+  }
+  fact.stack_object_id = inputs.target_stack_object->object_id;
+  if (inputs.target_home->function_name !=
+          inputs.target_frame_slot->function_name ||
+      !inputs.target_home->slot_id.has_value() ||
+      *inputs.target_home->slot_id != inputs.target_frame_slot->slot_id ||
+      inputs.target_frame_slot->object_id !=
+          inputs.target_stack_object->object_id ||
+      !inputs.target_home->offset_bytes.has_value() ||
+      *inputs.target_home->offset_bytes !=
+          inputs.target_frame_slot->offset_bytes ||
+      !inputs.target_home->size_bytes.has_value() ||
+      *inputs.target_home->size_bytes != inputs.target_frame_slot->size_bytes ||
+      !inputs.target_home->align_bytes.has_value() ||
+      *inputs.target_home->align_bytes != inputs.target_frame_slot->align_bytes) {
+    fact.status = PreparedFrameSlotSourceFactStatus::FrameSlotMismatch;
+    return fact;
+  }
+  if (!prepared_stack_object_matches_branch_stack_load_home(
+          *inputs.target_stack_object,
+          *inputs.target_home,
+          *inputs.target_frame_slot,
+          inputs.target_value->type)) {
+    fact.status = PreparedFrameSlotSourceFactStatus::StackObjectMismatch;
+    return fact;
+  }
+  if (inputs.unsupported_boundary) {
+    fact.status = PreparedFrameSlotSourceFactStatus::UnsupportedBoundary;
+    return fact;
+  }
+
+  if (inputs.source_value == nullptr) {
+    fact.status = PreparedFrameSlotSourceFactStatus::MissingSourceValue;
+    return fact;
+  }
+  fact.source_type = inputs.source_value->type;
+  if (inputs.source_value->kind == bir::Value::Kind::Named &&
+      !inputs.source_value->name.empty()) {
+    fact.source_value_name = inputs.names->value_names.find(
+        inputs.source_value->name);
+    if (fact.source_value_name == fact.target_value_name) {
+      fact.source_value_id = fact.target_value_id;
+    }
+  }
+  if (inputs.materialization_kind ==
+          PreparedFrameSlotSourceFactMaterializationKind::None ||
+      inputs.materialization_source_value == nullptr ||
+      inputs.materialization_frame_slot == nullptr ||
+      inputs.materialization_stack_object == nullptr) {
+    fact.status =
+        PreparedFrameSlotSourceFactStatus::MissingMaterializationEvent;
+    return fact;
+  }
+  if (inputs.materialization_frame_slot->slot_id !=
+          inputs.target_frame_slot->slot_id ||
+      inputs.materialization_frame_slot->object_id !=
+          inputs.target_frame_slot->object_id ||
+      inputs.materialization_frame_slot->function_name !=
+          inputs.target_frame_slot->function_name ||
+      inputs.materialization_frame_slot->offset_bytes !=
+          inputs.target_frame_slot->offset_bytes ||
+      inputs.materialization_frame_slot->size_bytes !=
+          inputs.target_frame_slot->size_bytes ||
+      inputs.materialization_frame_slot->align_bytes !=
+          inputs.target_frame_slot->align_bytes ||
+      inputs.materialization_stack_object->object_id !=
+          inputs.target_stack_object->object_id ||
+      inputs.materialization_stack_object->function_name !=
+          inputs.target_stack_object->function_name) {
+    fact.status =
+        PreparedFrameSlotSourceFactStatus::MaterializationSlotMismatch;
+    return fact;
+  }
+  if (*inputs.materialization_source_value != *inputs.source_value ||
+      inputs.materialization_source_value->type != inputs.target_value->type) {
+    fact.status =
+        PreparedFrameSlotSourceFactStatus::MaterializationValueMismatch;
+    return fact;
+  }
+  if (!inputs.path_validity_known) {
+    fact.status = PreparedFrameSlotSourceFactStatus::MissingPathValidity;
+    return fact;
+  }
+  if (!inputs.path_covers_consumer) {
+    fact.status = PreparedFrameSlotSourceFactStatus::PathNotCoveringConsumer;
+    return fact;
+  }
+  if (!inputs.same_slot_writes_classified) {
+    fact.status = PreparedFrameSlotSourceFactStatus::SameSlotWriteUnknown;
+    return fact;
+  }
+  if (inputs.same_slot_write_found) {
+    fact.status = PreparedFrameSlotSourceFactStatus::SameSlotWriteFound;
+    return fact;
+  }
+  if (!inputs.call_or_helper_effects_classified_safe) {
+    fact.status =
+        PreparedFrameSlotSourceFactStatus::CallOrHelperEffectUnknown;
+    return fact;
+  }
+  if (inputs.call_or_helper_clobbers_slot) {
+    fact.status =
+        PreparedFrameSlotSourceFactStatus::CallOrHelperClobbersSlot;
+    return fact;
+  }
+  if (!inputs.publication_effects_classified_non_clobber) {
+    fact.status = PreparedFrameSlotSourceFactStatus::PublicationEffectUnknown;
+    return fact;
+  }
+  if (inputs.publication_clobbers_slot) {
+    fact.status = PreparedFrameSlotSourceFactStatus::PublicationClobbersSlot;
+    return fact;
+  }
+  if (!inputs.move_bundle_effects_classified_non_clobber) {
+    fact.status = PreparedFrameSlotSourceFactStatus::MoveBundleEffectUnknown;
+    return fact;
+  }
+  if (inputs.move_bundle_clobbers_slot) {
+    fact.status = PreparedFrameSlotSourceFactStatus::MoveBundleClobbersSlot;
+    return fact;
+  }
+  if (!inputs.parallel_copy_effects_classified_non_clobber) {
+    fact.status =
+        PreparedFrameSlotSourceFactStatus::ParallelCopyEffectUnknown;
+    return fact;
+  }
+  if (inputs.parallel_copy_clobbers_slot) {
+    fact.status =
+        PreparedFrameSlotSourceFactStatus::ParallelCopyClobbersSlot;
+    return fact;
+  }
+
+  fact.status = PreparedFrameSlotSourceFactStatus::Available;
+  return fact;
+}
+
+bool prepared_frame_slot_source_fact_available(
+    const PreparedFrameSlotSourceFact& fact) {
+  return fact.status == PreparedFrameSlotSourceFactStatus::Available;
+}
+
+namespace {
+
+void clear_temporary_frame_slot_source_fact_pointers(
+    PreparedFrameSlotSourceFact& fact) {
+  fact.target_home = nullptr;
+  fact.target_frame_slot = nullptr;
+  fact.target_stack_object = nullptr;
+}
+
+[[nodiscard]] bool branch_value_is_select_materialization_result(
+    const PreparedControlFlowFunction& function_cf,
+    const bir::Value& target_value) {
+  if (target_value.kind != bir::Value::Kind::Named) {
+    return false;
+  }
+  return std::any_of(
+      function_cf.join_transfers.begin(),
+      function_cf.join_transfers.end(),
+      [&](const PreparedJoinTransfer& transfer) {
+        return effective_prepared_join_transfer_carrier_kind(transfer) ==
+                   PreparedJoinTransferCarrierKind::SelectMaterialization &&
+               transfer.result == target_value;
+      });
+}
+
+[[nodiscard]] bool frame_slot_source_fact_role_is_boundary(
+    const PreparedControlFlowFunction& function_cf,
+    const PreparedBranchCondition& branch_condition,
+    const bir::Terminator* terminator,
+    const bir::Value* target_value) {
+  if (target_value == nullptr) {
+    return true;
+  }
+  if (target_value->type == bir::TypeKind::Ptr) {
+    return true;
+  }
+  if (branch_value_is_select_materialization_result(function_cf, *target_value)) {
+    return true;
+  }
+  if (terminator == nullptr ||
+      terminator->kind != bir::TerminatorKind::CondBranch ||
+      terminator->condition != branch_condition.condition_value) {
+    return true;
+  }
+  return false;
+}
+
+PreparedFrameSlotSourceFactRecord make_frame_slot_source_fact_record(
+    const PreparedBirModule& prepared,
+    const PreparedControlFlowFunction& function_cf,
+    FunctionNameId function_name,
+    const PreparedBranchCondition& branch_condition,
+    const bir::Terminator* terminator,
+    PreparedBranchStackLoadRole role,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups) {
+  const auto* target_value = branch_stack_load_value_for_role(branch_condition, role);
+  const auto* target_home =
+      target_value != nullptr
+          ? value_home_for_named_value(prepared.names,
+                                       value_locations,
+                                       value_home_lookups,
+                                       *target_value)
+          : nullptr;
+  const auto* frame_slot =
+      branch_stack_load_frame_slot_for_home(prepared.stack_layout, target_home);
+  const auto* stack_object =
+      prepared_stack_object_for_frame_slot(prepared.stack_layout, frame_slot);
+  PreparedFrameSlotSourceFactRecord record{
+      .function_name = function_name,
+      .consumer_block_label = branch_condition.block_label,
+      .role = role,
+      .fact = plan_prepared_frame_slot_source_fact({
+          .names = &prepared.names,
+          .target_value = target_value,
+          .target_home = target_home,
+          .target_frame_slot = frame_slot,
+          .target_stack_object = stack_object,
+          .source_value = target_value,
+          .unsupported_boundary = frame_slot_source_fact_role_is_boundary(
+              function_cf,
+              branch_condition,
+              terminator,
+              target_value),
+      }),
+  };
+  clear_temporary_frame_slot_source_fact_pointers(record.fact);
+  return record;
+}
+
+void collect_frame_slot_source_fact_for_role(
+    PreparedFrameSlotSourceFactRecords& records,
+    const PreparedBirModule& prepared,
+    const PreparedControlFlowFunction& function_cf,
+    FunctionNameId function_name,
+    const PreparedBranchCondition& branch_condition,
+    const bir::Terminator* terminator,
+    PreparedBranchStackLoadRole role,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups) {
+  const auto* target_value = branch_stack_load_value_for_role(branch_condition, role);
+  if (target_value == nullptr || target_value->kind != bir::Value::Kind::Named) {
+    return;
+  }
+  const auto* target_home =
+      value_home_for_named_value(prepared.names,
+                                 value_locations,
+                                 value_home_lookups,
+                                 *target_value);
+  if (target_home == nullptr || target_home->kind != PreparedValueHomeKind::StackSlot) {
+    return;
+  }
+  records.records.push_back(make_frame_slot_source_fact_record(
+      prepared,
+      function_cf,
+      function_name,
+      branch_condition,
+      terminator,
+      role,
+      value_locations,
+      value_home_lookups));
+}
+
+}  // namespace
+
+PreparedFrameSlotSourceFactRecords collect_prepared_frame_slot_source_facts(
+    const PreparedBirModule& prepared) {
+  PreparedFrameSlotSourceFactRecords records;
+  for (const auto& function_cf : prepared.control_flow.functions) {
+    const auto* value_locations =
+        find_prepared_value_location_function(prepared, function_cf.function_name);
+    const auto value_home_lookups =
+        make_prepared_value_home_lookups(value_locations);
+    const auto* bir_function =
+        prepared_bir_function_by_name(prepared, function_cf.function_name);
+    for (const auto& branch_condition : function_cf.branch_conditions) {
+      const auto* block =
+          bir_function != nullptr
+              ? branch_stack_load_bir_block_by_label(prepared.names,
+                                                     *bir_function,
+                                                     branch_condition.block_label)
+              : nullptr;
+      const auto* terminator = block != nullptr ? &block->terminator : nullptr;
+      collect_frame_slot_source_fact_for_role(records,
+                                              prepared,
+                                              function_cf,
+                                              function_cf.function_name,
+                                              branch_condition,
+                                              terminator,
+                                              PreparedBranchStackLoadRole::Condition,
+                                              value_locations,
+                                              &value_home_lookups);
+      collect_frame_slot_source_fact_for_role(records,
+                                              prepared,
+                                              function_cf,
+                                              function_cf.function_name,
+                                              branch_condition,
+                                              terminator,
+                                              PreparedBranchStackLoadRole::Lhs,
+                                              value_locations,
+                                              &value_home_lookups);
+      collect_frame_slot_source_fact_for_role(records,
+                                              prepared,
+                                              function_cf,
+                                              function_cf.function_name,
+                                              branch_condition,
+                                              terminator,
+                                              PreparedBranchStackLoadRole::Rhs,
+                                              value_locations,
+                                              &value_home_lookups);
+    }
+  }
+  return records;
+}
+
 namespace {
 
 [[nodiscard]] const bir::Value* dependency_operand_for_role(

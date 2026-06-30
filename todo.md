@@ -1,98 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/474_prepared_frame_slot_materialization_no_clobber_facts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Prepared Source-Fact Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Prepared Source-Fact Producer
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 contract for idea 474. The prepared source-fact carrier must
-publish independent frame-slot materialization/write and no-clobber facts; it
-must not mark downstream branch-stack-load authority available.
+Completed Step 3 implementation for idea 474. Added the smallest independent
+prepared source-fact carrier/status surface for frame-slot
+materialization/no-clobber facts without changing downstream
+`PreparedBranchStackLoadAuthority` availability.
 
-Record key and payload contract:
+Implemented surface:
 
-| Fact group | Required fields |
-| --- | --- | --- |
-| Record identity | Function id, target/consumer block label, optional instruction index, target value id/name, target type, frame slot id, stack object id, stack offset, size, and alignment. |
-| Source value identity | Source value kind, source value id/name when named, source type/width, producer kind, producer block/instruction or edge site, and source home if relevant. |
-| Materialization/write event | Event kind, event site, source value, destination frame slot/object, destination offset/size/align, and value/type/width match status. |
-| Path validity | Source event reaches the consumer site for the declared scope, or records explicit path/edge scope; unknown paths are unavailable. |
-| Same-slot exclusion | Target slot/object interval contains no same-slot write, or records the first same-slot write/unknown status. |
-| Effect safety | Calls/helpers/inline asm between source event and consumer site are classified safe, clobbering, or unknown for the slot/object. |
-| Prepared event effects | Publications, move bundles, and parallel copies are classified non-clobbering, clobbering, or unknown for the target slot/object. |
-| Consumer boundary | The record is a source fact only. Later certificate/authority packets may consume it; this plan does not set branch-stack-load availability or RV64 behavior. |
-
-Status vocabulary:
-
-| Status | Meaning |
+| Surface | Result |
 | --- | --- |
-| `available` | All required identity, materialization/write, path, same-slot, effect, and prepared-event non-clobber facts are explicit. |
-| `missing_source_value` | No source value/source producer is available. |
-| `missing_materialization_event` | No concrete event writes/materializes the source into the target frame slot/object. |
-| `materialization_slot_mismatch` | Event exists but destination slot/object/offset/size/align does not match the record target. |
-| `materialization_value_mismatch` | Event source value/type/width does not match the target current value requirement. |
-| `missing_path_validity` | No dominance/path/edge-scope proof links the event to the consumer site. |
-| `path_not_covering_consumer` | Path proof exists but does not cover the required consumer site/path. |
-| `same_slot_write_found` | A write to the same slot/object occurs in the interval. |
-| `same_slot_write_unknown` | Same-slot writes are not analyzed for the interval. |
-| `call_or_helper_effect_unknown` | A call/helper/inline-asm effect is present or possible but not classified safe. |
-| `call_or_helper_clobbers_slot` | A call/helper/inline-asm effect may clobber the target slot/object. |
-| `publication_effect_unknown` / `publication_clobbers_slot` | Prepared publication effects are unknown or clobbering for the target. |
-| `move_bundle_effect_unknown` / `move_bundle_clobbers_slot` | Move-bundle effects are unknown or clobbering for the target. |
-| `parallel_copy_effect_unknown` / `parallel_copy_clobbers_slot` | Parallel-copy effects are unknown or clobbering for the target. |
-| `unsupported_boundary` | Row belongs to select-result stack destination, pointer/provenance, unsupported terminator, or another non-474 owner. |
+| `PreparedFrameSlotSourceFactStatus` | Independent status vocabulary for available, missing source/materialization, mismatches, missing/path failures, same-slot writes, effect unknowns/clobbers, and unsupported boundaries. |
+| `PreparedFrameSlotSourceFactInputs` / `PreparedFrameSlotSourceFact` | Planner input and output carrier for target value/home/slot/object, source value/producer, materialization event, and explicit no-clobber classifiers. |
+| `plan_prepared_frame_slot_source_fact` | Returns `available` only when explicit materialization/write, path coverage, same-slot exclusion, effect safety, and publication/move/parallel-copy non-clobber inputs are all present. |
+| `collect_prepared_frame_slot_source_facts` | Emits independent unavailable records for prepared stack-home branch values; scalar condition rows report `missing_materialization_event`, while select-result stack-destination, pointer/provenance, and unsupported-terminator rows remain `unsupported_boundary`. |
 
-Positive and negative contract:
+Focused coverage:
 
-| Case | Required outcome |
+| Case | Coverage |
 | --- | --- |
-| Explicit scalar event writes/materializes a named value into the matching frame slot, path covers consumer, and all interval effects are proven non-clobbering. | Publish `available` source fact. |
-| `%t23` representative with only home/storage/object identity and no write event. | Publish missing/unavailable status; do not infer availability. |
-| Any mismatch in source value, slot/object, offset, size, alignment, type, or path. | Fail closed with the corresponding status. |
-| Any unclassified same-slot write, call/helper/inline-asm, publication, move-bundle, or parallel-copy effect. | Fail closed as unknown/clobbering. |
-| `%t22` select-result stack destination, `%t1`/`%t7` pointer/provenance, `%t2`/`%t8` unsupported terminator rows. | Preserve as unsupported/separate boundaries. |
+| Explicit synthetic materialization/no-clobber inputs | `available` with target/source ids, slot/object, offsets, and materialization kind preserved. |
+| No materialization event | `missing_materialization_event`. |
+| Wrong materialization slot | `materialization_slot_mismatch`. |
+| Wrong materialization value | `materialization_value_mismatch`. |
+| Missing path validity | `missing_path_validity`. |
+| Same-slot write present | `same_slot_write_found`. |
+| Unknown call/helper effect | `call_or_helper_effect_unknown`. |
+| Explicit unsupported boundary | `unsupported_boundary`. |
+| Prepared collector scalar stack-home row | Emits an unavailable `missing_materialization_event` source-fact record. |
+| Prepared collector select-result stack-destination row | Emits `unsupported_boundary`; does not blur into generic missing materialization. |
+| Prepared collector pointer/provenance row | Emits `unsupported_boundary`; pointer status/provenance remains a separate owner. |
+| Prepared collector unsupported-terminator row | Emits `unsupported_boundary`; terminator lowering remains out of scope. |
 
 Artifacts:
 
-- `build/agent_state/474_step2_source_fact_contract/contract.md`
+- `build/agent_state/474_step3_source_fact_carrier/summary.md`
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: Implement Or Route Prepared Source-Fact
-Producer.
-
-Selected first packet: add the smallest prepared carrier/status surface for
-frame-slot materialization/no-clobber source facts.
-
-Suggested owned files:
-
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-- optional prepared printer files only if new record/status exposure is needed
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/474_step3_source_fact_carrier/**`
-
-Step 3 should first prove status/carrier behavior with focused inputs. It may
-publish unavailable records for representative missing facts. It should publish
-`available` only in a fixture where explicit materialization/write, path
-validity, same-slot exclusion, effect safety, and prepared-event non-clobber
-inputs are all present. If those inputs cannot be supplied without raw-shape
-inference, route/block instead.
-
-Proof:
-
-```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
-```
+Execute Step 4 from `plan.md`: Residual Disposition And Close Readiness.
+Re-probe/classify whether idea 474 is close-ready as an independent
+carrier/status surface, or whether a precise population/printer/follow-up
+packet remains before downstream branch-site source-fact consumption can
+resume.
 
 ## Watchouts
 
-- Step 3 must not mark `PreparedBranchStackLoadAuthority` available.
+- Step 3 did not mark `PreparedBranchStackLoadAuthority` available and did not
+  edit RV64 lowering.
+- The new collector records missing materialization only for ordinary scalar
+  stack-home branch rows; boundary rows stay classified as unsupported.
+  Downstream certificates still need a later consumer/population packet before
+  branch-stack-load authority can become available.
 - Do not implement RV64 branch-load emission in this producer plan.
 - Do not infer source facts from stack homes/storage, offsets, object ids, raw
   BIR, value names, block labels, function names, testcase names, or dump
@@ -104,10 +70,11 @@ Proof:
 
 ## Proof
 
-Classification proof:
+Delegated proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed.
+Result: passed; `test_after.log` reports `100% tests passed, 0 tests failed out of 327`.
+Log: `test_after.log`.

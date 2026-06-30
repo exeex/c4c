@@ -556,6 +556,188 @@ struct PreparedBranchStackLoadAuthorityRecords {
   std::vector<PreparedBranchStackLoadAuthorityRecord> records;
 };
 
+enum class PreparedFrameSlotSourceFactMaterializationKind {
+  None,
+  ExplicitWrite,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_frame_slot_source_fact_materialization_kind_name(
+    PreparedFrameSlotSourceFactMaterializationKind kind) {
+  switch (kind) {
+    case PreparedFrameSlotSourceFactMaterializationKind::None:
+      return "none";
+    case PreparedFrameSlotSourceFactMaterializationKind::ExplicitWrite:
+      return "explicit_write";
+  }
+  return "unknown";
+}
+
+enum class PreparedFrameSlotSourceFactStatus {
+  Available,
+  MissingNames,
+  MissingTargetValue,
+  MissingTargetHome,
+  TargetHomeMismatch,
+  UnsupportedTargetHome,
+  MissingFrameSlot,
+  FrameSlotMismatch,
+  MissingStackObject,
+  StackObjectMismatch,
+  MissingSourceValue,
+  MissingMaterializationEvent,
+  MaterializationSlotMismatch,
+  MaterializationValueMismatch,
+  MissingPathValidity,
+  PathNotCoveringConsumer,
+  SameSlotWriteFound,
+  SameSlotWriteUnknown,
+  CallOrHelperEffectUnknown,
+  CallOrHelperClobbersSlot,
+  PublicationEffectUnknown,
+  PublicationClobbersSlot,
+  MoveBundleEffectUnknown,
+  MoveBundleClobbersSlot,
+  ParallelCopyEffectUnknown,
+  ParallelCopyClobbersSlot,
+  UnsupportedBoundary,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_frame_slot_source_fact_status_name(
+    PreparedFrameSlotSourceFactStatus status) {
+  switch (status) {
+    case PreparedFrameSlotSourceFactStatus::Available:
+      return "available";
+    case PreparedFrameSlotSourceFactStatus::MissingNames:
+      return "missing_names";
+    case PreparedFrameSlotSourceFactStatus::MissingTargetValue:
+      return "missing_target_value";
+    case PreparedFrameSlotSourceFactStatus::MissingTargetHome:
+      return "missing_target_home";
+    case PreparedFrameSlotSourceFactStatus::TargetHomeMismatch:
+      return "target_home_mismatch";
+    case PreparedFrameSlotSourceFactStatus::UnsupportedTargetHome:
+      return "unsupported_target_home";
+    case PreparedFrameSlotSourceFactStatus::MissingFrameSlot:
+      return "missing_frame_slot";
+    case PreparedFrameSlotSourceFactStatus::FrameSlotMismatch:
+      return "frame_slot_mismatch";
+    case PreparedFrameSlotSourceFactStatus::MissingStackObject:
+      return "missing_stack_object";
+    case PreparedFrameSlotSourceFactStatus::StackObjectMismatch:
+      return "stack_object_mismatch";
+    case PreparedFrameSlotSourceFactStatus::MissingSourceValue:
+      return "missing_source_value";
+    case PreparedFrameSlotSourceFactStatus::MissingMaterializationEvent:
+      return "missing_materialization_event";
+    case PreparedFrameSlotSourceFactStatus::MaterializationSlotMismatch:
+      return "materialization_slot_mismatch";
+    case PreparedFrameSlotSourceFactStatus::MaterializationValueMismatch:
+      return "materialization_value_mismatch";
+    case PreparedFrameSlotSourceFactStatus::MissingPathValidity:
+      return "missing_path_validity";
+    case PreparedFrameSlotSourceFactStatus::PathNotCoveringConsumer:
+      return "path_not_covering_consumer";
+    case PreparedFrameSlotSourceFactStatus::SameSlotWriteFound:
+      return "same_slot_write_found";
+    case PreparedFrameSlotSourceFactStatus::SameSlotWriteUnknown:
+      return "same_slot_write_unknown";
+    case PreparedFrameSlotSourceFactStatus::CallOrHelperEffectUnknown:
+      return "call_or_helper_effect_unknown";
+    case PreparedFrameSlotSourceFactStatus::CallOrHelperClobbersSlot:
+      return "call_or_helper_clobbers_slot";
+    case PreparedFrameSlotSourceFactStatus::PublicationEffectUnknown:
+      return "publication_effect_unknown";
+    case PreparedFrameSlotSourceFactStatus::PublicationClobbersSlot:
+      return "publication_clobbers_slot";
+    case PreparedFrameSlotSourceFactStatus::MoveBundleEffectUnknown:
+      return "move_bundle_effect_unknown";
+    case PreparedFrameSlotSourceFactStatus::MoveBundleClobbersSlot:
+      return "move_bundle_clobbers_slot";
+    case PreparedFrameSlotSourceFactStatus::ParallelCopyEffectUnknown:
+      return "parallel_copy_effect_unknown";
+    case PreparedFrameSlotSourceFactStatus::ParallelCopyClobbersSlot:
+      return "parallel_copy_clobbers_slot";
+    case PreparedFrameSlotSourceFactStatus::UnsupportedBoundary:
+      return "unsupported_boundary";
+  }
+  return "unknown";
+}
+
+struct PreparedFrameSlotSourceFactInputs {
+  const PreparedNameTables* names = nullptr;
+  const bir::Value* target_value = nullptr;
+  const PreparedValueHome* target_home = nullptr;
+  const PreparedFrameSlot* target_frame_slot = nullptr;
+  const PreparedStackObject* target_stack_object = nullptr;
+  const bir::Value* source_value = nullptr;
+  PreparedEdgePublicationSourceProducerKind source_producer_kind =
+      PreparedEdgePublicationSourceProducerKind::Unknown;
+  std::optional<BlockLabelId> source_producer_block_label;
+  std::optional<std::size_t> source_producer_instruction_index;
+  PreparedFrameSlotSourceFactMaterializationKind materialization_kind =
+      PreparedFrameSlotSourceFactMaterializationKind::None;
+  const bir::Value* materialization_source_value = nullptr;
+  const PreparedFrameSlot* materialization_frame_slot = nullptr;
+  const PreparedStackObject* materialization_stack_object = nullptr;
+  std::optional<BlockLabelId> materialization_block_label;
+  std::optional<std::size_t> materialization_instruction_index;
+  bool path_validity_known = false;
+  bool path_covers_consumer = false;
+  bool same_slot_writes_classified = false;
+  bool same_slot_write_found = false;
+  bool call_or_helper_effects_classified_safe = false;
+  bool call_or_helper_clobbers_slot = false;
+  bool publication_effects_classified_non_clobber = false;
+  bool publication_clobbers_slot = false;
+  bool move_bundle_effects_classified_non_clobber = false;
+  bool move_bundle_clobbers_slot = false;
+  bool parallel_copy_effects_classified_non_clobber = false;
+  bool parallel_copy_clobbers_slot = false;
+  bool unsupported_boundary = false;
+};
+
+struct PreparedFrameSlotSourceFact {
+  PreparedFrameSlotSourceFactStatus status =
+      PreparedFrameSlotSourceFactStatus::MissingTargetValue;
+  PreparedFrameSlotSourceFactMaterializationKind materialization_kind =
+      PreparedFrameSlotSourceFactMaterializationKind::None;
+  PreparedEdgePublicationSourceProducerKind source_producer_kind =
+      PreparedEdgePublicationSourceProducerKind::Unknown;
+  const PreparedValueHome* target_home = nullptr;
+  const PreparedFrameSlot* target_frame_slot = nullptr;
+  const PreparedStackObject* target_stack_object = nullptr;
+  PreparedValueId target_value_id = 0;
+  ValueNameId target_value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind target_type =
+      c4c::backend::bir::TypeKind::Void;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<PreparedObjectId> stack_object_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::size_t> stack_size_bytes;
+  std::optional<std::size_t> stack_align_bytes;
+  std::optional<PreparedValueId> source_value_id;
+  ValueNameId source_value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind source_type =
+      c4c::backend::bir::TypeKind::Void;
+  std::optional<BlockLabelId> source_producer_block_label;
+  std::optional<std::size_t> source_producer_instruction_index;
+  std::optional<BlockLabelId> materialization_block_label;
+  std::optional<std::size_t> materialization_instruction_index;
+};
+
+struct PreparedFrameSlotSourceFactRecord {
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId consumer_block_label = kInvalidBlockLabel;
+  PreparedBranchStackLoadRole role = PreparedBranchStackLoadRole::Condition;
+  PreparedFrameSlotSourceFact fact;
+};
+
+struct PreparedFrameSlotSourceFactRecords {
+  std::vector<PreparedFrameSlotSourceFactRecord> records;
+};
+
 enum class PreparedDependencyOperandMaterializationPolicy {
   None,
   LoadFromStackSlot,
@@ -1664,6 +1846,16 @@ plan_prepared_branch_stack_load_authority(
 
 [[nodiscard]] PreparedBranchStackLoadAuthorityRecords
 collect_prepared_branch_stack_load_authorities(const PreparedBirModule& prepared);
+
+[[nodiscard]] PreparedFrameSlotSourceFact
+plan_prepared_frame_slot_source_fact(
+    const PreparedFrameSlotSourceFactInputs& inputs);
+
+[[nodiscard]] bool prepared_frame_slot_source_fact_available(
+    const PreparedFrameSlotSourceFact& fact);
+
+[[nodiscard]] PreparedFrameSlotSourceFactRecords
+collect_prepared_frame_slot_source_facts(const PreparedBirModule& prepared);
 
 [[nodiscard]] PreparedDependencyOperandAuthority
 plan_prepared_dependency_operand_authority(

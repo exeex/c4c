@@ -6517,6 +6517,511 @@ int check_branch_stack_load_authority_contract() {
   return 0;
 }
 
+int check_frame_slot_source_fact_carrier_contract() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("frame_slot_source");
+  const auto entry_label = names.block_labels.intern("entry");
+  const auto target_name = names.value_names.intern("%cmp");
+  const auto other_name = names.value_names.intern("%other");
+  const bir::Value target_value = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value other_value = bir::Value::named(bir::TypeKind::I32, "%other");
+
+  const prepare::PreparedValueHome target_home{
+      .value_id = 17,
+      .function_name = function_name,
+      .value_name = target_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{21},
+      .offset_bytes = std::size_t{156},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+  };
+  const prepare::PreparedFrameSlot target_frame_slot{
+      .slot_id = prepare::PreparedFrameSlotId{21},
+      .object_id = 21,
+      .function_name = function_name,
+      .offset_bytes = 156,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+  const prepare::PreparedStackObject target_object{
+      .object_id = 21,
+      .function_name = function_name,
+      .value_name = target_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+
+  prepare::PreparedFrameSlotSourceFactInputs accepted_inputs{
+      .names = &names,
+      .target_value = &target_value,
+      .target_home = &target_home,
+      .target_frame_slot = &target_frame_slot,
+      .target_stack_object = &target_object,
+      .source_value = &target_value,
+      .source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .source_producer_block_label = entry_label,
+      .source_producer_instruction_index = std::size_t{0},
+      .materialization_kind =
+          prepare::PreparedFrameSlotSourceFactMaterializationKind::ExplicitWrite,
+      .materialization_source_value = &target_value,
+      .materialization_frame_slot = &target_frame_slot,
+      .materialization_stack_object = &target_object,
+      .materialization_block_label = entry_label,
+      .materialization_instruction_index = std::size_t{1},
+      .path_validity_known = true,
+      .path_covers_consumer = true,
+      .same_slot_writes_classified = true,
+      .same_slot_write_found = false,
+      .call_or_helper_effects_classified_safe = true,
+      .call_or_helper_clobbers_slot = false,
+      .publication_effects_classified_non_clobber = true,
+      .publication_clobbers_slot = false,
+      .move_bundle_effects_classified_non_clobber = true,
+      .move_bundle_clobbers_slot = false,
+      .parallel_copy_effects_classified_non_clobber = true,
+      .parallel_copy_clobbers_slot = false,
+  };
+  const auto accepted =
+      prepare::plan_prepared_frame_slot_source_fact(accepted_inputs);
+  if (!prepare::prepared_frame_slot_source_fact_available(accepted) ||
+      accepted.status != prepare::PreparedFrameSlotSourceFactStatus::Available ||
+      accepted.target_value_id != target_home.value_id ||
+      accepted.target_value_name != target_name ||
+      accepted.source_value_id != std::optional<prepare::PreparedValueId>{17} ||
+      accepted.source_value_name != target_name ||
+      accepted.slot_id != target_home.slot_id ||
+      accepted.stack_object_id !=
+          std::optional<prepare::PreparedObjectId>{target_object.object_id} ||
+      accepted.stack_offset_bytes != target_home.offset_bytes ||
+      accepted.materialization_kind !=
+          prepare::PreparedFrameSlotSourceFactMaterializationKind::ExplicitWrite) {
+    return fail("expected explicit frame-slot source fact to be available");
+  }
+
+  auto missing_materialization_inputs = accepted_inputs;
+  missing_materialization_inputs.materialization_kind =
+      prepare::PreparedFrameSlotSourceFactMaterializationKind::None;
+  missing_materialization_inputs.materialization_source_value = nullptr;
+  missing_materialization_inputs.materialization_frame_slot = nullptr;
+  missing_materialization_inputs.materialization_stack_object = nullptr;
+  const auto missing_materialization =
+      prepare::plan_prepared_frame_slot_source_fact(missing_materialization_inputs);
+  if (missing_materialization.status !=
+      prepare::PreparedFrameSlotSourceFactStatus::MissingMaterializationEvent) {
+    return fail("expected missing materialization event to stay fail-closed");
+  }
+
+  auto wrong_slot = target_frame_slot;
+  wrong_slot.slot_id = prepare::PreparedFrameSlotId{22};
+  auto slot_mismatch_inputs = accepted_inputs;
+  slot_mismatch_inputs.materialization_frame_slot = &wrong_slot;
+  const auto slot_mismatch =
+      prepare::plan_prepared_frame_slot_source_fact(slot_mismatch_inputs);
+  if (slot_mismatch.status !=
+      prepare::PreparedFrameSlotSourceFactStatus::MaterializationSlotMismatch) {
+    return fail("expected materialization slot mismatch to stay fail-closed");
+  }
+
+  auto value_mismatch_inputs = accepted_inputs;
+  value_mismatch_inputs.materialization_source_value = &other_value;
+  const auto value_mismatch =
+      prepare::plan_prepared_frame_slot_source_fact(value_mismatch_inputs);
+  if (value_mismatch.status !=
+      prepare::PreparedFrameSlotSourceFactStatus::MaterializationValueMismatch) {
+    return fail("expected materialization value mismatch to stay fail-closed");
+  }
+
+  auto missing_path_inputs = accepted_inputs;
+  missing_path_inputs.path_validity_known = false;
+  const auto missing_path =
+      prepare::plan_prepared_frame_slot_source_fact(missing_path_inputs);
+  if (missing_path.status !=
+      prepare::PreparedFrameSlotSourceFactStatus::MissingPathValidity) {
+    return fail("expected missing path validity to stay fail-closed");
+  }
+
+  auto same_slot_write_inputs = accepted_inputs;
+  same_slot_write_inputs.same_slot_write_found = true;
+  const auto same_slot_write =
+      prepare::plan_prepared_frame_slot_source_fact(same_slot_write_inputs);
+  if (same_slot_write.status !=
+      prepare::PreparedFrameSlotSourceFactStatus::SameSlotWriteFound) {
+    return fail("expected same-slot write to stay fail-closed");
+  }
+
+  auto call_unknown_inputs = accepted_inputs;
+  call_unknown_inputs.call_or_helper_effects_classified_safe = false;
+  const auto call_unknown =
+      prepare::plan_prepared_frame_slot_source_fact(call_unknown_inputs);
+  if (call_unknown.status !=
+      prepare::PreparedFrameSlotSourceFactStatus::CallOrHelperEffectUnknown) {
+    return fail("expected unknown call/helper effect to stay fail-closed");
+  }
+
+  auto unsupported_inputs = accepted_inputs;
+  unsupported_inputs.unsupported_boundary = true;
+  const auto unsupported =
+      prepare::plan_prepared_frame_slot_source_fact(unsupported_inputs);
+  if (unsupported.status !=
+      prepare::PreparedFrameSlotSourceFactStatus::UnsupportedBoundary) {
+    return fail("expected unsupported source-fact boundary to stay separate");
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = riscv_target_profile();
+  const auto prepared_function_name =
+      prepared.names.function_names.intern("frame_slot_source_collector");
+  const auto prepared_entry_label = prepared.names.block_labels.intern("entry");
+  const auto prepared_true_label = prepared.names.block_labels.intern("is_true");
+  const auto prepared_false_label = prepared.names.block_labels.intern("is_false");
+  const auto prepared_target_name = prepared.names.value_names.intern("%cmp");
+  const bir::Value prepared_condition =
+      bir::Value::named(bir::TypeKind::I32, "%cmp");
+
+  prepare::PreparedControlFlowFunction prepared_cf;
+  prepared_cf.function_name = prepared_function_name;
+  prepared_cf.branch_conditions.push_back(prepare::PreparedBranchCondition{
+      .function_name = prepared_function_name,
+      .block_label = prepared_entry_label,
+      .kind = prepare::PreparedBranchConditionKind::MaterializedBool,
+      .condition_value = prepared_condition,
+      .true_label = prepared_true_label,
+      .false_label = prepared_false_label,
+  });
+  prepared.control_flow.functions.push_back(std::move(prepared_cf));
+
+  bir::Function prepared_function;
+  prepared_function.name = "frame_slot_source_collector";
+  bir::Block prepared_entry;
+  prepared_entry.label = "entry";
+  prepared_entry.label_id = prepared_entry_label;
+  prepared_entry.terminator = bir::CondBranchTerminator{
+      .condition = prepared_condition,
+      .true_label = "is_true",
+      .false_label = "is_false",
+      .true_label_id = prepared_true_label,
+      .false_label_id = prepared_false_label,
+  };
+  prepared_function.blocks.push_back(std::move(prepared_entry));
+  prepared.module.functions.push_back(std::move(prepared_function));
+
+  prepare::PreparedValueLocationFunction prepared_locations;
+  prepared_locations.function_name = prepared_function_name;
+  prepared_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 17,
+      .function_name = prepared_function_name,
+      .value_name = prepared_target_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{21},
+      .offset_bytes = std::size_t{156},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+  });
+  prepared.value_locations.functions.push_back(std::move(prepared_locations));
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 21,
+      .function_name = prepared_function_name,
+      .value_name = prepared_target_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{21},
+      .object_id = 21,
+      .function_name = prepared_function_name,
+      .offset_bytes = 156,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  const auto records = prepare::collect_prepared_frame_slot_source_facts(prepared);
+  if (records.records.size() != 1) {
+    return fail("expected frame-slot source-fact collector to emit the stack-home row");
+  }
+  const auto& record = records.records.front();
+  if (record.function_name != prepared_function_name ||
+      record.consumer_block_label != prepared_entry_label ||
+      record.role != prepare::PreparedBranchStackLoadRole::Condition ||
+      record.fact.status !=
+          prepare::PreparedFrameSlotSourceFactStatus::MissingMaterializationEvent ||
+      record.fact.target_value_id != 17 ||
+      record.fact.target_value_name != prepared_target_name ||
+      record.fact.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{21}} ||
+      record.fact.stack_object_id !=
+          std::optional<prepare::PreparedObjectId>{21}) {
+    return fail("expected collected source-fact row to expose missing materialization");
+  }
+
+  prepare::PreparedBirModule select_prepared;
+  select_prepared.target_profile = riscv_target_profile();
+  const auto select_function_name =
+      select_prepared.names.function_names.intern("frame_slot_select_boundary");
+  const auto select_entry_label = select_prepared.names.block_labels.intern("entry");
+  const auto select_true_label = select_prepared.names.block_labels.intern("is_true");
+  const auto select_false_label = select_prepared.names.block_labels.intern("is_false");
+  const auto select_condition_name = select_prepared.names.value_names.intern("%cmp");
+  const auto select_result_name = select_prepared.names.value_names.intern("%sel");
+  const bir::Value select_condition =
+      bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value select_result =
+      bir::Value::named(bir::TypeKind::I32, "%sel");
+  prepare::PreparedControlFlowFunction select_cf;
+  select_cf.function_name = select_function_name;
+  select_cf.branch_conditions.push_back(prepare::PreparedBranchCondition{
+      .function_name = select_function_name,
+      .block_label = select_entry_label,
+      .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+      .condition_value = select_condition,
+      .predicate = bir::BinaryOpcode::Ne,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = select_result,
+      .rhs = bir::Value::immediate_i32(0),
+      .can_fuse_with_branch = true,
+      .true_label = select_true_label,
+      .false_label = select_false_label,
+  });
+  select_cf.join_transfers.push_back(prepare::PreparedJoinTransfer{
+      .function_name = select_function_name,
+      .join_block_label = select_entry_label,
+      .result = select_result,
+      .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+      .carrier_kind =
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+  });
+  select_prepared.control_flow.functions.push_back(std::move(select_cf));
+  bir::Function select_function;
+  select_function.name = "frame_slot_select_boundary";
+  bir::Block select_entry;
+  select_entry.label = "entry";
+  select_entry.label_id = select_entry_label;
+  select_entry.terminator = bir::CondBranchTerminator{
+      .condition = select_condition,
+      .true_label = "is_true",
+      .false_label = "is_false",
+      .true_label_id = select_true_label,
+      .false_label_id = select_false_label,
+  };
+  select_function.blocks.push_back(std::move(select_entry));
+  select_prepared.module.functions.push_back(std::move(select_function));
+  prepare::PreparedValueLocationFunction select_locations;
+  select_locations.function_name = select_function_name;
+  select_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 30,
+      .function_name = select_function_name,
+      .value_name = select_condition_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+  select_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 31,
+      .function_name = select_function_name,
+      .value_name = select_result_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{31},
+      .offset_bytes = std::size_t{200},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+  });
+  select_prepared.value_locations.functions.push_back(std::move(select_locations));
+  select_prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 31,
+      .function_name = select_function_name,
+      .value_name = select_result_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  select_prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{31},
+      .object_id = 31,
+      .function_name = select_function_name,
+      .offset_bytes = 200,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  const auto select_records =
+      prepare::collect_prepared_frame_slot_source_facts(select_prepared);
+  if (select_records.records.size() != 1 ||
+      select_records.records.front().role !=
+          prepare::PreparedBranchStackLoadRole::Lhs ||
+      select_records.records.front().fact.status !=
+          prepare::PreparedFrameSlotSourceFactStatus::UnsupportedBoundary) {
+    return fail("expected select-result stack destination to stay an unsupported source-fact boundary");
+  }
+
+  prepare::PreparedBirModule pointer_prepared;
+  pointer_prepared.target_profile = riscv_target_profile();
+  const auto pointer_function_name =
+      pointer_prepared.names.function_names.intern("frame_slot_pointer_boundary");
+  const auto pointer_entry_label = pointer_prepared.names.block_labels.intern("entry");
+  const auto pointer_true_label = pointer_prepared.names.block_labels.intern("is_true");
+  const auto pointer_false_label = pointer_prepared.names.block_labels.intern("is_false");
+  const auto pointer_condition_name = pointer_prepared.names.value_names.intern("%cmp");
+  const auto pointer_lhs_name = pointer_prepared.names.value_names.intern("%ptr");
+  const bir::Value pointer_condition =
+      bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value pointer_lhs = bir::Value::named(bir::TypeKind::Ptr, "%ptr");
+  prepare::PreparedControlFlowFunction pointer_cf;
+  pointer_cf.function_name = pointer_function_name;
+  pointer_cf.branch_conditions.push_back(prepare::PreparedBranchCondition{
+      .function_name = pointer_function_name,
+      .block_label = pointer_entry_label,
+      .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+      .condition_value = pointer_condition,
+      .predicate = bir::BinaryOpcode::Ult,
+      .compare_type = bir::TypeKind::Ptr,
+      .lhs = pointer_lhs,
+      .rhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs"),
+      .can_fuse_with_branch = true,
+      .true_label = pointer_true_label,
+      .false_label = pointer_false_label,
+  });
+  pointer_prepared.control_flow.functions.push_back(std::move(pointer_cf));
+  bir::Function pointer_function;
+  pointer_function.name = "frame_slot_pointer_boundary";
+  bir::Block pointer_entry;
+  pointer_entry.label = "entry";
+  pointer_entry.label_id = pointer_entry_label;
+  pointer_entry.terminator = bir::CondBranchTerminator{
+      .condition = pointer_condition,
+      .true_label = "is_true",
+      .false_label = "is_false",
+      .true_label_id = pointer_true_label,
+      .false_label_id = pointer_false_label,
+  };
+  pointer_function.blocks.push_back(std::move(pointer_entry));
+  pointer_prepared.module.functions.push_back(std::move(pointer_function));
+  prepare::PreparedValueLocationFunction pointer_locations;
+  pointer_locations.function_name = pointer_function_name;
+  pointer_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 40,
+      .function_name = pointer_function_name,
+      .value_name = pointer_condition_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+  pointer_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 41,
+      .function_name = pointer_function_name,
+      .value_name = pointer_lhs_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{41},
+      .offset_bytes = std::size_t{208},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+  });
+  pointer_prepared.value_locations.functions.push_back(std::move(pointer_locations));
+  pointer_prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 41,
+      .function_name = pointer_function_name,
+      .value_name = pointer_lhs_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  pointer_prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{41},
+      .object_id = 41,
+      .function_name = pointer_function_name,
+      .offset_bytes = 208,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  const auto pointer_records =
+      prepare::collect_prepared_frame_slot_source_facts(pointer_prepared);
+  if (pointer_records.records.size() != 1 ||
+      pointer_records.records.front().role !=
+          prepare::PreparedBranchStackLoadRole::Lhs ||
+      pointer_records.records.front().fact.status !=
+          prepare::PreparedFrameSlotSourceFactStatus::UnsupportedBoundary) {
+    return fail("expected pointer/provenance stack row to stay an unsupported source-fact boundary");
+  }
+
+  prepare::PreparedBirModule terminator_prepared;
+  terminator_prepared.target_profile = riscv_target_profile();
+  const auto terminator_function_name =
+      terminator_prepared.names.function_names.intern("frame_slot_terminator_boundary");
+  const auto terminator_entry_label =
+      terminator_prepared.names.block_labels.intern("entry");
+  const auto terminator_true_label =
+      terminator_prepared.names.block_labels.intern("is_true");
+  const auto terminator_false_label =
+      terminator_prepared.names.block_labels.intern("is_false");
+  const auto terminator_condition_name =
+      terminator_prepared.names.value_names.intern("%cmp");
+  const bir::Value terminator_condition =
+      bir::Value::named(bir::TypeKind::I32, "%cmp");
+  prepare::PreparedControlFlowFunction terminator_cf;
+  terminator_cf.function_name = terminator_function_name;
+  terminator_cf.branch_conditions.push_back(prepare::PreparedBranchCondition{
+      .function_name = terminator_function_name,
+      .block_label = terminator_entry_label,
+      .kind = prepare::PreparedBranchConditionKind::MaterializedBool,
+      .condition_value = terminator_condition,
+      .true_label = terminator_true_label,
+      .false_label = terminator_false_label,
+  });
+  terminator_prepared.control_flow.functions.push_back(std::move(terminator_cf));
+  bir::Function terminator_function;
+  terminator_function.name = "frame_slot_terminator_boundary";
+  bir::Block terminator_entry;
+  terminator_entry.label = "entry";
+  terminator_entry.label_id = terminator_entry_label;
+  terminator_entry.terminator = bir::ReturnTerminator{.value = terminator_condition};
+  terminator_function.blocks.push_back(std::move(terminator_entry));
+  terminator_prepared.module.functions.push_back(std::move(terminator_function));
+  prepare::PreparedValueLocationFunction terminator_locations;
+  terminator_locations.function_name = terminator_function_name;
+  terminator_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 50,
+      .function_name = terminator_function_name,
+      .value_name = terminator_condition_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{50},
+      .offset_bytes = std::size_t{216},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+  });
+  terminator_prepared.value_locations.functions.push_back(
+      std::move(terminator_locations));
+  terminator_prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 50,
+      .function_name = terminator_function_name,
+      .value_name = terminator_condition_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  terminator_prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{50},
+      .object_id = 50,
+      .function_name = terminator_function_name,
+      .offset_bytes = 216,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  const auto terminator_records =
+      prepare::collect_prepared_frame_slot_source_facts(terminator_prepared);
+  if (terminator_records.records.size() != 1 ||
+      terminator_records.records.front().fact.status !=
+          prepare::PreparedFrameSlotSourceFactStatus::UnsupportedBoundary) {
+    return fail("expected unsupported terminator stack row to stay an unsupported source-fact boundary");
+  }
+
+  return 0;
+}
+
 int check_dependency_operand_authority_contract() {
   prepare::PreparedNameTables names;
   const auto function_name = names.function_names.intern("dependency_operand");
@@ -9509,6 +10014,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_branch_stack_load_authority_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_frame_slot_source_fact_carrier_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_dependency_operand_authority_contract(); rc != 0) {
