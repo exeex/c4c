@@ -1,63 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/471_branch_site_stack_slot_freshness_clobber_safety_metadata.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Freshness Clobber-Safety Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Freshness Clobber-Safety Producer
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 contract for idea 471. The contract is bounded to scalar
-condition branch-stack-load rows, with `%t23` at `f.logic.end.14` as the
-representative, but Step 3 must first prove a durable current-value source and
-no-clobber facts before setting any available record.
+Completed Step 3 as a route/blocker packet for idea 471. No producer
+implementation is selected because current prepared inputs do not prove a
+durable branch-site current-value source or no-clobber safety for scalar
+condition stack slots.
 
-Positive contract:
+Checked implementation surfaces:
 
-| Fact group | Required facts |
+| Surface | Finding |
 | --- | --- |
-| Branch identity | Function, branch block, prepared branch condition, BIR conditional branch terminator, condition value, and targets match. |
-| Slot identity | Value id/name, home, frame slot, object id, offset, size, alignment, and type match. |
-| Current-value source | Producer-owned fact states the slot contains the current branch condition value at the branch site. |
-| Path validity | Source is valid on every authorized path to the branch site. |
-| No clobber | No intervening stack write, call/helper/inline asm, publication, move bundle, or parallel copy can overwrite or invalidate the slot. |
-| Policy integration | Only after the above may `load_from_stack_slot`, `fresh=true`, and `clobber_safe=true` be set. |
+| `PreparedBranchStackLoadAuthorityInputs` | Carrier can express `load_from_stack_slot`, `stack_slot_fresh_at_branch`, and `stack_slot_clobber_safe_at_branch`. |
+| `plan_prepared_branch_stack_load_authority` | Status machine already enforces `missing_policy`, `missing_stack_freshness`, and `missing_stack_clobber_safety`. |
+| `collect_prepared_branch_stack_load_authorities` | Real records still pass `policy=none` and have no source for freshness or clobber-safety booleans. |
+| Representative `%t23` row | Has branch/value/home/frame-slot/object identity, but lacks a producer-owned fact that slot `#21` contains current `%t23` at `f.logic.end.14` and remains unclobbered. |
 
-Rejected/fail-closed cases:
+Exact blocker:
 
-| Shape | Disposition |
+| Missing fact | Why current inputs are insufficient |
 | --- | --- |
-| Raw BIR adjacency | Rejected; `%t23` computed before the branch does not prove slot `#21` contains `%t23`. |
-| Stack home/object only | Rejected as identity facts only, not freshness. |
-| Missing current-value source or path proof | Fail closed as missing freshness. |
-| Intervening store/call/helper/publication/move-bundle ambiguity | Fail closed as clobber-unsafe. |
-| `%t22` select-result stack destination | Separate owner. |
-| `%t1` / `%t7` pointer/provenance rows | Separate owner. |
-| `%t2` / `%t8` `unsupported_terminator` rows | Separate branch-site relationship prerequisite. |
+| Branch-site current-value proof | BIR computes `%t23` near the branch, but no prepared fact says stack slot `#21` contains that current value at the load site. |
+| Path/dominance validity | No prepared certificate ties the value source to all paths reaching the branch site. |
+| Stack-write exclusion | No prepared summary proves no intervening write to the same frame slot/object. |
+| Call/helper/inline-asm safety | Existing call/helper facts are not joined into branch-site slot clobber-safety proof. |
+| Publication/move-bundle safety | Existing publication and move-bundle rows are not joined into a same-slot non-clobber certificate. |
 
-Selected Step 3 packet: `Implement Or Route Scalar Condition Freshness
-Producer`. Implement only if current prepared facts can prove a durable
-current-value source and no-clobber safety without raw-shape inference;
-otherwise route/block with the exact missing producer owner.
+Preserved fail-closed boundaries: `%t22` select-result stack destination,
+`%t1` / `%t7` pointer-provenance rows, and `%t2` / `%t8`
+`unsupported_terminator` rows remain separate owners. No RV64 target lowering
+or raw-shape inference was introduced.
 
 Artifact:
-`build/agent_state/471_step2_freshness_clobber_contract/contract.md`.
+`build/agent_state/471_step3_freshness_clobber_producer/blocker.md`.
 
 ## Suggested Next
 
-Execute Step 3: Implement Or Route Freshness Clobber-Safety Producer.
+Route a new producer/prepared metadata packet:
+`Define/produce branch-site stack-slot current-value and no-clobber certificate`.
 
-Suggested owned files:
+Suggested scope:
 
 - `src/backend/prealloc/publication_plans.hpp`
 - `src/backend/prealloc/publication_plans.cpp`
 - `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
 - `todo.md`
 - `test_after.log`
-- `build/agent_state/471_step3_freshness_clobber_producer/**`
+- `build/agent_state/<next_step>_branch_site_slot_current_value_clobber/**`
 
-Optional prepared printer files only if a new record/status is exposed.
+Implement only if the producer can explicitly prove current-value source,
+path/dominance validity, stack-write exclusion, call/helper effect safety, and
+publication/move-bundle non-clobber for the exact branch slot. Otherwise keep
+branch-stack-load records unavailable.
 
 Proof:
 
@@ -83,10 +83,11 @@ Proof:
 
 ## Proof
 
-Contract proof:
+Step 3 proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed.
+Result: passed. `test_after.log` reports 100% tests passed, 0 tests failed
+out of 327, followed by `git diff --check`.
