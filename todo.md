@@ -1,53 +1,95 @@
 Status: Active
 Source Idea Path: ideas/open/442_pointer_value_memory_provenance_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Select Concrete Provenance Or Opaque Policy Packet
+Current Step ID: 3
+Current Step Title: Implement Producer Publication Or Policy Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: re-audited the four `930930-1` pointer-value memory accesses
-against `prepare::prepared_pointer_value_memory_has_proven_authority`.
+Completed Step 2: selected the first bounded producer packet for idea 442
+without changing implementation files or tests.
 
-| access | source pointer | current authority | missing producer fact | classification |
-| --- | --- | --- | --- | --- |
-| `f:block_4:inst1` load `%t6` | `%t5`, loaded from `%lv.param.reg1`; caller arg3 is `source_base=@mem source_delta=792` | `base=pointer_value`, `pointer=%t5`, `offset=0`, `size=8`, `align=8`, `base_plus_offset=yes`, `layout_authority=unknown`, `range_verdict=unknown_compatible` | Same-module computed-address call-argument provenance is not published onto callee formal `%p.reg1`, local `%lv.param.reg1`, or loaded pointer `%t5`; no complete `@mem` extent/range reaches the access. | Concrete-provenance candidate. |
-| `f:logic.rhs.11:inst1` load `%t16` | `%t15`, loaded from `%lv.param.reg1`; same arg3 `@mem+792` source | Same pointer-value shape with unknown layout and unknown-compatible range | Same `%p.reg1`/local/load provenance publication gap. | Concrete-provenance candidate. |
-| `f:block_5:inst1` load `%t25` | `%t24`, loaded from `%lv.param.reg1`; same arg3 `@mem+792` source | Same pointer-value shape with unknown layout and unknown-compatible range | Same `%p.reg1`/local/load provenance publication gap; the later store-source use of `%t25` is separate from address authority. | Concrete-provenance candidate. |
-| `f:block_5:inst5` store `%t25` | `%t27 = %t26 - 8`; `%t26` loaded from `%lv.param.mr_TR`; caller arg0 is `source_base=@mem source_delta=800` | `base=pointer_value`, `pointer=%t27`, `offset=0`, `size=8`, `align=8`, `base_plus_offset=yes`, `layout_authority=unknown`, `range_verdict=unknown_compatible` | Computed-address provenance is not published onto `%p.mr_TR`/`%lv.param.mr_TR`, not preserved through load `%t26`, and not adjusted through `%t27 = %t26 - 8` to prove `@mem+792`. | Concrete-provenance candidate requiring pointer-delta propagation. |
+Selected packet: `Publish Same-Module Computed-Address Formal Provenance`.
 
-Classification result: all four rows are concrete-provenance candidates, not
-opaque-compatibility candidates. `main` already publishes semantic
-computed-address call sources for `@mem+792` and `@mem+800`; the missing piece
-is producer publication across the same-module call/formal/local/load chain and
-through the one constant pointer delta. No row is intentionally unsupported at
-this step.
+Route: concrete provenance publication, not opaque compatibility.
+
+Scope:
+
+- Target the three `930930-1` pointer-value memory loads through
+  `%lv.param.reg1`: `f:block_4:inst1`, `f:logic.rhs.11:inst1`, and
+  `f:block_5:inst1`.
+- These derive from formal `%p.reg1`, whose caller-side arg3 is already
+  recorded as `source_base=@mem source_delta=792`.
+- Publish only enough producer/prepared authority for resulting
+  pointer-value memory records to pass
+  `prepare::prepared_pointer_value_memory_has_proven_authority`.
+
+Contract:
+
+- direct same-module call with available callee definition;
+- non-sret, non-byval pointer formal;
+- coherent computed-address argument source for the selected formal;
+- concrete source object with known complete extent and known source delta;
+- provenance preserved through the callee formal local store/load chain;
+- final prepared pointer-value memory record has concrete non-bare base
+  identity, non-unknown layout authority, complete extent, matching requested
+  range, and `range_verdict=ProvenInBounds`.
+
+Rejected adjacent shapes:
+
+- opaque compatibility for arbitrary runtime pointers;
+- weakening `prepare::prepared_pointer_value_memory_has_proven_authority`;
+- RV64-side provenance/range inference;
+- indirect/external calls, missing callee definitions, variadic ambiguity,
+  missing call-argument relationships, frame-slot value args, symbol-only args
+  without computed-address provenance, dynamic or incoherent bases, and
+  multiple inconsistent callsites;
+- store-source/global-memory publication, direct-global return/select-chain,
+  terminator/select publication, expectation rewrites, unsupported-marker
+  edits, allowlists, and pass/fail accounting.
+
+Pointer-delta decision: split it. The `f:block_5:inst5` store through
+`%t27 = %t26 - 8` remains a concrete-provenance candidate, but it requires
+constant pointer add/sub propagation from `%p.mr_TR`/`%lv.param.mr_TR` to
+`%t27`. That should be the follow-up packet after call/formal/local-load
+publication is proven.
 
 Artifact:
 
-- `build/agent_state/442_step1_pointer_value_provenance_reaudit/reaudit.md`
+- `build/agent_state/442_step2_provenance_packet_selection/selection.md`
 
 ## Suggested Next
 
-Execute Step 2: Select Concrete Provenance Or Opaque Policy Packet.
+Execute Step 3: Implement Producer Publication Or Policy Coverage.
 
-Recommended packet: select a bounded concrete provenance-publication route for
-same-module computed-address call arguments into pointer formals. The packet
-should define:
+Recommended Step 3 packet: implement `Publish Same-Module Computed-Address
+Formal Provenance`.
 
-- how computed-address call-argument facts become callee formal pointer
-  provenance for pointer parameters;
-- how that provenance is preserved through local param store/load for
-  `%lv.param.reg1` and `%lv.param.mr_TR`;
-- whether the constant pointer delta `%t27 = %t26 - 8` is included in the first
-  concrete packet or split as the following packet;
-- focused producer/prepared tests proving affected pointer-value memory records
-  pass `prepare::prepared_pointer_value_memory_has_proven_authority`.
+Owned files:
 
-Keep opaque compatibility parked unless the concrete route proves impossible
-without testcase-shaped assumptions.
+- `src/backend/bir/lir_to_bir/calling.cpp`
+- `src/backend/bir/lir_to_bir/module.cpp`
+- `src/backend/bir/lir_to_bir/memory/local_slots.cpp`
+- `src/backend/bir/lir_to_bir/memory/provenance.cpp`
+- `src/backend/bir/lir_to_bir/memory/memory_types.hpp` only if existing
+  `PointerAddress` cannot express the needed facts
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/442_step3_concrete_call_arg_provenance/*`
+
+Proof:
+
+```sh
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+```
+
+Expected Step 3 evidence: focused producer/prepared tests prove same-module
+computed-address pointer arguments seed callee pointer provenance and the three
+`%reg1` pointer-value memory records classify as proven authority. The
+`%mr_TR - 8` store may remain fail-closed until the pointer-delta packet.
 
 ## Watchouts
 
@@ -63,10 +105,13 @@ without testcase-shaped assumptions.
 - Do not key the route to `930930-1`, `reg1`, `mr_TR`, one block label, or one
   dump layout; use same-module call argument and prepared provenance facts as
   authority.
+- Do not include pointer-delta propagation in the first packet unless the
+  implementation proves it is inseparable from call/formal/local-load
+  provenance.
 
 ## Proof
 
-Step 1 delegated backend proof passed and is captured in `test_after.log`:
+Step 2 delegated backend proof passed and is captured in `test_after.log`:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
