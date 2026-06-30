@@ -1,47 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/470_branch_stack_load_policy_freshness.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Policy Freshness Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 as a routed/blocker packet. No producer implementation was
-selected because current prepared facts do not prove branch-site
-`load_from_stack_slot` policy, slot freshness, or clobber safety for real
-records. The existing carrier can represent those facts, but no safe producer
-currently owns them.
+Completed Step 4 residual disposition for idea 470 after Step 3 routed the
+implementation packet. Idea 470 is not close-ready as an available-record
+producer; it should close or retire by split to a narrower branch-site
+stack-slot freshness/clobber-safety producer initiative.
 
-Implementation decision:
+Residual classification:
 
-| Candidate | Result |
+| Row | Current status | Residual owner |
 | --- | --- |
-| Scalar populated `missing_policy` row (`f.logic.end.14` `%t23`) | Cannot become available yet; missing explicit branch-site load policy, freshness, and clobber-safety producer facts. |
-| `f.logic.end.14` `%t22` | Remains fail-closed; select-result stack destination is a separate owner. |
-| `f.block_1` / `f.block_4` rows | Remain fail-closed at `unsupported_terminator`; branch-site relationship acceptance is a separate prerequisite. |
-| Pointer operands `%t1` / `%t7` | Remain fail-closed/separate; pointer status and provenance are not proven. |
+| `f.logic.end.14` condition `%t23` | Populated `value_id=17`, `slot=#21`, `object=#21`, `status=missing_policy` | New producer metadata owner for branch-site `load_from_stack_slot`, freshness, and clobber safety. |
+| `f.logic.end.14` lhs `%t22` | Populated `value_id=16`, `slot=#20`, `object=#20`, `status=missing_policy` | Select-result stack-destination owner before target consumption. |
+| `f.block_1` condition `%t2` | `status=unsupported_terminator` | Branch-site relationship acceptance prerequisite before policy/freshness. |
+| `f.block_1` lhs `%t1` | `status=unsupported_terminator`, `pointer_status=unknown` | Branch-site relationship plus pointer/provenance owner. |
+| `f.block_4` condition `%t8` | `status=unsupported_terminator` | Branch-site relationship acceptance prerequisite. |
+| `f.block_4` lhs `%t7` | `status=unsupported_terminator`, `pointer_status=unknown` | Pointer-value/provenance owner before branch-load availability. |
 
-Exact blocker:
+Close-readiness decision:
 
-- Missing producer/prepared branch-site load-safety facts: whether the slot may
-  be loaded at the branch site, whether it still contains the current condition
-  value, and whether no intervening store/call/helper/publication/move/stack
-  write clobbers it.
-- Setting `load_from_stack_slot` from stack homes, frame slots, object ids,
-  prepared branch shape, or testcase evidence alone would be raw-shape
-  inference and is rejected.
+- The carrier and unavailable statuses are adequate.
+- The missing owner is producer-owned branch-site stack-slot freshness and
+  clobber-safety evidence.
+- RV64 consumption must remain blocked until a later packet produces available
+  branch-stack-load records.
 
 Artifact:
-`build/agent_state/470_step3_policy_freshness_population/blocker.md`.
+`build/agent_state/470_step4_residual_disposition/disposition.md`.
 
 ## Suggested Next
 
-Execute Step 4: Residual Disposition And Close Readiness. Decide whether idea
-470 should close/split to a narrower branch-site freshness/clobber-safety
-producer initiative, or remain active only if one exact in-scope metadata
-packet can produce those facts without raw-shape inference.
+Plan-owner lifecycle packet: split or activate a narrower producer idea for
+branch-site stack-slot freshness and clobber-safety metadata, then close/retire
+idea 470 as blocked by that first owner. Suggested follow-up owner:
+`branch_site_stack_slot_freshness_clobber_safety_metadata`.
 
 ## Watchouts
 
@@ -64,10 +63,10 @@ packet can produce those facts without raw-shape inference.
 
 ## Proof
 
-Delegated proof:
+Classification proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
-Result: passed. `test_after.log` reports all 327 backend tests passed.
+Result: passed.
