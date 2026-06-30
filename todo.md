@@ -1,46 +1,80 @@
 Status: Active
 Source Idea Path: ideas/open/459_rv64_select_edge_suppression_placement_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Suppression Placement Consumer Evidence
+Current Step ID: 2
+Current Step Title: Define RV64 Suppression Consumer Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 459. The producer/prepared
-`predecessor_edge_consumed_suppression` metadata from idea 458 is coherent, but
-RV64 does not yet have a target-consumable suppression row.
+Completed Step 2 contract for idea 459. RV64 suppression is accepted only for
+an explicit available `predecessor_edge_consumed_suppression` placement record
+that matches the same function, before-instruction move-bundle site, binary
+source producer, select carrier, predecessor/successor edge tuple,
+incoming/destination values, and register-destination target moves.
 
-Bucket table:
+Accepted suppression conditions:
 
-| Bucket | Placement record fields | Edge identity | Source producer | Select carrier | Bundle site | Moves | Current RV64 event visibility | First missing consumer fact |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Coherent suppression-consumer candidate | `kind=predecessor_edge_consumed_suppression`, `status=available`, false-by-default placement record from idea 458 collector. | `logic.rhs.end.13 -> logic.end.14`, `incoming=%t18`, `destination=%t22`. | `%t18 = bir.ule ptr %t15, %t17`. | `%t22 = bir.select ... i32 %t18, 0`. | `before_instruction`, `authority=none`, `block_index=4`, `instruction_index=2`. | Register-destination moves into `%t18`/`t0`, including `consumer_register_to_register` and `consumer_stack_to_register`. | Not visible/consumable today: RV64 does not collect placement records, and traversal only emits before-instruction copy events for bundles with stack-slot destinations. | Expose this exact register-destination bundle as a traversal event and match it to an explicit available placement record before suppressing it. |
-| Existing cast-dependency suppression | Dependency-operand authority, not select-edge placement metadata. | Cast-dependency edge only. | Cast producer, not the binary select-edge source producer. | Not the `%t22` route. | `before_instruction`, `authority=none`. | Single stack-destination move. | Already handled by the cast-dependency stack publication guard. | Not reusable for the target register-destination suppression bundle. |
-| Existing edge source-producer materialization | No suppression record. | Requires source-parallel-copy predecessor/successor labels. | Select-edge source producer emitted as edge-owned materialization. | Existing edge publication path. | Edge/block-entry publication, not the join before-instruction bundle. | Producer materialization moves. | Separate existing route. | Cannot justify suppressing the target join bundle. |
-| Fail-closed adjacent shapes | Missing record, wrong kind/status, mismatched source producer/select carrier/edge/site, unsupported moves, stale stack-load authority, raw inferred shape. | Missing or mismatched edge tuple. | Non-binary, missing, mismatched, or raw-only producer. | Non-select or mismatched carrier. | Wrong phase/block/instruction/authority. | Generic or unrelated moves. | Must remain rejected. | No inference from raw BIR, value ids, block indexes, instruction indexes, filenames, function names, or one dump. |
+- collect `PreparedSelectEdgeSourceProducerPlacementRecords` for the prepared
+  function;
+- match `status=available` and
+  `kind=predecessor_edge_consumed_suppression`;
+- match function identity, phase, block index, instruction index, binary
+  source-producer identity/result, select-materialization carrier, edge
+  predecessor/successor labels, incoming value, destination value, and target
+  move source/destination value ids;
+- require `BeforeInstruction` `authority=none` target bundles whose moves are
+  value moves with register destination storage and whose destinations match
+  the source-producer result;
+- suppress as an empty RV64 fragment only after that explicit match.
+
+Event visibility requirement:
+
+- the object route must observe before-instruction register-destination bundles
+  only through a narrow placement-record-backed visibility path;
+- absence of a matching available placement record remains fail-closed and must
+  not become generic before-instruction register move lowering.
 
 Artifact:
-`build/agent_state/459_step1_suppression_placement_consumer_audit/audit.md`.
+`build/agent_state/459_step2_suppression_consumer_contract/contract.md`.
 
 ## Suggested Next
 
-Step 2: Define RV64 Suppression Consumer Contract.
+Step 3: Implement Or Route First Suppression Consumer Packet.
 
-Specify the exact RV64 contract for consuming
-`predecessor_edge_consumed_suppression`: placement-record lookup keys, event
-visibility for before-instruction register-destination bundles, move identity
-matching, accepted suppression behavior, fail-closed adjacent shapes, owned
-files/tests for Step 3, and the Step 3 proof command.
+Owned files/tests for the selected packet:
+
+- `src/backend/prealloc/prepared_object_traversal.hpp`
+- `src/backend/prealloc/prepared_object_traversal.cpp`
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `src/backend/prealloc/publication_plans.hpp` and
+  `src/backend/prealloc/publication_plans.cpp` only if a focused lookup helper
+  is needed
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/459_step3_suppression_consumer/**`
+
+Implement the narrow route that collects placement records, exposes the
+authorized register-destination before-instruction bundle to RV64 object
+emission, suppresses only the matching available record, and keeps missing,
+mismatched, generic, stale stack-load, and raw-inferred cases rejected.
+
+Step 3 proof command:
+
+```sh
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+```
 
 ## Watchouts
 
 - Consume only explicit `predecessor_edge_consumed_suppression` placement
   metadata.
-- RV64 currently has two separate consumer gaps: it does not collect placement
-  records, and prepared traversal does not expose the target register-destination
-  before-instruction bundle.
+- RV64 currently has two consumer gaps that Step 3 must handle together:
+  placement records are not collected in object emission, and prepared
+  traversal does not expose the target register-destination before-instruction
+  bundle.
 - Do not infer suppression from value ids, block indexes, instruction indexes,
   raw BIR shape, filenames, function names, or one prepared dump.
 - Do not add generic stack-to-register or register-to-register move support.
@@ -62,4 +96,4 @@ Lifecycle activation validation:
 git diff --check
 ```
 
-Result: passed for Step 1 audit.
+Result: passed for Step 2 contract.
