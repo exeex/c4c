@@ -1,61 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/456_rv64_select_edge_cast_dependency_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First Consumer Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 456. Summary artifact:
-`build/agent_state/456_step3_cast_dependency_consumer/summary.md`.
+Completed Step 4 for idea 456. Disposition artifact:
+`build/agent_state/456_step4_residual_disposition/disposition.md`.
 
-Implemented the narrow RV64 select-edge move materializer route for explicit
-prepared dependency-operand authority records with
-`policy=rematerialize_cast_from_source` and `status=available`.
+Fresh `20010329-1` probes under
+`build/agent_state/456_step4_residual_disposition/` show:
 
-The consumer now:
+| Row | Evidence | Disposition |
+| --- | --- | --- |
+| `%t17` cast dependency for `%t18 -> %t22` | `policy=rematerialize_cast_from_source status=available`, `operand_role=rhs`, `cast_source=%t16`, `cast_source_home=rematerializable_immediate` | Accepted by the Step 3 focused RV64 consumer route |
+| `%t17` stack-load alternative | `policy=load_from_stack_slot status=missing_stack_freshness` | Still fail-closed; not owned by idea 456 |
+| `%t17` stack-slot publication move | `move_bundle phase=before_instruction authority=none block_index=4 instruction_index=1`, `destination_storage=stack_slot`, `reason=consumer_register_to_stack` | Current first object-route blocker before the edge consumer can benefit from the explicit cast authority |
 
-- matches prepared edge publication/source producer facts, predecessor and
-  successor labels, source/destination value identity, operand role,
-  dependency value identity, cast producer identity, and cast source identity;
-- accepts only cast sources with prepared register or rematerializable `i32`
-  immediate homes;
-- treats the cast producer as edge-owned only when every use of the cast result
-  is the authorized source-producer compare operand;
-- rejects the LHS-authority/RHS-`t3` scratch-clobber edge where the later RHS
-  operand would be read from x28 after LHS materialization overwrote it;
-- rematerializes the cast source into a scratch GPR and emits the compare into
-  the prepared edge destination register;
-- suppresses the owned cast producer instruction so the object route does not
-  consume raw `inttoptr` or fall back to stack-slot materialization.
+The prepared probe exits 0. The object probe exits 2 with:
 
-Focused backend coverage proves the accepted explicit cast-dependency route and
-fail-closed behavior for missing authority/cast producer, unsupported stack-slot
-cast source homes, mismatched dependency operand identity, extra non-carrier
-uses of an otherwise-authorized cast result, and the LHS-authority/RHS-`t3`
-scratch-clobber overlap.
+```text
+unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves
+```
 
-Representative probe artifacts under
-`build/agent_state/456_step3_cast_dependency_consumer/` show `20010329-1`
-prepared output still contains the expected `%t17`
-`rematerialize_cast_from_source status=available` record. The object probe still
-exits 2 with the broad
-`unsupported_move_bundle_target_shape: prepared move bundle requires unsupported
-RV64 moves` diagnostic, so full representative success is not claimed in this
-slice.
+Decision: idea 456 is not close-ready for the representative route yet. The
+explicit cast-dependency compare consumer is implemented and covered, but one
+precise remaining consumer packet exists for the same authority family: the
+object route must suppress or safely consume the owned `before_instruction`
+stack-slot publication for an authorized `rematerialize_cast_from_source`
+dependency result when carrier-use proof says the cast result is needed only by
+the select-edge source-producer compare.
 
 ## Suggested Next
 
-Step 4: `Residual Disposition And Close Readiness`.
+Step 5: `Suppress Authorized Cast-Dependency Stack Publication Bundle`.
 
-Re-probe and classify the remaining `20010329-1` object-route
-`unsupported_move_bundle_target_shape` after the explicit cast-dependency
-consumer route. Decide whether the residual belongs to another stack-home,
-move-bundle materialization, select-edge, or adjacent owner, and whether idea
-456 is close-ready for the accepted consumer route or needs a precise follow-up
-packet.
+Implement or route the exact remaining RV64 consumer packet for the
+`before_instruction` stack-slot publication of an authorized
+`rematerialize_cast_from_source status=available` dependency result. The packet
+should use the populated dependency-operand authority and carrier-use proof as
+authority, preserve the existing scratch-clobber guard, and keep generic
+stack-slot moves, `load_from_stack_slot missing_stack_freshness`, raw
+`inttoptr`, successor-copy, and unrelated move bundles fail-closed.
+
+Suggested owned files:
+
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/456_step5_cast_dependency_stack_publication/*`
 
 Suggested proof command:
 
@@ -65,8 +62,10 @@ Suggested proof command:
 
 ## Watchouts
 
-- Full `20010329-1` object success remains unclaimed; Step 3 only proves the
-  explicit cast-dependency consumer route in focused coverage.
+- Full `20010329-1` object success remains unclaimed.
+- The next packet should target only the authorized cast-dependency
+  `before_instruction` stack publication bundle; do not implement generic stack
+  moves.
 - Continue to consume only populated `rematerialize_cast_from_source
   status=available` dependency-operand authority.
 - Preserve the scratch-clobber guard unless a later packet implements a
@@ -85,10 +84,10 @@ Suggested proof command:
 
 ## Proof
 
-Step 3 proof:
+Step 4 proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
-Result: passed; proof output is in `test_after.log`.
+Result: passed.
