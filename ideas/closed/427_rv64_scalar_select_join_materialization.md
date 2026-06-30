@@ -1,6 +1,6 @@
 # RV64 Scalar Select And Join Materialization
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Source Evidence: `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`
@@ -64,3 +64,22 @@ largest ordinary non-F128 owner bucket. Representative rows include
 - Reject helper renames or abstraction moves that leave prepared scalar
   `bir.select` rows failing with the same unsupported instruction-fragment
   mode.
+
+## Closure Note
+
+Closed after the active runbook implemented semantic RV64 object emission for
+ordinary small-integer prepared scalar selects and stack-homed published
+join-transfer select carriers using existing prepared facts. Focused backend
+coverage now exercises multiple select/join shapes, including ordinary I8/I16
+select materialization, normalized compare selects, join-transfer selects,
+published-carrier handling, edge-compare-source cases, dependent edge sources,
+and fail-closed ambiguous publication diagnostics.
+
+Residual full gcc_torture representative failures are intentionally outside
+this idea: current blockers are call-adjacent scalar/inline asm, frame-slot
+address/value publication, global memory, or stack/publication follow-ups. No
+expectation, allowlist, unsupported-marker, runtime-comparison, or pass/fail
+accounting changes were used as progress. The backend close gate passed with
+matching `test_before.log` and `test_after.log` for
+`{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; }`,
+both reporting 327/327 passing tests.
