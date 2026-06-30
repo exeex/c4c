@@ -8,49 +8,62 @@ Current Step Title: Broader Validation And Close Readiness
 
 ## Just Finished
 
-Step 4 classified the prepared scalar inline-asm evidence. No coherent new
-scalar inline-asm input/output lowering packet exists in the active
-call-adjacent evidence because the representative rows do not provide complete
-prepared inline-asm carrier facts for RV64 object lowering.
+Step 5 completed close-readiness validation for the RV64 call-adjacent scalar
+and inline-asm plan. Fresh representative object-route probes were captured
+under `build/agent_state/428_step5_probe/` for `pr40657`, `pr45695`,
+`pr56982`, `pr38533`, and `pr49279`.
 
 Completed work:
 
-- Accepted as already covered by existing object lowering: complete prepared
-  `.insn r` and `.insn d` inline-asm carriers with scalar GPR operands. The
-  object route already requires complete carriers and existing backend tests
-  cover scalar input/output substitution, tied/readwrite operands, and
-  fail-closed cases for missing carriers, unsupported operand metadata, named
-  operands, template modifiers, clobbers, vector homes, and malformed text.
-- Rejected for this packet: `pr38533`-class rows carry repeated
-  `missing_operand0_home` facts for tied `=r,0` inline-asm calls. RV64 lowering
-  cannot materialize scalar input/output operands without the producer assigning
-  the operand home.
-- Rejected for this packet: `pr45695`-class and `pr49279`-class rows carry
-  `tied_input_output_home_mismatch`. The packet constraints forbid repairing
-  tied input/output mismatches inside RV64 lowering.
-- Rejected for this packet: `pr40657`-class rows carry
-  `unsupported_constraint0:=*m` / `unsupported_operand_constraint0`, which is a
-  memory-constraint carrier problem, not coherent scalar GPR input/output
-  materialization.
-- Out of scope for scalar input/output lowering: `pr56982`-class rows provide
-  a clobber-only `~{memory}` carrier with `result_home=no`, no scalar operands,
-  and no scalar publication work for the object route.
-- No implementation files were changed. Completing Step 4 as lowering work
-  requires a separate prepared inline-asm producer/carrier repair packet for
-  missing operand homes or tied input/output home mismatches before RV64 object
-  emission can consume those rows.
+- `pr38533` still exits object compile with
+  `unsupported_instruction_fragment`; the prepared carrier facts show repeated
+  `missing_operand0_home` for tied `=r,0` inline-asm calls. This is an in-scope
+  scalar inline-asm row only after a producer/carrier packet supplies operand
+  homes; it is not currently coherent RV64 object-lowering work.
+- `pr45695` still exits object compile with
+  `unsupported_instruction_fragment`; prepared facts show
+  `tied_input_output_home_mismatch`. This requires prepared inline-asm tied
+  operand/home repair before object lowering can consume it.
+- `pr49279` still exits object compile with
+  `unsupported_instruction_fragment`; prepared facts also show
+  `tied_input_output_home_mismatch`. This is the same producer/carrier
+  follow-up class as `pr45695`.
+- `pr40657` still exits object compile with
+  `unsupported_instruction_fragment`; prepared facts show
+  `unsupported_constraint0:=*m` and `unsupported_operand_constraint0`. This is
+  memory-constraint inline-asm work, outside the scalar GPR input/output
+  lowering packets completed by this plan.
+- `pr56982` still exits object compile with
+  `unsupported_instruction_fragment`; prepared facts show a clobber-only
+  `~{memory}` carrier with `result_home=no`, no scalar operands, and no scalar
+  publication work. This is out of scope for scalar call-result, call-argument,
+  or scalar inline-asm input/output materialization.
+- Existing focused backend tests cover the completed coherent scalar packets:
+  prepared GPR call-result publication, frame-slot scalar value to GPR
+  call-argument publication, and complete-carrier `.insn r` / `.insn d`
+  inline-asm materialization. The representative full-row failures that remain
+  are not expectation/accounting progress gaps and were not modified.
+- Close-readiness result: the implemented scalar object-lowering work is ready
+  for supervisor review, but the source idea is not ready for lifecycle close
+  if the remaining representative rows must pass. The required follow-up is a
+  prepared inline-asm producer/carrier idea for `missing_operand0_home` and
+  `tied_input_output_home_mismatch`, with separate handling for memory
+  constraints/clobber-only carriers if those rows are still desired.
 
 ## Suggested Next
 
-Execute Step 5: broader validation and close-readiness review for the completed
-call-adjacent scalar packets. If inline-asm rows remain required for the source
-idea, select a separate producer/carrier packet for `missing_operand0_home` and
-`tied_input_output_home_mismatch` before attempting more RV64 object lowering.
+Supervisor close-readiness review: accept the completed scalar object-lowering
+packets as validated, then route the remaining representative rows to a
+follow-up prepared inline-asm producer/carrier idea before further RV64 object
+lowering.
 
 ## Watchouts
 
-- Step 4 did not add new code because the active evidence lacks complete new
-  scalar inline-asm carrier facts.
+- Step 5 did not change implementation, expectations, allowlists, unsupported
+  markers, runtime comparison, or pass/fail accounting.
+- The fresh object-route probes still report generic
+  `unsupported_instruction_fragment`; the useful classification comes from the
+  paired prepared-carrier facts in `build/agent_state/428_step5_probe/`.
 - Do not treat complete `.insn r` / `.insn d` inline-asm carriers as new Step 4
   evidence; they are already supported by the existing object route and tests.
 - Register-to-register pointer call results were pre-existing supported
