@@ -133,6 +133,38 @@ prepare::PreparedValueHome coherent_pointer_base_plus_offset_home() {
   };
 }
 
+bir::CallArgAbiInfo coherent_scalar_i16_arg_abi() {
+  return bir::CallArgAbiInfo{
+      .type = bir::TypeKind::I16,
+      .size_bytes = 2,
+      .align_bytes = 2,
+      .primary_class = bir::AbiValueClass::Integer,
+      .passed_in_register = true,
+  };
+}
+
+bir::CallArgAbiInfo coherent_pointer_aggregate_arg_abi(bool sret_pointer) {
+  return bir::CallArgAbiInfo{
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .primary_class = bir::AbiValueClass::Memory,
+      .passed_on_stack = !sret_pointer,
+      .byval_copy = !sret_pointer,
+      .sret_pointer = sret_pointer,
+  };
+}
+
+bir::CallInst coherent_scalar_call() {
+  return bir::CallInst{
+      .callee = "callee",
+      .args = {bir::Value::named(bir::TypeKind::I16, "%arg")},
+      .arg_types = {bir::TypeKind::I16},
+      .arg_abi = {coherent_scalar_i16_arg_abi()},
+      .return_type = bir::TypeKind::Void,
+  };
+}
+
 prepare::PreparedValueHome coherent_va_start_stack_home() {
   return prepare::PreparedValueHome{
       .value_id = prepare::PreparedValueId{2},
@@ -513,6 +545,116 @@ int verify_call_argument_binary_producer_materialization_contract_reports() {
                               ConflictingStaleInstruction) ==
                   std::string_view{"conflicting_stale_instruction"},
               "call-argument binary producer materialization status spelling mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_raw_call_argument_abi_coherence_contract_reports() {
+  auto scalar_bad_sret = coherent_scalar_call();
+  scalar_bad_sret.arg_abi[0].sret_pointer = true;
+  scalar_bad_sret.arg_abi[0].primary_class = bir::AbiValueClass::Memory;
+  scalar_bad_sret.arg_abi[0].passed_in_register = false;
+  scalar_bad_sret.arg_abi[0].passed_on_stack = true;
+  const auto scalar_bad_sret_report =
+      prepare::verify_prepared_raw_call_argument_abi_coherence_contract(
+          &scalar_bad_sret, 0);
+
+  auto scalar_bad_byval = coherent_scalar_call();
+  scalar_bad_byval.arg_abi[0].byval_copy = true;
+  scalar_bad_byval.arg_abi[0].primary_class = bir::AbiValueClass::Memory;
+  scalar_bad_byval.arg_abi[0].passed_in_register = false;
+  scalar_bad_byval.arg_abi[0].passed_on_stack = true;
+  const auto scalar_bad_byval_report =
+      prepare::verify_prepared_raw_call_argument_abi_coherence_contract(
+          &scalar_bad_byval, 0);
+
+  auto coherent_scalar = coherent_scalar_call();
+  const auto coherent_scalar_report =
+      prepare::verify_prepared_raw_call_argument_abi_coherence_contract(
+          &coherent_scalar, 0);
+
+  bir::CallInst pointer_sret{
+      .callee = "aggregate_sret",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "%sret")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {coherent_pointer_aggregate_arg_abi(true)},
+      .return_type = bir::TypeKind::Void,
+  };
+  const auto pointer_sret_report =
+      prepare::verify_prepared_raw_call_argument_abi_coherence_contract(
+          &pointer_sret, 0);
+
+  bir::CallInst pointer_byval{
+      .callee = "aggregate_byval",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "%byval")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {coherent_pointer_aggregate_arg_abi(false)},
+      .return_type = bir::TypeKind::Void,
+  };
+  const auto pointer_byval_report =
+      prepare::verify_prepared_raw_call_argument_abi_coherence_contract(
+          &pointer_byval, 0);
+
+  auto missing_abi = coherent_scalar_call();
+  missing_abi.arg_abi.clear();
+  const auto missing_abi_report =
+      prepare::verify_prepared_raw_call_argument_abi_coherence_contract(
+          &missing_abi, 0);
+
+  if (!expect(scalar_bad_sret_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "scalar sret call argument ABI should classify as producer incoherent") ||
+      !expect(scalar_bad_sret_report.fail_closed,
+              "scalar sret call argument ABI should fail closed") ||
+      !expect(scalar_bad_sret_report.fact_family ==
+                  prepare::PreparedContractFactFamily::RawCallArgumentAbiMetadata,
+              "raw call ABI coherence should identify raw metadata family") ||
+      !expect(prepare::classify_prepared_raw_call_argument_abi_coherence_contract(
+                  &scalar_bad_sret, 0) ==
+                  prepare::
+                      PreparedRawCallArgumentAbiCoherenceContractStatus::
+                          ScalarSretPointer,
+              "scalar sret call argument ABI should have precise status") ||
+      !expect(scalar_bad_byval_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerIncoherent,
+              "scalar byval call argument ABI should classify as producer incoherent") ||
+      !expect(scalar_bad_byval_report.fail_closed,
+              "scalar byval call argument ABI should fail closed") ||
+      !expect(prepare::classify_prepared_raw_call_argument_abi_coherence_contract(
+                  &scalar_bad_byval, 0) ==
+                  prepare::
+                      PreparedRawCallArgumentAbiCoherenceContractStatus::
+                          ScalarByvalCopy,
+              "scalar byval call argument ABI should have precise status") ||
+      !expect(coherent_scalar_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::Coherent,
+              "coherent scalar call argument ABI should remain accepted") ||
+      !expect(!coherent_scalar_report.fail_closed,
+              "coherent scalar call argument ABI should not fail closed") ||
+      !expect(pointer_sret_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::Coherent,
+              "pointer aggregate sret metadata should remain accepted") ||
+      !expect(pointer_byval_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::Coherent,
+              "pointer aggregate byval metadata should remain accepted") ||
+      !expect(missing_abi_report.owner_class ==
+                  prepare::PreparedContractOwnerClass::ProducerMissing,
+              "missing raw call argument ABI should classify as producer missing") ||
+      !expect(missing_abi_report.fail_closed,
+              "missing raw call argument ABI should fail closed") ||
+      !expect(prepare::prepared_raw_call_argument_abi_coherence_contract_status_name(
+                  prepare::
+                      PreparedRawCallArgumentAbiCoherenceContractStatus::
+                          ScalarByvalCopy) ==
+                  std::string_view{"scalar_byval_copy"},
+              "raw call argument ABI coherence status spelling mismatch") ||
+      !expect(prepare::prepared_contract_fact_family_name(
+                  prepare::PreparedContractFactFamily::
+                      RawCallArgumentAbiMetadata) ==
+                  std::string_view{"raw_call_argument_abi_metadata"},
+              "raw call ABI metadata fact family spelling mismatch")) {
     return 1;
   }
 
@@ -1625,6 +1767,10 @@ int verify_local_frame_address_materialization_source_route_contract_reports() {
 
 int main() {
   if (const int rc = verify_call_argument_binary_producer_materialization_fact_query();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = verify_raw_call_argument_abi_coherence_contract_reports();
       rc != 0) {
     return rc;
   }

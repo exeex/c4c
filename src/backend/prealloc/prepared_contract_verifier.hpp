@@ -1,5 +1,7 @@
 #pragma once
 
+#include "bir.hpp"
+
 #include "calls.hpp"
 #include "decoded_home_storage.hpp"
 #include "frame.hpp"
@@ -42,6 +44,7 @@ enum class PreparedContractFactFamily {
   ValueMaterializationFact,
   CallBoundaryArgumentResultPlan,
   CallArgumentTypedRoute,
+  RawCallArgumentAbiMetadata,
   VariadicEntryHelperOperandHomes,
   StorageObjectExtent,
   StorageAlignment,
@@ -68,6 +71,8 @@ enum class PreparedContractFactFamily {
       return "call_boundary_argument_result_plan";
     case PreparedContractFactFamily::CallArgumentTypedRoute:
       return "call_argument_typed_route";
+    case PreparedContractFactFamily::RawCallArgumentAbiMetadata:
+      return "raw_call_argument_abi_metadata";
     case PreparedContractFactFamily::VariadicEntryHelperOperandHomes:
       return "variadic_entry_helper_operand_homes";
     case PreparedContractFactFamily::StorageObjectExtent:
@@ -523,6 +528,35 @@ prepared_call_argument_binary_producer_materialization_contract_status_name(
   return "unknown";
 }
 
+enum class PreparedRawCallArgumentAbiCoherenceContractStatus {
+  Coherent,
+  MissingCall,
+  MissingArgumentType,
+  MissingArgumentAbi,
+  ScalarSretPointer,
+  ScalarByvalCopy,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_raw_call_argument_abi_coherence_contract_status_name(
+    PreparedRawCallArgumentAbiCoherenceContractStatus status) {
+  switch (status) {
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::Coherent:
+      return "coherent";
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::MissingCall:
+      return "missing_call";
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::MissingArgumentType:
+      return "missing_argument_type";
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::MissingArgumentAbi:
+      return "missing_argument_abi";
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::ScalarSretPointer:
+      return "scalar_sret_pointer";
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::ScalarByvalCopy:
+      return "scalar_byval_copy";
+  }
+  return "unknown";
+}
+
 struct PreparedSelectedLocalStorageContractFacts {
   FunctionNameId function_name = kInvalidFunctionName;
   std::optional<PreparedObjectId> object_id;
@@ -666,5 +700,15 @@ classify_prepared_call_argument_binary_producer_materialization_contract(
 [[nodiscard]] PreparedContractVerificationReport
 verify_prepared_call_argument_binary_producer_materialization_contract(
     const PreparedCallArgumentBinaryProducerMaterializationFact* fact);
+
+[[nodiscard]] PreparedRawCallArgumentAbiCoherenceContractStatus
+classify_prepared_raw_call_argument_abi_coherence_contract(
+    const bir::CallInst* call,
+    std::size_t arg_index);
+
+[[nodiscard]] PreparedContractVerificationReport
+verify_prepared_raw_call_argument_abi_coherence_contract(
+    const bir::CallInst* call,
+    std::size_t arg_index);
 
 }  // namespace c4c::backend::prepare

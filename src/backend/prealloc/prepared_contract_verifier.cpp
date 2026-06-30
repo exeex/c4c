@@ -66,6 +66,23 @@ owner_for_rematerializable_integer_immediate_status(
   return PreparedContractOwnerClass::ProducerIncoherent;
 }
 
+[[nodiscard]] PreparedContractOwnerClass
+owner_for_raw_call_argument_abi_coherence_status(
+    PreparedRawCallArgumentAbiCoherenceContractStatus status) {
+  switch (status) {
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::Coherent:
+      return PreparedContractOwnerClass::Coherent;
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::MissingCall:
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::MissingArgumentType:
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::MissingArgumentAbi:
+      return PreparedContractOwnerClass::ProducerMissing;
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::ScalarSretPointer:
+    case PreparedRawCallArgumentAbiCoherenceContractStatus::ScalarByvalCopy:
+      return PreparedContractOwnerClass::ProducerIncoherent;
+  }
+  return PreparedContractOwnerClass::ProducerIncoherent;
+}
+
 [[nodiscard]] PreparedContractOwnerClass owner_for_pointer_base_plus_offset_status(
     PreparedPointerBasePlusOffsetContractStatus status) {
   switch (status) {
@@ -447,6 +464,40 @@ owner_for_call_argument_binary_producer_materialization_status(
   }
   if (home->immediate_f128.has_value()) {
     out << " has_immediate_f128=true";
+  }
+  return out.str();
+}
+
+[[nodiscard]] bool raw_call_argument_type_is_scalar_abi_payload(
+    bir::TypeKind type) {
+  return type != bir::TypeKind::Void && type != bir::TypeKind::Ptr &&
+         !bir::is_vrm_register_type(type);
+}
+
+[[nodiscard]] std::string raw_call_argument_abi_coherence_detail(
+    const bir::CallInst* call,
+    std::size_t arg_index,
+    PreparedRawCallArgumentAbiCoherenceContractStatus status) {
+  std::ostringstream out;
+  out << "prepared raw call-argument ABI coherence contract status="
+      << prepared_raw_call_argument_abi_coherence_contract_status_name(status);
+  out << " arg_index=" << arg_index;
+  if (call == nullptr) {
+    return out.str();
+  }
+  if (!call->callee.empty()) {
+    out << " callee=" << call->callee;
+  }
+  if (arg_index < call->arg_types.size()) {
+    out << " arg_type=" << static_cast<unsigned>(call->arg_types[arg_index]);
+  }
+  if (arg_index < call->arg_abi.size()) {
+    const auto& abi = call->arg_abi[arg_index];
+    out << " abi_type=" << static_cast<unsigned>(abi.type);
+    out << " size_bytes=" << abi.size_bytes;
+    out << " align_bytes=" << abi.align_bytes;
+    out << " byval_copy=" << (abi.byval_copy ? "true" : "false");
+    out << " sret_pointer=" << (abi.sret_pointer ? "true" : "false");
   }
   return out.str();
 }
@@ -1348,6 +1399,54 @@ verify_prepared_call_argument_binary_producer_materialization_contract(
                     ? std::string{}
                     : call_argument_binary_producer_materialization_detail(
                           fact, status),
+  };
+}
+
+PreparedRawCallArgumentAbiCoherenceContractStatus
+classify_prepared_raw_call_argument_abi_coherence_contract(
+    const bir::CallInst* call,
+    std::size_t arg_index) {
+  using Status = PreparedRawCallArgumentAbiCoherenceContractStatus;
+
+  if (call == nullptr) {
+    return Status::MissingCall;
+  }
+  if (arg_index >= call->arg_types.size()) {
+    return Status::MissingArgumentType;
+  }
+  if (arg_index >= call->arg_abi.size()) {
+    return Status::MissingArgumentAbi;
+  }
+
+  const auto arg_type = call->arg_types[arg_index];
+  const auto& arg_abi = call->arg_abi[arg_index];
+  if (raw_call_argument_type_is_scalar_abi_payload(arg_type)) {
+    if (arg_abi.sret_pointer) {
+      return Status::ScalarSretPointer;
+    }
+    if (arg_abi.byval_copy) {
+      return Status::ScalarByvalCopy;
+    }
+  }
+
+  return Status::Coherent;
+}
+
+PreparedContractVerificationReport
+verify_prepared_raw_call_argument_abi_coherence_contract(
+    const bir::CallInst* call,
+    std::size_t arg_index) {
+  const auto status =
+      classify_prepared_raw_call_argument_abi_coherence_contract(call, arg_index);
+  const auto owner = owner_for_raw_call_argument_abi_coherence_status(status);
+  return PreparedContractVerificationReport{
+      .fact_family = PreparedContractFactFamily::RawCallArgumentAbiMetadata,
+      .owner_class = owner,
+      .fail_closed = owner != PreparedContractOwnerClass::Coherent,
+      .detail = owner == PreparedContractOwnerClass::Coherent
+                    ? std::string{}
+                    : raw_call_argument_abi_coherence_detail(
+                          call, arg_index, status),
   };
 }
 
