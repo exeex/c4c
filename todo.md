@@ -1,68 +1,57 @@
 Status: Active
-Source Idea Path: ideas/open/469_branch_stack_load_authority_metadata.md
+Source Idea Path: ideas/open/470_branch_stack_load_policy_freshness.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Branch-Site Policy Freshness Inputs
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 6 residual disposition for idea 469. The source idea is
-close-ready as the prepared branch-stack-load record-surface prerequisite:
-records can be planned, collected from real prepared modules, printed/probed,
-and kept fail-closed when required facts are absent.
+Closed idea 469 as complete for prepared branch-stack-load record surface and
+activated idea 470 for the next producer prerequisite: branch-site
+`load_from_stack_slot` policy, freshness, and clobber-safety.
 
-Fresh Step 5 representative evidence remains the controlling residual:
+Representative residuals from 469:
 
-| Row | Step 5 record | Residual classification |
+| Row | Current record | Follow-up boundary |
 | --- | --- | --- |
-| `f.block_1` condition `%t2` | `role=condition`, `pointer_status=not_pointer`, `status=unsupported_terminator` | Durable unavailable record; no target-consumable branch-stack-load authority. |
-| `f.block_1` lhs `%t1` | `role=lhs`, `pointer_status=unknown`, `status=unsupported_terminator` | Durable unavailable record; pointer status remains unknown. |
-| `f.block_4` condition `%t8` | `role=condition`, `pointer_status=not_pointer`, `status=unsupported_terminator` | Durable unavailable record; paired `%t7` pointer-value/provenance remains separate. |
-| `f.block_4` lhs `%t7` | `role=lhs`, `pointer_status=unknown`, `status=unsupported_terminator` | Durable unavailable record; pointer-value/provenance remains separate. |
-| `f.logic.end.14` condition `%t23` | `value=%t23`, `value_id=17`, `slot=#21`, `object=#21`, `status=missing_policy` | Value/home/frame-slot/object populated; next missing owner is explicit branch-site load policy, freshness, and clobber safety. |
-| `f.logic.end.14` lhs `%t22` | `value=%t22`, `value_id=16`, `slot=#20`, `object=#20`, `status=missing_policy` | Populated but unavailable; select-result stack-destination remains separate. |
-
-Lifecycle recommendation: close idea 469 as the producer/prepared record
-surface and split or activate a new precise producer idea for branch-site
-`load_from_stack_slot` policy, freshness, and clobber-safety. RV64 branch-load
-consumption must not resume until that follow-up produces available records.
-
-Artifact:
-`build/agent_state/469_step6_residual_disposition/disposition.md`.
+| `f.block_1` condition `%t2` | `unsupported_terminator`, `pointer_status=not_pointer` | Needs branch-site relationship/policy/freshness/clobber proof. |
+| `f.block_1` lhs `%t1` | `unsupported_terminator`, `pointer_status=unknown` | Needs policy/freshness/clobber plus explicit pointer status. |
+| `f.block_4` condition `%t8` | `unsupported_terminator`, `pointer_status=not_pointer` | Needs branch-site relationship/policy/freshness/clobber proof. |
+| `f.block_4` lhs `%t7` | `unsupported_terminator`, `pointer_status=unknown` | Pointer-value/provenance remains separate. |
+| `f.logic.end.14` condition `%t23` | `missing_policy` | Needs explicit branch-site load policy, freshness, and clobber safety. |
+| `f.logic.end.14` lhs `%t22` | `missing_policy` | Select-result stack-destination remains separate. |
 
 ## Suggested Next
 
-Plan-owner lifecycle packet: close idea 469 as complete for prepared
-branch-stack-load record population/visibility, then create or activate the
-separate policy/freshness/clobber-safety producer follow-up before any RV64
-consumer packet.
+Execute Step 1 from `plan.md`: audit branch-site policy, freshness, and
+clobber-safety inputs for the current prepared branch-stack-load records.
+
+Suggested artifact directory:
+`build/agent_state/470_step1_policy_freshness_audit/`.
 
 ## Watchouts
 
-- Do not edit implementation files during Step 6 unless explicitly redirected.
-- Records are durable evidence, not target-consumable authority; all
-  representative rows remain unavailable.
-- Do not resume RV64 branch-load consumption until populated available records
-  exist.
-- `policy=none` intentionally produces `missing_policy`; no freshness or
-  clobber-safety producer exists yet.
-- Pointer operands still print `pointer_status=unknown` unless a separate
-  provenance owner proves them.
-- Keep `%t7` pointer-value/provenance and `%t22` select-result stack-destination
-  boundaries separate.
-- Do not weaken GPR-compatible branch predicates or add RV64 stack-load
-  materialization from unavailable rows.
+- Do not edit implementation files during Step 1.
+- Do not implement RV64 branch-load emission in this producer plan.
+- Do not accept unavailable `PreparedBranchStackLoadAuthority` records as
+  target authority.
+- Do not infer load authority from stack homes, offsets, object ids, raw BIR,
+  block labels, function names, or testcase shape.
+- Keep pointer-value/provenance and select-result stack-destination boundaries
+  separate.
 - Do not modify `test_baseline.new.log`, `test_baseline.log`,
   `test_before.log`, `test_after.log`, or `review/`.
 
 ## Proof
 
-Classification proof:
+Lifecycle transition proof:
 
 ```sh
 git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.

@@ -1,58 +1,54 @@
-# Branch Stack-Load Authority Metadata Plan
+# Branch Stack-Load Policy Freshness Plan
 
 Status: Active
-Source Idea: ideas/open/469_branch_stack_load_authority_metadata.md
-Activated From: ideas/closed/451_stack_home_branch_operand_materialization.md
+Source Idea: ideas/open/470_branch_stack_load_policy_freshness.md
+Activated From: ideas/closed/469_branch_stack_load_authority_metadata.md
 
 ## Purpose
 
-Define and publish producer/prepared authority for loading stack-home branch
-operands or conditions at a branch site.
+Produce branch-site load policy, freshness, and clobber-safety facts for
+prepared branch-stack-load authority records.
 
 ## Goal
 
-Make stack-home branch materialization target-consumable only through explicit
-prepared branch-stack-load authority records, with unavailable statuses for
-missing or incoherent facts.
+Turn eligible scalar branch-stack-load records from unavailable to available
+only when `load_from_stack_slot` policy, freshness, and clobber-safety are
+explicitly proven.
 
 ## Core Rule
 
-Do not treat stack slot ids, offsets, homes, or object facts as sufficient
-target authority. Branch stack loads require explicit load policy, freshness,
-clobber-safety, scratch/order, branch identity, operand role, and pointer
-status metadata.
+Do not treat populated branch-stack-load records as target-consumable authority
+until policy, freshness, and clobber-safety are present. Keep pointer
+provenance and select-result stack-destination owners separate.
 
 ## Read First
 
-- ideas/open/469_branch_stack_load_authority_metadata.md
-- ideas/closed/451_stack_home_branch_operand_materialization.md
-- build/agent_state/451_step2_stack_home_branch_contract/contract.md
-- build/agent_state/451_step3_stack_home_branch_materialization_route/route.md
-- build/agent_state/451_step4_residual_disposition/disposition.md
+- ideas/open/470_branch_stack_load_policy_freshness.md
+- ideas/closed/469_branch_stack_load_authority_metadata.md
+- build/agent_state/469_step6_residual_disposition/disposition.md
+- build/agent_state/469_step5_branch_stack_load_record_population/summary.md
 - src/backend/prealloc/publication_plans.hpp
 - src/backend/prealloc/publication_plans.cpp
 
 ## Current Target
 
-- Primary representative candidate: `930930-1`, `f.block_1`,
-  `%t2 = ult ptr %t1, %p.reg2`.
-- Needed metadata: branch site, prepared branch-condition identity, operand
-  role, stack slot/object facts, explicit load policy, freshness,
-  clobber-safety, scratch/order constraints, and pointer-provenance status.
-- Adjacent rows to preserve as separate:
-  - `%t7/%t8` pointer-value/provenance dependency;
-  - `%t22/%t23` select-result/block-entry stack-destination dependency;
-  - GPR-compatible branches already closed by earlier routes.
+- Primary scalar candidates:
+  - `f.block_1` condition `%t2`: currently `unsupported_terminator`.
+  - `f.block_4` condition `%t8`: currently `unsupported_terminator`.
+  - `f.logic.end.14` condition `%t23`: currently `missing_policy`.
+- Pointer and adjacent boundaries:
+  - `%t1` / `%t7` remain unavailable until pointer status is explicit.
+  - `%t22` remains a select-result/block-entry stack-destination boundary.
 
 ## Non-Goals
 
-- RV64 branch-load emission before available metadata exists.
-- Weakening GPR-compatible branch predicates.
-- Inferring branch loads, freshness, operands, or conditions from raw BIR,
-  stack-slot spelling, block order, filenames, function names, or one prepared
-  dump.
+- RV64 branch-load emission or target lowering.
 - Pointer-value/provenance repair for `%t7` or external formal provenance.
 - Select-result/block-entry stack-destination repair for `%t22/%t23`.
+- Treating pointer operands as proven when `pointer_status=unknown`.
+- Accepting raw BIR shape, stack-slot spelling, offsets, object ids, block
+  order, filenames, function names, or testcase shape as load authority.
+- Weakening GPR-compatible branch predicates.
 - Generic stack-to-register materialization.
 - Expectation rewrites, unsupported-marker downgrades, allowlists, pass/fail
   accounting changes, runtime-comparison changes, or baseline/log churn.
@@ -61,26 +57,24 @@ status metadata.
 
 ## Working Model
 
-The RV64 consumer is blocked because the prepared layer does not yet state
-whether a branch-site stack load is valid. This plan owns the producer/prepared
-authority surface, not target emission. Any accepted record must prove the
-slot contains the current branch operand/condition value and can be loaded
-without clobbering or stale data.
+Idea 469 made unavailable records visible. This plan owns the next producer
+facts: when the branch site can load the stack slot, whether the slot is fresh,
+and whether no clobber occurs before the branch. Available records may then
+enable a later RV64 consumer, but this plan does not implement target loads.
 
 ## Execution Rules
 
 - Step 1 is audit/classification only; do not edit implementation there.
-- Publish metadata records before selecting RV64 consumers.
-- Preserve fail-closed behavior for missing policy, missing freshness,
-  clobbered slot, pointer-provenance unknowns, select-result stack
-  destinations, wrong branch/role/slot/object, and raw-shape-only fixtures.
+- Keep existing unavailable records fail-closed until all policy/freshness/
+  clobber facts are explicit.
+- Preserve pointer-status and select-result stack-destination boundaries.
 - Classification-only proof:
 
 ```sh
 git diff --check
 ```
 
-- Code/test proof, if a metadata packet is selected:
+- Code/test proof, if a producer packet is selected:
 
 ```sh
 cmake --build build -j2
@@ -90,48 +84,30 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Branch Stack-Load Metadata Inputs
+### Step 1: Audit Branch-Site Policy Freshness Inputs
 
-Inspect representative stack-home branch rows and existing prepared facts.
-Record branch identity, operand role, value home, stack slot/object match,
-current load/freshness/clobber evidence, pointer status, and first missing
-metadata field. Completion means `todo.md` contains an audit table and
-identifies the first metadata packet or exact blocker.
+Inspect current branch-stack-load records and prepared control-flow/store
+facts. Classify which representative rows can receive branch-site load policy,
+freshness, and clobber-safety, and which remain blocked by pointer provenance
+or select-result stack destinations. Completion means `todo.md` records an
+audit table and the first exact producer packet or blocker.
 
-### Step 2: Define Branch Stack-Load Authority Contract
+### Step 2: Define Policy Freshness Contract
 
-Specify available/unavailable record fields and fail-closed statuses for
-branch-stack-load authority. Completion means `todo.md` records positive and
-negative cases and names target files/tests if implementation is justified.
+Specify the required facts for `load_from_stack_slot` policy, freshness,
+clobber-safety, and fail-closed statuses. Completion means `todo.md` records
+positive/negative cases and names target files/tests if implementation is
+justified.
 
-### Step 3: Implement Or Route Metadata Packet
+### Step 3: Implement Or Route Policy Freshness Packet
 
-If Step 2 finds a bounded producer/prepared packet, implement only that
-metadata surface with focused coverage. If no implementation is justified,
-record the precise blocker and route it. Completion means proof passes or
-lifecycle state records the split/blocker.
+If Step 2 finds a bounded producer packet, implement only that policy/freshness
+surface with focused coverage. If no implementation is justified, record the
+precise blocker and route it. Completion means proof passes or lifecycle state
+records the split/blocker.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe representative rows and classify any remaining first owner.
+Re-probe representative records and classify any remaining first owner.
 Completion means this source idea closes, remains active with one exact
-in-scope metadata packet, or routes an RV64 consumer / other durable follow-up.
-
-### Step 5: Populate And Expose Branch Stack-Load Authority Records
-
-Implement or route the remaining producer/prepared packet for collecting,
-populating, and printing/probing `PreparedBranchStackLoadAuthority` records
-from real prepared modules. Keep this step producer/prepared-only. Completion
-means representative rows have durable available or unavailable authority
-records visible through a prepared evidence/printer surface, with missing
-policy, missing freshness, missing clobber-safety, pointer-status unknown, and
-select-result stack-destination boundaries still fail-closed.
-
-### Step 6: Residual Disposition And Close Readiness
-
-Use the populated records from Step 5 to decide whether the source idea is
-complete as a prepared record surface, remains active for one exact
-policy/freshness/clobber-safety population packet, or should split a separate
-producer/policy owner. Completion means lifecycle state closes, stays active
-with an exact in-scope packet, or creates a durable follow-up before any RV64
-consumer work resumes.
+in-scope packet, or routes an RV64 consumer / other durable follow-up.
