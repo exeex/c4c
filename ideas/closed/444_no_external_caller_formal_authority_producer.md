@@ -1,10 +1,13 @@
 # No-External-Caller Formal Authority Producer
 
-Status: Open
+Status: Closed
 Type: Producer authority idea
 Parent: `ideas/closed/443_closed_world_formal_pointer_authority.md`
 Source Evidence: `build/agent_state/443_step4_residual_disposition/`
 Owning Layer: LIR/BIR/prepared closed-world callgraph authority
+Closed Evidence:
+- `build/agent_state/444_step1_no_external_caller_audit/audit.md`
+- `build/agent_state/444_step2_no_external_caller_contract/contract.md`
 
 ## Goal
 
@@ -59,6 +62,27 @@ callsites carry computed-address sources.
   outside caller can provide different pointer values.
 - Backend proof for implementation packets passes using canonical supervisor
   logs.
+
+## Completion Notes
+
+- Step 1 audited frontend, HIR, LIR, module, direct-call, function-address, and
+  BIR authority surfaces.
+- Step 2 defined the complete `NoExternalCaller` producer contract.
+- No bounded Step 3 implementation packet exists in the current pipeline:
+  there is no durable closed-world/no-external-caller fact, complete caller-set
+  guarantee, function-address escape summary, indirect-call target exclusion,
+  or tested visibility/linker contract for non-internal definitions.
+- `FormalPointerAuthorityKind::NoExternalCaller` must remain unpopulated until
+  a separate metadata producer supplies a real source.
+- `930930-1::f` remains `Unknown` and fail-closed.
+- Do not route external-linkage formal provenance back to idea 442 until the
+  metadata producer exists.
+- Close gate used canonical `test_before.log` and `test_after.log`; both logs
+  report 327 passed, 0 failed, and the non-decreasing regression guard passed.
+
+## Follow-Up Ideas
+
+- `ideas/open/445_closed_world_no_external_caller_metadata_source.md`
 
 ## Reviewer Reject Signals
 
