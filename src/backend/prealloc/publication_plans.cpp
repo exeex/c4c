@@ -1856,6 +1856,100 @@ bool prepared_store_global_publication_has_authority(
   return false;
 }
 
+PreparedDirectGlobalReturnAuthority
+plan_prepared_direct_global_return_authority(
+    const PreparedDirectGlobalReturnAuthorityInputs& inputs) {
+  PreparedDirectGlobalReturnAuthority authority{
+      .return_value = inputs.return_value,
+      .value_home = inputs.value_home,
+      .before_return_move = inputs.before_return_move,
+  };
+
+  if (inputs.names == nullptr) {
+    authority.status = PreparedDirectGlobalReturnAuthorityStatus::MissingNames;
+    return authority;
+  }
+  if (inputs.return_value == nullptr) {
+    authority.status =
+        PreparedDirectGlobalReturnAuthorityStatus::MissingReturnValue;
+    return authority;
+  }
+  if (inputs.return_value->kind != bir::Value::Kind::Named ||
+      inputs.return_value->type != bir::TypeKind::Ptr) {
+    authority.status =
+        PreparedDirectGlobalReturnAuthorityStatus::UnsupportedReturnValue;
+    return authority;
+  }
+  if (inputs.return_value->pointer_symbol_link_name_id == kInvalidLinkName) {
+    authority.status =
+        PreparedDirectGlobalReturnAuthorityStatus::MissingGlobalIdentity;
+    return authority;
+  }
+  authority.global_symbol_name =
+      inputs.return_value->pointer_symbol_link_name_id;
+
+  if (inputs.value_home == nullptr) {
+    authority.status =
+        PreparedDirectGlobalReturnAuthorityStatus::MissingValueHome;
+    return authority;
+  }
+  authority.value_id = inputs.value_home->value_id;
+  authority.value_name = inputs.value_home->value_name;
+  if (inputs.value_home->function_name == kInvalidFunctionName ||
+      inputs.value_home->value_name == kInvalidValueName ||
+      inputs.value_home->value_id == 0 ||
+      prepared_value_name(*inputs.names, inputs.value_home->value_name) !=
+          inputs.return_value->name) {
+    authority.status =
+        PreparedDirectGlobalReturnAuthorityStatus::HomeValueMismatch;
+    return authority;
+  }
+  if (inputs.value_home->kind != PreparedValueHomeKind::Register ||
+      !inputs.value_home->register_name.has_value()) {
+    authority.status =
+        PreparedDirectGlobalReturnAuthorityStatus::UnsupportedHomeKind;
+    return authority;
+  }
+
+  if (inputs.before_return_move == nullptr) {
+    authority.status =
+        PreparedDirectGlobalReturnAuthorityStatus::MissingReturnMove;
+    return authority;
+  }
+  if (inputs.before_return_move->block_index != inputs.block_index ||
+      inputs.before_return_move->instruction_index != inputs.instruction_index ||
+      inputs.before_return_move->from_value_id != inputs.value_home->value_id) {
+    authority.status =
+        PreparedDirectGlobalReturnAuthorityStatus::ReturnMoveMismatch;
+    return authority;
+  }
+  if (inputs.before_return_move->destination_kind !=
+          PreparedMoveDestinationKind::FunctionReturnAbi ||
+      inputs.before_return_move->destination_storage_kind !=
+          PreparedMoveStorageKind::Register ||
+      !inputs.before_return_move->destination_register_name.has_value() ||
+      !inputs.before_return_move->destination_register_placement.has_value() ||
+      !has_prepared_register_placement(
+          *inputs.before_return_move->destination_register_placement) ||
+      inputs.before_return_move->destination_register_placement->bank !=
+          PreparedRegisterBank::Gpr) {
+    authority.status =
+        PreparedDirectGlobalReturnAuthorityStatus::UnsupportedReturnDestination;
+    return authority;
+  }
+
+  authority.return_bank =
+      inputs.before_return_move->destination_register_placement->bank;
+  authority.status = PreparedDirectGlobalReturnAuthorityStatus::Available;
+  return authority;
+}
+
+bool prepared_direct_global_return_authority_available(
+    const PreparedDirectGlobalReturnAuthority& authority) {
+  return authority.status ==
+         PreparedDirectGlobalReturnAuthorityStatus::Available;
+}
+
 void publish_store_global_immediate_source_if_authorized(
     PreparedStoreSourcePublicationPlan& plan) {
   if (plan.intent != PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||

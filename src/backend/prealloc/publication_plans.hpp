@@ -233,6 +233,71 @@ struct PreparedAggregateStackSourceAuthority {
   bool has_scratch_ownership = false;
 };
 
+enum class PreparedDirectGlobalReturnAuthorityStatus {
+  Available,
+  MissingNames,
+  MissingReturnValue,
+  UnsupportedReturnValue,
+  MissingGlobalIdentity,
+  MissingValueHome,
+  HomeValueMismatch,
+  UnsupportedHomeKind,
+  MissingReturnMove,
+  ReturnMoveMismatch,
+  UnsupportedReturnDestination,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_direct_global_return_authority_status_name(
+    PreparedDirectGlobalReturnAuthorityStatus status) {
+  switch (status) {
+    case PreparedDirectGlobalReturnAuthorityStatus::Available:
+      return "available";
+    case PreparedDirectGlobalReturnAuthorityStatus::MissingNames:
+      return "missing_names";
+    case PreparedDirectGlobalReturnAuthorityStatus::MissingReturnValue:
+      return "missing_return_value";
+    case PreparedDirectGlobalReturnAuthorityStatus::UnsupportedReturnValue:
+      return "unsupported_return_value";
+    case PreparedDirectGlobalReturnAuthorityStatus::MissingGlobalIdentity:
+      return "missing_global_identity";
+    case PreparedDirectGlobalReturnAuthorityStatus::MissingValueHome:
+      return "missing_value_home";
+    case PreparedDirectGlobalReturnAuthorityStatus::HomeValueMismatch:
+      return "home_value_mismatch";
+    case PreparedDirectGlobalReturnAuthorityStatus::UnsupportedHomeKind:
+      return "unsupported_home_kind";
+    case PreparedDirectGlobalReturnAuthorityStatus::MissingReturnMove:
+      return "missing_return_move";
+    case PreparedDirectGlobalReturnAuthorityStatus::ReturnMoveMismatch:
+      return "return_move_mismatch";
+    case PreparedDirectGlobalReturnAuthorityStatus::UnsupportedReturnDestination:
+      return "unsupported_return_destination";
+  }
+  return "unknown";
+}
+
+struct PreparedDirectGlobalReturnAuthorityInputs {
+  const PreparedNameTables* names = nullptr;
+  const bir::Value* return_value = nullptr;
+  const PreparedValueHome* value_home = nullptr;
+  const PreparedMoveResolution* before_return_move = nullptr;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+};
+
+struct PreparedDirectGlobalReturnAuthority {
+  PreparedDirectGlobalReturnAuthorityStatus status =
+      PreparedDirectGlobalReturnAuthorityStatus::MissingReturnValue;
+  const bir::Value* return_value = nullptr;
+  const PreparedValueHome* value_home = nullptr;
+  const PreparedMoveResolution* before_return_move = nullptr;
+  LinkNameId global_symbol_name = kInvalidLinkName;
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  PreparedRegisterBank return_bank = PreparedRegisterBank::None;
+};
+
 struct PreparedEdgePublicationSourceProducer {
   PreparedEdgePublicationSourceProducerKind kind =
       PreparedEdgePublicationSourceProducerKind::Unknown;
@@ -915,6 +980,13 @@ struct PreparedCallArgumentValuePublicationPlans {
 
 [[nodiscard]] bool prepared_store_global_publication_has_authority(
     const PreparedStoreSourcePublicationPlan& plan);
+
+[[nodiscard]] PreparedDirectGlobalReturnAuthority
+plan_prepared_direct_global_return_authority(
+    const PreparedDirectGlobalReturnAuthorityInputs& inputs);
+
+[[nodiscard]] bool prepared_direct_global_return_authority_available(
+    const PreparedDirectGlobalReturnAuthority& authority);
 
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(

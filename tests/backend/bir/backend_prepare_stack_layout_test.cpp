@@ -5601,6 +5601,178 @@ int check_global_memory_publication_authority_contract() {
   return 0;
 }
 
+int check_direct_global_return_authority_contract() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("direct_global_return");
+  const auto value_name = names.value_names.intern("@global");
+  const auto symbol_name = names.link_names.intern("global");
+  const bir::Value direct_global_return =
+      bir::Value::named_symbol_pointer("@global", symbol_name);
+  const prepare::PreparedValueHome direct_global_home{
+      .value_id = 4,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  };
+  const prepare::PreparedMoveResolution return_move{
+      .from_value_id = direct_global_home.value_id,
+      .to_value_id = direct_global_home.value_id,
+      .destination_kind = prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_register_name = std::string{"a0"},
+      .block_index = 1,
+      .instruction_index = 3,
+      .destination_register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = prepare::PreparedRegisterSlotPool::CallResult,
+          },
+  };
+
+  const auto accepted =
+      prepare::plan_prepared_direct_global_return_authority({
+          .names = &names,
+          .return_value = &direct_global_return,
+          .value_home = &direct_global_home,
+          .before_return_move = &return_move,
+          .block_index = 1,
+          .instruction_index = 3,
+      });
+  if (!prepare::prepared_direct_global_return_authority_available(accepted) ||
+      accepted.global_symbol_name != symbol_name ||
+      accepted.value_id != direct_global_home.value_id ||
+      accepted.value_name != value_name ||
+      accepted.return_bank != prepare::PreparedRegisterBank::Gpr) {
+    return fail("expected coherent direct-global return authority");
+  }
+
+  auto raw_named_pointer = direct_global_return;
+  raw_named_pointer.pointer_symbol_link_name_id = c4c::kInvalidLinkName;
+  const auto raw_only =
+      prepare::plan_prepared_direct_global_return_authority({
+          .names = &names,
+          .return_value = &raw_named_pointer,
+          .value_home = &direct_global_home,
+          .before_return_move = &return_move,
+          .block_index = 1,
+          .instruction_index = 3,
+      });
+  if (raw_only.status !=
+      prepare::PreparedDirectGlobalReturnAuthorityStatus::MissingGlobalIdentity) {
+    return fail("expected raw named pointer return to miss direct-global identity");
+  }
+
+  const bir::Value non_pointer = bir::Value::named(bir::TypeKind::I32, "@global");
+  const auto wrong_type =
+      prepare::plan_prepared_direct_global_return_authority({
+          .names = &names,
+          .return_value = &non_pointer,
+          .value_home = &direct_global_home,
+          .before_return_move = &return_move,
+          .block_index = 1,
+          .instruction_index = 3,
+      });
+  if (wrong_type.status !=
+      prepare::PreparedDirectGlobalReturnAuthorityStatus::UnsupportedReturnValue) {
+    return fail("expected non-pointer direct-global return to stay fail-closed");
+  }
+
+  const auto missing_home =
+      prepare::plan_prepared_direct_global_return_authority({
+          .names = &names,
+          .return_value = &direct_global_return,
+          .before_return_move = &return_move,
+          .block_index = 1,
+          .instruction_index = 3,
+      });
+  if (missing_home.status !=
+      prepare::PreparedDirectGlobalReturnAuthorityStatus::MissingValueHome) {
+    return fail("expected missing direct-global return home to stay fail-closed");
+  }
+
+  auto mismatched_home = direct_global_home;
+  mismatched_home.value_name = names.value_names.intern("@other");
+  const auto home_mismatch =
+      prepare::plan_prepared_direct_global_return_authority({
+          .names = &names,
+          .return_value = &direct_global_return,
+          .value_home = &mismatched_home,
+          .before_return_move = &return_move,
+          .block_index = 1,
+          .instruction_index = 3,
+      });
+  if (home_mismatch.status !=
+      prepare::PreparedDirectGlobalReturnAuthorityStatus::HomeValueMismatch) {
+    return fail("expected mismatched direct-global return home to stay fail-closed");
+  }
+
+  auto stack_home = direct_global_home;
+  stack_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  stack_home.register_name = std::nullopt;
+  const auto unsupported_home =
+      prepare::plan_prepared_direct_global_return_authority({
+          .names = &names,
+          .return_value = &direct_global_return,
+          .value_home = &stack_home,
+          .before_return_move = &return_move,
+          .block_index = 1,
+          .instruction_index = 3,
+      });
+  if (unsupported_home.status !=
+      prepare::PreparedDirectGlobalReturnAuthorityStatus::UnsupportedHomeKind) {
+    return fail("expected stack-home direct-global return to stay fail-closed");
+  }
+
+  const auto missing_move =
+      prepare::plan_prepared_direct_global_return_authority({
+          .names = &names,
+          .return_value = &direct_global_return,
+          .value_home = &direct_global_home,
+          .block_index = 1,
+          .instruction_index = 3,
+      });
+  if (missing_move.status !=
+      prepare::PreparedDirectGlobalReturnAuthorityStatus::MissingReturnMove) {
+    return fail("expected missing return ABI move to stay fail-closed");
+  }
+
+  auto mismatched_move = return_move;
+  mismatched_move.from_value_id = 99;
+  const auto move_mismatch =
+      prepare::plan_prepared_direct_global_return_authority({
+          .names = &names,
+          .return_value = &direct_global_return,
+          .value_home = &direct_global_home,
+          .before_return_move = &mismatched_move,
+          .block_index = 1,
+          .instruction_index = 3,
+      });
+  if (move_mismatch.status !=
+      prepare::PreparedDirectGlobalReturnAuthorityStatus::ReturnMoveMismatch) {
+    return fail("expected mismatched return ABI move to stay fail-closed");
+  }
+
+  auto unsupported_move = return_move;
+  unsupported_move.destination_kind =
+      prepare::PreparedMoveDestinationKind::Value;
+  const auto unsupported_destination =
+      prepare::plan_prepared_direct_global_return_authority({
+          .names = &names,
+          .return_value = &direct_global_return,
+          .value_home = &direct_global_home,
+          .before_return_move = &unsupported_move,
+          .block_index = 1,
+          .instruction_index = 3,
+      });
+  if (unsupported_destination.status !=
+      prepare::PreparedDirectGlobalReturnAuthorityStatus::UnsupportedReturnDestination) {
+    return fail("expected non-return destination move to stay fail-closed");
+  }
+
+  return 0;
+}
+
 int check_populated_immediate_global_store_source_publication() {
   const auto run_case = [](bool coherent_destination) {
     prepare::PreparedBirModule prepared;
@@ -6993,6 +7165,9 @@ int main() {
   }
 
   if (const int rc = check_global_memory_publication_authority_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_direct_global_return_authority_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_populated_immediate_global_store_source_publication();
