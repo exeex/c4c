@@ -1,11 +1,15 @@
 # RV64 Select-Edge Suppression Placement Consumer
 
-Status: Open
+Status: Closed
 Type: RV64 prepared consumer idea
 Parent: `ideas/closed/458_select_edge_source_producer_move_bundle_placement_authority.md`
 Source Evidence: `build/agent_state/458_step4_residual_disposition/`
+Close Evidence: `build/agent_state/459_step4_residual_disposition/disposition.md`
 Owning Layer: RV64 before-instruction move-bundle suppression from explicit
 select-edge source-producer placement authority
+Closed Disposition: Complete for explicit
+`predecessor_edge_consumed_suppression` consumption. Follow-up:
+`ideas/open/460_rv64_move_bundle_residual_owner_audit.md`.
 
 ## Goal
 
@@ -61,6 +65,35 @@ stale stack-load paths fail-closed.
 - `20010329-1` no longer fails on the target placement-consumer owner, or the
   next first owner is classified with evidence.
 - No expectation-only or generic move-support change is claimed as progress.
+
+## Completion Notes
+
+Idea 459 completed the explicit RV64 consumer for
+`predecessor_edge_consumed_suppression` placement metadata. Step 3 added record
+collection, placement-record/move-bundle matching, narrow traversal visibility
+for available suppression records, and RV64 empty-fragment suppression.
+Focused RV64 tests cover accepted and mismatched cases.
+
+Fresh `20010329-1` probing still fails with
+`unsupported_move_bundle_target_shape`, but Step 4 found no exact remaining
+459 suppression-consumer packet. Existing diagnostics do not identify the
+exact event coordinate; read-only debugger probing showed multiple
+move-bundle fragments before failure. The remaining owner is a separate
+residual-owner audit for RV64 move-bundle materialization/suppression outside
+explicit `predecessor_edge_consumed_suppression`.
+
+Stale `load_from_stack_slot missing_stack_freshness`, generic register/stack
+move support, raw-shape inference, and expectation rewrites remain outside this
+idea.
+
+## Validation
+
+- Step 3 backend proof passed before log roll-forward:
+  `cmake --build build -j2` plus
+  `ctest --test-dir build -j2 --output-on-failure -R '^backend_'`.
+- Step 4 lifecycle proof: `git diff --check` passed.
+- Close-time regression sanity used the rolled-forward backend guard log and
+  found no regression.
 
 ## Reviewer Reject Signals
 

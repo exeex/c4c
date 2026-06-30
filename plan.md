@@ -1,119 +1,87 @@
-# RV64 Select-Edge Suppression Placement Consumer Plan
+# RV64 Move-Bundle Residual Owner Audit Plan
 
 Status: Active
-Source Idea: ideas/open/459_rv64_select_edge_suppression_placement_consumer.md
+Source Idea: ideas/open/460_rv64_move_bundle_residual_owner_audit.md
 
 ## Purpose
 
-Consume explicit select-edge source-producer placement metadata in RV64 object
-emission.
+Identify the next exact owner of the remaining RV64 move-bundle failure after
+explicit select-edge suppression consumption closed.
 
 ## Goal
 
-Audit and implement only the bounded RV64 consumer for
-`predecessor_edge_consumed_suppression` placement metadata on the
-`20010329-1` before-instruction register-destination bundle.
+Classify the current `20010329-1` `unsupported_move_bundle_target_shape` with
+enough evidence to close, split, or activate the next precise source idea
+without implementing broad generic move support.
 
 ## Core Rule
 
-Do not infer suppression from value ids, block indexes, instruction indexes,
-raw BIR shape, or testcase layout. RV64 may suppress only bundles authorized by
-explicit prepared placement metadata.
+Do not implement or infer from raw shape in this audit. The output must be an
+owner classification with evidence, not a generic lowering patch.
 
 ## Read First
 
-- ideas/open/459_rv64_select_edge_suppression_placement_consumer.md
-- ideas/closed/458_select_edge_source_producer_move_bundle_placement_authority.md
-- build/agent_state/458_step4_residual_disposition/disposition.md
-- build/agent_state/458_step3_select_edge_placement_metadata/summary.md
-- build/agent_state/458_step2_placement_authority_contract/contract.md
+- ideas/open/460_rv64_move_bundle_residual_owner_audit.md
+- ideas/closed/459_rv64_select_edge_suppression_placement_consumer.md
+- build/agent_state/459_step4_residual_disposition/disposition.md
+- build/agent_state/459_step4_residual_disposition/probe_status.tsv
+- build/agent_state/459_step4_residual_disposition/20010329-1.prepared.out
+- build/agent_state/459_step4_residual_disposition/20010329-1.object.err
+- build/agent_state/459_step4_residual_disposition/gdb_probe.out
 - src/backend/mir/riscv/codegen/object_emission.cpp
-- src/backend/prealloc/publication_plans.cpp
-- src/backend/prealloc/publication_plans.hpp
-- tests/backend/mir/backend_riscv_object_emission_test.cpp
+- src/backend/prealloc/prepared_object_traversal.cpp
 
 ## Current Targets
 
-- `20010329-1` target before-instruction bundle:
-  `block_index=4 instruction_index=2`.
-- Placement kind `predecessor_edge_consumed_suppression`.
-- Source producer `%t18 = bir.ule ptr %t15, %t17`.
-- Select carrier `%t22 = bir.select uge ptr %t5, %t7, i32 %t18, 0`.
-- Edge transfer `logic.rhs.end.13 -> logic.end.14 incoming=%t18
-  destination=%t22`.
-- Register-destination moves into `%t18`/`t0`, including
-  `consumer_stack_to_register`.
+- `20010329-1` prepared route passes.
+- `20010329-1` RV64 object route fails with
+  `unsupported_move_bundle_target_shape`.
+- Step 4 debugger probe showed multiple move-bundle fragments before failure,
+  but no exact optimized argument-local coordinate.
+- Explicit `predecessor_edge_consumed_suppression` consumption is complete.
+- Stale stack-load authority and generic register/stack move support remain
+  out of scope.
 
 ## Non-Goals
 
-- Producing placement metadata, closed by idea 458.
-- Generic stack-to-register or register-to-register move lowering.
+- Implementing RV64 move-bundle lowering during the audit.
+- Generic stack-to-register or register-to-register move support.
 - Consuming `load_from_stack_slot missing_stack_freshness`.
-- Reopening idea 456 cast-dependency consumption.
-- Generic stack-home branch operand/condition materialization tracked by idea
-  451.
-- Pointer-value provenance, local/global store publication, or generic
-  instruction-side lowering.
-- Expectation rewrites, unsupported downgrades, allowlists, runtime-comparison
-  changes, pass/fail accounting changes, or `test_baseline.new.log` changes.
+- Reopening ideas 456, 458, or 459.
+- Pointer-value provenance, generic stack-home branch materialization, local or
+  global store publication, expectation rewrites, unsupported-marker changes,
+  allowlist edits, baseline churn, or pass/fail accounting changes.
 - Touching `review/`, `test_before.log`, or `test_after.log`.
 
 ## Working Model
 
-The producer now publishes a placement record that says the target
-before-instruction bundle is already consumed by predecessor-edge publication.
-The RV64 consumer should use that explicit metadata to suppress the join-block
-bundle and should reject all adjacent shapes without explicit authority.
+The broad RV64 diagnostic is no longer enough to choose a semantic packet.
+This plan gathers only the evidence needed to identify the first remaining
+move-bundle event and route it to the correct source idea.
 
 ## Execution Rules
 
-- Start with evidence classification; do not edit implementation in Step 1.
-- Treat placement records as the only admissible suppression source.
-- Keep generic move support, stack-load freshness, pointer provenance, and
-  branch stack-home work separate.
-- Add focused RV64 object tests for accepted suppression and fail-closed
-  missing/mismatched/unsupported/raw-inferred cases.
-- Select at most one narrow RV64 consumer packet after the audit is explicit.
-- Do not touch `test_baseline.new.log`, `test_before.log`, `test_after.log`,
-  or `review/`.
+- Start with read-only evidence classification.
+- Use fresh probes under `build/agent_state/460_step1_move_bundle_residual_audit/`.
+- Instrumentation may be read-only or local/transient, but implementation
+  changes are not part of this audit packet.
+- Keep stale stack-load authority, generic move support, and raw-shape
+  inference rejected.
 - Classification-only proof: `git diff --check`.
-- Code/test proof, if implementation is selected:
-
-```sh
-cmake --build build -j2
-ctest --test-dir build -j2 --output-on-failure -R '^backend_'
-git diff --check
-```
 
 ## Steps
 
-### Step 1: Audit Suppression Placement Consumer Evidence
+### Step 1: Audit Remaining Move-Bundle Failure
 
-Inspect the 458 artifacts and current prepared/object route for the target
-bundle. Record placement record fields, edge identity, source producer,
-select carrier, bundle site, moves, current RV64 event visibility, and first
-missing consumer fact. Completion means `todo.md` contains a bucket table and
-identifies the first bounded consumer packet or exact blocker.
+Reproduce the prepared/object probes and locate the first unsupported
+move-bundle event after idea 459. Record route command, exit status, object
+diagnostic, candidate event coordinates, move-bundle rows, and ownership
+classification. Completion means `todo.md` contains a residual-owner table and
+states whether to close, split, or activate the next precise idea.
 
-### Step 2: Define RV64 Suppression Consumer Contract
+### Step 2: Residual Disposition And Close Readiness
 
-Specify the RV64 conditions for consuming `predecessor_edge_consumed_suppression`
-records, including matching placement metadata, move identities, edge/source
-producer linkage, bundle site, and fail-closed adjacent shapes. Completion
-means `todo.md` states accepted/rejected shapes, owned files/tests, and proof
-command.
-
-### Step 3: Implement Or Route First Suppression Consumer Packet
-
-If a coherent RV64 consumer packet exists, implement the smallest semantic
-change with focused coverage. If the first owner is outside suppression
-consumer work, record the split or blocker instead of broadening this source.
-Completion means proof passes or canonical lifecycle state records the route
-decision.
-
-### Step 4: Residual Disposition And Close Readiness
-
-Re-check `20010329-1` and focused coverage against the Step 3 result, classify
-remaining residuals, and decide whether this source idea is complete.
-Completion means close, keep active with one exact remaining packet, or route
-durable follow-up work.
+Decide whether the audit is complete, whether a new implementation idea is
+needed, or whether an existing open idea owns the residual. Completion means
+close this audit with durable follow-up or keep it active only with an exact
+remaining classification packet.
