@@ -126,3 +126,12 @@ means representative rows have durable available or unavailable authority
 records visible through a prepared evidence/printer surface, with missing
 policy, missing freshness, missing clobber-safety, pointer-status unknown, and
 select-result stack-destination boundaries still fail-closed.
+
+### Step 6: Residual Disposition And Close Readiness
+
+Use the populated records from Step 5 to decide whether the source idea is
+complete as a prepared record surface, remains active for one exact
+policy/freshness/clobber-safety population packet, or should split a separate
+producer/policy owner. Completion means lifecycle state closes, stays active
+with an exact in-scope packet, or creates a durable follow-up before any RV64
+consumer work resumes.
