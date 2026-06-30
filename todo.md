@@ -1,63 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/453_stack_slot_pointer_select_edge_dependency_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First Stack-Slot Dependency Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 453 as a routed blocker. No implementation or tests
-were changed. The blocker artifact is
-`build/agent_state/453_step3_stack_slot_pointer_dependency_authority/blocker.md`.
+Completed Step 4 residual disposition for idea 453. The disposition artifact is
+`build/agent_state/453_step4_residual_disposition/disposition.md`.
 
-Inspected prepared authority surfaces:
+Residual classification:
 
-- `PreparedEdgePublication` names the edge source `%t18`, its producer, homes,
-  move bundle, and source-memory metadata.
-- `PreparedEdgePublicationSourceProducer` can point to the `%t18 = ule`
-  `BinaryInst` and other producer instruction kinds.
-- `PreparedTypedStackSourcePublication` only covers direct same-width `i32`
-  stack sources where the stack value is the edge source.
-- `PreparedAggregateStackSourceAuthority` covers aggregate-width stack sources
-  and remains intentionally fail-closed without copy authority.
-- `PreparedFusedPointerBranchPublication` rejects stack-home pointer operands.
+| Residual | Classification | First owner |
+| --- | --- | --- |
+| `%t18` successor/join-block compare result on `logic.rhs.end.13 -> logic.end.14` | Must not be copied on the predecessor edge. | Already fail-closed by the select-edge rematerialization contract. |
+| `%t17` stack-slot pointer dependency | Stack home `slot_id=2 offset=16` and object metadata exist, but are candidate evidence only. | Dependency-operand authority producer. |
+| Load `%t17` from stack slot | Not authorized by current prepared facts. | Needs explicit `load_from_stack_slot` policy plus freshness/clobber-safety. |
+| Rematerialize `%t17` from `%t16` through `inttoptr` | Not authorized by current prepared facts. | Needs explicit `rematerialize_cast_from_source` policy and cast dependency record. |
+| RV64 consumer route | Not selectable in this plan state. | Must wait for explicit prepared dependency-operand authority. |
 
-Exact blocker:
-
-- The `%t18 -> %t22` edge source is `%t18`; the stack-slot value is a dependency
-  operand `%t17`, not the edge source.
-- Current prepared facts expose `%t17`'s stack-slot home and object metadata,
-  and `%t16`'s immediate source, but they do not carry a dependency-operand
-  materialization policy.
-- There is no prepared fact saying to load `%t17` from `slot_id=2 offset=16`,
-  no fact saying to rematerialize `%t17` from `%t16` through `inttoptr`, and no
-  freshness/clobber-safety fact for using the slot at the predecessor-edge move
-  site.
-
-Missing owner: producer/home metadata. A predicate added over current facts
-would only prove slot identity and size/alignment, not load-vs-cast policy,
-freshness, clobber safety, or edge availability, so RV64 lowering must remain
-fail-closed.
+Lifecycle recommendation: close or retire this runbook by split. Idea 453
+classified the evidence and established the exact missing authority, but no
+sound in-idea implementation packet remains before adding producer/home
+metadata for dependency-operand materialization.
 
 ## Suggested Next
 
-Step 4: `Residual Disposition And Close Readiness`.
-
-Record that idea 453 is blocked before RV64 consumption on a producer/home
-metadata surface for dependency-operand materialization. A future executable
-packet should add:
+Plan-owner should close/split idea 453 into a producer/home metadata initiative
+before any RV64 consumer work. The follow-up should add:
 
 - edge dependency-operand authority, not just edge source authority;
 - an explicit `load_from_stack_slot` vs `rematerialize_cast_from_source`
   policy;
 - slot freshness/clobber-safety for the predecessor-edge placement;
-- value-home/object linkage for the dependency operand `%t17`.
+- value-home/object linkage for the dependency operand `%t17`;
+- focused positive/fail-closed producer/prepared tests.
 
-If that scope is broader than idea 453, route a lifecycle split for the
-producer/home metadata surface before returning to stack-slot pointer
-select-edge materialization.
+After that authority exists, a later plan can decide whether to return to RV64
+stack-slot pointer select-edge materialization. Do not route directly to
+target lowering from current facts.
 
 Future implementation proof command:
 
@@ -84,10 +67,10 @@ Future implementation proof command:
 
 ## Proof
 
-Step 3 routed-blocker proof:
+Step 4 residual-disposition proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
-Result: passed. Proof log: `test_after.log`.
+Result: passed.
