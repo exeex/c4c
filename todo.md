@@ -1,25 +1,18 @@
 Status: Active
 Source Idea Path: ideas/open/461_rv64_move_bundle_coordinate_diagnostics.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First Diagnostic Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 461: implemented diagnostic-only event-site
-coordinate formatting for generic RV64 prepared move-bundle fragment failures,
-added focused backend coverage, and saved fresh `20010329-1` evidence under
-`build/agent_state/461_step3_coordinate_diagnostic_packet/`.
+Completed Step 4 for idea 461: recorded residual disposition and close
+readiness under `build/agent_state/461_step4_residual_disposition/`.
 
-The new diagnostic preserves the old prefix and appends event kind, function,
-block index/label, instruction index, move-bundle phase and authority,
-parallel-copy context, select-edge suppression and cast-dependency
-stack-publication authority match states, per-move source/destination/storage
-fields, move reason, and fragment status.
-
-Fresh `20010329-1` object-route evidence now identifies the first proven
+Idea 461 is close-ready as diagnostic/probe support. Step 3 produced
+coordinate-bearing evidence for the first `20010329-1` RV64 move-bundle
 failure:
 
 | Field | Value |
@@ -33,12 +26,19 @@ failure:
 | Suppression/cast authority | `select_edge_suppression_authorized=no`, `cast_dependency_stack_publication_authorized=no` |
 | Fragment status | `generic_move_bundle_materialization_failed` |
 
+Residual owner classification: the proven failure is not the earlier `4:1`
+cast-dependency stack-publication candidate, not an idea-459 suppression
+matcher failure, and not stale stack-load authority. The follow-up owner should
+be a separate RV64 select-result/preterminator predecessor-edge parallel-copy
+materialization or route-classification idea for the `logic.rhs.end.40 ->
+logic.end.41` out-of-SSA select-result copy.
+
 ## Suggested Next
 
-Execute Step 4: residual disposition and close-readiness. Use the coordinate
-evidence to decide whether idea 461 is complete and route the next source owner
-to the proven `logic.rhs.end.40 -> logic.end.41` preterminator predecessor-edge
-select-result parallel-copy failure. Do not select lowering inside idea 461.
+Plan-owner close review for idea 461. If more progress is desired, split or
+activate a new source idea for the proven `pre_terminator_copies` /
+`out_of_ssa_parallel_copy` residual owner. Do not select semantic lowering in
+idea 461.
 
 ## Watchouts
 
@@ -56,10 +56,10 @@ select-result parallel-copy failure. Do not select lowering inside idea 461.
 
 ## Proof
 
-Step 3 proof:
+Step 4 proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 Result: passed.
