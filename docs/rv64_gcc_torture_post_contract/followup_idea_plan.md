@@ -1,6 +1,7 @@
 # RV64 Instruction Fragment Follow-Up Ranking
 
-Status: Step 3 ranking complete from the regenerated Step 2 bucket evidence.
+Status: Step 4 follow-up ideas created from the regenerated Step 2 bucket
+evidence and Step 3 ranking.
 
 Evidence source:
 
@@ -113,3 +114,11 @@ different route:
 4. RV64 integer div/rem lowering, or use this as the first pure-integer packet
    if pointer provenance review needs more evidence.
 5. Prepared aggregate ABI contract review before aggregate RV64 lowering.
+
+## Step 4 Created Ideas
+
+- `ideas/open/427_rv64_scalar_select_join_materialization.md`
+- `ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md`
+- `ideas/open/429_rv64_pointer_address_materialization.md`
+- `ideas/open/430_rv64_integer_div_rem_lowering.md`
+- `ideas/open/431_prepared_aggregate_abi_contract_review.md`
