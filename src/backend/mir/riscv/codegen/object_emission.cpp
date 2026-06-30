@@ -6251,7 +6251,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
     std::size_t instruction_index,
     const c4c::backend::bir::SelectInst& select,
     std::size_t stack_frame_bytes) {
-  if (select.result.type != c4c::backend::bir::TypeKind::I32 &&
+  if (select.result.type != c4c::backend::bir::TypeKind::I8 &&
+      select.result.type != c4c::backend::bir::TypeKind::I16 &&
+      select.result.type != c4c::backend::bir::TypeKind::I32 &&
       select.result.type != c4c::backend::bir::TypeKind::I64) {
     return std::nullopt;
   }
@@ -6276,7 +6278,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_select(
           ? std::nullopt
           : prepared_stack_slot_home_offset(stack_layout,
                                             *destination_home,
-                                            stack_frame_bytes);
+                                            stack_frame_bytes,
+                                            *size_bytes);
   if (!destination.has_value() && !destination_stack_offset.has_value()) {
     return std::nullopt;
   }

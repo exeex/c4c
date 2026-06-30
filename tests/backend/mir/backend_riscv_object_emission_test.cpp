@@ -15,6 +15,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -4532,6 +4533,25 @@ prepare::PreparedValueHome rv64_i16_stack_slot_home(
   };
 }
 
+prepare::PreparedValueHome rv64_sized_stack_slot_home(
+    prepare::PreparedValueId value_id,
+    c4c::FunctionNameId function_name,
+    c4c::ValueNameId value_name,
+    prepare::PreparedFrameSlotId slot_id,
+    std::size_t offset_bytes,
+    std::size_t size_bytes) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = slot_id,
+      .offset_bytes = offset_bytes,
+      .size_bytes = size_bytes,
+      .align_bytes = size_bytes,
+  };
+}
+
 prepare::PreparedBirModule make_prepared_scalar_compare_trunc_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -4796,6 +4816,91 @@ prepare::PreparedBirModule make_prepared_stack_slot_to_gpr_move_bundle_module() 
                   .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
               }},
           }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_small_integer_ordinary_select_module(
+    bir::TypeKind result_type) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const std::size_t result_size_bytes =
+      result_type == bir::TypeKind::I8 ? std::size_t{1} : std::size_t{2};
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto false_name = prepared.names.value_names.intern("%fallback");
+  const auto result_name = prepared.names.value_names.intern("%selected");
+  const auto true_value =
+      result_type == bir::TypeKind::I8
+          ? bir::Value{.kind = bir::Value::Kind::Immediate,
+                       .type = bir::TypeKind::I8,
+                       .immediate = 7,
+                       .immediate_bits = 7}
+          : bir::Value{.kind = bir::Value::Kind::Immediate,
+                       .type = bir::TypeKind::I16,
+                       .immediate = 7,
+                       .immediate_bits = 7};
+
+  bir::Block entry{
+      .label = "entry",
+      .insts =
+          {
+              bir::SelectInst{
+                  .predicate = bir::BinaryOpcode::Ne,
+                  .result = bir::Value::named(result_type, "%selected"),
+                  .compare_type = bir::TypeKind::I32,
+                  .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+                  .rhs = bir::Value::immediate_i32(1),
+                  .true_value = true_value,
+                  .false_value = bir::Value::named(result_type, "%fallback"),
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = result_size_bytes;
+  prepared.stack_layout.frame_alignment_bytes = result_size_bytes;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{3},
+          .function_name = function_name,
+          .offset_bytes = 0,
+          .size_bytes = result_size_bytes,
+          .align_bytes = result_size_bytes,
+      },
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, lhs_name, "t0", 5),
+              rv64_gpr_home(2, function_name, false_name, "t1", 6),
+              rv64_sized_stack_slot_home(3,
+                                         function_name,
+                                         result_name,
+                                         prepare::PreparedFrameSlotId{3},
+                                         0,
+                                         result_size_bytes),
+          },
   });
   return prepared;
 }
@@ -9869,6 +9974,63 @@ int builds_prepared_normalized_sle_select_materialization_object() {
   return 0;
 }
 
+int builds_prepared_small_integer_ordinary_select_materialization_objects() {
+  for (const auto [type, expected_store, type_name] :
+       {std::tuple{bir::TypeKind::I8, std::uint32_t{0x01e10023}, "i8"},
+        std::tuple{bir::TypeKind::I16, std::uint32_t{0x01e11023}, "i16"}}) {
+    const auto prepared = make_prepared_small_integer_ordinary_select_module(type);
+    const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+    if (!module.has_value()) {
+      return fail(std::string{"expected prepared ordinary "} + type_name +
+                  " select RV64 object module to build");
+    }
+    const auto* text = object::find_section(*module, ".text");
+    const auto* main_symbol = object::find_symbol(*module, "main");
+    const auto* true_label =
+        object::find_symbol(*module, ".Lmain_entry_select_0_true");
+    const auto* end_label =
+        object::find_symbol(*module, ".Lmain_entry_select_0_end");
+    if (text == nullptr || main_symbol == nullptr || true_label == nullptr ||
+        end_label == nullptr) {
+      return fail(std::string{"expected prepared ordinary "} + type_name +
+                  " select object to publish text/main/select labels");
+    }
+    if (text->bytes.size() != 44 || text->size_bytes != 44 ||
+        main_symbol->value != 0 || main_symbol->size_bytes != 44 ||
+        true_label->value != 24 || end_label->value != 28) {
+      return fail(std::string{"expected prepared ordinary "} + type_name +
+                  " select materialization object text layout");
+    }
+    if (read_u32(text->bytes, 0) != 0xff010113 ||
+        read_u32(text->bytes, 4) != 0x00028e13 ||
+        read_u32(text->bytes, 8) != 0x00100e93 ||
+        read_u32(text->bytes, 12) != 0x01de1063 ||
+        read_u32(text->bytes, 16) != 0x00030f13 ||
+        read_u32(text->bytes, 20) != 0x0000006f ||
+        read_u32(text->bytes, 24) != 0x00700f13 ||
+        read_u32(text->bytes, 28) != expected_store ||
+        read_u32(text->bytes, 32) != 0x00000513 ||
+        read_u32(text->bytes, 36) != 0x01010113 ||
+        read_u32(text->bytes, 40) != 0x00008067) {
+      return fail(std::string{"expected prepared ordinary "} + type_name +
+                  " select compare/branch/materialize/narrow-store sequence");
+    }
+    if (module->relocations.size() != 2 ||
+        module->relocations[0].section != text->id ||
+        module->relocations[0].offset != 12 ||
+        module->relocations[0].type != R_RISCV_BRANCH ||
+        module->relocations[0].symbol != true_label->id ||
+        module->relocations[1].section != text->id ||
+        module->relocations[1].offset != 20 ||
+        module->relocations[1].type != R_RISCV_JAL ||
+        module->relocations[1].symbol != end_label->id) {
+      return fail(std::string{"expected prepared ordinary "} + type_name +
+                  " select local branch/jump relocations");
+    }
+  }
+  return 0;
+}
+
 int skips_published_prepared_join_transfer_select_carrier_object() {
   const auto prepared =
       make_prepared_join_transfer_select_with_published_copies_module();
@@ -12811,6 +12973,7 @@ int main() {
   status |= rejects_prepared_scalar_compare_publication_missing_home();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= builds_prepared_normalized_sle_select_materialization_object();
+  status |= builds_prepared_small_integer_ordinary_select_materialization_objects();
   status |= skips_published_prepared_join_transfer_select_carrier_object();
   status |= materializes_published_prepared_join_transfer_select_edge_compare_source_object();
   status |=
