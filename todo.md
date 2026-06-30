@@ -8,44 +8,56 @@ Current Step Title: Suppress Authorized Cast-Dependency Stack Publication Bundle
 
 ## Just Finished
 
-Plan-owner reviewed Step 4 for idea 456 and kept the source idea active.
-Supporting artifact:
-`build/agent_state/456_step4_residual_disposition/disposition.md`.
+Attempted Step 5 for idea 456 and routed it as blocked. Blocker artifact:
+`build/agent_state/456_step5_cast_dependency_stack_publication/blocker.md`.
 
-The explicit cast-dependency compare consumer is implemented and covered, but
-the representative `20010329-1` object route still fails at
-`unsupported_move_bundle_target_shape` before the edge consumer can benefit
-from that authority. The remaining same-family packet is the
-`before_instruction` stack-slot publication for `%t17`:
+Fresh `20010329-1` probes under
+`build/agent_state/456_step5_cast_dependency_stack_publication/` still show:
 
 ```text
-move_bundle phase=before_instruction authority=none block_index=4 instruction_index=1
-move from_value_id=8 to_value_id=9 destination_storage=stack_slot reason=consumer_register_to_stack
+prepared_exit=0
+object_exit=2
+error: --codegen obj failed: RISC-V backend object route unsupported prepared module shape: unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves
 ```
 
-The packet must use the populated `rematerialize_cast_from_source
-status=available` dependency-operand authority and carrier-use proof for the
-owned cast result. No lifecycle split is needed.
+The relevant prepared facts are still coherent for this idea:
+
+| Fact | Evidence |
+| --- | --- |
+| Stack publication bundle | `move_bundle phase=before_instruction authority=none block_index=4 instruction_index=1`, `from_value_id=8 to_value_id=9 destination_storage=stack_slot reason=consumer_register_to_stack` |
+| Cast dependency authority | `dependency=%t17 dependency_value_id=9 policy=rematerialize_cast_from_source status=available`, `cast_source=%t16 cast_source_value_id=8 cast_source_home=rematerializable_immediate` |
+| Rejected adjacent policy | `policy=load_from_stack_slot status=missing_stack_freshness` |
+
+Blocker: the prepared dump prints the required `before_instruction` move-bundle
+fact, but the current RV64 object traversal does not emit before-instruction
+move-bundle events to `fragment_for_prepared_move_bundle`. A local
+`object_emission.cpp` suppression helper for this exact stack publication is
+therefore unreachable from the delegated consumer hook. Experimental local
+code/test edits were reverted; no implementation files are changed in this
+blocked slice.
 
 ## Suggested Next
 
-Execute Step 5: `Suppress Authorized Cast-Dependency Stack Publication Bundle`.
+Step 6: `Expose Authorized Before-Instruction Move Bundle To Object Route`.
 
-Implement or route the exact remaining RV64 consumer packet for the
-`before_instruction` stack-slot publication of an authorized
-`rematerialize_cast_from_source status=available` dependency result. The packet
-should use the populated dependency-operand authority and carrier-use proof as
-authority, preserve the existing scratch-clobber guard, and keep generic
-stack-slot moves, `load_from_stack_slot missing_stack_freshness`, raw
-`inttoptr`, successor-copy, and unrelated move bundles fail-closed.
+Add or route the smallest prepared object traversal/consumer surface that lets
+the RV64 object route see the exact `before_instruction` move bundle for an
+authorized cast-dependency stack publication. Only after that event is exposed
+should object emission suppress or safely consume the
+`rematerialize_cast_from_source status=available` stack publication. Keep
+generic stack moves, `load_from_stack_slot missing_stack_freshness`, raw
+`inttoptr`, successor-copy, scratch-clobber, and unrelated move bundles
+fail-closed.
 
 Suggested owned files:
 
+- `src/backend/prealloc/prepared_object_traversal.hpp`
+- `src/backend/prealloc/prepared_object_traversal.cpp`
 - `src/backend/mir/riscv/codegen/object_emission.cpp`
 - `tests/backend/mir/backend_riscv_object_emission_test.cpp`
 - `todo.md`
 - `test_after.log`
-- `build/agent_state/456_step5_cast_dependency_stack_publication/*`
+- `build/agent_state/456_step6_before_instruction_move_bundle/*`
 
 Suggested proof command:
 
@@ -56,8 +68,10 @@ Suggested proof command:
 ## Watchouts
 
 - Full `20010329-1` object success remains unclaimed.
-- The next packet should target only the authorized cast-dependency
-  `before_instruction` stack publication bundle; do not implement generic stack
+- The delegated Step 5 local object-emission hook is blocked because the needed
+  before-instruction move bundle is not emitted as an object traversal event.
+- The next packet should expose only the authorized cast-dependency
+  `before_instruction` stack publication event; do not implement generic stack
   moves.
 - Continue to consume only populated `rematerialize_cast_from_source
   status=available` dependency-operand authority.
@@ -77,7 +91,7 @@ Suggested proof command:
 
 ## Proof
 
-Lifecycle repair validation:
+Step 5 proof:
 
 ```sh
 git diff --check
