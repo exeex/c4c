@@ -1,84 +1,68 @@
 Status: Active
 Source Idea Path: ideas/open/446_global_memory_layout_authority_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Global Layout Authority Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route First Layout Authority Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: defined the prepared global layout authority contract and
-selected the first bounded producer/prepared packet.
+Completed Step 3: implemented the selected `Publish Scalar Global Layout
+Authority` producer/prepared packet.
 
-Accepted global layout authority requires:
+Implementation summary:
 
-| required fact | contract |
+| area | result |
 | --- | --- |
-| Global identity | Prepared `GlobalSymbol` address with semantic symbol/`LinkNameId` resolution to a `bir::Global`; raw spelling alone is compatibility-only unless the existing resolver proves the object. |
-| Object status/addressability | Known global object plus accepted materialization policy and `can_use_base_plus_offset=true`; unresolved/declaration-only or unsupported TLS/GOT policy shapes remain false by default. |
-| Complete extent | `object_extent.size_known=true`, `completeness=Complete`, and nonzero `size_bytes` from producer global object facts. |
-| Access facts | Prepared offset, width, alignment, address space, nonzero `size_bytes`, nonzero `align_bytes`, and `align_bytes <= size_bytes`. |
-| Range proof | Requested range is available, non-overflowed, matches the prepared offset/width, has an available end, and is `ProvenInBounds` against the complete object extent. |
-| Layout authority | Non-unknown and non-opaque: accepted predicate kinds are `StructuredLayout`, `ScalarLayout`, `ByteStorageAggregate`, and `RenderedTypeFallback`; the first packet should publish only the narrow kind justified by producer facts. |
-| Store publication coupling | Store-global records still need idea 439 source authority: explicit producer/value home for named values or explicit immediate-source encoding for immediates. |
-
-Current representative disposition:
-
-| bucket | rows | disposition |
-| --- | --- | --- |
-| Candidate for first packet | `20041112-1` load/store rows for `@global+0`, width 4, align 4, range `proven_in_bounds` | Coherent simple scalar global candidate once producer publishes complete extent and `ScalarLayout` authority. Not currently accepted because `layout_authority=unknown`. |
-| Missing/incoherent authority | `930930-1` store to `@mem+792`, width 8, align 8, range `proven_in_bounds` | Still lacks explicit layout authority and printed extent/completeness; keep fail-closed until a broader array/aggregate-global packet proves source facts. |
-| Out of scope | `20000622-1` local/frame-slot row; `20041112-1` direct-global return/address-only row; pointer-value memory | Not global layout-authority publication targets. |
-| Separate idea | immediate global-store source encoding | Belongs to `ideas/open/447_immediate_global_store_source_encoding.md`, not this plan. |
+| Producer carrier | Added `bir::Global::has_scalar_layout_authority` and populated it only from scalar LIR global lowering. |
+| Prepared publication | `src/backend/prealloc/stack_layout/coordinator.cpp` now publishes `ScalarLayout` for prepared global-symbol memory only when the resolved semantic global has scalar authority, is not extern/TLS, has nonzero size/alignment, the prepared address is base-plus-offset-capable, object extent is complete, and the requested range is already `ProvenInBounds`. |
+| Accepted coverage | Focused BIR/prepared coverage proves in-bounds scalar global load and store accesses become target-consumable under `prepared_global_symbol_memory_has_publication_authority`. |
+| Fail-closed coverage | Aggregate global lanes, out-of-range scalar accesses, missing-extent scalar-shaped globals, raw spelling drift, pointer-value memory, direct-global materialization rows, and implicit immediate-source store publication remain rejected. |
 
 Artifacts:
 
-- `build/agent_state/446_step2_global_layout_authority_contract/contract.md`
+- `build/agent_state/446_step3_scalar_global_layout_authority/summary.md`
+- `test_after.log`
 
 ## Suggested Next
 
-Execute Step 3: Implement Or Route First Layout Authority Packet.
+Execute Step 4: Residual Disposition And Close Readiness.
 
-Selected packet: `Publish Scalar Global Layout Authority`.
+Re-probe or inspect the representative rows from the Step 1/439 evidence:
 
-Use existing global producer facts from `bir::Global`/global lowering and the
-prepared global resolver to publish complete object extent plus `ScalarLayout`
-for simple scalar global objects only when the global has nonzero size/alignment,
-is addressable, resolves semantically, and the access range is proven in bounds.
-Add focused producer/prepared tests for accepted scalar `@global+0` load/store
-authority and fail-closed missing symbol, unresolved/raw-only symbol, unknown
-layout, missing extent, out-of-range, pointer-value memory, address-only/direct
-global return, and immediate-source encoding boundaries. If current producer
-facts cannot distinguish simple scalar globals from arrays/aggregates or
-declaration-only objects, stop and report that metadata gap instead of editing
-RV64 lowering.
+- `20041112-1 @global+0`: should now be the primary scalar-global acceptance
+  candidate if the prepared route carries the new scalar authority from LIR
+  lowering.
+- `930930-1 @mem+792`: should remain fail-closed unless producer facts prove a
+  later array/aggregate global layout-authority packet is justified.
+- `20000622-1`: should remain out of scope for this global layout-authority
+  idea.
 
-Proposed owned files for Step 3:
-
-- `src/backend/prealloc/stack_layout/coordinator.cpp`
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/446_step3_scalar_global_layout_authority/*`
+Decide whether this idea is close-ready for scalar global layout authority, must
+keep active for an array/aggregate global authority packet, or should split that
+remaining work into a separate source idea.
 
 ## Watchouts
 
-- Keep this plan limited to global layout authority publication.
-- Do not fold immediate store-source encoding into this plan; that belongs to
+- Do not edit RV64 target lowering for residual rows.
+- Do not infer global layout, extent, addressability, offsets, or symbol
+  identity from representative filenames, raw BIR, object labels, or dump
+  positions.
+- Keep arrays, aggregates, strings, extern declarations, TLS globals,
+  unresolved/raw-only symbols, missing extents, out-of-range accesses, and
+  `OpaqueCompatibility` fail-closed unless a later producer packet supplies
+  explicit authority.
+- Immediate global-store source encoding remains
   `ideas/open/447_immediate_global_store_source_encoding.md`.
-- Do not infer global layout, object extent, addressability, offset meaning,
-  or symbol identity in RV64 from raw BIR, symbol spelling, object labels,
-  representative filenames, or dump shape.
-- Keep `layout_authority=unknown` fail-closed until producer facts are
-  explicit.
-- Do not accept `OpaqueCompatibility` as publication authority for this plan.
 - Do not accept or modify `test_baseline.new.log`.
 
 ## Proof
 
-Step 2 contract-only check:
+Step 3 implementation proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
+
+Result: passed. `test_after.log` contains the backend subset output.

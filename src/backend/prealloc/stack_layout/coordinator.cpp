@@ -324,6 +324,41 @@ prepared_global_address_policy(const c4c::TargetProfile& target_profile,
   return policy;
 }
 
+[[nodiscard]] bool scalar_global_layout_authority_available(const bir::Global& global) {
+  return global.has_scalar_layout_authority && !global.is_extern &&
+         !global.is_thread_local && global.link_name_id != kInvalidLinkName &&
+         global.type != bir::TypeKind::Void && global.size_bytes > 0 &&
+         global.align_bytes > 0;
+}
+
+void publish_scalar_global_layout_authority(PreparedAddress& address,
+                                            const bir::Global& global) {
+  if (!scalar_global_layout_authority_available(global) ||
+      address.base_kind != PreparedAddressBaseKind::GlobalSymbol ||
+      !address.symbol_name.has_value() ||
+      !address.can_use_base_plus_offset ||
+      address.size_bytes == 0 ||
+      address.align_bytes == 0 ||
+      address.align_bytes > address.size_bytes) {
+    return;
+  }
+
+  auto& provenance = address.provenance;
+  if (provenance.base_identity.kind !=
+          bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol ||
+      provenance.base_identity.link_name_id != global.link_name_id ||
+      provenance.object_extent.completeness !=
+          bir::MemoryObjectExtentCompleteness::Complete ||
+      !provenance.object_extent.size_known ||
+      provenance.object_extent.size_bytes != global.size_bytes ||
+      provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds ||
+      provenance.layout_authority != bir::MemoryLayoutAuthorityKind::Unknown) {
+    return;
+  }
+
+  provenance.layout_authority = bir::MemoryLayoutAuthorityKind::ScalarLayout;
+}
+
 [[nodiscard]] std::optional<TextId> resolve_prepared_text_id(
     PreparedNameTables& names,
     const bir::Module& module,
@@ -648,7 +683,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
     if (!policy.has_value()) {
       return std::nullopt;
     }
-    return PreparedAddress{
+    PreparedAddress prepared{
         .base_kind = PreparedAddressBaseKind::GlobalSymbol,
         .symbol_name = resolved_global->prepared_symbol_name,
         .global_address_materialization_policy = *policy,
@@ -669,6 +704,8 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
                 ? std::nullopt
                 : std::optional<std::size_t>{resolved_global->global->size_bytes}),
     };
+    publish_scalar_global_layout_authority(prepared, *resolved_global->global);
+    return prepared;
   }
 
   PreparedAddressBaseKind base_kind = PreparedAddressBaseKind::None;
@@ -719,7 +756,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
     resolved_base_global = find_raw_no_id_global_address_compatibility(module, symbol_name);
   }
 
-  return PreparedAddress{
+  PreparedAddress prepared{
       .base_kind = base_kind,
       .symbol_name = prepared_symbol_name,
       .global_address_materialization_policy =
@@ -745,6 +782,10 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
               ? std::nullopt
               : std::optional<std::size_t>{resolved_base_global->size_bytes}),
   };
+  if (resolved_base_global != nullptr) {
+    publish_scalar_global_layout_authority(prepared, *resolved_base_global);
+  }
+  return prepared;
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(

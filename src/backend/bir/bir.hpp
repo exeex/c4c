@@ -660,6 +660,7 @@ struct Global {
   bool is_extern = false;
   bool is_thread_local = false;
   bool is_constant = false;
+  bool has_scalar_layout_authority = false;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   std::optional<Value> initializer;

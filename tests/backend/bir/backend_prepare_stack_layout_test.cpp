@@ -3404,6 +3404,7 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .name = "g.authoritative",
       .link_name_id = canonical_global_id,
       .type = bir::TypeKind::I32,
+      .has_scalar_layout_authority = true,
       .size_bytes = 4,
       .align_bytes = 4,
   });
@@ -3447,7 +3448,16 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .link_name_id = tls_global_id,
       .type = bir::TypeKind::I32,
       .is_thread_local = true,
+      .has_scalar_layout_authority = true,
       .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  const c4c::LinkNameId no_extent_global_id = module.names.link_names.intern("g.no.extent");
+  module.globals.push_back(bir::Global{
+      .name = "g.no.extent",
+      .link_name_id = no_extent_global_id,
+      .type = bir::TypeKind::I32,
+      .has_scalar_layout_authority = true,
       .align_bytes = 4,
   });
   const c4c::LinkNameId indirect_target_id = module.names.link_names.intern("callee.fn");
@@ -3577,6 +3587,22 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
               .size_bytes = 4,
               .align_bytes = 4,
           },
+  });
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name_id = canonical_global_id,
+      .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "scalar.out.of.range.loaded"),
+      .global_name_id = canonical_global_id,
+      .byte_offset = 8,
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "scalar.missing.extent.loaded"),
+      .global_name_id = no_extent_global_id,
+      .align_bytes = 4,
   });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
@@ -5712,7 +5738,7 @@ int check_link_name_authoritative_global_access_activation(
     return fail("expected link-name authoritative global fixture to publish addressing");
   }
   const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
-  if (function_addressing->accesses.size() != 5) {
+  if (function_addressing->accesses.size() != 8) {
     return fail("expected raw structured-global fallbacks to fail closed while compatibility remains");
   }
 
@@ -5733,6 +5759,18 @@ int check_link_name_authoritative_global_access_activation(
       id_load_access->address.align_bytes != 4 ||
       !id_load_access->address.can_use_base_plus_offset) {
     return fail("expected ID-only global load to resolve through LinkNameId");
+  }
+  if (id_load_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::ScalarLayout ||
+      id_load_access->address.provenance.object_extent.completeness !=
+          bir::MemoryObjectExtentCompleteness::Complete ||
+      id_load_access->address.provenance.object_extent.size_bytes != 4 ||
+      !id_load_access->address.provenance.object_extent.size_known ||
+      id_load_access->address.provenance.range_verdict !=
+          bir::MemoryRangeVerdict::ProvenInBounds ||
+      !prepare::prepared_global_symbol_memory_has_publication_authority(
+          id_load_access->address)) {
+    return fail("expected in-bounds scalar global load to publish layout authority");
   }
 
   if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 1) !=
@@ -5956,10 +5994,64 @@ int check_link_name_authoritative_global_access_activation(
       local_global_lane_provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
     return fail("expected LoadGlobalInst global lane to preserve semantic prepared contract facts");
   }
+  if (local_global_lane_provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::Unknown ||
+      prepare::prepared_global_symbol_memory_has_publication_authority(
+          local_global_lane_address)) {
+    return fail("expected aggregate global lane to stay out of scalar layout authority");
+  }
 
   if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 14) !=
       nullptr) {
     return fail("expected LoadLocalInst structured global spelling without LinkNameId to fail closed");
+  }
+
+  const auto* scalar_store_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 15);
+  if (scalar_store_access == nullptr) {
+    return fail("expected in-bounds scalar global store to publish prepared access");
+  }
+  if (scalar_store_access->result_value_name.has_value() ||
+      !scalar_store_access->stored_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *scalar_store_access->stored_value_name) !=
+          "id.loaded" ||
+      scalar_store_access->address.base_kind !=
+          prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !scalar_store_access->address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *scalar_store_access->address.symbol_name) !=
+          "g.authoritative" ||
+      scalar_store_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::ScalarLayout ||
+      !prepare::prepared_global_symbol_memory_has_publication_authority(
+          scalar_store_access->address)) {
+    return fail("expected in-bounds scalar global store to publish layout authority");
+  }
+
+  const auto* out_of_range_scalar_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 16);
+  if (out_of_range_scalar_access == nullptr) {
+    return fail("expected out-of-range scalar global load to publish prepared access");
+  }
+  if (out_of_range_scalar_access->address.provenance.range_verdict !=
+          bir::MemoryRangeVerdict::ProvenOutOfBounds ||
+      out_of_range_scalar_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::Unknown ||
+      prepare::prepared_global_symbol_memory_has_publication_authority(
+          out_of_range_scalar_access->address)) {
+    return fail("expected out-of-range scalar global load to stay fail-closed");
+  }
+
+  const auto* missing_extent_scalar_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 17);
+  if (missing_extent_scalar_access == nullptr) {
+    return fail("expected missing-extent scalar global load to publish prepared access");
+  }
+  if (missing_extent_scalar_access->address.provenance.object_extent.size_known ||
+      missing_extent_scalar_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::Unknown ||
+      prepare::prepared_global_symbol_memory_has_publication_authority(
+          missing_extent_scalar_access->address)) {
+    return fail("expected missing-extent scalar global load to stay fail-closed");
   }
 
   return 0;

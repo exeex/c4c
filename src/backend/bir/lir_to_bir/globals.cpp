@@ -84,6 +84,7 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
   lowered.type = *lowered_type;
   lowered.is_extern = global.is_extern_decl;
   lowered.is_constant = global.is_const;
+  lowered.has_scalar_layout_authority = true;
   lowered.address_materialization_policy =
       lower_global_address_materialization_policy(global, target_profile);
   lowered.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
