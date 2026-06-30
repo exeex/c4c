@@ -1,63 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/472_branch_site_stack_slot_current_value_no_clobber_certificate.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Certificate Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Certificate Producer
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 contract for idea 472. The contract is bounded to scalar
-branch condition stack slots represented by `f.logic.end.14` `%t23`, slot
-`#21`, and requires explicit producer-owned current-value plus no-clobber
-certificates before any later branch-stack-load availability can be set.
+Completed Step 3 as a route/blocker packet for idea 472. No certificate
+producer was implemented because current prepared inputs still cannot prove
+exact frame-slot materialization/current-value or no-clobber safety for
+`f.logic.end.14` `%t23`, slot `#21`.
 
-Positive contract:
+Checked surfaces:
 
-| Fact group | Required facts |
+| Surface | Finding |
 | --- | --- |
-| Branch-site identity | Function, branch block, condition role/value, terminator kind, and true/false targets match the prepared branch condition row. |
-| Stack-slot identity | Value id/name/type, home, frame slot id, stack object id, offset, size, and alignment match the branch-stack-load row. |
-| Source identity | Producer names the current scalar value expected in the slot and ties it to the branch condition value. |
-| Exact frame-slot materialization/write | Producer proves the source was written/materialized into the exact frame slot/object. |
-| Path/dominance validity | Producer proves the materialization reaches the branch site on every authorized path, or records explicit path scope. |
-| Same-slot write exclusion | Producer proves no intervening store, stack write, frame-slot publication, stack-destination move, or parallel copy overwrites the slot. |
-| Call/helper/inline-asm effects | Producer proves no intervening call/helper/inline asm can invalidate the slot; unknown effects fail closed. |
-| Publication/move-bundle/parallel-copy non-clobber | Producer proves prepared publications, move bundles, and parallel copies do not target or invalidate the slot. |
+| `PreparedBranchStackLoadAuthorityInputs` | Downstream carrier can hold policy/freshness/clobber booleans, but not the certificate source itself. |
+| `plan_prepared_branch_stack_load_authority` | Correctly rejects records without policy, freshness, and clobber safety. |
+| `collect_prepared_branch_stack_load_authorities` | Reaches branch condition, terminator, value home, frame slot, and stack object; it has no materialization/current-value or no-clobber certificate input. |
+| Existing prepared evidence | Exposes calls, store-source rows, publications, move bundles, and parallel copies, but no joined certificate for slot `#21`. |
 
-Rejected/fail-closed cases:
+Exact blocker:
 
-| Shape | Disposition |
+| Missing fact | Current status |
 | --- | --- |
-| Raw BIR adjacency, value names, function names, block labels, testcase shape, or dump order | Reject as raw-shape inference. |
-| Stack home/object identity only | Reject as identity evidence, not materialization/current-value proof. |
-| Missing source identity or exact frame-slot materialization | Fail closed; no certificate. |
-| Path/dominance ambiguity | Fail closed unless explicitly path-scoped and accepted by the later consumer. |
-| Same-slot stack write, publication, move bundle, or parallel copy ambiguity | Fail closed as clobber-unsafe. |
-| Unknown call/helper/inline-asm effects | Fail closed as clobber-unsafe. |
-| `%t22` select-result stack destination | Separate owner. |
-| `%t1` / `%t7` pointer/provenance rows | Separate owner. |
-| `%t2` / `%t8` `unsupported_terminator` rows | Separate branch-site relationship owner. |
+| Exact frame-slot materialization/current-value | No prepared row states current `%t23` was written/materialized into slot `#21` before the branch. |
+| Path/dominance validity | No certificate connects any source materialization to all paths reaching `logic.end.14`. |
+| Same-slot write exclusion | No producer summary proves slot `#21` has no intervening stack write/publication/move/parallel-copy clobber. |
+| Call/helper/inline-asm effects | No effect certificate is tied to slot `#21`. |
+| Publication/move-bundle/parallel-copy non-clobber | Existing rows are not joined into a slot `#21` non-clobber proof. |
+
+Preserved fail-closed boundaries: `%t22` remains select-result stack
+destination/block-entry publication work; `%t1` / `%t7` remain
+pointer/provenance boundaries; `%t2` / `%t8` remain `unsupported_terminator`
+branch-site relationship work. No RV64 lowering or raw-shape inference was
+introduced.
 
 Artifact:
-`build/agent_state/472_step2_current_value_no_clobber_contract/contract.md`.
+`build/agent_state/472_step3_current_value_no_clobber_producer/blocker.md`.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: Implement Or Route Certificate Producer.
+Route a lower-level prepared producer initiative for branch-site stack-slot
+write/current-value and no-clobber certificate sources.
 
-Suggested owned files:
+Required future facts:
 
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/472_step3_current_value_no_clobber_producer/**`
-
-Optional prepared printer files only if exposed certificate records/statuses
-are added.
+- source value and exact frame-slot materialization/write;
+- path/dominance relationship to the branch site;
+- same-slot write exclusion;
+- call/helper/inline-asm effect safety;
+- publication, move-bundle, and parallel-copy non-clobber safety;
+- positive/fail-closed tests before populating branch-stack-load authority.
 
 Proof:
 
@@ -83,10 +79,11 @@ Proof:
 
 ## Proof
 
-Contract proof:
+Step 3 proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed.
+Result: passed. `test_after.log` reports 100% tests passed, 0 tests failed
+out of 327, followed by `git diff --check`.
