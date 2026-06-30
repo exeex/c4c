@@ -5703,6 +5703,128 @@ prepare::PreparedBirModule make_prepared_inline_asm_insn_r_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_empty_tied_scalar_gpr_inline_asm_module(
+    bool complete_carrier = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile.arch = c4c::TargetArch::Riscv64;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto result_name = prepared.names.value_names.intern("%out");
+  const auto input_name = prepared.names.value_names.intern("%x");
+  const auto shared_identity = prepare::PreparedTargetRegisterIdentity{
+      .target_arch = c4c::TargetArch::Riscv64,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .physical_index = 5,
+  };
+
+  bir::CallInst call;
+  call.result = bir::Value::named(bir::TypeKind::I32, "%out");
+  call.callee = "llvm.inline_asm";
+  call.args = {bir::Value::named(bir::TypeKind::I32, "%x")};
+  call.arg_types = {bir::TypeKind::I32};
+  call.return_type = bir::TypeKind::I32;
+  call.inline_asm = bir::InlineAsmMetadata{
+      .asm_text = "",
+      .constraints = "=r,0",
+      .side_effects = true,
+      .operands =
+          {
+              inline_asm_register_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                          0,
+                                          "=r",
+                                          std::nullopt,
+                                          std::size_t{0}),
+              inline_asm_register_operand(bir::InlineAsmOperandKind::TiedInput,
+                                          1,
+                                          "0",
+                                          std::size_t{0},
+                                          std::nullopt,
+                                          std::size_t{0}),
+          },
+  };
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+  entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%out");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, result_name, "t0", 5),
+              rv64_gpr_home(2, function_name, input_name, "t0", 5),
+          },
+  });
+  if (complete_carrier) {
+    prepared.inline_asm_carriers.functions.push_back(
+        prepare::PreparedInlineAsmCarrierFunction{
+            .function_name = function_name,
+            .carriers =
+                {
+                    prepare::PreparedInlineAsmCarrier{
+                        .function_name = function_name,
+                        .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete,
+                        .block_index = 0,
+                        .inst_index = 0,
+                        .asm_text = "",
+                        .constraints = "=r,0",
+                        .side_effects = true,
+                        .operands =
+                            {
+                                prepare::PreparedInlineAsmOperand{
+                                    .kind = bir::InlineAsmOperandKind::RegisterOutput,
+                                    .constraint_index = 0,
+                                    .constraint = "=r",
+                                    .output_index = std::size_t{0},
+                                    .register_class =
+                                        bir::InlineAsmRegisterClass::General,
+                                    .register_group_width = 1,
+                                },
+                                prepare::PreparedInlineAsmOperand{
+                                    .kind = bir::InlineAsmOperandKind::TiedInput,
+                                    .constraint_index = 1,
+                                    .constraint = "0",
+                                    .arg_index = std::size_t{0},
+                                    .tied_output_index = std::size_t{0},
+                                    .register_class =
+                                        bir::InlineAsmRegisterClass::General,
+                                    .register_group_width = 1,
+                                    .value =
+                                        bir::Value::named(bir::TypeKind::I32, "%x"),
+                                    .value_name = input_name,
+                                    .home = rv64_gpr_home(
+                                        2, function_name, input_name, "t0", 5),
+                                    .tied_home_authority =
+                                        prepare::PreparedInlineAsmTiedHomeAuthority{
+                                            .tied_output_index = 0,
+                                            .shared_register = shared_identity,
+                                        },
+                                },
+                            },
+                        .result = bir::Value::named(bir::TypeKind::I32, "%out"),
+                        .result_value_name = result_name,
+                        .result_home = rv64_gpr_home(
+                            1, function_name, result_name, "t0", 5),
+                    },
+                },
+        });
+  }
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_inline_asm_insn_r_readwrite_module(
     std::string asm_text = ".insn r 0x33, 0, 0, %0, %0, %1",
     bool structured_metadata = true) {
@@ -11050,6 +11172,116 @@ int builds_structured_prepared_inline_asm_insn_r_readwrite_object() {
   return 0;
 }
 
+int builds_prepared_empty_tied_scalar_gpr_inline_asm_object() {
+  const auto prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected empty-template tied scalar GPR inline-asm object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected empty-template tied inline-asm object to publish text/main");
+  }
+  if (text->bytes.size() != 8 || text->size_bytes != 8 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 8) {
+    return fail("expected empty-template tied inline-asm object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00028513 ||
+      read_u32(text->bytes, 4) != 0x00008067) {
+    return fail("expected empty-template tied inline-asm to publish result home then return");
+  }
+  return 0;
+}
+
+int rejects_prepared_empty_tied_scalar_gpr_inline_asm_fail_closed_shapes() {
+  auto prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module(false);
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected empty-template tied inline-asm to require a complete carrier");
+  }
+
+  prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module();
+  prepared.inline_asm_carriers.functions[0].carriers[0].clobbers.push_back("memory");
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected empty-template tied inline-asm to reject clobbers");
+  }
+
+  prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module();
+  auto& non_empty_call =
+      std::get<bir::CallInst>(prepared.module.functions[0].blocks[0].insts[0]);
+  non_empty_call.inline_asm->asm_text = "addi %0, %0, 0";
+  prepared.inline_asm_carriers.functions[0].carriers[0].asm_text = "addi %0, %0, 0";
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected empty-template tied inline-asm packet to reject non-empty templates");
+  }
+
+  prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module();
+  auto& named_carrier = prepared.inline_asm_carriers.functions[0].carriers[0];
+  named_carrier.has_named_operand_references = true;
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected empty-template tied inline-asm to reject named operands");
+  }
+
+  prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module();
+  auto& modifier_carrier = prepared.inline_asm_carriers.functions[0].carriers[0];
+  modifier_carrier.has_template_modifiers = true;
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected empty-template tied inline-asm to reject template modifiers");
+  }
+
+  prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module();
+  auto& missing_result_carrier =
+      prepared.inline_asm_carriers.functions[0].carriers[0];
+  missing_result_carrier.result_home = std::nullopt;
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected empty-template tied inline-asm to reject missing result home");
+  }
+
+  prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module();
+  auto& missing_home_carrier = prepared.inline_asm_carriers.functions[0].carriers[0];
+  missing_home_carrier.operands[1].home = std::nullopt;
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected empty-template tied inline-asm to reject missing tied home");
+  }
+
+  prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module();
+  auto& mismatch_carrier = prepared.inline_asm_carriers.functions[0].carriers[0];
+  mismatch_carrier.operands[1].home =
+      rv64_gpr_home(2,
+                    mismatch_carrier.function_name,
+                    *mismatch_carrier.operands[1].value_name,
+                    "t1",
+                    6);
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected empty-template tied inline-asm to reject mismatched tied home");
+  }
+
+  prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module();
+  auto& vector_carrier = prepared.inline_asm_carriers.functions[0].carriers[0];
+  vector_carrier.operands[1].home =
+      rv64_vector_home(2,
+                       vector_carrier.function_name,
+                       *vector_carrier.operands[1].value_name,
+                       "v1",
+                       1);
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected empty-template tied inline-asm to reject vector homes");
+  }
+
+  prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module();
+  auto& f128_call =
+      std::get<bir::CallInst>(prepared.module.functions[0].blocks[0].insts[0]);
+  f128_call.result = bir::Value::named(bir::TypeKind::F128, "%out");
+  f128_call.return_type = bir::TypeKind::F128;
+  auto& f128_carrier = prepared.inline_asm_carriers.functions[0].carriers[0];
+  f128_carrier.result = bir::Value::named(bir::TypeKind::F128, "%out");
+  if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
+    return fail("expected empty-template tied inline-asm to reject F128 result");
+  }
+
+  return 0;
+}
+
 int substitutes_prepared_rv64_vector_inline_asm_base_registers() {
   prepare::PreparedInlineAsmCarrier carrier{
       .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete,
@@ -13127,6 +13359,8 @@ int main() {
   status |= builds_structured_prepared_inline_asm_insn_r_object_without_text_reparse();
   status |= builds_prepared_inline_asm_insn_r_tied_input_object();
   status |= builds_structured_prepared_inline_asm_insn_r_readwrite_object();
+  status |= builds_prepared_empty_tied_scalar_gpr_inline_asm_object();
+  status |= rejects_prepared_empty_tied_scalar_gpr_inline_asm_fail_closed_shapes();
   status |= substitutes_prepared_rv64_vector_inline_asm_base_registers();
   status |= substitutes_prepared_rv64_mixed_scalar_vector_inline_asm_registers();
   status |= substitutes_prepared_rv64_tied_vector_inline_asm_base_register();

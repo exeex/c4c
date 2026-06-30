@@ -2318,6 +2318,99 @@ std::optional<std::uint32_t> rv64_register_number_for_inline_asm_operand_token(
   return rv64_register_number_for_inline_asm_operand(carrier, operand_index);
 }
 
+bool prepared_register_identities_match(
+    const c4c::backend::prepare::PreparedTargetRegisterIdentity& lhs,
+    const c4c::backend::prepare::PreparedTargetRegisterIdentity& rhs) {
+  return lhs.target_arch == rhs.target_arch && lhs.bank == rhs.bank &&
+         lhs.register_class == rhs.register_class &&
+         lhs.physical_index == rhs.physical_index;
+}
+
+bool inline_asm_type_is_scalar_gpr_object_value(
+    c4c::backend::bir::TypeKind type) {
+  namespace bir = c4c::backend::bir;
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return true;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+    case bir::TypeKind::Vrm1:
+    case bir::TypeKind::Vrm2:
+    case bir::TypeKind::Vrm4:
+    case bir::TypeKind::Vrm8:
+      return false;
+  }
+  return false;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_empty_tied_scalar_gpr_inline_asm(
+    const c4c::backend::prepare::PreparedInlineAsmCarrier* carrier,
+    const c4c::backend::bir::CallInst& call) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+  if (carrier == nullptr ||
+      carrier->carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      !call.inline_asm.has_value() || call.callee != "llvm.inline_asm" ||
+      call.is_indirect || call.callee_value.has_value() ||
+      carrier->has_named_operand_references || carrier->has_template_modifiers ||
+      !carrier->clobbers.empty() || !carrier->missing_required_facts.empty() ||
+      !trim_ascii(carrier->asm_text).empty() ||
+      !trim_ascii(call.inline_asm->asm_text).empty() ||
+      carrier->constraints != "=r,0" || carrier->operands.size() != 2 ||
+      !carrier->result.has_value() || !carrier->result_home.has_value() ||
+      !inline_asm_type_is_scalar_gpr_object_value(carrier->result->type)) {
+    return std::nullopt;
+  }
+
+  const auto& output = carrier->operands[0];
+  const auto& input = carrier->operands[1];
+  if (output.kind != bir::InlineAsmOperandKind::RegisterOutput ||
+      output.constraint_index != 0 || output.constraint != "=r" ||
+      output.output_index != std::optional<std::size_t>{0} ||
+      output.register_class != bir::InlineAsmRegisterClass::General ||
+      output.register_group_width != 1 ||
+      input.kind != bir::InlineAsmOperandKind::TiedInput ||
+      input.constraint_index != 1 || input.constraint != "0" ||
+      !input.arg_index.has_value() ||
+      input.tied_output_index != std::optional<std::size_t>{0} ||
+      !input.home.has_value() || !input.tied_home_authority.has_value() ||
+      input.tied_home_authority->tied_output_index != 0) {
+    return std::nullopt;
+  }
+  if (input.value.has_value() &&
+      !inline_asm_type_is_scalar_gpr_object_value(input.value->type)) {
+    return std::nullopt;
+  }
+
+  const auto destination = gpr_register_number_for_home(*carrier->result_home);
+  const auto source = gpr_register_number_for_home(*input.home);
+  if (!destination.has_value() || !source.has_value() ||
+      !carrier->result_home->target_register_identity.has_value() ||
+      !input.home->target_register_identity.has_value()) {
+    return std::nullopt;
+  }
+  const auto& result_identity = *carrier->result_home->target_register_identity;
+  const auto& input_identity = *input.home->target_register_identity;
+  if (!prepared_register_identities_match(result_identity, input_identity) ||
+      !prepared_register_identities_match(
+          result_identity,
+          input.tied_home_authority->shared_register)) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  append_rv64_move(fragment, *destination, *source);
+  return fragment;
+}
+
 std::optional<std::vector<std::string_view>> split_rv64_insn_fields(
     std::string_view text,
     std::size_t expected_count) {
@@ -3218,6 +3311,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   namespace prepare = c4c::backend::prepare;
 
   if (call.inline_asm.has_value()) {
+    if (auto fragment =
+            fragment_for_empty_tied_scalar_gpr_inline_asm(inline_asm_carrier, call);
+        fragment.has_value()) {
+      return fragment;
+    }
     if (auto fragment = fragment_for_rv64_insn_d_inline_asm(inline_asm_carrier, call);
         fragment.has_value()) {
       return fragment;
