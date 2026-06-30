@@ -5601,6 +5601,107 @@ int check_global_memory_publication_authority_contract() {
   return 0;
 }
 
+int check_populated_immediate_global_store_source_publication() {
+  const auto run_case = [](bool coherent_destination) {
+    prepare::PreparedBirModule prepared;
+    const auto function_name =
+        prepared.names.function_names.intern(
+            coherent_destination ? "immediate_global_store"
+                                 : "immediate_global_store_unknown_layout");
+    const auto block_label = prepared.names.block_labels.intern("entry");
+    const auto symbol_name = prepared.names.link_names.intern("g.counter");
+
+    bir::Block block;
+    block.label = "entry";
+    block.label_id = block_label;
+    block.insts.push_back(bir::StoreGlobalInst{
+        .global_name = "g.counter",
+        .global_name_id = symbol_name,
+        .value = bir::Value::immediate_i32(1),
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                .base_name = "g.counter",
+                .size_bytes = 4,
+                .align_bytes = 4,
+                .base_link_name_id = symbol_name,
+            },
+    });
+
+    bir::Function function;
+    function.name = coherent_destination ? "immediate_global_store"
+                                         : "immediate_global_store_unknown_layout";
+    function.blocks = {block};
+    prepared.module.functions.push_back(function);
+    prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+        .function_name = function_name,
+        .blocks =
+            {
+                prepare::PreparedControlFlowBlock{
+                    .block_label = block_label,
+                    .terminator_kind = bir::TerminatorKind::Return,
+                },
+            },
+    });
+
+    auto address = make_proven_global_symbol_memory_address(symbol_name);
+    if (!coherent_destination) {
+      address.provenance.layout_authority =
+          bir::MemoryLayoutAuthorityKind::Unknown;
+    }
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_name,
+        .accesses =
+            {
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = block_label,
+                    .inst_index = std::size_t{0},
+                    .address = address,
+                },
+            },
+    });
+
+    prepare::populate_store_source_publication_plans(prepared);
+    const auto& records = prepared.store_source_publications.records;
+    if (records.size() != 1) {
+      return fail("expected one populated immediate global store-source record");
+    }
+    const auto& plan = records.front().plan;
+    if (!prepare::prepared_store_source_publication_available(plan) ||
+        plan.intent !=
+            prepare::PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||
+        plan.source_value.kind != bir::Value::Kind::Immediate ||
+        plan.source_value.type != bir::TypeKind::I32 ||
+        plan.source_value.immediate != 1 ||
+        plan.source_value_name != c4c::kInvalidValueName ||
+        plan.source_home != nullptr ||
+        plan.source_producer_block_label.has_value() ||
+        plan.source_producer_instruction_index.has_value()) {
+      return fail("expected populated immediate global store record to preserve literal source shape");
+    }
+
+    const bool explicit_immediate =
+        plan.source_producer_kind ==
+        prepare::PreparedEdgePublicationSourceProducerKind::Immediate;
+    const bool has_authority =
+        prepare::prepared_store_global_publication_has_authority(plan);
+    if (coherent_destination) {
+      if (!explicit_immediate || !has_authority) {
+        return fail("expected coherent immediate global store to publish explicit immediate authority");
+      }
+    } else if (explicit_immediate || has_authority) {
+      return fail("expected unknown-layout immediate global store to stay fail-closed");
+    }
+    return 0;
+  };
+
+  if (const int result = run_case(true); result != 0) {
+    return result;
+  }
+  return run_case(false);
+}
+
 int check_pointer_carrier_contract_value_homes() {
   auto fixture = make_pointer_carrier_contract_fixture();
   const auto homes = prepare::regalloc_detail::build_prepared_value_homes(
@@ -6892,6 +6993,10 @@ int main() {
   }
 
   if (const int rc = check_global_memory_publication_authority_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_populated_immediate_global_store_source_publication();
+      rc != 0) {
     return rc;
   }
 

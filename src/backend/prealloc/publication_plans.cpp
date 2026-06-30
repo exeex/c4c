@@ -1856,6 +1856,19 @@ bool prepared_store_global_publication_has_authority(
   return false;
 }
 
+void publish_store_global_immediate_source_if_authorized(
+    PreparedStoreSourcePublicationPlan& plan) {
+  if (plan.intent != PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||
+      plan.source_value.kind != bir::Value::Kind::Immediate ||
+      plan.destination_access == nullptr ||
+      !prepared_global_symbol_memory_has_publication_authority(
+          plan.destination_access->address)) {
+    return;
+  }
+  plan.source_producer_kind =
+      PreparedEdgePublicationSourceProducerKind::Immediate;
+}
+
 PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs) {
   PreparedStoreSourcePublicationPlan plan{
@@ -1976,7 +1989,7 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_global_publication(
   const bool duplicate_publication =
       !pending_publication && source_home != nullptr &&
       source_home->kind == PreparedValueHomeKind::StackSlot;
-  return plan_prepared_store_source_publication({
+  auto plan = plan_prepared_store_source_publication({
       .source_value = &store.value,
       .destination_access = access,
       .source_home = source_home,
@@ -1985,6 +1998,8 @@ PreparedStoreSourcePublicationPlan plan_prepared_store_global_publication(
       .stack_homes_only = stack_homes_only,
       .duplicate_publication = duplicate_publication,
   });
+  publish_store_global_immediate_source_if_authorized(plan);
+  return plan;
 }
 
 std::vector<PreparedStoreGlobalPublicationCandidate>
@@ -2171,6 +2186,9 @@ void populate_store_source_publication_plans(PreparedBirModule& prepared) {
             .source_producer = source_producer,
             .publication_instruction_index = inst_index,
         });
+        if (store_global != nullptr) {
+          publish_store_global_immediate_source_if_authorized(plan);
+        }
         append_store_source_record(prepared.store_source_publications,
                                    function_name,
                                    block_label,
