@@ -1877,6 +1877,8 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
     const c4c::backend::prepare::PreparedMoveResolution& move,
     std::uint32_t destination_register,
@@ -1889,6 +1891,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
     std::size_t stack_frame_bytes,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
   RiscvEncodedFragment fragment;
@@ -1947,6 +1951,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
           control_flow,
           function,
           lookups,
+          dependency_operand_authorities,
           move_bundle,
           move,
           *destination,
@@ -6091,6 +6096,504 @@ bool rv64_select_edge_binary_operand_is_register_or_immediate(
   return gpr_register_number_for_value(names, lookups, value).has_value();
 }
 
+const prepare::PreparedDependencyOperandAuthorityRecord*
+find_available_rv64_select_edge_cast_dependency_authority(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedEdgePublication& publication,
+    c4c::backend::prepare::PreparedDependencyOperandRole role,
+    const c4c::backend::bir::Value& dependency_operand) {
+  if (dependency_operand_authorities == nullptr ||
+      dependency_operand.kind != c4c::backend::bir::Value::Kind::Named) {
+    return nullptr;
+  }
+  const auto dependency_name = names.value_names.find(dependency_operand.name);
+  if (dependency_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  for (const auto& record : dependency_operand_authorities->records) {
+    const auto& authority = record.authority;
+    if (record.function_name != function_name ||
+        record.predecessor_label != publication.predecessor_label ||
+        record.successor_label != publication.successor_label ||
+        record.source_producer_kind !=
+            prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+        record.source_producer_kind != publication.source_producer_kind ||
+        record.source_producer_block_label != publication.source_producer_block_label ||
+        record.source_producer_instruction_index !=
+            publication.source_producer_instruction_index ||
+        authority.policy !=
+            prepare::PreparedDependencyOperandMaterializationPolicy::
+                RematerializeCastFromSource ||
+        !prepare::prepared_dependency_operand_authority_available(authority) ||
+        authority.operand_role != role ||
+        authority.destination_value_id != publication.destination_value_id ||
+        authority.edge_source_value_id != publication.source_value_id ||
+        authority.dependency_value_name != dependency_name ||
+        !authority.cast_source_value_id.has_value() ||
+        !record.cast_producer_block_label.has_value() ||
+        !record.cast_producer_instruction_index.has_value()) {
+      continue;
+    }
+    if (record.cast_source_home_kind !=
+            prepare::PreparedValueHomeKind::Register &&
+        record.cast_source_home_kind !=
+            prepare::PreparedValueHomeKind::RematerializableImmediate) {
+      continue;
+    }
+    return &record;
+  }
+  return nullptr;
+}
+
+bool rv64_select_edge_binary_operand_is_register_immediate_or_cast_authorized(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedEdgePublication& publication,
+    c4c::backend::prepare::PreparedDependencyOperandRole role,
+    const c4c::backend::bir::Value& value) {
+  return rv64_select_edge_binary_operand_is_register_or_immediate(names,
+                                                                  lookups,
+                                                                  value) ||
+         find_available_rv64_select_edge_cast_dependency_authority(
+             names,
+             function_name,
+             dependency_operand_authorities,
+             publication,
+             role,
+             value) != nullptr;
+}
+
+bool rv64_select_edge_binary_has_available_cast_dependency_authority(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedEdgePublication& publication,
+    const c4c::backend::bir::BinaryInst& binary) {
+  return find_available_rv64_select_edge_cast_dependency_authority(
+             names,
+             function_name,
+             dependency_operand_authorities,
+             publication,
+             prepare::PreparedDependencyOperandRole::Lhs,
+             binary.lhs) != nullptr ||
+         find_available_rv64_select_edge_cast_dependency_authority(
+             names,
+             function_name,
+             dependency_operand_authorities,
+             publication,
+             prepare::PreparedDependencyOperandRole::Rhs,
+             binary.rhs) != nullptr;
+}
+
+bool append_rv64_compare_registers_to_register(
+    RiscvEncodedFragment& fragment,
+    c4c::backend::bir::BinaryOpcode opcode,
+    std::uint32_t destination_register,
+    std::uint32_t lhs_register,
+    std::uint32_t rhs_register) {
+  switch (opcode) {
+    case c4c::backend::bir::BinaryOpcode::Eq:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                4,
+                                lhs_register,
+                                rhs_register,
+                                0));
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                3,
+                                destination_register,
+                                1));
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Ne:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                4,
+                                lhs_register,
+                                rhs_register,
+                                0));
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                3,
+                                0,
+                                destination_register,
+                                0));
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Slt:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                2,
+                                lhs_register,
+                                rhs_register,
+                                0));
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Sgt:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                2,
+                                rhs_register,
+                                lhs_register,
+                                0));
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Sle:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                2,
+                                rhs_register,
+                                lhs_register,
+                                0));
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                4,
+                                destination_register,
+                                1));
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Sge:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                2,
+                                lhs_register,
+                                rhs_register,
+                                0));
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                4,
+                                destination_register,
+                                1));
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Ult:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                3,
+                                lhs_register,
+                                rhs_register,
+                                0));
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Ugt:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                3,
+                                rhs_register,
+                                lhs_register,
+                                0));
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Ule:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                3,
+                                rhs_register,
+                                lhs_register,
+                                0));
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                4,
+                                destination_register,
+                                1));
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Uge:
+      append_le32(fragment.bytes,
+                  encode_r_type(0x33,
+                                destination_register,
+                                3,
+                                lhs_register,
+                                rhs_register,
+                                0));
+      append_le32(fragment.bytes,
+                  encode_i_type(0x13,
+                                destination_register,
+                                4,
+                                destination_register,
+                                1));
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool append_rv64_materialize_cast_dependency_authority(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecord& record,
+    std::uint32_t destination_register) {
+  if (record.cast_source_home_kind ==
+      prepare::PreparedValueHomeKind::RematerializableImmediate) {
+    if (!record.cast_source_immediate_i32.has_value()) {
+      return false;
+    }
+    append_rv64_load_immediate(fragment,
+                               destination_register,
+                               *record.cast_source_immediate_i32);
+    return true;
+  }
+  if (record.cast_source_home_kind == prepare::PreparedValueHomeKind::Register &&
+      record.cast_source_register_name.has_value()) {
+    const auto source = rv64_register_number(*record.cast_source_register_name);
+    if (!source.has_value()) {
+      return false;
+    }
+    append_rv64_move(fragment, destination_register, *source);
+    return true;
+  }
+  return false;
+}
+
+std::optional<std::uint32_t> rv64_cast_dependency_authority_source_register(
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecord& record) {
+  if (record.cast_source_home_kind != prepare::PreparedValueHomeKind::Register ||
+      !record.cast_source_register_name.has_value()) {
+    return std::nullopt;
+  }
+  return rv64_register_number(*record.cast_source_register_name);
+}
+
+std::optional<std::uint32_t>
+rv64_select_edge_dependency_operand_current_source_register(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecord*
+        authority) {
+  if (authority != nullptr) {
+    return rv64_cast_dependency_authority_source_register(*authority);
+  }
+  return gpr_register_number_for_value(names, lookups, value);
+}
+
+bool prepared_cast_is_available_select_edge_dependency_authority_source(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::bir::Function& function,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords&
+        dependency_operand_authorities,
+    const c4c::backend::bir::CastInst& cast) {
+  if (cast.result.kind != c4c::backend::bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto result_name = names.value_names.find(cast.result.name);
+  if (result_name == c4c::kInvalidValueName) {
+    return false;
+  }
+  const auto matching_record = std::find_if(
+      dependency_operand_authorities.records.begin(),
+      dependency_operand_authorities.records.end(),
+      [&](const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecord&
+              record) {
+        const auto& authority = record.authority;
+        return record.function_name == function_name &&
+               record.cast_producer_block_label == block_label &&
+               record.cast_producer_instruction_index == instruction_index &&
+               authority.policy ==
+                   prepare::PreparedDependencyOperandMaterializationPolicy::
+                       RematerializeCastFromSource &&
+               prepare::prepared_dependency_operand_authority_available(
+                   authority) &&
+               authority.dependency_value_name == result_name &&
+               record.source_producer_kind ==
+                   prepare::PreparedEdgePublicationSourceProducerKind::Binary;
+      });
+  if (matching_record == dependency_operand_authorities.records.end() ||
+      !matching_record->source_producer_block_label.has_value() ||
+      !matching_record->source_producer_instruction_index.has_value()) {
+    return false;
+  }
+
+  const auto is_authorized_source_producer_operand =
+      [&](c4c::BlockLabelId use_block_label,
+          std::size_t use_instruction_index,
+          prepare::PreparedDependencyOperandRole role) {
+        return matching_record->source_producer_block_label == use_block_label &&
+               matching_record->source_producer_instruction_index ==
+                   use_instruction_index &&
+               matching_record->authority.operand_role == role;
+      };
+  const auto uses_cast_result = [&](const c4c::backend::bir::Value& value) {
+    return prepared_bir_value_has_name(names, value, result_name);
+  };
+
+  for (const auto& block : function.blocks) {
+    for (std::size_t i = 0; i < block.insts.size(); ++i) {
+      const auto& inst = block.insts.at(i);
+      if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+        if (uses_cast_result(binary->lhs) &&
+            !is_authorized_source_producer_operand(
+                block.label_id,
+                i,
+                prepare::PreparedDependencyOperandRole::Lhs)) {
+          return false;
+        }
+        if (uses_cast_result(binary->rhs) &&
+            !is_authorized_source_producer_operand(
+                block.label_id,
+                i,
+                prepare::PreparedDependencyOperandRole::Rhs)) {
+          return false;
+        }
+        continue;
+      }
+      if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&inst)) {
+        if (uses_cast_result(select->lhs) || uses_cast_result(select->rhs) ||
+            uses_cast_result(select->true_value) ||
+            uses_cast_result(select->false_value)) {
+          return false;
+        }
+        continue;
+      }
+      if (const auto* cast_inst = std::get_if<c4c::backend::bir::CastInst>(&inst)) {
+        if (uses_cast_result(cast_inst->operand)) {
+          return false;
+        }
+        continue;
+      }
+      if (const auto* phi = std::get_if<c4c::backend::bir::PhiInst>(&inst)) {
+        for (const auto& incoming : phi->incomings) {
+          if (uses_cast_result(incoming.value)) {
+            return false;
+          }
+        }
+        continue;
+      }
+      if (const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst)) {
+        if (call->callee_value.has_value() &&
+            uses_cast_result(*call->callee_value)) {
+          return false;
+        }
+        for (const auto& arg : call->args) {
+          if (uses_cast_result(arg)) {
+            return false;
+          }
+        }
+        continue;
+      }
+      if (const auto* store = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst)) {
+        if (uses_cast_result(store->value)) {
+          return false;
+        }
+        continue;
+      }
+      if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
+        if (uses_cast_result(store->value)) {
+          return false;
+        }
+        continue;
+      }
+    }
+    if (block.terminator.value.has_value() &&
+        uses_cast_result(*block.terminator.value)) {
+      return false;
+    }
+    if (block.terminator.kind == c4c::backend::bir::TerminatorKind::CondBranch &&
+        uses_cast_result(block.terminator.condition)) {
+      return false;
+    }
+    for (const auto& lane : block.terminator.return_lanes) {
+      if (uses_cast_result(lane)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_select_edge_binary_with_cast_dependencies(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedEdgePublication& publication,
+    const c4c::backend::bir::BinaryInst& binary,
+    std::uint32_t destination_register,
+    std::size_t stack_frame_bytes) {
+  const auto* lhs_authority =
+      find_available_rv64_select_edge_cast_dependency_authority(
+          names,
+          function_name,
+          dependency_operand_authorities,
+          publication,
+          prepare::PreparedDependencyOperandRole::Lhs,
+          binary.lhs);
+  const auto* rhs_authority =
+      find_available_rv64_select_edge_cast_dependency_authority(
+          names,
+          function_name,
+          dependency_operand_authorities,
+          publication,
+          prepare::PreparedDependencyOperandRole::Rhs,
+          binary.rhs);
+  if (lhs_authority == nullptr && rhs_authority == nullptr) {
+    return std::nullopt;
+  }
+  const auto lhs_source_register =
+      rv64_select_edge_dependency_operand_current_source_register(names,
+                                                                  lookups,
+                                                                  binary.lhs,
+                                                                  lhs_authority);
+  const auto rhs_source_register =
+      rv64_select_edge_dependency_operand_current_source_register(names,
+                                                                  lookups,
+                                                                  binary.rhs,
+                                                                  rhs_authority);
+  if (rhs_source_register.has_value() && *rhs_source_register == 28 &&
+      (!lhs_source_register.has_value() || *lhs_source_register != 28)) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  const auto materialize_operand =
+      [&](const c4c::backend::bir::Value& value,
+          const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecord*
+              authority,
+          std::uint32_t register_number) -> bool {
+    if (authority != nullptr) {
+      return append_rv64_materialize_cast_dependency_authority(fragment,
+                                                              *authority,
+                                                              register_number);
+    }
+    return append_rv64_move_value_to_register(fragment,
+                                             register_number,
+                                             stack_layout,
+                                             names,
+                                             lookups,
+                                             value,
+                                             stack_frame_bytes);
+  };
+
+  if (!materialize_operand(binary.lhs, lhs_authority, 28) ||
+      !materialize_operand(binary.rhs, rhs_authority, 29) ||
+      !append_rv64_compare_registers_to_register(fragment,
+                                                 binary.opcode,
+                                                 destination_register,
+                                                 28,
+                                                 29)) {
+    return std::nullopt;
+  }
+  return fragment;
+}
+
 bool prepared_select_edge_binary_source_has_only_carrier_uses(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
@@ -6346,6 +6849,8 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
     const c4c::backend::prepare::PreparedMoveResolution& move,
     std::uint32_t destination_register,
@@ -6379,10 +6884,22 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
   }
   if (!c4c::backend::bir::is_compare_opcode(binary->opcode) ||
       binary->result.type != c4c::backend::bir::TypeKind::I32 ||
-      !rv64_select_edge_binary_operand_is_register_or_immediate(
-          names, lookups, binary->lhs) ||
-      !rv64_select_edge_binary_operand_is_register_or_immediate(
-          names, lookups, binary->rhs) ||
+      !rv64_select_edge_binary_operand_is_register_immediate_or_cast_authorized(
+          names,
+          lookups,
+          control_flow.function_name,
+          dependency_operand_authorities,
+          *intent.publication,
+          prepare::PreparedDependencyOperandRole::Lhs,
+          binary->lhs) ||
+      !rv64_select_edge_binary_operand_is_register_immediate_or_cast_authorized(
+          names,
+          lookups,
+          control_flow.function_name,
+          dependency_operand_authorities,
+          *intent.publication,
+          prepare::PreparedDependencyOperandRole::Rhs,
+          binary->rhs) ||
       !prepared_select_edge_binary_source_has_only_carrier_uses(
           names,
           control_flow,
@@ -6414,13 +6931,34 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
   if (!fragment.has_value()) {
     return {.matched = true};
   }
-  auto edge_fragment = fragment_for_prepared_binary(stack_layout,
-                                                    names,
-                                                    lookups,
-                                                    edge_binary,
-                                                    stack_frame_bytes);
+  auto edge_fragment =
+      fragment_for_prepared_select_edge_binary_with_cast_dependencies(
+          stack_layout,
+          names,
+          lookups,
+          control_flow.function_name,
+          dependency_operand_authorities,
+          *intent.publication,
+          edge_binary,
+          destination_register,
+          stack_frame_bytes);
   if (!edge_fragment.has_value()) {
-    return {.matched = true};
+    if (rv64_select_edge_binary_has_available_cast_dependency_authority(
+            names,
+            control_flow.function_name,
+            dependency_operand_authorities,
+            *intent.publication,
+            edge_binary)) {
+      return {.matched = true};
+    }
+    edge_fragment = fragment_for_prepared_binary(stack_layout,
+                                                 names,
+                                                 lookups,
+                                                 edge_binary,
+                                                 stack_frame_bytes);
+    if (!edge_fragment.has_value()) {
+      return {.matched = true};
+    }
   }
   append_fragment(*fragment, std::move(*edge_fragment));
   return {.matched = true, .fragment = std::move(fragment)};
@@ -6431,6 +6969,8 @@ bool prepared_binary_is_select_edge_owned_source(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
     const c4c::backend::bir::BinaryInst& binary) {
   if (lookups == nullptr || binary.result.kind != c4c::backend::bir::Value::Kind::Named) {
     return false;
@@ -6454,10 +6994,22 @@ bool prepared_binary_is_select_edge_owned_source(
             publication.join_transfer->join_block_label ||
         !c4c::backend::bir::is_compare_opcode(binary.opcode) ||
         binary.result.type != c4c::backend::bir::TypeKind::I32 ||
-        !rv64_select_edge_binary_operand_is_register_or_immediate(
-            names, lookups, binary.lhs) ||
-        !rv64_select_edge_binary_operand_is_register_or_immediate(
-            names, lookups, binary.rhs) ||
+        !rv64_select_edge_binary_operand_is_register_immediate_or_cast_authorized(
+            names,
+            lookups,
+            control_flow.function_name,
+            dependency_operand_authorities,
+            publication,
+            prepare::PreparedDependencyOperandRole::Lhs,
+            binary.lhs) ||
+        !rv64_select_edge_binary_operand_is_register_immediate_or_cast_authorized(
+            names,
+            lookups,
+            control_flow.function_name,
+            dependency_operand_authorities,
+            publication,
+            prepare::PreparedDependencyOperandRole::Rhs,
+            binary.rhs) ||
         !prepared_select_edge_binary_source_has_only_carrier_uses(
             names,
             control_flow,
@@ -7551,6 +8103,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups& lookups,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords&
+        dependency_operand_authorities,
     const c4c::backend::prepare::PreparedInlineAsmCarrierFunction* inline_asm_carriers,
     const c4c::backend::bir::Block& block,
     c4c::BlockLabelId prepared_block_label,
@@ -7568,6 +8122,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                       control_flow,
                                                       function,
                                                       &lookups,
+                                                      &dependency_operand_authorities,
                                                       *binary)) {
         return RiscvEncodedFragment{};
       }
@@ -7577,6 +8132,19 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
               *binary)) {
         return RiscvEncodedFragment{};
       }
+    } else if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst)) {
+      if (prepared_cast_is_available_select_edge_dependency_authority_source(
+              prepared.names,
+              control_flow.function_name,
+              function,
+              prepared_block_label,
+              instruction_index,
+              dependency_operand_authorities,
+              *cast)) {
+        return RiscvEncodedFragment{};
+      }
+    }
+    if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
       if (auto fragment = fragment_for_prepared_frame_address_materialization(
               prepared.stack_layout,
               prepared.names,
@@ -8003,6 +8571,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
         "unsupported_instruction_fragment: atomic operations are not supported by the RV64 object route");
   }
   const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
+  const auto dependency_operand_authorities =
+      prepare::collect_prepared_dependency_operand_authorities(prepared);
   RiscvObjectFunction object_function{
       .name = function_name,
       .global = true,
@@ -8170,6 +8740,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                 control_flow,
                                                 *function,
                                                 &lookups,
+                                                &dependency_operand_authorities,
                                                 *stack_frame_bytes,
                                                 *classification.move_bundle);
           if (!fragment.has_value()) {
@@ -8199,6 +8770,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                            control_flow,
                                                            *function,
                                                            lookups,
+                                                           dependency_operand_authorities,
                                                            inline_asm_carriers,
                                                            *block,
                                                            prepared_block_label,
@@ -8289,6 +8861,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                        control_flow,
                                                        *function,
                                                        lookups,
+                                                       dependency_operand_authorities,
                                                        inline_asm_carriers,
                                                        block,
                                                        prepared_block_label,

@@ -5648,6 +5648,76 @@ make_prepared_join_transfer_select_with_dependent_edge_compare_source_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_module() {
+  auto prepared = make_prepared_join_transfer_select_with_edge_compare_source_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto ptr_lhs_name = prepared.names.value_names.intern("%ptr.lhs");
+  const auto cast_source_name = prepared.names.value_names.intern("%rhs.cast.source");
+  const auto cast_result_name = prepared.names.value_names.intern("%rhs.ptr");
+  auto& join = prepared.module.functions.front().blocks.at(3);
+  auto* compare = std::get_if<bir::BinaryInst>(&join.insts.front());
+  if (compare == nullptr) {
+    return prepared;
+  }
+
+  join.insts.insert(join.insts.begin(),
+                    bir::CastInst{
+                        .opcode = bir::CastOpcode::IntToPtr,
+                        .result = bir::Value::named(bir::TypeKind::Ptr, "%rhs.ptr"),
+                        .operand =
+                            bir::Value::named(bir::TypeKind::I32, "%rhs.cast.source"),
+                    });
+  compare = std::get_if<bir::BinaryInst>(&join.insts.at(1));
+  compare->opcode = bir::BinaryOpcode::Ule;
+  compare->operand_type = bir::TypeKind::Ptr;
+  compare->lhs = bir::Value::named(bir::TypeKind::Ptr, "%ptr.lhs");
+  compare->rhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs.ptr");
+
+  auto& locations = prepared.value_locations.functions.front();
+  locations.value_homes.push_back(
+      rv64_gpr_home(5, function_name, ptr_lhs_name, "s1", 9));
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 6,
+      .function_name = function_name,
+      .value_name = cast_source_name,
+      .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+      .immediate_i32 = -2147483643,
+  });
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 7,
+      .function_name = function_name,
+      .value_name = cast_result_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{8},
+      .offset_bytes = 0,
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+  });
+  prepared.stack_layout.frame_size_bytes = 8;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.objects = {prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{8},
+      .function_name = function_name,
+      .value_name = cast_result_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  }};
+  prepared.stack_layout.frame_slots = {prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{8},
+      .object_id = prepare::PreparedObjectId{8},
+      .function_name = function_name,
+      .offset_bytes = 0,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  }};
+  return prepared;
+}
+
 bir::InlineAsmOperandMetadata inline_asm_register_operand(
     bir::InlineAsmOperandKind kind,
     std::size_t constraint_index,
@@ -11087,6 +11157,162 @@ int materializes_published_prepared_join_transfer_select_dependent_edge_compare_
   return 0;
 }
 
+int materializes_published_prepared_join_transfer_select_cast_dependency_source_object() {
+  const auto prepared =
+      make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail(
+        "expected cast-dependency edge-compare source prepared join-transfer select RV64 object module to build: " +
+        result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  const auto* false_copy_label = object::find_symbol(*module, ".Lmain_pred_false");
+  const auto* join_label = object::find_symbol(*module, ".Lmain_join");
+  if (text == nullptr || main_symbol == nullptr || false_copy_label == nullptr ||
+      join_label == nullptr) {
+    return fail("expected cast-dependency edge-compare join object to publish text/main/block labels");
+  }
+  if (text->bytes.size() < 40 || main_symbol->value != 0 ||
+      join_label->value <= false_copy_label->value) {
+    return fail("expected cast-dependency edge-compare join object text layout");
+  }
+  bool saw_cast_source_materialization = false;
+  bool saw_unsigned_compare = false;
+  bool saw_compare_inversion = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
+    const auto instruction = read_u32(text->bytes, offset);
+    const auto opcode = instruction & 0x7fU;
+    const auto rd = (instruction >> 7) & 0x1fU;
+    const auto funct3 = (instruction >> 12) & 0x7U;
+    const auto rs1 = (instruction >> 15) & 0x1fU;
+    const auto rs2 = (instruction >> 20) & 0x1fU;
+    if (rd == 29 && opcode != 0x03U) {
+      saw_cast_source_materialization = true;
+    }
+    if (opcode == 0x33U && rd == 10 && funct3 == 3 && rs1 == 29 &&
+        rs2 == 28) {
+      saw_unsigned_compare = true;
+    }
+    if (opcode == 0x13U && rd == 10 && funct3 == 4 && rs1 == 10 &&
+        ((instruction >> 20) & 0xfffU) == 1) {
+      saw_compare_inversion = true;
+    }
+  }
+  if (!saw_cast_source_materialization || !saw_unsigned_compare ||
+      !saw_compare_inversion) {
+    return fail("expected cast dependency to materialize RHS then emit ULE compare into edge result");
+  }
+  return 0;
+}
+
+int rejects_prepared_join_transfer_select_cast_dependency_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  auto prepared =
+      make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_module();
+  prepared.module.functions.front().blocks.at(3).insts.erase(
+      prepared.module.functions.front().blocks.at(3).insts.begin());
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_module();
+  auto& cast_source_home =
+      prepared.value_locations.functions.front().value_homes.at(
+          prepared.value_locations.functions.front().value_homes.size() - 2);
+  cast_source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  cast_source_home.register_name.reset();
+  cast_source_home.target_register_identity.reset();
+  cast_source_home.slot_id = prepare::PreparedFrameSlotId{9};
+  cast_source_home.offset_bytes = 8;
+  cast_source_home.size_bytes = std::size_t{4};
+  cast_source_home.align_bytes = std::size_t{4};
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.value_locations.functions.front()
+      .value_homes.back()
+      .offset_bytes = 0;
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{9},
+      .object_id = prepare::PreparedObjectId{9},
+      .function_name = prepared.names.function_names.find("main"),
+      .offset_bytes = 8,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = prepare::PreparedObjectId{9},
+      .function_name = prepared.names.function_names.find("main"),
+      .value_name = cast_source_home.value_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_module();
+  prepared.module.functions.front().blocks.at(3).insts.insert(
+      prepared.module.functions.front().blocks.at(3).insts.begin() + 2,
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Eq,
+          .result = bir::Value::named(bir::TypeKind::I32, "%extra.use"),
+          .operand_type = bir::TypeKind::Ptr,
+          .lhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs.ptr"),
+          .rhs = bir::Value::named(bir::TypeKind::Ptr, "%ptr.lhs"),
+      });
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") !=
+      0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_module();
+  auto* lhs_authority_compare = std::get_if<bir::BinaryInst>(
+      &prepared.module.functions.front().blocks.at(3).insts.at(1));
+  if (lhs_authority_compare != nullptr) {
+    lhs_authority_compare->lhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs.ptr");
+    lhs_authority_compare->rhs = bir::Value::named(bir::TypeKind::Ptr, "%ptr.lhs");
+  }
+  const auto ptr_lhs_name = prepared.names.value_names.find("%ptr.lhs");
+  for (auto& home : prepared.value_locations.functions.front().value_homes) {
+    if (home.value_name == ptr_lhs_name) {
+      home.register_name = "t3";
+      home.target_register_identity = prepare::PreparedTargetRegisterIdentity{
+          .target_arch = c4c::TargetArch::Riscv64,
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .register_class = prepare::PreparedRegisterClass::General,
+          .physical_index = 28,
+      };
+    }
+  }
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_module();
+  auto* compare = std::get_if<bir::BinaryInst>(
+      &prepared.module.functions.front().blocks.at(3).insts.at(1));
+  if (compare != nullptr) {
+    compare->rhs = bir::Value::named(bir::TypeKind::Ptr, "%other.ptr");
+  }
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+  return 0;
+}
+
 int rejects_published_prepared_join_transfer_select_ambiguous_publications_object() {
   auto stack_source = make_prepared_join_transfer_select_with_published_copies_module();
   auto& false_source_home = stack_source.value_locations.functions.front().value_homes.at(1);
@@ -14367,6 +14593,9 @@ int main() {
   status |= materializes_published_prepared_join_transfer_select_edge_compare_source_object();
   status |=
       materializes_published_prepared_join_transfer_select_dependent_edge_compare_source_object();
+  status |=
+      materializes_published_prepared_join_transfer_select_cast_dependency_source_object();
+  status |= rejects_prepared_join_transfer_select_cast_dependency_fail_closed_shapes();
   status |= rejects_published_prepared_join_transfer_select_ambiguous_publications_object();
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_frame_slot_value_arg_call_object();
