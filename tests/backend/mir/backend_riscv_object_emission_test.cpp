@@ -4232,6 +4232,140 @@ prepare::PreparedBirModule make_prepared_same_width_integer_zext_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_pointer_cast_module(
+    bir::CastOpcode opcode = bir::CastOpcode::IntToPtr,
+    bir::TypeKind operand_type = bir::TypeKind::I64,
+    bir::TypeKind result_type = bir::TypeKind::Ptr,
+    prepare::PreparedValueHomeKind source_home_kind =
+        prepare::PreparedValueHomeKind::Register,
+    prepare::PreparedValueHomeKind result_home_kind =
+        prepare::PreparedValueHomeKind::Register,
+    bool immediate_operand = false,
+    bool omit_source_home = false,
+    bool omit_result_home = false) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("pointer_cast");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("%in");
+  const auto result_name = prepared.names.value_names.intern("%out");
+  const std::size_t operand_size_bytes =
+      operand_type == bir::TypeKind::I64 || operand_type == bir::TypeKind::Ptr
+          ? 8
+          : 4;
+  const std::size_t result_size_bytes =
+      result_type == bir::TypeKind::I64 || result_type == bir::TypeKind::Ptr
+          ? 8
+          : 4;
+
+  const bool rematerialized_source =
+      source_home_kind == prepare::PreparedValueHomeKind::RematerializableImmediate;
+  const auto operand = immediate_operand
+                           ? bir::Value::immediate_i32(12)
+                           : bir::Value::named(operand_type, "%in");
+  std::vector<bir::Inst> insts;
+  if (rematerialized_source) {
+    insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(operand_type, "%in"),
+        .operand_type = operand_type,
+        .lhs = bir::Value::immediate_i32(5),
+        .rhs = bir::Value::immediate_i32(7),
+    });
+  }
+  insts.push_back(bir::CastInst{
+      .opcode = opcode,
+      .result = bir::Value::named(result_type, "%out"),
+      .operand = operand,
+  });
+  bir::Block entry{
+      .label = "entry",
+      .insts = std::move(insts),
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "pointer_cast",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = immediate_operand || rematerialized_source
+                    ? std::vector<bir::Param>{}
+                    : std::vector<bir::Param>{bir::Param{
+                          .type = operand_type,
+                          .name = "%in",
+                          .size_bytes = operand_size_bytes,
+                          .align_bytes = operand_size_bytes,
+                      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+
+  std::vector<prepare::PreparedValueHome> homes;
+  prepare::PreparedValueHome source_home{
+      .value_id = 1,
+      .function_name = function_name,
+      .value_name = source_name,
+      .kind = source_home_kind,
+      .register_name = std::string{"t0"},
+  };
+  if (source_home_kind == prepare::PreparedValueHomeKind::StackSlot) {
+    source_home.register_name = std::nullopt;
+    source_home.slot_id = prepare::PreparedFrameSlotId{0};
+    source_home.offset_bytes = 0;
+    source_home.size_bytes = operand_size_bytes;
+    source_home.align_bytes = operand_size_bytes;
+  }
+  if (source_home_kind ==
+      prepare::PreparedValueHomeKind::RematerializableImmediate) {
+    source_home.register_name = std::nullopt;
+    source_home.immediate_i32 = 12;
+  }
+  if (source_home_kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset) {
+    source_home.pointer_base_value_name = source_name;
+    source_home.pointer_byte_delta = 0;
+  }
+  if (!immediate_operand && !omit_source_home) {
+    homes.push_back(std::move(source_home));
+  }
+
+  prepare::PreparedValueHome result_home{
+      .value_id = 2,
+      .function_name = function_name,
+      .value_name = result_name,
+      .kind = result_home_kind,
+      .register_name = std::string{"s2"},
+  };
+  if (result_home_kind == prepare::PreparedValueHomeKind::StackSlot) {
+    result_home.register_name = std::nullopt;
+    result_home.slot_id = prepare::PreparedFrameSlotId{1};
+    result_home.offset_bytes = 8;
+    result_home.size_bytes = result_size_bytes;
+    result_home.align_bytes = result_size_bytes;
+  }
+  if (result_home_kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset) {
+    result_home.pointer_base_value_name = source_name;
+    result_home.pointer_byte_delta = 0;
+  }
+  if (!omit_result_home) {
+    homes.push_back(std::move(result_home));
+  }
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = std::move(homes),
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_global_store_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -12882,6 +13016,181 @@ int rejects_prepared_same_width_zext_fail_closed_shapes() {
   return 0;
 }
 
+int emits_prepared_pointer_cast_gpr_movement_object() {
+  const auto inttoptr_prepared = make_prepared_pointer_cast_module();
+  const auto inttoptr_module =
+      rv64::build_rv64_prepared_text_object_module(inttoptr_prepared);
+  if (!inttoptr_module.has_value()) {
+    return fail("expected prepared inttoptr GPR cast to build");
+  }
+  const auto* inttoptr_text = object::find_section(*inttoptr_module, ".text");
+  if (inttoptr_text == nullptr || inttoptr_text->bytes.size() < 8) {
+    return fail("expected inttoptr GPR copy and return text");
+  }
+  const auto inttoptr_copy = read_u32(inttoptr_text->bytes, 0);
+  if ((inttoptr_copy & 0x7fU) != 0x13U ||
+      ((inttoptr_copy >> 7) & 0x1fU) != 18U ||
+      ((inttoptr_copy >> 12) & 0x7U) != 0U ||
+      ((inttoptr_copy >> 15) & 0x1fU) != 5U ||
+      ((inttoptr_copy >> 20) & 0xfffU) != 0U) {
+    return fail("expected inttoptr to publish prepared GPR copy");
+  }
+
+  const auto ptrtoint_prepared = make_prepared_pointer_cast_module(
+      bir::CastOpcode::PtrToInt,
+      bir::TypeKind::Ptr,
+      bir::TypeKind::I64);
+  const auto ptrtoint_module =
+      rv64::build_rv64_prepared_text_object_module(ptrtoint_prepared);
+  if (!ptrtoint_module.has_value()) {
+    return fail("expected prepared ptrtoint GPR cast to build");
+  }
+  const auto* ptrtoint_text = object::find_section(*ptrtoint_module, ".text");
+  if (ptrtoint_text == nullptr || ptrtoint_text->bytes.size() < 8) {
+    return fail("expected ptrtoint GPR copy and return text");
+  }
+  const auto ptrtoint_copy = read_u32(ptrtoint_text->bytes, 0);
+  if ((ptrtoint_copy & 0x7fU) != 0x13U ||
+      ((ptrtoint_copy >> 7) & 0x1fU) != 18U ||
+      ((ptrtoint_copy >> 12) & 0x7U) != 0U ||
+      ((ptrtoint_copy >> 15) & 0x1fU) != 5U ||
+      ((ptrtoint_copy >> 20) & 0xfffU) != 0U) {
+    return fail("expected ptrtoint to publish prepared GPR copy");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*ptrtoint_module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize pointer cast object");
+  }
+  return 0;
+}
+
+int emits_prepared_pointer_cast_rematerialized_source_object() {
+  const auto immediate_prepared = make_prepared_pointer_cast_module(
+      bir::CastOpcode::IntToPtr,
+      bir::TypeKind::I32,
+      bir::TypeKind::Ptr,
+      prepare::PreparedValueHomeKind::Register,
+      prepare::PreparedValueHomeKind::Register,
+      true);
+  const auto immediate_module =
+      rv64::build_rv64_prepared_text_object_module(immediate_prepared);
+  if (!immediate_module.has_value()) {
+    return fail("expected prepared literal inttoptr source to build");
+  }
+  const auto* immediate_text = object::find_section(*immediate_module, ".text");
+  if (immediate_text == nullptr || immediate_text->bytes.size() < 8) {
+    return fail("expected literal inttoptr materialization and return text");
+  }
+  const auto immediate_load = read_u32(immediate_text->bytes, 0);
+  if ((immediate_load & 0x7fU) != 0x13U ||
+      ((immediate_load >> 7) & 0x1fU) != 18U ||
+      ((immediate_load >> 12) & 0x7U) != 0U ||
+      ((immediate_load >> 15) & 0x1fU) != 0U ||
+      ((immediate_load >> 20) & 0xfffU) != 12U) {
+    return fail("expected literal inttoptr to materialize prepared result GPR");
+  }
+
+  const auto remat_prepared = make_prepared_pointer_cast_module(
+      bir::CastOpcode::IntToPtr,
+      bir::TypeKind::I32,
+      bir::TypeKind::Ptr,
+      prepare::PreparedValueHomeKind::RematerializableImmediate);
+  const auto remat_module =
+      rv64::build_rv64_prepared_text_object_module(remat_prepared);
+  if (!remat_module.has_value()) {
+    return fail("expected prepared rematerialized inttoptr source to build");
+  }
+  const auto* remat_text = object::find_section(*remat_module, ".text");
+  if (remat_text == nullptr || remat_text->bytes.size() < 8) {
+    return fail("expected rematerialized inttoptr materialization and return text");
+  }
+  const auto remat_load = read_u32(remat_text->bytes, 0);
+  if ((remat_load & 0x7fU) != 0x13U ||
+      ((remat_load >> 7) & 0x1fU) != 18U ||
+      ((remat_load >> 12) & 0x7U) != 0U ||
+      ((remat_load >> 15) & 0x1fU) != 0U ||
+      ((remat_load >> 20) & 0xfffU) != 12U) {
+    return fail("expected rematerialized inttoptr to materialize prepared GPR");
+  }
+  return 0;
+}
+
+int rejects_prepared_pointer_cast_fail_closed_shapes() {
+  const std::string unsupported_instruction =
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_pointer_cast_module(bir::CastOpcode::IntToPtr,
+                                            bir::TypeKind::I64,
+                                            bir::TypeKind::Ptr,
+                                            prepare::PreparedValueHomeKind::Register,
+                                            prepare::PreparedValueHomeKind::Register,
+                                            false,
+                                            true),
+          "unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes") !=
+      0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_pointer_cast_module(bir::CastOpcode::IntToPtr,
+                                            bir::TypeKind::I64,
+                                            bir::TypeKind::Ptr,
+                                            prepare::PreparedValueHomeKind::Register,
+                                            prepare::PreparedValueHomeKind::Register,
+                                            false,
+                                            false,
+                                            true),
+          unsupported_instruction) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_pointer_cast_module(
+              bir::CastOpcode::IntToPtr,
+              bir::TypeKind::I64,
+              bir::TypeKind::Ptr,
+              prepare::PreparedValueHomeKind::StackSlot),
+          "unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes") !=
+      0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_pointer_cast_module(
+              bir::CastOpcode::IntToPtr,
+              bir::TypeKind::I64,
+              bir::TypeKind::Ptr,
+              prepare::PreparedValueHomeKind::Register,
+              prepare::PreparedValueHomeKind::StackSlot),
+          unsupported_instruction) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_pointer_cast_module(
+              bir::CastOpcode::IntToPtr,
+              bir::TypeKind::I64,
+              bir::TypeKind::Ptr,
+              prepare::PreparedValueHomeKind::Register,
+              prepare::PreparedValueHomeKind::PointerBasePlusOffset),
+          unsupported_instruction) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_pointer_cast_module(
+              bir::CastOpcode::IntToPtr,
+              bir::TypeKind::I16,
+              bir::TypeKind::Ptr),
+          unsupported_instruction) != 0) {
+    return 1;
+  }
+  if (expect_prepared_rejection_diagnostic(
+          make_prepared_pointer_cast_module(
+              bir::CastOpcode::PtrToInt,
+              bir::TypeKind::Ptr,
+              bir::TypeKind::I32),
+          unsupported_instruction) != 0) {
+    return 1;
+  }
+  return 0;
+}
+
 int emits_prepared_global_store_relocations_and_instruction() {
   const auto prepared = make_prepared_global_store_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -13430,6 +13739,9 @@ int main() {
   status |= emits_prepared_global_i8_load_and_zext_instruction();
   status |= emits_prepared_same_width_i32_zext_gpr_copy();
   status |= rejects_prepared_same_width_zext_fail_closed_shapes();
+  status |= emits_prepared_pointer_cast_gpr_movement_object();
+  status |= emits_prepared_pointer_cast_rematerialized_source_object();
+  status |= rejects_prepared_pointer_cast_fail_closed_shapes();
   status |= emits_prepared_global_store_relocations_and_instruction();
   status |= emits_prepared_global_i16_store_instruction();
   status |= serializes_rv64_relocatable_elf_contract();
