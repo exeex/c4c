@@ -8,32 +8,43 @@ Current Step Title: Audit Branch-Site Policy Freshness Inputs
 
 ## Just Finished
 
-Closed idea 469 as complete for prepared branch-stack-load record surface and
-activated idea 470 for the next producer prerequisite: branch-site
-`load_from_stack_slot` policy, freshness, and clobber-safety.
+Completed Step 1 audit for idea 470. Current prepared records expose the
+branch-stack-load rows, but no real row has target-consumable
+`load_from_stack_slot` authority because policy, freshness, and clobber-safety
+facts are not produced.
 
-Representative residuals from 469:
+Representative audit:
 
-| Row | Current record | Follow-up boundary |
-| --- | --- | --- |
-| `f.block_1` condition `%t2` | `unsupported_terminator`, `pointer_status=not_pointer` | Needs branch-site relationship/policy/freshness/clobber proof. |
-| `f.block_1` lhs `%t1` | `unsupported_terminator`, `pointer_status=unknown` | Needs policy/freshness/clobber plus explicit pointer status. |
-| `f.block_4` condition `%t8` | `unsupported_terminator`, `pointer_status=not_pointer` | Needs branch-site relationship/policy/freshness/clobber proof. |
-| `f.block_4` lhs `%t7` | `unsupported_terminator`, `pointer_status=unknown` | Pointer-value/provenance remains separate. |
-| `f.logic.end.14` condition `%t23` | `missing_policy` | Needs explicit branch-site load policy, freshness, and clobber safety. |
-| `f.logic.end.14` lhs `%t22` | `missing_policy` | Select-result stack-destination remains separate. |
+| Row | Current record | Policy | Freshness | Clobber safety | Boundary | First owner |
+| --- | --- | --- | --- | --- | --- | --- |
+| `f.block_1` condition `%t2` | `unsupported_terminator`, `pointer_status=not_pointer` | Not reachable yet | Missing | Missing | Scalar condition | Branch-site relationship acceptance before policy. |
+| `f.block_1` lhs `%t1` | `unsupported_terminator`, `pointer_status=unknown` | Not reachable yet | Missing | Missing | Pointer status unknown | Branch-site relationship first; pointer/provenance separate. |
+| `f.block_4` condition `%t8` | `unsupported_terminator`, `pointer_status=not_pointer` | Not reachable yet | Missing | Missing | Scalar condition paired with pointer lhs | Branch-site relationship first. |
+| `f.block_4` lhs `%t7` | `unsupported_terminator`, `pointer_status=unknown` | Not reachable yet | Missing | Missing | Pointer-value/provenance | Pointer-value/provenance remains first owner before target consumption. |
+| `f.logic.end.14` condition `%t23` | `value=%t23`, `value_id=17`, `slot=#21`, `object=#21`, `status=missing_policy` | Missing `load_from_stack_slot` | Missing | Missing | Scalar condition | First bounded policy/freshness/clobber candidate. |
+| `f.logic.end.14` lhs `%t22` | `value=%t22`, `value_id=16`, `slot=#20`, `object=#20`, `status=missing_policy` | Missing | Missing | Missing | Select-result stack destination | Keep fail-closed; select-result owner remains separate. |
+
+First exact Step 2 target: define the policy/freshness/clobber contract for
+scalar condition records already populated through branch/value/home/frame-slot
+facts, represented by `f.logic.end.14` condition `%t23`. Preserve
+`unsupported_terminator`, pointer-status unknown, pointer-value provenance, and
+select-result stack-destination rows as rejected/fail-closed shapes unless a
+separate prerequisite packet proves them.
+
+Artifact:
+`build/agent_state/470_step1_policy_freshness_audit/audit.md`.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: audit branch-site policy, freshness, and
-clobber-safety inputs for the current prepared branch-stack-load records.
-
-Suggested artifact directory:
-`build/agent_state/470_step1_policy_freshness_audit/`.
+Execute Step 2: Define Policy Freshness Contract. Record accepted scalar
+condition facts, rejected adjacent shapes, target files/tests for a bounded
+producer packet if justified, and whether the `unsupported_terminator`
+branch-site relationship gap is a prerequisite packet or remains an
+unavailable status.
 
 ## Watchouts
 
-- Do not edit implementation files during Step 1.
+- Do not edit implementation files during Step 2 unless explicitly redirected.
 - Do not implement RV64 branch-load emission in this producer plan.
 - Do not accept unavailable `PreparedBranchStackLoadAuthority` records as
   target authority.
@@ -46,12 +57,10 @@ Suggested artifact directory:
 
 ## Proof
 
-Lifecycle transition proof:
+Classification proof:
 
 ```sh
 git diff --check
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
-python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
