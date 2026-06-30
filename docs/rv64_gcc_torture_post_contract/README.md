@@ -43,6 +43,9 @@ instead of mining closed idea text.
 - If a row identifies a BIR or prepared producer gap, create a separate BIR or
   prepared idea and close that idea before returning to MIR/RV64 lowering for
   that row.
+- If an active MIR/RV64 route discovers such a producer gap, stop that route
+  and switch lifecycle state to the BIR/prepared idea. Do not keep the
+  MIR/RV64 idea active while adding inference or fixups for the missing fact.
 - Do not fix BIR-owned facts by adding MIR/RV64 inference, fallback name
   recovery, raw BIR shape matching, or named testcase shortcuts.
 - Do not let F128 or `conversion.c` drive the postmortem umbrella. F128 is

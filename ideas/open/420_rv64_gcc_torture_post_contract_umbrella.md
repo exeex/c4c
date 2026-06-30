@@ -121,6 +121,10 @@ evidence proves a better split:
   infrastructure, or F128 quarantine.
 - Any BIR/prepared producer gap discovered by this umbrella becomes a separate
   idea that must close before dependent MIR/RV64 lowering consumes that fact.
+- Any active MIR/RV64 idea that discovers a BIR/prepared producer gap must stop
+  that route, create or select the BIR/prepared idea, switch lifecycle state to
+  that producer idea, and only return to the MIR/RV64 idea after the producer
+  idea closes with proof.
 - Default `ctest --test-dir build -j --output-on-failure` must not regress for
   lifecycle close.
 
@@ -135,6 +139,8 @@ evidence proves a better split:
   ownership, postmortem lessons, and follow-up ideas.
 - Reject follow-up ideas that mix BIR producer repair and MIR/RV64 lowering in
   one implementation slice.
+- Reject continuing a MIR/RV64 implementation after it discovers a missing
+  BIR/prepared producer fact instead of switching to a producer-owned idea.
 - Reject testcase-shaped RV64 fixes, named-case shortcuts, fallback name
   recovery, raw BIR shape matching, or local target inference used to bypass a
   missing BIR/prepared fact.
