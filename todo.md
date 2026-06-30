@@ -8,67 +8,51 @@ Current Step Title: Final Residual Disposition And Close Readiness
 
 ## Just Finished
 
-Plan-owner reviewed completed Step 6 for idea 456 and advanced the active
-packet to final residual disposition. Summary artifact:
-`build/agent_state/456_step6_before_instruction_move_bundle/summary.md`.
-
-Implemented the narrow prepared object traversal and RV64 consumer route for
-the authorized before-instruction cast-dependency stack publication:
-
-- added `PreparedObjectTraversalEventKind::BeforeInstructionCopies`;
-- traversal emits only before-instruction move bundles with stack destinations;
-- RV64 consumes that event through the existing move-bundle path;
-- RV64 suppresses only the exact `consumer_register_to_stack` publication whose
-  move is `cast_source_value_id -> dependency_value_id` for a populated
-  `rematerialize_cast_from_source status=available` authority record;
-- authority matching uses prepared control-flow block labels, not raw BIR block
-  label ids.
-
-Focused coverage now proves the accepted stack-publication suppression path and
-rejected boundaries for missing cast producer/authority, unsupported stack-slot
-cast source homes, extra non-carrier cast uses, mismatched stack-publication
-source identity, mismatched dependency operand identity, and the existing
-LHS-authority/RHS-`t3` scratch-clobber guard.
+Completed Step 7 final residual disposition for idea 456. Disposition artifact:
+`build/agent_state/456_step7_final_residual_disposition/disposition.md`.
 
 Fresh `20010329-1` probes under
-`build/agent_state/456_step6_before_instruction_move_bundle/` still show
-`prepared_exit=0` and `object_exit=2` with the broad
-`unsupported_move_bundle_target_shape` diagnostic. The before-instruction stack
-publication is no longer the local blocker; the remaining broad move-bundle
-diagnostic needs final owner classification before any further implementation
-packet is selected.
+`build/agent_state/456_step7_final_residual_disposition/` show:
+
+```text
+prepared_exit=0
+object_exit=2
+error: --codegen obj failed: RISC-V backend object route unsupported prepared module shape: unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves
+```
+
+Final classification:
+
+| Row | Evidence | Disposition |
+| --- | --- | --- |
+| Explicit cast-dependency authority | `%t17`, `policy=rematerialize_cast_from_source status=available`, `cast_source=%t16`, `cast_source_home=rematerializable_immediate` | Covered by Step 3 |
+| Authorized stack publication | `move_bundle phase=before_instruction block_index=4 instruction_index=1`, `from_value_id=8 to_value_id=9 destination_storage=stack_slot` | Covered by Step 6 |
+| Stack-load alternative | `policy=load_from_stack_slot status=missing_stack_freshness` | Still intentionally fail-closed |
+| Later move-bundle residual | `block_index=4 instruction_index=2`, `from_value_id=7 to_value_id=10 destination_storage=register`, `from_value_id=9 to_value_id=10 destination_storage=register reason=consumer_stack_to_register` | Separate later move-bundle/materialization owner, not idea 456 |
+
+Decision: idea 456 is complete for the explicit populated
+`rematerialize_cast_from_source status=available` dependency-operand consumer
+and the required authorized stack-publication suppression. No exact idea-456
+implementation packet remains. The representative still fails, but the next
+owner is a separate before-instruction move-bundle/materialization family for
+ordinary register/stack-source move bundles.
 
 ## Suggested Next
 
-Execute Step 7: `Final Residual Disposition And Close Readiness`.
+Plan-owner close-readiness review for idea 456.
 
-Re-probe and classify the remaining `20010329-1` object-route
-`unsupported_move_bundle_target_shape` after the explicit cast-dependency
-compare consumer and the authorized before-instruction stack publication
-suppression are both in place. Decide whether any exact idea-456 packet remains
-or whether the next owner is a separate later move-bundle/materialization
-family.
-
-Suggested owned files:
-
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/456_step7_final_residual_disposition/*`
-
-Suggested proof command:
-
-```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
-```
+Recommended lifecycle action: close idea 456 as complete for the explicit
+cast-dependency consumer/suppression scope. If representative `20010329-1`
+object success remains a goal, split or activate a follow-up for the remaining
+before-instruction move-bundle materialization family.
 
 ## Watchouts
 
 - Full `20010329-1` object success remains unclaimed.
+- Do not route the remaining `consumer_stack_to_register` before-instruction
+  move bundle back into idea 456; it is a separate materialization family.
 - The accepted Step 6 traversal event is intentionally limited to
   before-instruction stack-destination bundles; RV64 suppresses only the
   authorized cast-dependency stack publication.
-- The remaining broad move-bundle diagnostic should be reclassified before any
-  further implementation packet is selected.
 - Continue to consume only populated `rematerialize_cast_from_source
   status=available` dependency-operand authority.
 - Preserve the scratch-clobber guard unless a later packet implements a
@@ -87,7 +71,7 @@ Suggested proof command:
 
 ## Proof
 
-Lifecycle repair validation:
+Step 7 proof:
 
 ```sh
 git diff --check
