@@ -1,84 +1,71 @@
 Status: Active
 Source Idea Path: ideas/open/442_pointer_value_memory_provenance_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Producer Publication Or Policy Coverage
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed corrective Step 3: implemented `Publish Same-Module
-Computed-Address Formal Provenance` only for coherent same-module pointer
-formals proven not externally callable.
+Completed Step 4: re-probed `930930-1` pointer-value memory residuals and
+recorded close-readiness disposition for idea 442.
 
-Implementation:
+Fresh prepared evidence:
 
-- Added a BIR producer pass in `src/backend/bir/lir_to_bir/module.cpp` that
-  collects direct same-module callsites and admits a pointer formal only when
-  the callee is proven internal from `LirFunction::is_internal` and every
-  relevant callsite publishes one coherent computed-address argument source.
-- The accepted shape is restricted to non-sret, non-byval pointer formals with
-  a concrete `@global + source_delta` argument whose global object has known
-  linear extent.
-- The pass tracks the callee formal through direct local-slot store/load
-  publication and updates pointer-value memory access provenance with a
-  concrete global-symbol subobject identity, complete remaining extent,
-  `ScalarLayout`, and `ProvenInBounds`.
-- No RV64 target lowering, expectations, allowlists, unsupported markers, or
-  pass/fail accounting were changed.
-- The previous overbroad same-module rule for externally callable functions
-  was rejected: observed same-module callsites are not complete authority for
-  external-linkage definitions.
-
-Focused coverage:
-
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp` now builds a
-  semantic LIR fixture with a caller passing `@same_module_mem + 8` to an
-  internal same-module pointer formal, then checks three callee
-  local-store/reload pointer-value loads classify true under
-  `prepare::prepared_pointer_value_memory_has_proven_authority`.
-- The same fixture with external-linkage callee remains fail-closed under the
-  authority classifier.
-
-Representative probe:
-
-- `930930-1` arg3 still publishes `source_base=@mem source_delta=792`, but
-  `f` is external-linkage, so same-module callsites are not complete authority.
-- The three `%lv.param.reg1` loads at `f:block_4:inst1`,
-  `f:logic.rhs.11:inst1`, and `f:block_5:inst1` remain
+- The call to `f` still publishes computed-address sources for all pointer
+  arguments, including `index=3 source_base=@mem source_delta=792` and
+  `index=4 source_base=@mem source_delta=792`.
+- `930930-1::f` remains external-linkage, so observed same-module direct calls
+  are not complete authority for the formal pointer values.
+- The three `%lv.param.reg1` pointer-value loads remain fail-closed:
+  `f:block_4:inst1`, `f:logic.rhs.11:inst1`, and `f:block_5:inst1` all report
   `layout_authority=unknown range_verdict=unknown_compatible`.
-- The split pointer-delta row `f:block_5:inst5` through
-  `%t27 = %t26 - 8` also remains
-  `layout_authority=unknown range_verdict=unknown_compatible`.
+- The pointer-delta row `f:block_5:inst5`, through `%t27 = %t26 - 8`, also
+  remains `layout_authority=unknown range_verdict=unknown_compatible`.
+
+Fresh RV64 object evidence:
+
+- `--codegen obj` still stops before success with
+  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64
+  object lowering`.
+- This does not change the producer-owner verdict: the prepared pointer-value
+  memory rows are still non-authoritative and must remain fail-closed for RV64
+  target consumers.
+
+Disposition:
+
+- The Step 3 internal-only same-module computed-address formal provenance rule
+  is sound and covered, but it does not solve the external-linkage
+  representative.
+- Idea 442 is not close-ready for `930930-1` external-linkage formal
+  provenance publication.
+- The next lifecycle action should be a split/follow-up producer initiative for
+  reliable closed-world, internal/private, or no-external-caller authority
+  before any external-linkage formal pointer provenance is published.
+- Pointer-delta propagation remains a later packet only after base formal
+  pointer provenance is soundly authorized; `%mr_TR - 8` should not be
+  implemented first for `930930-1`.
 
 Artifacts:
 
-- `build/agent_state/442_step3_concrete_call_arg_provenance/summary.md`
-- `build/agent_state/442_step3_concrete_call_arg_provenance/930930-1.prepared.out`
-- `build/agent_state/442_step3_concrete_call_arg_provenance/930930-1.prepared.err`
+- `build/agent_state/442_step4_residual_disposition/classification.md`
+- `build/agent_state/442_step4_residual_disposition/evidence_snippets.txt`
+- `build/agent_state/442_step4_residual_disposition/930930-1.prepared.out`
+- `build/agent_state/442_step4_residual_disposition/930930-1.prepared.err`
+- `build/agent_state/442_step4_residual_disposition/930930-1.object.out`
+- `build/agent_state/442_step4_residual_disposition/930930-1.object.err`
 
 ## Suggested Next
 
-Execute Step 4: Residual Disposition And Close Readiness.
+Plan-owner should split or regenerate lifecycle state for a producer authority
+packet before continuing external-linkage `930930-1` provenance publication.
 
-Recommended Step 4 packet: re-probe `930930-1` pointer-value memory residuals
-and decide whether idea 442 should route a closed-world/internal-linkage
-metadata producer split before any external-linkage representative provenance
-publication. Pointer-delta propagation remains a later packet only after the
-base formal provenance is soundly authorized.
-
-Suggested owned files:
-
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/442_step4_residual_disposition/*`
-
-Proof:
-
-```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
-```
+Recommended next source initiative: define and publish reliable
+closed-world/internal/private/no-external-caller metadata that can prove when
+same-module callsites are complete for a callee formal. Only after that
+authority exists should idea 442-style formal provenance publication be
+extended beyond `LirFunction::is_internal`.
 
 ## Watchouts
 
@@ -101,10 +88,14 @@ Proof:
 - For external-linkage representatives such as `930930-1::f`, do not publish
   formal pointer provenance until the producer has reliable closed-world,
   internal/private, or no-external-caller authority.
+- Do not treat the generic RV64 `unsupported_instruction_fragment` object
+  diagnostic as permission to infer pointer provenance in target lowering.
+- Do not accept or commit any full-suite baseline refresh that changes the
+  current green baseline to the rejected `test_baseline.new.log` state.
 
 ## Proof
 
-Step 3 delegated backend proof passed and is captured in `test_after.log`:
+Step 4 delegated backend proof passed and is captured in `test_after.log`:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
