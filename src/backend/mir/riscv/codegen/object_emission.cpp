@@ -3963,6 +3963,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
     const c4c::backend::bir::Terminator& terminator,
     std::size_t block_index,
+    std::size_t terminator_instruction_index,
     bool restore_return_address,
     std::size_t stack_frame_bytes) {
   if (terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -4018,6 +4019,54 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
     append_rv64_load_immediate(fragment, scratch, *bits);
     if (!append_rv64_gpr_to_fpr_move(
             fragment, return_fpr, scratch, terminator.value->type)) {
+      return std::nullopt;
+    }
+    if (restore_return_address) {
+      if (!append_rv64_call_frame_epilogue(fragment, frame_plan, stack_frame_bytes)) {
+        return std::nullopt;
+      }
+    } else if (!append_rv64_stack_frame_epilogue(
+                   fragment,
+                   frame_plan,
+                   stack_frame_bytes)) {
+      return std::nullopt;
+    }
+    append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
+    return fragment;
+  }
+  const bool direct_global_pointer_return_candidate =
+      terminator.value->type == c4c::backend::bir::TypeKind::Ptr &&
+      terminator.value->kind == c4c::backend::bir::Value::Kind::Named &&
+      (terminator.value->pointer_symbol_link_name_id != c4c::kInvalidLinkName ||
+       (!terminator.value->name.empty() && terminator.value->name.front() == '@'));
+  if (direct_global_pointer_return_candidate) {
+    const auto* value_home = prepared_value_home_for(names, lookups, *terminator.value);
+    const auto* before_return_move =
+        value_home == nullptr
+            ? nullptr
+            : prepare::find_prepared_before_return_abi_move_by_source_and_destination_bank(
+                  lookups == nullptr ? nullptr : &lookups->move_bundles,
+                  nullptr,
+                  block_index,
+                  value_home->value_id,
+                  prepare::PreparedRegisterBank::Gpr);
+    const auto authority =
+        prepare::plan_prepared_direct_global_return_authority({
+            .names = &names,
+            .return_value = &*terminator.value,
+            .value_home = value_home,
+            .before_return_move = before_return_move,
+            .block_index = block_index,
+            .instruction_index = terminator_instruction_index,
+        });
+    if (!prepare::prepared_direct_global_return_authority_available(authority) ||
+        authority.before_return_move == nullptr || authority.value_home == nullptr) {
+      return std::nullopt;
+    }
+    const auto source = gpr_register_number_for_home(*authority.value_home);
+    const auto destination =
+        rv64_register_number(*authority.before_return_move->destination_register_name);
+    if (!source.has_value() || !destination.has_value()) {
       return std::nullopt;
     }
     if (restore_return_address) {
@@ -7256,6 +7305,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
                                           frame_plan,
                                           block.terminator,
                                           block_index,
+                                          block.insts.size(),
                                           restore_return_address,
                                           stack_frame_bytes);
     case c4c::backend::bir::TerminatorKind::Branch: {

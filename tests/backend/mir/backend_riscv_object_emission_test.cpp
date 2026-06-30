@@ -3819,6 +3819,80 @@ prepare::PreparedBirModule make_prepared_before_return_fpr_f128_abi_move_module(
   return make_prepared_before_return_fpr_abi_move_module(bir::TypeKind::F128);
 }
 
+prepare::PreparedBirModule make_prepared_direct_global_return_authority_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("direct_global_return");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto value_name = prepared.names.value_names.intern("@global");
+  const auto global_name = prepared.names.link_names.intern("global");
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value =
+      bir::Value::named_symbol_pointer("@global", global_name);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "direct_global_return",
+      .return_type = bir::TypeKind::Ptr,
+      .return_size_bytes = 8,
+      .return_align_bytes = 8,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = value_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+          },
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeReturn,
+              .block_index = 0,
+              .instruction_index = 0,
+              .moves = {prepare::PreparedMoveResolution{
+                  .from_value_id = 1,
+                  .to_value_id = 1,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"a0"},
+                  .destination_contiguous_width = 1,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .destination_register_placement =
+                      prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                          .slot_index = 0,
+                          .contiguous_width = 1,
+                      },
+              }},
+          }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_fpr_immediate_return_module(
     bir::TypeKind return_type,
     std::uint64_t immediate_bits) {
@@ -12796,6 +12870,80 @@ int rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes() {
   return 0;
 }
 
+int builds_prepared_direct_global_return_authority_object() {
+  const auto prepared = make_prepared_direct_global_return_authority_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared direct-global return authority object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "direct_global_return");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected direct-global return object to publish text/function");
+  }
+  if (text->bytes.size() != 8 || function->size_bytes != 8) {
+    return fail("expected direct-global return text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00028513 ||
+      read_u32(text->bytes, 4) != 0x00008067) {
+    return fail("expected mv a0, t0 followed by ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected direct-global return authority object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_direct_global_return_authority_fail_closed_shapes() {
+  constexpr const char* terminator_diagnostic =
+      "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering";
+  constexpr const char* move_diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  auto prepared = make_prepared_direct_global_return_authority_module();
+  prepared.module.functions[0]
+      .blocks[0]
+      .terminator.value->pointer_symbol_link_name_id = c4c::kInvalidLinkName;
+  if (expect_prepared_rejection_diagnostic(prepared, terminator_diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_return_authority_module();
+  prepared.value_locations.functions[0].move_bundles.clear();
+  if (expect_prepared_rejection_diagnostic(prepared, terminator_diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_return_authority_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .from_value_id = 99;
+  if (expect_prepared_rejection_diagnostic(prepared, move_diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_return_authority_module();
+  prepared.value_locations.functions[0].value_homes[0].kind =
+      prepare::PreparedValueHomeKind::StackSlot;
+  prepared.value_locations.functions[0].value_homes[0].register_name = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, move_diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_direct_global_return_authority_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_register_name = std::string{"fa0"};
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_register_placement->bank = prepare::PreparedRegisterBank::Fpr;
+  if (expect_prepared_rejection_diagnostic(prepared, move_diagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int builds_prepared_fpr_immediate_return_objects() {
   auto prepared =
       make_prepared_fpr_immediate_return_module(bir::TypeKind::F32, 1);
@@ -14157,6 +14305,8 @@ int main() {
   status |= builds_prepared_before_return_fpr_f32_abi_move_object();
   status |= builds_prepared_before_return_fpr_f64_abi_move_object();
   status |= rejects_prepared_before_return_fpr_abi_move_fail_closed_shapes();
+  status |= builds_prepared_direct_global_return_authority_object();
+  status |= rejects_prepared_direct_global_return_authority_fail_closed_shapes();
   status |= builds_prepared_fpr_immediate_return_objects();
   status |= rejects_prepared_fpr_immediate_return_fail_closed_shapes();
   status |= rejects_unsupported_prepared_floating_cast_with_precise_diagnostic();

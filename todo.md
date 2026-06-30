@@ -8,59 +8,63 @@ Current Step Title: Consume Direct-Global Return Authority
 
 ## Just Finished
 
-Plan-owner review accepted the Step 4 residual disposition and kept idea 440
-active for the exact remaining direct-global return consumer packet.
+Completed Step 5: implemented the narrow RV64 direct-global return authority
+consumer and recorded evidence under
+`build/agent_state/440_step5_direct_global_return_consumer/`.
 
-Step 4 re-probed representative direct-global return/select-chain evidence and
-recorded residual disposition under
-`build/agent_state/440_step4_residual_disposition/`.
+Implementation summary:
 
-Residual classification:
+- `src/backend/mir/riscv/codegen/object_emission.cpp` now routes named pointer
+  direct-global return candidates through
+  `plan_prepared_direct_global_return_authority` before the RV64 object route
+  accepts them.
+- The consumer uses the prepared value home and matching `BeforeReturn`
+  `FunctionReturnAbi` GPR move as authority. The move itself remains emitted by
+  the existing before-return move-bundle traversal; the terminator emits the
+  epilogue and `ret`.
+- Ordinary non-global pointer returns continue through the existing generic GPR
+  return path. Raw `@...` pointer returns without semantic global identity stay
+  fail-closed instead of being accepted from spelling alone.
+- Focused object tests cover accepted semantic direct-global return emission
+  and fail-closed raw-only, missing-move, mismatched-move, unsupported-home, and
+  unsupported-destination shapes.
+- No direct-global select-chain consumer and no generic RV64 terminator/select
+  lowering was implemented.
 
-| Bucket | Representative evidence | Disposition |
-| --- | --- | --- |
-| Direct-global return authority predicate | `20041112-1 foo.block_1` still has raw `bir.ret ptr @global`, prepared `home @global value_id=4 kind=register reg=t0`, and a matching `BeforeReturn` `FunctionReturnAbi` move to `a0`. Step 3 focused tests cover this authority predicate and fail-closed edges. | Prepared authority is complete for the intended direct-global return shape. |
-| Direct-global return consumer | Fresh RV64 object probe still fails with `unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering`. | In-scope remaining direct-global packet if narrowed to consuming explicit direct-global return authority only. |
-| Direct-global select-chain facts | Prepared dump retains `direct_global_select_chain=yes` on call-argument/select-chain rows. | Candidate facts remain separate; do not bundle them into the direct-global return consumer unless explicitly selected. |
-| Generic terminator/select publication | The object diagnostic is generic, but the representative can be classified by explicit direct-global return facts. | Out of scope for idea 440 unless constrained to direct-global authority consumption; generic terminator/select publication remains idea 441 work. |
-| Store/global publication and layout facts | Immediate store/global layout facts are already visible in the dump. | Out of scope for idea 440; covered by earlier global publication plans. |
+Representative probe:
+
+- Fresh `20041112-1` artifacts under
+  `build/agent_state/440_step5_direct_global_return_consumer/` still report
+  `unsupported_terminator_fragment`. The focused tests prove the direct-global
+  return consumer route; Step 6 should reclassify whether the representative is
+  now blocked by direct-global select-chain work, another terminator/select
+  residual, or out-of-scope idea 441 publication.
 
 ## Suggested Next
 
-Execute Step 5: implement the exact direct-global return consumer packet.
-Materialize `bir.ret ptr @global` in the RV64 object route only by consuming
-`plan_prepared_direct_global_return_authority`, the prepared global
-home/storage, and the matching `BeforeReturn` `FunctionReturnAbi` GPR move
-facts as authority.
-
-Required fail-closed coverage:
-
-- raw-only direct-global return with no prepared authority;
-- missing prepared authority;
-- mismatched value home or value id;
-- non-global pointer return;
-- unsupported home/storage;
-- non-pointer return;
-- non-GPR or otherwise unsupported ABI return shape.
+Execute Step 6: residual disposition and close-readiness review for idea 440.
+Re-probe `20041112-1`, classify the remaining `unsupported_terminator_fragment`
+after the direct-global return consumer landed, and decide whether any exact
+direct-global select-chain packet remains in idea 440 or whether the rest belongs
+to idea 441 terminator/select publication.
 
 ## Watchouts
 
-- Do not implement generic RV64 terminator/select lowering in the direct-global
-  return consumer packet.
-- Do not infer return handling from raw `bir.ret ptr @global`, symbol spelling,
-  testcase names, probe instruction indexes, or raw `BeforeReturn` moves.
-- Keep `direct_global_select_chain=yes` rows separate from the first direct-global
-  return consumer packet unless the supervisor explicitly selects a select-chain
-  packet.
+- Do not treat the unchanged representative diagnostic as proof that
+  direct-global return authority failed; the focused accepted object fixture
+  proves that consumer route.
+- Keep any next packet separated from generic RV64 terminator/select lowering.
+- Reclassify `direct_global_select_chain=yes` rows before selecting a consumer
+  packet; do not bundle them into return handling retroactively.
 - Keep completed store/global layout/source publication work from earlier ideas
   out of this plan.
 - Do not accept or modify `test_baseline.new.log`.
-- Close-readiness decision: not close-ready as end-to-end object support; exact
-  next packet exists for direct-global return authority consumption.
+- Step 5 did not change `plan.md`, source ideas, expectations, allowlists, or
+  `test_baseline.new.log`.
 
 ## Proof
 
-Step 5 expected proof:
+Step 5 implementation validation:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
@@ -68,3 +72,5 @@ Step 5 expected proof:
 
 Step 4 residual-disposition validation already passed before log roll-forward,
 with backend regression guard reported as `327/327`.
+
+Result: passed. Proof log: `test_after.log`.
