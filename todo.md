@@ -1,69 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/451_stack_home_branch_operand_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Stack-Home Branch Materialization Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route First Materialization Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 contract definition for idea 451.
+Completed Step 3 routing packet for idea 451.
 
-Decision: do not select an RV64 consumer implementation packet yet. The
-stack-home branch materialization contract is definable, but current prepared
-facts are insufficient to satisfy it. Existing evidence exposes stack object
-identity, value ids, slot ids, offsets, object size/alignment, and branch
-operand roles; it does not expose branch-site stack-load policy, value
-freshness proof, or clobber-safety proof for loading stack-slot homes as branch
-operands or conditions.
-
-Accepted contract facts:
-
-| Area | Required fact |
-| --- | --- |
-| Branch identity | Prepared `branch_condition` for the terminator block with matching condition, predicate, compare type, labels, and operand role. |
-| Stack object identity | `PreparedValueHome` maps the value to a stack slot with function name, value id, slot id, offset, width, and alignment. |
-| Slot extent | Matching stack-layout object/frame slot exists and is large/aligned enough for the value type. |
-| Load policy | Prepared metadata explicitly authorizes a branch-site stack load for the condition/lhs/rhs role and width. |
-| Freshness | Prepared metadata proves the stack slot contains the current value at the branch site. |
-| Clobber safety | Prepared metadata proves no intervening call, helper, publication move, or stack write clobbers the slot before the branch-site load. |
-| Scratch safety | Consumer policy proves legal load scratch registers/order without clobbering still-needed operands. |
-| Pointer provenance | Pointer operands must satisfy explicit prepared pointer authority or a separately named opaque policy; unknown-compatible pointer-value memory is not enough. |
-
-Representative status:
-
-- `f.block_1` is structurally closest but not accepted: `%t1/%t2` have stack
-  homes and `%p.reg2` is GPR, but there is no load/freshness/clobber authority.
-- `f.block_4` is rejected for a first consumer packet because `%t7` additionally
-  derives from pointer-value memory with `layout_authority=unknown` and
-  `range_verdict=unknown_compatible`.
-- `f.logic.end.14` is rejected for this first pointer-relational packet because
-  `%t22` is a select-result stack destination with block-entry publication
-  `unsupported_destination_storage`.
+No RV64 materialization implementation is selected. The first materialization
+packet is blocked on missing producer/prepared branch-stack-load authority
+metadata. Current prepared facts show stack homes, slot ids, offsets, object
+size/alignment, and branch conditions, but they do not prove that a stack slot
+may be loaded at a branch site as the current condition/lhs/rhs value.
 
 Exact blocker/owner: producer/prepared branch-stack-load authority metadata.
-The needed owner must publish or reject records tying a prepared branch
-condition to each stack-home condition/operand value, stack slot object, value
-width/alignment, branch-site load policy, freshness proof, clobber-safety proof,
-and pointer-provenance status.
+
+Required future record fields:
+
+| Field group | Required content |
+| --- | --- |
+| Branch site | function, block, terminator coordinate, prepared branch-condition fields, predicate, compare type, labels |
+| Operand role | condition/lhs/rhs, source value name/id, source type, GPR width |
+| Stack home | stack-slot home, slot id, absolute stack offset, value size/alignment, stack-layout object/frame-slot match |
+| Load policy | explicit permission to materialize this branch operand/condition by loading from the stack home |
+| Freshness | proof that the stack slot contains the current SSA value at the branch site |
+| Clobber safety | proof that no intervening store, helper, call, move bundle, publication, or stack write invalidates the slot before the branch load |
+| Scratch/order | permitted scratch register/order constraints or enough metadata for the consumer to prove no operand clobber |
+| Pointer status | proven pointer authority or separately named accepted opaque policy; unknown-compatible pointer-value memory remains rejected |
+| Rejection status | explicit unavailable statuses for missing freshness/load policy, mismatched slot/object, pointer-provenance unknown, unsupported select-result stack destination, and raw-shape-only fixtures |
+
+Required future tests:
+
+- Positive coverage for branch lhs/condition stack homes accepted only with
+  matching branch condition, stack object, width/alignment, load policy,
+  freshness, and clobber-safety records.
+- Negative coverage for stack homes without authority, stale/clobbered slots,
+  mismatched branch/role/slot/width/object facts, pointer-value unknowns,
+  select-result stack destinations, and raw-shape-only fixtures.
+- Regression coverage that existing GPR-compatible branch routes remain
+  unchanged.
 
 Artifact:
-`build/agent_state/451_step2_stack_home_branch_contract/contract.md`.
+`build/agent_state/451_step3_stack_home_branch_materialization_route/route.md`.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: route the first materialization packet as
-blocked on producer/prepared metadata, unless the supervisor chooses to split a
-new source idea immediately.
+Execute Step 4 from `plan.md`: residual disposition and close-readiness review.
 
 Suggested artifact directory:
-`build/agent_state/451_step3_stack_home_branch_materialization_route/`.
+`build/agent_state/451_step4_residual_disposition/`.
 
-Step 3 should not edit RV64 lowering from the current facts. It should record
-the required producer/prepared metadata owner and required focused tests for
-branch-stack-load authority, or activate/split that owner through the
-plan-owner flow.
+Step 4 should decide whether idea 451 closes by split/blocker after routing the
+producer/prepared branch-stack-load authority owner, or remains active only if
+the supervisor selects a precise in-scope metadata packet.
 
 ## Watchouts
 
@@ -73,6 +65,8 @@ plan-owner flow.
   from raw BIR shape, stack-slot spelling, block order, filenames, function
   names, or one prepared dump layout.
 - Treat stack object identity and slot offsets as necessary but not sufficient.
+- The next implementation-capable owner is producer/prepared metadata, not
+  RV64 lowering.
 - Keep pointer-value/provenance publication for `%t7`, select-result/block-entry
   stack destination work for `%t22/%t23`, instruction/storage owners, and
   unrelated residuals separate.
@@ -81,7 +75,7 @@ plan-owner flow.
 
 ## Proof
 
-Step 2 proof:
+Step 3 proof:
 
 ```sh
 git diff --check
