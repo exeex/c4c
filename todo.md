@@ -1,54 +1,69 @@
 Status: Active
 Source Idea Path: ideas/open/451_stack_home_branch_operand_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Stack-Home Branch Evidence
+Current Step ID: 2
+Current Step Title: Define Stack-Home Branch Materialization Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 451.
+Completed Step 2 contract definition for idea 451.
 
-Fresh `930930-1` probe artifacts were written under
-`build/agent_state/451_step1_stack_home_branch_evidence/`. Prepared dump status
-is `0`; object route status is `2` with
-`unsupported_instruction_fragment`, matching the inherited 449 residual that
-the module still fails before a clean branch-consumer decision.
+Decision: do not select an RV64 consumer implementation packet yet. The
+stack-home branch materialization contract is definable, but current prepared
+facts are insufficient to satisfy it. Existing evidence exposes stack object
+identity, value ids, slot ids, offsets, object size/alignment, and branch
+operand roles; it does not expose branch-site stack-load policy, value
+freshness proof, or clobber-safety proof for loading stack-slot homes as branch
+operands or conditions.
 
-Representative stack-home branch table:
+Accepted contract facts:
 
-| Function/block | Prepared branch fact | Stack-home operands/condition | Stack object identity | Offset / width | Freshness / clobber facts | Pointer provenance status | First owner |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `f.block_1` | `condition=%t2 compare=ult ptr %t1, %p.reg2` | `%t1` lhs stack slot; `%t2` condition stack slot; rhs `%p.reg2` is GPR `a4` | `%t1` object `#10` regalloc spill `ptr`; `%t2` object `#11` regalloc spill `i32` | `%t1` slot `#10` offset `80`, size `8`; `%t2` slot `#11` offset `88`, size `4` | No branch stack-load policy, freshness proof, or clobber-safety fact printed. | `%t1` comes from frame-slot load of `%lv.param.reg1`; range proven, but `layout_authority=unknown` and external-linkage formal provenance remains parked outside this idea. | Cleanest Step 2 contract candidate, but not target-consumable without explicit stack-home load/freshness authority. |
-| `f.block_4` | `condition=%t8 compare=ult ptr %t7, %p.mr_HB` | `%t7` lhs stack slot; `%t8` condition stack slot; rhs `%p.mr_HB` is GPR `a2` | `%t7` object `#14` regalloc spill `ptr`; `%t8` object `#15` regalloc spill `i32` | `%t7` slot `#14` offset `112`, size `8`; `%t8` slot `#15` offset `120`, size `4` | No branch stack-load policy, freshness proof, or clobber-safety fact printed. | `%t7` is `inttoptr` of pointer-value memory load; related access has `layout_authority=unknown` and `range_verdict=unknown_compatible`. | Pointer-value/provenance blocker plus stack-home materialization gap; do not accept by stack loading alone. |
-| `f.logic.end.14` | `condition=%t23 compare=ne i32 %t22, 0` | `%t22` select result stack slot; `%t23` condition stack slot | `%t22` object `#20` regalloc spill `i32`; `%t23` object `#21` regalloc spill `i32` | `%t22` slot `#20` offset `152`, size `4`; `%t23` slot `#21` offset `156`, size `4` | No branch stack-load policy, freshness proof, or clobber-safety fact printed. | `%t22` is select materialization over `%t18`/`0`; block-entry publication is `unsupported_destination_storage`. | Select-result/block-entry stack destination plus stack-home condition owner; not the first pointer-relational operand packet. |
-| `f.block_7` | `condition=%t32 compare=ne ptr %t30, %t31` | none; GPR-compatible homes | not stack-home | not stack-home | not applicable | closed by existing GPR branch routes | Out of scope for idea 451. |
+| Area | Required fact |
+| --- | --- |
+| Branch identity | Prepared `branch_condition` for the terminator block with matching condition, predicate, compare type, labels, and operand role. |
+| Stack object identity | `PreparedValueHome` maps the value to a stack slot with function name, value id, slot id, offset, width, and alignment. |
+| Slot extent | Matching stack-layout object/frame slot exists and is large/aligned enough for the value type. |
+| Load policy | Prepared metadata explicitly authorizes a branch-site stack load for the condition/lhs/rhs role and width. |
+| Freshness | Prepared metadata proves the stack slot contains the current value at the branch site. |
+| Clobber safety | Prepared metadata proves no intervening call, helper, publication move, or stack write clobbers the slot before the branch-site load. |
+| Scratch safety | Consumer policy proves legal load scratch registers/order without clobbering still-needed operands. |
+| Pointer provenance | Pointer operands must satisfy explicit prepared pointer authority or a separately named opaque policy; unknown-compatible pointer-value memory is not enough. |
 
-Classification: no stack-home branch row is target-consumable today. Stack
-object ids, offsets, and widths are visible, but the prepared surface does not
-publish branch-specific load policy, freshness, or clobber-safety authority.
-`f.block_4` additionally needs pointer-value/provenance authority before a
-branch consumer can soundly materialize `%t7`; `f.logic.end.14` belongs first
-to select-result/block-entry stack-destination work.
+Representative status:
+
+- `f.block_1` is structurally closest but not accepted: `%t1/%t2` have stack
+  homes and `%p.reg2` is GPR, but there is no load/freshness/clobber authority.
+- `f.block_4` is rejected for a first consumer packet because `%t7` additionally
+  derives from pointer-value memory with `layout_authority=unknown` and
+  `range_verdict=unknown_compatible`.
+- `f.logic.end.14` is rejected for this first pointer-relational packet because
+  `%t22` is a select-result stack destination with block-entry publication
+  `unsupported_destination_storage`.
+
+Exact blocker/owner: producer/prepared branch-stack-load authority metadata.
+The needed owner must publish or reject records tying a prepared branch
+condition to each stack-home condition/operand value, stack slot object, value
+width/alignment, branch-site load policy, freshness proof, clobber-safety proof,
+and pointer-provenance status.
 
 Artifact:
-`build/agent_state/451_step1_stack_home_branch_evidence/audit.md`.
+`build/agent_state/451_step2_stack_home_branch_contract/contract.md`.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: define the stack-home branch materialization
-contract.
-
-Step 2 should state the accepted prepared facts for a future consumer:
-stack object identity, slot offset/size/alignment, branch operand role, load
-policy, freshness and clobber safety at the branch site, pointer provenance
-requirements for pointer-derived operands, and fail-closed cases. If those
-facts are not representable today, route to a producer/prepared metadata packet
-instead of selecting RV64 implementation.
+Execute Step 3 from `plan.md`: route the first materialization packet as
+blocked on producer/prepared metadata, unless the supervisor chooses to split a
+new source idea immediately.
 
 Suggested artifact directory:
-`build/agent_state/451_step2_stack_home_branch_contract/`.
+`build/agent_state/451_step3_stack_home_branch_materialization_route/`.
+
+Step 3 should not edit RV64 lowering from the current facts. It should record
+the required producer/prepared metadata owner and required focused tests for
+branch-stack-load authority, or activate/split that owner through the
+plan-owner flow.
 
 ## Watchouts
 
@@ -57,6 +72,7 @@ Suggested artifact directory:
 - Do not infer stack-home values, freshness, loads, operands, or conditions
   from raw BIR shape, stack-slot spelling, block order, filenames, function
   names, or one prepared dump layout.
+- Treat stack object identity and slot offsets as necessary but not sufficient.
 - Keep pointer-value/provenance publication for `%t7`, select-result/block-entry
   stack destination work for `%t22/%t23`, instruction/storage owners, and
   unrelated residuals separate.
@@ -65,7 +81,7 @@ Suggested artifact directory:
 
 ## Proof
 
-Step 1 proof:
+Step 2 proof:
 
 ```sh
 git diff --check
