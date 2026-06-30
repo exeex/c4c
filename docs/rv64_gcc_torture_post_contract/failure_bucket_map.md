@@ -1,6 +1,6 @@
 # RV64 gcc_torture Failure Bucket Map
 
-Status: Step 2 classification complete for the regenerated row set.
+Status: Step 3 ranking complete for the regenerated row set.
 
 ## Evidence Source For `unsupported_instruction_fragment`
 
@@ -80,3 +80,5 @@ The counts below are therefore disjoint and sum to 190.
 - Producer-owned review is required before implementation ideas for aggregate
   rows with suspicious prepared size/alignment facts and pointer rows where
   prepared provenance is incomplete.
+- The ordered Step 3 follow-up backlog is recorded in
+  `docs/rv64_gcc_torture_post_contract/followup_idea_plan.md`.
