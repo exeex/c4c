@@ -315,9 +315,7 @@ bool same_formal_pointer_provenance(
 
 SameModuleFormalPointerProvenanceMap collect_same_module_formal_pointer_provenance(
     const bir::Module& module,
-    const GlobalTypes& global_types,
-    const std::unordered_set<std::string>& internally_callable_function_names,
-    const std::unordered_set<c4c::LinkNameId>& internally_callable_link_names) {
+    const GlobalTypes& global_types) {
   std::unordered_map<std::string, const bir::Function*> functions_by_name;
   std::unordered_map<c4c::LinkNameId, const bir::Function*> functions_by_link_name;
   for (const auto& function : module.functions) {
@@ -364,11 +362,8 @@ SameModuleFormalPointerProvenanceMap collect_same_module_formal_pointer_provenan
         if (callee == nullptr) {
           continue;
         }
-        if (internally_callable_function_names.find(callee->name) ==
-                internally_callable_function_names.end() &&
-            (callee->link_name_id == c4c::kInvalidLinkName ||
-             internally_callable_link_names.find(callee->link_name_id) ==
-                 internally_callable_link_names.end())) {
+        if (!bir::formal_pointer_authority_allows_same_module_call_sources(
+                callee->formal_pointer_authority)) {
           continue;
         }
 
@@ -516,15 +511,9 @@ void publish_same_module_formal_pointer_provenance(
 
 void publish_same_module_formal_pointer_provenance(
     bir::Module* module,
-    const GlobalTypes& global_types,
-    const std::unordered_set<std::string>& internally_callable_function_names,
-    const std::unordered_set<c4c::LinkNameId>& internally_callable_link_names) {
+    const GlobalTypes& global_types) {
   const auto provenance_by_function =
-      collect_same_module_formal_pointer_provenance(
-          *module,
-          global_types,
-          internally_callable_function_names,
-          internally_callable_link_names);
+      collect_same_module_formal_pointer_provenance(*module, global_types);
   for (auto& function : module->functions) {
     const auto found = provenance_by_function.find(function.name);
     if (found == provenance_by_function.end()) {
@@ -966,6 +955,9 @@ std::optional<bir::Function> BirFunctionLowerer::try_lower_canonical_select_func
   bir::Function lowered;
   lowered.name = function_name_for_reporting(context_.lir_module, function_);
   lowered.link_name_id = function_.link_name_id;
+  lowered.formal_pointer_authority =
+      function_.is_internal ? bir::FormalPointerAuthorityKind::InternalOnly
+                            : bir::FormalPointerAuthorityKind::Unknown;
   lowered.return_type = return_info->type;
   lowered.return_size_bytes = return_info->size_bytes;
   lowered.return_align_bytes = return_info->align_bytes;
@@ -1468,6 +1460,9 @@ std::optional<bir::Function> BirFunctionLowerer::lower() {
 
   lowered_function_.name = function_name_for_reporting(context_.lir_module, function_);
   lowered_function_.link_name_id = function_.link_name_id;
+  lowered_function_.formal_pointer_authority =
+      function_.is_internal ? bir::FormalPointerAuthorityKind::InternalOnly
+                            : bir::FormalPointerAuthorityKind::Unknown;
   lowered_function_.return_type = return_info_->type;
   lowered_function_.return_size_bytes = return_info_->size_bytes;
   lowered_function_.return_align_bytes = return_info_->align_bytes;
@@ -1563,20 +1558,6 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       return std::nullopt;
     }
     function_symbols.insert_function(*function_name, function.link_name_id);
-  }
-  std::unordered_set<std::string> internally_callable_function_names;
-  std::unordered_set<c4c::LinkNameId> internally_callable_link_names;
-  for (const auto& function : context.lir_module.functions) {
-    if (function.is_declaration || !function.is_internal) {
-      continue;
-    }
-    const auto function_name = function_name_for_identity(context.lir_module, function);
-    if (function_name.has_value()) {
-      internally_callable_function_names.insert(*function_name);
-    }
-    if (function.link_name_id != c4c::kInvalidLinkName) {
-      internally_callable_link_names.insert(function.link_name_id);
-    }
   }
   const auto type_decls = build_type_decl_map(context.lir_module.type_decls);
   module.structured_types = build_bir_structured_type_spelling_context(
@@ -1774,11 +1755,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     module.functions.push_back(std::move(*lowered_function));
   }
 
-  publish_same_module_formal_pointer_provenance(
-      &module,
-      global_types,
-      internally_callable_function_names,
-      internally_callable_link_names);
+  publish_same_module_formal_pointer_provenance(&module, global_types);
   apply_aarch64_fixed_hfa_pressure(context.target_profile.arch, module);
 
   context.note(

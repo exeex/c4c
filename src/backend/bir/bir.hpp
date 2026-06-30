@@ -2728,6 +2728,31 @@ struct AtomicOperation {
   AddressSpace address_space = AddressSpace::Default;
 };
 
+enum class FormalPointerAuthorityKind : unsigned char {
+  Unknown,
+  InternalOnly,
+  NoExternalCaller,
+};
+
+[[nodiscard]] constexpr std::string_view formal_pointer_authority_kind_name(
+    FormalPointerAuthorityKind kind) {
+  switch (kind) {
+    case FormalPointerAuthorityKind::Unknown:
+      return "unknown";
+    case FormalPointerAuthorityKind::InternalOnly:
+      return "internal_only";
+    case FormalPointerAuthorityKind::NoExternalCaller:
+      return "no_external_caller";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] constexpr bool formal_pointer_authority_allows_same_module_call_sources(
+    FormalPointerAuthorityKind kind) {
+  return kind == FormalPointerAuthorityKind::InternalOnly ||
+         kind == FormalPointerAuthorityKind::NoExternalCaller;
+}
+
 struct Function {
   // Final/display function spelling. link_name_id is semantic identity when
   // present.
@@ -2744,6 +2769,8 @@ struct Function {
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;
+  FormalPointerAuthorityKind formal_pointer_authority =
+      FormalPointerAuthorityKind::Unknown;
   GlobalAddressMaterializationPolicy address_materialization_policy =
       GlobalAddressMaterializationPolicy::Unspecified;
 };

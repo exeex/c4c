@@ -77,6 +77,16 @@ c4c::FunctionNameId find_function_name_id(const prepare::PreparedBirModule& prep
   return prepared.names.function_names.find(function_name);
 }
 
+const bir::Function* find_bir_function(const prepare::PreparedBirModule& prepared,
+                                       std::string_view function_name) {
+  for (const auto& function : prepared.module.functions) {
+    if (function.name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 c4c::BlockLabelId find_block_label_id(const prepare::PreparedBirModule& prepared,
                                       std::string_view block_label) {
   return prepared.names.block_labels.find(block_label);
@@ -5120,6 +5130,14 @@ const prepare::PreparedMemoryAccess* find_pointer_value_access_by_result(
 
 int check_same_module_computed_address_formal_provenance_activation(
     const prepare::PreparedBirModule& prepared) {
+  const auto* callee = find_bir_function(prepared, "same_module_computed_address_callee");
+  if (callee == nullptr) {
+    return fail("expected same-module formal provenance fixture to keep callee function");
+  }
+  if (callee->formal_pointer_authority != bir::FormalPointerAuthorityKind::InternalOnly) {
+    return fail("expected internal same-module callee to publish internal formal pointer authority");
+  }
+
   for (const std::string_view result_name :
        {"%loaded.value.0", "%loaded.value.1", "%loaded.value.2"}) {
     const auto* access = find_pointer_value_access_by_result(
@@ -5160,6 +5178,14 @@ int check_same_module_computed_address_formal_provenance_activation(
 
 int check_external_same_module_computed_address_formal_provenance_stays_fail_closed(
     const prepare::PreparedBirModule& prepared) {
+  const auto* callee = find_bir_function(prepared, "same_module_computed_address_callee");
+  if (callee == nullptr) {
+    return fail("expected external-linkage same-module formal fixture to keep callee function");
+  }
+  if (callee->formal_pointer_authority != bir::FormalPointerAuthorityKind::Unknown) {
+    return fail("expected external-linkage same-module callee to keep unknown formal pointer authority");
+  }
+
   const auto* access = find_pointer_value_access_by_result(
       prepared,
       "same_module_computed_address_callee",

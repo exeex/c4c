@@ -1,82 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/443_closed_world_formal_pointer_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define The Authority Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Focused Producer Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: defined the producer authority contract for closed-world
-formal pointer provenance and selected the first executable packet.
+Completed Step 3: implemented the first durable function-level formal pointer
+authority surface and focused coverage.
 
-Contract:
+Implementation:
 
-- Formal pointer provenance publication may consume same-module call argument
-  sources only when a producer-owned function authority fact proves the callee
-  formal's incoming values are closed over the observed same-module call edges.
-- Required facts are stable callee identity, definition status,
-  no-external-caller/closed-world authority, observed callsite completeness,
-  coherent computed-address argument sources for each accepted callsite, and a
-  clear consumer boundary for idea 442.
-- `LirFunction::is_internal` from static linkage remains the accepted baseline
-  authority and must continue to work exactly as committed in idea 442.
-- All non-internal definitions are false by default until a separate explicit
-  producer fact proves closed-world/no-external-caller authority.
-- External-linkage definitions such as `930930-1::f` remain fail-closed even
-  when every currently observed same-module call passes coherent
-  computed-address arguments.
+- Added `bir::FormalPointerAuthorityKind` with `Unknown`, `InternalOnly`, and
+  `NoExternalCaller`.
+- Added `bir::Function::formal_pointer_authority`, defaulting to `Unknown`.
+- Populated the field in LIR-to-BIR lowering from `LirFunction::is_internal`
+  only: static/internal definitions receive `InternalOnly`; external-linkage
+  and other non-internal definitions remain `Unknown`.
+- Refactored the same-module computed-address formal provenance collector to
+  consume `bir::Function::formal_pointer_authority` instead of private
+  internal-name/internal-link-id sets.
+- Preserved idea 442 behavior for internal/static callees and did not publish
+  external-linkage `930930-1::f` provenance.
 
-Rejected adjacent shapes:
+Focused coverage:
 
-| Signal | Contract verdict |
-| --- | --- |
-| Observed same-module direct calls | Not authority without a no-external-caller fact. |
-| `PreparedCallWrapperKind::SameModule` | Observed edge classification only. |
-| `CallArgumentSourceRelationship::ComputedAddress` | One argument source only, not formal incoming-value completeness. |
-| `LinkNameId` / `FunctionSymbolSet` | Identity only, not closed-world authority. |
-| `bir::Function::is_declaration == false` | Definition status only; definitions can still be externally callable. |
-| Hidden/protected/default visibility | Rejected until a separate tested contract proves its semantics for this compilation model. |
-| `LirFunction::can_elide_if_unreferenced` / reachability | Emission/discardability, not formal provenance authority. |
-| Prepared value homes / pointer-base-plus-offset facts | Value facts after authority, not authority for formal incoming values. |
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp` now checks the
+  internal same-module computed-address formal fixture publishes
+  `FormalPointerAuthorityKind::InternalOnly` and still proves the pointer-value
+  memory accesses.
+- The external-linkage variant checks the callee remains
+  `FormalPointerAuthorityKind::Unknown` and pointer-value memory remains
+  fail-closed.
+
+Boundaries:
+
+- No RV64 target lowering, expectations, unsupported markers, allowlists,
+  runtime comparison files, or baseline logs were changed.
+- Pointer-delta propagation remains out of scope until base formal authority is
+  proven.
 
 Artifacts:
 
-- `build/agent_state/443_step2_closed_world_authority_contract/contract.md`
+- `build/agent_state/443_step3_closed_world_authority_surface/summary.md`
 
 ## Suggested Next
 
-Execute Step 3: Implement Or Route Focused Producer Coverage.
-
-Recommended Step 3 packet: add the smallest durable producer/prepared authority
-surface and focused coverage without extending external-linkage provenance.
-
-Implementation target:
-
-- Add a function-level formal pointer authority fact, for example
-  `InternalOnly`/`NoExternalCaller`/`Unknown` or equivalent naming.
-- Populate it from `LirFunction::is_internal` only.
-- Preserve idea 442 behavior by changing same-module formal provenance
-  collection to consume this authority surface instead of a private ad hoc
-  internal-name/internal-link-id set.
-- Add focused tests proving static/internal functions receive accepted
-  authority and external-linkage functions remain absent/unknown/fail-closed.
-- Do not publish `930930-1::f` provenance or implement pointer-delta
-  propagation in this packet.
+Execute Step 4: Residual Disposition And Close Readiness.
 
 Suggested owned files:
 
-- `src/backend/bir/bir.hpp`
-- `src/backend/bir/lir_to_bir/module.cpp`
-- `src/backend/prealloc/module.hpp`
-- `src/backend/prealloc/prepared_printer/functions.cpp` or adjacent prepared
-  printer file if the new fact is dumped
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp` or a focused
-  prepared contract test file
 - `todo.md`
 - `test_after.log`
-- `build/agent_state/443_step3_closed_world_authority_surface/*`
+- `build/agent_state/443_step4_residual_disposition/*`
+
+Recommended Step 4 packet: re-check the `930930-1` prepared residual and decide
+whether this idea should close as a completed internal-only authority-carrier
+surface, remain active for a real `NoExternalCaller` producer, or route back to
+idea 442 with the explicit note that external-linkage `930930-1::f` still
+lacks no-external-caller authority.
 
 Proof:
 
@@ -91,12 +75,8 @@ Proof:
 - Do not treat hidden/protected visibility, same-module call wrappers,
   `LinkNameId`, or `can_elide_if_unreferenced` as no-external-caller authority
   without a separately defined and tested contract.
-- In Step 3, the new authority surface should initially be a refactor/contract
-  carrier for the already-accepted internal/static case, not a claim that
-  external-linkage formal provenance is now solved.
-- If adding the authority surface proves too broad, stop and ask plan-owner to
-  split the metadata-carrier design instead of routing through observed
-  callsites.
+- `FormalPointerAuthorityKind::NoExternalCaller` is a reserved accepted
+  consumer state, but no producer populates it yet.
 - Do not mark `930930-1` done while `%lv.param.reg1` and `%mr_TR - 8` rows
   remain `layout_authority=unknown` and
   `range_verdict=unknown_compatible`.
@@ -107,8 +87,8 @@ Proof:
 
 ## Proof
 
-Step 2 contract-only proof:
+Step 3 delegated backend proof is captured in `test_after.log`:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
