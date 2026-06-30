@@ -1,43 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/463_select_edge_ule_source_producer_rematerialization.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define ULE Source-Producer Rematerialization Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route First Rematerialization Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 contract definition for idea 463. A sound RV64
-source-producer rematerialization contract exists only if prepared metadata
-explicitly proves the duplicate carrier selects are carrier-only aliases of the
-same join-transfer result. That fact is missing today, so no RV64 consumer
-packet is justified yet.
+Completed Step 3 for idea 463 as a routing/blocker packet. No RV64
+rematerialization implementation is selected because the required duplicate
+carrier-alias metadata is not present. The next owner is the producer/prepared
+metadata layer that can publish carrier-alias authority for `%t50.phi.sel0` /
+`%t50.phi.sel1`.
 
-Contract/blocker table:
+Route table:
 
 | Field | Value |
 | --- | --- |
-| Accepted edge/source route | `pre_terminator_copies` edge `logic.rhs.end.40 -> logic.end.41`, move `%t46 -> %t50`, prepared edge publication with `source_producer_kind=binary`, source `%t46 = bir.ule ptr %t42, %t45`, destination `%t50` |
-| Required carrier proof | Producer-owned prepared metadata must prove `%t50.phi.sel0` and `%t50.phi.sel1` are carrier-only aliases for the same join-transfer result `%t50` |
-| Required operand proof | `%t42` and `%t45` must each be target-consumable at the predecessor-edge site through a GPR home, immediate/null, or explicit dependency-operand authority |
-| Required RV64 behavior | Rematerialize the unsigned pointer `ule` compare at the predecessor-edge move site into the `%t50` destination register; never copy successor-defined `%t46` |
-| Rejected adjacent shapes | Raw-name carrier inference, value-id-only matching, plain `%t46 -> %t50` copy/no-op, unapproved non-carrier uses, stale stack-load authority, generic move-bundle support, non-edge or mismatched publication |
-| Exact blocker | No durable prepared carrier-alias record currently proves the duplicate `%t50.phi.sel0` / `%t50.phi.sel1` values are aliases of final `%t50`; current RV64 code therefore correctly rejects them in `prepared_select_edge_binary_source_has_only_carrier_uses` |
-| Step 3 disposition | Route or split to a producer/prepared metadata packet for explicit duplicate-carrier alias authority before any RV64 rematerialization consumer is widened |
+| RV64 decision | Blocked; do not implement ULE rematerialization from current facts |
+| Exact blocker | Missing durable prepared carrier-alias authority proving `%t50.phi.sel0` and `%t50.phi.sel1` are carrier-only aliases of final join-transfer result `%t50` |
+| Metadata owner | Prepared control-flow/publication metadata for select-edge source-producer carriers |
+| Candidate producer surfaces | `src/backend/prealloc/control_flow.hpp`, `src/backend/prealloc/prepared_object_traversal.*`, `src/backend/prealloc/select_chain_lookups.*`, `src/backend/prealloc/publication_plans.*` |
+| Required positive facts | Edge identity, join-transfer result `%t50`, source producer `%t46 = bir.ule ptr %t42, %t45`, duplicate carrier aliases, use closure, and a query key consumable without raw select-shape scanning |
+| Required negative tests | Mismatched carrier result, wrong source value or edge, extra non-carrier use, raw-name-only `.phi.sel` shape, missing edge publication, missing source-producer fact |
+| Later RV64 boundary | Consume carrier-alias metadata only after it exists; still reject plain copy/no-op, stale stack-load, generic move-bundle, and raw-shape inference |
 
 Artifact:
-`build/agent_state/463_step2_select_edge_ule_source_producer_contract/contract.md`.
+`build/agent_state/463_step3_select_edge_ule_source_producer_route/route.md`.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md` as a routing/blocker packet, not an RV64 lowering
-packet: select or split the producer/prepared metadata work needed to publish
-explicit duplicate-carrier alias authority for `%t50.phi.sel0` /
-`%t50.phi.sel1`.
+Execute Step 4 from `plan.md`: residual disposition and close/split readiness.
+Record that idea 463 has no exact in-scope RV64 packet until the producer /
+prepared carrier-alias metadata initiative exists, then recommend close or
+split accordingly.
 
 Suggested artifact directory:
-`build/agent_state/463_step3_select_edge_ule_source_producer_route/`.
+`build/agent_state/463_step4_residual_disposition/`.
 
 ## Watchouts
 
@@ -60,7 +60,7 @@ Suggested artifact directory:
 
 ## Proof
 
-Step 2 proof:
+Step 3 proof:
 
 ```sh
 git diff --check
