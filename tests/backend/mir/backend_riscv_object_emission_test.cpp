@@ -8233,6 +8233,8 @@ int builds_prepared_fused_ne_ptr_null_compare_branch_object() {
 
 int builds_prepared_fused_ptr_register_compare_branch_object(
     bir::BinaryOpcode predicate,
+    std::uint32_t expected_lhs_move,
+    std::uint32_t expected_rhs_move,
     std::uint32_t expected_branch) {
   const auto prepared =
       make_prepared_fused_compare_branch_module(predicate, bir::TypeKind::Ptr);
@@ -8253,15 +8255,19 @@ int builds_prepared_fused_ptr_register_compare_branch_object(
       true_label->value != 16 || false_label->value != 24) {
     return fail("expected fused pointer register compare branch object text layout");
   }
-  if (read_u32(text->bytes, 0) != 0x00028e13 ||
-      read_u32(text->bytes, 4) != 0x00030e93 ||
+  if (read_u32(text->bytes, 0) != expected_lhs_move ||
+      read_u32(text->bytes, 4) != expected_rhs_move ||
       read_u32(text->bytes, 8) != expected_branch ||
       read_u32(text->bytes, 12) != 0x0000006f ||
       read_u32(text->bytes, 16) != 0x00100513 ||
       read_u32(text->bytes, 20) != 0x00008067 ||
       read_u32(text->bytes, 24) != 0x00000513 ||
       read_u32(text->bytes, 28) != 0x00008067) {
-    return fail("expected pointer register compare branch to lower through prepared authority");
+    return fail(("expected pointer register compare branch to lower through prepared authority; got " +
+                 std::to_string(read_u32(text->bytes, 0)) + ", " +
+                 std::to_string(read_u32(text->bytes, 4)) + ", " +
+                 std::to_string(read_u32(text->bytes, 8)))
+                    .c_str());
   }
   if (module->relocations.size() != 2 ||
       module->relocations[0].section != text->id ||
@@ -8282,13 +8288,49 @@ int builds_prepared_fused_ptr_register_compare_branch_object(
 int builds_prepared_fused_ne_ptr_register_compare_branch_object() {
   return builds_prepared_fused_ptr_register_compare_branch_object(
       bir::BinaryOpcode::Ne,
+      0x00028e13,
+      0x00030e93,
       0x01de1063);
 }
 
 int builds_prepared_fused_eq_ptr_register_compare_branch_object() {
   return builds_prepared_fused_ptr_register_compare_branch_object(
       bir::BinaryOpcode::Eq,
+      0x00028e13,
+      0x00030e93,
       0x01de0063);
+}
+
+int builds_prepared_fused_ult_ptr_register_compare_branch_object() {
+  return builds_prepared_fused_ptr_register_compare_branch_object(
+      bir::BinaryOpcode::Ult,
+      0x00028e13,
+      0x00030e93,
+      0x01de6063);
+}
+
+int builds_prepared_fused_uge_ptr_register_compare_branch_object() {
+  return builds_prepared_fused_ptr_register_compare_branch_object(
+      bir::BinaryOpcode::Uge,
+      0x00028e13,
+      0x00030e93,
+      0x01de7063);
+}
+
+int builds_prepared_fused_ugt_ptr_register_compare_branch_object() {
+  return builds_prepared_fused_ptr_register_compare_branch_object(
+      bir::BinaryOpcode::Ugt,
+      0x00030e13,
+      0x00028e93,
+      0x01de6063);
+}
+
+int builds_prepared_fused_ule_ptr_register_compare_branch_object() {
+  return builds_prepared_fused_ptr_register_compare_branch_object(
+      bir::BinaryOpcode::Ule,
+      0x00030e13,
+      0x00028e93,
+      0x01de7063);
 }
 
 int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
@@ -8310,7 +8352,7 @@ int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
     return 1;
   }
   if (expect_prepared_rejection_diagnostic(
-          make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Uge,
+          make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Slt,
                                                     bir::TypeKind::Ptr),
           diagnostic) != 0) {
     return 1;
@@ -14243,6 +14285,10 @@ int main() {
   status |= builds_prepared_fused_ne_ptr_null_compare_branch_object();
   status |= builds_prepared_fused_ne_ptr_register_compare_branch_object();
   status |= builds_prepared_fused_eq_ptr_register_compare_branch_object();
+  status |= builds_prepared_fused_ult_ptr_register_compare_branch_object();
+  status |= builds_prepared_fused_uge_ptr_register_compare_branch_object();
+  status |= builds_prepared_fused_ugt_ptr_register_compare_branch_object();
+  status |= builds_prepared_fused_ule_ptr_register_compare_branch_object();
   status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_traversed_wide_rematerialized_return_object();

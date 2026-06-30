@@ -1977,6 +1977,21 @@ bool prepared_direct_global_return_authority_available(
          home.register_name.has_value();
 }
 
+[[nodiscard]] bool prepared_pointer_branch_predicate_is_supported(
+    bir::BinaryOpcode predicate) {
+  switch (predicate) {
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      return true;
+    default:
+      return false;
+  }
+}
+
 [[nodiscard]] PreparedFusedPointerBranchPublicationStatus
 validate_prepared_pointer_branch_operand_home(
     const PreparedNameTables& names,
@@ -2047,8 +2062,7 @@ plan_prepared_fused_pointer_branch_publication(
     return publication;
   }
   publication.predicate = *inputs.branch_condition->predicate;
-  if (publication.predicate != bir::BinaryOpcode::Eq &&
-      publication.predicate != bir::BinaryOpcode::Ne) {
+  if (!prepared_pointer_branch_predicate_is_supported(publication.predicate)) {
     publication.status =
         PreparedFusedPointerBranchPublicationStatus::UnsupportedPredicate;
     return publication;

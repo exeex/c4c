@@ -7199,13 +7199,58 @@ const c4c::backend::prepare::PreparedValueHome* prepared_pointer_branch_operand_
              : nullptr;
 }
 
-bool prepared_branch_condition_is_pointer_eq_ne(
+bool prepared_pointer_branch_predicate_is_supported(
+    c4c::backend::bir::BinaryOpcode predicate) {
+  switch (predicate) {
+    case c4c::backend::bir::BinaryOpcode::Eq:
+    case c4c::backend::bir::BinaryOpcode::Ne:
+    case c4c::backend::bir::BinaryOpcode::Ult:
+    case c4c::backend::bir::BinaryOpcode::Ule:
+    case c4c::backend::bir::BinaryOpcode::Ugt:
+    case c4c::backend::bir::BinaryOpcode::Uge:
+      return true;
+    default:
+      return false;
+  }
+}
+
+std::optional<Rv64NormalizedBranchPredicate> normalize_prepared_pointer_branch_predicate(
+    c4c::backend::bir::BinaryOpcode opcode,
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs) {
+  switch (opcode) {
+    case c4c::backend::bir::BinaryOpcode::Eq:
+    case c4c::backend::bir::BinaryOpcode::Ne:
+    case c4c::backend::bir::BinaryOpcode::Ult:
+    case c4c::backend::bir::BinaryOpcode::Uge:
+      return Rv64NormalizedBranchPredicate{
+          .opcode = opcode,
+          .lhs = lhs,
+          .rhs = rhs,
+      };
+    case c4c::backend::bir::BinaryOpcode::Ugt:
+      return Rv64NormalizedBranchPredicate{
+          .opcode = c4c::backend::bir::BinaryOpcode::Ult,
+          .lhs = rhs,
+          .rhs = lhs,
+      };
+    case c4c::backend::bir::BinaryOpcode::Ule:
+      return Rv64NormalizedBranchPredicate{
+          .opcode = c4c::backend::bir::BinaryOpcode::Uge,
+          .lhs = rhs,
+          .rhs = lhs,
+      };
+    default:
+      return std::nullopt;
+  }
+}
+
+bool prepared_branch_condition_is_supported_pointer_branch(
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition) {
   return branch_condition.kind ==
              c4c::backend::prepare::PreparedBranchConditionKind::FusedCompare &&
          branch_condition.predicate.has_value() &&
-         (*branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Eq ||
-          *branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Ne) &&
+         prepared_pointer_branch_predicate_is_supported(*branch_condition.predicate) &&
          branch_condition.compare_type.has_value() &&
          *branch_condition.compare_type == c4c::backend::bir::TypeKind::Ptr &&
          branch_condition.lhs.has_value() &&
@@ -7221,7 +7266,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
     std::string true_label,
     std::string false_label,
     std::size_t stack_frame_bytes) {
-  if (!prepared_branch_condition_is_pointer_eq_ne(branch_condition)) {
+  if (!prepared_branch_condition_is_supported_pointer_branch(branch_condition)) {
     return std::nullopt;
   }
 
@@ -7244,7 +7289,14 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
           publication)) {
     return std::nullopt;
   }
-  const auto funct3 = rv64_branch_funct3(publication.predicate);
+  const auto normalized = normalize_prepared_pointer_branch_predicate(
+      publication.predicate,
+      *branch_condition.lhs,
+      *branch_condition.rhs);
+  if (!normalized.has_value()) {
+    return std::nullopt;
+  }
+  const auto funct3 = rv64_branch_funct3(normalized->opcode);
   if (!funct3.has_value()) {
     return std::nullopt;
   }
@@ -7255,14 +7307,14 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
                                           stack_layout,
                                           names,
                                           lookups,
-                                          *branch_condition.lhs,
+                                          normalized->lhs,
                                           stack_frame_bytes) ||
       !append_rv64_move_value_to_register(fragment,
                                           29,
                                           stack_layout,
                                           names,
                                           lookups,
-                                          *branch_condition.rhs,
+                                          normalized->rhs,
                                           stack_frame_bytes)) {
     return std::nullopt;
   }
@@ -7434,7 +7486,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
           branch_condition->predicate.has_value() &&
           branch_condition->lhs.has_value() &&
           branch_condition->rhs.has_value()) {
-        if (prepared_branch_condition_is_pointer_eq_ne(*branch_condition)) {
+        if (prepared_branch_condition_is_supported_pointer_branch(*branch_condition)) {
           return fragment_for_prepared_fused_pointer_branch(prepared.stack_layout,
                                                             names,
                                                             lookups,

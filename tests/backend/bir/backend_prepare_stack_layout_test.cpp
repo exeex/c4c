@@ -5841,12 +5841,29 @@ int check_fused_pointer_branch_publication_contract() {
     return fail("expected coherent fused pointer branch publication");
   }
 
-  auto relational = branch_condition;
-  relational.predicate = bir::BinaryOpcode::Ult;
+  auto unsigned_relational = branch_condition;
+  unsigned_relational.predicate = bir::BinaryOpcode::Ult;
+  const auto accepted_relational =
+      prepare::plan_prepared_fused_pointer_branch_publication({
+          .names = &names,
+          .branch_condition = &unsigned_relational,
+          .terminator = &terminator,
+          .condition_home = &condition_home,
+          .lhs_home = &lhs_home,
+          .rhs_home = &rhs_home,
+      });
+  if (!prepare::prepared_fused_pointer_branch_publication_available(
+          accepted_relational) ||
+      accepted_relational.predicate != bir::BinaryOpcode::Ult) {
+    return fail("expected unsigned pointer relational branch publication");
+  }
+
+  auto signed_relational = branch_condition;
+  signed_relational.predicate = bir::BinaryOpcode::Slt;
   const auto unsupported_predicate =
       prepare::plan_prepared_fused_pointer_branch_publication({
           .names = &names,
-          .branch_condition = &relational,
+          .branch_condition = &signed_relational,
           .terminator = &terminator,
           .condition_home = &condition_home,
           .lhs_home = &lhs_home,
@@ -5854,7 +5871,7 @@ int check_fused_pointer_branch_publication_contract() {
       });
   if (unsupported_predicate.status !=
       prepare::PreparedFusedPointerBranchPublicationStatus::UnsupportedPredicate) {
-    return fail("expected pointer relational branch predicate to stay fail-closed");
+    return fail("expected signed pointer relational branch predicate to stay fail-closed");
   }
 
   auto mismatched_condition = terminator;
