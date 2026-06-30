@@ -126,3 +126,15 @@ Re-check `20010329-1` and focused coverage against the Step 3 result, classify
 remaining residuals, and decide whether this source idea is complete.
 Completion means close, keep active with an exact remaining consumer packet,
 or route durable follow-up work.
+
+### Step 5: Suppress Authorized Cast-Dependency Stack Publication Bundle
+
+Consume the Step 4 residual packet for the `before_instruction` stack-slot
+publication of the authorized `%t17` cast dependency result. Use only populated
+`rematerialize_cast_from_source status=available` dependency-operand authority
+and carrier-use proof to suppress or safely consume the owned
+`consumer_register_to_stack` publication bundle before the select-edge compare
+consumer runs. Completion means focused RV64 object coverage proves the
+accepted authorized bundle and fail-closed generic stack-slot moves,
+`load_from_stack_slot missing_stack_freshness`, raw `inttoptr`,
+successor-copy, scratch-clobber, and unrelated move-bundle cases.
