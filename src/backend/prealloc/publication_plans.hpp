@@ -21,6 +21,8 @@
 namespace c4c::backend::prepare {
 
 struct PreparedBirModule;
+struct PreparedEdgePublication;
+struct PreparedEdgePublicationSourceProducer;
 struct PreparedEdgePublicationSourceProducerLookups;
 
 enum class PreparedEdgePublicationLookupStatus {
@@ -360,6 +362,119 @@ prepared_fused_pointer_branch_publication_status_name(
   return "unknown";
 }
 
+enum class PreparedDependencyOperandRole {
+  Lhs,
+  Rhs,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_dependency_operand_role_name(
+    PreparedDependencyOperandRole role) {
+  switch (role) {
+    case PreparedDependencyOperandRole::Lhs:
+      return "lhs";
+    case PreparedDependencyOperandRole::Rhs:
+      return "rhs";
+  }
+  return "unknown";
+}
+
+enum class PreparedDependencyOperandMaterializationPolicy {
+  None,
+  LoadFromStackSlot,
+  RematerializeCastFromSource,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_dependency_operand_materialization_policy_name(
+    PreparedDependencyOperandMaterializationPolicy policy) {
+  switch (policy) {
+    case PreparedDependencyOperandMaterializationPolicy::None:
+      return "none";
+    case PreparedDependencyOperandMaterializationPolicy::LoadFromStackSlot:
+      return "load_from_stack_slot";
+    case PreparedDependencyOperandMaterializationPolicy::RematerializeCastFromSource:
+      return "rematerialize_cast_from_source";
+  }
+  return "unknown";
+}
+
+enum class PreparedDependencyOperandAuthorityStatus {
+  Available,
+  MissingNames,
+  MissingPublication,
+  UnsupportedPublication,
+  MissingSourceProducer,
+  UnsupportedSourceProducer,
+  MissingDependencyOperand,
+  OperandMismatch,
+  MissingDependencyHome,
+  HomeValueMismatch,
+  MissingPolicy,
+  MissingStackObject,
+  StackObjectMismatch,
+  MissingStackFreshness,
+  MissingStackClobberSafety,
+  MissingCastProducer,
+  UnsupportedCastProducer,
+  CastResultMismatch,
+  MissingCastSourceHome,
+  UnsupportedCastSourceHome,
+  CastSourceMismatch,
+  UnsupportedCastWidth,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_dependency_operand_authority_status_name(
+    PreparedDependencyOperandAuthorityStatus status) {
+  switch (status) {
+    case PreparedDependencyOperandAuthorityStatus::Available:
+      return "available";
+    case PreparedDependencyOperandAuthorityStatus::MissingNames:
+      return "missing_names";
+    case PreparedDependencyOperandAuthorityStatus::MissingPublication:
+      return "missing_publication";
+    case PreparedDependencyOperandAuthorityStatus::UnsupportedPublication:
+      return "unsupported_publication";
+    case PreparedDependencyOperandAuthorityStatus::MissingSourceProducer:
+      return "missing_source_producer";
+    case PreparedDependencyOperandAuthorityStatus::UnsupportedSourceProducer:
+      return "unsupported_source_producer";
+    case PreparedDependencyOperandAuthorityStatus::MissingDependencyOperand:
+      return "missing_dependency_operand";
+    case PreparedDependencyOperandAuthorityStatus::OperandMismatch:
+      return "operand_mismatch";
+    case PreparedDependencyOperandAuthorityStatus::MissingDependencyHome:
+      return "missing_dependency_home";
+    case PreparedDependencyOperandAuthorityStatus::HomeValueMismatch:
+      return "home_value_mismatch";
+    case PreparedDependencyOperandAuthorityStatus::MissingPolicy:
+      return "missing_policy";
+    case PreparedDependencyOperandAuthorityStatus::MissingStackObject:
+      return "missing_stack_object";
+    case PreparedDependencyOperandAuthorityStatus::StackObjectMismatch:
+      return "stack_object_mismatch";
+    case PreparedDependencyOperandAuthorityStatus::MissingStackFreshness:
+      return "missing_stack_freshness";
+    case PreparedDependencyOperandAuthorityStatus::MissingStackClobberSafety:
+      return "missing_stack_clobber_safety";
+    case PreparedDependencyOperandAuthorityStatus::MissingCastProducer:
+      return "missing_cast_producer";
+    case PreparedDependencyOperandAuthorityStatus::UnsupportedCastProducer:
+      return "unsupported_cast_producer";
+    case PreparedDependencyOperandAuthorityStatus::CastResultMismatch:
+      return "cast_result_mismatch";
+    case PreparedDependencyOperandAuthorityStatus::MissingCastSourceHome:
+      return "missing_cast_source_home";
+    case PreparedDependencyOperandAuthorityStatus::UnsupportedCastSourceHome:
+      return "unsupported_cast_source_home";
+    case PreparedDependencyOperandAuthorityStatus::CastSourceMismatch:
+      return "cast_source_mismatch";
+    case PreparedDependencyOperandAuthorityStatus::UnsupportedCastWidth:
+      return "unsupported_cast_width";
+  }
+  return "unknown";
+}
+
 struct PreparedFusedPointerBranchPublicationInputs {
   const PreparedNameTables* names = nullptr;
   const PreparedBranchCondition* branch_condition = nullptr;
@@ -378,6 +493,50 @@ struct PreparedFusedPointerBranchPublication {
   const PreparedValueHome* lhs_home = nullptr;
   const PreparedValueHome* rhs_home = nullptr;
   bir::BinaryOpcode predicate = bir::BinaryOpcode::Eq;
+};
+
+struct PreparedDependencyOperandAuthorityInputs {
+  const PreparedNameTables* names = nullptr;
+  const PreparedEdgePublication* publication = nullptr;
+  const bir::Value* dependency_operand = nullptr;
+  PreparedDependencyOperandRole operand_role = PreparedDependencyOperandRole::Rhs;
+  const PreparedValueHome* dependency_home = nullptr;
+  const PreparedStackObject* dependency_stack_object = nullptr;
+  const PreparedEdgePublicationSourceProducer* cast_producer = nullptr;
+  const PreparedValueHome* cast_source_home = nullptr;
+  PreparedDependencyOperandMaterializationPolicy policy =
+      PreparedDependencyOperandMaterializationPolicy::None;
+  bool stack_slot_fresh_at_edge = false;
+  bool stack_slot_clobber_safe_at_edge = false;
+};
+
+struct PreparedDependencyOperandAuthority {
+  PreparedDependencyOperandAuthorityStatus status =
+      PreparedDependencyOperandAuthorityStatus::MissingPublication;
+  PreparedDependencyOperandMaterializationPolicy policy =
+      PreparedDependencyOperandMaterializationPolicy::None;
+  PreparedDependencyOperandRole operand_role = PreparedDependencyOperandRole::Rhs;
+  const PreparedEdgePublication* publication = nullptr;
+  const PreparedValueHome* dependency_home = nullptr;
+  const PreparedStackObject* dependency_stack_object = nullptr;
+  const PreparedEdgePublicationSourceProducer* cast_producer = nullptr;
+  const PreparedValueHome* cast_source_home = nullptr;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+  std::optional<PreparedValueId> edge_source_value_id;
+  ValueNameId edge_source_value_name = kInvalidValueName;
+  PreparedValueId dependency_value_id = 0;
+  ValueNameId dependency_value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind dependency_type =
+      c4c::backend::bir::TypeKind::Void;
+  std::optional<PreparedFrameSlotId> dependency_slot_id;
+  std::optional<std::size_t> dependency_stack_offset_bytes;
+  std::optional<std::size_t> dependency_stack_size_bytes;
+  std::optional<std::size_t> dependency_stack_align_bytes;
+  std::optional<PreparedValueId> cast_source_value_id;
+  ValueNameId cast_source_value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind cast_source_type =
+      c4c::backend::bir::TypeKind::Void;
 };
 
 struct PreparedEdgePublicationSourceProducer {
@@ -1076,6 +1235,13 @@ plan_prepared_fused_pointer_branch_publication(
 
 [[nodiscard]] bool prepared_fused_pointer_branch_publication_available(
     const PreparedFusedPointerBranchPublication& publication);
+
+[[nodiscard]] PreparedDependencyOperandAuthority
+plan_prepared_dependency_operand_authority(
+    const PreparedDependencyOperandAuthorityInputs& inputs);
+
+[[nodiscard]] bool prepared_dependency_operand_authority_available(
+    const PreparedDependencyOperandAuthority& authority);
 
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(

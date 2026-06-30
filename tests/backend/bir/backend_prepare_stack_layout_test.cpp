@@ -5977,6 +5977,314 @@ int check_fused_pointer_branch_publication_contract() {
   return 0;
 }
 
+int check_dependency_operand_authority_contract() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("dependency_operand");
+  const auto pred_label = names.block_labels.intern("pred");
+  const auto succ_label = names.block_labels.intern("join");
+  const auto cmp_name = names.value_names.intern("%cmp");
+  const auto lhs_name = names.value_names.intern("%lhs");
+  const auto dep_name = names.value_names.intern("%dep");
+  const auto src_name = names.value_names.intern("%src");
+  const auto selected_name = names.value_names.intern("%selected");
+
+  const bir::Value lhs = bir::Value::named(bir::TypeKind::Ptr, "%lhs");
+  const bir::Value dependency = bir::Value::named(bir::TypeKind::Ptr, "%dep");
+  const bir::Value source = bir::Value::named(bir::TypeKind::I32, "%src");
+  const bir::Value cmp = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value selected = bir::Value::named(bir::TypeKind::I32, "%selected");
+
+  const bir::BinaryInst compare{
+      .opcode = bir::BinaryOpcode::Ule,
+      .result = cmp,
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = lhs,
+      .rhs = dependency,
+  };
+  const bir::CastInst cast{
+      .opcode = bir::CastOpcode::IntToPtr,
+      .result = dependency,
+      .operand = source,
+  };
+
+  const prepare::PreparedEdgePublication publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .predecessor_label = pred_label,
+      .successor_label = succ_label,
+      .destination_value = selected,
+      .source_value = cmp,
+      .destination_value_id = 11,
+      .destination_value_name = selected_name,
+      .source_value_id = 10,
+      .source_value_name = cmp_name,
+      .source_value_kind = bir::Value::Kind::Named,
+      .source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .source_producer_block_label = succ_label,
+      .source_producer_instruction_index = 3,
+      .source_binary = &compare,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .phase = prepare::PreparedMovePhase::BlockEntry,
+      .carrier_kind = prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+      .parallel_copy_execution_site =
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+      .parallel_copy_execution_block_label = pred_label,
+  };
+  const prepare::PreparedValueHome dependency_home{
+      .value_id = 9,
+      .function_name = function_name,
+      .value_name = dep_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{2},
+      .offset_bytes = std::size_t{16},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+  };
+  const prepare::PreparedStackObject dependency_object{
+      .object_id = 2,
+      .function_name = function_name,
+      .value_name = dep_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  };
+  const prepare::PreparedEdgePublicationSourceProducer cast_producer{
+      .kind = prepare::PreparedEdgePublicationSourceProducerKind::Cast,
+      .block_label = succ_label,
+      .instruction_index = 2,
+      .cast = &cast,
+  };
+  const prepare::PreparedValueHome cast_source_home{
+      .value_id = 8,
+      .function_name = function_name,
+      .value_name = src_name,
+      .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+      .immediate_i32 = -2147483643,
+  };
+
+  const auto accepted_cast =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &dependency,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &dependency_home,
+          .dependency_stack_object = &dependency_object,
+          .cast_producer = &cast_producer,
+          .cast_source_home = &cast_source_home,
+          .policy = prepare::PreparedDependencyOperandMaterializationPolicy::
+              RematerializeCastFromSource,
+      });
+  if (!prepare::prepared_dependency_operand_authority_available(accepted_cast) ||
+      accepted_cast.policy !=
+          prepare::PreparedDependencyOperandMaterializationPolicy::
+              RematerializeCastFromSource ||
+      accepted_cast.operand_role != prepare::PreparedDependencyOperandRole::Rhs ||
+      accepted_cast.dependency_value_id != dependency_home.value_id ||
+      accepted_cast.dependency_value_name != dep_name ||
+      accepted_cast.dependency_slot_id != dependency_home.slot_id ||
+      accepted_cast.cast_source_value_id != cast_source_home.value_id ||
+      accepted_cast.cast_source_value_name != src_name ||
+      accepted_cast.cast_source_type != bir::TypeKind::I32) {
+    return fail("expected explicit cast dependency operand authority");
+  }
+
+  const auto missing_policy =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &dependency,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &dependency_home,
+          .dependency_stack_object = &dependency_object,
+      });
+  if (missing_policy.status !=
+      prepare::PreparedDependencyOperandAuthorityStatus::MissingPolicy) {
+    return fail("expected missing dependency operand policy to stay fail-closed");
+  }
+
+  const auto missing_cast_source =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &dependency,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &dependency_home,
+          .dependency_stack_object = &dependency_object,
+          .cast_producer = &cast_producer,
+          .policy = prepare::PreparedDependencyOperandMaterializationPolicy::
+              RematerializeCastFromSource,
+      });
+  if (missing_cast_source.status !=
+      prepare::PreparedDependencyOperandAuthorityStatus::MissingCastSourceHome) {
+    return fail("expected missing cast source home to stay fail-closed");
+  }
+
+  auto stack_cast_source_home = cast_source_home;
+  stack_cast_source_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  stack_cast_source_home.immediate_i32 = std::nullopt;
+  const auto unsupported_cast_source =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &dependency,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &dependency_home,
+          .dependency_stack_object = &dependency_object,
+          .cast_producer = &cast_producer,
+          .cast_source_home = &stack_cast_source_home,
+          .policy = prepare::PreparedDependencyOperandMaterializationPolicy::
+              RematerializeCastFromSource,
+      });
+  if (unsupported_cast_source.status !=
+      prepare::PreparedDependencyOperandAuthorityStatus::
+          UnsupportedCastSourceHome) {
+    return fail("expected stack-home cast source to stay fail-closed");
+  }
+
+  const bir::CastInst unsupported_width_cast{
+      .opcode = bir::CastOpcode::IntToPtr,
+      .result = dependency,
+      .operand = bir::Value::named(bir::TypeKind::I16, "%src"),
+  };
+  const prepare::PreparedEdgePublicationSourceProducer unsupported_width_producer{
+      .kind = prepare::PreparedEdgePublicationSourceProducerKind::Cast,
+      .block_label = succ_label,
+      .instruction_index = 2,
+      .cast = &unsupported_width_cast,
+  };
+  const auto unsupported_width =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &dependency,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &dependency_home,
+          .dependency_stack_object = &dependency_object,
+          .cast_producer = &unsupported_width_producer,
+          .cast_source_home = &cast_source_home,
+          .policy = prepare::PreparedDependencyOperandMaterializationPolicy::
+              RematerializeCastFromSource,
+      });
+  if (unsupported_width.status !=
+      prepare::PreparedDependencyOperandAuthorityStatus::UnsupportedCastWidth) {
+    return fail("expected unsupported cast source width to stay fail-closed");
+  }
+
+  const auto missing_freshness =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &dependency,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &dependency_home,
+          .dependency_stack_object = &dependency_object,
+          .policy =
+              prepare::PreparedDependencyOperandMaterializationPolicy::
+                  LoadFromStackSlot,
+      });
+  if (missing_freshness.status !=
+      prepare::PreparedDependencyOperandAuthorityStatus::MissingStackFreshness) {
+    return fail("expected stack load without freshness to stay fail-closed");
+  }
+
+  const auto missing_clobber_safety =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &dependency,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &dependency_home,
+          .dependency_stack_object = &dependency_object,
+          .policy =
+              prepare::PreparedDependencyOperandMaterializationPolicy::
+                  LoadFromStackSlot,
+          .stack_slot_fresh_at_edge = true,
+      });
+  if (missing_clobber_safety.status !=
+      prepare::PreparedDependencyOperandAuthorityStatus::
+          MissingStackClobberSafety) {
+    return fail("expected stack load without clobber safety to stay fail-closed");
+  }
+
+  const auto accepted_load =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &dependency,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &dependency_home,
+          .dependency_stack_object = &dependency_object,
+          .policy =
+              prepare::PreparedDependencyOperandMaterializationPolicy::
+                  LoadFromStackSlot,
+          .stack_slot_fresh_at_edge = true,
+          .stack_slot_clobber_safe_at_edge = true,
+      });
+  if (!prepare::prepared_dependency_operand_authority_available(accepted_load) ||
+      accepted_load.policy !=
+          prepare::PreparedDependencyOperandMaterializationPolicy::
+              LoadFromStackSlot) {
+    return fail("expected explicit stack-load dependency operand authority");
+  }
+
+  auto mismatched_home = dependency_home;
+  mismatched_home.value_name = lhs_name;
+  const auto home_mismatch =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &dependency,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &mismatched_home,
+          .dependency_stack_object = &dependency_object,
+          .policy = prepare::PreparedDependencyOperandMaterializationPolicy::
+              RematerializeCastFromSource,
+      });
+  if (home_mismatch.status !=
+      prepare::PreparedDependencyOperandAuthorityStatus::HomeValueMismatch) {
+    return fail("expected mismatched dependency home to stay fail-closed");
+  }
+
+  const auto operand_mismatch =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &lhs,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &dependency_home,
+          .dependency_stack_object = &dependency_object,
+          .policy = prepare::PreparedDependencyOperandMaterializationPolicy::
+              RematerializeCastFromSource,
+      });
+  if (operand_mismatch.status !=
+      prepare::PreparedDependencyOperandAuthorityStatus::OperandMismatch) {
+    return fail("expected wrong dependency operand role to stay fail-closed");
+  }
+
+  auto unavailable_publication = publication;
+  unavailable_publication.status =
+      prepare::PreparedEdgePublicationLookupStatus::MissingDestinationValue;
+  const auto unsupported_publication =
+      prepare::plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &unavailable_publication,
+          .dependency_operand = &dependency,
+          .operand_role = prepare::PreparedDependencyOperandRole::Rhs,
+          .dependency_home = &dependency_home,
+          .dependency_stack_object = &dependency_object,
+          .policy = prepare::PreparedDependencyOperandMaterializationPolicy::
+              RematerializeCastFromSource,
+      });
+  if (unsupported_publication.status !=
+      prepare::PreparedDependencyOperandAuthorityStatus::UnsupportedPublication) {
+    return fail("expected unavailable edge publication to stay fail-closed");
+  }
+
+  return 0;
+}
+
 int check_populated_immediate_global_store_source_publication() {
   const auto run_case = [](bool coherent_destination) {
     prepare::PreparedBirModule prepared;
@@ -7375,6 +7683,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_fused_pointer_branch_publication_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_dependency_operand_authority_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_populated_immediate_global_store_source_publication();

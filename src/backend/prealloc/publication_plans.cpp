@@ -2141,6 +2141,242 @@ bool prepared_fused_pointer_branch_publication_available(
          PreparedFusedPointerBranchPublicationStatus::Available;
 }
 
+namespace {
+
+[[nodiscard]] const bir::Value* dependency_operand_for_role(
+    const bir::BinaryInst& binary,
+    PreparedDependencyOperandRole role) {
+  switch (role) {
+    case PreparedDependencyOperandRole::Lhs:
+      return &binary.lhs;
+    case PreparedDependencyOperandRole::Rhs:
+      return &binary.rhs;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool prepared_stack_object_matches_dependency_home(
+    const PreparedStackObject& object,
+    const PreparedValueHome& home,
+    bir::TypeKind dependency_type) {
+  return home.kind == PreparedValueHomeKind::StackSlot &&
+         home.function_name == object.function_name &&
+         object.value_name.has_value() &&
+         *object.value_name == home.value_name &&
+         home.size_bytes.has_value() &&
+         object.size_bytes == *home.size_bytes &&
+         home.align_bytes.has_value() &&
+         object.align_bytes == *home.align_bytes &&
+         object.type == dependency_type &&
+         object.type == bir::TypeKind::Ptr &&
+         object.size_bytes == 8 &&
+         object.align_bytes >= 8 &&
+         !object.address_exposed &&
+         !object.permanent_home_slot;
+}
+
+[[nodiscard]] bool prepared_dependency_cast_source_home_is_consumable(
+    const PreparedValueHome& home) {
+  if (home.kind == PreparedValueHomeKind::Register &&
+      home.register_name.has_value()) {
+    return true;
+  }
+  return home.kind == PreparedValueHomeKind::RematerializableImmediate &&
+         home.immediate_i32.has_value();
+}
+
+[[nodiscard]] bool prepared_inttoptr_cast_width_supported(
+    const bir::CastInst& cast) {
+  return cast.opcode == bir::CastOpcode::IntToPtr &&
+         cast.result.type == bir::TypeKind::Ptr &&
+         (cast.operand.type == bir::TypeKind::I32 ||
+          cast.operand.type == bir::TypeKind::I64);
+}
+
+}  // namespace
+
+PreparedDependencyOperandAuthority plan_prepared_dependency_operand_authority(
+    const PreparedDependencyOperandAuthorityInputs& inputs) {
+  PreparedDependencyOperandAuthority authority{
+      .policy = inputs.policy,
+      .operand_role = inputs.operand_role,
+      .publication = inputs.publication,
+      .dependency_home = inputs.dependency_home,
+      .dependency_stack_object = inputs.dependency_stack_object,
+      .cast_producer = inputs.cast_producer,
+      .cast_source_home = inputs.cast_source_home,
+  };
+
+  if (inputs.names == nullptr) {
+    authority.status = PreparedDependencyOperandAuthorityStatus::MissingNames;
+    return authority;
+  }
+  if (inputs.publication == nullptr) {
+    authority.status =
+        PreparedDependencyOperandAuthorityStatus::MissingPublication;
+    return authority;
+  }
+  authority.destination_value_id = inputs.publication->destination_value_id;
+  authority.destination_value_name = inputs.publication->destination_value_name;
+  authority.edge_source_value_id = inputs.publication->source_value_id;
+  authority.edge_source_value_name = inputs.publication->source_value_name;
+
+  if (inputs.publication->status !=
+          PreparedEdgePublicationLookupStatus::Available ||
+      inputs.publication->phase != PreparedMovePhase::BlockEntry ||
+      inputs.publication->parallel_copy_execution_site !=
+          PreparedParallelCopyExecutionSite::PredecessorTerminator ||
+      inputs.publication->destination_storage_kind !=
+          PreparedMoveStorageKind::Register) {
+    authority.status =
+        PreparedDependencyOperandAuthorityStatus::UnsupportedPublication;
+    return authority;
+  }
+  if (inputs.publication->source_producer_kind !=
+      PreparedEdgePublicationSourceProducerKind::Binary) {
+    authority.status =
+        PreparedDependencyOperandAuthorityStatus::UnsupportedSourceProducer;
+    return authority;
+  }
+  if (inputs.publication->source_binary == nullptr) {
+    authority.status =
+        PreparedDependencyOperandAuthorityStatus::MissingSourceProducer;
+    return authority;
+  }
+  if (inputs.publication->source_binary->result !=
+      inputs.publication->source_value) {
+    authority.status =
+        PreparedDependencyOperandAuthorityStatus::UnsupportedSourceProducer;
+    return authority;
+  }
+
+  if (inputs.dependency_operand == nullptr) {
+    authority.status =
+        PreparedDependencyOperandAuthorityStatus::MissingDependencyOperand;
+    return authority;
+  }
+  const auto* expected_operand =
+      dependency_operand_for_role(*inputs.publication->source_binary,
+                                  inputs.operand_role);
+  if (expected_operand == nullptr || *expected_operand != *inputs.dependency_operand) {
+    authority.status =
+        PreparedDependencyOperandAuthorityStatus::OperandMismatch;
+    return authority;
+  }
+  authority.dependency_type = inputs.dependency_operand->type;
+
+  if (inputs.dependency_home == nullptr) {
+    authority.status =
+        PreparedDependencyOperandAuthorityStatus::MissingDependencyHome;
+    return authority;
+  }
+  authority.dependency_value_id = inputs.dependency_home->value_id;
+  authority.dependency_value_name = inputs.dependency_home->value_name;
+  if (!prepared_home_names_value(*inputs.names, *inputs.dependency_home,
+                                 *inputs.dependency_operand)) {
+    authority.status =
+        PreparedDependencyOperandAuthorityStatus::HomeValueMismatch;
+    return authority;
+  }
+
+  if (inputs.dependency_home->kind == PreparedValueHomeKind::StackSlot) {
+    authority.dependency_slot_id = inputs.dependency_home->slot_id;
+    authority.dependency_stack_offset_bytes =
+        inputs.dependency_home->offset_bytes;
+    authority.dependency_stack_size_bytes = inputs.dependency_home->size_bytes;
+    authority.dependency_stack_align_bytes = inputs.dependency_home->align_bytes;
+    if (inputs.dependency_stack_object == nullptr) {
+      authority.status =
+          PreparedDependencyOperandAuthorityStatus::MissingStackObject;
+      return authority;
+    }
+    if (!prepared_stack_object_matches_dependency_home(
+            *inputs.dependency_stack_object, *inputs.dependency_home,
+            inputs.dependency_operand->type)) {
+      authority.status =
+          PreparedDependencyOperandAuthorityStatus::StackObjectMismatch;
+      return authority;
+    }
+  }
+
+  switch (inputs.policy) {
+    case PreparedDependencyOperandMaterializationPolicy::None:
+      authority.status =
+          PreparedDependencyOperandAuthorityStatus::MissingPolicy;
+      return authority;
+    case PreparedDependencyOperandMaterializationPolicy::LoadFromStackSlot:
+      if (inputs.dependency_home->kind != PreparedValueHomeKind::StackSlot) {
+        authority.status =
+            PreparedDependencyOperandAuthorityStatus::StackObjectMismatch;
+        return authority;
+      }
+      if (!inputs.stack_slot_fresh_at_edge) {
+        authority.status =
+            PreparedDependencyOperandAuthorityStatus::MissingStackFreshness;
+        return authority;
+      }
+      if (!inputs.stack_slot_clobber_safe_at_edge) {
+        authority.status =
+            PreparedDependencyOperandAuthorityStatus::MissingStackClobberSafety;
+        return authority;
+      }
+      break;
+    case PreparedDependencyOperandMaterializationPolicy::
+        RematerializeCastFromSource:
+      if (inputs.cast_producer == nullptr) {
+        authority.status =
+            PreparedDependencyOperandAuthorityStatus::MissingCastProducer;
+        return authority;
+      }
+      if (inputs.cast_producer->kind !=
+              PreparedEdgePublicationSourceProducerKind::Cast ||
+          inputs.cast_producer->cast == nullptr) {
+        authority.status =
+            PreparedDependencyOperandAuthorityStatus::UnsupportedCastProducer;
+        return authority;
+      }
+      if (inputs.cast_producer->cast->result != *inputs.dependency_operand) {
+        authority.status =
+            PreparedDependencyOperandAuthorityStatus::CastResultMismatch;
+        return authority;
+      }
+      if (!prepared_inttoptr_cast_width_supported(*inputs.cast_producer->cast)) {
+        authority.status =
+            PreparedDependencyOperandAuthorityStatus::UnsupportedCastWidth;
+        return authority;
+      }
+      if (inputs.cast_source_home == nullptr) {
+        authority.status =
+            PreparedDependencyOperandAuthorityStatus::MissingCastSourceHome;
+        return authority;
+      }
+      authority.cast_source_value_id = inputs.cast_source_home->value_id;
+      authority.cast_source_value_name = inputs.cast_source_home->value_name;
+      authority.cast_source_type = inputs.cast_producer->cast->operand.type;
+      if (!prepared_home_names_value(*inputs.names, *inputs.cast_source_home,
+                                     inputs.cast_producer->cast->operand)) {
+        authority.status =
+            PreparedDependencyOperandAuthorityStatus::CastSourceMismatch;
+        return authority;
+      }
+      if (!prepared_dependency_cast_source_home_is_consumable(
+              *inputs.cast_source_home)) {
+        authority.status =
+            PreparedDependencyOperandAuthorityStatus::UnsupportedCastSourceHome;
+        return authority;
+      }
+      break;
+  }
+
+  authority.status = PreparedDependencyOperandAuthorityStatus::Available;
+  return authority;
+}
+
+bool prepared_dependency_operand_authority_available(
+    const PreparedDependencyOperandAuthority& authority) {
+  return authority.status == PreparedDependencyOperandAuthorityStatus::Available;
+}
+
 void publish_store_global_immediate_source_if_authorized(
     PreparedStoreSourcePublicationPlan& plan) {
   if (plan.intent != PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||

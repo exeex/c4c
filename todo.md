@@ -1,71 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/454_edge_dependency_operand_materialization_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Dependency-Operand Authority Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route First Producer Metadata Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for idea 454. The contract artifact is
-`build/agent_state/454_step2_dependency_operand_authority_contract/contract.md`.
+Completed Step 3 for idea 454. Summary artifact:
+`build/agent_state/454_step3_dependency_operand_authority_metadata/summary.md`.
 
-Accepted shapes:
+Implemented metadata-only surface:
 
-- Shared requirements: edge identity, source-producer identity, dependency
-  operand identity/role, value id/name/type agreement, predecessor-terminator
-  placement, and available register destination publication.
-- `load_from_stack_slot`: accepted only with stack value-home/object linkage,
-  coherent slot id/offset/size/alignment/pointer width, edge-safe freshness,
-  clobber-safety, and explicit load policy.
-- `rematerialize_cast_from_source`: accepted only with explicit cast producer,
-  cast result matching the dependency operand, explicit source identity,
-  target-consumable source home, supported cast kind, and supported pointer
-  width semantics.
+- `PreparedDependencyOperandMaterializationPolicy`
+- `PreparedDependencyOperandAuthorityStatus`
+- `PreparedDependencyOperandAuthorityInputs`
+- `PreparedDependencyOperandAuthority`
+- `plan_prepared_dependency_operand_authority`
+- `prepared_dependency_operand_authority_available`
 
-Rejected shapes:
+Accepted authority:
 
-- stack home plus object metadata without policy;
-- raw `inttoptr` plus immediate source without policy;
-- successor/join-block result copies such as `%t18`;
-- dependency records not tied to a specific edge and source producer;
-- missing/mismatched value id/name/type or missing stack object linkage;
-- missing freshness/clobber-safety for stack loads;
-- missing cast source, unsupported cast kind/type/width, or non-consumable cast
-  source home;
-- non-predecessor-terminator placement, unavailable/non-register destination,
-  pointer-value provenance, generic stack-home branch work, or RV64 lowering.
+- edge publication must be available, block-entry,
+  predecessor-terminator placed, register-destination, and backed by a binary
+  source producer;
+- dependency operand must match the selected producer operand role;
+- dependency value home must match the operand value id/name/type;
+- stack-backed operands must have coherent stack object linkage;
+- `rematerialize_cast_from_source` requires explicit cast producer, supported
+  `IntToPtr` width, matching cast result, and register or rematerializable
+  immediate cast-source home;
+- `load_from_stack_slot` requires explicit freshness and clobber-safety.
 
-Step 2 conclusion: this producer layer can own the policy representation and
-operand linkage contract. Freshness/clobber-safety remains required for
-`load_from_stack_slot`; if Step 3 cannot express that fact, it should keep
-stack-load authority fail-closed and either implement only a coherent explicit
-cast-rematerialization metadata path or record a metadata blocker.
+Focused tests cover accepted explicit cast-rematerialization, accepted explicit
+stack-load only with freshness/clobber-safety, and fail-closed missing policy,
+missing cast source, bad cast source home, unsupported cast width, missing
+freshness, missing clobber-safety, home mismatch, operand mismatch, and
+unavailable edge publication.
+
+No RV64 target lowering was changed or allowed to consume the new authority in
+this packet.
 
 ## Suggested Next
 
-Step 3: `Add Dependency-Operand Authority Metadata Coverage`.
+Step 4: `Residual Disposition And Close Readiness`.
 
-Suggested owned files:
+Re-check the `%t17` dependency-operand authority status against the new
+metadata surface. Classify whether idea 454 is complete as a producer/prepared
+authority prerequisite, whether a separate population/printing packet remains,
+or whether lifecycle should route back to the stack-slot pointer select-edge
+consumer only after a plan-owner decision. Do not select RV64 target lowering
+inside this packet.
 
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` if route lookup
-  helper coverage is clearer
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/454_step3_dependency_operand_authority_metadata/*`
-
-Add the smallest prepared metadata type/status enum/planner or predicate for
-dependency operands of edge source producers. Cover accepted explicit
-`rematerialize_cast_from_source` if current producer facts can express the cast
-relationship and width policy. Cover `load_from_stack_slot` only if
-freshness/clobber-safety can be expressed; otherwise keep it fail-closed with a
-precise status.
-
-Proof command:
+Future proof command:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
@@ -88,10 +76,10 @@ Proof command:
 
 ## Proof
 
-Step 2 contract proof:
+Step 3 backend proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed.
+Result: passed. Proof log: `test_after.log`.
