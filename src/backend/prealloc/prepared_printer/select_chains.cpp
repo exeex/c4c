@@ -364,4 +364,41 @@ void append_dependency_operand_authorities(std::ostringstream& out,
   }
 }
 
+void append_branch_stack_load_authorities(std::ostringstream& out,
+                                          const PreparedBirModule& module) {
+  out << "--- prepared-branch-stack-load-authorities ---\n";
+  const auto records = collect_prepared_branch_stack_load_authorities(module);
+  for (const auto& record : records.records) {
+    const auto& authority = record.authority;
+    out << "  branch_stack_load_authority function="
+        << maybe_function_name(module.names, record.function_name)
+        << " block=" << maybe_block_label(module.names, record.block_label)
+        << " role=" << prepared_branch_stack_load_role_name(record.role)
+        << " value=" << maybe_value_name(module.names, authority.value_name)
+        << " value_id=" << authority.value_id
+        << " policy=" << prepared_branch_stack_load_policy_name(authority.policy)
+        << " pointer_status="
+        << prepared_branch_stack_load_pointer_status_name(
+               authority.pointer_status)
+        << " status="
+        << prepared_branch_stack_load_authority_status_name(authority.status);
+    if (authority.slot_id.has_value()) {
+      out << " slot=#" << *authority.slot_id;
+    }
+    if (authority.stack_object_id.has_value()) {
+      out << " object=#" << *authority.stack_object_id;
+    }
+    if (authority.stack_offset_bytes.has_value()) {
+      out << " stack_offset=" << *authority.stack_offset_bytes;
+    }
+    if (authority.stack_size_bytes.has_value()) {
+      out << " size=" << *authority.stack_size_bytes;
+    }
+    if (authority.stack_align_bytes.has_value()) {
+      out << " align=" << *authority.stack_align_bytes;
+    }
+    out << "\n";
+  }
+}
+
 }  // namespace c4c::backend::prepare

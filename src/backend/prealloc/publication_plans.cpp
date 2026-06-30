@@ -2349,6 +2349,184 @@ bool prepared_branch_stack_load_authority_available(
 
 namespace {
 
+[[nodiscard]] const PreparedValueHome* value_home_for_named_value(
+    const PreparedNameTables& names,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const bir::Value& value);
+
+[[nodiscard]] const bir::Function* prepared_bir_function_by_name(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name);
+
+[[nodiscard]] const bir::Block* prepared_bir_block_by_label(
+    const bir::Function& function,
+    BlockLabelId block_label);
+
+[[nodiscard]] const bir::Block* branch_stack_load_bir_block_by_label(
+    const PreparedNameTables& names,
+    const bir::Function& function,
+    BlockLabelId block_label) {
+  if (block_label == kInvalidBlockLabel) {
+    return nullptr;
+  }
+  for (const auto& block : function.blocks) {
+    if (block.label_id == block_label ||
+        prepared_block_label_id(names, block) == block_label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
+void clear_temporary_branch_stack_load_pointers(
+    PreparedBranchStackLoadAuthority& authority) {
+  authority.branch_condition = nullptr;
+  authority.terminator = nullptr;
+  authority.value_home = nullptr;
+  authority.frame_slot = nullptr;
+  authority.stack_object = nullptr;
+}
+
+[[nodiscard]] const PreparedFrameSlot* branch_stack_load_frame_slot_for_home(
+    const PreparedStackLayout& stack_layout,
+    const PreparedValueHome* home) {
+  if (home == nullptr || home->kind != PreparedValueHomeKind::StackSlot ||
+      !home->slot_id.has_value()) {
+    return nullptr;
+  }
+  return find_frame_slot_by_id(stack_layout, *home->slot_id);
+}
+
+PreparedBranchStackLoadAuthorityRecord make_branch_stack_load_authority_record(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    const PreparedBranchCondition& branch_condition,
+    const bir::Terminator* terminator,
+    PreparedBranchStackLoadRole role,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups) {
+  const auto* branch_value = branch_stack_load_value_for_role(branch_condition, role);
+  const auto* value_home =
+      branch_value != nullptr
+          ? value_home_for_named_value(prepared.names,
+                                       value_locations,
+                                       value_home_lookups,
+                                       *branch_value)
+          : nullptr;
+  const auto* frame_slot =
+      branch_stack_load_frame_slot_for_home(prepared.stack_layout, value_home);
+  const auto* stack_object =
+      prepared_stack_object_for_frame_slot(prepared.stack_layout, frame_slot);
+  PreparedBranchStackLoadAuthorityRecord record{
+      .function_name = function_name,
+      .block_label = branch_condition.block_label,
+      .role = role,
+      .authority = plan_prepared_branch_stack_load_authority({
+          .names = &prepared.names,
+          .branch_condition = &branch_condition,
+          .terminator = terminator,
+          .role = role,
+          .value_home = value_home,
+          .frame_slot = frame_slot,
+          .stack_object = stack_object,
+          .policy = PreparedBranchStackLoadPolicy::None,
+          .pointer_status =
+              branch_value != nullptr && branch_value->type != bir::TypeKind::Ptr
+                  ? PreparedBranchStackLoadPointerStatus::NotPointer
+                  : PreparedBranchStackLoadPointerStatus::Unknown,
+      }),
+  };
+  clear_temporary_branch_stack_load_pointers(record.authority);
+  return record;
+}
+
+void collect_branch_stack_load_authority_for_role(
+    PreparedBranchStackLoadAuthorityRecords& records,
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    const PreparedBranchCondition& branch_condition,
+    const bir::Terminator* terminator,
+    PreparedBranchStackLoadRole role,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups) {
+  const auto* branch_value = branch_stack_load_value_for_role(branch_condition, role);
+  if (branch_value == nullptr || branch_value->kind != bir::Value::Kind::Named) {
+    return;
+  }
+  const auto* value_home =
+      value_home_for_named_value(prepared.names,
+                                 value_locations,
+                                 value_home_lookups,
+                                 *branch_value);
+  if (value_home == nullptr || value_home->kind != PreparedValueHomeKind::StackSlot) {
+    return;
+  }
+  records.records.push_back(make_branch_stack_load_authority_record(
+      prepared,
+      function_name,
+      branch_condition,
+      terminator,
+      role,
+      value_locations,
+      value_home_lookups));
+}
+
+}  // namespace
+
+PreparedBranchStackLoadAuthorityRecords
+collect_prepared_branch_stack_load_authorities(
+    const PreparedBirModule& prepared) {
+  PreparedBranchStackLoadAuthorityRecords records;
+  for (const auto& function_cf : prepared.control_flow.functions) {
+    const auto* value_locations =
+        find_prepared_value_location_function(prepared, function_cf.function_name);
+    const auto value_home_lookups =
+        make_prepared_value_home_lookups(value_locations);
+    const auto* bir_function =
+        prepared_bir_function_by_name(prepared, function_cf.function_name);
+    for (const auto& branch_condition : function_cf.branch_conditions) {
+      const auto* block =
+          bir_function != nullptr
+              ? branch_stack_load_bir_block_by_label(prepared.names,
+                                                     *bir_function,
+                                                     branch_condition.block_label)
+              : nullptr;
+      const auto* terminator = block != nullptr ? &block->terminator : nullptr;
+      collect_branch_stack_load_authority_for_role(
+          records,
+          prepared,
+          function_cf.function_name,
+          branch_condition,
+          terminator,
+          PreparedBranchStackLoadRole::Condition,
+          value_locations,
+          &value_home_lookups);
+      collect_branch_stack_load_authority_for_role(
+          records,
+          prepared,
+          function_cf.function_name,
+          branch_condition,
+          terminator,
+          PreparedBranchStackLoadRole::Lhs,
+          value_locations,
+          &value_home_lookups);
+      collect_branch_stack_load_authority_for_role(
+          records,
+          prepared,
+          function_cf.function_name,
+          branch_condition,
+          terminator,
+          PreparedBranchStackLoadRole::Rhs,
+          value_locations,
+          &value_home_lookups);
+    }
+  }
+  return records;
+}
+
+namespace {
+
 [[nodiscard]] const bir::Value* dependency_operand_for_role(
     const bir::BinaryInst& binary,
     PreparedDependencyOperandRole role) {

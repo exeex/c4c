@@ -8,74 +8,67 @@ Current Step Title: Populate And Expose Branch Stack-Load Authority Records
 
 ## Just Finished
 
-Completed Step 4 close-readiness review for idea 469. The Step 3 planner and
-contract surface is complete, but the source idea is not fully close-ready
-because real prepared modules still lack collected/populated/printed
-`PreparedBranchStackLoadAuthority` records.
+Completed Step 5: populated and exposed branch-stack-load authority records
+from prepared module data without RV64 target consumption. The slice adds a
+prepared collector for stack-home branch roles, exposes the records in the
+prepared printer, and adds focused positive/fail-closed coverage for the
+collector, printer section, frame-slot/object relationship, pointer boundary,
+and prepared-name-table block lookup.
 
-Remaining in-scope packet:
+Representative `930930-1` fresh prepared probe:
 
-| Area | Required next work |
+| Row | Durable Step 5 record | Current classification |
 | --- | --- |
-| Record collection | Collect branch-stack-load authority records from prepared control-flow, value-home, frame-slot, and stack-object facts. |
-| Record population | Populate available or unavailable records for representative branch stack-home rows. |
-| Visibility | Print or otherwise expose records through durable prepared evidence/probe surfaces. |
-| Unavailable statuses | Preserve missing policy, missing freshness, missing clobber-safety, pointer-status unknown, and select-result stack-destination boundaries. |
-| RV64 | Do not resume target consumption until populated available records exist. |
+| `f.block_1` condition `%t2` | `role=condition`, `pointer_status=not_pointer`, `status=unsupported_terminator` | Record is now visible but unavailable before policy/freshness; the real prepared/BIR terminator relationship still is not accepted by the current planner predicate. |
+| `f.block_1` lhs `%t1` | `role=lhs`, `pointer_status=unknown`, `status=unsupported_terminator` | Visible fail-closed row; pointer status and accepted branch-site load policy remain missing. |
+| `f.block_4` condition `%t8` | `role=condition`, `pointer_status=not_pointer`, `status=unsupported_terminator` | Visible fail-closed row; paired `%t7` pointer-value/provenance remains separate. |
+| `f.block_4` lhs `%t7` | `role=lhs`, `pointer_status=unknown`, `status=unsupported_terminator` | Visible fail-closed row; pointer-value/provenance remains separate. |
+| `f.logic.end.14` condition `%t23` | `value=%t23`, `value_id=17`, `slot=#21`, `object=#21`, `status=missing_policy` | Populated through value/home/frame-slot/object facts; unavailable until explicit branch-site load policy, freshness, and clobber safety exist. |
+| `f.logic.end.14` lhs `%t22` | `value=%t22`, `value_id=16`, `slot=#20`, `object=#20`, `status=missing_policy` | Populated but unavailable; select-result stack-destination remains a separate boundary. |
 
-Representative rows to classify:
+Artifact paths:
 
-- `f.block_1` condition `%t2`: scalar stack-home condition; should remain
-  unavailable until branch-site load policy, freshness, and clobber-safety
-  records exist.
-- `f.block_1` lhs `%t1`: pointer stack-home lhs; additionally requires
-  explicit proven pointer status.
-- `f.block_4` condition `%t8`: scalar condition row; `%t7` remains a separate
-  pointer-value/provenance boundary.
-- `f.logic.end.14` condition `%t23`: scalar condition row; `%t22` remains a
-  separate select-result/block-entry stack-destination boundary.
+- `build/agent_state/469_step5_branch_stack_load_record_population/summary.md`
+- `build/agent_state/469_step5_branch_stack_load_record_population/930930-1.prepared.out`
+- `build/agent_state/469_step5_branch_stack_load_record_population/930930-1.prepared.err`
+- `build/agent_state/469_step5_branch_stack_load_record_population/probe_status.tsv`
+- `build/agent_state/469_step5_branch_stack_load_record_population/evidence_snippets.txt`
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: implement or route branch-stack-load authority
-record collection/population/printer visibility. Keep it producer/prepared-only
-and do not edit RV64 object emission.
+Execute Step 6: Residual Disposition And Close Readiness. Classify whether
+idea 469 is close-ready as producer/prepared record population and visibility,
+or whether one exact follow-up remains for branch-site `load_from_stack_slot`
+policy, freshness, and clobber-safety population.
 
-Suggested artifact directory:
-`build/agent_state/469_step5_branch_stack_load_record_population/`.
+Suggested owned files: `todo.md` and
+`build/agent_state/469_step6_residual_disposition/**`.
 
-Likely owned files for an executor packet:
-
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- prepared printer files if dump exposure is needed
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-- `tests/backend/bir/backend_prepared_printer_test.cpp` if printer coverage is
-  added
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/469_step5_branch_stack_load_record_population/**`
+Suggested proof: `git diff --check`.
 
 ## Watchouts
 
 - Do not edit RV64 object emission or implement target branch loads in this
-  packet.
-- Do not infer load authority from stack slot ids, offsets, object ids, block
-  labels, or prepared dump spelling.
-- Do not treat pointer operands as proven unless pointer status is explicit.
+- Records are durable evidence, not target-consumable authority. All real
+  representative rows remain unavailable.
+- `policy=none` intentionally produces `missing_policy`; no freshness or
+  clobber-safety producer was added.
+- Pointer operands still print `pointer_status=unknown` unless a separate
+  provenance owner proves them.
 - Keep `%t7` pointer-value/provenance and `%t22` select-result stack-destination
   boundaries separate.
-- Do not weaken GPR-compatible branch predicates.
+- Do not weaken GPR-compatible branch predicates or add RV64 stack-load
+  materialization from these unavailable rows.
 - Do not modify `test_baseline.new.log`, `test_baseline.log`,
   `test_before.log`, or `review/`.
 
 ## Proof
 
-Lifecycle repair proof:
+Delegated proof:
 
 ```sh
-git diff --check
-python3 scripts/plan_review_state.py show
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed.
+Result: passed. `test_after.log` contains the backend proof output; CTest
+reported all 327 backend tests passed.

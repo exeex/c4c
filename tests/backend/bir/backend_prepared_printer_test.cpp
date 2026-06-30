@@ -2940,6 +2940,7 @@ int complete_module_body_text_printer_rows_are_byte_stable() {
       "--- prepared-call-argument-value-publications ---\n"
       "--- prepared-select-chain-materializations ---\n"
       "--- prepared-dependency-operand-authorities ---\n"
+      "--- prepared-branch-stack-load-authorities ---\n"
       "--- prepared-variadic-entry-plans ---\n"
       "--- prepared-regalloc ---\n"
       "--- prepared-storage-plans ---\n"

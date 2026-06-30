@@ -545,6 +545,17 @@ struct PreparedBranchStackLoadAuthority {
   std::optional<std::size_t> stack_align_bytes;
 };
 
+struct PreparedBranchStackLoadAuthorityRecord {
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId block_label = kInvalidBlockLabel;
+  PreparedBranchStackLoadRole role = PreparedBranchStackLoadRole::Condition;
+  PreparedBranchStackLoadAuthority authority;
+};
+
+struct PreparedBranchStackLoadAuthorityRecords {
+  std::vector<PreparedBranchStackLoadAuthorityRecord> records;
+};
+
 enum class PreparedDependencyOperandMaterializationPolicy {
   None,
   LoadFromStackSlot,
@@ -1650,6 +1661,9 @@ plan_prepared_branch_stack_load_authority(
 
 [[nodiscard]] bool prepared_branch_stack_load_authority_available(
     const PreparedBranchStackLoadAuthority& authority);
+
+[[nodiscard]] PreparedBranchStackLoadAuthorityRecords
+collect_prepared_branch_stack_load_authorities(const PreparedBirModule& prepared);
 
 [[nodiscard]] PreparedDependencyOperandAuthority
 plan_prepared_dependency_operand_authority(

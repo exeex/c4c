@@ -86,6 +86,7 @@ std::string print(const PreparedBirModule& module) {
   append_select_chain_materializations(out, module);
   append_select_carrier_alias_authorities(out, module);
   append_dependency_operand_authorities(out, module);
+  append_branch_stack_load_authorities(out, module);
   append_variadic_entry_plans(out, module);
   append_regalloc(out, module);
   append_storage_plans(out, module);

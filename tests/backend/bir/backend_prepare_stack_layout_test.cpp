@@ -6326,6 +6326,194 @@ int check_branch_stack_load_authority_contract() {
     return fail("expected register-home branch value to stay outside stack-load authority");
   }
 
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = riscv_target_profile();
+  const auto prepared_function_name =
+      prepared.names.function_names.intern("branch_stack_load_collector");
+  const auto prepared_entry_label = prepared.names.block_labels.intern("entry");
+  const auto prepared_true_label = prepared.names.block_labels.intern("is_true");
+  const auto prepared_false_label = prepared.names.block_labels.intern("is_false");
+  const auto prepared_condition_name = prepared.names.value_names.intern("%cmp");
+  const auto prepared_lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto prepared_rhs_name = prepared.names.value_names.intern("%rhs");
+
+  const bir::Value prepared_condition =
+      bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value prepared_lhs =
+      bir::Value::named(bir::TypeKind::Ptr, "%lhs");
+  const bir::Value prepared_rhs =
+      bir::Value::named(bir::TypeKind::Ptr, "%rhs");
+
+  bir::Function prepared_function;
+  prepared_function.name = "branch_stack_load_collector";
+  bir::Block prepared_entry;
+  prepared_entry.label = "entry";
+  prepared_entry.label_id = c4c::kInvalidBlockLabel;
+  prepared_entry.terminator = bir::CondBranchTerminator{
+      .condition = prepared_condition,
+      .true_label = "is_true",
+      .false_label = "is_false",
+      .true_label_id = prepared_true_label,
+      .false_label_id = prepared_false_label,
+  };
+  bir::Block prepared_true;
+  prepared_true.label = "is_true";
+  prepared_true.label_id = prepared_true_label;
+  prepared_true.terminator = bir::ReturnTerminator{.value = prepared_condition};
+  bir::Block prepared_false;
+  prepared_false.label = "is_false";
+  prepared_false.label_id = prepared_false_label;
+  prepared_false.terminator = bir::ReturnTerminator{.value = prepared_condition};
+  prepared_function.blocks.push_back(std::move(prepared_entry));
+  prepared_function.blocks.push_back(std::move(prepared_true));
+  prepared_function.blocks.push_back(std::move(prepared_false));
+  prepared.module.functions.push_back(std::move(prepared_function));
+
+  prepare::PreparedControlFlowFunction prepared_cf;
+  prepared_cf.function_name = prepared_function_name;
+  prepared_cf.blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = prepared_entry_label,
+      .terminator_kind = bir::TerminatorKind::CondBranch,
+      .true_label = prepared_true_label,
+      .false_label = prepared_false_label,
+  });
+  prepared_cf.branch_conditions.push_back(prepare::PreparedBranchCondition{
+      .function_name = prepared_function_name,
+      .block_label = prepared_entry_label,
+      .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+      .condition_value = prepared_condition,
+      .predicate = bir::BinaryOpcode::Ult,
+      .compare_type = bir::TypeKind::Ptr,
+      .lhs = prepared_lhs,
+      .rhs = prepared_rhs,
+      .can_fuse_with_branch = true,
+      .true_label = prepared_true_label,
+      .false_label = prepared_false_label,
+  });
+  prepared.control_flow.functions.push_back(std::move(prepared_cf));
+
+  prepare::PreparedValueLocationFunction prepared_locations;
+  prepared_locations.function_name = prepared_function_name;
+  prepared_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 7,
+      .function_name = prepared_function_name,
+      .value_name = prepared_condition_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{11},
+      .offset_bytes = std::size_t{88},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+  });
+  prepared_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 6,
+      .function_name = prepared_function_name,
+      .value_name = prepared_lhs_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{10},
+      .offset_bytes = std::size_t{80},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+  });
+  prepared_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 4,
+      .function_name = prepared_function_name,
+      .value_name = prepared_rhs_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"a4"},
+  });
+  prepared.value_locations.functions.push_back(std::move(prepared_locations));
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 11,
+      .function_name = prepared_function_name,
+      .value_name = prepared_condition_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 10,
+      .function_name = prepared_function_name,
+      .value_name = prepared_lhs_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{11},
+      .object_id = 11,
+      .function_name = prepared_function_name,
+      .offset_bytes = 88,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{10},
+      .object_id = 10,
+      .function_name = prepared_function_name,
+      .offset_bytes = 80,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  const auto records =
+      prepare::collect_prepared_branch_stack_load_authorities(prepared);
+  if (records.records.size() != 2) {
+    return fail("expected stack-home branch collector to emit condition and lhs rows");
+  }
+  const auto* condition_record = &records.records[0];
+  const auto* lhs_record = &records.records[1];
+  if (condition_record->role !=
+          prepare::PreparedBranchStackLoadRole::Condition ||
+      condition_record->authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::MissingPolicy ||
+      condition_record->authority.pointer_status !=
+          prepare::PreparedBranchStackLoadPointerStatus::NotPointer ||
+      condition_record->authority.value_id != 7 ||
+      condition_record->authority.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{11}} ||
+      condition_record->authority.stack_object_id !=
+          std::optional<prepare::PreparedObjectId>{11}) {
+    return fail("expected collected branch condition stack-load row to expose missing policy");
+  }
+  if (lhs_record->role != prepare::PreparedBranchStackLoadRole::Lhs ||
+      lhs_record->authority.status !=
+          prepare::PreparedBranchStackLoadAuthorityStatus::MissingPolicy ||
+      lhs_record->authority.pointer_status !=
+          prepare::PreparedBranchStackLoadPointerStatus::Unknown ||
+      lhs_record->authority.value_id != 6 ||
+      lhs_record->authority.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{10}} ||
+      lhs_record->authority.stack_object_id !=
+          std::optional<prepare::PreparedObjectId>{10}) {
+    return fail("expected collected branch lhs stack-load row to preserve pointer boundary");
+  }
+
+  const std::string dump = prepare::print(prepared);
+  if (dump.find("--- prepared-branch-stack-load-authorities ---") ==
+      std::string::npos) {
+    return fail("expected prepared dump to expose branch stack-load authority section");
+  }
+  if (dump.find("branch_stack_load_authority "
+                "function=branch_stack_load_collector block=entry "
+                "role=condition value=%cmp value_id=7 policy=none "
+                "pointer_status=not_pointer status=missing_policy slot=#11 "
+                "object=#11 stack_offset=88 size=4 align=4") ==
+      std::string::npos) {
+    return fail("expected prepared dump to expose condition stack-load row");
+  }
+  if (dump.find("branch_stack_load_authority "
+                "function=branch_stack_load_collector block=entry "
+                "role=lhs value=%lhs value_id=6 policy=none "
+                "pointer_status=unknown status=missing_policy slot=#10 "
+                "object=#10 stack_offset=80 size=8 align=8") ==
+      std::string::npos) {
+    return fail("expected prepared dump to expose lhs stack-load row");
+  }
+
   return 0;
 }
 

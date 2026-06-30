@@ -23,6 +23,8 @@ void append_select_carrier_alias_authorities(std::ostringstream& out,
                                              const PreparedBirModule& module);
 void append_dependency_operand_authorities(std::ostringstream& out,
                                            const PreparedBirModule& module);
+void append_branch_stack_load_authorities(std::ostringstream& out,
+                                          const PreparedBirModule& module);
 void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModule& module);
 void append_regalloc(std::ostringstream& out, const PreparedBirModule& module);
 void append_storage_plans(std::ostringstream& out, const PreparedBirModule& module);
