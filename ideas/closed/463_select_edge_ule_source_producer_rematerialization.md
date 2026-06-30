@@ -1,6 +1,6 @@
 # Select-Edge ULE Source-Producer Rematerialization
 
-Status: Open
+Status: Closed
 Type: RV64 select-edge source-producer rematerialization / route-classification idea
 Parent: `ideas/closed/462_rv64_preterminator_predecessor_edge_parallel_copy_materialization.md`
 Source Evidence: `build/agent_state/462_step4_residual_disposition/`
@@ -58,19 +58,33 @@ can be rematerialized at the predecessor edge from `%t42` and `%t45`.
 - Expectation rewrites, unsupported-marker downgrades, allowlists, pass/fail
   accounting changes, runtime-comparison changes, or baseline/log churn.
 
-## Acceptance Criteria
+## Completion Notes
 
-- The `%t46 -> %t50` select-edge source-producer route is classified with an
-  accepted rematerialization contract or a precise blocker.
-- The classification explains duplicate `%t50.phi.sel0` / `%t50.phi.sel1`
-  carrier facts and operand availability for `%t42` / `%t45` at
-  `logic.rhs.end.40 -> logic.end.41`.
-- Any implementation consumes explicit source-producer, edge, carrier, and
-  operand-authority facts and remains fail-closed for missing, ambiguous,
-  duplicate-unproven, non-edge, non-consumable, stale stack-load, and generic
-  move cases.
-- Fresh residual disposition records whether `20010329-1` advanced and routes
-  any next first-owner without broadening this source idea.
+Closed by lifecycle split after Step 4 residual disposition. Idea 463 is
+complete as a negative route-classification slice: no RV64 ULE
+rematerialization packet is sound until prepared metadata publishes duplicate
+carrier-alias authority for `%t50.phi.sel0` / `%t50.phi.sel1` as aliases of
+the final join-transfer result `%t50`.
+
+The exact metadata owner is prepared control-flow/publication metadata for
+select-edge source-producer carriers. Required future facts include:
+
+- function and edge identity;
+- join-transfer result `%t50`;
+- selected source value `%t46`;
+- binary source producer `%t46 = bir.ule ptr %t42, %t45`;
+- duplicate carrier aliases `%t50.phi.sel0` / `%t50.phi.sel1`;
+- use closure proving all `%t46` uses are the selected edge source or
+  authorized carrier aliases;
+- a later RV64 consumer key by source value, destination value, edge identity,
+  join transfer, and carrier values.
+
+Follow-up source idea:
+`ideas/open/464_select_carrier_alias_metadata.md`.
+
+Close validation used existing canonical regression logs and `git diff --check`;
+no implementation, test, review, or baseline-log files were changed by this
+lifecycle transition.
 
 ## Reviewer Reject Signals
 
