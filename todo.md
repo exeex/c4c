@@ -1,18 +1,21 @@
 Status: Active
 Source Idea Path: ideas/open/462_rv64_preterminator_predecessor_edge_parallel_copy_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First Parallel-Copy Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 462 by routing the first parallel-copy packet as
-blocked rather than keeping an unsafe plain-copy consumer. Supporting artifact:
-`build/agent_state/462_step3_preterminator_parallel_copy_consumer/blocker.md`.
+Completed Step 4 for idea 462: recorded residual disposition and close
+readiness after Step 3 blocked the plain preterminator parallel-copy consumer.
+Supporting artifact:
+`build/agent_state/462_step4_residual_disposition/disposition.md`.
 
-Fresh object probe still fails at the coordinate-bearing event:
+Disposition: idea 462 is close-ready as a negative route-classification slice
+and should split/route the remaining semantic owner. The coordinate-bearing
+event remains:
 
 | Field | Value |
 | --- | --- |
@@ -21,23 +24,26 @@ Fresh object probe still fails at the coordinate-bearing event:
 | Move | `from_value_id=20` / `%t46` to `to_value_id=21` / `%t50`, `destination_storage=register`, `reason=phi_join_register_to_register` |
 | Failure | `fragment_status=generic_move_bundle_materialization_failed` |
 
-Blocking fact: `%t46` is not proven predecessor-available. The fresh prepared
-dump shows `%t46 = bir.ule ptr %t42, %t45` is in successor block
-`logic.end.41`, after `logic.rhs.end.40` branches to that block. Treating the
-prepared `%t46` GPR home as a predecessor-edge source would infer availability
-from value home alone and would be an overbroad/raw-copy route.
+No-plain-copy rationale: `%t46` is not proven predecessor-available. It is
+defined in successor block `logic.end.41` as `%t46 = bir.ule ptr %t42, %t45`,
+after `logic.rhs.end.40` branches there. Treating the prepared `%t46` GPR home
+as a predecessor-edge source would infer availability from value-home metadata
+alone and would be overbroad.
 
-Classification: this is a select-edge source-producer rematerialization
-blocker, not a sound plain preterminator parallel-copy consumer. No
-implementation or test changes were kept.
+Follow-up owner boundary: a separate select-edge source-producer
+rematerialization audit/implementation should own `%t46 -> %t50`, including
+why the existing source-producer consumer does not rematerialize
+`%t46 = bir.ule ptr %t42, %t45`, whether duplicate carrier facts
+`%t50.phi.sel0` / `%t50.phi.sel1` block the route, and whether `%t42`/`%t45`
+are target-consumable at the predecessor edge.
+
+No implementation or test changes were made in this Step 4 packet.
 
 ## Suggested Next
 
-Execute Step 4 residual disposition for idea 462. The recommended lifecycle
-route is to close/split away from plain preterminator parallel-copy
-materialization and open or activate a source-producer rematerialization audit
-for `%t46 -> %t50`, especially whether duplicate select carrier facts
-`%t50.phi.sel0` / `%t50.phi.sel1` block the existing source-producer consumer.
+Plan-owner close/split review for idea 462. Recommended route: close/retire
+idea 462 as a completed negative classification, then split or activate a
+focused source-producer rematerialization idea for `%t46 -> %t50`.
 
 ## Watchouts
 
@@ -49,6 +55,9 @@ for `%t46 -> %t50`, especially whether duplicate select carrier facts
 - Do not infer predecessor availability from prepared value homes alone.
 - The next owner should explain the select-edge source-producer rematerializer
   rejection for `%t46 = bir.ule ptr %t42, %t45`.
+- Do not continue idea 462 with plain preterminator copy materialization unless
+  a later source-producer packet proves the source value is actually available
+  at the predecessor edge.
 - Do not reopen ideas 456, 458, 459, 460, or 461 without new coordinate-bearing
   evidence that their exact route owns the first failure.
 - Do not modify `test_baseline.new.log`, `test_baseline.log`,
@@ -56,10 +65,10 @@ for `%t46 -> %t50`, especially whether duplicate select carrier facts
 
 ## Proof
 
-Step 3 proof:
+Step 4 proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 Result: passed.
