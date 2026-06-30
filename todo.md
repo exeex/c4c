@@ -1,65 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/433_rv64_global_select_pointer_memory_residuals.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Select First Coherent Packet Or Producer Split
+Current Step ID: 3
+Current Step Title: Execute Or Route Residual Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: reclassified inherited RV64 global/select/pointer-memory
-residual evidence by first owner before selecting an implementation packet.
+Completed Step 2: selected the first coherent executable packet for the RV64
+global/select/pointer residual plan.
 
-Bucket table:
+Selected first packet: narrow RV64 global object-data support for coherent
+selected object-data contracts.
 
-| bucket | representative rows | first owner | disposition |
-| --- | --- | --- | --- |
-| global object-data | `20011019-1` | RV64 object/global data emission | First coherent executable packet: object route reports `unsupported_global_data` with prepared selected object-data contract `status=unsupported_but_coherent`. |
-| global memory publication | `930930-1`, `20011019-1`, `20041112-1` | mixed target work after object-data plus producer gaps | Not first; global stores/loads and `store_global_publication` facts depend on object-data and source authority. |
-| direct-global select/return | `20011019-1`, `20041112-1` | mixed direct-global select consumer plus terminator/return producer boundary | Not first; direct-global select facts exist, but raw `bir.ret ptr @global` lacks a normal prepared return-authority route. |
-| terminator/select publication | `20010329-1`, `20041112-1`, plus select chains in `930930-1`/`20000622-1` | RV64 terminator/select publication or producer split | Not first; separate from global object-data and still fails through `unsupported_terminator_fragment` on representative rows. |
-| pointer-value memory | `930930-1` | producer/prepared gap before RV64 lowering | No coherent target packet yet; pointer-value accesses have `layout_authority=unknown` and `range_verdict=unknown_compatible`. |
-| producer/prepared gaps | `930930-1`, `20000622-1`, `20041112-1` | producer/prepared facts | Route separately; evidence includes `source_producer=unknown`, inherited `missing_frame_slot_arg_publication`, and missing direct-global return authority. |
+Selection evidence:
 
-Representative evidence:
-
-- `20011019-1`: precise object diagnostic
+- Representative row: `20011019-1`.
+- First object-route owner:
   `unsupported_global_data: prepared selected object-data contract
   status=unsupported_but_coherent object_label_id=4 object_size_bytes=8
-  emitted_byte_count=0 zero_fill_byte_count=0`; also has global load/store and
-  direct-global select chains, but object-data fails first.
-- `930930-1`: pointer-value memory accesses use `base=pointer_value` with
-  `layout_authority=unknown`; also has global `mem` store publication and
-  unknown source producers.
-- `20010329-1` and `20041112-1`: first object-route owner is
-  `unsupported_terminator_fragment`, not pointer/address movement.
-- `20041112-1`: raw `bir.ret ptr @global` and prepared global access facts
-  require terminator/direct-global return routing separate from object-data.
+  emitted_byte_count=0 zero_fill_byte_count=0`.
+- The packet is coherent because object-data fails before later global
+  load/store publication, direct-global select-chain, terminator, or
+  pointer-value memory residuals.
+- No producer split is needed for the first packet; producer/prepared gaps
+  remain separate for later residual routing.
 
 Artifacts:
 
-- `build/agent_state/433_step1_residual_owner_reclassification/classification.md`
-- `build/agent_state/433_step1_residual_owner_reclassification/extracted_evidence.md`
+- `build/agent_state/433_step2_first_packet_selection/selection.md`
 
 ## Suggested Next
 
-Execute Step 2: Select First Coherent Packet Or Producer Split.
+Execute Step 3: Execute Or Route Residual Packet.
 
-Recommended first executable packet:
+First implementation packet:
 
-- Select a narrow RV64 global object-data packet for the
-  `unsupported_but_coherent` selected object-data contract represented by
-  `20011019-1`.
-- Candidate implementation files for the later packet:
+- Owned files:
   `src/backend/mir/riscv/codegen/prepared_global_memory_emit.cpp`,
-  `src/backend/mir/riscv/codegen/object_emission.cpp` only if the object
-  writer owns the selected-data diagnostic, and
-  `tests/backend/mir/backend_riscv_object_emission_test.cpp`.
-- Keep Step 2 selection-only unless the supervisor delegates implementation;
-  no target code changes should happen in the selector packet.
-- Preserve fail-closed behavior for missing, incoherent, or unsupported object
-  data.
+  `src/backend/mir/riscv/codegen/object_emission.cpp`,
+  `tests/backend/mir/backend_riscv_object_emission_test.cpp`, `todo.md`,
+  `test_after.log`, and `build/agent_state/433_step3_global_object_data/` if
+  implementation probes are needed.
+- Implement only coherent RV64 selected global object-data emission using
+  prepared selected object-data facts as authority.
+- Add focused backend coverage for accepted coherent selected object-data and
+  fail-closed missing/incoherent/unsupported object-data contracts.
+- Preserve fail-closed behavior for unsupported selected data forms.
+
+Focused proof command for Step 3:
+
+```sh
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+```
 
 ## Watchouts
 
@@ -75,10 +69,15 @@ Recommended first executable packet:
 - Do not bundle global load/store publication, direct-global select/return,
   pointer-value memory, terminator/select publication, or producer-gap repairs
   into the first global object-data packet.
+- Do not infer global object identity, byte layout, zero-fill, relocation base,
+  or symbol addressability from raw BIR, testcase filenames, function names, or
+  object label numbers.
+- Do not claim the full `20011019-1` row is solved by object-data support; it
+  still contains later global memory/direct-global select residuals.
 
 ## Proof
 
-Step 1 delegated backend proof passed and is captured in `test_after.log`:
+Step 2 delegated backend proof passed and is captured in `test_after.log`:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
