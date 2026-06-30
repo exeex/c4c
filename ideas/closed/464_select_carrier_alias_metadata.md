@@ -1,6 +1,6 @@
 # Select Carrier Alias Metadata
 
-Status: Open
+Status: Closed
 Type: Prepared control-flow/publication metadata idea
 Parent: `ideas/closed/463_select_edge_ule_source_producer_rematerialization.md`
 Source Evidence: `build/agent_state/463_step4_residual_disposition/`
@@ -51,18 +51,37 @@ or dump order.
 - Expectation rewrites, unsupported-marker downgrades, allowlists, pass/fail
   accounting changes, runtime-comparison changes, or baseline/log churn.
 
-## Acceptance Criteria
+## Completion Notes
 
-- Prepared metadata can explicitly represent duplicate carrier aliases for one
-  join-transfer result and the related select-edge source producer.
-- Positive tests prove duplicate carriers that resolve to the same join
-  transfer are carrier-only aliases and preserve existing source-producer /
-  placement facts.
-- Negative tests reject mismatched final result, wrong source value, wrong
-  edge, missing edge publication, missing source-producer fact,
-  raw-name-only `.phi.sel` shape, and extra non-carrier uses.
-- Fresh residual disposition states whether the metadata prerequisite is
-  complete and whether RV64 ULE rematerialization may be reactivated later.
+Closed after Step 4 residual disposition. Step 3 committed
+`PreparedSelectCarrierAliasAuthority*` records, planner, availability
+predicate, collector exposure, and focused metadata tests. The metadata layer
+now publishes the required producer/prepared authority surface for duplicate
+select carriers.
+
+Completed facts include:
+
+- function and predecessor/successor edge;
+- join/final result;
+- selected source;
+- binary source-producer site;
+- carrier values and optional carrier value ids;
+- use closure for authorized carrier aliases;
+- collector access through `collect_prepared_select_carrier_alias_authorities`.
+
+Negative coverage keeps missing source producer, raw-name-only or mismatched
+carrier result, and extra non-carrier source use fail-closed.
+
+No exact remaining idea-464 metadata packet is identified. Later RV64 ULE
+rematerialization is separate target-consumer work and may proceed only by
+consuming `PreparedSelectCarrierAliasAuthorityRecords`.
+
+Follow-up source idea:
+`ideas/open/465_rv64_ule_select_edge_rematerialization_consumer.md`.
+
+Close validation used existing canonical regression logs and `git diff --check`;
+no implementation, test, review, or baseline-log files were changed by this
+lifecycle transition.
 
 ## Reviewer Reject Signals
 

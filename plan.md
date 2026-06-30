@@ -1,63 +1,61 @@
-# Select Carrier Alias Metadata Plan
+# RV64 ULE Select-Edge Rematerialization Consumer Plan
 
 Status: Active
-Source Idea: ideas/open/464_select_carrier_alias_metadata.md
-Activated From: ideas/closed/463_select_edge_ule_source_producer_rematerialization.md
+Source Idea: ideas/open/465_rv64_ule_select_edge_rematerialization_consumer.md
+Activated From: ideas/closed/464_select_carrier_alias_metadata.md
 
 ## Purpose
 
-Publish prepared metadata for duplicate select carrier aliases so later RV64
-source-producer rematerialization can consume explicit alias authority instead
-of raw select shape.
+Consume prepared select carrier-alias authority in the RV64 object route to
+decide whether the `%t46 = bir.ule ptr %t42, %t45` source producer can be
+rematerialized for the `%t46 -> %t50` predecessor-edge transfer.
 
 ## Goal
 
-Make prepared control-flow/publication metadata prove when `%t50.phi.sel0`
-and `%t50.phi.sel1` are carrier-only aliases of final join-transfer result
-`%t50` for the `%t46 = bir.ule ptr %t42, %t45` select-edge source producer.
+Advance the `20010329-1` select-edge residual only through explicit
+`PreparedSelectCarrierAliasAuthorityRecords`, preserving fail-closed behavior
+for raw alias inference, plain successor-defined copies, stale stack-loads, and
+generic move support.
 
 ## Core Rule
 
-Do not infer duplicate-carrier authority from `.phi.sel` names, raw select
+Do not infer duplicate-carrier aliases from `.phi.sel` names, raw select
 shape, value ids, block labels, function names, testcase names, or dump order.
-The result must be producer/prepared metadata that a later RV64 consumer can
-query directly.
+The RV64 route must consume the prepared carrier-alias authority records and
+must prove operands are target-consumable before emitting ULE rematerialization.
 
 ## Read First
 
-- ideas/open/464_select_carrier_alias_metadata.md
-- ideas/closed/463_select_edge_ule_source_producer_rematerialization.md
-- build/agent_state/463_step3_select_edge_ule_source_producer_route/route.md
+- ideas/open/465_rv64_ule_select_edge_rematerialization_consumer.md
+- ideas/closed/464_select_carrier_alias_metadata.md
+- build/agent_state/464_step4_residual_disposition/disposition.md
 - build/agent_state/463_step4_residual_disposition/disposition.md
-- src/backend/prealloc/control_flow.hpp
-- src/backend/prealloc/prepared_object_traversal.hpp
-- src/backend/prealloc/prepared_object_traversal.cpp
-- src/backend/prealloc/select_chain_lookups.hpp
-- src/backend/prealloc/select_chain_lookups.cpp
 - src/backend/prealloc/publication_plans.hpp
 - src/backend/prealloc/publication_plans.cpp
+- src/backend/mir/riscv/codegen/object_emission.cpp
 
 ## Current Target
 
-- final join-transfer result: `%t50`
-- duplicate carrier aliases: `%t50.phi.sel0` / `%t50.phi.sel1`
-- selected edge source: `%t46`
+- authority records: `PreparedSelectCarrierAliasAuthorityRecords`
 - source producer: `%t46 = bir.ule ptr %t42, %t45`
+- selected source: `%t46`
+- final join-transfer destination: `%t50`
+- duplicate carriers: `%t50.phi.sel0` / `%t50.phi.sel1`
 - edge: `logic.rhs.end.40 -> logic.end.41`
-- required fact: both carrier values are carrier-only aliases of the same
-  `%t50` join-transfer result and do not represent extra non-carrier uses of
-  `%t46`
+- operand check: `%t42` and `%t45` must be target-consumable at the
+  predecessor edge
 
 ## Non-Goals
 
-- RV64 ULE rematerialization or target consumer changes before metadata
-  exists.
-- Plain `%t46 -> %t50` copies or same-register no-ops.
 - Alias inference from `.phi.sel` names, raw select shape, value ids, block
   labels, function names, testcase names, or dump order.
+- Plain `%t46 -> %t50` copies or same-register no-ops for successor-defined
+  `%t46`.
 - Generic stack-to-register, register-to-register, or all-purpose move-bundle
   support.
 - Consuming `load_from_stack_slot missing_stack_freshness`.
+- Reopening ideas 456, 458, 459, 460, 461, 462, 463, or 464 without new
+  coordinate-bearing evidence.
 - Expectation rewrites, unsupported-marker downgrades, allowlists, pass/fail
   accounting changes, runtime-comparison changes, or baseline/log churn.
 - Touching `review/`, `test_before.log`, `test_after.log`,
@@ -65,26 +63,28 @@ query directly.
 
 ## Working Model
 
-The missing prerequisite is a producer-owned alias fact, not an RV64 lowering
-rule. Prepared control-flow/publication metadata should connect duplicate
-select carriers to one join-transfer result and prove source-producer use
-closure before any target route consumes the relationship.
+The producer/prepared alias prerequisite is complete. The remaining question
+is target-consumer soundness: whether RV64 can use the authority records to
+rematerialize an unsigned pointer `ule` source producer at the predecessor
+edge, using only target-consumable operands and rejecting adjacent raw or
+generic move forms.
 
 ## Execution Rules
 
 - Step 1 is audit/classification only; do not edit implementation there.
-- Any implementation must publish or expose explicit prepared metadata, not
-  raw-name or raw-shape inference.
-- Preserve fail-closed behavior for mismatched final result, wrong source
-  value, wrong edge, missing edge publication, missing source-producer fact,
-  raw-name-only carrier shape, and extra non-carrier uses.
+- Any implementation must consume explicit carrier-alias authority records and
+  reject raw alias inference.
+- Preserve fail-closed behavior for missing alias authority, wrong edge, wrong
+  source producer, mismatched carrier/final result, non-consumable operands,
+  stale stack-load authority, plain successor-defined copies, and generic move
+  cases.
 - Classification-only proof:
 
 ```sh
 git diff --check
 ```
 
-- Code/test proof, if a metadata packet is selected:
+- Code/test proof, if a consumer packet is selected:
 
 ```sh
 cmake --build build -j2
@@ -94,31 +94,33 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Duplicate Carrier Alias Metadata Gap
+### Step 1: Audit Carrier-Alias Consumer Surface
 
-Inspect the prepared control-flow, traversal, select-chain lookup, and
-publication-plan records for the `%t50.phi.sel0` / `%t50.phi.sel1` carrier
-shape. Record which facts already exist, which facts are missing, and where a
-durable carrier-alias fact should be produced or exposed. Completion means
-`todo.md` contains an audit table and identifies the first metadata packet or
-an exact blocker.
+Inspect how `PreparedSelectCarrierAliasAuthorityRecords` are reachable from
+the RV64 object route and how they match the coordinate-bearing
+`pre_terminator_copies` event. Record the available authority keys, operand
+homes for `%t42` / `%t45`, and current rejection point. Completion means
+`todo.md` contains an audit table and identifies whether Step 2 can define a
+consumer contract or must route to another blocker.
 
-### Step 2: Define Carrier-Alias Authority Contract
+### Step 2: Define ULE Rematerialization Consumer Contract
 
-Specify the accepted carrier-alias fact: function, edge, join transfer, source
-value, destination value, carrier values, source producer, and use-closure
-requirements. Completion means `todo.md` records positive and negative
-contract cases and names target files/tests if implementation is justified.
+Specify the accepted target-consumer route: authority record lookup, edge and
+source-producer match, carrier/final-result match, operand target-consumability,
+emission point, and fail-closed cases. Completion means `todo.md` records the
+contract, target files/tests if implementation is justified, or the exact
+blocker.
 
-### Step 3: Implement Or Route Carrier-Alias Metadata Packet
+### Step 3: Implement Or Route First RV64 Consumer Packet
 
-If Step 2 finds a bounded metadata packet, implement only that packet with
-focused prepared/BIR coverage. If no implementation is justified, record the
-precise blocker and route it to a separate source idea. Completion means proof
-passes for the selected packet or lifecycle state records the split/blocker.
+If Step 2 finds a bounded packet, implement only the carrier-authorized ULE
+rematerialization consumer with focused coverage. If no implementation is
+justified, record the precise blocker and route it to a separate source idea.
+Completion means proof passes for the selected packet or lifecycle state
+records the split/blocker.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-check the metadata prerequisite and classify any remaining blocker.
-Completion means the source idea closes, remains active with one exact
-in-scope metadata packet, or splits a separate durable follow-up.
+Re-probe the representative object route and classify any remaining first
+owner. Completion means the source idea closes, remains active with one exact
+in-scope packet, or splits a separate durable follow-up.
