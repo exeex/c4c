@@ -1,41 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Materialize Remaining Coherent Scalar Inline-Asm Inputs/Outputs
+Current Step ID: 4
+Current Step Title: Re-Probe Representatives And Decide Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 implemented RV64 object-route materialization for complete
-empty-template tied scalar GPR inline-asm carriers.
+Step 3 audited the remaining coherent scalar GPR inline-asm input/output
+surface after Step 2 and found no additional in-scope implementation packet.
 
 Completed work:
 
-- `src/backend/mir/riscv/codegen/object_emission.cpp` now recognizes only
-  complete prepared inline-asm carriers with semantic empty templates,
-  constraints `=r,0`, one GPR register output, one tied input, no named
-  operands, no template modifiers, no clobbers, no missing facts, scalar GPR
-  result type, and coherent shared prepared GPR homes.
-- The consumer uses prepared carrier result homes, tied operand homes, and
-  `tied_home_authority` as authority. It does not infer from representative
-  filenames, probe instruction indexes, raw BIR, or non-empty asm text.
-- Focused RV64 object-emission coverage proves the accepted generalized
-  empty-template `=r,0` scalar GPR carrier materializes as a coherent object
-  route. This gives the old `pr38533` / `pr45695` representative class a
-  general consumer path.
-- Focused fail-closed coverage preserves rejection for missing carriers,
-  clobbered carriers such as the `pr49279` class, non-empty templates, named
-  operands, template modifiers, missing result or tied homes, mismatched tied
-  homes, vector homes, and F128 results.
+- Fresh local probes against the current working tree used
+  `./build/c4cll -I tests/c/external/gcc_torture --target
+  riscv64-linux-gnu --codegen obj` and `--dump-prepared-bir` for `pr38533`,
+  `pr45695`, `pr49279`, `pr40657`, and `pr56982`.
+- `pr38533`: prepared dump still shows complete empty-template `=r,0` scalar
+  GPR carriers with no `missing_operand0_home` or
+  `tied_input_output_home_mismatch`; RV64 object compilation now succeeds.
+- `pr45695`: prepared dump still shows the complete empty-template `=r,0`
+  scalar GPR carrier with `home=yes`; RV64 object compilation now succeeds.
+- `pr49279`: prepared dump shows a coherent tied scalar GPR carrier, but it is
+  mixed with `~{memory}` clobber metadata. RV64 object compilation still fails
+  at `unsupported_instruction_fragment`; this remains outside the Step 3 scalar
+  input/output packet by constraint.
+- `pr40657`: prepared dump remains the `=*m` memory-constraint class with
+  `unsupported_constraint0:=*m` and `unsupported_operand_constraint0`; this is
+  out of scope.
+- `pr56982`: prepared dump remains clobber-only `~{memory}` with no scalar
+  publication; this is out of scope.
+- Existing focused RV64 object-emission tests already cover the coherent
+  scalar GPR inline-asm consumer paths selected by this plan: structured and
+  text `.insn r`, `.insn d`, read/write `+r`, tied `.insn r`, substitution
+  helpers, and the Step 2 empty-template tied `=r,0` route. No remaining
+  coherent scalar GPR input/output carrier shape was found that fits this
+  packet's constraints.
 
 ## Suggested Next
 
-Execute Step 3: audit and materialize any remaining coherent scalar GPR
-inline-asm input/output fragments not covered by Step 2. Keep memory,
-clobber-only, aggregate, vector, F128, pointer/address, and missing-prepared
-fact shapes fail-closed.
+Execute Step 4: re-probe the representatives and decide close readiness for
+the RV64 call-adjacent scalar inline-asm materialization plan.
 
 ## Watchouts
 
