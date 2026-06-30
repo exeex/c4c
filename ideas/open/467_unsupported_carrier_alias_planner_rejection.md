@@ -1,6 +1,6 @@
 # Unsupported Carrier Alias Planner Rejection
 
-Status: Open
+Status: Open (parked pending shared carrier-alias identity publication API)
 Type: Prepared carrier-alias planner / producer rejection analysis idea
 Parent: `ideas/closed/466_representative_select_carrier_alias_authority.md`
 Source Evidence: `build/agent_state/466_step4_residual_disposition/`
@@ -67,6 +67,23 @@ authorized carrier aliases for final `%t50`.
 - Fresh residual disposition states whether idea 465 may resume as an RV64
   consumer, whether another prepared metadata owner remains, or whether this
   source idea is complete.
+
+## Lifecycle Note
+
+Step 3 exposed a prerequisite caller/API boundary rather than a bounded
+planner repair. The rejected implementation attempt proved that accepting the
+representative carrier aliases requires publishing synthesized carrier-alias
+`ValueNameId`s into a shared prepared-module identity surface visible to later
+RV64/original-module consumers. Hidden `const_cast` mutation is rejected, and
+scratch-copy const collectors cannot provide coherent identity to consumers
+using the original prepared module.
+
+Active prerequisite:
+`ideas/open/468_carrier_alias_identity_publication_api.md`.
+
+Do not resume this planner rejection idea until the shared identity publication
+boundary is selected and implemented, or until the follow-up proves a
+consumer-facing API that avoids mutation of the original prepared name table.
 
 ## Reviewer Reject Signals
 

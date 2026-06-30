@@ -1,68 +1,57 @@
 Status: Active
-Source Idea Path: ideas/open/467_unsupported_carrier_alias_planner_rejection.md
+Source Idea Path: ideas/open/468_carrier_alias_identity_publication_api.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Planner Rejection Packet
+Current Step ID: 1
+Current Step Title: Audit Carrier Alias Identity Callers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 as a blocker-only routing packet for idea 467.
+Parked idea 467 after Step 3 exposed a caller/API boundary instead of an
+acceptance-ready planner repair. The attempted hidden `const_cast` mutation is
+rejected, and the const-correct scratch-copy route is insufficient because
+original-module consumers do not share the synthesized alias identity.
 
-The uncommitted implementation/test attempt was rejected and removed from the
-tracked source tree. The attempted `const_cast` name-table mutation is not
-accepted progress, and the const-correct rewrite exposed a caller/API conflict
-instead of a bounded acceptance-ready repair.
+The new active idea 468 owns the prerequisite identity publication boundary:
 
-Blocker: carrier-alias name publication is semantically a mutation of
-`PreparedNameTables`, but the current representative object route reaches the
-authority collector through const prepared-module consumers. A scratch-copy
-const collector can publish alias names for diagnostic records, but RV64 and
-other original-module consumers then see a different name table and cannot
-reliably match the same synthesized carrier alias identity.
-
-The original prepared rejection remains classified:
-
-| Row | Classification |
+| Field | Value |
 | --- | --- |
-| `20010329-1` `%t46 -> %t50` | Two semantic carrier-alias candidates exist, but accepting them requires a const-correct shared identity publication design. |
-| Prior `const_cast` implementation | Rejected; hidden mutation through `const PreparedNameTables&` is not acceptance-ready. |
-| Const-correct scratch-copy attempt | Routed; fixes diagnostic prepared evidence in a copy but does not provide consistent identity to original-module consumers. |
-
-Tracked implementation and test files from the attempt were restored. The
-diagnostic artifacts are preserved under
-`build/agent_state/467_step3_carrier_alias_acceptance/`.
+| Synthesized aliases | `%t50.phi.sel0` / `%t50.phi.sel1` |
+| Needed fact | Shared durable `ValueNameId` identity for carrier aliases after semantic candidate checks pass |
+| Rejected route | Hidden mutation behind `const PreparedNameTables&` |
+| Insufficient route | Scratch-copy collector publication not visible to original-module consumers |
+| Acceptable routes | Explicit mutable pre-consumer publication stage, or consumer-facing API that does not rely on scratch-copy name insertion |
 
 ## Suggested Next
 
-Route a follow-up lifecycle decision before any implementation:
+Execute Step 1 from `plan.md`: audit carrier-alias collection callers,
+prepared dump paths, and RV64/object-route prepared-module access. Produce a
+caller matrix showing which consumers need shared identity and where the
+publication/API boundary can live.
 
-- either select an explicit mutable carrier-alias name-publication stage that
-  runs before RV64/object consumers receive the prepared module; or
-- select a consumer-side API design that matches authorized carrier aliases
-  without requiring scratch-copy names to exist in the original prepared name
-  table.
-
-Do not resume the rejected `const_cast` approach.
+Suggested artifact directory:
+`build/agent_state/468_step1_carrier_alias_identity_callers/`.
 
 ## Watchouts
 
-- No implementation/test changes remain from Step 3.
-- Do not treat unavailable carrier-alias evidence rows as authority.
-- Do not infer aliases from `%*.phi.sel*` spelling, testcase names, dump order,
-  value ids, block labels, or raw shape alone.
-- Do not make RV64 lowering changes in this idea without a separately owned
-  packet.
+- Do not edit implementation files during Step 1.
+- Do not reintroduce `const_cast` or hidden mutation.
+- Do not claim scratch-copy-only publication is sufficient for
+  original-module consumers.
+- Do not make RV64 lowering changes in this identity/API idea.
+- Do not infer aliases from raw `%*.phi.sel*` spelling, raw select shape,
+  value ids, block labels, function names, testcase names, or dump order.
 - Do not modify `test_baseline.new.log`, `test_baseline.log`,
   `test_before.log`, `test_after.log`, or `review/`.
 
 ## Proof
 
-Step 3 blocker-only proof:
+Lifecycle split proof:
 
 ```sh
 git diff --check
+python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
