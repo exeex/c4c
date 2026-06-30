@@ -1,39 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/450_select_result_branch_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First Select-Result Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 by routing the first register-home select-result branch
-packet instead of implementing an unsound consumer-only shortcut. Supporting
-artifact:
-`build/agent_state/450_step3_select_result_branch_publication/blocker.md`.
+Completed Step 4 residual disposition for idea 450. Supporting artifact:
+`build/agent_state/450_step4_residual_disposition/disposition.md`.
 
-Fresh `20010329-1` probes still stop at
-`unsupported_move_bundle_target_shape`. The first `%t22` row has the expected
-prepared select-result branch shape and register homes, but one incoming
-select edge is `%t18 -> %t22`. `%t18` is a successor/join-block compare:
-`%t18 = bir.ule ptr %t15, %t17`, where `%t17` is produced by `inttoptr` and
-currently has a stack-slot pointer home. The existing RV64 select-edge source
-producer rule can rematerialize only supported register/immediate compare
-operands. A plain register-copy fallback from `%t18` would be wrong because
-the out-of-SSA copy executes on the predecessor edge, before `%t18` is defined
-in the successor block.
+Fresh probes confirm the residual classification:
 
-No implementation files or tests were changed.
+| Row | Current object result | First owner |
+| --- | --- | --- |
+| `20010329-1` | `unsupported_move_bundle_target_shape` | Select-edge source-producer dependency rematerialization for predecessor-edge out-of-SSA move bundles. |
+| `20000622-1` | `unsupported_instruction_fragment` | Instruction-side lowering before select-result branch consumption is first. |
+
+`20010329-1 main.logic.end.14` still has complete select-result branch
+candidate facts for `%t22/%t23`, including `root_is_select=yes`,
+`source_producer=select_materialization`, a prepared `ne i32 %t22, 0` branch
+condition, GPR homes, and available register-destination block-entry
+publications. The blocker remains the incoming `%t18 -> %t22`: `%t18` is a
+successor/join-block compare over `%t15` and `%t17`, and `%t17` has a
+stack-slot pointer home. The predecessor-edge move site therefore needs
+explicit prepared rematerialization of the compare/cast dependency chain; a
+plain copy from `%t18` would be unsound.
 
 ## Suggested Next
 
-Step 4 should perform residual disposition and close-readiness review for idea
-450, with the current route decision recorded: the next executable work is not
-a pure register-home branch consumer. It needs either a focused prepared
-source-producer dependency contract for select-edge rematerialization, or a
-split plan that owns pointer cast / compare dependency rematerialization before
-the register-home select-result branch consumer can be made sound.
+Plan-owner should split or activate a durable follow-up for prepared
+select-edge source-producer dependency rematerialization. Idea 450 should not
+continue with another direct register-home branch consumer packet until that
+authority exists. If the plan owner prefers lifecycle closure, close 450 as
+blocked by the split and preserve current fail-closed behavior for
+`20010329-1`.
 
 ## Watchouts
 
@@ -55,6 +57,8 @@ the register-home select-result branch consumer can be made sound.
   at the edge or explicitly rematerialized by prepared source-producer facts.
 - Do not fold pointer cast / compare dependency rematerialization into this
   packet without a focused prepared authority contract.
+- Keep the rematerialization follow-up separate from stack-home branch operand
+  materialization unless that plan explicitly owns the overlap.
 - Do not consume non-zero compare constants or predicates outside `Eq`/`Ne`
   in the first packet.
 - Do not infer select-result publication from raw select shape,
@@ -66,7 +70,7 @@ the register-home select-result branch consumer can be made sound.
 
 ## Proof
 
-Step 3 route/blocker validation:
+Step 4 residual-disposition validation:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
