@@ -116,3 +116,13 @@ lifecycle state records the split/blocker.
 Re-probe representative rows and classify any remaining first owner.
 Completion means this source idea closes, remains active with one exact
 in-scope metadata packet, or routes an RV64 consumer / other durable follow-up.
+
+### Step 5: Populate And Expose Branch Stack-Load Authority Records
+
+Implement or route the remaining producer/prepared packet for collecting,
+populating, and printing/probing `PreparedBranchStackLoadAuthority` records
+from real prepared modules. Keep this step producer/prepared-only. Completion
+means representative rows have durable available or unavailable authority
+records visible through a prepared evidence/printer surface, with missing
+policy, missing freshness, missing clobber-safety, pointer-status unknown, and
+select-result stack-destination boundaries still fail-closed.
