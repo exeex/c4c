@@ -1,50 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/472_branch_site_stack_slot_current_value_no_clobber_certificate.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Certificate Producer
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 as a route/blocker packet for idea 472. No certificate
-producer was implemented because current prepared inputs still cannot prove
-exact frame-slot materialization/current-value or no-clobber safety for
-`f.logic.end.14` `%t23`, slot `#21`.
+Completed Step 4 residual disposition for idea 472. The plan is close-ready as
+a blocked/negative certificate-producer result: the representative `%t23` row
+has identity facts, but current prepared evidence still lacks exact
+materialization/current-value and no-clobber certificate sources for slot
+`#21`.
 
-Checked surfaces:
+Residual classification:
 
-| Surface | Finding |
+| Row | Current disposition | First owner |
 | --- | --- |
-| `PreparedBranchStackLoadAuthorityInputs` | Downstream carrier can hold policy/freshness/clobber booleans, but not the certificate source itself. |
-| `plan_prepared_branch_stack_load_authority` | Correctly rejects records without policy, freshness, and clobber safety. |
-| `collect_prepared_branch_stack_load_authorities` | Reaches branch condition, terminator, value home, frame slot, and stack object; it has no materialization/current-value or no-clobber certificate input. |
-| Existing prepared evidence | Exposes calls, store-source rows, publications, move bundles, and parallel copies, but no joined certificate for slot `#21`. |
+| `f.logic.end.14` condition `%t23`, slot `#21` | Branch/value/home/frame-slot/object identity exists, but no exact materialization/current-value fact and no no-clobber certificate exist. | Lower-level producer for branch-site stack-slot materialization/current-value and no-clobber facts. |
+| `f.logic.end.14` lhs `%t22`, slot `#20` | Select-result stack-destination and block-entry publication remain first. | Select-result / block-entry stack-destination owner. |
+| `f.block_1` `%t2` and `f.block_4` `%t8` | Still `unsupported_terminator`; not eligible for certificate production. | Branch-site relationship acceptance owner. |
+| `f.block_1` `%t1` and `f.block_4` `%t7` | Pointer/provenance plus branch-site relationship boundaries remain. | Pointer-value provenance and branch-site relationship owners. |
 
-Exact blocker:
+Lifecycle recommendation: close idea 472 by split/route. Activate a narrower
+lower-level producer idea for `branch_site_stack_slot_materialization_no_clobber_source`
+or equivalent.
 
-| Missing fact | Current status |
-| --- | --- |
-| Exact frame-slot materialization/current-value | No prepared row states current `%t23` was written/materialized into slot `#21` before the branch. |
-| Path/dominance validity | No certificate connects any source materialization to all paths reaching `logic.end.14`. |
-| Same-slot write exclusion | No producer summary proves slot `#21` has no intervening stack write/publication/move/parallel-copy clobber. |
-| Call/helper/inline-asm effects | No effect certificate is tied to slot `#21`. |
-| Publication/move-bundle/parallel-copy non-clobber | Existing rows are not joined into a slot `#21` non-clobber proof. |
-
-Preserved fail-closed boundaries: `%t22` remains select-result stack
-destination/block-entry publication work; `%t1` / `%t7` remain
-pointer/provenance boundaries; `%t2` / `%t8` remain `unsupported_terminator`
-branch-site relationship work. No RV64 lowering or raw-shape inference was
-introduced.
+Branch-stack-load availability and RV64 branch-load consumption remain blocked
+until explicit certificate records exist and produce available
+`PreparedBranchStackLoadAuthority` rows.
 
 Artifact:
-`build/agent_state/472_step3_current_value_no_clobber_producer/blocker.md`.
+`build/agent_state/472_step4_residual_disposition/disposition.md`.
 
 ## Suggested Next
 
-Route a lower-level prepared producer initiative for branch-site stack-slot
-write/current-value and no-clobber certificate sources.
+Plan-owner should close idea 472 or split/activate a lower-level producer
+initiative for branch-site stack-slot materialization/current-value and
+no-clobber source facts.
 
 Required future facts:
 
@@ -53,12 +47,13 @@ Required future facts:
 - same-slot write exclusion;
 - call/helper/inline-asm effect safety;
 - publication, move-bundle, and parallel-copy non-clobber safety;
-- positive/fail-closed tests before populating branch-stack-load authority.
+- exposed certificate records/statuses with positive/fail-closed tests before
+  populating branch-stack-load authority.
 
 Proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 ## Watchouts
@@ -79,11 +74,10 @@ Proof:
 
 ## Proof
 
-Step 3 proof:
+Step 4 proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
-Result: passed. `test_after.log` reports 100% tests passed, 0 tests failed
-out of 327, followed by `git diff --check`.
+Result: passed.
