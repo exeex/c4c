@@ -1,6 +1,6 @@
 # RV64 Pointer Cast And Address Materialization
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Source Evidence: `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`
@@ -63,3 +63,44 @@ materialization. Representative rows include `src/930930-1.c`,
   changes as pointer/address progress.
 - Reject a broad memory-addressing rewrite that silently absorbs global-data,
   stack-frame, or producer-contract defects.
+
+## Completion Notes
+
+Closed on 2026-06-30 as a bounded target-side pointer/address materialization
+idea.
+
+Completed coverage:
+
+- Focused RV64 backend coverage now proves coherent scalar pointer-cast
+  movement for `IntToPtr` from `i32`/`i64` to `ptr` and `PtrToInt` from `ptr`
+  to `i64`.
+- The implemented route is restricted to authoritative GPR-compatible prepared
+  homes plus literal or rematerializable integer sources.
+- Existing RV64 routes already consume explicit prepared frame-slot, string,
+  and direct-global address materialization facts; Step 3 close-readiness found
+  no additional representative-owned prepared address-materialization packet.
+
+Representative close-readiness probes under
+`build/agent_state/429_step4_close_readiness/` still show full-row failures,
+but those failures are not remaining in-scope pointer-cast target-lowering
+work:
+
+- `930930-1`: pointer-value memory/global-store/select residual.
+- `20000622-1`: covered immediate `inttoptr` shape plus unrelated
+  call/select/local-publication residuals.
+- `20010329-1`: covered immediate/register `inttoptr` shapes plus
+  terminator/select-publication residuals.
+- `20011019-1`: global object data plus global pointer load/store and
+  direct-global select-chain work.
+- `20041112-1`: direct `bir.ret ptr @global`, global load/store,
+  direct-global select-chain, and terminator residuals.
+
+Durable follow-up:
+`ideas/open/433_rv64_global_select_pointer_memory_residuals.md`.
+
+Close proof:
+
+- Existing canonical `test_before.log` and `test_after.log` cover the backend
+  subset with `327 passed, 0 failed` before and after.
+- The regression guard passed with non-decreasing pass-count semantics:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`.
