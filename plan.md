@@ -150,3 +150,14 @@ proof. Completion means the Step 5 suppression/consumption hook is reachable,
 while generic before-instruction stack moves, `load_from_stack_slot
 missing_stack_freshness`, raw `inttoptr`, successor-copy, scratch-clobber, and
 unrelated move bundles remain fail-closed.
+
+### Step 7: Final Residual Disposition And Close Readiness
+
+Re-probe and classify the remaining `20010329-1` object-route
+`unsupported_move_bundle_target_shape` now that the explicit cast-dependency
+compare consumer and authorized before-instruction stack publication
+suppression are both in place. Identify whether an exact idea-456 consumer
+packet remains or whether the next owner is a separate later
+move-bundle/materialization family. Completion means close 456, keep it active
+with one exact remaining cast-dependency consumer packet, or split durable
+follow-up work with evidence.

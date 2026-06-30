@@ -1,14 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/456_rv64_select_edge_cast_dependency_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Expose Authorized Before-Instruction Move Bundle To Object Route
+Current Step ID: 7
+Current Step Title: Final Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 6 for idea 456. Summary artifact:
+Plan-owner reviewed completed Step 6 for idea 456 and advanced the active
+packet to final residual disposition. Summary artifact:
 `build/agent_state/456_step6_before_instruction_move_bundle/summary.md`.
 
 Implemented the narrow prepared object traversal and RV64 consumer route for
@@ -33,12 +34,13 @@ Fresh `20010329-1` probes under
 `build/agent_state/456_step6_before_instruction_move_bundle/` still show
 `prepared_exit=0` and `object_exit=2` with the broad
 `unsupported_move_bundle_target_shape` diagnostic. The before-instruction stack
-publication is no longer the local blocker; Step 7 should classify the later
-move-bundle residual.
+publication is no longer the local blocker; the remaining broad move-bundle
+diagnostic needs final owner classification before any further implementation
+packet is selected.
 
 ## Suggested Next
 
-Step 7: `Final Residual Disposition And Close Readiness`.
+Execute Step 7: `Final Residual Disposition And Close Readiness`.
 
 Re-probe and classify the remaining `20010329-1` object-route
 `unsupported_move_bundle_target_shape` after the explicit cast-dependency
@@ -85,10 +87,10 @@ Suggested proof command:
 
 ## Proof
 
-Step 6 proof:
+Lifecycle repair validation:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
-Result: passed; proof output is in `test_after.log`.
+Result: passed.
