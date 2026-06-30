@@ -1937,6 +1937,8 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
         dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
     const c4c::backend::prepare::PreparedMoveResolution& move,
     std::uint32_t destination_register,
@@ -1970,6 +1972,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
         dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
     const c4c::backend::prepare::PreparedSelectEdgeSourceProducerPlacementRecords*
         select_edge_source_producer_placements,
     std::size_t stack_frame_bytes,
@@ -2052,6 +2056,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
           function,
           lookups,
           dependency_operand_authorities,
+          carrier_alias_authorities,
           move_bundle,
           move,
           *destination,
@@ -7022,6 +7027,62 @@ bool prepared_select_edge_binary_source_has_only_carrier_uses(
   return true;
 }
 
+bool prepared_select_edge_binary_source_has_carrier_alias_authority(
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
+    const c4c::backend::prepare::PreparedEdgePublication& publication) {
+  if (carrier_alias_authorities == nullptr || !publication.source_value_id.has_value() ||
+      !publication.source_producer_block_label.has_value() ||
+      !publication.source_producer_instruction_index.has_value()) {
+    return false;
+  }
+  for (const auto& record : carrier_alias_authorities->records) {
+    const auto& authority = record.authority;
+    if (record.function_name == function_name &&
+        prepare::prepared_select_carrier_alias_authority_available(authority) &&
+        authority.source_use_closure_proven &&
+        !authority.carrier_aliases.empty() &&
+        authority.predecessor_label == publication.predecessor_label &&
+        authority.successor_label == publication.successor_label &&
+        authority.destination_value_id == publication.destination_value_id &&
+        authority.destination_value_name == publication.destination_value_name &&
+        authority.source_value_id == publication.source_value_id &&
+        authority.source_value_name == publication.source_value_name &&
+        authority.source_producer_kind == publication.source_producer_kind &&
+        authority.source_producer_block_label ==
+            publication.source_producer_block_label &&
+        authority.source_producer_instruction_index ==
+            publication.source_producer_instruction_index) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool prepared_select_edge_binary_source_has_authorized_consumers(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
+    const c4c::backend::bir::BinaryInst& producer,
+    const c4c::backend::prepare::PreparedEdgePublication& publication,
+    const c4c::backend::prepare::PreparedJoinTransfer& join_transfer) {
+  if (prepared_select_edge_binary_source_has_only_carrier_uses(names,
+                                                              control_flow,
+                                                              function,
+                                                              producer,
+                                                              join_transfer)) {
+    return true;
+  }
+  return producer.opcode == c4c::backend::bir::BinaryOpcode::Ule &&
+         producer.operand_type == c4c::backend::bir::TypeKind::Ptr &&
+         prepared_select_edge_binary_source_has_carrier_alias_authority(
+             function_name, carrier_alias_authorities, publication);
+}
+
 bool prepared_value_names_match(const c4c::backend::prepare::PreparedNameTables& names,
                                 const c4c::backend::bir::Value& lhs,
                                 const c4c::backend::bir::Value& rhs) {
@@ -7174,6 +7235,8 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
         dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
     const c4c::backend::prepare::PreparedMoveResolution& move,
     std::uint32_t destination_register,
@@ -7223,11 +7286,14 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
           *intent.publication,
           prepare::PreparedDependencyOperandRole::Rhs,
           binary->rhs) ||
-      !prepared_select_edge_binary_source_has_only_carrier_uses(
+      !prepared_select_edge_binary_source_has_authorized_consumers(
           names,
           control_flow,
           function,
+          control_flow.function_name,
+          carrier_alias_authorities,
           *binary,
+          *intent.publication,
           *join_transfer)) {
     return {.matched = true};
   }
@@ -7294,6 +7360,8 @@ bool prepared_binary_is_select_edge_owned_source(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
         dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
     const c4c::backend::bir::BinaryInst& binary) {
   if (lookups == nullptr || binary.result.kind != c4c::backend::bir::Value::Kind::Named) {
     return false;
@@ -7333,15 +7401,47 @@ bool prepared_binary_is_select_edge_owned_source(
             publication,
             prepare::PreparedDependencyOperandRole::Rhs,
             binary.rhs) ||
-        !prepared_select_edge_binary_source_has_only_carrier_uses(
+        !prepared_select_edge_binary_source_has_authorized_consumers(
             names,
             control_flow,
             function,
+            control_flow.function_name,
+            carrier_alias_authorities,
             binary,
+            publication,
             *publication.join_transfer)) {
       continue;
     }
     return true;
+  }
+  return false;
+}
+
+bool prepared_select_is_authorized_carrier_alias(
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
+    const c4c::backend::bir::SelectInst& select) {
+  if (carrier_alias_authorities == nullptr ||
+      select.result.kind != c4c::backend::bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto result_name = names.value_names.find(select.result.name);
+  if (result_name == c4c::kInvalidValueName) {
+    return false;
+  }
+  for (const auto& record : carrier_alias_authorities->records) {
+    if (record.function_name != function_name ||
+        !prepare::prepared_select_carrier_alias_authority_available(
+            record.authority)) {
+      continue;
+    }
+    for (const auto& alias : record.authority.carrier_aliases) {
+      if (alias.carrier_value_name == result_name) {
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -8428,6 +8528,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
     const c4c::backend::prepare::PreparedFunctionLookups& lookups,
     const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords&
         dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords&
+        carrier_alias_authorities,
     const c4c::backend::prepare::PreparedInlineAsmCarrierFunction* inline_asm_carriers,
     const c4c::backend::bir::Block& block,
     c4c::BlockLabelId prepared_block_label,
@@ -8446,6 +8548,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
                                                       function,
                                                       &lookups,
                                                       &dependency_operand_authorities,
+                                                      &carrier_alias_authorities,
                                                       *binary)) {
         return RiscvEncodedFragment{};
       }
@@ -8521,6 +8624,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       }
     }
     if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&inst)) {
+      if (prepared_select_is_authorized_carrier_alias(control_flow.function_name,
+                                                      prepared.names,
+                                                      &carrier_alias_authorities,
+                                                      *select)) {
+        return RiscvEncodedFragment{};
+      }
       const auto classification =
           prepare::classify_prepared_object_select_consumer(&control_flow,
                                                             prepared_block_label,
@@ -8897,6 +9006,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
   const auto dependency_operand_authorities =
       prepare::collect_prepared_dependency_operand_authorities(prepared);
+  const auto carrier_alias_authorities =
+      prepare::collect_prepared_select_carrier_alias_authorities(prepared);
   const auto select_edge_source_producer_placements =
       prepare::collect_prepared_select_edge_source_producer_placements(prepared);
   RiscvObjectFunction object_function{
@@ -9071,6 +9182,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                 *function,
                                                 &lookups,
                                                 &dependency_operand_authorities,
+                                                &carrier_alias_authorities,
                                                 &select_edge_source_producer_placements,
                                                 *stack_frame_bytes,
                                                 *classification.move_bundle);
@@ -9109,6 +9221,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                            *function,
                                                            lookups,
                                                            dependency_operand_authorities,
+                                                           carrier_alias_authorities,
                                                            inline_asm_carriers,
                                                            *block,
                                                            prepared_block_label,
@@ -9200,6 +9313,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                        *function,
                                                        lookups,
                                                        dependency_operand_authorities,
+                                                       carrier_alias_authorities,
                                                        inline_asm_carriers,
                                                        block,
                                                        prepared_block_label,
