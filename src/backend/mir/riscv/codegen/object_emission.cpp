@@ -16,6 +16,7 @@
 #include <functional>
 #include <limits>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -233,6 +234,63 @@ RiscvPreparedObjectFunctionResult make_rv64_prepared_function_rejection(
   return RiscvPreparedObjectFunctionResult{
       .diagnostic = std::move(diagnostic),
   };
+}
+
+std::string_view rv64_prepared_move_destination_kind_name(
+    prepare::PreparedMoveDestinationKind kind) {
+  switch (kind) {
+    case prepare::PreparedMoveDestinationKind::Value:
+      return "value";
+    case prepare::PreparedMoveDestinationKind::CallArgumentAbi:
+      return "call_argument_abi";
+    case prepare::PreparedMoveDestinationKind::CallResultAbi:
+      return "call_result_abi";
+    case prepare::PreparedMoveDestinationKind::FunctionReturnAbi:
+      return "function_return_abi";
+  }
+  return "unknown";
+}
+
+std::string_view rv64_prepared_move_storage_kind_name(
+    prepare::PreparedMoveStorageKind kind) {
+  switch (kind) {
+    case prepare::PreparedMoveStorageKind::None:
+      return "none";
+    case prepare::PreparedMoveStorageKind::Register:
+      return "register";
+    case prepare::PreparedMoveStorageKind::StackSlot:
+      return "stack_slot";
+  }
+  return "unknown";
+}
+
+std::string_view rv64_prepared_move_op_kind_name(
+    prepare::PreparedMoveResolutionOpKind kind) {
+  switch (kind) {
+    case prepare::PreparedMoveResolutionOpKind::Move:
+      return "move";
+    case prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp:
+      return "save_destination_to_temp";
+  }
+  return "unknown";
+}
+
+std::string_view rv64_prepared_function_name(
+    const prepare::PreparedNameTables& names,
+    c4c::FunctionNameId id) {
+  if (id == c4c::kInvalidFunctionName) {
+    return "<none>";
+  }
+  return prepare::prepared_function_name(names, id);
+}
+
+std::string_view rv64_prepared_block_label(
+    const prepare::PreparedNameTables& names,
+    c4c::BlockLabelId id) {
+  if (id == c4c::kInvalidBlockLabel) {
+    return "<none>";
+  }
+  return prepare::prepared_block_label(names, id);
 }
 
 std::optional<std::uint32_t> gpr_register_number_for_home(
@@ -6688,6 +6746,99 @@ bool prepared_before_instruction_move_bundle_requires_suppression_authority(
       });
 }
 
+std::string rv64_prepared_move_bundle_fragment_failure_diagnostic(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedObjectTraversalEvent& event,
+    const c4c::backend::prepare::PreparedObjectMoveBundleConsumerClassification&
+        classification,
+    const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
+        dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedSelectEdgeSourceProducerPlacementRecords*
+        select_edge_source_producer_placements) {
+  std::ostringstream out;
+  out << "unsupported_move_bundle_target_shape: prepared move bundle requires "
+         "unsupported RV64 moves";
+  out << " event_kind="
+      << prepare::prepared_object_traversal_event_kind_name(event.kind);
+  out << " function="
+      << rv64_prepared_function_name(names, control_flow.function_name);
+  out << " block_index=" << event.block_index;
+  if (event.prepared_block != nullptr) {
+    out << " block_label="
+        << rv64_prepared_block_label(names, event.prepared_block->block_label);
+  }
+  out << " instruction_index=" << event.instruction_index;
+
+  const auto* move_bundle = classification.move_bundle;
+  if (move_bundle == nullptr) {
+    out << " fragment_status=missing_move_bundle";
+    return out.str();
+  }
+
+  out << " phase=" << prepare::prepared_move_phase_name(move_bundle->phase);
+  out << " bundle_block_index=" << move_bundle->block_index;
+  out << " bundle_instruction_index=" << move_bundle->instruction_index;
+  out << " authority="
+      << prepare::prepared_move_authority_kind_name(move_bundle->authority_kind);
+  out << " move_count=" << move_bundle->moves.size();
+
+  if (classification.parallel_copy_bundle != nullptr) {
+    const auto& bundle = *classification.parallel_copy_bundle;
+    out << " parallel_copy=yes";
+    out << " parallel_copy_predecessor="
+        << rv64_prepared_block_label(names, bundle.predecessor_label);
+    out << " parallel_copy_successor="
+        << rv64_prepared_block_label(names, bundle.successor_label);
+    out << " parallel_copy_execution_site="
+        << prepare::prepared_parallel_copy_execution_site_name(bundle.execution_site);
+  } else {
+    out << " parallel_copy=no";
+  }
+
+  const bool select_edge_suppression_authorized =
+      prepared_move_bundle_is_authorized_select_edge_source_producer_suppression(
+          control_flow,
+          control_flow.function_name,
+          select_edge_source_producer_placements,
+          *move_bundle);
+  const bool cast_stack_publication_authorized =
+      prepared_move_bundle_is_authorized_cast_dependency_stack_publication(
+          names,
+          control_flow,
+          control_flow.function_name,
+          function,
+          dependency_operand_authorities,
+          *move_bundle);
+  out << " select_edge_suppression_authorized="
+      << (select_edge_suppression_authorized ? "yes" : "no");
+  out << " cast_dependency_stack_publication_authorized="
+      << (cast_stack_publication_authorized ? "yes" : "no");
+
+  for (std::size_t move_index = 0; move_index < move_bundle->moves.size();
+       ++move_index) {
+    const auto& move = move_bundle->moves[move_index];
+    const std::string move_prefix =
+        " move[" + std::to_string(move_index) + "]";
+    out << move_prefix << ".from_value_id=" << move.from_value_id;
+    out << move_prefix << ".to_value_id=" << move.to_value_id;
+    out << move_prefix << ".destination_kind="
+        << rv64_prepared_move_destination_kind_name(move.destination_kind);
+    out << move_prefix << ".destination_storage="
+        << rv64_prepared_move_storage_kind_name(move.destination_storage_kind);
+    out << move_prefix << ".op_kind="
+        << rv64_prepared_move_op_kind_name(move.op_kind);
+    out << move_prefix << ".reason="
+        << (move.reason.empty() ? "<none>" : move.reason);
+    if (move.source_immediate_i32.has_value()) {
+      out << move_prefix << ".source_imm_i32=" << *move.source_immediate_i32;
+    }
+  }
+  out << " fragment_status=generic_move_bundle_materialization_failed";
+  return out.str();
+}
+
 std::optional<RiscvEncodedFragment>
 fragment_for_prepared_select_edge_binary_with_cast_dependencies(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -8925,7 +9076,14 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                 *classification.move_bundle);
           if (!fragment.has_value()) {
             return make_rv64_prepared_function_rejection(
-                "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves");
+                rv64_prepared_move_bundle_fragment_failure_diagnostic(
+                    prepared.names,
+                    control_flow,
+                    *function,
+                    event,
+                    classification,
+                    &dependency_operand_authorities,
+                    &select_edge_source_producer_placements));
           }
           object_function.fragments.push_back(std::move(*fragment));
           break;

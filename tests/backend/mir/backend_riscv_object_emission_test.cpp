@@ -117,6 +117,18 @@ int fail(const std::string& message) {
   return 1;
 }
 
+constexpr const char* kGenericPreparedMoveBundleDiagnostic =
+    "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+bool prepared_rejection_diagnostic_matches(const std::string& actual,
+                                           const std::string& expected) {
+  if (actual == expected) {
+    return true;
+  }
+  return expected == kGenericPreparedMoveBundleDiagnostic &&
+         actual.rfind(expected, 0) == 0;
+}
+
 int expect_prepared_rejection_diagnostic(
     const prepare::PreparedBirModule& prepared,
     const std::string& expected_diagnostic) {
@@ -128,7 +140,8 @@ int expect_prepared_rejection_diagnostic(
   if (result.prepared_consumer_category.has_value()) {
     return fail("expected RV64-local diagnostic rather than shared category");
   }
-  if (result.diagnostic != expected_diagnostic) {
+  if (!prepared_rejection_diagnostic_matches(result.diagnostic,
+                                             expected_diagnostic)) {
     return fail("expected prepared RV64 object diagnostic `" +
                 expected_diagnostic + "`, got `" + result.diagnostic + "`");
   }
@@ -136,7 +149,8 @@ int expect_prepared_rejection_diagnostic(
       rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(prepared);
   if (image.ok() || image.image.has_value() ||
       image.prepared_consumer_category.has_value() ||
-      image.diagnostic != expected_diagnostic) {
+      !prepared_rejection_diagnostic_matches(image.diagnostic,
+                                             expected_diagnostic)) {
     return fail("expected prepared RV64 ELF writer to preserve RV64-local diagnostic");
   }
   return 0;
@@ -10558,6 +10572,62 @@ int rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes() {
   return 0;
 }
 
+int reports_prepared_move_bundle_coordinate_diagnostic() {
+  auto prepared = make_prepared_stack_slot_to_gpr_move_bundle_module();
+  auto& move_bundle = prepared.value_locations.functions[0].move_bundles[0];
+  auto& move = move_bundle.moves[0];
+  move.destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  move.destination_stack_offset_bytes = 8;
+  move.reason = "consumer_register_to_stack";
+
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (result.ok() || result.module.has_value()) {
+    return fail("expected prepared move-bundle coordinate diagnostic rejection");
+  }
+  const std::string& diagnostic = result.diagnostic;
+  const std::vector<std::string> required_fragments = {
+      kGenericPreparedMoveBundleDiagnostic,
+      "event_kind=pre_terminator_copies",
+      "function=stack_move",
+      "block_index=0",
+      "block_label=entry",
+      "instruction_index=0",
+      "phase=before_return",
+      "bundle_block_index=0",
+      "bundle_instruction_index=0",
+      "authority=none",
+      "move_count=1",
+      "parallel_copy=no",
+      "select_edge_suppression_authorized=no",
+      "cast_dependency_stack_publication_authorized=no",
+      "move[0].from_value_id=1",
+      "move[0].to_value_id=2",
+      "move[0].destination_kind=value",
+      "move[0].destination_storage=stack_slot",
+      "move[0].op_kind=move",
+      "move[0].reason=consumer_register_to_stack",
+      "fragment_status=generic_move_bundle_materialization_failed",
+  };
+  for (const auto& fragment : required_fragments) {
+    if (diagnostic.find(fragment) == std::string::npos) {
+      return fail("expected move-bundle coordinate diagnostic fragment `" +
+                  fragment + "`, got `" + diagnostic + "`");
+    }
+  }
+
+  const auto image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(prepared);
+  if (image.ok() || image.image.has_value() ||
+      image.diagnostic.find("event_kind=pre_terminator_copies") ==
+          std::string::npos ||
+      image.diagnostic.find("move[0].destination_storage=stack_slot") ==
+          std::string::npos) {
+    return fail("expected ELF writer to preserve move-bundle coordinate diagnostic");
+  }
+  return 0;
+}
+
 int builds_prepared_scalar_compare_trunc_object() {
   const auto prepared = make_prepared_scalar_compare_trunc_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -14731,6 +14801,7 @@ int main() {
   status |= builds_prepared_stack_slot_scalar_flow_object();
   status |= builds_prepared_stack_slot_to_gpr_move_bundle_object();
   status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
+  status |= reports_prepared_move_bundle_coordinate_diagnostic();
   status |= builds_prepared_scalar_compare_trunc_object();
   status |= builds_prepared_scalar_ordered_compare_return_object();
   status |= builds_prepared_scalar_ashr_register_object();
