@@ -1,10 +1,13 @@
 # Select-Result Branch Publication
 
-Status: Open
+Status: Closed
 Type: Terminator/select publication idea
 Parent: `ideas/closed/441_terminator_select_publication_authority.md`
 Source Evidence: `build/agent_state/441_step4_residual_disposition/`
+Close Evidence: `build/agent_state/450_step4_residual_disposition/disposition.md`
 Owning Layer: Prepared select-result publication before branch lowering
+Closed Disposition: Blocked by split to
+`ideas/open/452_select_edge_source_producer_rematerialization.md`
 
 ## Goal
 
@@ -54,6 +57,39 @@ raw select or branch shape.
 - Any remaining unrelated residuals are routed separately instead of folded
   into this idea.
 
+## Completion Notes
+
+Steps 1 and 2 audited the candidate select-result branch rows and defined the
+prepared select-result publication contract. Steps 3 and 4 found that the first
+representative packet is not a direct branch-consumer problem. `20010329-1`
+still fails at `unsupported_move_bundle_target_shape` because predecessor-edge
+out-of-SSA move materialization would need the selected incoming source
+rematerialized on the edge.
+
+The precise blocker is `main.logic.end.14`: `%t22` is a select result feeding
+`ne i32 %t22, 0`, and the incoming `%t18 -> %t22` value is a
+successor/join-block compare over `%t15` and `%t17`. `%t17` is an `inttoptr`
+result with a stack-slot pointer home. A plain copy from `%t18` on the
+predecessor edge would be unsound because `%t18` is defined after the edge
+executes. The source compare/cast dependency chain needs explicit prepared
+select-edge source-producer rematerialization authority.
+
+`20000622-1` remains instruction-side first-owner before select-result branch
+consumption is reached. `930930-1` stack-home branch operand and pointer-value
+publication residuals remain outside this idea.
+
+Idea 450 is closed as blocked by a split. The selected durable follow-up is
+`ideas/open/452_select_edge_source_producer_rematerialization.md`. Until that
+authority exists, preserving `unsupported_move_bundle_target_shape` for
+`20010329-1` is the correct fail-closed behavior.
+
+## Validation
+
+- Step 4 backend proof passed before log roll-forward:
+  `cmake --build build -j2` plus
+  `ctest --test-dir build -j2 --output-on-failure -R '^backend_'`.
+- Step 4 `git diff --check` passed.
+
 ## Reviewer Reject Signals
 
 - Reject RV64 changes that infer select-result publication from raw select
@@ -63,6 +99,8 @@ raw select or branch shape.
   root, one block, or one prepared row.
 - Reject claiming `root_is_select=yes` alone is sufficient branch publication
   authority without an explicit consumer contract.
+- Reject copying a successor/join-block compare result on a predecessor edge
+  without explicit rematerialization authority.
 - Reject expectation rewrites, unsupported-marker downgrades, allowlists, or
   pass/fail accounting changes claimed as select-result publication progress.
 - Reject baseline/log churn that accepts or rewrites `test_baseline.new.log`.

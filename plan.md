@@ -1,37 +1,36 @@
-# Select-Result Branch Publication Plan
+# Select-Edge Source-Producer Rematerialization Plan
 
 Status: Active
-Source Idea: ideas/open/450_select_result_branch_publication.md
+Source Idea: ideas/open/452_select_edge_source_producer_rematerialization.md
 
 ## Purpose
 
-Define and consume explicit prepared authority for select-result values that
-feed branch conditions, without reconstructing select publication from raw BIR
-shape.
+Define and consume explicit prepared authority for rematerializing
+source-producer dependency chains at predecessor-edge out-of-SSA move sites.
 
 ## Goal
 
-Classify select-result branch publication and move-bundle materialization
-residuals, define the prepared facts required for accepted select-result
-branch conditions, and select only bounded producer or consumer packets that
-consume explicit authority.
+Classify the `20010329-1` select-edge move-bundle blocker, define the facts
+required to rematerialize successor/join-block compare dependencies on
+predecessor edges, and select only a bounded producer or consumer packet that
+uses explicit prepared authority.
 
 ## Core Rule
 
-Do not infer select-result publication, condition conversion, move-bundle
-targets, branch operands, or value homes from raw select instructions,
-`ne i32 <select>, 0` shape, block order, filenames, function names, testcase
-names, or one prepared dump layout.
+Do not copy a successor/join-block temporary on a predecessor edge unless the
+value is proven available there. If a source value is not edge-available, it
+must be rematerialized from explicit prepared source-producer dependency facts
+or remain fail-closed.
 
 ## Read First
 
-- ideas/open/450_select_result_branch_publication.md
-- ideas/closed/441_terminator_select_publication_authority.md
-- ideas/closed/449_pointer_relational_branch_publication.md
-- build/agent_state/441_step4_residual_disposition/classification.md
-- build/agent_state/449_step4_residual_disposition/classification.md
-- build/agent_state/449_step4_residual_disposition/20010329-1.prepared.out
-- build/agent_state/449_step4_residual_disposition/20000622-1.prepared.out
+- ideas/open/452_select_edge_source_producer_rematerialization.md
+- ideas/closed/450_select_result_branch_publication.md
+- ideas/open/451_stack_home_branch_operand_materialization.md
+- build/agent_state/450_step4_residual_disposition/disposition.md
+- build/agent_state/450_step3_select_result_branch_publication/blocker.md
+- build/agent_state/450_step4_residual_disposition/20010329-1.prepared.out
+- build/agent_state/450_step4_residual_disposition/20010329-1.object.err
 - src/backend/prealloc/publication_plans.cpp
 - src/backend/prealloc/publication_plans.hpp
 - src/backend/mir/riscv/codegen/object_emission.cpp
@@ -40,50 +39,46 @@ names, or one prepared dump layout.
 
 ## Current Targets
 
-- `20010329-1` current `unsupported_move_bundle_target_shape` residual after
-  pointer relational branch publication.
-- `root_is_select=yes` select-chain rows for `%t22`, `%t36`, and `%t50` in
-  `20010329-1`.
-- `20000622-1` select-result branch candidates such as `%t13/%t24` feeding
-  `ne i32 ..., 0`.
-- Prepared facts for root select identity, select result value home, condition
-  conversion, comparison against zero, branch targets, move-bundle target
-  materialization, and consumer boundary.
+- `20010329-1` current `unsupported_move_bundle_target_shape` residual.
+- `main.logic.end.14` select result `%t22` with incoming `%t18`.
+- `%t18 = bir.ule ptr %t15, %t17`, where `%t18` is defined in the
+  successor/join block and is not directly copyable on the predecessor edge.
+- `%t17 = bir.inttoptr i32 %t16 to ptr` with a stack-slot pointer home.
+- Prepared source-producer dependency facts needed to decide whether the
+  compare/cast chain can be rematerialized at the edge.
 
 ## Non-Goals
 
-- Pointer equality/inequality branch publication completed by idea 441.
-- Unsigned pointer relational branch publication completed by idea 449.
-- Stack-home branch operand/condition materialization, tracked by idea 451.
-- Pointer-value memory provenance, local/global store-source publication, and
-  unsupported instruction/storage residuals.
-- Generic RV64 select or branch lowering from raw BIR without prepared
-  publication facts.
+- Reopening direct select-result branch publication closed by idea 450.
+- Stack-home branch operand or condition materialization outside the selected
+  rematerialization dependency, tracked by idea 451.
+- Pointer-value memory provenance publication.
+- Generic instruction-side lowering, including current `20000622-1`.
+- Raw-BIR reconstruction or shape matching from filenames, function names,
+  block names, testcase names, or one prepared dump layout.
 - Expectation rewrites, unsupported downgrades, allowlists, runtime-comparison
-  changes, or pass/fail accounting changes.
-- Accepting or modifying `test_baseline.new.log`.
-- Touching `review/440_step5_direct_global_return_consumer_review.md`.
+  changes, pass/fail accounting changes, or `test_baseline.new.log` changes.
+- Touching `review/`, `test_before.log`, or `test_after.log`.
 
 ## Working Model
 
-The prior branch-publication ideas handled direct fused compare predicates.
-Select-result branches are different: a select result must be explicitly
-published into a branch condition or move-bundle target before RV64 can consume
-it. This plan either proves a bounded prepared publication/consumer route for
-select-result branch conditions or records a precise instruction-side,
-producer, or materialization blocker.
+Select-result branch publication can expose predecessor-edge move bundles. A
+move bundle may need to materialize an incoming value whose producer lives in
+the successor/join block. In that case a register copy from the producer result
+is unsound; the edge materializer needs an explicit prepared source-producer
+dependency contract describing the operation, operands, homes, placement, and
+target constraints for rematerialization.
 
 ## Execution Rules
 
 - Start with evidence classification; do not edit implementation in Step 1.
-- Treat `root_is_select=yes` and raw `ne i32 <select>, 0` as candidate
-  evidence only, not authority.
-- Separate select-result publication gaps from instruction-side,
-  stack-home, pointer-value, and storage residuals.
-- Add focused tests for accepted select-result branch facts and fail-closed
-  missing/incoherent publication boundaries.
-- Select at most one narrow code packet after the publication contract is
-  explicit.
+- Treat raw compare/cast chains as candidate evidence only, not authority.
+- Keep stack-home, pointer-provenance, and generic instruction-side residuals
+  separate unless they are an explicitly required operand in the selected
+  rematerialization contract.
+- Add focused tests for accepted rematerialization authority and fail-closed
+  missing, incoherent, unavailable, or unsupported dependency chains.
+- Select at most one narrow code packet after the contract is explicit.
 - Do not touch `test_baseline.new.log`, `test_before.log`, `test_after.log`,
   or `review/`.
 - Classification-only proof: `git diff --check`.
@@ -97,38 +92,35 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Select-Result Branch Evidence
+### Step 1: Audit Select-Edge Rematerialization Evidence
 
-Inspect the 441 and 449 residual evidence for select-result branch
-publication rows. Record each row's function/block, root select identity,
-condition conversion, comparison shape, result value home, move-bundle target,
-branch targets, current publication authority, and first missing producer,
-consumer, instruction-side, or materialization fact. Completion means
-`todo.md` contains a bucket table and identifies the first bounded
-select-result branch packet or exact blocker.
+Inspect the 450 Step 3 and Step 4 artifacts for `20010329-1`. Record each
+candidate edge, incoming value, producer instruction, dependency operand,
+value home, edge availability, current prepared source-producer fact, and
+first missing authority. Completion means `todo.md` contains a bucket table
+and identifies the first bounded rematerialization packet or exact blocker.
 
-### Step 2: Define Select-Result Publication Contract
+### Step 2: Define Source-Producer Rematerialization Contract
 
-Specify the prepared facts required to publish select results into branch
-conditions and move-bundle targets, including root select identity, selected
-value provenance, result home, condition conversion, comparison against zero,
-target labels, and consumer boundary. Separate accepted records from
-instruction-side blockers, stack-home blockers, and incoherent authority.
-Completion means `todo.md` states the contract, rejected adjacent shapes, owned
-files/tests, and proof command.
+Specify the prepared facts required to rematerialize source-producer
+dependencies at predecessor-edge move sites, including operation identity,
+operand homes, placement or dominance proof, edge availability, supported
+dependency shapes, and target register/storage constraints. Completion means
+`todo.md` states the accepted and rejected shapes, owned files/tests, and proof
+command.
 
-### Step 3: Implement Or Route First Select-Result Packet
+### Step 3: Implement Or Route First Rematerialization Packet
 
 If a coherent producer/prepared or RV64 consumer packet exists, implement the
-smallest semantic change with focused coverage. If the first owner is an
-instruction-side blocker, stack-home materialization gap, or pointer-value
-provenance gap, record the split or blocker instead of broadening this source.
-Completion means proof passes or canonical lifecycle state records the route
-decision.
+smallest semantic change with focused coverage. If the first owner is
+stack-home materialization, pointer provenance, generic instruction lowering,
+or missing producer authority, record the split or blocker instead of
+broadening this source. Completion means proof passes or canonical lifecycle
+state records the route decision.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-check representative select-result branch rows against the Step 3 result,
-classify remaining residuals, and decide whether this source idea is complete.
-Completion means close, keep active with an exact remaining select-result
-branch packet, or route durable follow-up work.
+Re-check representative select-edge rematerialization rows against the Step 3
+result, classify remaining residuals, and decide whether this source idea is
+complete. Completion means close, keep active with an exact remaining
+rematerialization packet, or route durable follow-up work.
