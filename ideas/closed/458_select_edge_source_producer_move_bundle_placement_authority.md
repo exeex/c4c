@@ -1,11 +1,14 @@
 # Select-Edge Source Producer Move-Bundle Placement Authority
 
-Status: Open
+Status: Closed
 Type: Prepared producer/placement metadata idea
 Parent: `ideas/closed/457_before_instruction_stack_to_register_move_materialization.md`
 Source Evidence: `build/agent_state/457_step4_residual_disposition/`
+Close Evidence: `build/agent_state/458_step4_residual_disposition/disposition.md`
 Owning Layer: Prepared placement authority for select-edge source-producer
 move bundles
+Closed Disposition: Complete for producer/prepared placement authority.
+Follow-up: `ideas/open/459_rv64_select_edge_suppression_placement_consumer.md`.
 
 ## Goal
 
@@ -66,6 +69,29 @@ the source producer.
   ambiguous, mismatched, raw-inferred, unsafe, and unrelated bundles.
 - No RV64 consumer packet is selected until producer-owned placement authority
   exists and is tested.
+
+## Completion Notes
+
+Idea 458 completed producer/prepared placement authority. Step 3 added explicit
+`predecessor_edge_consumed_suppression` metadata for select-edge binary source
+producers and focused tests for the direct planner and exported collector.
+Semantic producer linkage is covered through prepared edge-publication,
+source-producer, and control-flow block-label facts. Missing, mismatched, and
+unsupported shapes remain false by default.
+
+RV64/object-route consumption was deliberately not changed. A separate consumer
+idea must consume the explicit placement metadata. Generic move support,
+`load_from_stack_slot missing_stack_freshness`, and expectation rewrites remain
+out of scope.
+
+## Validation
+
+- Step 3 backend proof passed before log roll-forward:
+  `cmake --build build -j2` plus
+  `ctest --test-dir build -j2 --output-on-failure -R '^backend_'`.
+- Step 4 lifecycle proof: `git diff --check` passed.
+- Close-time regression sanity used the rolled-forward backend guard log and
+  found no regression.
 
 ## Reviewer Reject Signals
 

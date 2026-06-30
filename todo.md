@@ -1,77 +1,53 @@
 Status: Active
-Source Idea Path: ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md
+Source Idea Path: ideas/open/459_rv64_select_edge_suppression_placement_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Suppression Placement Consumer Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 for idea 458. Residual disposition is recorded under
-`build/agent_state/458_step4_residual_disposition/disposition.md`.
-
-Decision: idea 458 appears close-ready as the producer/prepared
-placement-authority prerequisite. Step 3 published explicit
-`predecessor_edge_consumed_suppression` metadata for select-edge binary source
-producers and focused tests cover both the direct planner and exported
-collector. The original missing fact is no longer a producer/prepared metadata
-gap.
-
-Residual classification:
-
-- target before-instruction bundle placement meaning: complete for idea 458;
-- semantic producer linkage: complete via prepared edge-publication,
-  source-producer, and control-flow block-label facts;
-- false-by-default behavior: covered for missing/mismatched/unsupported shapes;
-- collector publication: covered by a prepared-module fixture;
-- prepared printer exposure: not required for close; possible later
-  observability-only work if the plan owner wants dump visibility;
-- RV64/object-route consumption: separate later consumer work, not part of this
-  producer-metadata idea;
-- `load_from_stack_slot missing_stack_freshness` and generic stack/register
-  moves: still rejected and outside idea 458.
+Closed idea 458 as complete for producer/prepared
+`predecessor_edge_consumed_suppression` placement authority. Step 4 classified
+remaining RV64 consumption as separate from producer metadata.
 
 ## Suggested Next
 
-Plan-owner close-readiness review for idea 458.
+Execute Step 1 for idea 459. Re-read:
 
-Recommended lifecycle disposition: close this source idea as complete for
-producer/prepared placement authority. If implementation continues, activate or
-select a separate RV64 consumer packet that consumes the explicit
-`predecessor_edge_consumed_suppression` metadata. Do not route that consumer
-work through idea 458 unless the plan owner explicitly extends the lifecycle.
+- `ideas/open/459_rv64_select_edge_suppression_placement_consumer.md`
+- `ideas/closed/458_select_edge_source_producer_move_bundle_placement_authority.md`
+- `build/agent_state/458_step4_residual_disposition/disposition.md`
+- `build/agent_state/458_step3_select_edge_placement_metadata/summary.md`
+- `build/agent_state/458_step2_placement_authority_contract/contract.md`
 
-Suggested proof for this disposition-only slice:
-
-```sh
-git diff --check
-```
+Create `build/agent_state/459_step1_suppression_placement_consumer_audit/` and
+record a bucket table for the target bundle: placement record fields, edge
+identity, source producer, select carrier, bundle site, moves, current RV64
+event visibility, and first missing consumer fact. Do not edit implementation
+in Step 1.
 
 ## Watchouts
 
-- Do not route to RV64 lowering from this disposition slice; idea 458 is
-  producer/prepared metadata only.
-- Do not infer predecessor/successor identity or suppression authority from
-  value ids, block indexes, instruction indexes, raw BIR shape, filenames,
-  function names, or one prepared dump.
-- Do not reopen idea 456 cast-dependency consumption.
+- Consume only explicit `predecessor_edge_consumed_suppression` placement
+  metadata.
+- Do not infer suppression from value ids, block indexes, instruction indexes,
+  raw BIR shape, filenames, function names, or one prepared dump.
+- Do not add generic stack-to-register or register-to-register move support.
 - Do not consume `load_from_stack_slot missing_stack_freshness`.
+- Do not reopen idea 456 cast-dependency consumption.
 - Keep generic stack-home branch consumer work routed to
   `ideas/open/451_stack_home_branch_operand_materialization.md`.
 - Keep pointer-value provenance and generic instruction-side lowering out of
   this plan.
-- The collector uses semantic edge-publication/source-producer facts plus
-  control-flow block labels to validate the bundle site. It does not mutate the
-  existing move bundle or add RV64 consumption.
-- Printer exposure was not added because the focused metadata API/test surface
-  covers this idea's producer authority requirement.
 - Do not accept or modify `test_baseline.new.log`.
-- Do not touch `test_before.log`, baseline logs, or `review/`.
+- Do not touch `test_before.log`, `test_after.log`, baseline logs, or
+  `review/`.
 
 ## Proof
 
-Step 4 disposition-only validation:
+Lifecycle activation validation:
 
 ```sh
 git diff --check

@@ -1,57 +1,55 @@
-# Select-Edge Source Producer Move-Bundle Placement Authority Plan
+# RV64 Select-Edge Suppression Placement Consumer Plan
 
 Status: Active
-Source Idea: ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md
+Source Idea: ideas/open/459_rv64_select_edge_suppression_placement_consumer.md
 
 ## Purpose
 
-Define producer/prepared placement metadata for select-edge source-producer
-before-instruction register-destination move bundles.
+Consume explicit select-edge source-producer placement metadata in RV64 object
+emission.
 
 ## Goal
 
-Classify the `20010329-1` target bundle and publish only the narrow placement
-authority needed to distinguish same-block, edge-owned, and suppression
-semantics before any RV64 consumer lowering resumes.
+Audit and implement only the bounded RV64 consumer for
+`predecessor_edge_consumed_suppression` placement metadata on the
+`20010329-1` before-instruction register-destination bundle.
 
 ## Core Rule
 
-Do not infer placement from value ids, block indexes, instruction indexes, raw
-BIR shape, or testcase layout. The producer must publish explicit placement or
-edge identity authority first.
+Do not infer suppression from value ids, block indexes, instruction indexes,
+raw BIR shape, or testcase layout. RV64 may suppress only bundles authorized by
+explicit prepared placement metadata.
 
 ## Read First
 
-- ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md
-- ideas/closed/457_before_instruction_stack_to_register_move_materialization.md
-- build/agent_state/457_step4_residual_disposition/disposition.md
-- build/agent_state/457_step3_register_destination_move_materialization/blocker.md
-- build/agent_state/456_step7_final_residual_disposition/20010329-1.prepared.out
+- ideas/open/459_rv64_select_edge_suppression_placement_consumer.md
+- ideas/closed/458_select_edge_source_producer_move_bundle_placement_authority.md
+- build/agent_state/458_step4_residual_disposition/disposition.md
+- build/agent_state/458_step3_select_edge_placement_metadata/summary.md
+- build/agent_state/458_step2_placement_authority_contract/contract.md
+- src/backend/mir/riscv/codegen/object_emission.cpp
 - src/backend/prealloc/publication_plans.cpp
 - src/backend/prealloc/publication_plans.hpp
-- src/backend/prealloc/prepared_object_traversal.cpp
-- tests/backend/bir/backend_prepare_stack_layout_test.cpp
+- tests/backend/mir/backend_riscv_object_emission_test.cpp
 
 ## Current Targets
 
 - `20010329-1` target before-instruction bundle:
   `block_index=4 instruction_index=2`.
-- Moves into `%t18`/`t0`, including `consumer_stack_to_register`.
+- Placement kind `predecessor_edge_consumed_suppression`.
 - Source producer `%t18 = bir.ule ptr %t15, %t17`.
 - Select carrier `%t22 = bir.select uge ptr %t5, %t7, i32 %t18, 0`.
 - Edge transfer `logic.rhs.end.13 -> logic.end.14 incoming=%t18
   destination=%t22`.
-- Missing placement meaning: same-block setup, edge-owned materialization, or
-  suppression because predecessor-edge publication already consumes the source
-  producer.
+- Register-destination moves into `%t18`/`t0`, including
+  `consumer_stack_to_register`.
 
 ## Non-Goals
 
-- RV64 lowering for the register-destination bundle before placement authority
-  exists.
+- Producing placement metadata, closed by idea 458.
 - Generic stack-to-register or register-to-register move lowering.
-- Reopening idea 456 cast-dependency consumption.
 - Consuming `load_from_stack_slot missing_stack_freshness`.
+- Reopening idea 456 cast-dependency consumption.
 - Generic stack-home branch operand/condition materialization tracked by idea
   451.
 - Pointer-value provenance, local/global store publication, or generic
@@ -62,23 +60,20 @@ edge identity authority first.
 
 ## Working Model
 
-The target bundle might be a same-block compare-operand setup, an edge-owned
-source-producer materialization, or a bundle that should be suppressed because
-the predecessor-edge publication already materializes the source producer.
-Those meanings have different safety properties. The prepared producer must
-make the placement explicit before RV64 can consume or suppress the bundle.
+The producer now publishes a placement record that says the target
+before-instruction bundle is already consumed by predecessor-edge publication.
+The RV64 consumer should use that explicit metadata to suppress the join-block
+bundle and should reject all adjacent shapes without explicit authority.
 
 ## Execution Rules
 
 - Start with evidence classification; do not edit implementation in Step 1.
-- Treat current prepared rows as candidate evidence only.
-- Keep RV64 consumer lowering, generic stack move support, and pointer
-  provenance separate.
-- Add focused producer/prepared tests for accepted placement facts and
-  fail-closed missing, ambiguous, mismatched, raw-inferred, unsafe, or
-  unrelated bundles.
-- Select at most one narrow producer/prepared metadata packet after the audit
-  is explicit.
+- Treat placement records as the only admissible suppression source.
+- Keep generic move support, stack-load freshness, pointer provenance, and
+  branch stack-home work separate.
+- Add focused RV64 object tests for accepted suppression and fail-closed
+  missing/mismatched/unsupported/raw-inferred cases.
+- Select at most one narrow RV64 consumer packet after the audit is explicit.
 - Do not touch `test_baseline.new.log`, `test_before.log`, `test_after.log`,
   or `review/`.
 - Classification-only proof: `git diff --check`.
@@ -92,34 +87,33 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Select-Edge Placement Evidence
+### Step 1: Audit Suppression Placement Consumer Evidence
 
-Inspect the 457 artifacts and prepared output for the target bundle. Record
-bundle phase, block/instruction coordinates, moves, source producer, select
-carrier, edge transfer, source/destination homes, existing source-producer
-facts, and first missing placement authority. Completion means `todo.md`
-contains a bucket table and identifies the first bounded metadata packet or
-exact blocker.
+Inspect the 458 artifacts and current prepared/object route for the target
+bundle. Record placement record fields, edge identity, source producer,
+select carrier, bundle site, moves, current RV64 event visibility, and first
+missing consumer fact. Completion means `todo.md` contains a bucket table and
+identifies the first bounded consumer packet or exact blocker.
 
-### Step 2: Define Placement Authority Contract
+### Step 2: Define RV64 Suppression Consumer Contract
 
-Specify the prepared facts required to distinguish same-block setup,
-edge-owned materialization, and predecessor-edge-consumed suppression,
-including predecessor/successor identity and source-producer linkage.
-Completion means `todo.md` states accepted/rejected shapes, owned files/tests,
-and proof command.
+Specify the RV64 conditions for consuming `predecessor_edge_consumed_suppression`
+records, including matching placement metadata, move identities, edge/source
+producer linkage, bundle site, and fail-closed adjacent shapes. Completion
+means `todo.md` states accepted/rejected shapes, owned files/tests, and proof
+command.
 
-### Step 3: Implement Or Route First Placement Metadata Packet
+### Step 3: Implement Or Route First Suppression Consumer Packet
 
-If a coherent producer/prepared packet exists, implement the smallest semantic
-metadata change with focused coverage. If the first owner is outside producer
-metadata, record the split or blocker instead of broadening this source.
+If a coherent RV64 consumer packet exists, implement the smallest semantic
+change with focused coverage. If the first owner is outside suppression
+consumer work, record the split or blocker instead of broadening this source.
 Completion means proof passes or canonical lifecycle state records the route
 decision.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-check the target bundle and representative prepared output against the Step
-3 result, classify remaining residuals, and decide whether this source idea is
-complete. Completion means close, keep active with one exact remaining packet,
-or route durable follow-up work.
+Re-check `20010329-1` and focused coverage against the Step 3 result, classify
+remaining residuals, and decide whether this source idea is complete.
+Completion means close, keep active with one exact remaining packet, or route
+durable follow-up work.
