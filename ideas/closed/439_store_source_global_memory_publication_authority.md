@@ -1,10 +1,14 @@
 # Store-Source Global-Memory Publication Authority
 
-Status: Open
+Status: Closed
 Type: Producer/prepared publication idea
 Parent: `ideas/closed/433_rv64_global_select_pointer_memory_residuals.md`
 Source Evidence: `build/agent_state/433_step4_residual_disposition/`
 Owning Layer: Store-source and global-memory publication before RV64 lowering
+Closed Evidence:
+- `build/agent_state/439_step4_residual_disposition/classification.md`
+- `build/agent_state/439_step4_residual_disposition/evidence_snippets.txt`
+- `build/agent_state/439_step3_global_memory_publication_coverage/summary.md`
 
 ## Goal
 
@@ -47,6 +51,29 @@ guessing the store source or global layout in the target backend.
 - Focused tests prove accepted publication facts and missing/incoherent
   boundaries.
 - Any later RV64 packet consumes prepared publication authority only.
+
+## Completion Notes
+
+- Step 1/2 classified residual global-memory rows and defined the publication
+  authority contract.
+- Step 3 added `prepared_global_symbol_memory_has_publication_authority` and
+  `prepared_store_global_publication_has_authority` with focused fail-closed
+  tests.
+- Step 4 confirmed representative rows still fail because producer facts are
+  absent, including `layout_authority=unknown`, `source_producer=unknown`, and
+  missing explicit immediate-source encoding.
+- No RV64 target-lowering packet is justified while those producer facts are
+  absent.
+- Remaining producer work is split into:
+  `ideas/open/446_global_memory_layout_authority_publication.md` and
+  `ideas/open/447_immediate_global_store_source_encoding.md`.
+- Close gate used canonical `test_before.log` and `test_after.log`; both logs
+  report 327 passed, 0 failed, and the non-decreasing regression guard passed.
+
+## Follow-Up Ideas
+
+- `ideas/open/446_global_memory_layout_authority_publication.md`
+- `ideas/open/447_immediate_global_store_source_encoding.md`
 
 ## Reviewer Reject Signals
 
