@@ -1,69 +1,81 @@
 Status: Active
 Source Idea Path: ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Select-Edge Placement Evidence
+Current Step ID: 2
+Current Step Title: Define Placement Authority Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 458. Evidence is recorded under
-`build/agent_state/458_step1_select_edge_placement_audit/`.
+Completed Step 2 for idea 458. The placement authority contract is recorded
+under `build/agent_state/458_step2_placement_authority_contract/contract.md`.
 
-Bucket table for the `20010329-1` target bundle:
+Required authority is false by default: absence of a placement record means no
+RV64 consumer may emit or suppress the target bundle. Required facts include
+function identity, target bundle phase/block/instruction, source-producer kind
+and result, select carrier/join-transfer identity, edge transfer identity when
+edge-related, selected placement kind, source/destination value ids and homes,
+dependency-operand authority linkage, and status/rejection reason.
 
-| Field | Evidence | Classification |
-| --- | --- | --- |
-| Target bundle | `move_bundle phase=before_instruction authority=none block_index=4 instruction_index=2` | In-scope target; before-instruction register-destination bundle with no explicit placement authority. |
-| Move 1 | `from_value_id=7 to_value_id=10 destination_storage=register placement=gpr:caller_saved#0/w1 reason=consumer_register_to_register` | `%t15 -> %t18`; source home is register `s1`. |
-| Move 2 | `from_value_id=9 to_value_id=10 destination_storage=register placement=gpr:caller_saved#0/w1 reason=consumer_stack_to_register` | `%t17 -> %t18`; source home is stack slot, but `%t17` has explicit `rematerialize_cast_from_source status=available` authority. |
-| Source producer | `%t18 = bir.ule ptr %t15, %t17` at `logic.end.14` instruction index `2` | Existing source-producer facts identify the binary producer. |
-| Select carrier | `%t22 = bir.select uge ptr %t5, %t7, i32 %t18, 0`; `select_chain ... root_is_select=yes source_producer=select_materialization` | `%t18` is an incoming value for a select-materialization carrier, not an ordinary same-block temporary. |
-| Edge transfer | `logic.rhs.end.13 -> logic.end.14 incoming=%t18 destination=%t22` | Explicit edge relationship exists. |
-| Edge-owned publication | `parallel_copy logic.rhs.end.13 -> logic.end.14 execution_site=predecessor_terminator`; block-entry publication for `%t22` at block index `2` | Edge destination publication exists, but it is separate from the target before-instruction producer bundle. |
-| Homes | `%t15` value id `7` register `s1`; `%t16` value id `8` rematerializable immediate; `%t17` value id `9` stack slot; `%t18` value id `10` register `t0`; `%t22` value id `11` register `t0` | Homes describe values but do not prove placement or suppression. |
-| Existing placement facts | Target bundle has `authority=none` and no printed `source_parallel_copy=...` | First missing fact is explicit placement/source-producer authority on or for the target bundle. |
+Accepted placement kinds:
 
-Classification:
+- `same_block_compare_operand_setup`: emit immediately before the producer only
+  when same-block emission cannot overwrite another edge's selected value and
+  scratch/clobber proof exists.
+- `edge_owned_source_materialization`: consume on a specific edge with explicit
+  predecessor/successor labels, matching edge transfer incoming value, and
+  matching select-carrier destination.
+- `predecessor_edge_consumed_suppression`: suppress at the join instruction
+  only when predecessor-edge publication already materializes the same source
+  producer for the same incoming/destination pair.
 
-- Accepted target-consumable placement: none.
-- Coherent candidate evidence: target bundle plus binary source producer,
-  select carrier, edge transfer, block-entry edge publication, and RHS
-  cast-rematerialization authority.
-- First missing authority: producer-owned placement semantics distinguishing
-  same-block setup, edge-owned materialization with predecessor/successor
-  identity, or suppression because predecessor-edge publication already
-  consumes the source producer.
-- Fail-closed: `load_from_stack_slot status=missing_stack_freshness`, raw
-  placement inference, generic stack/register moves, and RV64 lowering before
-  placement authority exists.
+Rejected shapes:
+
+- missing placement authority record;
+- `authority=none` bundle without a separate source-producer placement record;
+- inferred predecessor/successor identity from value ids, block indexes,
+  instruction indexes, raw BIR, filenames, function names, or one dump;
+- ambiguous or mismatched source producer, select carrier, join transfer, edge
+  transfer, incoming value, destination value, or value ids;
+- `load_from_stack_slot status=missing_stack_freshness`;
+- generic stack/register move bundles unrelated to select-edge source
+  producers;
+- RV64 object-route consumption before producer metadata exists.
 
 ## Suggested Next
 
-Execute Step 2: `Define Placement Authority Contract`.
+Execute Step 3: `Implement Or Route First Placement Metadata Packet`.
 
-Define the prepared facts required to distinguish:
-
-- same-block compare-operand setup that should emit at the instruction;
-- edge-owned materialization with explicit predecessor/successor identity; and
-- suppression because predecessor-edge publication already consumes the source
-  producer.
-
-The contract should require semantic source-producer identity, select carrier
-identity, edge identity when edge-owned, source/destination value ids and homes,
-and an explicit placement/suppression decision. Keep RV64 lowering out until
-that producer authority exists.
+Selected first packet: add producer/prepared metadata and focused tests for
+`predecessor_edge_consumed_suppression` on select-edge binary source producers.
+The representative already has the edge transfer and predecessor-edge
+publication for `%t18 -> %t22`; the missing fact is whether the target
+before-instruction producer bundle is already consumed by that edge publication
+and should be suppressible at the join instruction.
 
 Re-read:
 
 - `ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md`
 - `build/agent_state/458_step1_select_edge_placement_audit/audit.md`
+- `build/agent_state/458_step2_placement_authority_contract/contract.md`
 
-Classification-only proof:
+Suggested Step 3 owned files:
+
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- prepared printer/dump file only if exposing the new fact requires it
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `tests/backend/bir/backend_prepared_printer_test.cpp` only if the new fact
+  is printed
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/458_step3_select_edge_placement_metadata/**`
+
+Step 3 proof command:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
 ## Watchouts
@@ -78,13 +90,16 @@ git diff --check
   `ideas/open/451_stack_home_branch_operand_materialization.md`.
 - Keep pointer-value provenance and generic instruction-side lowering out of
   this plan.
+- Step 3 must stop if producer code cannot link the target before-instruction
+  move bundle to the select-edge source producer and edge publication without
+  raw-shape inference.
 - Do not accept or modify `test_baseline.new.log`.
 - Do not touch `test_before.log`, `test_after.log`, baseline logs, or
   `review/`.
 
 ## Proof
 
-Step 1 classification-only validation:
+Step 2 contract-only validation:
 
 ```sh
 git diff --check
