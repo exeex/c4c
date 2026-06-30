@@ -13,8 +13,29 @@
 namespace c4c::backend::riscv::codegen {
 namespace {
 
-bool is_supported_rv64_runtime_external_callee(std::string_view callee) {
-  return callee == "strlen";
+std::optional<std::string_view> unsupported_runtime_external_policy_reason(
+    const c4c::backend::prepare::PreparedCallPlan& call) {
+  if (!call.direct_callee_name.has_value() || call.direct_callee_name->empty()) {
+    return std::string_view{"missing direct external callee"};
+  }
+
+  const std::string_view callee = *call.direct_callee_name;
+  if (callee == "strlen") {
+    return std::nullopt;
+  }
+  if (callee == "abort") {
+    if (!call.arguments.empty()) {
+      return std::string_view{"unsupported runtime external signature"};
+    }
+    return std::nullopt;
+  }
+  if (callee == "exit") {
+    if (call.arguments.size() != 1) {
+      return std::string_view{"unsupported runtime external signature"};
+    }
+    return std::nullopt;
+  }
+  return std::string_view{"unsupported runtime external symbol"};
 }
 
 bool is_inline_asm_callee(const c4c::backend::prepare::PreparedCallPlan& call) {
@@ -42,11 +63,9 @@ std::optional<std::string_view> unsupported_external_call_reason(
   if (call.is_indirect || call.indirect_callee.has_value()) {
     return std::string_view{"indirect external call plan"};
   }
-  if (!call.direct_callee_name.has_value() || call.direct_callee_name->empty()) {
-    return std::string_view{"missing direct external callee"};
-  }
-  if (!is_supported_rv64_runtime_external_callee(*call.direct_callee_name)) {
-    return std::string_view{"unsupported runtime external symbol"};
+  if (const auto reason = unsupported_runtime_external_policy_reason(call);
+      reason.has_value()) {
+    return reason;
   }
   if (call.variadic_fpr_arg_register_count != 0) {
     return std::string_view{"variadic floating-point register metadata"};

@@ -2,6 +2,7 @@
 #include "src/backend/mir/riscv/codegen/object_emission.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_call_emit.hpp"
 #include "src/backend/mir/riscv/codegen/prepared_emit_context.hpp"
+#include "src/backend/mir/riscv/codegen/prepared_module_emit.hpp"
 #include "src/backend/mir/riscv/codegen/rv64_line_assembler.hpp"
 #include "src/backend/prealloc/control_flow.hpp"
 #include "src/backend/prealloc/module.hpp"
@@ -14,6 +15,7 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <variant>
@@ -477,6 +479,7 @@ prepare::PreparedBirModule make_prepared_runtime_external_call_module(
   prepare::PreparedBirModule prepared;
   const auto caller_name =
       prepared.names.function_names.intern(with_exit_arg ? "calls_exit" : "calls_abort");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
 
   bir::CallInst call;
   call.callee = callee;
@@ -489,6 +492,7 @@ prepare::PreparedBirModule make_prepared_runtime_external_call_module(
       .label = "entry",
       .insts = {call},
       .terminator = bir::Terminator{},
+      .label_id = entry_label,
   };
   caller_entry.terminator.value = bir::Value::immediate_i32(0);
   prepared.module.functions.push_back(bir::Function{
@@ -519,6 +523,10 @@ prepare::PreparedBirModule make_prepared_runtime_external_call_module(
   }
   prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
       .function_name = caller_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
   });
   prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
       .function_name = caller_name,
@@ -7903,6 +7911,58 @@ int builds_prepared_runtime_exit_external_call_object() {
   return 0;
 }
 
+int emits_prepared_runtime_external_module_text_policy() {
+  const auto abort_prepared =
+      make_prepared_runtime_external_call_module("abort", false);
+  const auto abort_text = rv64::emit_prepared_module_text(abort_prepared);
+  if (abort_text.find("    call abort\n") == std::string::npos) {
+    return fail("expected prepared module policy to admit abort runtime external, got:\n" +
+                abort_text);
+  }
+
+  const auto exit_prepared =
+      make_prepared_runtime_external_call_module("exit", true);
+  const auto exit_text = rv64::emit_prepared_module_text(exit_prepared);
+  if (exit_text.find("    li a0, 0\n") == std::string::npos ||
+      exit_text.find("    call exit\n") == std::string::npos) {
+    return fail("expected prepared module policy to admit exit runtime external");
+  }
+
+  return 0;
+}
+
+int rejects_prepared_runtime_external_module_text_policy_fail_closed_shapes() {
+  try {
+    (void)rv64::emit_prepared_module_text(
+        make_prepared_runtime_external_call_module("unknown_runtime", false));
+    return fail("expected unknown runtime external to stay rejected");
+  } catch (const std::invalid_argument& ex) {
+    const std::string diagnostic = ex.what();
+    if (diagnostic.find("unsupported_external_call") == std::string::npos ||
+        diagnostic.find("callee='unknown_runtime'") == std::string::npos ||
+        diagnostic.find("reason=unsupported runtime external symbol") ==
+            std::string::npos) {
+      return fail("expected precise unknown runtime external diagnostic");
+    }
+  }
+
+  try {
+    (void)rv64::emit_prepared_module_text(
+        make_prepared_runtime_external_call_module("abort", true));
+    return fail("expected nonzero-arity abort runtime external to stay rejected");
+  } catch (const std::invalid_argument& ex) {
+    const std::string diagnostic = ex.what();
+    if (diagnostic.find("unsupported_external_call") == std::string::npos ||
+        diagnostic.find("callee='abort'") == std::string::npos ||
+        diagnostic.find("reason=unsupported runtime external signature") ==
+            std::string::npos) {
+      return fail("expected precise runtime external signature diagnostic");
+    }
+  }
+
+  return 0;
+}
+
 int rejects_prepared_critical_edge_parallel_copy_with_shared_diagnostic() {
   const auto prepared = make_prepared_critical_edge_parallel_copy_module();
   if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
@@ -14025,6 +14085,8 @@ int main() {
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
   status |= builds_prepared_runtime_abort_external_call_object();
   status |= builds_prepared_runtime_exit_external_call_object();
+  status |= emits_prepared_runtime_external_module_text_policy();
+  status |= rejects_prepared_runtime_external_module_text_policy_fail_closed_shapes();
   status |= writes_prepared_rv64_relocatable_elf_object_file();
   return status;
 }
