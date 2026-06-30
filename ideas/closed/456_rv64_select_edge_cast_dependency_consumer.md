@@ -1,11 +1,15 @@
 # RV64 Select-Edge Cast Dependency Consumer
 
-Status: Open
+Status: Closed
 Type: RV64 prepared consumer idea
 Parent: `ideas/closed/455_dependency_operand_authority_population.md`
 Source Evidence: `build/agent_state/455_step4_residual_disposition/`
+Close Evidence: `build/agent_state/456_step7_final_residual_disposition/disposition.md`
 Owning Layer: RV64 select-edge move materialization with explicit
 dependency-operand cast-rematerialization authority
+Closed Disposition: Complete for explicit `rematerialize_cast_from_source`
+consumer and authorized stack-publication suppression. Follow-up:
+`ideas/open/457_before_instruction_stack_to_register_move_materialization.md`.
 
 ## Goal
 
@@ -70,6 +74,34 @@ packet selectable. The stack-load route remains fail-closed as
   next first owner is classified with evidence.
 - No stack-load, pointer-provenance, generic instruction, or expectation-only
   change is claimed as cast dependency consumer progress.
+
+## Completion Notes
+
+Idea 456 completed the explicit populated cast-dependency consumer path. It
+added the RV64 consumer for `rematerialize_cast_from_source status=available`
+dependency-operand authority and later exposed the authorized
+`before_instruction` stack-destination bundle needed to suppress the owned
+`consumer_register_to_stack` publication for `%t17`. Focused coverage preserves
+fail-closed behavior for missing/unavailable/mismatched authority,
+`load_from_stack_slot missing_stack_freshness`, successor-result copies,
+scratch-clobber, and unrelated move-bundle cases.
+
+Step 7 re-probed `20010329-1`. The representative still fails with broad
+`unsupported_move_bundle_target_shape`, but the first remaining owner is no
+longer the explicit cast-dependency consumer. The later residual is a separate
+before-instruction move-bundle/materialization family at `block_index=4
+instruction_index=2`, including `consumer_stack_to_register` moves into a
+register destination. That work is routed to
+`ideas/open/457_before_instruction_stack_to_register_move_materialization.md`.
+
+## Validation
+
+- Step 6 backend proof passed before log roll-forward:
+  `cmake --build build -j2` plus
+  `ctest --test-dir build -j2 --output-on-failure -R '^backend_'`.
+- Step 7 lifecycle proof: `git diff --check` passed.
+- Close-time regression sanity used the rolled-forward backend guard log and
+  found no regression.
 
 ## Reviewer Reject Signals
 
