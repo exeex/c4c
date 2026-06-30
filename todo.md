@@ -8,27 +8,35 @@ Current Step Title: Audit Duplicate Carrier Alias Metadata Gap
 
 ## Just Finished
 
-Closed idea 463 as a completed negative route-classification slice and
-activated idea 464 for the prepared carrier-alias metadata prerequisite.
+Completed Step 1 audit for idea 464. Existing prepared state has the join
+transfer, edge transfer, source-producer lookup, edge publication, and
+placement records needed around the duplicate carrier shape, but no durable
+carrier-alias metadata surface proves `%t50.phi.sel0` / `%t50.phi.sel1` are
+aliases of final `%t50`.
 
-The rejected RV64 route:
+Audit table:
 
 | Field | Value |
 | --- | --- |
-| Candidate rematerialization | `%t46 = bir.ule ptr %t42, %t45` for `%t46 -> %t50` |
-| Edge | `logic.rhs.end.40 -> logic.end.41` |
-| Duplicate carriers | `%t50.phi.sel0` / `%t50.phi.sel1` |
-| Missing fact | Durable prepared metadata proving both carriers are carrier-only aliases of final `%t50` |
-| First owner | Prepared control-flow/publication metadata |
+| Existing join facts | `PreparedJoinTransfer` carries function, join block, final result, select-materialization carrier kind, edge transfers, and source transfer indexes |
+| Existing edge/source facts | `PreparedEdgePublication` carries predecessor/successor, source/destination values and ids, source producer kind/site, move, join transfer, edge transfer, and carrier kind |
+| Existing producer facts | `select_chain_lookups` publishes per-value source producers, including `SelectMaterialization` for select results and `Binary` for `%t46` |
+| Existing placement facts | `PreparedSelectEdgeSourceProducerPlacement` records source-producer suppression placement for before-instruction bundles, not duplicate carrier aliases |
+| Current classifier limit | `prepared_join_transfer_matches_select` requires `select.result.name == join_transfer.result.name`, so `%t50.phi.sel0` / `%t50.phi.sel1` classify as ordinary selects rather than aliases |
+| First missing surface | Producer-owned prepared carrier-alias record keyed by function, edge, join transfer, source value, destination value, carrier values, and source producer |
+| Step 2 readiness | A carrier-alias authority contract is definable; implementation should remain in prepared control-flow/publication metadata and tests, not RV64 |
+
+Artifact:
+`build/agent_state/464_step1_duplicate_carrier_alias_audit/audit.md`.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: audit prepared control-flow, prepared object
-traversal, select-chain lookup, and publication-plan records for the duplicate
-carrier shape and identify the first bounded metadata packet.
+Execute Step 2 from `plan.md`: define the carrier-alias authority contract,
+including required record fields, use-closure requirements, positive/negative
+test cases, and the exact future metadata packet files.
 
 Suggested artifact directory:
-`build/agent_state/464_step1_duplicate_carrier_alias_audit/`.
+`build/agent_state/464_step2_carrier_alias_contract/`.
 
 ## Watchouts
 
@@ -47,12 +55,10 @@ Suggested artifact directory:
 
 ## Proof
 
-Lifecycle transition proof:
+Step 1 proof:
 
 ```sh
 git diff --check
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
-python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
