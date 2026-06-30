@@ -1,10 +1,15 @@
 # Closed-World Formal Pointer Authority
 
-Status: Open
+Status: Closed
 Type: Producer authority idea
 Parent: `ideas/open/442_pointer_value_memory_provenance_publication.md`
 Source Evidence: `build/agent_state/442_step4_residual_disposition/`
 Owning Layer: LIR/BIR/prepared function-call authority before external-linkage formal pointer provenance
+Closed Evidence:
+- `build/agent_state/443_step4_residual_disposition/classification.md`
+- `build/agent_state/443_step4_residual_disposition/evidence_snippets.txt`
+- `build/agent_state/443_step4_residual_disposition/930930-1.prepared.out`
+- `build/agent_state/443_step4_residual_disposition/930930-1.object.err`
 
 ## Goal
 
@@ -65,6 +70,28 @@ authority.
   re-deriving it from testcase shape or raw callsites.
 - Backend proof for implementation packets passes using the canonical logs
   selected by the supervisor.
+
+## Completion Notes
+
+- Step 1/2 audited and defined the formal pointer authority contract.
+- Step 3 added `FormalPointerAuthorityKind`, populated `InternalOnly` from
+  `LirFunction::is_internal`, and made idea 442 consume the authority field.
+- Step 4 confirmed the authority carrier prerequisite is complete and preserves
+  fail-closed behavior for external-linkage/no-proof callees.
+- `930930-1::f` remains fail-closed; observed same-module direct callsites are
+  not sufficient authority for external-linkage formals.
+- `FormalPointerAuthorityKind::NoExternalCaller` is reserved but has no
+  producer yet. That producer is tracked separately in
+  `ideas/open/444_no_external_caller_formal_authority_producer.md`.
+- Pointer-delta propagation, including `%mr_TR - 8`, remains later work after
+  base formal pointer authority is proven.
+- Backend close gate used canonical `test_before.log` and `test_after.log`;
+  both logs report 327 passed, 0 failed, and the non-decreasing regression
+  guard passed.
+
+## Follow-Up Ideas
+
+- `ideas/open/444_no_external_caller_formal_authority_producer.md`
 
 ## Reviewer Reject Signals
 
