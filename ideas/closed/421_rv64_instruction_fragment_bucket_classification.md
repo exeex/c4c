@@ -1,6 +1,6 @@
 # RV64 Instruction Fragment Bucket Classification
 
-Status: Open
+Status: Closed
 Type: Umbrella child analysis idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Owning Layer: RV64/MIR triage
@@ -54,3 +54,28 @@ instead of decomposing this broad family.
 - Reject raw BIR or source-name matching as a proposed implementation path.
 - Reject classifying BIR/prepared producer gaps as RV64 lowering work.
 - Reject expectation, allowlist, or unsupported-marker edits as progress.
+
+## Closure Note
+
+Closed after the Step 5 runbook review. The broad
+`unsupported_instruction_fragment` bucket was classified from the regenerated
+2026-06-30 RV64 gcc_torture backend scan (`total=1467 passed=404 failed=1063`)
+into 190 row-level cases with disjoint owning-layer buckets in
+`docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`.
+
+The classification produced counts, representative rows, owning layers, and
+route boundaries for ordinary non-F128 follow-up work. F128 was explicitly
+quarantined and deprioritized. The top evidence-backed follow-up initiatives
+were written as durable open ideas:
+
+- `ideas/open/427_rv64_scalar_select_join_materialization.md`
+- `ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md`
+- `ideas/open/429_rv64_pointer_address_materialization.md`
+- `ideas/open/430_rv64_integer_div_rem_lowering.md`
+- `ideas/open/431_prepared_aggregate_abi_contract_review.md`
+
+No implementation, expectation, allowlist, unsupported-marker, runtime
+comparison, or pass/fail accounting changes were made by this classification
+runbook. Close proof used the delegated docs/lifecycle scope:
+`git diff --check`, with matching empty `test_before.log` and
+`test_after.log` diff-check logs.
