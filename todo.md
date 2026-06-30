@@ -1,35 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/461_rv64_move_bundle_coordinate_diagnostics.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Diagnostic Coordinate Gap
+Current Step ID: 2
+Current Step Title: Define Coordinate Diagnostic Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 for idea 461: audited the RV64 move-bundle diagnostic
-coordinate gap and saved the table under
-`build/agent_state/461_step1_diagnostic_coordinate_gap/audit.md`.
+Completed Step 2 for idea 461: defined the coordinate diagnostic contract under
+`build/agent_state/461_step2_coordinate_diagnostic_contract/contract.md`.
 
-| Missing field / decision point | Current evidence | Candidate event families | Possible diagnostic/probe surface |
-| --- | --- | --- | --- |
-| Traversal event kind and move-bundle phase | Object stderr only reports broad `unsupported_move_bundle_target_shape`. | Block-entry select copies, before-instruction cast stack publication, before-instruction suppression/register setup. | Event-site rejection in `prepared_function_to_object_function` can print `event.kind` and `move_bundle.phase`. |
-| Function/block/instruction coordinate | Prepared output has rows such as `4:1` and `4:2`, but the object route omits the first rejecting coordinate. | `4:1` cast stack publication, `4:2` idea-459 suppression target, later `8:1`/`12:1` register setup, `3/2`/`7/6`/`11/10` select copies. | Event-site rejection already has `event.block_index`, `event.instruction_index`, and the classified move bundle. |
-| Move index and move identity | Multi-move bundles exist; stderr does not say which move failed. | Register setup bundles and select-result parallel copies. | Either print all bundle moves at the event-site rejection or make `fragment_for_prepared_move_bundle` return a move-level failure record. |
-| Destination storage and move reason | Prepared rows distinguish `consumer_register_to_stack`, `consumer_stack_to_register`, and `phi_join_*`; stderr drops them. | Cast-dependency stack publication vs select publication vs generic consumer moves. | Add a move-bundle coordinate formatter using `destination_storage_kind` and `reason`. |
-| Authority match status | Step 460 could not tell whether cast stack publication or idea-459 suppression matched the object-route guards. | `4:1` cast-dependency stack publication; `4:2`, `8:1`, `12:1` suppression/register rows. | Event-site diagnostic can call the existing suppression and cast-stack authority predicates before fragment emission. |
-| Fragment failure reason | `fragment_for_prepared_move_bundle` returns only `std::nullopt`. | Any admitted bundle that reaches generic RV64 move materialization. | A second-stage structured fragment result can carry failing move index and guard reason if event-site coordinates are insufficient. |
+Accepted diagnostic shape:
+
+| Field | Requirement |
+| --- | --- |
+| Event and phase | Print traversal event kind plus prepared move-bundle phase. |
+| Function/block/instruction coordinate | Print function identity, block index, prepared block label when available, and instruction index or explicit non-applicable state. |
+| Move identity | Print move count and move source/destination value ids, destination kind/storage, and prepared move reason. |
+| Parallel-copy context | Print predecessor/successor or source parallel-copy identity when present. |
+| Authority status | Print whether explicit select-edge suppression authority matched and whether cast-dependency stack-publication authority matched. |
+| Fragment status | State that the bundle reached generic RV64 move-bundle fragment materialization and failed; refine to move-level guard reason later only if needed. |
+
+Rejected shapes: broad `unsupported_move_bundle_target_shape` alone,
+testcase/source-name diagnostics, raw BIR text, value-id-only ownership
+classification, and any diagnostic that changes lowering or consumes stale
+`load_from_stack_slot missing_stack_freshness`.
 
 ## Suggested Next
 
-Execute Step 2: define the coordinate diagnostic contract. The first coherent
-implementation packet should be diagnostic/probe-only at the event-site
-rejection for `unsupported_move_bundle_target_shape`, reporting event kind,
-phase, function/block/instruction coordinate, move identities, destination
-storage, reason, parallel-copy context, and cast/suppression authority match
-status. Refine `fragment_for_prepared_move_bundle` only if the event-site
-fields still cannot identify the failing guard.
+Execute Step 3: add event-site coordinate diagnostics for generic RV64 prepared
+move-bundle fragment failure. Owned files should be
+`src/backend/mir/riscv/codegen/object_emission.cpp`,
+`tests/backend/mir/backend_riscv_object_emission_test.cpp`, `todo.md`,
+`test_after.log`, and
+`build/agent_state/461_step3_coordinate_diagnostic_packet/**`.
+
+Exact Step 3 proof command:
+
+```sh
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+```
 
 ## Watchouts
 
@@ -45,7 +56,7 @@ fields still cannot identify the failing guard.
 
 ## Proof
 
-Step 1 proof:
+Step 2 proof:
 
 ```sh
 git diff --check
