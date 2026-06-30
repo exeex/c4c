@@ -54,6 +54,17 @@ prepare::PreparedBirModule legalize_only(const bir::Module& module) {
   return prealloc.prepared();
 }
 
+lir::LirCallSignature void_call_signature(std::vector<std::string> fixed_param_types) {
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef("void");
+  signature.fixed_param_types = std::move(fixed_param_types);
+  signature.fixed_param_type_refs.reserve(signature.fixed_param_types.size());
+  for (const std::string& type : signature.fixed_param_types) {
+    signature.fixed_param_type_refs.push_back(lir::LirTypeRef(type));
+  }
+  return signature;
+}
+
 lir::LirModule make_structured_decl_lir_module() {
   lir::LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -131,6 +142,54 @@ lir::LirModule make_structured_aggregate_call_lir_module() {
   entry.terminator = lir::LirRet{
       .value_str = std::string("0"),
       .type_str = "i32",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+lir::LirModule make_scalar_call_arg_abi_suffix_lir_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  c4c::TypeSpec fn_ptr_type{};
+  fn_ptr_type.base = c4c::TB_VOID;
+  fn_ptr_type.ptr_level = 1;
+
+  lir::LirFunction function;
+  function.name = "main";
+  function.signature_text = "define void @main(ptr %fp)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_VOID};
+  function.params.push_back({"%fp", fn_ptr_type});
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirCallOp{
+      .return_type = "void",
+      .callee = lir::LirOperand("%fp"),
+      .callee_signature = void_call_signature({"i16"}),
+      .structured_args = {lir::LirCallArg{
+          .type = "i16 byval(size=14, align=8)",
+          .operand = lir::LirOperand("0"),
+          .type_ref = lir::LirTypeRef("i16"),
+      }},
+  });
+  entry.insts.push_back(lir::LirCallOp{
+      .return_type = "void",
+      .callee = lir::LirOperand("%fp"),
+      .callee_signature = void_call_signature({"i16"}),
+      .structured_args = {lir::LirCallArg{
+          .type = "i16 sret(size=5, align=8)",
+          .operand = lir::LirOperand("1"),
+          .type_ref = lir::LirTypeRef("i16"),
+      }},
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
   };
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
@@ -224,6 +283,35 @@ int check_lowered_aggregate_call_prints_through_structured_context() {
   }
   if (printed.find("call %struct.Pair") != std::string::npos) {
     return fail("lowered aggregate call printer regressed to source aggregate call spelling");
+  }
+  return 0;
+}
+
+int check_scalar_call_args_drop_aggregate_abi_suffix_metadata() {
+  const auto lowered = c4c::backend::try_lower_to_bir_with_options(
+      make_scalar_call_arg_abi_suffix_lir_module(),
+      c4c::backend::BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return fail("scalar call-argument ABI suffix fixture did not lower to BIR");
+  }
+
+  const std::string printed = bir::print(*lowered.module);
+  if (printed.find("(i16 0)") == std::string::npos) {
+    return fail("scalar byval-suffixed call argument did not print as plain scalar");
+  }
+  if (printed.find("(i16 1)") == std::string::npos) {
+    return fail("scalar sret-suffixed call argument did not print as plain scalar");
+  }
+  if (printed.find("i16 byval(") != std::string::npos ||
+      printed.find("i16 sret(") != std::string::npos) {
+    return fail("scalar call argument still rendered aggregate-only ABI metadata");
+  }
+
+  const auto prepared = legalize_only(*lowered.module);
+  const std::string prepared_printed = bir::print(prepared.module);
+  if (prepared_printed.find("i16 byval(") != std::string::npos ||
+      prepared_printed.find("i16 sret(") != std::string::npos) {
+    return fail("prepared scalar call argument still rendered aggregate-only ABI metadata");
   }
   return 0;
 }
@@ -1156,6 +1244,10 @@ int main() {
     return status;
   }
   if (const int status = check_lowered_aggregate_call_prints_through_structured_context();
+      status != 0) {
+    return status;
+  }
+  if (const int status = check_scalar_call_args_drop_aggregate_abi_suffix_metadata();
       status != 0) {
     return status;
   }

@@ -51,6 +51,7 @@ std::optional<bir::CallResultAbiInfo> lower_function_return_abi(
       return abi;
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
     case bir::TypeKind::I32:
     case bir::TypeKind::I64:
     case bir::TypeKind::Ptr:
@@ -102,6 +103,7 @@ std::optional<bir::CallArgAbiInfo> lower_call_arg_abi(
       return abi;
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
     case bir::TypeKind::I32:
     case bir::TypeKind::I64:
     case bir::TypeKind::Ptr:
