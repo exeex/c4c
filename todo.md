@@ -1,42 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/435_rv64_coherent_aggregate_sret_call_storage_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Lower Caller-Side Aggregate SRet Memory Return
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: added focused prepared aggregate `sret` contract coverage for
-the representative same-module frame-slot memory-return shape.
+Completed Step 3: re-probed caller-side aggregate `sret` memory-return and
+classified the implementation boundary as no-op for this packet.
 
-Coverage summary:
+Boundary summary:
 
-- Added a representative RV64 same-module `sret` object fixture derived from
-  the existing same-module sret test.
-- The fixture uses one aggregate-address argument, frame-slot
-  `memory_return`, `sret_arg_index=0`, `memory_size=12`, `memory_align=4`, and
-  local frame-slot address materialization with `source_size=12` /
-  `source_align=4`.
-- The focused test verifies the prepared facts before object emission and then
-  checks RV64 emits the frame-slot address into `a0`, records the call
-  relocation, restores the stack, and returns.
-- Existing fail-closed same-module sret coverage remains in place for
-  wrapper-kind, memory-return encoding, wrong `sret_arg_index`, missing slot,
-  missing/incoherent source selection, and dynamic-stack rejection.
-- No implementation files changed.
-- Step 2 artifact: `build/agent_state/435_step2_sret_contract_coverage/summary.txt`.
+- Fresh probes for `20000917-1.c` and `20020206-1.c` confirm the in-scope
+  same-module aggregate `sret` call-storage facts remain complete:
+  `memory_return`, `memory_encoding=frame_slot`, `sret_arg_index=0`,
+  `memory_size=12`, `memory_align=4`, aggregate-address arg0, and local
+  frame-slot address materialization.
+- Existing RV64 object lowering already has a prepared-fact-driven
+  same-module `sret` memory-return path, and Step 2 focused coverage now proves
+  the representative 12-byte / align-4 contract plus fail-closed shapes.
+- The representative post-call field-copy facts are explicit prepared
+  frame-slot accesses at offsets `0`, `4`, and `8`; this packet did not
+  rederive aggregate layout or offsets in RV64.
+- `--codegen obj` still reports the generic RV64 object-route unsupported
+  diagnostic, while `--codegen asm` resolves the first non-sret residual to
+  unsupported runtime external `abort` (`main` in `20000917-1.c`, `baz` in
+  `20020206-1.c`).
+- No implementation files changed for Step 3.
+- Step 3 artifacts: `build/agent_state/435_step3_sret_memory_return/`.
 
 ## Suggested Next
 
-Execute Step 3: Lower Caller-Side Aggregate SRet Memory Return.
+Execute Step 4: Residual Disposition And Close Readiness.
 
-Recommended scope: use the now-covered prepared facts as authority and re-probe
-`20000917-1.c` / `20020206-1.c` to decide whether the remaining in-scope work
-is post-call aggregate frame-slot value publication or whether the source idea
-is already blocked only by out-of-scope runtime external/select/local
-publication residuals.
+Recommended scope: classify the remaining representative blockers as
+out-of-scope runtime external `abort`/`exit`, select/local-publication, or
+post-call-copy residuals, then decide whether this source idea is ready for
+lifecycle close review or needs a new non-sret follow-up idea.
 
 Implementation proof command:
 
@@ -55,19 +57,14 @@ Implementation proof command:
 - Do not route unsupported runtime external `abort`/`exit` calls into this
   aggregate sret plan; they are the first non-sret residuals after the coherent
   facts in the representatives.
-- The focused object fixture validates the call-storage contract; the
-  representative field-copy facts remain a prepared-addressing/post-call-copy
-  validation concern and should not be rederived in RV64.
+- The focused object fixture validates the call-storage contract, and Step 3
+  found no remaining sret call-storage implementation gap.
+- Treat representative field-copy facts as prepared-addressing/post-call-copy
+  evidence; do not rederive aggregate layout in RV64.
 - Keep select, local-publication, pointer, inline-asm, F128, and expectation
   work out of this plan unless Step 4 routes residuals separately.
 
 ## Proof
-
-Focused pre-proof:
-
-```sh
-cmake --build build -j2 --target backend_riscv_object_emission_test && ctest --test-dir build -j2 --output-on-failure -R '^backend_riscv_object_emission$'
-```
 
 Delegated proof passed:
 
