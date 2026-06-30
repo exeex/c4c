@@ -1,80 +1,65 @@
 Status: Active
 Source Idea Path: ideas/open/474_prepared_frame_slot_materialization_no_clobber_facts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Prepared Source-Fact Producer
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 implementation for idea 474. Added the smallest independent
-prepared source-fact carrier/status surface for frame-slot
-materialization/no-clobber facts without changing downstream
-`PreparedBranchStackLoadAuthority` availability.
+Completed Step 4 residual disposition for idea 474 after Step 3 added the
+prepared frame-slot source-fact carrier/status surface.
 
-Implemented surface:
+Decision: idea 474 is close-ready as the independent prepared carrier/status
+surface. It should not continue by widening into downstream
+`PreparedBranchStackLoadAuthority` availability, RV64 branch-load consumption,
+pointer/provenance repair, select-result stack-destination repair, or
+unsupported-terminator relationship repair.
 
-| Surface | Result |
-| --- | --- |
-| `PreparedFrameSlotSourceFactStatus` | Independent status vocabulary for available, missing source/materialization, mismatches, missing/path failures, same-slot writes, effect unknowns/clobbers, and unsupported boundaries. |
-| `PreparedFrameSlotSourceFactInputs` / `PreparedFrameSlotSourceFact` | Planner input and output carrier for target value/home/slot/object, source value/producer, materialization event, and explicit no-clobber classifiers. |
-| `plan_prepared_frame_slot_source_fact` | Returns `available` only when explicit materialization/write, path coverage, same-slot exclusion, effect safety, and publication/move/parallel-copy non-clobber inputs are all present. |
-| `collect_prepared_frame_slot_source_facts` | Emits independent unavailable records for prepared stack-home branch values; scalar condition rows report `missing_materialization_event`, while select-result stack-destination, pointer/provenance, and unsupported-terminator rows remain `unsupported_boundary`. |
+Residual table:
 
-Focused coverage:
-
-| Case | Coverage |
-| --- | --- |
-| Explicit synthetic materialization/no-clobber inputs | `available` with target/source ids, slot/object, offsets, and materialization kind preserved. |
-| No materialization event | `missing_materialization_event`. |
-| Wrong materialization slot | `materialization_slot_mismatch`. |
-| Wrong materialization value | `materialization_value_mismatch`. |
-| Missing path validity | `missing_path_validity`. |
-| Same-slot write present | `same_slot_write_found`. |
-| Unknown call/helper effect | `call_or_helper_effect_unknown`. |
-| Explicit unsupported boundary | `unsupported_boundary`. |
-| Prepared collector scalar stack-home row | Emits an unavailable `missing_materialization_event` source-fact record. |
-| Prepared collector select-result stack-destination row | Emits `unsupported_boundary`; does not blur into generic missing materialization. |
-| Prepared collector pointer/provenance row | Emits `unsupported_boundary`; pointer status/provenance remains a separate owner. |
-| Prepared collector unsupported-terminator row | Emits `unsupported_boundary`; terminator lowering remains out of scope. |
+| Row/family | Step 3 carrier state | First remaining owner |
+| --- | --- | --- |
+| Synthetic explicit source fact | `available` is proven only when source identity, exact materialization/write, path coverage, same-slot exclusion, and effect non-clobber inputs are explicit. | Covered by idea 474 contract/surface. |
+| `f.logic.end.14` scalar condition `%t23`, slot `#21` | Collector can preserve a source-fact record, but current real prepared evidence remains `missing_materialization_event`; no real write/current-value event or no-clobber interval exists. | Split lower-level frame-slot materialization/write and no-clobber source-fact producer. |
+| `%t22` select-result stack destination | Preserved as `unsupported_boundary`, not blurred into missing materialization. | Separate select-result/block-entry stack-destination owner. |
+| `%t1` / `%t7` pointer/provenance rows | Preserved as `unsupported_boundary`. | Separate pointer-value/provenance owner. |
+| `%t2` / `%t8` unsupported-terminator relationship rows | Preserved as `unsupported_boundary`. | Separate branch-site relationship / terminator owner. |
+| Downstream branch-stack-load authority | Remains unavailable; idea 474 did not set policy/freshness/clobber availability. | Later consumer only after real source facts exist. |
 
 Artifacts:
 
-- `build/agent_state/474_step3_source_fact_carrier/summary.md`
+- `build/agent_state/474_step4_residual_disposition/disposition.md`
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: Residual Disposition And Close Readiness.
-Re-probe/classify whether idea 474 is close-ready as an independent
-carrier/status surface, or whether a precise population/printer/follow-up
-packet remains before downstream branch-site source-fact consumption can
-resume.
+Plan-owner should close idea 474 as complete for the independent carrier/status
+surface, then split or activate a narrower source-fact population initiative if
+progress should continue. That follow-up should own real prepared
+materialization/write events, path/dominance validity, same-slot write
+exclusion, call/helper/inline-asm effect safety, and publication/move/parallel
+copy non-clobber classification for scalar branch stack slots.
 
 ## Watchouts
 
-- Step 3 did not mark `PreparedBranchStackLoadAuthority` available and did not
-  edit RV64 lowering.
-- The new collector records missing materialization only for ordinary scalar
-  stack-home branch rows; boundary rows stay classified as unsupported.
-  Downstream certificates still need a later consumer/population packet before
-  branch-stack-load authority can become available.
-- Do not implement RV64 branch-load emission in this producer plan.
-- Do not infer source facts from stack homes/storage, offsets, object ids, raw
-  BIR, value names, block labels, function names, testcase names, or dump
-  order.
-- Keep pointer-value/provenance, select-result stack-destination, and
-  unsupported-terminator boundaries separate.
-- Do not modify `test_baseline.new.log`, `test_baseline.log`,
-  `test_before.log`, `test_after.log`, or `review/`.
+- Do not consume idea 474 records in RV64 or mark branch-stack-load authority
+  available until real `available` source-fact records exist for representative
+  rows.
+- Do not infer materialization/current-value/no-clobber from stack homes,
+  storage, offsets, object ids, raw BIR adjacency, value names, function names,
+  testcase shape, or dump order.
+- Keep select-result stack-destination, pointer/provenance, and
+  unsupported-terminator rows as separate boundaries.
+- Prepared printer exposure is not the first remaining owner unless a future
+  population packet has real records/statuses that need dump evidence.
 
 ## Proof
 
 Delegated proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
-Result: passed; `test_after.log` reports `100% tests passed, 0 tests failed out of 327`.
-Log: `test_after.log`.
+Result: passed.
