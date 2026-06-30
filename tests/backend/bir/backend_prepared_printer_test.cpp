@@ -3438,7 +3438,12 @@ prepare::PreparedBirModule prepare_inline_asm_carrier_dump_module() {
                                  0,
                                  "=r",
                                  std::nullopt,
-                                 std::size_t{0}),
+                                 std::size_t{0},
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 bir::InlineAsmRegisterClass::General),
               inline_asm_operand(bir::InlineAsmOperandKind::TiedInput,
                                  1,
                                  "0",
@@ -3538,7 +3543,12 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_scalar_carrier_module() {
                                           0,
                                           "=r",
                                           std::nullopt,
-                                          std::size_t{0})},
+                                          std::size_t{0},
+                                          std::nullopt,
+                                          std::nullopt,
+                                          std::nullopt,
+                                          std::nullopt,
+                                          bir::InlineAsmRegisterClass::General)},
       },
   });
   entry.insts.push_back(bir::CallInst{
@@ -3558,7 +3568,44 @@ prepare::PreparedBirModule prepare_rv64_inline_asm_scalar_carrier_module() {
                                  0,
                                  "=r",
                                  std::nullopt,
+                                 std::size_t{0},
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 bir::InlineAsmRegisterClass::General),
+              inline_asm_operand(bir::InlineAsmOperandKind::TiedInput,
+                                 1,
+                                 "0",
+                                 std::size_t{0},
+                                 std::nullopt,
                                  std::size_t{0}),
+          },
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "imm_tie"),
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::immediate_i32(0)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {i32_arg_abi},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = i32_result_abi,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = ".insn r 0x33, 0, 0, %0, %0, zero",
+          .constraints = "=r,0",
+          .side_effects = true,
+          .operands = {
+              inline_asm_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                 0,
+                                 "=r",
+                                 std::nullopt,
+                                 std::size_t{0},
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 bir::InlineAsmRegisterClass::General),
               inline_asm_operand(bir::InlineAsmOperandKind::TiedInput,
                                  1,
                                  "0",
@@ -4137,7 +4184,7 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
     std::cerr << "[FAIL] positional register input inline asm carrier incomplete\n";
     return EXIT_FAILURE;
   }
-  if (tied_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Missing ||
+  if (tied_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
       tied_carrier.operands.size() != 3 ||
       tied_carrier.operands[0].kind !=
           bir::InlineAsmOperandKind::RegisterOutput ||
@@ -4148,11 +4195,12 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
       tied_carrier.operands[2].immediate_value.value_or(0) != 7 ||
       !tied_carrier.has_template_modifiers ||
       !tied_carrier.result_home.has_value() ||
-      tied_carrier.missing_required_facts.size() != 1 ||
-      tied_carrier.missing_required_facts.front() !=
-          "tied_input_output_home_mismatch" ||
-      tied_carrier.operands[1].tied_home_authority.has_value()) {
-    std::cerr << "[FAIL] output/tie/immediate inline asm carrier should fail closed without proven coallocation\n";
+      !tied_carrier.operands[1].home.has_value() ||
+      tied_carrier.operands[1].home->target_register_identity !=
+          tied_carrier.result_home->target_register_identity ||
+      !tied_carrier.operands[1].tied_home_authority.has_value() ||
+      !tied_carrier.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] output/tie/immediate inline asm carrier should publish shared tied authority\n";
     return EXIT_FAILURE;
   }
   if (clobber_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
@@ -4172,9 +4220,16 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
                        "prepared inline asm carriers section")) {
     return EXIT_FAILURE;
   }
+  if (!expect_not_contains(dump,
+                           "missing fact=inst#1:tied_input_output_home_mismatch",
+                           "old tied inline asm carrier missing fact")) {
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(dump,
-                       "missing fact=inst#1:tied_input_output_home_mismatch",
-                       "unproven tied inline asm carrier missing fact")) {
+                       "inline_asm_carrier asm=\"add %w0, %x0, #7\" "
+                       "constraints=\"=r,0,I\" block_index=0 inst_index=1 "
+                       "side_effects=yes operands=3 result=out result_home=yes",
+                       "complete tied inline asm carrier")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
@@ -4197,14 +4252,15 @@ int rv64_inline_asm_carriers_preserve_scalar_register_identities() {
   const auto prepared = prepare_rv64_inline_asm_scalar_carrier_module();
   const auto* function_carriers =
       find_inline_asm_carriers(prepared, "rv64_inline_asm_scalar_carrier_contract");
-  if (function_carriers == nullptr || function_carriers->carriers.size() != 3) {
-    std::cerr << "[FAIL] expected three RV64 prepared inline asm carriers\n";
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 4) {
+    std::cerr << "[FAIL] expected four RV64 prepared inline asm carriers\n";
     return EXIT_FAILURE;
   }
 
   const auto& input_carrier = function_carriers->carriers[0];
   const auto& output_carrier = function_carriers->carriers[1];
   const auto& tied_carrier = function_carriers->carriers[2];
+  const auto& immediate_tied_carrier = function_carriers->carriers[3];
   if (input_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
       input_carrier.operands.size() != 1 ||
       !input_carrier.operands[0].home.has_value() ||
@@ -4251,6 +4307,26 @@ int rv64_inline_asm_carriers_preserve_scalar_register_identities() {
     std::cerr << "[FAIL] RV64 tied numeric inline asm carrier lacks shared GPR authority\n";
     return EXIT_FAILURE;
   }
+  if (immediate_tied_carrier.carrier_kind !=
+          prepare::PreparedInlineAsmCarrierKind::Complete ||
+      immediate_tied_carrier.operands.size() != 2 ||
+      immediate_tied_carrier.operands[0].kind !=
+          bir::InlineAsmOperandKind::RegisterOutput ||
+      immediate_tied_carrier.operands[1].kind !=
+          bir::InlineAsmOperandKind::TiedInput ||
+      !immediate_tied_carrier.operands[1].value.has_value() ||
+      immediate_tied_carrier.operands[1].value->kind !=
+          bir::Value::Kind::Immediate ||
+      !immediate_tied_carrier.result_home.has_value() ||
+      !immediate_tied_carrier.result_home->target_register_identity.has_value() ||
+      !immediate_tied_carrier.operands[1].home.has_value() ||
+      immediate_tied_carrier.operands[1].home->target_register_identity !=
+          immediate_tied_carrier.result_home->target_register_identity ||
+      !immediate_tied_carrier.operands[1].tied_home_authority.has_value() ||
+      !immediate_tied_carrier.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] RV64 tied immediate inline asm carrier lacks shared GPR authority\n";
+    return EXIT_FAILURE;
+  }
 
   const std::string dump = prepare::print(prepared);
   if (!expect_contains(dump,
@@ -4268,6 +4344,11 @@ int rv64_inline_asm_carriers_preserve_scalar_register_identities() {
   if (!expect_not_contains(dump,
                            "target_invalid_tied_output_register_home",
                            "RV64 tied output invalid-register diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(dump,
+                           "missing_operand0_home",
+                           "old RV64 tied immediate missing-home diagnostic")) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

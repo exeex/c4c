@@ -1,59 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/432_prepared_inline_asm_operand_home_carriers.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Reconcile Tied Scalar GPR Operand Homes
+Current Step ID: 4
+Current Step Title: Re-Probe Representative Rows And Decide Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 verified the scalar GPR register input/output operand-home publication
-packet. The supported untied scalar GPR `r` and `=r` carrier path is already
-implemented and covered by focused prepared-carrier tests, so no implementation
-files were changed.
+Step 3 implemented tied scalar GPR inline-asm operand-home reconciliation for
+supported `=r,0`-style prepared carriers.
 
 Completed work:
 
-- `src/backend/prealloc/inline_asm.cpp::make_prepared_inline_asm_operand`
-  already copies each register input operand value from `call.args[arg_index]`,
-  resolves its prepared value id, and publishes `operand.home` from the
-  prepared value-location table.
-- `src/backend/prealloc/inline_asm.cpp::build_inline_asm_carrier` already
-  publishes `result_home` for register outputs from the call result through the
-  same prepared value-location authority, then attaches target register
-  identities to operand/result homes before validation.
-- `validate_inline_asm_carrier` already accepts scalar GPR register inputs and
-  outputs only when the corresponding homes are present, register-backed, and
-  compatible with the register constraint; missing or incompatible homes remain
-  fail-closed.
-- Focused coverage in
-  `tests/backend/bir/backend_prepared_printer_test.cpp` proves complete RV64
-  scalar `r` input carrier homes, complete RV64 scalar `=r` output result
-  homes, complete `+r` read/write scalar carrier homes, and fail-closed
-  unsupported scalar/vector constraint cases.
-- Existing focused coverage also preserves fail-closed behavior for missing
-  register homes, unsupported memory/address authority or selection, named
-  operands, template modifiers, unsupported clobber operands, vector/F128
-  carrier boundaries, and other out-of-scope forms.
-- The old representative blocker facts are not solved by this packet because
-  they are tied-operand reconciliation forms: `missing_operand0_home` for tied
-  `=r,0` source-home authority and `tied_input_output_home_mismatch` for
-  incoherent tied input/output homes. Those remain the Step 3 owner.
+- `src/backend/prealloc/inline_asm.cpp` now reconciles supported tied scalar
+  GPR operands after prepared result/operand homes have target register
+  identities. A tied input is accepted only when its value is scalar GPR-shaped,
+  its tied output metadata is a single GPR register output, and the prepared
+  result home is a concrete compatible target register.
+- Supported tied inputs publish `operand.home` from the authoritative prepared
+  `result_home` and publish `tied_home_authority` with the shared target
+  register identity, so coherent tied carriers no longer report
+  `missing_operand0_home` or `tied_input_output_home_mismatch`.
+- Focused prepared-printer coverage proves the AArch64 tied
+  output/input/immediate carrier and RV64 tied scalar GPR carriers are complete
+  with shared home authority, including an immediate tied input that previously
+  had no operand home to publish.
+- Existing fail-closed behavior remains in place for unsupported memory/address
+  forms, clobber-only carriers, non-register homes, non-GPR/vector/F128
+  boundaries, and target-register identity incompatibilities.
 
 ## Suggested Next
 
-Execute Step 3: reconcile tied scalar GPR inline-asm operand homes in
-`src/backend/prealloc/inline_asm.cpp` and add focused prepared-carrier tests in
-`tests/backend/bir/backend_prepared_printer_test.cpp`.
+Execute Step 4 close-readiness validation for the prepared inline-asm operand
+home carrier plan. Re-probe representative tied scalar GPR rows/classes and
+classify any remaining unsupported rows as out-of-scope follow-up instead of
+adding RV64 object-lowering inference.
 
 ## Watchouts
 
-- Step 2 did not add code; review should treat the existing producer/carrier
-  logic and focused prepared-carrier tests as proof for untied scalar GPR input
-  and output home publication.
-- Do not fold tied `=r,0` reconciliation into the Step 2 completion claim;
-  `missing_operand0_home` and `tied_input_output_home_mismatch` remain Step 3.
+- Step 3 uses prepared carrier metadata and result homes as authority. It does
+  not infer missing homes in RV64 object lowering.
 - Do not implement RV64 object-lowering inference for missing inline-asm homes.
 - Do not key behavior to `pr38533`, `pr45695`, `pr49279`, or probe instruction
   indexes.

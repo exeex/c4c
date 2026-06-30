@@ -261,6 +261,89 @@ inline_asm_register_identity(const c4c::TargetProfile& target_profile,
   return bir::InlineAsmRegisterClass::None;
 }
 
+[[nodiscard]] const PreparedInlineAsmOperand* tied_output_operand(
+    const std::vector<PreparedInlineAsmOperand>& operands,
+    std::size_t tied_output_index) {
+  for (const auto& operand : operands) {
+    if (operand.kind == bir::InlineAsmOperandKind::RegisterOutput &&
+        operand.output_index.has_value() && *operand.output_index == tied_output_index) {
+      return &operand;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool inline_asm_type_is_scalar_gpr_value(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return true;
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+    case bir::TypeKind::Void:
+    case bir::TypeKind::Vrm1:
+    case bir::TypeKind::Vrm2:
+    case bir::TypeKind::Vrm4:
+    case bir::TypeKind::Vrm8:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] bool tied_operand_is_supported_scalar_gpr(
+    const PreparedInlineAsmCarrier& carrier,
+    const PreparedInlineAsmOperand& operand) {
+  if (operand.kind != bir::InlineAsmOperandKind::TiedInput ||
+      !operand.value.has_value() || !operand.tied_output_index.has_value()) {
+    return false;
+  }
+  if (!inline_asm_type_is_scalar_gpr_value(operand.value->type)) {
+    return false;
+  }
+  const auto* output =
+      tied_output_operand(carrier.operands, *operand.tied_output_index);
+  if (output == nullptr ||
+      output->register_class != bir::InlineAsmRegisterClass::General ||
+      output->register_group_width != 1) {
+    return false;
+  }
+  if (!carrier.result.has_value() ||
+      !inline_asm_type_is_scalar_gpr_value(carrier.result->type) ||
+      !carrier.result_home.has_value() ||
+      carrier.result_home->kind != PreparedValueHomeKind::Register ||
+      !carrier.result_home->register_name.has_value() ||
+      !carrier.result_home->target_register_identity.has_value() ||
+      !inline_asm_identity_matches_register_constraint(
+          *carrier.result_home->target_register_identity,
+          output->register_class)) {
+    return false;
+  }
+  if (operand.home.has_value() &&
+      operand.home->kind != PreparedValueHomeKind::Register) {
+    return false;
+  }
+  return true;
+}
+
+void reconcile_tied_scalar_gpr_operand_homes(PreparedInlineAsmCarrier& carrier) {
+  for (auto& operand : carrier.operands) {
+    if (!tied_operand_is_supported_scalar_gpr(carrier, operand)) {
+      continue;
+    }
+    operand.home = carrier.result_home;
+    operand.tied_home_authority = PreparedInlineAsmTiedHomeAuthority{
+        .tied_output_index = *operand.tied_output_index,
+        .shared_register = *carrier.result_home->target_register_identity,
+    };
+  }
+}
+
 void append_inline_asm_register_group_override(PreparedBirModule& prepared,
                                                FunctionNameId function_name,
                                                ValueNameId value_name,
@@ -742,6 +825,7 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
   for (auto& operand : carrier.operands) {
     populate_inline_asm_home_identity(target_profile, operand.home);
   }
+  reconcile_tied_scalar_gpr_operand_homes(carrier);
 
   if (!call.inline_asm.has_value()) {
     append_inline_asm_missing_fact(function_carriers, carrier, "missing_inline_asm_metadata");
