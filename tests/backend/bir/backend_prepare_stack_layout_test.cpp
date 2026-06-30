@@ -7032,6 +7032,256 @@ int check_select_carrier_alias_authority_contract() {
     return fail("expected carrier alias status name to stay stable");
   }
 
+  prepare::PreparedBirModule identity_prepared;
+  identity_prepared.target_profile = riscv_target_profile();
+  const auto identity_function_name =
+      identity_prepared.names.function_names.intern("carrier_alias_identity");
+  const auto identity_pred_label =
+      identity_prepared.names.block_labels.intern("pred");
+  const auto identity_join_label =
+      identity_prepared.names.block_labels.intern("join");
+  const auto identity_cmp_name =
+      identity_prepared.names.value_names.intern("%cmp");
+  const auto identity_selected_name =
+      identity_prepared.names.value_names.intern("%selected");
+  identity_prepared.names.value_names.intern("%lhs");
+  identity_prepared.names.value_names.intern("%rhs");
+  identity_prepared.names.value_names.intern("%cond0");
+  identity_prepared.names.value_names.intern("%cond1");
+  identity_prepared.names.value_names.intern("%root");
+
+  const bir::Value identity_lhs =
+      bir::Value::named(bir::TypeKind::Ptr, "%lhs");
+  const bir::Value identity_rhs =
+      bir::Value::named(bir::TypeKind::Ptr, "%rhs");
+  const bir::Value identity_cmp =
+      bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value identity_selected =
+      bir::Value::named(bir::TypeKind::I32, "%selected");
+  const bir::Value identity_alias0 =
+      bir::Value::named(bir::TypeKind::I32, "%alias0");
+  const bir::Value identity_alias1 =
+      bir::Value::named(bir::TypeKind::I32, "%alias1");
+
+  bir::Block identity_pred_block;
+  identity_pred_block.label = "pred";
+  identity_pred_block.label_id = identity_pred_label;
+  identity_pred_block.terminator = bir::Terminator{bir::BranchTerminator{
+      .target_label = "join",
+      .target_label_id = identity_join_label,
+  }};
+  bir::Block identity_join_block;
+  identity_join_block.label = "join";
+  identity_join_block.label_id = identity_join_label;
+  identity_join_block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ule,
+      .result = identity_cmp,
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = identity_lhs,
+      .rhs = identity_rhs,
+  });
+  identity_join_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = identity_alias0,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%cond0"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = identity_cmp,
+      .false_value = bir::Value::immediate_i32(0),
+  });
+  identity_join_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = identity_alias1,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%cond1"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = identity_cmp,
+      .false_value = bir::Value::immediate_i32(0),
+  });
+  identity_join_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = identity_selected,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%root"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = identity_alias0,
+      .false_value = identity_alias1,
+  });
+  bir::Function identity_function;
+  identity_function.name = "carrier_alias_identity";
+  identity_function.blocks.push_back(std::move(identity_pred_block));
+  identity_function.blocks.push_back(std::move(identity_join_block));
+  identity_prepared.module.functions.push_back(std::move(identity_function));
+
+  prepare::PreparedControlFlowFunction identity_cf;
+  identity_cf.function_name = identity_function_name;
+  identity_cf.blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = identity_pred_label,
+      .terminator_kind = bir::TerminatorKind::Branch,
+      .branch_target_label = identity_join_label,
+  });
+  identity_cf.blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = identity_join_label,
+      .terminator_kind = bir::TerminatorKind::Return,
+  });
+  identity_cf.join_transfers.push_back(prepare::PreparedJoinTransfer{
+      .function_name = identity_function_name,
+      .join_block_label = identity_join_label,
+      .result = identity_selected,
+      .carrier_kind =
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+      .edge_transfers =
+          {
+              prepare::PreparedEdgeValueTransfer{
+                  .predecessor_label = identity_pred_label,
+                  .successor_label = identity_join_label,
+                  .incoming_value = identity_cmp,
+                  .destination_value = identity_selected,
+              },
+          },
+  });
+  identity_cf.parallel_copy_bundles.push_back(prepare::PreparedParallelCopyBundle{
+      .predecessor_label = identity_pred_label,
+      .successor_label = identity_join_label,
+      .execution_site =
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+      .execution_block_label = identity_pred_label,
+      .moves =
+          {
+              prepare::PreparedParallelCopyMove{
+                  .join_transfer_index = 0,
+                  .edge_transfer_index = 0,
+                  .source_value = identity_cmp,
+                  .destination_value = identity_selected,
+                  .carrier_kind =
+                      prepare::PreparedJoinTransferCarrierKind::
+                          SelectMaterialization,
+              },
+          },
+      .steps =
+          {
+              prepare::PreparedParallelCopyStep{
+                  .kind = prepare::PreparedParallelCopyStepKind::Move,
+                  .move_index = 0,
+              },
+          },
+  });
+  identity_prepared.control_flow.functions.push_back(std::move(identity_cf));
+
+  prepare::PreparedValueLocationFunction identity_locations;
+  identity_locations.function_name = identity_function_name;
+  identity_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 10,
+      .function_name = identity_function_name,
+      .value_name = identity_cmp_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+  identity_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 11,
+      .function_name = identity_function_name,
+      .value_name = identity_selected_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+  identity_locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = identity_function_name,
+      .phase = prepare::PreparedMovePhase::BlockEntry,
+      .authority_kind =
+          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+      .block_index = 0,
+      .instruction_index = 0,
+      .source_parallel_copy_predecessor_label = identity_pred_label,
+      .source_parallel_copy_successor_label = identity_join_label,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = 10,
+                  .to_value_id = 11,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"t0"},
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .source_parallel_copy_step_index = std::size_t{0},
+                  .authority_kind =
+                      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  .source_parallel_copy_predecessor_label = identity_pred_label,
+                  .source_parallel_copy_successor_label = identity_join_label,
+              },
+          },
+  });
+  identity_prepared.value_locations.functions.push_back(
+      std::move(identity_locations));
+
+  const auto identity_before =
+      prepare::collect_prepared_select_carrier_alias_authority_evidence(
+          identity_prepared);
+  if (identity_before.records.size() != 1 ||
+      identity_before.records.front().authority.status !=
+          prepare::PreparedSelectCarrierAliasAuthorityStatus::
+              UnsupportedCarrierAlias ||
+      identity_prepared.names.value_names.find("%alias0") !=
+          c4c::kInvalidValueName ||
+      identity_prepared.names.value_names.find("%alias1") !=
+          c4c::kInvalidValueName) {
+    return fail("expected const carrier alias collection not to publish identity");
+  }
+
+  prepare::populate_select_carrier_alias_identity(identity_prepared);
+  const auto identity_alias0_name =
+      identity_prepared.names.value_names.find("%alias0");
+  const auto identity_alias1_name =
+      identity_prepared.names.value_names.find("%alias1");
+  const auto identity_after =
+      prepare::collect_prepared_select_carrier_alias_authorities(
+          identity_prepared);
+  if (identity_alias0_name == c4c::kInvalidValueName ||
+      identity_alias1_name == c4c::kInvalidValueName ||
+      identity_after.records.size() != 1 ||
+      identity_after.records.front().authority.carrier_aliases.size() != 2 ||
+      identity_after.records.front()
+              .authority.carrier_aliases[0]
+              .carrier_value_name != identity_alias0_name ||
+      identity_after.records.front()
+              .authority.carrier_aliases[0]
+              .carrier_value_id.has_value() ||
+      identity_after.records.front()
+              .authority.carrier_aliases[1]
+              .carrier_value_name != identity_alias1_name ||
+      identity_after.records.front()
+              .authority.carrier_aliases[1]
+              .carrier_value_id.has_value()) {
+    return fail("expected shared carrier alias identity to publish without homes");
+  }
+
+  auto identity_extra_use = identity_prepared;
+  identity_extra_use.module.functions.front().blocks.back().insts.push_back(
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Eq,
+          .result = bir::Value::named(bir::TypeKind::I32, "%extra_identity"),
+          .operand_type = bir::TypeKind::I32,
+          .lhs = identity_cmp,
+          .rhs = bir::Value::immediate_i32(0),
+      });
+  identity_extra_use.names.value_names.intern("%extra_identity");
+  const auto identity_extra_collected =
+      prepare::collect_prepared_select_carrier_alias_authorities(
+          identity_extra_use);
+  const auto identity_extra_evidence =
+      prepare::collect_prepared_select_carrier_alias_authority_evidence(
+          identity_extra_use);
+  if (!identity_extra_collected.records.empty() ||
+      identity_extra_evidence.records.size() != 1 ||
+      identity_extra_evidence.records.front().authority.status !=
+          prepare::PreparedSelectCarrierAliasAuthorityStatus::NonCarrierSourceUse ||
+      identity_extra_evidence.records.front().authority.carrier_aliases.size() !=
+          2) {
+    return fail("expected shared identity not to bypass source-use closure");
+  }
+
   prepare::PreparedBirModule prepared;
   prepared.target_profile = riscv_target_profile();
   const auto prepared_function_name =

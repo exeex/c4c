@@ -1,61 +1,93 @@
 Status: Active
 Source Idea Path: ideas/open/468_carrier_alias_identity_publication_api.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Shared Identity Publication Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Identity API Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 contract definition for idea 468.
+Completed Step 3 implementation for idea 468.
 
-Selected boundary: a mutable pre-consumer prepared publication stage, e.g.
+Implemented a mutable pre-consumer prepared identity publication stage:
 `populate_select_carrier_alias_identity(PreparedBirModule&)`, called from
 `BirPreAlloc::publish_contract_plans()` after control-flow, value-location,
 and edge-publication inputs exist and before prepared dump/RV64 const
 consumers observe the module.
 
-Contract table:
+The stage interns synthesized carrier-alias result names into canonical
+`prepared.names.value_names` only from semantic prepared facts: available
+select-materialization edge publication, binary source producer whose result is
+the selected source, matching join transfer, successor-block candidate, final
+select, distinct named alias result, payload use of the selected source, no
+condition use of the selected source, and candidate feeding the final select.
 
-| Area | Contract |
-| --- | --- |
-| Timing | Runs in the mutable prealloc contract-plan phase before backend handoff to const consumers. |
-| Publication | Interns synthesized carrier-alias result names into canonical `prepared.names.value_names`. |
-| Required facts | Available edge publication, `select_materialization`, binary source producer, matching join transfer, final select, successor-block candidate, named `i32` result, candidate distinct from destination, payload use of selected source, no condition use of selected source, and candidate feeds final select. |
-| Value id/home | Optional; identity publication does not require alias `PreparedValueId` / home. |
-| Authority boundary | Identity publication is not RV64 permission; available authority remains decided by later carrier-alias authority collection. |
-| Source-use closure | Kept in the later authority collector/planner, not the identity publication stage. Extra source-use rows may get identity but must remain unavailable authority records. |
+Focused coverage proves the repaired API is const-correct and shared:
 
-Rejected identity-publication shapes: missing publication/join/final carrier,
-unsupported carrier/source-producer kind, missing binary source producer,
-source-producer result mismatch, unnamed candidate, candidate equals
-destination, wrong successor block, no payload use, source used as condition,
-candidate not feeding final select, duplicate candidates, raw `.phi.sel`
-spelling inference, testcase-name inference, dump-order inference, value-id
-coincidence, and scratch-copy-only publication.
+- A representative duplicate carrier-alias fixture starts with candidates but
+  unavailable authority because `%alias0` / `%alias1` are absent from the
+  canonical prepared name table.
+- `populate_select_carrier_alias_identity` publishes those alias identities into
+  the canonical module, after which
+  `collect_prepared_select_carrier_alias_authorities` returns an available
+  record without requiring alias value ids/homes.
+- An extra non-carrier source use remains fail-closed as
+  `non_carrier_source_use`, proving identity publication does not bypass the
+  later source-use closure authority check.
 
-Artifact:
-`build/agent_state/468_step2_shared_identity_publication_contract/contract.md`.
+Fresh representative probe for `20010329-1`:
+
+- prepared dump status `0`
+- object route status `0`
+- `%t46 -> %t50` now prints
+  `select_carrier_alias_authority ... status=available ... carrier_aliases=2
+  source_use_closure=yes`
+
+Artifacts:
+
+- `build/agent_state/468_step3_shared_identity_publication/summary.md`
+- `build/agent_state/468_step3_shared_identity_publication/probe_status.tsv`
+- `build/agent_state/468_step3_shared_identity_publication/evidence_snippets.txt`
+- `build/agent_state/468_step3_shared_identity_publication/20010329-1.prepared.out`
+- `build/agent_state/468_step3_shared_identity_publication/20010329-1.prepared.err`
+- `build/agent_state/468_step3_shared_identity_publication/20010329-1.object.out`
+- `build/agent_state/468_step3_shared_identity_publication/20010329-1.object.err`
 
 ## Suggested Next
 
-Execute Step 3: implement or route the shared identity API packet.
+Execute Step 4: residual disposition and close-readiness review for idea 468.
 
-Target implementation/tests:
+Recommended owned files:
 
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `src/backend/prealloc/prealloc.cpp`
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
 - `todo.md`
-- `test_after.log`
-- `build/agent_state/468_step3_shared_identity_publication/*`
+- `build/agent_state/468_step4_residual_disposition/*`
 
-Optional only if evidence/printing assertions require them:
+Suggested Step 4 proof:
 
-- `src/backend/prealloc/prepared_printer/select_chains.cpp`
-- `tests/backend/bir/backend_prepared_printer_test.cpp`
+```sh
+git diff --check
+```
+
+Step 4 should classify whether the shared identity publication API is
+close-ready, whether `20010329-1` advancing to object status `0` leaves any
+idea-468 residual, and whether any remaining work belongs to a later
+non-identity owner.
+
+## Watchouts
+
+- This slice intentionally did not touch RV64 lowering.
+- Identity publication is still not authority; RV64 consumers must continue to
+  require available carrier-alias authority records.
+- Source-use closure remains in the later authority collector, not the identity
+  population stage.
+- Preserve fail-closed behavior for wrong edge/source/final result, duplicate
+  candidates, raw alias-name inference, stale stack-loads, and generic move
+  cases.
+- Do not modify `test_baseline.new.log`, `test_baseline.log`,
+  `test_before.log`, or `review/`.
+
+## Proof
 
 Step 3 proof:
 
@@ -63,26 +95,6 @@ Step 3 proof:
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-## Watchouts
-
-- Do not reintroduce `const_cast` or hidden mutation.
-- Do not claim scratch-copy-only publication is sufficient for original-module
-  consumers.
-- Do not make RV64 lowering changes in this identity/API idea.
-- Identity publication alone is not authority; RV64 must consume only
-  available carrier-alias authority records.
-- Preserve fail-closed handling for raw alias inference, unavailable evidence
-  rows, wrong edge/source/final result, stale stack-loads, and generic move
-  cases.
-- Do not modify `test_baseline.new.log`, `test_baseline.log`,
-  `test_before.log`, `test_after.log`, or `review/`.
-
-## Proof
-
-Step 2 proof:
-
-```sh
-git diff --check
-```
-
 Result: passed.
+
+Proof log: `test_after.log`.

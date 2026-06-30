@@ -3239,6 +3239,71 @@ collect_prepared_select_carrier_alias_authority_evidence(
   return evidence;
 }
 
+void populate_select_carrier_alias_identity(PreparedBirModule& prepared) {
+  for (const auto& function : prepared.control_flow.functions) {
+    const auto* bir_function =
+        prepared_bir_function_by_name(prepared, function.function_name);
+    if (bir_function == nullptr) {
+      continue;
+    }
+    const auto* value_locations =
+        find_prepared_value_location_function(prepared, function.function_name);
+    const auto value_home_lookups =
+        make_prepared_value_home_lookups(value_locations);
+    const auto edge_publications = make_prepared_edge_publication_lookups(
+        prepared, function, value_locations, &value_home_lookups);
+    for (const auto& publication : edge_publications.publications) {
+      if (publication.status != PreparedEdgePublicationLookupStatus::Available ||
+          publication.carrier_kind !=
+              PreparedJoinTransferCarrierKind::SelectMaterialization ||
+          publication.source_producer_kind !=
+              PreparedEdgePublicationSourceProducerKind::Binary ||
+          publication.source_binary == nullptr ||
+          !publication.source_value_id.has_value() ||
+          publication.source_binary->result != publication.source_value ||
+          publication.join_transfer == nullptr ||
+          publication.join_transfer->join_block_label !=
+              publication.successor_label ||
+          publication.join_transfer->result != publication.destination_value) {
+        continue;
+      }
+      const auto* join_block =
+          prepared_bir_block_by_label(*bir_function, publication.successor_label);
+      if (join_block == nullptr) {
+        continue;
+      }
+      const auto* final_select =
+          find_prepared_final_join_select(*join_block, publication);
+      if (final_select == nullptr) {
+        continue;
+      }
+      auto carrier_aliases =
+          collect_prepared_select_carrier_alias_candidates(*join_block,
+                                                           publication);
+      if (carrier_aliases.empty() ||
+          !prepared_select_alias_candidates_unique(carrier_aliases)) {
+        continue;
+      }
+      for (const auto& candidate : carrier_aliases) {
+        const auto* carrier = candidate.carrier_select;
+        if (carrier == nullptr ||
+            candidate.carrier_block_label != publication.successor_label ||
+            carrier->result.kind != bir::Value::Kind::Named ||
+            carrier->result == publication.destination_value ||
+            !prepared_select_uses_value_as_payload(*carrier,
+                                                   publication.source_value) ||
+            prepared_select_uses_value_as_condition(*carrier,
+                                                    publication.source_value) ||
+            !prepared_select_result_feeds_final_select(*carrier,
+                                                       *final_select)) {
+          continue;
+        }
+        prepared.names.value_names.intern(carrier->result.name);
+      }
+    }
+  }
+}
+
 PreparedSelectEdgeSourceProducerPlacementRecords
 collect_prepared_select_edge_source_producer_placements(
     const PreparedBirModule& prepared) {

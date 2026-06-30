@@ -1520,6 +1520,8 @@ collect_prepared_select_carrier_alias_authorities(
 collect_prepared_select_carrier_alias_authority_evidence(
     const PreparedBirModule& prepared);
 
+void populate_select_carrier_alias_identity(PreparedBirModule& prepared);
+
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs);
