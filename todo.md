@@ -1,36 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/450_select_result_branch_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Select-Result Branch Evidence
+Current Step ID: 2
+Current Step Title: Define Select-Result Publication Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: audited select-result branch and move-bundle materialization
-evidence for idea 450. Supporting artifact:
-`build/agent_state/450_step1_select_result_audit/classification.md`.
+Completed Step 2: defined the select-result branch publication and move-bundle
+materialization contract for idea 450. Supporting artifact:
+`build/agent_state/450_step2_select_result_contract/contract.md`.
 
-Bucket summary:
+Accepted first-packet facts:
 
-| Bucket | Representative rows | Classification | First missing fact |
-| --- | --- | --- | --- |
-| Accepted candidate for first packet | `20010329-1 main.logic.end.14` `%t22`, `main.logic.end.27` `%t36`, `main.logic.end.41` `%t50` | Each row has `root_is_select=yes`, `source_producer=select_materialization`, `ne i32 <select>, 0` prepared branch condition, GPR-compatible select-result/condition homes, and available register-destination `block_entry_publication` move-bundle facts. Current object result is `unsupported_move_bundle_target_shape`. | Explicit RV64 consumer/materialization contract for register-home select-result block-entry publications tied to branch conditions. |
-| Candidate fact, not first owner | `20000622-1 foo.logic.end.7` `%t13`, `foo.logic.end.18` `%t24` | Select-result branch facts and register block-entry publications exist, but the current object route fails first at `unsupported_instruction_fragment`. | Instruction-side lowering must move first for this representative before it can prove select-result branch consumption. |
-| Rejected from first packet | `930930-1 f.logic.end.14` `%t22` inherited from 449 evidence | Select-chain evidence exists, but the selected value has stack-slot home and `block_entry_publication status=unsupported_destination_storage`; the object route also still has earlier unsupported instruction and pointer-value/provenance owners. | Stack-home branch operand / move-bundle materialization belongs to idea 451; pointer-value/provenance remains separate. |
+| Required fact | Accepted boundary |
+| --- | --- |
+| Select-result identity | Prepared `select_chain` has `root_is_select=yes` and `source_producer=select_materialization`. |
+| Branch condition | Prepared `branch_condition` compares that select-result value against integer zero with `Eq` or `Ne`, has coherent true/false labels, and is fuseable with the branch. |
+| Homes | Select-result value and branch-condition value both have GPR-compatible prepared homes. |
+| Move-bundle target | The selected result has available `block_entry_publication` / out-of-SSA move-bundle target facts with `destination_kind=value` and `destination_storage=register`. |
+| Source materialization | Immediate/register incoming values are consumed only through prepared move-bundle source facts and value ids, not rediscovered from raw BIR. |
+
+Rejected adjacent shapes include raw-only select branches, missing
+`select_chain`, missing `branch_condition`, non-zero compare constants,
+predicates outside `Eq`/`Ne`, missing or non-GPR homes, unavailable or
+non-register publication targets, current instruction-side-blocked
+`20000622-1`, and stack-home `930930-1` rows that belong to idea 451.
 
 ## Suggested Next
 
-Step 2 should define the select-result publication contract for the first
-bounded packet: register-home select-result values produced by explicit
-`select_materialization`, consumed by prepared `Eq`/`Ne` against integer zero
-branch conditions, and backed by available register-destination
-`block_entry_publication` / out-of-SSA move-bundle facts. The first future
-implementation packet should consume that contract for the `20010329-1`
-shape without inferring from raw selects.
+Step 3 should implement `Consume Register-Home Select-Result Branch
+Publications`: consume the accepted prepared contract in the RV64 object route
+for the `20010329-1` `%t22/%t36/%t50` shape, with focused accepted and
+fail-closed coverage.
 
-Future implementation proof command:
+Suggested Step 3 owned files:
+
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/450_step3_select_result_branch_publication/*`
+
+Step 3 proof command:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
@@ -48,6 +64,11 @@ Future implementation proof command:
   first object-route owner is `unsupported_instruction_fragment`.
 - Keep `930930-1` stack-slot select-result publication out of this packet;
   its current prepared rows are not register-destination consumer facts.
+- Do not accept `root_is_select=yes` alone as authority; Step 3 must require
+  the full prepared select-chain, branch-condition, homes, and publication
+  target contract.
+- Do not consume non-zero compare constants or predicates outside `Eq`/`Ne`
+  in the first packet.
 - Do not infer select-result publication from raw select shape,
   `root_is_select=yes`, raw `ne i32 <select>, 0`, block order, filenames,
   function names, or one dump layout.
@@ -57,7 +78,7 @@ Future implementation proof command:
 
 ## Proof
 
-Step 1 classification-only validation:
+Step 2 contract-only validation:
 
 ```sh
 git diff --check
