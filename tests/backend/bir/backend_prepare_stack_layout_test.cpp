@@ -6777,6 +6777,486 @@ int check_select_edge_source_producer_placement_contract() {
   return 0;
 }
 
+int check_select_carrier_alias_authority_contract() {
+  prepare::PreparedNameTables names;
+  const auto pred_label = names.block_labels.intern("pred");
+  const auto join_label = names.block_labels.intern("join");
+  const auto function_name = names.function_names.intern("carrier_alias_contract");
+  const auto source_name = names.value_names.intern("%cmp");
+  const auto selected_name = names.value_names.intern("%selected");
+  const auto alias0_name = names.value_names.intern("%alias0");
+  const auto alias1_name = names.value_names.intern("%alias1");
+
+  const bir::Value lhs = bir::Value::named(bir::TypeKind::Ptr, "%lhs");
+  const bir::Value rhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs");
+  const bir::Value cmp = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value selected = bir::Value::named(bir::TypeKind::I32, "%selected");
+  const bir::Value alias0 = bir::Value::named(bir::TypeKind::I32, "%alias0");
+  const bir::Value alias1 = bir::Value::named(bir::TypeKind::I32, "%alias1");
+  const bir::Value cond0 = bir::Value::named(bir::TypeKind::I32, "%cond0");
+  const bir::Value cond1 = bir::Value::named(bir::TypeKind::I32, "%cond1");
+  const bir::Value root_cond = bir::Value::named(bir::TypeKind::I32, "%root");
+
+  bir::Function function;
+  function.name = "carrier_alias_contract";
+  bir::Block join_block;
+  join_block.label = "join";
+  join_block.label_id = join_label;
+  join_block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ule,
+      .result = cmp,
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = lhs,
+      .rhs = rhs,
+  });
+  join_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = alias0,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = cond0,
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = cmp,
+      .false_value = bir::Value::immediate_i32(0),
+  });
+  join_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = alias1,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = cond1,
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = cmp,
+      .false_value = bir::Value::immediate_i32(0),
+  });
+  join_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = selected,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = root_cond,
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = alias0,
+      .false_value = alias1,
+  });
+  function.blocks.push_back(std::move(join_block));
+
+  const auto* compare =
+      std::get_if<bir::BinaryInst>(&function.blocks.front().insts[0]);
+  const auto* alias0_select =
+      std::get_if<bir::SelectInst>(&function.blocks.front().insts[1]);
+  const auto* alias1_select =
+      std::get_if<bir::SelectInst>(&function.blocks.front().insts[2]);
+  if (compare == nullptr || alias0_select == nullptr || alias1_select == nullptr) {
+    return fail("carrier alias fixture was malformed");
+  }
+
+  prepare::PreparedJoinTransfer join_transfer{
+      .function_name = function_name,
+      .join_block_label = join_label,
+      .result = selected,
+      .carrier_kind =
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+      .edge_transfers =
+          {
+              prepare::PreparedEdgeValueTransfer{
+                  .predecessor_label = pred_label,
+                  .successor_label = join_label,
+                  .incoming_value = cmp,
+                  .destination_value = selected,
+              },
+          },
+  };
+  const prepare::PreparedEdgePublication publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .predecessor_label = pred_label,
+      .successor_label = join_label,
+      .destination_value = selected,
+      .source_value = cmp,
+      .destination_value_id = 11,
+      .destination_value_name = selected_name,
+      .source_value_id = 10,
+      .source_value_name = source_name,
+      .source_value_kind = bir::Value::Kind::Named,
+      .source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .source_producer_block_label = join_label,
+      .source_producer_instruction_index = 0,
+      .source_binary = compare,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .phase = prepare::PreparedMovePhase::BlockEntry,
+      .carrier_kind =
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+      .parallel_copy_execution_site =
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+      .parallel_copy_execution_block_label = pred_label,
+      .join_transfer = &join_transfer,
+  };
+
+  prepare::PreparedValueHomeLookups value_home_lookups;
+  value_home_lookups.value_ids.emplace(alias0_name, 20);
+  value_home_lookups.value_ids.emplace(alias1_name, 21);
+  prepare::PreparedControlFlowFunction control_flow;
+  control_flow.function_name = function_name;
+
+  const auto accepted = prepare::plan_prepared_select_carrier_alias_authority({
+      .names = &names,
+      .control_flow = &control_flow,
+      .function = &function,
+      .value_home_lookups = &value_home_lookups,
+      .publication = &publication,
+      .carrier_aliases =
+          {
+              prepare::PreparedSelectCarrierAliasCandidate{
+                  .carrier_select = alias0_select,
+                  .carrier_block_label = join_label,
+                  .carrier_instruction_index = 1,
+              },
+              prepare::PreparedSelectCarrierAliasCandidate{
+                  .carrier_select = alias1_select,
+                  .carrier_block_label = join_label,
+                  .carrier_instruction_index = 2,
+              },
+          },
+  });
+  if (!prepare::prepared_select_carrier_alias_authority_available(accepted) ||
+      !accepted.source_use_closure_proven ||
+      accepted.function_name != function_name ||
+      accepted.predecessor_label != pred_label ||
+      accepted.successor_label != join_label ||
+      accepted.destination_value_id != 11 ||
+      accepted.destination_value_name != selected_name ||
+      accepted.source_value_id != std::optional<prepare::PreparedValueId>{10} ||
+      accepted.source_value_name != source_name ||
+      accepted.source_producer_kind !=
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary ||
+      accepted.source_producer_block_label !=
+          std::optional<c4c::BlockLabelId>{join_label} ||
+      accepted.source_producer_instruction_index !=
+          std::optional<std::size_t>{0} ||
+      accepted.carrier_aliases.size() != 2 ||
+      accepted.carrier_aliases[0].carrier_value_name != alias0_name ||
+      accepted.carrier_aliases[0].carrier_value_id !=
+          std::optional<prepare::PreparedValueId>{20} ||
+      accepted.carrier_aliases[1].carrier_value_name != alias1_name ||
+      accepted.carrier_aliases[1].carrier_value_id !=
+          std::optional<prepare::PreparedValueId>{21}) {
+    return fail("expected duplicate carrier aliases to publish authority");
+  }
+
+  auto missing_source_publication = publication;
+  missing_source_publication.source_binary = nullptr;
+  const auto missing_source =
+      prepare::plan_prepared_select_carrier_alias_authority({
+          .names = &names,
+          .control_flow = &control_flow,
+          .function = &function,
+          .publication = &missing_source_publication,
+          .carrier_aliases =
+              {
+                  prepare::PreparedSelectCarrierAliasCandidate{
+                      .carrier_select = alias0_select,
+                      .carrier_block_label = join_label,
+                      .carrier_instruction_index = 1,
+                  },
+              },
+      });
+  if (missing_source.status !=
+      prepare::PreparedSelectCarrierAliasAuthorityStatus::MissingSourceProducer) {
+    return fail("expected missing source producer to stay fail-closed");
+  }
+
+  auto wrong_result_function = function;
+  names.value_names.intern("%raw.phi.sel");
+  auto* wrong_alias = std::get_if<bir::SelectInst>(
+      &wrong_result_function.blocks.front().insts[1]);
+  wrong_alias->result = bir::Value::named(bir::TypeKind::I32, "%raw.phi.sel");
+  const auto wrong_result =
+      prepare::plan_prepared_select_carrier_alias_authority({
+          .names = &names,
+          .control_flow = &control_flow,
+          .function = &wrong_result_function,
+          .publication = &publication,
+          .carrier_aliases =
+              {
+                  prepare::PreparedSelectCarrierAliasCandidate{
+                      .carrier_select = wrong_alias,
+                      .carrier_block_label = join_label,
+                      .carrier_instruction_index = 1,
+                  },
+              },
+      });
+  if (wrong_result.status !=
+      prepare::PreparedSelectCarrierAliasAuthorityStatus::MismatchedCarrierAlias) {
+    return fail("expected raw-name-only carrier to stay fail-closed");
+  }
+
+  auto extra_use_function = function;
+  extra_use_function.blocks.front().insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "%extra"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = cmp,
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  const auto* extra_alias0 = std::get_if<bir::SelectInst>(
+      &extra_use_function.blocks.front().insts[1]);
+  const auto* extra_alias1 = std::get_if<bir::SelectInst>(
+      &extra_use_function.blocks.front().insts[2]);
+  const auto extra_use =
+      prepare::plan_prepared_select_carrier_alias_authority({
+          .names = &names,
+          .control_flow = &control_flow,
+          .function = &extra_use_function,
+          .publication = &publication,
+          .carrier_aliases =
+              {
+                  prepare::PreparedSelectCarrierAliasCandidate{
+                      .carrier_select = extra_alias0,
+                      .carrier_block_label = join_label,
+                      .carrier_instruction_index = 1,
+                  },
+                  prepare::PreparedSelectCarrierAliasCandidate{
+                      .carrier_select = extra_alias1,
+                      .carrier_block_label = join_label,
+                      .carrier_instruction_index = 2,
+                  },
+              },
+      });
+  if (extra_use.status !=
+      prepare::PreparedSelectCarrierAliasAuthorityStatus::NonCarrierSourceUse) {
+    return fail("expected extra source use to stay fail-closed");
+  }
+
+  if (prepare::prepared_select_carrier_alias_authority_status_name(
+          prepare::PreparedSelectCarrierAliasAuthorityStatus::
+              NonCarrierSourceUse) != "non_carrier_source_use") {
+    return fail("expected carrier alias status name to stay stable");
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = riscv_target_profile();
+  const auto prepared_function_name =
+      prepared.names.function_names.intern("carrier_alias_collector");
+  const auto prepared_pred_label = prepared.names.block_labels.intern("pred");
+  const auto prepared_join_label = prepared.names.block_labels.intern("join");
+  const auto prepared_cmp_name = prepared.names.value_names.intern("%cmp");
+  const auto prepared_selected_name =
+      prepared.names.value_names.intern("%selected");
+  const auto prepared_alias0_name = prepared.names.value_names.intern("%alias0");
+  const auto prepared_alias1_name = prepared.names.value_names.intern("%alias1");
+  prepared.names.value_names.intern("%lhs");
+  prepared.names.value_names.intern("%rhs");
+  prepared.names.value_names.intern("%cond0");
+  prepared.names.value_names.intern("%cond1");
+  prepared.names.value_names.intern("%root");
+
+  const bir::Value prepared_lhs = bir::Value::named(bir::TypeKind::Ptr, "%lhs");
+  const bir::Value prepared_rhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs");
+  const bir::Value prepared_cmp = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value prepared_selected =
+      bir::Value::named(bir::TypeKind::I32, "%selected");
+  const bir::Value prepared_alias0 =
+      bir::Value::named(bir::TypeKind::I32, "%alias0");
+  const bir::Value prepared_alias1 =
+      bir::Value::named(bir::TypeKind::I32, "%alias1");
+
+  bir::Block prepared_pred_block;
+  prepared_pred_block.label = "pred";
+  prepared_pred_block.label_id = prepared_pred_label;
+  prepared_pred_block.terminator = bir::Terminator{bir::BranchTerminator{
+      .target_label = "join",
+      .target_label_id = prepared_join_label,
+  }};
+  bir::Block prepared_join_block;
+  prepared_join_block.label = "join";
+  prepared_join_block.label_id = prepared_join_label;
+  prepared_join_block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ule,
+      .result = prepared_cmp,
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = prepared_lhs,
+      .rhs = prepared_rhs,
+  });
+  prepared_join_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = prepared_alias0,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%cond0"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = prepared_cmp,
+      .false_value = bir::Value::immediate_i32(0),
+  });
+  prepared_join_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = prepared_alias1,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%cond1"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = prepared_cmp,
+      .false_value = bir::Value::immediate_i32(0),
+  });
+  prepared_join_block.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = prepared_selected,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%root"),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = prepared_alias0,
+      .false_value = prepared_alias1,
+  });
+  bir::Function prepared_function;
+  prepared_function.name = "carrier_alias_collector";
+  prepared_function.blocks.push_back(std::move(prepared_pred_block));
+  prepared_function.blocks.push_back(std::move(prepared_join_block));
+  prepared.module.functions.push_back(std::move(prepared_function));
+
+  prepare::PreparedControlFlowFunction prepared_cf;
+  prepared_cf.function_name = prepared_function_name;
+  prepared_cf.blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = prepared_pred_label,
+      .terminator_kind = bir::TerminatorKind::Branch,
+      .branch_target_label = prepared_join_label,
+  });
+  prepared_cf.blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = prepared_join_label,
+      .terminator_kind = bir::TerminatorKind::Return,
+  });
+  prepared_cf.join_transfers.push_back(prepare::PreparedJoinTransfer{
+      .function_name = prepared_function_name,
+      .join_block_label = prepared_join_label,
+      .result = prepared_selected,
+      .carrier_kind =
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+      .edge_transfers =
+          {
+              prepare::PreparedEdgeValueTransfer{
+                  .predecessor_label = prepared_pred_label,
+                  .successor_label = prepared_join_label,
+                  .incoming_value = prepared_cmp,
+                  .destination_value = prepared_selected,
+              },
+          },
+  });
+  prepared_cf.parallel_copy_bundles.push_back(prepare::PreparedParallelCopyBundle{
+      .predecessor_label = prepared_pred_label,
+      .successor_label = prepared_join_label,
+      .execution_site =
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+      .execution_block_label = prepared_pred_label,
+      .moves =
+          {
+              prepare::PreparedParallelCopyMove{
+                  .join_transfer_index = 0,
+                  .edge_transfer_index = 0,
+                  .source_value = prepared_cmp,
+                  .destination_value = prepared_selected,
+                  .carrier_kind =
+                      prepare::PreparedJoinTransferCarrierKind::
+                          SelectMaterialization,
+              },
+          },
+      .steps =
+          {
+              prepare::PreparedParallelCopyStep{
+                  .kind = prepare::PreparedParallelCopyStepKind::Move,
+                  .move_index = 0,
+              },
+          },
+  });
+  prepared.control_flow.functions.push_back(std::move(prepared_cf));
+
+  prepare::PreparedValueLocationFunction prepared_locations;
+  prepared_locations.function_name = prepared_function_name;
+  prepared_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 10,
+      .function_name = prepared_function_name,
+      .value_name = prepared_cmp_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+  prepared_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 11,
+      .function_name = prepared_function_name,
+      .value_name = prepared_selected_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+  prepared_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 20,
+      .function_name = prepared_function_name,
+      .value_name = prepared_alias0_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t1"},
+  });
+  prepared_locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 21,
+      .function_name = prepared_function_name,
+      .value_name = prepared_alias1_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t2"},
+  });
+  prepared_locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = prepared_function_name,
+      .phase = prepare::PreparedMovePhase::BlockEntry,
+      .authority_kind =
+          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+      .block_index = 0,
+      .instruction_index = 0,
+      .source_parallel_copy_predecessor_label = prepared_pred_label,
+      .source_parallel_copy_successor_label = prepared_join_label,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = 10,
+                  .to_value_id = 11,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"t0"},
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .source_parallel_copy_step_index = std::size_t{0},
+                  .authority_kind =
+                      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  .source_parallel_copy_predecessor_label = prepared_pred_label,
+                  .source_parallel_copy_successor_label = prepared_join_label,
+              },
+          },
+  });
+  prepared.value_locations.functions.push_back(std::move(prepared_locations));
+
+  const auto collected =
+      prepare::collect_prepared_select_carrier_alias_authorities(prepared);
+  if (collected.records.size() != 1) {
+    return fail("expected one collected select carrier alias authority record");
+  }
+  const auto& collected_record = collected.records.front();
+  const auto& collected_authority = collected_record.authority;
+  if (collected_record.function_name != prepared_function_name ||
+      !prepare::prepared_select_carrier_alias_authority_available(
+          collected_authority) ||
+      !collected_authority.source_use_closure_proven ||
+      collected_authority.publication != nullptr ||
+      collected_authority.join_transfer != nullptr ||
+      collected_authority.predecessor_label != prepared_pred_label ||
+      collected_authority.successor_label != prepared_join_label ||
+      collected_authority.destination_value_id != 11 ||
+      collected_authority.source_value_id !=
+          std::optional<prepare::PreparedValueId>{10} ||
+      collected_authority.carrier_aliases.size() != 2 ||
+      collected_authority.carrier_aliases[0].carrier_value_name !=
+          prepared_alias0_name ||
+      collected_authority.carrier_aliases[0].carrier_value_id !=
+          std::optional<prepare::PreparedValueId>{20} ||
+      collected_authority.carrier_aliases[1].carrier_value_name !=
+          prepared_alias1_name ||
+      collected_authority.carrier_aliases[1].carrier_value_id !=
+          std::optional<prepare::PreparedValueId>{21}) {
+    return fail("expected collected carrier alias record to preserve facts");
+  }
+
+  return 0;
+}
+
 int check_populated_immediate_global_store_source_publication() {
   const auto run_case = [](bool coherent_destination) {
     prepare::PreparedBirModule prepared;
@@ -8182,6 +8662,9 @@ int main() {
   }
   if (const int rc = check_select_edge_source_producer_placement_contract();
       rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_select_carrier_alias_authority_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_populated_immediate_global_store_source_publication();

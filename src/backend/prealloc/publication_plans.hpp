@@ -667,6 +667,114 @@ struct PreparedSelectEdgeSourceProducerPlacementRecords {
   std::vector<PreparedSelectEdgeSourceProducerPlacementRecord> records;
 };
 
+enum class PreparedSelectCarrierAliasAuthorityStatus {
+  Available,
+  MissingNames,
+  MissingControlFlow,
+  MissingBirFunction,
+  MissingPublication,
+  UnsupportedPublication,
+  MissingSourceProducer,
+  MissingJoinTransfer,
+  MissingJoinBlock,
+  MissingFinalCarrier,
+  MissingCarrierAliases,
+  UnsupportedCarrierAlias,
+  MismatchedCarrierAlias,
+  NonCarrierSourceUse,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_select_carrier_alias_authority_status_name(
+    PreparedSelectCarrierAliasAuthorityStatus status) {
+  switch (status) {
+    case PreparedSelectCarrierAliasAuthorityStatus::Available:
+      return "available";
+    case PreparedSelectCarrierAliasAuthorityStatus::MissingNames:
+      return "missing_names";
+    case PreparedSelectCarrierAliasAuthorityStatus::MissingControlFlow:
+      return "missing_control_flow";
+    case PreparedSelectCarrierAliasAuthorityStatus::MissingBirFunction:
+      return "missing_bir_function";
+    case PreparedSelectCarrierAliasAuthorityStatus::MissingPublication:
+      return "missing_publication";
+    case PreparedSelectCarrierAliasAuthorityStatus::UnsupportedPublication:
+      return "unsupported_publication";
+    case PreparedSelectCarrierAliasAuthorityStatus::MissingSourceProducer:
+      return "missing_source_producer";
+    case PreparedSelectCarrierAliasAuthorityStatus::MissingJoinTransfer:
+      return "missing_join_transfer";
+    case PreparedSelectCarrierAliasAuthorityStatus::MissingJoinBlock:
+      return "missing_join_block";
+    case PreparedSelectCarrierAliasAuthorityStatus::MissingFinalCarrier:
+      return "missing_final_carrier";
+    case PreparedSelectCarrierAliasAuthorityStatus::MissingCarrierAliases:
+      return "missing_carrier_aliases";
+    case PreparedSelectCarrierAliasAuthorityStatus::UnsupportedCarrierAlias:
+      return "unsupported_carrier_alias";
+    case PreparedSelectCarrierAliasAuthorityStatus::MismatchedCarrierAlias:
+      return "mismatched_carrier_alias";
+    case PreparedSelectCarrierAliasAuthorityStatus::NonCarrierSourceUse:
+      return "non_carrier_source_use";
+  }
+  return "unknown";
+}
+
+struct PreparedSelectCarrierAliasCandidate {
+  const bir::SelectInst* carrier_select = nullptr;
+  BlockLabelId carrier_block_label = kInvalidBlockLabel;
+  std::size_t carrier_instruction_index = 0;
+};
+
+struct PreparedSelectCarrierAliasAuthorityInputs {
+  const PreparedNameTables* names = nullptr;
+  const PreparedControlFlowFunction* control_flow = nullptr;
+  const bir::Function* function = nullptr;
+  const PreparedValueHomeLookups* value_home_lookups = nullptr;
+  const PreparedEdgePublication* publication = nullptr;
+  std::vector<PreparedSelectCarrierAliasCandidate> carrier_aliases;
+};
+
+struct PreparedSelectCarrierAlias {
+  bir::Value carrier_value;
+  ValueNameId carrier_value_name = kInvalidValueName;
+  std::optional<PreparedValueId> carrier_value_id;
+  BlockLabelId carrier_block_label = kInvalidBlockLabel;
+  std::size_t carrier_instruction_index = 0;
+};
+
+struct PreparedSelectCarrierAliasAuthority {
+  PreparedSelectCarrierAliasAuthorityStatus status =
+      PreparedSelectCarrierAliasAuthorityStatus::MissingPublication;
+  const PreparedEdgePublication* publication = nullptr;
+  const PreparedJoinTransfer* join_transfer = nullptr;
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  BlockLabelId join_block_label = kInvalidBlockLabel;
+  bir::Value destination_value;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+  bir::Value source_value;
+  std::optional<PreparedValueId> source_value_id;
+  ValueNameId source_value_name = kInvalidValueName;
+  PreparedEdgePublicationSourceProducerKind source_producer_kind =
+      PreparedEdgePublicationSourceProducerKind::Unknown;
+  std::optional<BlockLabelId> source_producer_block_label;
+  std::optional<std::size_t> source_producer_instruction_index;
+  std::vector<PreparedSelectCarrierAlias> carrier_aliases;
+  bool source_use_closure_proven = false;
+};
+
+struct PreparedSelectCarrierAliasAuthorityRecord {
+  FunctionNameId function_name = kInvalidFunctionName;
+  PreparedSelectCarrierAliasAuthority authority;
+};
+
+struct PreparedSelectCarrierAliasAuthorityRecords {
+  std::vector<PreparedSelectCarrierAliasAuthorityRecord> records;
+};
+
 struct PreparedEdgePublicationSourceProducer {
   PreparedEdgePublicationSourceProducerKind kind =
       PreparedEdgePublicationSourceProducerKind::Unknown;
@@ -1390,6 +1498,17 @@ prepared_select_edge_source_producer_placement_matches_move_bundle(
 
 [[nodiscard]] PreparedSelectEdgeSourceProducerPlacementRecords
 collect_prepared_select_edge_source_producer_placements(
+    const PreparedBirModule& prepared);
+
+[[nodiscard]] PreparedSelectCarrierAliasAuthority
+plan_prepared_select_carrier_alias_authority(
+    const PreparedSelectCarrierAliasAuthorityInputs& inputs);
+
+[[nodiscard]] bool prepared_select_carrier_alias_authority_available(
+    const PreparedSelectCarrierAliasAuthority& authority);
+
+[[nodiscard]] PreparedSelectCarrierAliasAuthorityRecords
+collect_prepared_select_carrier_alias_authorities(
     const PreparedBirModule& prepared);
 
 [[nodiscard]] PreparedStoreSourcePublicationPlan
