@@ -1,54 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/439_store_source_global_memory_publication_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Store-Source And Global-Memory Evidence
+Current Step ID: 2
+Current Step Title: Define Publication Authority Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: audited store-source and global-memory residual evidence for
-`930930-1`, `20000622-1`, and `20041112-1`.
+Completed Step 2: defined the publication authority contract for
+store-source/global-memory rows and selected the first executable packet.
 
-Bucket table:
+Required global-memory facts:
 
-| bucket | rows | representative evidence | decision |
-| --- | --- | --- | --- |
-| Accepted target-consumable candidates | none | No inspected global-symbol row has both explicit global layout/addressability authority and a complete acceptable store-source/value-home contract. | No implementation packet selected from Step 1. |
-| Producer/prepared gaps | `930930-1` `main.entry.0`; `20041112-1` `foo.block_1.2`, `bar.block_5.2`, `main.entry.0`; local store-source rows in all three representatives | `930930-1` global store has `source_producer=unknown`; `20041112-1` known binary stores have register homes but `layout_authority=unknown`; immediate store has `source=<none>` and `source_producer=unknown`. | Needs a publication-authority contract before producer or target code is selected. |
-| Fail-closed unknowns | `930930-1` global store and pointer-value memory; `20000622-1` local store-source; `20041112-1` immediate global store | Unknown producer/layout facts are not target-consumable. | Keep fail-closed. |
-| Unrelated/non-goals | `930930-1` pointer-value memory; `20000622-1` select materialization; `20041112-1` direct-global return/select-chain and terminator failure | These map to pointer-value memory, select/terminator publication, or direct-global return authority. | Do not fold into this plan packet. |
+- prepared global symbol identity;
+- access kind: load, store, or address-only publication;
+- byte offset, width, and alignment;
+- explicit layout/addressability authority for the global object and range;
+- range verdict plus dynamic-array/flexible-object verdict when applicable;
+- a statement of whether the row is allowed as data load/store, address
+  materialization, or direct-global return/select-chain publication.
 
-Representative row notes:
+Required store-source facts:
 
-- `930930-1`: `bir.store_global @mem, offset 792, i64 %t1` has stored value
-  `%t1` with a register home in `main`, but the store-source publication is
-  `source_producer=unknown`, and the global access has
-  `layout_authority=unknown`.
-- `20000622-1`: no global memory row; only a local frame-slot store-source
-  row with `source_producer=unknown` plus select-materialization residuals.
-- `20041112-1`: `foo` and `bar` global stores to `@global` at offset 0 have
-  binary store-source producers and register value homes for `%t4`/`%t10`, but
-  the global accesses still report `layout_authority=unknown`; `main.entry.0`
-  stores immediate `1` but its store-source row is `source=<none>` with
-  `source_producer=unknown`.
+- exact store-source identity for a value or immediate;
+- producer kind, producer block, and producer instruction when applicable;
+- current value home for non-immediate stores, including bank/register or
+  stack-slot home and width;
+- explicit immediate-source encoding for immediate stores, including value and
+  width;
+- publication intent distinguishing global store, local store, and
+  pointer-value memory store.
 
-Artifacts:
+Classification:
 
-- `build/agent_state/439_step1_store_source_global_memory_audit/audit.md`
-- `build/agent_state/439_step1_store_source_global_memory_audit/rows.tsv`
+| class | records | disposition |
+| --- | --- | --- |
+| Accepted target-consumable records | none from Step 1 evidence | No RV64 lowering packet is selected yet. |
+| Producer/prepared gaps | `930930-1` `@mem+792` store; `20041112-1` binary stores to `@global+0`; `20041112-1` immediate store to `@global+0` | Need producer/prepared authority before target lowering. |
+| Fail-closed unknowns | `source_producer=unknown`, `source=<none>` without immediate encoding, `layout_authority=unknown`, missing value home | Keep rejected. |
+| Rejected adjacent shapes | pointer-value memory, local frame-slot store publication, direct-global return/select-chain, select/terminator residuals | Out of scope for this packet. |
+
+Artifact:
+
+- `build/agent_state/439_step2_publication_authority_contract/contract.md`
 
 ## Suggested Next
 
-Execute Step 2: Define Publication Authority Contract.
+Execute Step 3: Implement Or Route First Publication Packet.
 
-Recommended packet: contract-only. Define the minimum prepared facts required
-for global symbol identity, offset, width, alignment, layout/addressability
-authority, store-source identity, producer kind, value home, and immediate
-source encoding. Keep `source_producer=unknown`, `layout_authority=unknown`,
-pointer-value memory, direct-global return, and select/terminator residuals
-fail-closed.
+Selected packet: producer/prepared contract coverage for global-memory
+publication authority. Add focused positive/negative coverage for explicit
+global layout authority, explicit store-source producer/value home, explicit
+immediate-source encoding, and fail-closed `source_producer=unknown` plus
+`layout_authority=unknown`. Only change producer code if focused coverage
+exposes a local metadata gap. Do not edit RV64 target lowering until accepted
+prepared facts exist.
 
 ## Watchouts
 
@@ -64,7 +71,7 @@ fail-closed.
 
 ## Proof
 
-Step 1 classification-only check:
+Step 2 contract-only check:
 
 ```sh
 git diff --check
