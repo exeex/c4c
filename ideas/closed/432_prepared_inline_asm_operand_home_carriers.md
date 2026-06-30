@@ -1,6 +1,7 @@
 # Prepared Inline-Asm Operand Home Carriers
 
-Status: Open
+Status: Closed
+Closed: 2026-06-30
 Type: Implementation idea
 Parent: `ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md`
 Source Evidence: `build/agent_state/428_step5_probe/probe_summary.tsv`
@@ -18,12 +19,12 @@ without reconstructing missing metadata.
 The exhausted RV64 call-adjacent runbook proved coherent scalar object-lowering
 packets but could not close its representative inline-asm rows. Fresh Step 5
 probes classified the remaining blockers as prepared producer/carrier facts:
-`pr38533` reports repeated `missing_operand0_home`, while `pr45695` and
-`pr49279` report `tied_input_output_home_mismatch`.
+`pr38533` reported repeated `missing_operand0_home`, while `pr45695` and
+`pr49279` reported `tied_input_output_home_mismatch`.
 
 The RV64 lowering boundary should remain a consumer of complete prepared
-inline-asm carriers. These rows need producer-side home publication or an
-explicit unsupported producer diagnostic before more target lowering work is
+inline-asm carriers. These rows needed producer-side home publication or an
+explicit unsupported producer diagnostic before more target lowering work was
 valid.
 
 ## In Scope
@@ -69,6 +70,25 @@ valid.
 - Representative probes show `pr38533`, `pr45695`, and `pr49279` no longer
   fail for the old prepared carrier fact names, or the idea records a more
   precise producer-owned unsupported reason.
+
+## Completion Notes
+
+Closed on 2026-06-30 after Step 4 validation.
+
+- Focused producer/carrier work removed the old scalar GPR prepared facts for
+  the representative rows.
+- `build/agent_state/432_step4_probes/classification.tsv` records
+  `missing_operand0_home=no` and `tied_input_output_home_mismatch=no` for
+  `pr38533`, `pr45695`, and `pr49279`.
+- `pr49279` still includes a `~{memory}` clobber carrier, and `pr40657`
+  remains an unsupported `=*m` memory-constraint shape; those are outside this
+  scalar GPR producer/carrier idea.
+- Remaining RV64 object-route probes fail with
+  `unsupported_instruction_fragment`, which is owned by
+  `ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md`.
+- Close-time backend proof passed with 327/327 tests in `test_after.log`; the
+  monotonic regression guard passed with `--allow-non-decreasing-passed`
+  against the rolled-forward Step 4 `test_before.log`.
 
 ## Reviewer Reject Signals
 

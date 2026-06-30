@@ -52,26 +52,31 @@ inline-asm materialization. Representative rows include `src/pr38533.c`,
 
 ## Lifecycle Disposition
 
-The active runbook for this idea was exhausted on 2026-06-30 and is parked,
-not closed. The completed packets validated coherent scalar RV64 object
-lowering for prepared GPR call-result publication, existing frame-slot scalar
-value call-argument support, and complete-carrier scalar `.insn r` / `.insn d`
-inline-asm materialization.
+The first active runbook for this idea was exhausted on 2026-06-30 and parked
+while producer-side prepared inline-asm carrier gaps were split into the
+follow-up now archived at
+`ideas/closed/432_prepared_inline_asm_operand_home_carriers.md`.
 
-Remaining representative rows still stop at `unsupported_instruction_fragment`
-because the prepared inline-asm carrier facts are incomplete or outside scalar
-GPR input/output scope:
+Completed RV64 packets from the parked runbook validated coherent scalar RV64
+object lowering for prepared GPR call-result publication, existing frame-slot
+scalar value call-argument support, and complete-carrier scalar `.insn r` /
+`.insn d` inline-asm materialization.
 
-- `pr38533`: repeated `missing_operand0_home` for tied `=r,0` inline asm.
-- `pr45695` and `pr49279`: `tied_input_output_home_mismatch`.
-- `pr40657`: unsupported `=*m` memory constraint.
-- `pr56982`: clobber-only `~{memory}` carrier with no scalar publication.
+The prepared carrier follow-up closed on 2026-06-30. Step 4 probes under
+`build/agent_state/432_step4_probes/` show the old producer facts are gone for
+the representative scalar GPR rows:
 
-Follow-up source idea:
-`ideas/open/432_prepared_inline_asm_operand_home_carriers.md`.
-Do not reactivate this RV64 object-lowering plan until the prepared
-producer/carrier blocker rows have a coherent carrier contract or are
-explicitly excluded by a separate lifecycle decision.
+- `pr38533`: `missing_operand0_home=no` and
+  `tied_input_output_home_mismatch=no`.
+- `pr45695` and `pr49279`: `missing_operand0_home=no` and
+  `tied_input_output_home_mismatch=no`.
+
+The remaining representative object-route failures still stop at
+`unsupported_instruction_fragment`; they now belong to this RV64
+object-materialization idea rather than the prepared producer/carrier layer.
+`pr40657` (`=*m`) and `pr56982` (`~{memory}` clobber-only) remain outside the
+scalar GPR producer/carrier follow-up and must stay fail-closed here unless a
+separate idea owns those shapes.
 
 ## Reviewer Reject Signals
 

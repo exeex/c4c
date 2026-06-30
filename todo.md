@@ -1,74 +1,48 @@
 Status: Active
-Source Idea Path: ideas/open/432_prepared_inline_asm_operand_home_carriers.md
+Source Idea Path: ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Re-Probe Representative Rows And Decide Close Readiness
+Current Step ID: 1
+Current Step Title: Re-Audit Remaining RV64 Object-Route Failures
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 re-probed the representative rows and validated close readiness for the
-prepared inline-asm operand home carrier plan.
+Lifecycle close accepted for
+`ideas/closed/432_prepared_inline_asm_operand_home_carriers.md` and this
+runbook reactivated `ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md`.
 
-Completed work:
-
-- Fresh prepared probes are saved under
-  `build/agent_state/432_step4_probes/`. The compact classification artifact is
-  `build/agent_state/432_step4_probes/classification.tsv`.
-- `pr38533`: prepared carrier probe succeeds with 303 coherent `=r,0` scalar
-  GPR carriers. `missing_operand0_home=no` and
-  `tied_input_output_home_mismatch=no`. The RV64 object-route probe still fails
-  at `unsupported_instruction_fragment`, so remaining work belongs to the
-  parked RV64 object materialization route, not this producer/carrier plan.
-- `pr45695`: prepared carrier probe succeeds with one coherent `=r,0` scalar
-  GPR carrier. `missing_operand0_home=no` and
-  `tied_input_output_home_mismatch=no`. The RV64 object-route probe still fails
-  at `unsupported_instruction_fragment`.
-- `pr49279`: prepared carrier probe succeeds with one coherent tied scalar GPR
-  carrier plus a `~{memory}` clobber operand. The old tied-home facts are gone;
-  the remaining clobber shape is outside this scalar GPR plan and the RV64
-  object-route probe still fails at `unsupported_instruction_fragment`.
-- `pr40657`: prepared probe keeps the existing out-of-scope `=*m` memory
-  constraint classification as `unsupported_constraint0:=*m` and
-  `unsupported_operand_constraint0`; the RV64 object-route probe still fails at
-  `unsupported_instruction_fragment`.
-- `pr56982`: prepared probe records a clobber-only `~{memory}` carrier with no
-  scalar GPR publication. This remains outside this scalar GPR plan, and the
-  RV64 object-route probe still fails at `unsupported_instruction_fragment`.
-- Close readiness: this idea is ready for lifecycle close from the executor
-  perspective. The producer/carrier blocker facts targeted by this idea are
-  gone for the coherent tied scalar GPR representatives. The parked RV64
-  call-adjacent idea should be reconsidered as the owner of remaining RV64
-  object-route materialization failures; it should not be closed by this
-  producer/carrier validation alone.
+The closed producer/carrier follow-up removed the old scalar GPR prepared facts
+for `pr38533`, `pr45695`, and `pr49279`; remaining representative failures are
+RV64 object-route `unsupported_instruction_fragment` failures owned by this
+plan.
 
 ## Suggested Next
 
-Ask the plan owner to close or retire this completed prepared inline-asm
-operand home carrier plan, then decide whether to reactivate the parked RV64
-call-adjacent scalar inline-asm materialization idea for the remaining
-`unsupported_instruction_fragment` object-route failures.
+Execute Step 1: inspect `build/agent_state/432_step4_probes/classification.tsv`
+and the representative object logs, classify the first coherent RV64
+consumer-side scalar inline-asm materialization packet, and record the selected
+target plus proof command here before code changes.
 
 ## Watchouts
 
-- Step 4 did not change implementation, expectations, allowlists, unsupported
-  markers, runtime comparison, or pass/fail accounting.
-- The remaining representative RV64 object-route failures are not evidence of
-  missing prepared operand homes; they are still parked object-materialization
-  work.
 - Do not key behavior to `pr38533`, `pr45695`, `pr49279`, or probe instruction
   indexes.
-- Keep `=*m` memory constraints and clobber-only `~{memory}` carriers outside
-  this scalar GPR producer/carrier plan unless the audit proves a shared
-  invariant requires them.
+- Treat renewed `missing_operand0_home` or `tied_input_output_home_mismatch`
+  evidence as a producer regression, not RV64 consumer work.
+- Keep `=*m` memory constraints and clobber-only `~{memory}` carriers with no
+  scalar publication outside this scalar GPR object-materialization plan unless
+  the audit proves a shared RV64 consumer invariant requires them.
 - Do not change expectations, allowlists, unsupported markers, runtime
   comparison, or pass/fail accounting.
 
 ## Proof
 
-Proof passed and is saved in `test_after.log`:
+Lifecycle close and reactivation proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
 ```
+
+Run `git diff --check` before supervisor commit.
