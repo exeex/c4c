@@ -1,52 +1,45 @@
 Status: Active
-Source Idea Path: ideas/open/466_representative_select_carrier_alias_authority.md
+Source Idea Path: ideas/open/467_unsupported_carrier_alias_planner_rejection.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Unsupported Carrier Alias Rejection
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 residual disposition for idea 466. The idea is close-ready as
-representative authority evidence/probe work: the real `20010329-1`
-`%t46 -> %t50` row is no longer hidden and is not RV64-mismatched; it is
-explicitly rejected before becoming authority with `status=unsupported_carrier_alias`.
+Closed idea 466 as complete evidence/probe classification and activated idea
+467 for the precise `unsupported_carrier_alias` planner/producer rejection.
 
-Residual table:
+The representative row is visible but unavailable:
 
-| Item | Evidence | Disposition |
-| --- | --- | --- |
-| Prepared evidence | `20010329-1.prepared.status=0`; dump prints `select_carrier_alias_authority function=main status=unsupported_carrier_alias predecessor=logic.rhs.end.40 successor=logic.end.41 destination=%t50 destination_value_id=21 source=%t46 source_value_id=20 source_producer=binary source_producer_block=logic.end.41 source_producer_inst=1 carrier_alias_candidates=2 carrier_aliases=0 source_use_closure=no`. | Representative record is visible as rejected evidence. |
-| Hidden/missing/mismatched question | Evidence row exists but is unavailable. | Not hidden; not produced as authority; no RV64 field-mismatch route yet. |
-| Object route | `20010329-1.object.status=2`, still `unsupported_move_bundle_target_shape ... from_value_id=20 to_value_id=21`. | Expected because unavailable evidence rows are diagnostics only. |
-| Adjacent rows | Immediate edge reports `unsupported_publication`; earlier select edges report `missing_carrier_aliases`. | Out of this exact representative owner. |
-| First owner | `unsupported_carrier_alias` despite `carrier_alias_candidates=2`. | Follow-up belongs to prepared carrier-alias planner/producer rejection analysis. |
-
-Artifact:
-`build/agent_state/466_step4_residual_disposition/disposition.md`.
+| Field | Value |
+| --- | --- |
+| Representative | `20010329-1` |
+| Status | `unsupported_carrier_alias` |
+| Edge | `logic.rhs.end.40 -> logic.end.41` |
+| Source / destination | `%t46` / `source_value_id=20` to `%t50` / `destination_value_id=21` |
+| Source producer | `binary`, block `logic.end.41`, instruction `1` |
+| Candidate count | `carrier_alias_candidates=2` |
+| Accepted aliases | `carrier_aliases=0` |
+| Use closure | `source_use_closure=no` |
+| Boundary | Evidence row is diagnostic only, not RV64 authority. |
 
 ## Suggested Next
 
-Plan-owner should close idea 466 as complete for evidence/probe classification
-after this slice is accepted. The next implementation route, if selected,
-should be a separate precise follow-up for the prepared
-`unsupported_carrier_alias` planner rejection on `%t46 -> %t50`; it should
-diagnose why two candidates are collected but rejected before authority
+Execute Step 1 from `plan.md`: audit why the prepared carrier-alias planner
+rejects two carrier candidates as `unsupported_carrier_alias` before authority
 publication.
+
+Suggested artifact directory:
+`build/agent_state/467_step1_unsupported_carrier_alias_audit/`.
 
 ## Watchouts
 
-- Do not classify the representative as solved from raw duplicate-carrier
-  select shape.
-- Unavailable status rows are diagnostics only; they are not RV64 authority.
-- Do not route back to idea 465/RV64 consumer work until an available
-  carrier-alias authority record exists or a follow-up proves an RV64 matcher
-  mismatch against an available record.
-- The exact follow-up owner is prepared carrier-alias planner/producer
-  rejection analysis for `unsupported_carrier_alias`.
-- Do not make RV64 ULE rematerialization changes until representative
-  authority is proven present and matchable.
+- Do not edit implementation files during Step 1.
+- Do not treat unavailable evidence rows as authority.
+- Do not make RV64 ULE rematerialization changes until an available authority
+  record exists or a later packet proves an RV64 matcher mismatch against one.
 - Do not infer aliases from `%*.phi.sel*` spelling, raw select shape, value
   ids, block labels, function names, testcase names, or dump order.
 - Do not implement plain `%t46 -> %t50` copies or same-register no-ops.
@@ -58,10 +51,12 @@ publication.
 
 ## Proof
 
-Step 4 proof:
+Lifecycle transition proof:
 
 ```sh
 git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.

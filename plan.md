@@ -1,56 +1,54 @@
-# Representative Select Carrier Alias Authority Plan
+# Unsupported Carrier Alias Planner Rejection Plan
 
 Status: Active
-Source Idea: ideas/open/466_representative_select_carrier_alias_authority.md
-Activated From: ideas/open/465_rv64_ule_select_edge_rematerialization_consumer.md
+Source Idea: ideas/open/467_unsupported_carrier_alias_planner_rejection.md
+Activated From: ideas/closed/466_representative_select_carrier_alias_authority.md
 
 ## Purpose
 
-Find and repair, or precisely classify, why the real `20010329-1`
-representative does not publish or match a carrier-alias authority record for
-the `%t46 -> %t50` select-edge route.
+Diagnose or repair the prepared carrier-alias planner rejection for the real
+`20010329-1` `%t46 -> %t50` row.
 
 ## Goal
 
-Make the representative carrier-alias authority path explicit enough that idea
-465 can either resume as a target consumer or stay parked behind a precise
-producer/prepared blocker.
+Explain why `carrier_alias_candidates=2` becomes `carrier_aliases=0` with
+`status=unsupported_carrier_alias`, and publish available authority only if the
+duplicate carrier candidates are semantically valid aliases of `%t50`.
 
 ## Core Rule
 
-Do not infer aliases from `%*.phi.sel*` spelling, raw select shape, value ids,
-block labels, function names, testcase names, or dump order. The only accepted
-path is producer-owned carrier-alias authority for the real representative, or
-a precise blocker explaining why that authority cannot be produced or matched.
+Do not treat unavailable evidence rows as authority and do not infer aliases
+from `%*.phi.sel*` names, raw select shape, value ids, block labels, testcase
+names, or dump order. This plan owns prepared planner/producer semantics only,
+not RV64 lowering.
 
 ## Read First
 
-- ideas/open/466_representative_select_carrier_alias_authority.md
+- ideas/open/467_unsupported_carrier_alias_planner_rejection.md
+- ideas/closed/466_representative_select_carrier_alias_authority.md
 - ideas/open/465_rv64_ule_select_edge_rematerialization_consumer.md
-- build/agent_state/465_step4_residual_disposition/disposition.md
-- build/agent_state/465_step4_residual_disposition/20010329-1.prepared.out
-- build/agent_state/465_step4_residual_disposition/20010329-1.object.err
+- build/agent_state/466_step3_representative_authority_evidence/summary.md
+- build/agent_state/466_step4_residual_disposition/disposition.md
 - src/backend/prealloc/publication_plans.hpp
 - src/backend/prealloc/publication_plans.cpp
-- src/backend/mir/riscv/codegen/object_emission.cpp
 
 ## Current Target
 
 - representative: `20010329-1`
-- object failure: same `pre_terminator_copies` coordinate for
-  `logic.rhs.end.40 -> logic.end.41`
-- source producer: `%t46 = bir.ule ptr %t42, %t45`
-- selected source / destination: `%t46 -> %t50`
-- carriers: `%t50.phi.sel0` / `%t50.phi.sel1`
-- join transfer: `logic.end.41 result=%t50`
-- operands: `%t42` home `s1`, `%t45` home `s2`
-- missing evidence: no printed `carrier_alias` / `select_carrier` authority
-  record in the fresh prepared dump
+- row status: `unsupported_carrier_alias`
+- predecessor/successor: `logic.rhs.end.40 -> logic.end.41`
+- destination: `%t50`, `destination_value_id=21`
+- source: `%t46`, `source_value_id=20`
+- source producer: `binary`, `logic.end.41`, `source_producer_inst=1`
+- carrier candidates: `2`
+- accepted aliases: `0`
+- use closure: `source_use_closure=no`
 
 ## Non-Goals
 
-- RV64 ULE rematerialization changes before representative authority is proven
-  present and matchable.
+- RV64 ULE rematerialization changes before the representative has an
+  available authority record.
+- Treating unavailable evidence rows as authority.
 - Alias inference from `.phi.sel` names, raw select shape, value ids, block
   labels, function names, testcase names, or dump order.
 - Plain `%t46 -> %t50` copies or same-register no-ops for successor-defined
@@ -65,27 +63,26 @@ a precise blocker explaining why that authority cannot be produced or matched.
 
 ## Working Model
 
-The Step 3 RV64 consumer in idea 465 is valid when explicit authority records
-exist. The representative remains blocked because the authority record is not
-visible or not matched for the real module. This plan owns the producer/probe
-question: missing record, present-but-not-visible record, or
-present-but-RV64-mismatched record.
+The evidence/probe surface is sufficient. The remaining question is why the
+prepared planner rejects two carrier candidates before publication. If those
+candidates are semantically valid aliases, the planner may publish available
+authority. If not, the exact semantic blocker should be recorded and routed.
 
 ## Execution Rules
 
 - Step 1 is audit/classification only; do not edit implementation there.
-- Any implementation must publish, expose, or prove producer-owned authority,
-  not raw-name or raw-shape inference.
-- Preserve fail-closed behavior for missing source producer, wrong edge,
-  mismatched carrier/final result, extra non-carrier uses, stale stack-loads,
-  plain successor-defined copies, and generic move cases.
+- Any implementation must use producer-owned join-transfer/source-producer
+  facts, not raw carrier names or raw select shape.
+- Preserve fail-closed behavior for wrong final result, wrong edge, wrong
+  source, extra non-carrier uses, raw-name-only shape, unavailable evidence
+  rows, stale stack-loads, and generic move cases.
 - Classification-only proof:
 
 ```sh
 git diff --check
 ```
 
-- Code/test proof, if a producer/probe packet is selected:
+- Code/test proof, if a planner/producer packet is selected:
 
 ```sh
 cmake --build build -j2
@@ -95,32 +92,30 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Representative Authority Collection
+### Step 1: Audit Unsupported Carrier Alias Rejection
 
-Inspect the real `20010329-1` prepared module and
-`collect_prepared_select_carrier_alias_authorities` path. Determine whether a
-matching authority record is produced, not produced, hidden from the printed
-probe, or produced with fields the RV64 consumer cannot match. Completion
-means `todo.md` contains an audit table and identifies the first exact packet
-or blocker.
+Inspect the planner path for the representative row and record why two carrier
+candidates are rejected as `unsupported_carrier_alias`. Completion means
+`todo.md` contains a rejection audit table and identifies the first exact
+planner/producer packet or blocker.
 
-### Step 2: Define Representative Authority Evidence Contract
+### Step 2: Define Carrier Alias Acceptance Contract
 
-Specify the required record or probe evidence for the representative:
-function, edge, join transfer, source producer, selected source, destination,
-carrier values, and use closure. Completion means `todo.md` records positive
-and negative cases and names target files/tests if implementation is justified.
+Specify the semantic conditions that turn duplicate candidates into available
+carrier aliases for one final join-transfer result, including source-use
+closure and fail-closed cases. Completion means `todo.md` records positive and
+negative contract cases and names target files/tests if implementation is
+justified.
 
-### Step 3: Implement Or Route Representative Authority Packet
+### Step 3: Implement Or Route Planner Rejection Packet
 
-If Step 2 finds a bounded producer/collector/printer packet, implement only
-that packet with focused coverage. If the record already exists but RV64
-matching is wrong, route the exact consumer packet back to idea 465. If no
-implementation is justified, record the precise blocker and route it.
-Completion means proof passes or lifecycle state records the split/blocker.
+If Step 2 finds a bounded producer/planner repair, implement only that packet
+with focused coverage. If the rejection is semantically correct, record the
+precise blocker and route it. Completion means proof passes or lifecycle state
+records the split/blocker.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe the representative and classify any remaining first owner. Completion
-means this source idea closes, remains active with one exact in-scope packet,
-or routes back to idea 465 / another durable follow-up.
+Re-probe the representative authority evidence and classify any remaining
+first owner. Completion means this source idea closes, remains active with one
+exact in-scope packet, or routes back to idea 465 / another durable follow-up.

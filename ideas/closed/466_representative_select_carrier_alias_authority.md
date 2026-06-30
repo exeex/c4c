@@ -1,6 +1,6 @@
 # Representative Select Carrier Alias Authority
 
-Status: Open
+Status: Closed
 Type: Prepared producer/probe metadata idea
 Parent: `ideas/open/465_rv64_ule_select_edge_rematerialization_consumer.md`
 Source Evidence: `build/agent_state/465_step4_residual_disposition/`
@@ -53,18 +53,35 @@ move support.
 - Expectation rewrites, unsupported-marker downgrades, allowlists, pass/fail
   accounting changes, runtime-comparison changes, or baseline/log churn.
 
-## Acceptance Criteria
+## Completion Notes
 
-- The representative authority path is classified as one of: missing producer
-  record, present-but-not-visible record, present-but-RV64-mismatched record,
-  or exact unsupported blocker.
-- Any implementation publishes or exposes a producer-owned authority record for
-  the real representative without raw-name or raw-shape inference.
-- Focused coverage proves the representative-style authority path and
-  fail-closed negative cases.
-- Fresh residual disposition says whether idea 465 can resume as a target
-  consumer, whether this producer/probe idea is complete, or whether a new
-  owner is required.
+Closed after Step 4 residual disposition. Idea 466 answered the
+missing/hidden/mismatched evidence question for the representative:
+
+- the prepared dump now contains a `select_carrier_alias_authority` evidence
+  row for the real `%t46 -> %t50` route;
+- the row is visible, not hidden;
+- the row is rejected before authority publication with
+  `status=unsupported_carrier_alias`;
+- therefore RV64 has no available authority record to consume and no
+  field-mismatch route yet.
+
+Representative row:
+
+```text
+select_carrier_alias_authority function=main status=unsupported_carrier_alias predecessor=logic.rhs.end.40 successor=logic.end.41 destination=%t50 destination_value_id=21 source=%t46 source_value_id=20 source_producer=binary source_producer_block=logic.end.41 source_producer_inst=1 carrier_alias_candidates=2 carrier_aliases=0 source_use_closure=no
+```
+
+Follow-up source idea:
+`ideas/open/467_unsupported_carrier_alias_planner_rejection.md`.
+
+Do not route back to idea 465/RV64 consumer work until an available
+carrier-alias authority record exists or a later packet proves an RV64 matcher
+field mismatch against an available record.
+
+Close validation used existing canonical regression logs and `git diff --check`;
+no implementation, test, review, or baseline-log files were changed by this
+lifecycle transition.
 
 ## Reviewer Reject Signals
 
