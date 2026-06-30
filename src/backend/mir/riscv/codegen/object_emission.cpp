@@ -1893,6 +1893,16 @@ bool prepared_move_bundle_is_authorized_cast_dependency_stack_publication(
         dependency_operand_authorities,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle);
 
+bool prepared_move_bundle_is_authorized_select_edge_source_producer_suppression(
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedSelectEdgeSourceProducerPlacementRecords*
+        select_edge_source_producer_placements,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle);
+
+bool prepared_before_instruction_move_bundle_requires_suppression_authority(
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle);
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -1902,8 +1912,17 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
         dependency_operand_authorities,
+    const c4c::backend::prepare::PreparedSelectEdgeSourceProducerPlacementRecords*
+        select_edge_source_producer_placements,
     std::size_t stack_frame_bytes,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
+  if (prepared_move_bundle_is_authorized_select_edge_source_producer_suppression(
+          control_flow,
+          control_flow.function_name,
+          select_edge_source_producer_placements,
+          move_bundle)) {
+    return RiscvEncodedFragment{};
+  }
   if (prepared_move_bundle_is_authorized_cast_dependency_stack_publication(
           names,
           control_flow,
@@ -1912,6 +1931,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
           dependency_operand_authorities,
           move_bundle)) {
     return RiscvEncodedFragment{};
+  }
+  if (prepared_before_instruction_move_bundle_requires_suppression_authority(
+          move_bundle)) {
+    return std::nullopt;
   }
 
   RiscvEncodedFragment fragment;
@@ -6630,6 +6653,41 @@ bool prepared_move_bundle_is_authorized_cast_dependency_stack_publication(
          move.to_value_id == matching_record->authority.dependency_value_id;
 }
 
+bool prepared_move_bundle_is_authorized_select_edge_source_producer_suppression(
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedSelectEdgeSourceProducerPlacementRecords*
+        select_edge_source_producer_placements,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
+  if (select_edge_source_producer_placements == nullptr ||
+      move_bundle.block_index >= control_flow.blocks.size()) {
+    return false;
+  }
+  const auto block_label = control_flow.blocks[move_bundle.block_index].block_label;
+  for (const auto& record : select_edge_source_producer_placements->records) {
+    if (prepare::prepared_select_edge_source_producer_placement_matches_move_bundle(
+            record, function_name, block_label, move_bundle)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool prepared_before_instruction_move_bundle_requires_suppression_authority(
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
+  if (move_bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
+      move_bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None) {
+    return false;
+  }
+  return std::any_of(
+      move_bundle.moves.begin(),
+      move_bundle.moves.end(),
+      [](const c4c::backend::prepare::PreparedMoveResolution& move) {
+        return move.destination_storage_kind ==
+               prepare::PreparedMoveStorageKind::Register;
+      });
+}
+
 std::optional<RiscvEncodedFragment>
 fragment_for_prepared_select_edge_binary_with_cast_dependencies(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -8688,6 +8746,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
   const auto dependency_operand_authorities =
       prepare::collect_prepared_dependency_operand_authorities(prepared);
+  const auto select_edge_source_producer_placements =
+      prepare::collect_prepared_select_edge_source_producer_placements(prepared);
   RiscvObjectFunction object_function{
       .name = function_name,
       .global = true,
@@ -8797,7 +8857,10 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   const auto traversal = control_flow.blocks.empty()
                              ? std::vector<prepare::PreparedObjectTraversalEvent>{}
                              : prepare::make_prepared_object_function_traversal(
-                                   control_flow, value_locations, function);
+                                   control_flow,
+                                   value_locations,
+                                   function,
+                                   &select_edge_source_producer_placements);
   if (prepared_object_traversal_is_complete_bir_stream(traversal)) {
     for (const auto& event : traversal) {
       const auto* block = event.bir_block;
@@ -8857,6 +8920,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                 *function,
                                                 &lookups,
                                                 &dependency_operand_authorities,
+                                                &select_edge_source_producer_placements,
                                                 *stack_frame_bytes,
                                                 *classification.move_bundle);
           if (!fragment.has_value()) {

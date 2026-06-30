@@ -2717,6 +2717,46 @@ bool prepared_select_edge_source_producer_placement_available(
          PreparedSelectEdgeSourceProducerPlacementStatus::Available;
 }
 
+bool prepared_select_edge_source_producer_placement_matches_move_bundle(
+    const PreparedSelectEdgeSourceProducerPlacementRecord& record,
+    FunctionNameId function_name,
+    std::optional<BlockLabelId> move_bundle_block_label,
+    const PreparedMoveBundle& move_bundle) {
+  if (record.function_name != function_name ||
+      move_bundle.function_name != function_name ||
+      !prepared_select_edge_source_producer_placement_available(
+          record.placement) ||
+      record.placement.placement_kind !=
+          PreparedSelectEdgeSourceProducerPlacementKind::
+              PredecessorEdgeConsumedSuppression ||
+      record.placement.move_bundle_instruction_index !=
+          move_bundle.instruction_index ||
+      record.placement.move_count != move_bundle.moves.size() ||
+      !record.placement.source_value_id.has_value() ||
+      move_bundle.phase != PreparedMovePhase::BeforeInstruction ||
+      move_bundle.authority_kind != PreparedMoveAuthorityKind::None ||
+      move_bundle.moves.empty()) {
+    return false;
+  }
+  if (!record.placement.move_bundle_block_label.has_value() ||
+      !move_bundle_block_label.has_value() ||
+      *record.placement.move_bundle_block_label != *move_bundle_block_label) {
+    return false;
+  }
+  for (const auto& move : move_bundle.moves) {
+    if (move.destination_kind != PreparedMoveDestinationKind::Value ||
+        move.destination_storage_kind != PreparedMoveStorageKind::Register ||
+        move.op_kind != PreparedMoveResolutionOpKind::Move ||
+        move.authority_kind != PreparedMoveAuthorityKind::None ||
+        move.block_index != move_bundle.block_index ||
+        move.instruction_index != move_bundle.instruction_index ||
+        move.to_value_id != *record.placement.source_value_id) {
+      return false;
+    }
+  }
+  return true;
+}
+
 namespace {
 
 void clear_temporary_placement_pointers(

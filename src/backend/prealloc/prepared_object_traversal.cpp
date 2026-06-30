@@ -312,25 +312,51 @@ void append_unowned_block_entry_move_events(
                      move_bundle.moves.end(),
                      [](const PreparedMoveResolution& move) {
                        return move.destination_storage_kind ==
-                              PreparedMoveStorageKind::StackSlot;
+                             PreparedMoveStorageKind::StackSlot;
                      });
 }
 
-void append_before_instruction_stack_move_events(
+[[nodiscard]] bool move_bundle_has_register_destination(
+    const PreparedMoveBundle& move_bundle) {
+  return std::any_of(move_bundle.moves.begin(),
+                     move_bundle.moves.end(),
+                     [](const PreparedMoveResolution& move) {
+                       return move.destination_storage_kind ==
+                              PreparedMoveStorageKind::Register;
+                     });
+}
+
+void append_before_instruction_move_events(
     std::vector<PreparedObjectTraversalEvent>& events,
+    const PreparedControlFlowFunction& control_flow,
     const PreparedValueLocationFunction* value_locations,
     const PreparedControlFlowBlock& block,
     std::size_t block_index,
     std::size_t instruction_index,
-    const bir::Block* bir_block) {
+    const bir::Block* bir_block,
+    const PreparedSelectEdgeSourceProducerPlacementRecords*
+        select_edge_source_producer_placements) {
   if (value_locations == nullptr) {
     return;
   }
   for (const auto& move_bundle : value_locations->move_bundles) {
     if (move_bundle.phase != PreparedMovePhase::BeforeInstruction ||
         move_bundle.block_index != block_index ||
-        move_bundle.instruction_index != instruction_index ||
-        !move_bundle_has_stack_destination(move_bundle)) {
+        move_bundle.instruction_index != instruction_index) {
+      continue;
+    }
+    const bool has_authorized_register_suppression =
+        move_bundle_has_register_destination(move_bundle) &&
+        select_edge_source_producer_placements != nullptr &&
+        std::any_of(
+            select_edge_source_producer_placements->records.begin(),
+            select_edge_source_producer_placements->records.end(),
+            [&](const PreparedSelectEdgeSourceProducerPlacementRecord& record) {
+              return prepared_select_edge_source_producer_placement_matches_move_bundle(
+                  record, control_flow.function_name, block.block_label, move_bundle);
+            });
+    if (!move_bundle_has_stack_destination(move_bundle) &&
+        !has_authorized_register_suppression) {
       continue;
     }
     events.push_back(PreparedObjectTraversalEvent{
@@ -1017,7 +1043,9 @@ collect_unplaced_prepared_object_parallel_copy_obligations(
 std::vector<PreparedObjectTraversalEvent> make_prepared_object_function_traversal(
     const PreparedControlFlowFunction& control_flow,
     const PreparedValueLocationFunction* value_locations,
-    const bir::Function* bir_function) {
+    const bir::Function* bir_function,
+    const PreparedSelectEdgeSourceProducerPlacementRecords*
+        select_edge_source_producer_placements) {
   std::vector<PreparedObjectTraversalEvent> events;
   for (std::size_t block_index = 0; block_index < control_flow.blocks.size();
        ++block_index) {
@@ -1049,13 +1077,15 @@ std::vector<PreparedObjectTraversalEvent> make_prepared_object_function_traversa
       for (std::size_t instruction_index = 0;
            instruction_index < bir_block->insts.size();
            ++instruction_index) {
-        append_before_instruction_stack_move_events(
+        append_before_instruction_move_events(
             events,
+            control_flow,
             value_locations,
             block,
             block_index,
             instruction_index,
-            bir_block);
+            bir_block,
+            select_edge_source_producer_placements);
         events.push_back(PreparedObjectTraversalEvent{
             .kind = PreparedObjectTraversalEventKind::Instruction,
             .block_index = block_index,

@@ -1381,6 +1381,13 @@ plan_prepared_select_edge_source_producer_placement(
 [[nodiscard]] bool prepared_select_edge_source_producer_placement_available(
     const PreparedSelectEdgeSourceProducerPlacement& placement);
 
+[[nodiscard]] bool
+prepared_select_edge_source_producer_placement_matches_move_bundle(
+    const PreparedSelectEdgeSourceProducerPlacementRecord& record,
+    FunctionNameId function_name,
+    std::optional<BlockLabelId> move_bundle_block_label,
+    const PreparedMoveBundle& move_bundle);
+
 [[nodiscard]] PreparedSelectEdgeSourceProducerPlacementRecords
 collect_prepared_select_edge_source_producer_placements(
     const PreparedBirModule& prepared);

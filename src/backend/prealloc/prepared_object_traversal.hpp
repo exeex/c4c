@@ -1,6 +1,7 @@
 #pragma once
 
 #include "control_flow.hpp"
+#include "publication_plans.hpp"
 #include "value_locations.hpp"
 
 #include "../bir/bir.hpp"
@@ -515,6 +516,8 @@ collect_unplaced_prepared_object_parallel_copy_obligations(
 make_prepared_object_function_traversal(
     const PreparedControlFlowFunction& control_flow,
     const PreparedValueLocationFunction* value_locations,
-    const bir::Function* bir_function = nullptr);
+    const bir::Function* bir_function = nullptr,
+    const PreparedSelectEdgeSourceProducerPlacementRecords*
+        select_edge_source_producer_placements = nullptr);
 
 }  // namespace c4c::backend::prepare

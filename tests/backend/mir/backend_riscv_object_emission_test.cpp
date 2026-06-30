@@ -6,6 +6,7 @@
 #include "src/backend/mir/riscv/codegen/rv64_line_assembler.hpp"
 #include "src/backend/prealloc/control_flow.hpp"
 #include "src/backend/prealloc/module.hpp"
+#include "src/backend/prealloc/publication_plans.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -5732,6 +5733,43 @@ make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_modu
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_join_transfer_select_with_suppressed_edge_compare_setup_module() {
+  auto prepared =
+      make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_module();
+  auto& locations = prepared.value_locations.functions.front();
+  locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = prepared.names.function_names.find("main"),
+      .phase = prepare::PreparedMovePhase::BeforeInstruction,
+      .block_index = 3,
+      .instruction_index = 1,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = 5,
+                  .to_value_id = 4,
+                  .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .block_index = 3,
+                  .instruction_index = 1,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              },
+              prepare::PreparedMoveResolution{
+                  .from_value_id = 7,
+                  .to_value_id = 4,
+                  .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .block_index = 3,
+                  .instruction_index = 1,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              },
+          },
+  });
+  return prepared;
+}
+
 bir::InlineAsmOperandMetadata inline_asm_register_operand(
     bir::InlineAsmOperandKind kind,
     std::size_t constraint_index,
@@ -11223,6 +11261,43 @@ int materializes_published_prepared_join_transfer_select_cast_dependency_source_
   return 0;
 }
 
+int suppresses_authorized_prepared_select_edge_source_producer_setup_object() {
+  const auto prepared =
+      make_prepared_join_transfer_select_with_suppressed_edge_compare_setup_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail(
+        "expected explicit select-edge source-producer suppression to build: " +
+        result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* false_copy_label = object::find_symbol(*module, ".Lmain_pred_false");
+  const auto* join_label = object::find_symbol(*module, ".Lmain_join");
+  if (text == nullptr || false_copy_label == nullptr || join_label == nullptr ||
+      join_label->value <= false_copy_label->value) {
+    return fail("expected suppressed select-edge setup object labels");
+  }
+  bool saw_edge_compare = false;
+  for (std::size_t offset = 0; offset + 4 <= text->bytes.size(); offset += 4) {
+    const auto instruction = read_u32(text->bytes, offset);
+    const auto opcode = instruction & 0x7fU;
+    const auto rd = (instruction >> 7) & 0x1fU;
+    const auto funct3 = (instruction >> 12) & 0x7U;
+    const auto rs1 = (instruction >> 15) & 0x1fU;
+    const auto rs2 = (instruction >> 20) & 0x1fU;
+    if (opcode == 0x33U && rd == 10 && funct3 == 3 && rs1 == 29 &&
+        rs2 == 28) {
+      saw_edge_compare = true;
+    }
+  }
+  if (!saw_edge_compare) {
+    return fail("expected predecessor edge to remain the compare materializer");
+  }
+  return 0;
+}
+
 int rejects_prepared_join_transfer_select_cast_dependency_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
@@ -11325,6 +11400,70 @@ int rejects_prepared_join_transfer_select_cast_dependency_fail_closed_shapes() {
   if (compare != nullptr) {
     compare->rhs = bir::Value::named(bir::TypeKind::Ptr, "%other.ptr");
   }
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+  return 0;
+}
+
+int keeps_unauthorized_prepared_select_edge_source_producer_suppression_fail_closed() {
+  constexpr const char* diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  const auto accepted =
+      make_prepared_join_transfer_select_with_suppressed_edge_compare_setup_module();
+  const auto accepted_module = rv64::build_rv64_prepared_text_object_module(accepted);
+  if (!accepted_module.has_value()) {
+    return fail("expected accepted suppression baseline to build");
+  }
+  const auto* accepted_text = object::find_section(*accepted_module, ".text");
+  if (accepted_text == nullptr) {
+    return fail("expected accepted suppression baseline text section");
+  }
+
+  auto prepared =
+      make_prepared_join_transfer_select_with_suppressed_edge_compare_setup_module();
+  prepared.value_locations.functions.front()
+      .move_bundles.back()
+      .instruction_index = 0;
+  for (auto& move :
+       prepared.value_locations.functions.front().move_bundles.back().moves) {
+    move.instruction_index = 0;
+  }
+  if (!prepare::collect_prepared_select_edge_source_producer_placements(prepared)
+           .records.empty()) {
+    return fail("expected wrong-site suppression bundle to publish no placement");
+  }
+  auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  const auto* text = module.has_value() ? object::find_section(*module, ".text")
+                                        : nullptr;
+  if (text == nullptr || text->bytes != accepted_text->bytes) {
+    return fail("expected wrong-site suppression bundle to emit no generic moves");
+  }
+
+  prepared =
+      make_prepared_join_transfer_select_with_suppressed_edge_compare_setup_module();
+  prepared.value_locations.functions.front()
+      .move_bundles.back()
+      .moves.back()
+      .to_value_id = 3;
+  if (!prepare::collect_prepared_select_edge_source_producer_placements(prepared)
+           .records.empty()) {
+    return fail("expected wrong-destination suppression bundle to publish no placement");
+  }
+  module = rv64::build_rv64_prepared_text_object_module(prepared);
+  text = module.has_value() ? object::find_section(*module, ".text") : nullptr;
+  if (text == nullptr || text->bytes != accepted_text->bytes) {
+    return fail(
+        "expected wrong-destination suppression bundle to emit no generic moves");
+  }
+
+  prepared =
+      make_prepared_join_transfer_select_with_suppressed_edge_compare_setup_module();
+  prepared.value_locations.functions.front()
+      .move_bundles.back()
+      .moves.front()
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
     return 1;
   }
@@ -14613,7 +14752,11 @@ int main() {
       materializes_published_prepared_join_transfer_select_dependent_edge_compare_source_object();
   status |=
       materializes_published_prepared_join_transfer_select_cast_dependency_source_object();
+  status |=
+      suppresses_authorized_prepared_select_edge_source_producer_setup_object();
   status |= rejects_prepared_join_transfer_select_cast_dependency_fail_closed_shapes();
+  status |=
+      keeps_unauthorized_prepared_select_edge_source_producer_suppression_fail_closed();
   status |= rejects_published_prepared_join_transfer_select_ambiguous_publications_object();
   status |= builds_prepared_local_register_arg_call_object();
   status |= builds_prepared_frame_slot_value_arg_call_object();
