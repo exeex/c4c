@@ -1,77 +1,85 @@
 Status: Active
 Source Idea Path: ideas/open/468_carrier_alias_identity_publication_api.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Carrier Alias Identity Callers
+Current Step ID: 2
+Current Step Title: Define Shared Identity Publication Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 468. The caller/API matrix shows that carrier
-alias identity must be published into one shared prepared-module name table
-before const consumers run.
+Completed Step 2 contract definition for idea 468.
 
-Caller matrix:
+Selected boundary: a mutable pre-consumer prepared publication stage, e.g.
+`populate_select_carrier_alias_identity(PreparedBirModule&)`, called from
+`BirPreAlloc::publish_contract_plans()` after control-flow, value-location,
+and edge-publication inputs exist and before prepared dump/RV64 const
+consumers observe the module.
 
-| Surface | Module access | Shared identity need | Classification |
-| --- | --- | --- | --- |
-| Planner input (`publication_plans.hpp:729`) | `const PreparedNameTables*` | Needs mutation if it publishes alias `ValueNameId`s. | Current API is read-only; hidden mutation is rejected. |
-| Planner lookup (`publication_plans.cpp:2794`, `:3090`) | Existing name lookup only | Needs alias names to exist. | Exact current `unsupported_carrier_alias` rejection point. |
-| Evidence collector (`publication_plans.cpp:3199`) | `const PreparedBirModule&` | Needs stable identity for available records. | Not a safe mutation site. |
-| Available-authority collector (`publication_plans.cpp:3184`) | `const PreparedBirModule&` | Feeds RV64 consumers. | Must read already-published canonical identity. |
-| Prepared dump (`prepared_printer.hpp:11`, `select_chains.cpp:240`) | `const PreparedBirModule&` | Needs stable display names. | Read-only; must not be the publisher. |
-| RV64 function route (`object_emission.cpp:8979`, `:9009`) | `const PreparedBirModule&` | Needs available authority records. | Not a safe mutation site. |
-| RV64 alias-select suppression (`object_emission.cpp:7420`) | Original `prepared.names` lookup | Needs alias result name in the original table. | Proves scratch-copy publication is insufficient. |
-| Prealloc contract-plan phase (`prealloc.cpp:30`, `:42`) | Mutable `PreparedBirModule&` | Can publish before const handoff. | First viable API boundary. |
-| Backend RV64 handoff (`backend.cpp:1566`, `:1570`, `:212`) | Prepared module is produced then passed const | Needs publication before handoff. | Confirms pre-consumer publication boundary. |
+Contract table:
 
-Selected first viable boundary: define a producer-owned mutable publication
-stage in prealloc, before prepared dump/RV64 const consumers. The stage should
-publish carrier-alias `ValueNameId`s into canonical `PreparedNameTables` after
-semantic candidate checks pass. It must not use `const_cast`, scratch-copy
-authority, raw `.phi.sel` inference, or RV64 lowering.
+| Area | Contract |
+| --- | --- |
+| Timing | Runs in the mutable prealloc contract-plan phase before backend handoff to const consumers. |
+| Publication | Interns synthesized carrier-alias result names into canonical `prepared.names.value_names`. |
+| Required facts | Available edge publication, `select_materialization`, binary source producer, matching join transfer, final select, successor-block candidate, named `i32` result, candidate distinct from destination, payload use of selected source, no condition use of selected source, and candidate feeds final select. |
+| Value id/home | Optional; identity publication does not require alias `PreparedValueId` / home. |
+| Authority boundary | Identity publication is not RV64 permission; available authority remains decided by later carrier-alias authority collection. |
+| Source-use closure | Kept in the later authority collector/planner, not the identity publication stage. Extra source-use rows may get identity but must remain unavailable authority records. |
+
+Rejected identity-publication shapes: missing publication/join/final carrier,
+unsupported carrier/source-producer kind, missing binary source producer,
+source-producer result mismatch, unnamed candidate, candidate equals
+destination, wrong successor block, no payload use, source used as condition,
+candidate not feeding final select, duplicate candidates, raw `.phi.sel`
+spelling inference, testcase-name inference, dump-order inference, value-id
+coincidence, and scratch-copy-only publication.
 
 Artifact:
-`build/agent_state/468_step1_carrier_alias_identity_callers/audit.md`.
+`build/agent_state/468_step2_shared_identity_publication_contract/contract.md`.
 
 ## Suggested Next
 
-Execute Step 2: define the shared identity publication contract. Recommended
-target is a mutable pre-consumer publication stage such as
-`populate_select_carrier_alias_identity(PreparedBirModule&)`, with focused
-positive and negative contract cases for Step 3.
+Execute Step 3: implement or route the shared identity API packet.
 
-Step 2 should define:
+Target implementation/tests:
 
-- required semantic facts for publishing a synthesized carrier-alias name;
-- whether source-use closure is enforced in the publication stage or rechecked
-  by the authority collector;
-- how prepared dump and RV64 const consumers observe the canonical name table;
-- rejected shapes for wrong edge/source/final result, duplicate candidates,
-  raw-name-only aliases, extra source uses, and scratch-copy-only publication.
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `src/backend/prealloc/prealloc.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/468_step3_shared_identity_publication/*`
 
-Expected Step 2 proof:
+Optional only if evidence/printing assertions require them:
+
+- `src/backend/prealloc/prepared_printer/select_chains.cpp`
+- `tests/backend/bir/backend_prepared_printer_test.cpp`
+
+Step 3 proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
 ## Watchouts
 
-- Do not edit implementation in Step 2 unless explicitly delegated.
 - Do not reintroduce `const_cast` or hidden mutation.
 - Do not claim scratch-copy-only publication is sufficient for original-module
   consumers.
 - Do not make RV64 lowering changes in this identity/API idea.
-- Do not infer aliases from `%*.phi.sel*` spelling, testcase names, dump order,
-  value ids, block labels, or raw shape alone.
+- Identity publication alone is not authority; RV64 must consume only
+  available carrier-alias authority records.
+- Preserve fail-closed handling for raw alias inference, unavailable evidence
+  rows, wrong edge/source/final result, stale stack-loads, and generic move
+  cases.
 - Do not modify `test_baseline.new.log`, `test_baseline.log`,
   `test_before.log`, `test_after.log`, or `review/`.
 
 ## Proof
 
-Step 1 proof:
+Step 2 proof:
 
 ```sh
 git diff --check
