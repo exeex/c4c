@@ -1,6 +1,6 @@
 # RV64 ULE Select-Edge Rematerialization Consumer
 
-Status: Open
+Status: Open (parked pending representative carrier-alias authority)
 Type: RV64 target-consumer idea
 Parent: `ideas/closed/464_select_carrier_alias_metadata.md`
 Source Evidence: `build/agent_state/464_step4_residual_disposition/`
@@ -64,6 +64,23 @@ duplicate carrier aliases were producer-authorized.
   successor-defined copies, stale stack-load authority, and generic move cases.
 - Fresh residual disposition records whether `20010329-1` advanced and routes
   any next first-owner without broadening this idea.
+
+## Lifecycle Note
+
+Step 3 implemented and covered the RV64 consumer for explicit
+`PreparedSelectCarrierAliasAuthorityRecords`, but Step 4 found the real
+`20010329-1` representative still fails at the same `pre_terminator_copies`
+coordinate. The current first owner is not another RV64 consumer change; it is
+proving, publishing, exposing, or diagnosing a matching carrier-alias authority
+record for the representative.
+
+Active follow-up:
+`ideas/open/466_representative_select_carrier_alias_authority.md`.
+
+Do not reactivate this RV64 consumer idea until the representative publishes or
+otherwise exposes a matching authority record, or until the follow-up proves
+that the existing record is present and the RV64 matcher is missing a specific
+field.
 
 ## Reviewer Reject Signals
 

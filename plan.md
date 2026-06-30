@@ -1,52 +1,56 @@
-# RV64 ULE Select-Edge Rematerialization Consumer Plan
+# Representative Select Carrier Alias Authority Plan
 
 Status: Active
-Source Idea: ideas/open/465_rv64_ule_select_edge_rematerialization_consumer.md
-Activated From: ideas/closed/464_select_carrier_alias_metadata.md
+Source Idea: ideas/open/466_representative_select_carrier_alias_authority.md
+Activated From: ideas/open/465_rv64_ule_select_edge_rematerialization_consumer.md
 
 ## Purpose
 
-Consume prepared select carrier-alias authority in the RV64 object route to
-decide whether the `%t46 = bir.ule ptr %t42, %t45` source producer can be
-rematerialized for the `%t46 -> %t50` predecessor-edge transfer.
+Find and repair, or precisely classify, why the real `20010329-1`
+representative does not publish or match a carrier-alias authority record for
+the `%t46 -> %t50` select-edge route.
 
 ## Goal
 
-Advance the `20010329-1` select-edge residual only through explicit
-`PreparedSelectCarrierAliasAuthorityRecords`, preserving fail-closed behavior
-for raw alias inference, plain successor-defined copies, stale stack-loads, and
-generic move support.
+Make the representative carrier-alias authority path explicit enough that idea
+465 can either resume as a target consumer or stay parked behind a precise
+producer/prepared blocker.
 
 ## Core Rule
 
-Do not infer duplicate-carrier aliases from `.phi.sel` names, raw select
-shape, value ids, block labels, function names, testcase names, or dump order.
-The RV64 route must consume the prepared carrier-alias authority records and
-must prove operands are target-consumable before emitting ULE rematerialization.
+Do not infer aliases from `%*.phi.sel*` spelling, raw select shape, value ids,
+block labels, function names, testcase names, or dump order. The only accepted
+path is producer-owned carrier-alias authority for the real representative, or
+a precise blocker explaining why that authority cannot be produced or matched.
 
 ## Read First
 
+- ideas/open/466_representative_select_carrier_alias_authority.md
 - ideas/open/465_rv64_ule_select_edge_rematerialization_consumer.md
-- ideas/closed/464_select_carrier_alias_metadata.md
-- build/agent_state/464_step4_residual_disposition/disposition.md
-- build/agent_state/463_step4_residual_disposition/disposition.md
+- build/agent_state/465_step4_residual_disposition/disposition.md
+- build/agent_state/465_step4_residual_disposition/20010329-1.prepared.out
+- build/agent_state/465_step4_residual_disposition/20010329-1.object.err
 - src/backend/prealloc/publication_plans.hpp
 - src/backend/prealloc/publication_plans.cpp
 - src/backend/mir/riscv/codegen/object_emission.cpp
 
 ## Current Target
 
-- authority records: `PreparedSelectCarrierAliasAuthorityRecords`
+- representative: `20010329-1`
+- object failure: same `pre_terminator_copies` coordinate for
+  `logic.rhs.end.40 -> logic.end.41`
 - source producer: `%t46 = bir.ule ptr %t42, %t45`
-- selected source: `%t46`
-- final join-transfer destination: `%t50`
-- duplicate carriers: `%t50.phi.sel0` / `%t50.phi.sel1`
-- edge: `logic.rhs.end.40 -> logic.end.41`
-- operand check: `%t42` and `%t45` must be target-consumable at the
-  predecessor edge
+- selected source / destination: `%t46 -> %t50`
+- carriers: `%t50.phi.sel0` / `%t50.phi.sel1`
+- join transfer: `logic.end.41 result=%t50`
+- operands: `%t42` home `s1`, `%t45` home `s2`
+- missing evidence: no printed `carrier_alias` / `select_carrier` authority
+  record in the fresh prepared dump
 
 ## Non-Goals
 
+- RV64 ULE rematerialization changes before representative authority is proven
+  present and matchable.
 - Alias inference from `.phi.sel` names, raw select shape, value ids, block
   labels, function names, testcase names, or dump order.
 - Plain `%t46 -> %t50` copies or same-register no-ops for successor-defined
@@ -54,8 +58,6 @@ must prove operands are target-consumable before emitting ULE rematerialization.
 - Generic stack-to-register, register-to-register, or all-purpose move-bundle
   support.
 - Consuming `load_from_stack_slot missing_stack_freshness`.
-- Reopening ideas 456, 458, 459, 460, 461, 462, 463, or 464 without new
-  coordinate-bearing evidence.
 - Expectation rewrites, unsupported-marker downgrades, allowlists, pass/fail
   accounting changes, runtime-comparison changes, or baseline/log churn.
 - Touching `review/`, `test_before.log`, `test_after.log`,
@@ -63,28 +65,27 @@ must prove operands are target-consumable before emitting ULE rematerialization.
 
 ## Working Model
 
-The producer/prepared alias prerequisite is complete. The remaining question
-is target-consumer soundness: whether RV64 can use the authority records to
-rematerialize an unsigned pointer `ule` source producer at the predecessor
-edge, using only target-consumable operands and rejecting adjacent raw or
-generic move forms.
+The Step 3 RV64 consumer in idea 465 is valid when explicit authority records
+exist. The representative remains blocked because the authority record is not
+visible or not matched for the real module. This plan owns the producer/probe
+question: missing record, present-but-not-visible record, or
+present-but-RV64-mismatched record.
 
 ## Execution Rules
 
 - Step 1 is audit/classification only; do not edit implementation there.
-- Any implementation must consume explicit carrier-alias authority records and
-  reject raw alias inference.
-- Preserve fail-closed behavior for missing alias authority, wrong edge, wrong
-  source producer, mismatched carrier/final result, non-consumable operands,
-  stale stack-load authority, plain successor-defined copies, and generic move
-  cases.
+- Any implementation must publish, expose, or prove producer-owned authority,
+  not raw-name or raw-shape inference.
+- Preserve fail-closed behavior for missing source producer, wrong edge,
+  mismatched carrier/final result, extra non-carrier uses, stale stack-loads,
+  plain successor-defined copies, and generic move cases.
 - Classification-only proof:
 
 ```sh
 git diff --check
 ```
 
-- Code/test proof, if a consumer packet is selected:
+- Code/test proof, if a producer/probe packet is selected:
 
 ```sh
 cmake --build build -j2
@@ -94,33 +95,32 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Carrier-Alias Consumer Surface
+### Step 1: Audit Representative Authority Collection
 
-Inspect how `PreparedSelectCarrierAliasAuthorityRecords` are reachable from
-the RV64 object route and how they match the coordinate-bearing
-`pre_terminator_copies` event. Record the available authority keys, operand
-homes for `%t42` / `%t45`, and current rejection point. Completion means
-`todo.md` contains an audit table and identifies whether Step 2 can define a
-consumer contract or must route to another blocker.
+Inspect the real `20010329-1` prepared module and
+`collect_prepared_select_carrier_alias_authorities` path. Determine whether a
+matching authority record is produced, not produced, hidden from the printed
+probe, or produced with fields the RV64 consumer cannot match. Completion
+means `todo.md` contains an audit table and identifies the first exact packet
+or blocker.
 
-### Step 2: Define ULE Rematerialization Consumer Contract
+### Step 2: Define Representative Authority Evidence Contract
 
-Specify the accepted target-consumer route: authority record lookup, edge and
-source-producer match, carrier/final-result match, operand target-consumability,
-emission point, and fail-closed cases. Completion means `todo.md` records the
-contract, target files/tests if implementation is justified, or the exact
-blocker.
+Specify the required record or probe evidence for the representative:
+function, edge, join transfer, source producer, selected source, destination,
+carrier values, and use closure. Completion means `todo.md` records positive
+and negative cases and names target files/tests if implementation is justified.
 
-### Step 3: Implement Or Route First RV64 Consumer Packet
+### Step 3: Implement Or Route Representative Authority Packet
 
-If Step 2 finds a bounded packet, implement only the carrier-authorized ULE
-rematerialization consumer with focused coverage. If no implementation is
-justified, record the precise blocker and route it to a separate source idea.
-Completion means proof passes for the selected packet or lifecycle state
-records the split/blocker.
+If Step 2 finds a bounded producer/collector/printer packet, implement only
+that packet with focused coverage. If the record already exists but RV64
+matching is wrong, route the exact consumer packet back to idea 465. If no
+implementation is justified, record the precise blocker and route it.
+Completion means proof passes or lifecycle state records the split/blocker.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe the representative object route and classify any remaining first
-owner. Completion means the source idea closes, remains active with one exact
-in-scope packet, or splits a separate durable follow-up.
+Re-probe the representative and classify any remaining first owner. Completion
+means this source idea closes, remains active with one exact in-scope packet,
+or routes back to idea 465 / another durable follow-up.
