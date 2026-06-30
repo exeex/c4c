@@ -1,47 +1,76 @@
 Status: Active
 Source Idea Path: ideas/open/473_branch_site_stack_slot_materialization_no_clobber_source.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Materialization No-Clobber Source Inputs
+Current Step ID: 2
+Current Step Title: Define Source Fact Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 473. The representative `%t23` row remains an
-in-scope source-fact target, but current prepared evidence still lacks an
-explicit frame-slot materialization/write of current `%t23` into slot `#21`
-and lacks no-clobber source facts for that slot.
+Completed Step 2 contract for idea 473. The source-fact contract is bounded to
+scalar branch condition stack slots represented by `%t23`, slot `#21`, and
+requires explicit materialization/current-value plus no-clobber source facts
+before any downstream certificate or branch-stack-load authority can consume
+them.
 
-Source-fact audit:
+Positive contract:
 
-| Row | Source value | Materialization/write inputs | Path/dominance | Same-slot writes | Call/helper/inline-asm | Publications/moves/parallel copies | Classification |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `f.logic.end.14` condition `%t23`, slot `#21` | Branch condition names `%t23`; raw BIR computes `%t23 = ne i32 %t22, 0`; home/storage slot `#21`. | No prepared row states `%t23` was written/materialized into slot `#21`; home/storage identity is not a write event. | CFG shows predecessors into `logic.end.14`, but no materialization dominates or is path-valid by source fact. | Later local stores target other parameter slots; no slot `#21` write exclusion summary exists. | Later `abort` callsite exists; no effect safety fact is tied to slot `#21`. | `%t22` publications/parallel copies target slot `#20`; no slot `#21` non-clobber fact. | In-scope Step 2 contract target; producer not justified yet. |
-| `f.logic.end.14` lhs `%t22`, slot `#20` | Select-result source exists. | Block-entry publications/parallel copies target `%t22`, but destination storage is unsupported. | Edge-transfer data exists. | Select-result stack destination is first owner. | Separate boundary. | Parallel copies target `%t22`. | Fail closed: select-result/block-entry stack-destination owner. |
-| `f.block_1` `%t2` / `%t1` | Branch rows exist, but authority rows are `unsupported_terminator`; `%t1` pointer status unknown. | Not eligible. | Not reached. | Not reached. | Not reached. | Not reached. | Fail closed: branch-site relationship plus pointer/provenance for `%t1`. |
-| `f.block_4` `%t8` / `%t7` | Branch rows exist, but authority rows are `unsupported_terminator`; `%t7` pointer status unknown. | Not eligible. | Not reached. | Not reached. | Not reached. | Not reached. | Fail closed: branch-site relationship plus pointer/provenance for `%t7`. |
+| Fact group | Required facts |
+| --- | --- |
+| Branch-site identity | Function, branch block, condition role/value, terminator kind, and branch targets identify the consumer site. |
+| Stack-slot identity | Value id/name/type, home kind, frame slot id, stack object id, offset, size, and alignment identify the slot. |
+| Exact source value identity | Producer names the scalar source value intended to reside in the slot and ties it to the branch condition value. |
+| Explicit materialization/write event | Producer names a concrete write/materialization event into the exact frame slot/object. |
+| Path/dominance validity | Producer proves the materialization reaches the branch site on all relevant paths or records explicit path/predecessor scope. |
+| Same-slot write exclusion | Producer proves no intervening store, stack write, publication, move bundle, or parallel copy writes the same slot/object. |
+| Call/helper/inline-asm safety | Producer proves no intervening call/helper/inline asm or unknown effect can clobber the slot. |
+| Publication/move-bundle/parallel-copy non-clobber | Producer proves prepared publications, move bundles, and parallel copies do not target or invalidate the slot. |
+| Consumer boundary | Records are source facts only; they do not directly mark branch-stack-load authority available. |
 
-First Step 2 target: define source-fact records/statuses for scalar branch
-condition slots, including exact source value identity, explicit frame-slot
-materialization/write, path validity, same-slot write exclusion,
-call/helper/inline-asm effect safety, and publication/move-bundle/
-parallel-copy non-clobber proof.
+Rejected/fail-closed cases:
+
+| Shape | Disposition |
+| --- | --- |
+| Raw BIR adjacency, stack homes/storage/objects, value names, function names, block labels, testcase shape, or dump order | Reject as raw-shape inference. |
+| Missing source value or explicit materialization/write event | Fail closed as missing source/materialization. |
+| Source/destination/type/width/alignment mismatch | Fail closed as materialization mismatch. |
+| Path/dominance unknown | Fail closed unless explicitly path-scoped for later consumption. |
+| Same-slot write after materialization | Fail closed as clobbered. |
+| Unknown call/helper/inline-asm effect | Fail closed as clobber-unsafe. |
+| Publication/move-bundle/parallel-copy effects not analyzed | Fail closed as clobber-ambiguous. |
+| `%t22` select-result stack destination | Separate owner. |
+| `%t1` / `%t7` pointer/provenance rows | Separate owner. |
+| `%t2` / `%t8` `unsupported_terminator` rows | Separate branch-site relationship owner. |
 
 Artifact:
-`build/agent_state/473_step1_materialization_no_clobber_audit/audit.md`.
+`build/agent_state/473_step2_materialization_no_clobber_contract/contract.md`.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: define the source-fact contract for
-materialization/current-value and no-clobber evidence.
+Execute Step 3 from `plan.md`: Implement Or Route Source Fact Producer.
 
-Suggested artifact directory:
-`build/agent_state/473_step2_materialization_no_clobber_contract/`.
+Suggested owned files:
+
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- optional prepared printer files only if new records/statuses are exposed
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/473_step3_materialization_no_clobber_source/**`
+
+Proof:
+
+```sh
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+```
 
 ## Watchouts
 
-- Do not edit implementation files during Step 2 unless explicitly delegated.
+- Step 3 must route/block if current prepared facts cannot explicitly prove
+  exact materialization/write, path validity, same-slot write exclusion,
+  call/helper safety, and publication/move non-clobber.
 - Do not implement RV64 branch-load emission in this producer plan.
 - Do not directly populate available branch-stack-load authority records.
 - Do not infer source facts from stack homes, offsets, object ids, raw BIR,
@@ -53,7 +82,7 @@ Suggested artifact directory:
 
 ## Proof
 
-Classification proof:
+Contract proof:
 
 ```sh
 git diff --check
