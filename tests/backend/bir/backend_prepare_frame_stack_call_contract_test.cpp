@@ -122,6 +122,23 @@ const prepare::PreparedStackObject* find_stack_object(const prepare::PreparedBir
   return nullptr;
 }
 
+const prepare::PreparedStackObject* find_stack_object(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name,
+    std::string_view object_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  for (const auto& object : prepared.stack_layout.objects) {
+    if (object.function_name == function_id &&
+        prepare::prepared_stack_object_name(prepared.names, object) == object_name) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
 const prepare::PreparedFrameSlot* find_frame_slot(const prepare::PreparedBirModule& prepared,
                                                   prepare::PreparedObjectId object_id) {
   for (const auto& slot : prepared.stack_layout.frame_slots) {
@@ -1854,6 +1871,73 @@ bir::Module make_memory_return_call_contract_module() {
   });
   entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
   caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
+bir::Module make_same_module_sret_object_home_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "same_module_make_pair";
+  callee.return_type = bir::TypeKind::Void;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "ret.sret",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      },
+      .is_sret = true,
+  });
+
+  bir::Block callee_entry;
+  callee_entry.label = "entry";
+  callee_entry.terminator = bir::ReturnTerminator{};
+  callee.blocks.push_back(std::move(callee_entry));
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "same_module_sret_object_home_contract";
+  caller.return_type = bir::TypeKind::I32;
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.sret.payload",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 4,
+  });
+
+  bir::Block caller_entry;
+  caller_entry.label = "entry";
+  caller_entry.insts.push_back(bir::CallInst{
+      .callee = "same_module_make_pair",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "lv.sret.payload")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      }},
+      .return_type_name = "pair",
+      .return_type = bir::TypeKind::Void,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Void,
+          .primary_class = bir::AbiValueClass::Memory,
+          .returned_in_memory = true,
+      },
+      .sret_storage_name = "lv.sret.payload",
+  });
+  caller_entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  caller.blocks.push_back(std::move(caller_entry));
 
   module.functions.push_back(std::move(caller));
   return module;
@@ -3993,6 +4077,89 @@ int check_memory_return_call_contract() {
       memory_return.size_bytes != 8 || memory_return.align_bytes != 4) {
     return fail("memory-return contract: call_plans lost the published sret destination authority");
   }
+  return 0;
+}
+
+int check_same_module_sret_object_home_contract() {
+  const auto prepared =
+      prepare_riscv_module(make_same_module_sret_object_home_contract_module());
+  const auto* call_plans =
+      find_call_plans_function(prepared, "same_module_sret_object_home_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1) {
+    return fail(
+        "same-module sret object-home contract: missing prepared call plan");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  const auto* callee_sret_object =
+      find_stack_object(prepared, "same_module_make_pair", "ret.sret");
+  const auto* callee_sret_slot =
+      callee_sret_object == nullptr
+          ? nullptr
+          : find_frame_slot(prepared, callee_sret_object->object_id);
+  const auto* caller_payload_object =
+      find_stack_object(prepared,
+                        "same_module_sret_object_home_contract",
+                        "lv.sret.payload");
+  const auto* caller_payload_slot =
+      caller_payload_object == nullptr
+          ? nullptr
+          : find_frame_slot(prepared, caller_payload_object->object_id);
+  if (callee_sret_object == nullptr || callee_sret_slot == nullptr ||
+      caller_payload_object == nullptr || caller_payload_slot == nullptr ||
+      !call_plan.memory_return.has_value() || call_plan.arguments.size() != 1) {
+    return fail(
+        "same-module sret object-home contract: missing object homes or memory-return facts");
+  }
+
+  if (callee_sret_object->source_kind != "sret_param" ||
+      callee_sret_object->type != bir::TypeKind::Ptr ||
+      callee_sret_object->size_bytes != 8 ||
+      callee_sret_object->align_bytes != 8 ||
+      !callee_sret_object->address_exposed ||
+      !callee_sret_object->requires_home_slot ||
+      !callee_sret_object->permanent_home_slot ||
+      callee_sret_slot->size_bytes != 8 ||
+      callee_sret_slot->align_bytes != 8) {
+    return fail(
+        "same-module sret object-home contract: hidden sret parameter object lost pointer-sized home semantics");
+  }
+
+  const auto& memory_return = *call_plan.memory_return;
+  if (call_plan.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
+      call_plan.direct_callee_name !=
+          std::optional<std::string>{"same_module_make_pair"} ||
+      memory_return.sret_arg_index != std::optional<std::size_t>{0} ||
+      memory_return.encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      memory_return.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{caller_payload_slot->slot_id} ||
+      memory_return.size_bytes != 8 ||
+      memory_return.align_bytes != 4 ||
+      caller_payload_object->type != bir::TypeKind::I64 ||
+      caller_payload_object->size_bytes != 8 ||
+      caller_payload_object->align_bytes != 4 ||
+      caller_payload_slot->size_bytes != 8 ||
+      caller_payload_slot->align_bytes != 4) {
+    return fail(
+        "same-module sret object-home contract: caller memory-return payload lost aggregate ABI size/alignment");
+  }
+
+  const auto& sret_arg = call_plan.arguments.front();
+  if (sret_arg.value_bank != prepare::PreparedRegisterBank::AggregateAddress ||
+      !sret_arg.source_selection.has_value() ||
+      sret_arg.source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization ||
+      sret_arg.source_selection->source_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{caller_payload_slot->slot_id} ||
+      sret_arg.source_selection->source_size_bytes !=
+          std::optional<std::size_t>{8} ||
+      sret_arg.source_selection->source_align_bytes !=
+          std::optional<std::size_t>{8}) {
+    return fail(
+        "same-module sret object-home contract: aggregate-address source route no longer identifies caller payload storage");
+  }
+
   return 0;
 }
 
@@ -9710,6 +9877,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_memory_return_call_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_same_module_sret_object_home_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_call_wrapper_kind_contract(); rc != 0) {
