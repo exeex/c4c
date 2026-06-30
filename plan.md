@@ -1,80 +1,84 @@
-# Before-Instruction Stack-To-Register Move Materialization Plan
+# Select-Edge Source Producer Move-Bundle Placement Authority Plan
 
 Status: Active
-Source Idea: ideas/open/457_before_instruction_stack_to_register_move_materialization.md
+Source Idea: ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md
 
 ## Purpose
 
-Classify and materialize the next before-instruction move-bundle family exposed
-after the explicit cast-dependency consumer work closed.
+Define producer/prepared placement metadata for select-edge source-producer
+before-instruction register-destination move bundles.
 
 ## Goal
 
-Audit the `20010329-1` `block_index=4 instruction_index=2` move bundle and
-select only a bounded RV64 materialization packet for explicit prepared
-stack/register-source moves into register destinations.
+Classify the `20010329-1` target bundle and publish only the narrow placement
+authority needed to distinguish same-block, edge-owned, and suppression
+semantics before any RV64 consumer lowering resumes.
 
 ## Core Rule
 
-Do not infer move materialization from raw BIR shape or representative layout.
-RV64 may consume only explicit prepared before-instruction move-bundle facts,
-with source/destination homes and scratch/clobber safety proven.
+Do not infer placement from value ids, block indexes, instruction indexes, raw
+BIR shape, or testcase layout. The producer must publish explicit placement or
+edge identity authority first.
 
 ## Read First
 
-- ideas/open/457_before_instruction_stack_to_register_move_materialization.md
-- ideas/closed/456_rv64_select_edge_cast_dependency_consumer.md
-- build/agent_state/456_step7_final_residual_disposition/disposition.md
+- ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md
+- ideas/closed/457_before_instruction_stack_to_register_move_materialization.md
+- build/agent_state/457_step4_residual_disposition/disposition.md
+- build/agent_state/457_step3_register_destination_move_materialization/blocker.md
 - build/agent_state/456_step7_final_residual_disposition/20010329-1.prepared.out
-- build/agent_state/456_step7_final_residual_disposition/20010329-1.object.err
-- src/backend/mir/riscv/codegen/object_emission.cpp
+- src/backend/prealloc/publication_plans.cpp
+- src/backend/prealloc/publication_plans.hpp
 - src/backend/prealloc/prepared_object_traversal.cpp
-- src/backend/prealloc/prepared_object_traversal.hpp
-- tests/backend/mir/backend_riscv_object_emission_test.cpp
+- tests/backend/bir/backend_prepare_stack_layout_test.cpp
 
 ## Current Targets
 
-- `20010329-1` current `unsupported_move_bundle_target_shape` residual.
-- Before-instruction move bundle at `block_index=4 instruction_index=2`.
-- Move `from_value_id=7 to_value_id=10 destination_storage=register`.
-- Move `from_value_id=9 to_value_id=10 destination_storage=register
-  reason=consumer_stack_to_register`.
-- Source/destination homes, carrier use, and scratch/clobber conditions for
-  this register-destination materialization family.
+- `20010329-1` target before-instruction bundle:
+  `block_index=4 instruction_index=2`.
+- Moves into `%t18`/`t0`, including `consumer_stack_to_register`.
+- Source producer `%t18 = bir.ule ptr %t15, %t17`.
+- Select carrier `%t22 = bir.select uge ptr %t5, %t7, i32 %t18, 0`.
+- Edge transfer `logic.rhs.end.13 -> logic.end.14 incoming=%t18
+  destination=%t22`.
+- Missing placement meaning: same-block setup, edge-owned materialization, or
+  suppression because predecessor-edge publication already consumes the source
+  producer.
 
 ## Non-Goals
 
-- Reopening explicit cast-dependency authority consumption closed by idea 456.
+- RV64 lowering for the register-destination bundle before placement authority
+  exists.
+- Generic stack-to-register or register-to-register move lowering.
+- Reopening idea 456 cast-dependency consumption.
 - Consuming `load_from_stack_slot missing_stack_freshness`.
-- Generic stack-home branch operand or condition materialization tracked by
-  idea 451.
-- Pointer-value memory provenance publication, local/global store publication,
-  or generic instruction-side lowering.
-- Raw-BIR reconstruction or policy inference from filenames, function names,
-  block names, testcase names, value ids alone, or one prepared dump.
+- Generic stack-home branch operand/condition materialization tracked by idea
+  451.
+- Pointer-value provenance, local/global store publication, or generic
+  instruction-side lowering.
 - Expectation rewrites, unsupported downgrades, allowlists, runtime-comparison
   changes, pass/fail accounting changes, or `test_baseline.new.log` changes.
 - Touching `review/`, `test_before.log`, or `test_after.log`.
 
 ## Working Model
 
-Idea 456 removed the explicit cast-dependency blocker and the authorized
-stack-publication blocker. The next residual is a later before-instruction
-move bundle that needs ordinary move materialization into a register
-destination. This plan first classifies the bundle and then selects a narrow
-consumer packet only if the prepared facts carry enough authority and safety.
+The target bundle might be a same-block compare-operand setup, an edge-owned
+source-producer materialization, or a bundle that should be suppressed because
+the predecessor-edge publication already materializes the source producer.
+Those meanings have different safety properties. The prepared producer must
+make the placement explicit before RV64 can consume or suppress the bundle.
 
 ## Execution Rules
 
 - Start with evidence classification; do not edit implementation in Step 1.
-- Treat prepared move-bundle rows as candidate authority; verify source homes,
-  destination homes, carrier use, and scratch/clobber safety before selecting
-  code.
-- Keep cast-dependency authority, stack-load freshness, pointer-provenance, and
-  generic branch stack-home work separate.
-- Add focused RV64 object tests for accepted materialization and fail-closed
-  unsupported or unsafe move bundles.
-- Select at most one narrow RV64 consumer packet after the audit is explicit.
+- Treat current prepared rows as candidate evidence only.
+- Keep RV64 consumer lowering, generic stack move support, and pointer
+  provenance separate.
+- Add focused producer/prepared tests for accepted placement facts and
+  fail-closed missing, ambiguous, mismatched, raw-inferred, unsafe, or
+  unrelated bundles.
+- Select at most one narrow producer/prepared metadata packet after the audit
+  is explicit.
 - Do not touch `test_baseline.new.log`, `test_before.log`, `test_after.log`,
   or `review/`.
 - Classification-only proof: `git diff --check`.
@@ -88,35 +92,34 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Before-Instruction Register-Destination Move Bundle
+### Step 1: Audit Select-Edge Placement Evidence
 
-Inspect the 456 Step 7 artifacts for `20010329-1`. Record each move in
-`block_index=4 instruction_index=2`, source value, destination value, source
-home, destination home, reason, carrier use, scratch/clobber risk, traversal
-event, and first missing authority. Completion means `todo.md` contains a
-bucket table and identifies the first bounded materialization packet or exact
-blocker.
+Inspect the 457 artifacts and prepared output for the target bundle. Record
+bundle phase, block/instruction coordinates, moves, source producer, select
+carrier, edge transfer, source/destination homes, existing source-producer
+facts, and first missing placement authority. Completion means `todo.md`
+contains a bucket table and identifies the first bounded metadata packet or
+exact blocker.
 
-### Step 2: Define Register-Destination Move Materialization Contract
+### Step 2: Define Placement Authority Contract
 
-Specify accepted and rejected before-instruction move shapes for this family,
-including stack-to-register and register-to-register source handling,
-destination register constraints, ordering, scratch usage, and fail-closed
-adjacent cases. Completion means `todo.md` states owned files/tests and proof
-command.
+Specify the prepared facts required to distinguish same-block setup,
+edge-owned materialization, and predecessor-edge-consumed suppression,
+including predecessor/successor identity and source-producer linkage.
+Completion means `todo.md` states accepted/rejected shapes, owned files/tests,
+and proof command.
 
-### Step 3: Implement Or Route First Move-Bundle Packet
+### Step 3: Implement Or Route First Placement Metadata Packet
 
-If a coherent RV64 consumer packet exists, implement the smallest semantic
-change with focused coverage. If the first owner is missing producer facts,
-scratch allocation, pointer provenance, generic stack-home materialization, or
-another family, record the split or blocker instead of broadening this source.
+If a coherent producer/prepared packet exists, implement the smallest semantic
+metadata change with focused coverage. If the first owner is outside producer
+metadata, record the split or blocker instead of broadening this source.
 Completion means proof passes or canonical lifecycle state records the route
 decision.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-check `20010329-1` and focused coverage against the Step 3 result, classify
-remaining residuals, and decide whether this source idea is complete.
-Completion means close, keep active with one exact remaining packet, or route
-durable follow-up work.
+Re-check the target bundle and representative prepared output against the Step
+3 result, classify remaining residuals, and decide whether this source idea is
+complete. Completion means close, keep active with one exact remaining packet,
+or route durable follow-up work.

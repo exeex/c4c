@@ -1,11 +1,15 @@
 # Before-Instruction Stack-To-Register Move Materialization
 
-Status: Open
+Status: Closed
 Type: RV64 prepared move-bundle materialization idea
 Parent: `ideas/closed/456_rv64_select_edge_cast_dependency_consumer.md`
 Source Evidence: `build/agent_state/456_step7_final_residual_disposition/`
+Close Evidence: `build/agent_state/457_step4_residual_disposition/disposition.md`
 Owning Layer: RV64 before-instruction move-bundle materialization for ordinary
 register-destination consumers
+Closed Disposition: Complete for audit/contract/disposition; blocked before
+implementation on producer/prepared placement metadata. Follow-up:
+`ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md`.
 
 ## Goal
 
@@ -62,6 +66,32 @@ consumer gap; it is a separate move-bundle/materialization family.
   fail-closed with focused coverage.
 - Remaining non-move-bundle residuals are routed separately instead of being
   folded into this idea.
+
+## Completion Notes
+
+Idea 457 completed audit, contract, and residual disposition for the
+before-instruction register-destination move-bundle family. It did not select
+RV64 lowering because the target bundle lacks producer/prepared placement
+authority. The representative bundle is attached to a join-block compare that
+feeds a select-materialization carrier. Same-block emission can overwrite the
+false-edge selected value, and sequential ordinary moves are unsafe because
+both moves target `%t18`/`t0`.
+
+The missing fact is not generic stack-to-register lowering. A producer must
+publish whether the bundle is same-block compare-operand setup, an edge-source
+producer dependency already consumed by predecessor-edge publication, or an
+edge-owned materialization with predecessor/successor identity. That durable
+metadata work is split to
+`ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md`.
+
+## Validation
+
+- Step 3 backend proof passed before log roll-forward:
+  `cmake --build build -j2` plus
+  `ctest --test-dir build -j2 --output-on-failure -R '^backend_'`.
+- Step 4 lifecycle proof: `git diff --check` passed.
+- Close-time regression sanity used the rolled-forward backend guard log and
+  found no regression.
 
 ## Reviewer Reject Signals
 

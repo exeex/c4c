@@ -1,82 +1,53 @@
 Status: Active
-Source Idea Path: ideas/open/457_before_instruction_stack_to_register_move_materialization.md
+Source Idea Path: ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Select-Edge Placement Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 residual disposition for idea 457. Evidence is recorded under
-`build/agent_state/457_step4_residual_disposition/disposition.md`.
-
-Disposition: idea 457 is complete for audit/contract/disposition but blocked
-for implementation. There is no exact remaining RV64 move-bundle packet that is
-safe with the current prepared facts.
-
-Residual owner:
-
-- `20010329-1`
-- `move_bundle phase=before_instruction authority=none block_index=4
-  instruction_index=2`
-- paired register-destination moves into `%t18`/`t0`
-- source producer `%t18 = bir.ule ptr %t15, %t17`
-- select carrier `%t22 = bir.select uge ptr %t5, %t7, i32 %t18, 0`
-- edge transfer `logic.rhs.end.13 -> logic.end.14 incoming=%t18
-  destination=%t22`
-
-The missing fact is producer/prepared placement authority for this bundle. The
-object route cannot tell whether the bundle should emit at the join
-instruction, be suppressed because predecessor-edge publication already
-rematerializes the source producer, or carry predecessor/successor edge
-identity as edge-owned materialization. Same-block emission can overwrite the
-false-edge selected value; sequential ordinary moves are unsafe because both
-moves target `%t18`/`t0`.
-
-Lifecycle recommendation: plan owner should close idea 457 as blocked/split by
-producer metadata and open or activate a follow-up for select-edge source
-producer move-bundle placement authority before any RV64 consumer work resumes.
+Closed idea 457 as complete for audit/contract/disposition. Step 4 classified
+the remaining `20010329-1` blocker as missing producer/prepared placement
+metadata for the before-instruction register-destination bundle at
+`block_index=4 instruction_index=2`, not as a safe RV64 lowering packet.
 
 ## Suggested Next
 
-Plan-owner close/split review. The durable next initiative should publish one
-of:
+Execute Step 1 for idea 458. Re-read:
 
-- explicit before-instruction register-destination bundle placement semantics
-  for select-edge source producers;
-- predecessor/successor edge identity on edge-source producer dependency
-  bundles; or
-- precise suppression authority when the predecessor-edge publication already
-  consumes the source producer.
+- `ideas/open/458_select_edge_source_producer_move_bundle_placement_authority.md`
+- `ideas/closed/457_before_instruction_stack_to_register_move_materialization.md`
+- `build/agent_state/457_step4_residual_disposition/disposition.md`
+- `build/agent_state/457_step3_register_destination_move_materialization/blocker.md`
+- `build/agent_state/456_step7_final_residual_disposition/20010329-1.prepared.out`
 
-After that producer metadata exists, a later RV64 consumer idea can revisit
-before-instruction register-destination move materialization. Do not implement
-RV64 lowering before the placement/edge authority exists.
+Create `build/agent_state/458_step1_select_edge_placement_audit/` and record a
+bucket table for the target bundle: phase, block/instruction coordinates,
+moves, source producer, select carrier, edge transfer, source/destination
+homes, existing source-producer facts, and first missing placement authority.
+Do not edit implementation in Step 1.
 
 ## Watchouts
 
-- Do not reopen explicit cast-dependency authority consumption closed by idea
-  456.
+- Do not route to RV64 lowering before placement authority exists.
+- Do not infer predecessor/successor identity or suppression authority from
+  value ids, block indexes, instruction indexes, raw BIR shape, filenames,
+  function names, or one prepared dump.
+- Do not reopen idea 456 cast-dependency consumption.
 - Do not consume `load_from_stack_slot missing_stack_freshness`.
-- Do not infer materialization authority from raw BIR shape, filenames,
-  function names, block names, testcase shape, value ids alone, or one
-  prepared dump.
-- Keep general stack-home branch consumer work routed to
+- Keep generic stack-home branch consumer work routed to
   `ideas/open/451_stack_home_branch_operand_materialization.md`.
 - Keep pointer-value provenance and generic instruction-side lowering out of
   this plan.
-- Do not infer edge placement from value ids, block indexes, instruction
-  indexes, or the representative testcase. The missing fact is producer-owned
-  placement/source-producer authority.
-- Do not suppress arbitrary before-instruction register-destination bundles
-  without explicit authority.
 - Do not accept or modify `test_baseline.new.log`.
-- Do not touch `test_before.log`, baseline logs, or `review/`.
+- Do not touch `test_before.log`, `test_after.log`, baseline logs, or
+  `review/`.
 
 ## Proof
 
-Step 4 disposition-only validation:
+Lifecycle activation validation:
 
 ```sh
 git diff --check
