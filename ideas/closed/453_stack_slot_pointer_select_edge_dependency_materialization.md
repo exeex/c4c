@@ -1,11 +1,15 @@
 # Stack-Slot Pointer Select-Edge Dependency Materialization
 
-Status: Open
+Status: Closed
 Type: Prepared move-bundle dependency materialization idea
 Parent: `ideas/closed/452_select_edge_source_producer_rematerialization.md`
 Source Evidence: `build/agent_state/452_step4_residual_disposition/`
+Close Evidence: `build/agent_state/453_step4_residual_disposition/disposition.md`
 Owning Layer: RV64 select-edge rematerialization dependencies with stack-slot
 pointer homes
+Closed Disposition: Complete for classification and contract definition;
+blocked before implementation on producer/home metadata. Follow-up:
+`ideas/open/454_edge_dependency_operand_materialization_authority.md`.
 
 ## Goal
 
@@ -66,6 +70,31 @@ it is a dependency operand inside select-edge source-producer rematerialization.
   pointer dependencies remain fail-closed with focused coverage.
 - Any broader stack-home branch consumer, pointer-provenance, instruction, or
   storage residual is routed separately instead of being folded into this idea.
+
+## Completion Notes
+
+Idea 453 completed evidence classification and contract definition. Step 4
+confirmed that the current prepared facts prove edge publication, destination
+availability, the `%t15` register dependency, `%t16` immediate source, `%t17`
+stack home, and stack object shape, but they do not prove an explicit
+dependency-operand materialization policy for `%t17`.
+
+The remaining first owner is producer/home metadata, not RV64 target lowering.
+`%t18` must still not be copied from the successor/join block on the
+predecessor edge. Loading `%t17` from the stack slot needs an explicit
+`load_from_stack_slot` policy plus freshness and clobber-safety. Rematerializing
+`%t17` from `%t16` through `inttoptr` needs an explicit
+`rematerialize_cast_from_source` policy and cast dependency record. No sound
+RV64 consumer packet exists until those producer-owned facts exist.
+
+The durable follow-up is
+`ideas/open/454_edge_dependency_operand_materialization_authority.md`.
+
+## Validation
+
+- Step 4 lifecycle proof: `git diff --check` passed.
+- Close-time regression sanity used the rolled-forward backend guard log and
+  found no regression.
 
 ## Reviewer Reject Signals
 
