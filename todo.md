@@ -1,15 +1,18 @@
 Status: Active
 Source Idea Path: ideas/open/440_direct_global_return_select_chain_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 5
+Current Step Title: Consume Direct-Global Return Authority
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4: re-probed representative direct-global return/select-chain
-evidence and recorded residual disposition under
+Plan-owner review accepted the Step 4 residual disposition and kept idea 440
+active for the exact remaining direct-global return consumer packet.
+
+Step 4 re-probed representative direct-global return/select-chain evidence and
+recorded residual disposition under
 `build/agent_state/440_step4_residual_disposition/`.
 
 Residual classification:
@@ -24,14 +27,21 @@ Residual classification:
 
 ## Suggested Next
 
-Keep idea 440 active only for the exact remaining direct-global return consumer
-packet: materialize `bir.ret ptr @global` in the RV64 object route by consuming
-`plan_prepared_direct_global_return_authority`/prepared homes and matching
-`BeforeReturn` ABI move facts as authority. Fail closed for raw-only,
-missing-authority, mismatched-home, non-global, unsupported-home, or non-GPR ABI
-return shapes. If the supervisor does not want to extend this runbook with that
-consumer packet, route it as a durable follow-up instead of closing the idea as
-complete.
+Execute Step 5: implement the exact direct-global return consumer packet.
+Materialize `bir.ret ptr @global` in the RV64 object route only by consuming
+`plan_prepared_direct_global_return_authority`, the prepared global
+home/storage, and the matching `BeforeReturn` `FunctionReturnAbi` GPR move
+facts as authority.
+
+Required fail-closed coverage:
+
+- raw-only direct-global return with no prepared authority;
+- missing prepared authority;
+- mismatched value home or value id;
+- non-global pointer return;
+- unsupported home/storage;
+- non-pointer return;
+- non-GPR or otherwise unsupported ABI return shape.
 
 ## Watchouts
 
@@ -50,10 +60,11 @@ complete.
 
 ## Proof
 
-Step 4 residual-disposition validation:
+Step 5 expected proof:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed. Proof log: `test_after.log`.
+Step 4 residual-disposition validation already passed before log roll-forward,
+with backend regression guard reported as `327/327`.

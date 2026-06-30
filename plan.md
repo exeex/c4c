@@ -10,9 +10,9 @@ and direct-global select chains before RV64 lowering materializes them.
 
 ## Goal
 
-Classify direct-global return/select-chain residuals, define the prepared
-authority needed to publish those facts, and select only bounded producer or
-consumer packets that consume explicit prepared authority.
+Finish the direct-global return path by consuming the explicit prepared return
+authority already added in Step 3, while keeping direct-global select-chain and
+generic terminator/select publication as separate work.
 
 ## Core Rule
 
@@ -39,14 +39,16 @@ instruction shape, testcase names, function names, or one prepared dump layout.
 
 ## Current Targets
 
-- Direct-global return and select-chain evidence from the 433 Step 4 residual
-  disposition.
-- `20041112-1` direct-global facts, including raw `bir.ret ptr @global` and
-  direct-global select-chain rows.
-- Prepared facts that authorize returning a global pointer and materializing
-  direct-global select-chain roots.
-- Focused tests that distinguish accepted direct-global authority from missing
-  or incoherent authority.
+- `20041112-1 foo.block_1` direct-global return through raw
+  `bir.ret ptr @global`.
+- The prepared `@global` home/value fact with `value_id=4`, register-backed
+  storage, and matching `BeforeReturn` `FunctionReturnAbi` move to `a0`.
+- `plan_prepared_direct_global_return_authority` and
+  `prepared_direct_global_return_authority_available` as the only accepted
+  authority surface for this consumer packet.
+- Focused RV64 consumer tests for accepted authority and fail-closed raw-only,
+  missing-authority, mismatched-home, non-global, unsupported-home, and non-GPR
+  return shapes.
 
 ## Non-Goals
 
@@ -65,11 +67,11 @@ instruction shape, testcase names, function names, or one prepared dump layout.
 
 ## Working Model
 
-The global-memory producer prerequisites are now separated or closed, but
-direct-global returns and select chains still need explicit prepared authority.
-This plan owns the direct-global authority question only: either prepared facts
-prove a bounded return/select-chain route, or the row remains fail-closed and
-any broader terminator work stays separate.
+The global-memory producer prerequisites are separated or closed, and Step 3
+added the prepared direct-global return authority predicate. The remaining
+in-scope work is a narrow RV64 object consumer for that explicit authority. The
+consumer must not generalize to raw global returns, direct-global select-chain
+rows, or generic terminator/select publication.
 
 ## Execution Rules
 
@@ -79,10 +81,14 @@ any broader terminator work stays separate.
 - Separate producer gaps from coherent RV64 consumer work.
 - Add focused coverage for accepted direct-global facts and fail-closed
   missing/incoherent authority.
-- Select at most one narrow code packet after the authority contract is
-  explicit.
-- If the first owner is broad terminator/select publication, record the route
-  instead of widening this plan into idea 441.
+- The next code packet must consume only
+  `plan_prepared_direct_global_return_authority`/prepared homes and matching
+  `BeforeReturn` ABI move facts.
+- Fail closed for raw-only, missing-authority, mismatched-home, non-global,
+  unsupported-home, non-pointer, and non-GPR ABI return shapes.
+- Keep `direct_global_select_chain=yes` rows and generic terminator/select
+  publication separate unless a later lifecycle review explicitly selects
+  them.
 - Do not touch `test_baseline.new.log`, `test_before.log`, or
   `test_after.log`.
 - Classification-only proof: `git diff --check`.
@@ -127,3 +133,25 @@ Re-check representative direct-global return/select-chain rows against the
 Step 3 result, classify remaining residuals, and decide whether this source
 idea is complete. Completion means close, keep active with an exact remaining
 direct-global packet, or route durable follow-up work.
+
+### Step 5: Consume Direct-Global Return Authority
+
+Implement the narrow RV64 object-route consumer for `20041112-1 foo.block_1`
+by materializing `bir.ret ptr @global` only when explicit prepared
+direct-global return authority is available. The consumer must use
+`plan_prepared_direct_global_return_authority`, the prepared global
+home/storage, and the matching `BeforeReturn` `FunctionReturnAbi` GPR move as
+authority. It must not infer from raw BIR, symbol spelling, function names, or
+the generic terminator diagnostic. Completion means the accepted direct-global
+return route is covered by focused tests, fail-closed tests cover raw-only,
+missing-authority, mismatched-home, non-global, unsupported-home, non-pointer,
+and non-GPR return shapes, the delegated proof passes, and `todo.md` records
+whether any residual direct-global return work remains.
+
+### Step 6: Final Residual Disposition And Close Readiness
+
+Re-probe the representative after Step 5, separate direct-global return
+residuals from direct-global select-chain and generic terminator/select
+publication, and decide whether idea 440 is complete. Completion means close
+440, keep it active with an exact remaining direct-global return/select-chain
+packet, or route durable follow-up work.
