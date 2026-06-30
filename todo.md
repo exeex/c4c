@@ -1,38 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/452_select_edge_source_producer_rematerialization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First Rematerialization Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 by validating/routing the first rematerialization packet.
-Supporting artifact:
-`build/agent_state/452_step3_select_edge_rematerialization/summary.md`.
-
-No implementation files or tests were changed. The selected
-register/immediate select-edge compare rematerialization behavior is already
-present in the current tree:
-
-| Coverage / route | Existing proof |
-| --- | --- |
-| Simple prepared edge compare rematerialization | `materializes_published_prepared_join_transfer_select_edge_compare_source_object` proves a `source_producer=binary` compare is rematerialized into the selected destination register. |
-| Dependent register/immediate producer chain | `materializes_published_prepared_join_transfer_select_dependent_edge_compare_source_object` proves register/immediate dependency producers are emitted before the edge compare. |
-| Fail-closed boundaries | `rejects_published_prepared_join_transfer_select_ambiguous_publications_object` rejects non-select carrier and stack operand source shapes. |
+Completed Step 4 residual disposition for idea 452. Supporting artifact:
+`build/agent_state/452_step4_residual_disposition/disposition.md`.
 
 Fresh `20010329-1` probing still fails at
-`unsupported_move_bundle_target_shape`, which is expected: `%t18 -> %t22`
-depends on `%t17` with a stack-slot pointer home and remains rejected from the
-first register/immediate packet.
+`unsupported_move_bundle_target_shape`, matching the Step 2/3 boundary.
+Register/immediate select-edge compare source rematerialization is already
+covered by existing object emission and focused tests. The remaining `%t18 ->
+%t22` row depends on `%t17 = inttoptr i32 %t16 to ptr`, and `%t17` has a
+stack-slot pointer home. That makes the first owner stack-slot pointer
+dependency materialization, not more register/immediate rematerialization.
 
 ## Suggested Next
 
-Step 4 should perform residual disposition and close-readiness review. The
-expected recommendation is to close idea 452 for the register/immediate
-source-producer rematerialization route and route the remaining `%t18/%t17`
-stack-slot pointer dependency to idea 451 or a narrower follow-up.
+Plan-owner should close idea 452 as complete for register/immediate
+select-edge source-producer rematerialization. Route the remaining
+`%t18/%t17` representative failure to stack-slot pointer dependency
+materialization, either under `ideas/open/451_stack_home_branch_operand_materialization.md`
+if that idea owns the overlap or under a narrower follow-up.
 
 ## Watchouts
 
@@ -60,7 +53,7 @@ stack-slot pointer dependency to idea 451 or a narrower follow-up.
 
 ## Proof
 
-Step 3 validation:
+Step 4 residual-disposition validation:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
