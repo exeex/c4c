@@ -1,72 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/443_closed_world_formal_pointer_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Focused Producer Coverage
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3: implemented the first durable function-level formal pointer
-authority surface and focused coverage.
+Completed Step 4: residual disposition and close-readiness review for the
+closed-world formal pointer authority carrier.
 
-Implementation:
+Rechecked facts:
 
-- Added `bir::FormalPointerAuthorityKind` with `Unknown`, `InternalOnly`, and
-  `NoExternalCaller`.
-- Added `bir::Function::formal_pointer_authority`, defaulting to `Unknown`.
-- Populated the field in LIR-to-BIR lowering from `LirFunction::is_internal`
-  only: static/internal definitions receive `InternalOnly`; external-linkage
-  and other non-internal definitions remain `Unknown`.
-- Refactored the same-module computed-address formal provenance collector to
-  consume `bir::Function::formal_pointer_authority` instead of private
-  internal-name/internal-link-id sets.
-- Preserved idea 442 behavior for internal/static callees and did not publish
-  external-linkage `930930-1::f` provenance.
-
-Focused coverage:
-
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp` now checks the
-  internal same-module computed-address formal fixture publishes
-  `FormalPointerAuthorityKind::InternalOnly` and still proves the pointer-value
-  memory accesses.
-- The external-linkage variant checks the callee remains
-  `FormalPointerAuthorityKind::Unknown` and pointer-value memory remains
-  fail-closed.
-
-Boundaries:
-
-- No RV64 target lowering, expectations, unsupported markers, allowlists,
-  runtime comparison files, or baseline logs were changed.
-- Pointer-delta propagation remains out of scope until base formal authority is
-  proven.
+- Internal/static authority carrier works: Step 3 added
+  `bir::FormalPointerAuthorityKind`, populated `InternalOnly` from
+  `LirFunction::is_internal`, and idea 442 consumes the authority field.
+- External-linkage `930930-1::f` remains fail-closed. The refreshed prepared
+  dump still has computed-address same-module call sources for `f`, but the
+  four pointer-value rows remain `layout_authority=unknown` and
+  `range_verdict=unknown_compatible`.
+- `FormalPointerAuthorityKind::NoExternalCaller` is reserved as an accepted
+  consumer state, but no producer populates it. Current lowering writes only
+  `InternalOnly` or `Unknown` from `LirFunction::is_internal`.
+- Pointer-delta propagation such as `%mr_TR - 8` remains out of scope until the
+  base formal pointer has proven authority.
 
 Artifacts:
 
-- `build/agent_state/443_step3_closed_world_authority_surface/summary.md`
+- `build/agent_state/443_step4_residual_disposition/classification.md`
+- `build/agent_state/443_step4_residual_disposition/evidence_snippets.txt`
+- `build/agent_state/443_step4_residual_disposition/930930-1.prepared.out`
+- `build/agent_state/443_step4_residual_disposition/930930-1.object.err`
 
 ## Suggested Next
 
-Execute Step 4: Residual Disposition And Close Readiness.
+Plan-owner close-readiness review.
 
-Suggested owned files:
-
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/443_step4_residual_disposition/*`
-
-Recommended Step 4 packet: re-check the `930930-1` prepared residual and decide
-whether this idea should close as a completed internal-only authority-carrier
-surface, remain active for a real `NoExternalCaller` producer, or route back to
-idea 442 with the explicit note that external-linkage `930930-1::f` still
-lacks no-external-caller authority.
-
-Proof:
-
-```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
-```
+Recommended lifecycle disposition: close idea 443 as the completed authority
+carrier prerequisite, and split a separate producer idea if the project wants
+to populate `NoExternalCaller` or an equivalent closed-world/no-external-caller
+fact for non-internal definitions. Do not route external-linkage formal
+provenance publication back to idea 442 until that producer exists.
 
 ## Watchouts
 
@@ -87,7 +62,7 @@ Proof:
 
 ## Proof
 
-Step 3 delegated backend proof is captured in `test_after.log`:
+Step 4 delegated backend proof is captured in `test_after.log`:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
