@@ -1,92 +1,83 @@
 Status: Active
 Source Idea Path: ideas/open/441_terminator_select_publication_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First Publication Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3: implemented the first fused pointer `eq/ne` branch
-publication packet.
+Completed Step 4: re-probed terminator/select representatives after the Step 3
+fused pointer `eq/ne` branch publication consumer and classified residual
+ownership.
 
-Code/test changes:
+Residual table:
 
-- Added `plan_prepared_fused_pointer_branch_publication` and
-  `prepared_fused_pointer_branch_publication_available` as the producer-owned
-  predicate for prepared fused pointer branch publication.
-- Added RV64 object-route consumption for prepared fused pointer `eq/ne`
-  branches only when the prepared branch condition, terminator condition,
-  labels, condition home, and operand homes are coherent.
-- Kept raw pointer compare fallback closed; pointer relational predicates and
-  select-result publication were not included.
-- Added focused BIR contract coverage for accepted fused pointer branch
-  publication and fail-closed missing/incoherent/unsupported shapes.
-- Added focused RV64 object coverage for prepared pointer `ne` and `eq`
-  register-register branches plus existing pointer-null `ne`, while preserving
-  fail-closed relational, missing branch-condition, missing-home,
-  target-mismatch, and non-null pointer immediate cases.
+| Row | Current result | Classification |
+| --- | --- | --- |
+| `20041112-1` | RV64 object emission succeeds; `20041112-1.object.err` is empty and `20041112-1.o` is produced. | The former `bar.entry` fused pointer `ne` branch owner is resolved by Step 3. |
+| `20010329-1` | `unsupported_terminator_fragment` | First visible terminator owner is pointer relational fused compare: `compare=uge ptr %t5, %t7`; select-result branch rows remain later follow-up candidates. |
+| `20000622-1` | `unsupported_instruction_fragment` | Not isolated to terminator consumption; select-result publication rows exist, but the first current failure is instruction-side. |
+| `930930-1` | `unsupported_instruction_fragment` | First owners remain pointer-value/local publication and unsupported instruction/storage paths; pointer relational and select-derived branches are separate follow-ups. |
 
-Representative evidence:
+Accepted/closed by this idea packet:
 
-| Row | Result |
-| --- | --- |
-| `20041112-1 bar.entry` prepared `branch_condition entry kind=fused_compare condition=%t6 compare=ne ptr %t2, %t5` with `%t2`, `%t5`, `%t6` GPR homes | RV64 object probe succeeds and writes `build/agent_state/441_step3_fused_pointer_branch_publication/20041112-1.o` |
-| pointer relational predicates such as `uge ptr` | remain rejected |
-| missing prepared branch condition / missing operand home / target mismatch / non-null pointer immediate | remain rejected |
+- Prepared fused pointer `eq/ne` branches with coherent prepared branch
+  condition, target labels, condition home, and GPR-compatible operand homes.
+- Representative `20041112-1 bar.entry`
+  `branch_condition entry kind=fused_compare condition=%t6 compare=ne ptr %t2, %t5`
+  now emits in RV64 object route.
+
+Remaining possible idea-441 follow-ups, only if selected as new packets:
+
+- pointer relational fused pointer branch predicate policy/consumer
+  (`uge/ult/...`);
+- select-result publication into branch conditions (`root_is_select=yes`
+  feeding `ne i32 <select>, 0`).
+
+Out of scope / first-owned elsewhere:
+
+- direct-global return authority, closed by idea 440;
+- direct-global select-chain/global store-source rows that no longer block
+  `20041112-1`;
+- pointer-value memory, local/global store-source publication, unsupported
+  instruction fragments, stack-slot/unsupported destination storage,
+  expectation/allowlist changes, and pass/fail accounting.
 
 Artifacts:
 
-- `build/agent_state/441_step3_fused_pointer_branch_publication/summary.md`
-- `build/agent_state/441_step3_fused_pointer_branch_publication/20041112-1.prepared.out`
-- `build/agent_state/441_step3_fused_pointer_branch_publication/20041112-1.object.err`
+- `build/agent_state/441_step4_residual_disposition/classification.md`
+- `build/agent_state/441_step4_residual_disposition/20041112-1.prepared.out`
+- `build/agent_state/441_step4_residual_disposition/20041112-1.object.err`
+- `build/agent_state/441_step4_residual_disposition/20010329-1.object.err`
+- `build/agent_state/441_step4_residual_disposition/20000622-1.object.err`
+- `build/agent_state/441_step4_residual_disposition/930930-1.object.err`
 
 ## Suggested Next
 
-Execute Step 4: residual disposition and close-readiness review for idea 441.
-Suggested owned files:
-
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/441_step4_residual_disposition/*`
-
-Step 4 should re-probe representative terminator/select rows, confirm
-`20041112-1 bar.entry` no longer stops at fused pointer branch publication,
-classify any remaining direct-global select-chain or generic select/terminator
-residuals by first owner, and decide whether idea 441 is close-ready or needs a
-new bounded packet.
-
-Exact proof command:
-
-```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
-```
+Plan-owner close-readiness review. Recommendation: close idea 441 if its scope
+is the selected fused pointer `eq/ne` branch publication packet; otherwise keep
+active only by explicitly selecting one new exact packet, either pointer
+relational fused pointer branch policy/consumer or select-result publication
+into branch conditions.
 
 ## Watchouts
 
-- Keep this plan limited to terminator/select publication authority.
-- Do not reopen direct-global return authority; closed idea 440 routes only the
-  remaining `bar.entry` fused pointer compare branch here.
-- Do not infer branch conditions, select results, compare operands, or
-  terminator homes from raw BIR shape, block order, filenames, function names,
-  or one dump layout.
-- Keep any follow-up separate from this completed fused pointer `eq/ne` packet.
-- Do not include pointer relational predicates (`ult/uge/ule`) or select-chain
-  materialization unless the supervisor delegates a new packet.
-- Keep missing or incoherent publication authority fail-closed.
-- Do not accept or modify `test_baseline.new.log`.
-- Do not touch `test_before.log` or `review/`.
+- No remaining residual is the same fused pointer `eq/ne` publication gap.
+- Do not treat `20010329-1` pointer relational predicates as a small extension
+  of Step 3; they need a separate predicate policy.
+- Do not treat `root_is_select=yes` rows as branch publication without a
+  select-result authority contract.
+- Keep implementation, expectations, allowlists, `test_before.log`,
+  `test_baseline.new.log`, and `review/` untouched in this residual packet.
 
 ## Proof
 
-Step 3 proof command:
+Step 4 proof command:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed. `test_after.log` contains the backend subset proof. Focused
-pre-proof
-`cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^(backend_prepare_stack_layout|backend_riscv_object_emission)$'`
-passed.
+Result: passed. `test_after.log` contains the backend subset proof.
