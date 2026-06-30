@@ -2,7 +2,7 @@
 
 Status: Open
 Type: Target lowering idea
-Parent: `ideas/open/431_prepared_aggregate_abi_contract_review.md`
+Parent: `ideas/closed/431_prepared_aggregate_abi_contract_review.md`
 Source Evidence:
 - `build/agent_state/431_step1_aggregate_abi_audit/evidence.md`
 - `build/agent_state/431_step1_aggregate_abi_audit/classification.tsv`
