@@ -1,50 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Lower Prepared Scalar Call Arguments
+Current Step ID: 4
+Current Step Title: Lower Prepared Scalar Inline-Asm Fragments
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 implemented prepared scalar GPR call-result publication for coherent
-register-source to register-destination direct-call results in the RV64 object
-route.
+Step 3 verified the prepared scalar call-argument publication packet for
+frame-slot scalar value to GPR call arguments marked by coherent
+`FrameSlotValue` selection facts, including the `missing_frame_slot_arg_publication`
+shape.
 
 Completed work:
 
-- `object_emission.cpp` now requires a prepared destination value id, looks up
-  the destination object home, requires a register GPR home, checks that the
-  prepared home matches the call-result plan destination register, rejects
-  floating/non-GPR result payloads, and only then emits the post-call GPR move.
-- `backend_riscv_object_emission_test.cpp` now covers the accepted scalar
-  same-module call-result path and fail-closed shapes for missing destination
-  value id, missing destination home, mismatched destination home, non-GPR
-  destination bank, and non-GPR value bank.
-- Existing pointer-valued register-to-register call-result movement remains
-  accepted; this packet did not add pointer/address publication, frame-slot
-  argument support, inline-asm carrier repair, aggregate ABI, or F128 support.
+- Existing `object_emission.cpp` code routes
+  `PreparedStorageEncodingKind::FrameSlot` arguments through
+  `prepared_frame_slot_call_argument_offset`, verifies the prepared
+  `FrameSlotValue` source selection contract, confirms the source value id,
+  source stack-slot home, slot id, stack offset, scalar size/alignment, and ABI
+  GPR destination register, then emits a stack load into the destination GPR.
+- Existing focused backend coverage proves
+  `make_prepared_frame_slot_value_arg_call_module()` builds an object with the
+  frame-slot payload reloaded into `a0` before the call.
+- Existing fail-closed coverage rejects frame-slot address selection,
+  missing/incoherent source slot homes, non-GPR destination bank, non-scalar
+  floating argument type, impossible alignment, mismatched stack offsets, and
+  unsupported stack-frame offsets.
+- No new code changes were required for this packet; no frame-slot address
+  argument, symbol-address argument, prior-preservation argument, aggregate
+  `byval`/`sret`, inline-asm carrier repair, F128, or expectation/accounting
+  behavior was added.
 
 ## Suggested Next
 
-Execute Step 3: implement prepared scalar call-argument publication for the
-next coherent argument-only packet, preferably frame-slot scalar value to GPR
-call argument facts with `missing_frame_slot_arg_publication=yes`, while
-leaving frame-slot address arguments, symbol-address arguments, aggregate
-`byval`/`sret`, and inline-asm carrier repair out of scope.
+Execute Step 4: classify and implement only coherent prepared scalar inline-asm
+input/output materialization, starting with rows whose prepared inline-asm
+carrier facts are complete. Keep rows with `missing_operand0_home` or
+`tied_input_output_home_mismatch` out of the implementation packet unless a
+separate producer/carrier repair packet is selected.
 
 ## Watchouts
 
+- Step 3 did not add new code; review should treat the existing object route
+  and focused backend tests as the proof for the selected frame-slot scalar
+  argument packet.
 - Register-to-register pointer call results were pre-existing supported
   movement and should not be used as evidence for pointer/address publication
   progress.
-- Do not implement inline-asm carrier repair in the first packet; rows with
+- Do not implement inline-asm carrier repair in the next packet; rows with
   `missing_operand0_home` or `tied_input_output_home_mismatch` are not coherent
   prepared inline-asm facts.
-- Keep frame-slot scalar call-argument publication, frame-slot address
-  arguments, symbol-address arguments, and prior-preservation argument routing
-  out of this completed scalar result packet.
+- Keep frame-slot address arguments, symbol-address arguments, and
+  prior-preservation argument routing out of this completed scalar argument
+  packet.
 - Keep aggregate `sret`/`byval`, F128 helper-call behavior, missing prepared
   metadata reconstruction, pointer/address publication, and
   expectation/accounting changes out of this plan.
