@@ -1,6 +1,6 @@
 # RV64 Preterminator Predecessor-Edge Parallel-Copy Materialization
 
-Status: Open
+Status: Closed
 Type: RV64 prepared move-bundle materialization / route-classification idea
 Parent: `ideas/closed/461_rv64_move_bundle_coordinate_diagnostics.md`
 Source Evidence: `build/agent_state/461_step4_residual_disposition/`
@@ -54,18 +54,46 @@ not prepared dump order, testcase name, or raw BIR shape.
 - Expectation rewrites, unsupported-marker downgrades, allowlists, pass/fail
   accounting changes, runtime-comparison changes, or baseline/log churn.
 
-## Acceptance Criteria
+## Completion Notes
 
-- The exact `pre_terminator_copies` / `out_of_ssa_parallel_copy` event is
-  classified with either an accepted RV64 materialization contract or a precise
-  blocker routed to a separate source idea.
-- Any implementation consumes explicit coordinate/authority-backed prepared
-  facts and remains fail-closed for raw-only, missing-authority, mismatched
-  edge, non-register destination, stale stack-load, and generic move cases.
-- Focused coverage proves the selected packet and adjacent fail-closed
-  boundaries.
-- Fresh residual disposition records whether `20010329-1` advanced and routes
-  any next first-owner without broadening this idea.
+Closed by lifecycle split after Step 4 residual disposition. Idea 462 is
+complete as a negative route-classification slice: the coordinate-bearing
+`pre_terminator_copies` / `out_of_ssa_parallel_copy` event is not a sound
+plain predecessor-edge register copy.
+
+Step 3 retained the same object-route failure:
+
+```text
+event_kind=pre_terminator_copies function=main block_index=10 block_label=logic.rhs.end.40 instruction_index=0 phase=block_entry authority=out_of_ssa_parallel_copy parallel_copy_predecessor=logic.rhs.end.40 parallel_copy_successor=logic.end.41 move[0].from_value_id=20 move[0].to_value_id=21 destination_storage=register reason=phi_join_register_to_register fragment_status=generic_move_bundle_materialization_failed
+```
+
+The plain-copy route is rejected because `%t46` is produced in successor block
+`logic.end.41`, after predecessor block `logic.rhs.end.40` branches there:
+
+```text
+logic.rhs.end.40:
+  bir.br logic.end.41
+logic.end.41:
+  %t46 = bir.ule ptr %t42, %t45
+  %t50.phi.sel0 = bir.select ne i32 %t36, 0, i32 %t46, 0
+```
+
+Prepared GPR homes for `%t46` and `%t50` do not prove `%t46` is available at
+the predecessor terminator. A plain `%t46 -> %t50` copy or same-register no-op
+would infer predecessor availability from value-home metadata alone.
+
+Follow-up source idea:
+`ideas/open/463_select_edge_ule_source_producer_rematerialization.md`.
+
+That follow-up owns why the existing source-producer consumer does not
+rematerialize `%t46 = bir.ule ptr %t42, %t45`, how duplicate carrier facts
+`%t50.phi.sel0` / `%t50.phi.sel1` should be classified, and whether `%t42` /
+`%t45` are target-consumable at predecessor edge `logic.rhs.end.40 ->
+logic.end.41`.
+
+Close validation used existing canonical regression logs and `git diff --check`;
+no implementation, test, review, or baseline-log files were changed by this
+lifecycle transition.
 
 ## Reviewer Reject Signals
 

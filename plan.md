@@ -1,91 +1,91 @@
-# RV64 Preterminator Predecessor-Edge Parallel-Copy Materialization Plan
+# Select-Edge ULE Source-Producer Rematerialization Plan
 
 Status: Active
-Source Idea: ideas/open/462_rv64_preterminator_predecessor_edge_parallel_copy_materialization.md
-Activated From: ideas/closed/461_rv64_move_bundle_coordinate_diagnostics.md
+Source Idea: ideas/open/463_select_edge_ule_source_producer_rematerialization.md
+Activated From: ideas/closed/462_rv64_preterminator_predecessor_edge_parallel_copy_materialization.md
 
 ## Purpose
 
-Classify and, if justified, implement RV64 object-route handling for the
-coordinate-proven `pre_terminator_copies` predecessor-edge parallel-copy
-residual owner.
+Classify and, if justified, implement the RV64 source-producer
+rematerialization route for the successor-defined `%t46` value feeding `%t50`
+on predecessor edge `logic.rhs.end.40 -> logic.end.41`.
 
 ## Goal
 
-Advance the first `20010329-1` `unsupported_move_bundle_target_shape` owner
-using the object-route coordinate evidence for the `logic.rhs.end.40 ->
-logic.end.41` out-of-SSA parallel copy, without falling back to raw-shape or
-testcase-specific inference.
+Decide whether `%t46 = bir.ule ptr %t42, %t45` can be safely rematerialized at
+the predecessor edge for `%t46 -> %t50`, using explicit source-producer, edge,
+carrier, and operand-authority facts.
 
 ## Core Rule
 
-Only act on coordinate/authority-backed prepared facts for the proven
-`out_of_ssa_parallel_copy` register-destination event. Keep generic
-move-bundle support, stale stack-load consumption, and expectation changes out
-of scope.
+Do not treat successor-block `%t46` as predecessor-available from prepared
+value homes alone. Any progress must come from a sound source-producer
+rematerialization contract for `%t46 = bir.ule ptr %t42, %t45` and its
+operands.
 
 ## Read First
 
-- ideas/open/462_rv64_preterminator_predecessor_edge_parallel_copy_materialization.md
-- ideas/closed/461_rv64_move_bundle_coordinate_diagnostics.md
-- build/agent_state/461_step4_residual_disposition/disposition.md
-- build/agent_state/461_step3_coordinate_diagnostic_packet/20010329-1.object.err
-- build/agent_state/460_step1_move_bundle_residual_audit/20010329-1.prepared.out
+- ideas/open/463_select_edge_ule_source_producer_rematerialization.md
+- ideas/closed/462_rv64_preterminator_predecessor_edge_parallel_copy_materialization.md
+- build/agent_state/462_step3_preterminator_parallel_copy_consumer/blocker.md
+- build/agent_state/462_step4_residual_disposition/disposition.md
+- build/agent_state/462_step1_preterminator_parallel_copy_audit/audit.md
+- build/agent_state/462_step2_preterminator_parallel_copy_contract/contract.md
 - src/backend/mir/riscv/codegen/object_emission.cpp
 
 ## Current Target
 
-Coordinate-bearing first failure for `20010329-1`:
-
-- event kind: `pre_terminator_copies`
-- function/block: `main`, `block_index=10`, `block_label=logic.rhs.end.40`
-- phase: `block_entry`
+- source producer: `%t46 = bir.ule ptr %t42, %t45`
+- destination/select result: `%t50`
+- duplicate carriers: `%t50.phi.sel0` / `%t50.phi.sel1`
+- edge: `logic.rhs.end.40 -> logic.end.41`
+- predecessor block: `logic.rhs.end.40`
+- successor/source-producer block: `logic.end.41`
+- object-route event: `pre_terminator_copies`
 - authority: `out_of_ssa_parallel_copy`
-- parallel copy: `logic.rhs.end.40 -> logic.end.41`
-- execution site: `predecessor_terminator`
-- move: `move[0].from_value_id=20` to `move[0].to_value_id=21`
-- destination: `destination_storage=register`
-- reason: `phi_join_register_to_register`
-- excluded authorities: `select_edge_suppression_authorized=no`,
-  `cast_dependency_stack_publication_authorized=no`
-- current fragment status: `generic_move_bundle_materialization_failed`
+- rejected route: plain `%t46 -> %t50` predecessor-edge GPR copy
 
 ## Non-Goals
 
+- Plain preterminator predecessor-edge register copies for successor-defined
+  values.
 - Generic stack-to-register, register-to-register, or all-purpose move-bundle
   support.
 - Consuming `load_from_stack_slot missing_stack_freshness`.
-- Reopening ideas 456, 458, 459, 460, or 461 without new coordinate-bearing
-  evidence.
-- Ownership inference from prepared dump order, raw BIR shape, value ids
-  alone, block labels alone, function names, filenames, or testcase name.
-- Expectation rewrites, unsupported downgrades, allowlists, pass/fail
+- Treating successor-block values as predecessor-available from value homes
+  alone.
+- Reopening ideas 456, 458, 459, 460, 461, or 462 without new
+  coordinate-bearing evidence.
+- Testcase-name, function-name, block-label, value-id-only, raw BIR-shape, or
+  prepared-dump-order matching.
+- Expectation rewrites, unsupported-marker downgrades, allowlists, pass/fail
   accounting changes, runtime-comparison changes, or baseline/log churn.
 - Touching `review/`, `test_before.log`, `test_after.log`,
   `test_baseline.log`, or `test_baseline.new.log`.
 
 ## Working Model
 
-The diagnostic/probe work is complete. The next question is whether the
-coordinate-proven predecessor-edge out-of-SSA parallel copy has enough
-prepared authority and value-home information to materialize a narrow RV64
-register-destination move, or whether a producer/prepared metadata blocker
-must be split before implementation.
+The remaining failure is not a move-copy availability problem; it is a
+source-producer placement/rematerialization question. The route must explain
+why the current source-producer consumer does not rematerialize the unsigned
+pointer relational producer for `%t46`, whether duplicate carriers are a valid
+carrier-only shape, and whether `%t42` / `%t45` can be consumed at the
+predecessor edge.
 
 ## Execution Rules
 
 - Step 1 is audit/classification only; do not edit implementation there.
-- Any implementation must consume explicit coordinate/authority-backed facts,
-  not raw BIR shape or testcase identity.
-- Preserve fail-closed behavior for raw-only, missing-authority, mismatched
-  edge, non-register destination, stale stack-load, and generic move cases.
+- Any implementation must consume explicit source-producer, edge, carrier, and
+  operand-authority facts.
+- Preserve fail-closed behavior for missing, ambiguous, duplicate-unproven,
+  non-edge, non-consumable, stale stack-load, and generic move cases.
 - Classification-only proof:
 
 ```sh
 git diff --check
 ```
 
-- Code/test proof, if a consumer packet is selected:
+- Code/test proof, if a rematerialization packet is selected:
 
 ```sh
 cmake --build build -j2
@@ -95,29 +95,30 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Coordinate-Bearing Parallel-Copy Evidence
+### Step 1: Audit Select-Edge Source-Producer Rejection
 
-Re-read the 461 disposition, fresh object stderr, prepared output, and relevant
-RV64 move-bundle traversal. Record the exact prepared event, value homes,
-source/destination availability, edge identity, execution site, and authority
-facts for the `logic.rhs.end.40 -> logic.end.41` copy. Completion means
-`todo.md` contains an audit table and classifies whether Step 2 can define a
-consumer contract or must route to a producer/prepared metadata blocker.
+Re-read the 462 artifacts and current prepared/object output. Record why the
+existing source-producer consumer rejects or misses `%t46 = bir.ule ptr %t42,
+%t45` for `%t50` on edge `logic.rhs.end.40 -> logic.end.41`, including
+carrier facts, operand homes, and authority facts. Completion means `todo.md`
+contains the rejection/audit table and identifies whether a contract can be
+defined or a producer/prepared blocker must be split.
 
-### Step 2: Define Preterminator Parallel-Copy Materialization Contract
+### Step 2: Define ULE Source-Producer Rematerialization Contract
 
-Specify the accepted route for the coordinate-proven event: required
-authority, phase, edge identity, destination storage, source availability,
-emission point, and fail-closed cases. Completion means `todo.md` records the
-contract, target files/tests if implementation is justified, or the exact
-blocker if no sound consumer packet exists.
+Specify the accepted route for rematerializing this source producer at the
+predecessor edge: required edge identity, carrier proof, operand availability,
+pointer comparison authority, RV64 operand forms, emission point, and
+fail-closed cases. Completion means `todo.md` records the contract, target
+files/tests if implementation is justified, or the exact blocker.
 
-### Step 3: Implement Or Route First Parallel-Copy Packet
+### Step 3: Implement Or Route First Rematerialization Packet
 
-If Step 2 finds a bounded RV64 consumer packet, implement only that packet with
-focused coverage and proof. If no implementation is justified, record the
-precise blocker and route it to a separate source idea. Completion means proof
-passes for the selected packet or lifecycle state records the split/blocker.
+If Step 2 finds a bounded packet, implement only the coordinate/authority-backed
+rematerialization route with focused coverage. If no implementation is
+justified, record the precise blocker and route it to a separate source idea.
+Completion means proof passes for the selected packet or lifecycle state
+records the split/blocker.
 
 ### Step 4: Residual Disposition And Close Readiness
 
