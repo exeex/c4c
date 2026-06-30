@@ -1,57 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/452_select_edge_source_producer_rematerialization.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Source-Producer Rematerialization Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route First Rematerialization Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: defined the select-edge source-producer rematerialization
-contract for idea 452. Supporting artifact:
-`build/agent_state/452_step2_rematerialization_contract/contract.md`.
+Completed Step 3 by validating/routing the first rematerialization packet.
+Supporting artifact:
+`build/agent_state/452_step3_select_edge_rematerialization/summary.md`.
 
-Accepted first implementation shape:
+No implementation files or tests were changed. The selected
+register/immediate select-edge compare rematerialization behavior is already
+present in the current tree:
 
-| Required fact | Accepted boundary |
+| Coverage / route | Existing proof |
 | --- | --- |
-| Edge publication | Available unique `select_materialization` edge publication matching predecessor, successor, destination value id, and out-of-SSA move. |
-| Source producer | Prepared source-producer fact is `binary` with explicit producer block and instruction index. |
-| Producer op | Successor/join-block pointer compare in the supported compare family. |
-| Operand availability | Compare operands are materializable at the predecessor edge from prepared register homes or accepted immediates. |
-| Destination | Selected destination has an available register-destination block-entry publication and GPR-compatible home. |
-| Emission rule | Rematerialize the compare into the destination register; do not copy the successor-block compare result register. |
+| Simple prepared edge compare rematerialization | `materializes_published_prepared_join_transfer_select_edge_compare_source_object` proves a `source_producer=binary` compare is rematerialized into the selected destination register. |
+| Dependent register/immediate producer chain | `materializes_published_prepared_join_transfer_select_dependent_edge_compare_source_object` proves register/immediate dependency producers are emitted before the edge compare. |
+| Fail-closed boundaries | `rejects_published_prepared_join_transfer_select_ambiguous_publications_object` rejects non-select carrier and stack operand source shapes. |
 
-Rejected/routed from the first packet: `%t18 -> %t22`, because `%t18`
-depends on `%t17 = inttoptr i32 %t16 to ptr` and `%t17` has a stack-slot
-pointer home. That shape remains fail-closed until a separate stack-slot
-pointer dependency materialization contract exists or idea 451 provides the
-needed authority.
+Fresh `20010329-1` probing still fails at
+`unsupported_move_bundle_target_shape`, which is expected: `%t18 -> %t22`
+depends on `%t17` with a stack-slot pointer home and remains rejected from the
+first register/immediate packet.
 
 ## Suggested Next
 
-Step 3 should implement or route `Rematerialize Register-Operand Select-Edge
-Compare Sources`: consume prepared source-producer facts for the narrower
-register-operand candidates `%t32 -> %t36` and `%t46 -> %t50`, while keeping
-the `%t18/%t17` stack-slot pointer dependency rejected from the first packet.
-
-Suggested Step 3 owned files:
-
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/452_step3_select_edge_rematerialization/*`
-
-Step 3 proof command:
-
-```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
-```
+Step 4 should perform residual disposition and close-readiness review. The
+expected recommendation is to close idea 452 for the register/immediate
+source-producer rematerialization route and route the remaining `%t18/%t17`
+stack-slot pointer dependency to idea 451 or a narrower follow-up.
 
 ## Watchouts
 
@@ -79,10 +60,10 @@ Step 3 proof command:
 
 ## Proof
 
-Step 2 contract-only validation:
+Step 3 validation:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed.
+Result: passed. Proof log: `test_after.log`.
