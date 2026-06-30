@@ -1,112 +1,92 @@
 Status: Active
 Source Idea Path: ideas/open/469_branch_stack_load_authority_metadata.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Metadata Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 469: implemented the bounded prepared
-branch-stack-load authority metadata surface and focused coverage.
+Completed Step 4 for idea 469: residual disposition and close-readiness
+review after commit `2a60f4458` added the prepared branch-stack-load authority
+planner surface.
 
-Implemented surface:
+Decision: idea 469 is complete for the bounded planner/contract surface, but
+not close-ready as fully published prepared metadata. The precise remaining
+in-scope packet is collector/population/printer exposure for
+`PreparedBranchStackLoadAuthority` records, including unavailable statuses for
+the representative rows. RV64 branch-load consumption must not resume until
+available records are actually populated.
 
-- Added branch stack-load role names for `condition`, `lhs`, and `rhs`.
-- Added branch stack-load policy names with the selected
-  `load_from_stack_slot` route.
-- Added pointer-status classification with `not_pointer`, `proven`, and
-  `unknown`.
-- Added `PreparedBranchStackLoadAuthorityStatus` fail-closed statuses for
-  missing names/branch condition/terminator, unsupported terminator or branch
-  condition, condition/target mismatch, missing or unsupported branch values,
-  missing/mismatched homes, missing/mismatched frame slots,
-  missing/mismatched stack objects, missing policy, missing freshness, missing
-  clobber safety, and unknown pointer status.
-- Added `plan_prepared_branch_stack_load_authority` and
-  `prepared_branch_stack_load_authority_available`.
+Representative residual table:
 
-Focused coverage in `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-proves:
+| Row | Current disposition after Step 3 | First remaining owner |
+| --- | --- | --- |
+| `f.block_1` condition `%t2` | Structurally covered by the new planner for scalar stack-home branch conditions, but no full-module collector/printer currently emits a record; no prepared fact yet supplies branch-site `load_from_stack_slot`, freshness, or clobber-safety for the real row. | Idea 469 follow-up: collect/populate/print branch-stack-load authority records, initially unavailable for missing policy/freshness/clobber. |
+| `f.block_1` lhs `%t1` | Planner can represent a proven pointer stack-home lhs, but the real row lacks populated branch-stack-load policy/freshness/clobber facts and still needs explicit proven pointer status. | Idea 469 population first, then pointer/provenance authority boundary for external-formal/frame-slot provenance if pointer status remains unknown. |
+| `f.block_1` rhs `%p.reg2` | Register-home rhs; not a branch-stack-load row. | Existing GPR branch route, out of scope for 469. |
+| `f.block_4` condition `%t8` | Scalar stack-home condition would be representable by the planner, but no record is populated and the paired lhs `%t7` remains pointer/provenance blocked. | 469 population for condition status; pointer-value/provenance owner for `%t7`. |
+| `f.block_4` lhs `%t7` | Stack-home pointer lhs remains unavailable; `%t7` derives from pointer-value memory with unknown-compatible provenance/layout evidence. | Pointer-value/provenance authority, not 469 alone. |
+| `f.logic.end.14` condition `%t23` | Scalar stack-home condition would be representable by the planner, but the branch depends on `%t22`. | 469 population for condition status; select-result/block-entry stack-destination owner for `%t22`. |
+| `f.logic.end.14` lhs `%t22` | Select-result stack destination remains an adjacent owner; do not accept through branch stack-load metadata. | Select-result/block-entry stack-destination route. |
+| `f.block_7` pointer eq/ne branch | GPR-compatible and already out of scope. | Closed by earlier GPR branch work. |
 
-| Case | Result |
-| --- | --- |
-| Scalar stack-home branch condition with coherent branch identity, frame-slot/object relation, explicit `load_from_stack_slot`, freshness, and clobber-safety | accepted |
-| Missing branch stack-load policy | `missing_policy` |
-| Missing freshness | `missing_stack_freshness` |
-| Missing clobber safety | `missing_stack_clobber_safety` |
-| Mismatched value home | `home_value_mismatch` |
-| Missing frame slot | `missing_frame_slot` |
-| Mismatched frame slot object or offset | `frame_slot_mismatch` |
-| Mismatched stack object | `stack_object_mismatch` |
-| Pointer operand without proven pointer status | `pointer_status_unknown` |
-| Pointer operand with proven status and coherent stack facts | accepted |
-| Register-home branch value presented to stack-load authority | `unsupported_home` |
+Lifecycle recommendation: keep/split one exact producer-prepared follow-up for
+branch-stack-load authority record collection and printer/probe visibility.
+After that packet, residual disposition can decide whether an RV64 consumer is
+ready or whether freshness/clobber or pointer-status producers remain missing.
 
-Boundaries preserved:
-
-- No RV64 object emission changes.
-- No weakening of `PreparedFusedPointerBranchPublication`.
-- No raw BIR, testcase-name, stack-slot-number, block-order, or dump-shape
-  inference.
-- No pointer-value/provenance repair for `%t7`.
-- No select-result/block-entry stack-destination repair for `%t22/%t23`.
-- No expectation, allowlist, unsupported-marker, baseline, or pass/fail
-  accounting changes.
-
-Artifacts:
-
-- `build/agent_state/469_step3_branch_stack_load_authority_metadata/summary.md`
-- `test_after.log`
+Artifact:
+`build/agent_state/469_step4_residual_disposition/disposition.md`.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: residual disposition and close-readiness review.
+Select a focused collector/population/printer packet for idea 469, or have the
+plan owner split it if the supervisor wants the planner surface committed as a
+closed prerequisite first.
 
-Suggested Step 4 packet:
+Suggested packet:
 
 - Owned files:
+  `src/backend/prealloc/publication_plans.hpp`,
+  `src/backend/prealloc/publication_plans.cpp`,
+  prepared printer files if records need dump exposure,
+  `tests/backend/bir/backend_prepare_stack_layout_test.cpp`,
+  `tests/backend/bir/backend_prepared_printer_test.cpp` if printer coverage is
+  added,
   `todo.md`,
   `test_after.log`,
-  `build/agent_state/469_step4_residual_disposition/**`.
-- Re-check the representative `930930-1` branch stack-home rows against the
-  new metadata surface, classifying whether each row is now available,
-  unavailable because producer freshness/clobber inputs are still absent, or
-  owned by pointer-value/provenance or select-result stack-destination work.
-- Decide whether idea 469 is close-ready as a metadata-surface slice, should
-  remain active for a collector/population/printer packet, or should route a
-  later RV64 consumer only after available records are actually populated.
-- Proof command:
-
-```sh
-git diff --check
-```
+  `build/agent_state/469_step5_branch_stack_load_record_population/**`.
+- Add collection/population for branch-stack-load authority records keyed by
+  function, branch, role, value/home/frame-slot/object.
+- Print/probe available and unavailable statuses so real `930930-1` rows can
+  be classified without raw-shape inference.
+- Preserve fail-closed status for missing policy, missing freshness, missing
+  clobber-safety, unknown pointer status, and select-result stack destination.
+- Do not edit RV64 object emission.
 
 ## Watchouts
 
-- The implemented Step 3 surface is a planner/contract surface with focused
-  tests. It does not yet collect/populate records from full prepared modules or
-  print them in prepared dumps.
-- Available records now require an explicit `PreparedFrameSlot` tying the
-  value home slot id to the stack object id with matching offset, size, and
-  alignment.
-- A later RV64 consumer must require an available authority record; it must not
-  consume stack homes directly.
-- Pointer operands still require explicit proven pointer status. Unknown
-  pointer-value memory and external-formal ambiguity remain fail-closed.
-- Do not weaken existing GPR-compatible branch publication predicates.
-- Keep `%t7` pointer-value/provenance and `%t22/%t23` select-result
-  stack-destination work separate unless plan-owner selects a distinct route.
-- Do not modify `test_baseline.new.log`, `test_baseline.log`,
-  `test_before.log`, or `review/`.
+- The Step 3 planner accepts only explicit caller-provided facts. The current
+  prepared pipeline does not yet populate those facts for representative
+  modules.
+- Real `930930-1` rows should remain unavailable until record population and
+  freshness/clobber facts exist.
+- Do not infer load authority from stack slot ids, offsets, object ids, block
+  labels, or prepared dump spelling.
+- Do not treat pointer operands as proven unless pointer status is explicit.
+- Keep `%t7` pointer-value/provenance and `%t22` select-result stack-destination
+  boundaries separate.
+- Do not modify implementation files, tests, `test_after.log`,
+  `test_before.log`, baseline logs, or `review/` during this Step 4 packet.
 
 ## Proof
 
-Step 3 proof:
+Step 4 proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 Result: passed.
