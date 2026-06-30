@@ -6483,6 +6483,37 @@ prepare::PreparedBirModule make_prepared_same_module_sret_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_representative_same_module_sret_call_module() {
+  auto prepared = make_prepared_same_module_sret_call_module();
+  auto& callee = prepared.module.functions[0];
+  auto& main = prepared.module.functions[1];
+  auto& call = std::get<bir::CallInst>(main.blocks[0].insts[0]);
+  auto& object = prepared.stack_layout.objects[0];
+  auto& frame_slot = prepared.stack_layout.frame_slots[0];
+  auto& call_plan = prepared.call_plans.functions[0].calls[0];
+
+  call.args.resize(1);
+  call.arg_types.resize(1);
+  call.arg_abi.resize(1);
+  callee.params.resize(1);
+  prepared.value_locations.functions.clear();
+  call_plan.arguments.resize(1);
+  auto& sret_argument = call_plan.arguments[0];
+  auto& source_selection = *sret_argument.source_selection;
+
+  main.local_slots[0].size_bytes = 12;
+  main.local_slots[0].align_bytes = 4;
+  object.size_bytes = 12;
+  object.align_bytes = 4;
+  frame_slot.size_bytes = 12;
+  frame_slot.align_bytes = 4;
+  call_plan.memory_return->size_bytes = 12;
+  call_plan.memory_return->align_bytes = 4;
+  source_selection.source_size_bytes = std::size_t{12};
+  source_selection.source_align_bytes = std::size_t{4};
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_scalar_gpr_stack_slot_param_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -8261,6 +8292,67 @@ int builds_prepared_same_module_sret_call_object() {
       read_u32(text->bytes, base + 28) != 0x03010113 ||
       read_u32(text->bytes, base + 32) != 0x00008067) {
     return fail("expected same-module sret call to restore stack and return");
+  }
+  return 0;
+}
+
+int builds_representative_prepared_same_module_sret_call_object() {
+  const auto prepared = make_prepared_representative_same_module_sret_call_module();
+  const auto& call_plan = prepared.call_plans.functions[0].calls[0];
+  if (!call_plan.memory_return.has_value() ||
+      call_plan.memory_return->sret_arg_index != std::optional<std::size_t>{0} ||
+      call_plan.memory_return->encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      call_plan.memory_return->size_bytes != 12 ||
+      call_plan.memory_return->align_bytes != 4 ||
+      call_plan.arguments.size() != 1 ||
+      call_plan.arguments[0].value_bank != prepare::PreparedRegisterBank::AggregateAddress ||
+      !call_plan.arguments[0].source_selection.has_value() ||
+      call_plan.arguments[0].source_selection->kind !=
+          prepare::PreparedCallArgumentSourceSelectionKind::
+              LocalFrameAddressMaterialization ||
+      call_plan.arguments[0].source_selection->source_size_bytes !=
+          std::optional<std::size_t>{12} ||
+      call_plan.arguments[0].source_selection->source_align_bytes !=
+          std::optional<std::size_t>{4}) {
+    return fail("representative same-module sret fixture lost prepared memory-return facts");
+  }
+
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected representative prepared same-module sret call RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* callee = object::find_symbol(module, "fill_result");
+  const auto* main = object::find_symbol(module, "main");
+  if (text == nullptr || callee == nullptr || main == nullptr) {
+    return fail("expected representative same-module sret call object to publish text/functions");
+  }
+  if (text->bytes.size() != 36 || text->size_bytes != 36 ||
+      callee->value != 0 || callee->size_bytes != 4 ||
+      main->value != 4 || main->size_bytes != 32) {
+    return fail("expected representative same-module sret call object text layout");
+  }
+
+  const std::size_t base = main->value;
+  if (read_u32(text->bytes, base + 0) != 0xfd010113 ||
+      read_u32(text->bytes, base + 4) != 0x02113423 ||
+      read_u32(text->bytes, base + 8) != 0x01010513) {
+    return fail("expected representative same-module sret call to pass frame-slot address in a0");
+  }
+  if (module.relocations.size() != 1 ||
+      module.relocations[0].section != text->id ||
+      module.relocations[0].offset != base + 12 ||
+      module.relocations[0].type != R_RISCV_CALL_PLT ||
+      module.relocations[0].symbol != callee->id) {
+    return fail("expected representative same-module sret call relocation");
+  }
+  if (read_u32(text->bytes, base + 20) != 0x02813083 ||
+      read_u32(text->bytes, base + 24) != 0x03010113 ||
+      read_u32(text->bytes, base + 28) != 0x00008067) {
+    return fail("expected representative same-module sret call to restore stack and return");
   }
   return 0;
 }
@@ -13652,6 +13744,7 @@ int main() {
   status |= builds_prepared_byval_stack_copy_same_module_call_object();
   status |= rejects_prepared_byval_stack_copy_call_fail_closed_shapes();
   status |= builds_prepared_same_module_sret_call_object();
+  status |= builds_representative_prepared_same_module_sret_call_object();
   status |= rejects_prepared_same_module_sret_call_fail_closed_shapes();
   status |= builds_prepared_scalar_stack_result_call_object();
   status |= builds_prepared_scalar_stack_result_call_with_inferred_gpr_banks_object();
