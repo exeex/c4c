@@ -1,54 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/463_select_edge_ule_source_producer_rematerialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Select-Edge Source-Producer Rejection
+Current Step ID: 2
+Current Step Title: Define ULE Source-Producer Rematerialization Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 463. The existing select-edge source-producer
-consumer sees the right failure family for `%t46 -> %t50` on
-`logic.rhs.end.40 -> logic.end.41`, but it remains fail-closed because the
-representative source producer is consumed through duplicate carrier selects
-that are not explicitly authorized as carrier-only aliases of the final join
-result.
+Completed Step 2 contract definition for idea 463. A sound RV64
+source-producer rematerialization contract exists only if prepared metadata
+explicitly proves the duplicate carrier selects are carrier-only aliases of the
+same join-transfer result. That fact is missing today, so no RV64 consumer
+packet is justified yet.
 
-Rejection/audit table:
+Contract/blocker table:
 
 | Field | Value |
 | --- | --- |
-| Event | `pre_terminator_copies`, `main`, `block_index=10`, `block_label=logic.rhs.end.40`, `instruction_index=0` |
-| Edge | `logic.rhs.end.40 -> logic.end.41` |
-| Move | `%t46` / `from_value_id=20` to `%t50` / `to_value_id=21`, `destination_storage=register`, destination home `t0` |
-| Source producer | `%t46 = bir.ule ptr %t42, %t45` in `logic.end.41`; publication class is the selected binary source-producer route |
-| `%t50.phi.sel0` / `%t50.phi.sel1` carrier facts | Both consume `%t46` before final `%t50`; they are duplicate carrier values, not the join result name itself |
-| `%t42` operand | Home `%t42 value_id=18 kind=register reg=s1`; loaded before the predecessor edge, so the current register/immediate operand helper can accept it |
-| `%t45` operand | Home `%t45 value_id=19 kind=register reg=s2`; current operand helper can accept the register home, but no separate edge-dependency authority is printed |
-| Existing consumer behavior | `fragment_for_prepared_select_edge_source_producer` requires the binary result to have only approved carrier uses; `prepared_select_edge_binary_source_has_only_carrier_uses` currently requires carrier select results to match `join_transfer.result` |
-| First missing fact | Durable prepared carrier-alias authority that proves `%t50.phi.sel0` / `%t50.phi.sel1` are carrier-only aliases for final `%t50`, allowing rematerialization of `%t46` directly into `%t50` without raw shape inference |
-| Classification | Not a plain-copy packet and not a missing GPR-home packet. This is a duplicate-carrier source-producer policy/metadata gap. |
+| Accepted edge/source route | `pre_terminator_copies` edge `logic.rhs.end.40 -> logic.end.41`, move `%t46 -> %t50`, prepared edge publication with `source_producer_kind=binary`, source `%t46 = bir.ule ptr %t42, %t45`, destination `%t50` |
+| Required carrier proof | Producer-owned prepared metadata must prove `%t50.phi.sel0` and `%t50.phi.sel1` are carrier-only aliases for the same join-transfer result `%t50` |
+| Required operand proof | `%t42` and `%t45` must each be target-consumable at the predecessor-edge site through a GPR home, immediate/null, or explicit dependency-operand authority |
+| Required RV64 behavior | Rematerialize the unsigned pointer `ule` compare at the predecessor-edge move site into the `%t50` destination register; never copy successor-defined `%t46` |
+| Rejected adjacent shapes | Raw-name carrier inference, value-id-only matching, plain `%t46 -> %t50` copy/no-op, unapproved non-carrier uses, stale stack-load authority, generic move-bundle support, non-edge or mismatched publication |
+| Exact blocker | No durable prepared carrier-alias record currently proves the duplicate `%t50.phi.sel0` / `%t50.phi.sel1` values are aliases of final `%t50`; current RV64 code therefore correctly rejects them in `prepared_select_edge_binary_source_has_only_carrier_uses` |
+| Step 3 disposition | Route or split to a producer/prepared metadata packet for explicit duplicate-carrier alias authority before any RV64 rematerialization consumer is widened |
 
 Artifact:
-`build/agent_state/463_step1_select_edge_ule_source_producer_audit/audit.md`.
+`build/agent_state/463_step2_select_edge_ule_source_producer_contract/contract.md`.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: define the duplicate-carrier select-edge
-source-producer contract. The contract should either require explicit prepared
-carrier-alias authority for `%t50.phi.sel0` / `%t50.phi.sel1`, or route Step 3
-to a producer/prepared metadata packet if that relationship cannot be expressed
-without raw-shape inference.
+Execute Step 3 from `plan.md` as a routing/blocker packet, not an RV64 lowering
+packet: select or split the producer/prepared metadata work needed to publish
+explicit duplicate-carrier alias authority for `%t50.phi.sel0` /
+`%t50.phi.sel1`.
 
 Suggested artifact directory:
-`build/agent_state/463_step2_select_edge_ule_source_producer_contract/`.
+`build/agent_state/463_step3_select_edge_ule_source_producer_route/`.
 
 ## Watchouts
 
-- Do not edit implementation files during Step 1.
+- Do not edit RV64 implementation files until explicit carrier-alias metadata
+  exists.
 - Do not implement a plain `%t46 -> %t50` copy or same-register no-op.
 - Do not infer predecessor availability from prepared value homes alone.
+- Do not infer duplicate-carrier authority from `%t50.phi.sel0` /
+  `%t50.phi.sel1` names, raw select shape, value ids, block labels, or dump
+  order.
 - Do not add generic stack-to-register, register-to-register, or all-purpose
   move-bundle support.
 - Do not consume `load_from_stack_slot missing_stack_freshness`.
@@ -61,7 +60,7 @@ Suggested artifact directory:
 
 ## Proof
 
-Step 1 proof:
+Step 2 proof:
 
 ```sh
 git diff --check
