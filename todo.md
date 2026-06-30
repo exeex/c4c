@@ -1,19 +1,18 @@
 Status: Active
-Source Idea Path: ideas/open/461_rv64_move_bundle_coordinate_diagnostics.md
+Source Idea Path: ideas/open/462_rv64_preterminator_predecessor_edge_parallel_copy_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Coordinate-Bearing Parallel-Copy Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 for idea 461: recorded residual disposition and close
-readiness under `build/agent_state/461_step4_residual_disposition/`.
+Closed idea 461 as complete diagnostic/probe support and activated idea 462
+for the proven RV64 preterminator predecessor-edge parallel-copy residual.
 
-Idea 461 is close-ready as diagnostic/probe support. Step 3 produced
-coordinate-bearing evidence for the first `20010329-1` RV64 move-bundle
-failure:
+The selected follow-up starts from coordinate-bearing object-route evidence,
+not prepared dump order, raw BIR shape, or testcase name:
 
 | Field | Value |
 | --- | --- |
@@ -26,40 +25,37 @@ failure:
 | Suppression/cast authority | `select_edge_suppression_authorized=no`, `cast_dependency_stack_publication_authorized=no` |
 | Fragment status | `generic_move_bundle_materialization_failed` |
 
-Residual owner classification: the proven failure is not the earlier `4:1`
-cast-dependency stack-publication candidate, not an idea-459 suppression
-matcher failure, and not stale stack-load authority. The follow-up owner should
-be a separate RV64 select-result/preterminator predecessor-edge parallel-copy
-materialization or route-classification idea for the `logic.rhs.end.40 ->
-logic.end.41` out-of-SSA select-result copy.
-
 ## Suggested Next
 
-Plan-owner close review for idea 461. If more progress is desired, split or
-activate a new source idea for the proven `pre_terminator_copies` /
-`out_of_ssa_parallel_copy` residual owner. Do not select semantic lowering in
-idea 461.
+Execute Step 1 from `plan.md`: audit the coordinate-bearing evidence, prepared
+move-bundle/value-home facts, source/destination availability, edge identity,
+execution site, and authority facts for the exact `logic.rhs.end.40 ->
+logic.end.41` predecessor-edge copy.
+
+Suggested artifact directory:
+`build/agent_state/462_step1_preterminator_parallel_copy_audit/`.
 
 ## Watchouts
 
-- This is diagnostics/probe support, not semantic lowering.
-- Do not add generic stack-to-register or register-to-register move support.
+- Do not edit implementation files during Step 1.
+- Do not add generic stack-to-register, register-to-register, or all-purpose
+  move-bundle support.
 - Do not consume `load_from_stack_slot missing_stack_freshness`.
-- The first proven `20010329-1` failure is not the earlier `4:1` cast stack
-  publication candidate and is not an idea-459 suppression matcher failure.
-- Do not infer ownership from value ids, block indexes, instruction indexes,
-  raw BIR shape, filenames, function names, or one prepared dump alone; use
-  the object-route coordinate diagnostic.
-- Do not accept or modify `test_baseline.new.log`.
-- Do not touch `test_before.log`, `test_after.log`, baseline logs, or
-  `review/`.
+- Do not reopen ideas 456, 458, 459, 460, or 461 without new coordinate-bearing
+  evidence that their exact route owns the first failure.
+- Do not infer ownership from prepared dump order, raw BIR shape, value ids
+  alone, block labels alone, function names, filenames, or testcase name.
+- Do not modify `test_baseline.new.log`, `test_baseline.log`,
+  `test_before.log`, `test_after.log`, or `review/`.
 
 ## Proof
 
-Step 4 proof:
+Lifecycle activation proof:
 
 ```sh
 git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.

@@ -1,6 +1,6 @@
 # RV64 Move-Bundle Coordinate Diagnostics
 
-Status: Open
+Status: Closed
 Type: RV64 diagnostic/probe support idea
 Parent: `ideas/closed/460_rv64_move_bundle_residual_owner_audit.md`
 Source Evidence: `build/agent_state/460_step2_residual_disposition/`
@@ -59,6 +59,40 @@ lowering idea is safe.
 - A follow-up source idea, if needed, is specific to the proven event owner and
   preserves fail-closed stale stack-load, generic move support, and raw-shape
   boundaries.
+
+## Completion Notes
+
+Closed by lifecycle split after Step 4 residual disposition. Step 3 added
+coordinate-bearing RV64 move-bundle diagnostics, and Step 4 recorded the first
+remaining `20010329-1` object-route failure as:
+
+| Field | Value |
+| --- | --- |
+| Diagnostic class | `unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves` |
+| Event kind | `pre_terminator_copies` |
+| Function | `main` |
+| Block | `block_index=10`, `block_label=logic.rhs.end.40` |
+| Instruction | `instruction_index=0` |
+| Move-bundle phase | `block_entry` |
+| Bundle coordinates | `bundle_block_index=10`, `bundle_instruction_index=0` |
+| Bundle authority | `out_of_ssa_parallel_copy` |
+| Parallel-copy context | `logic.rhs.end.40 -> logic.end.41`, `execution_site=predecessor_terminator` |
+| Move | `move[0].from_value_id=20`, `move[0].to_value_id=21`, `destination_kind=value`, `destination_storage=register`, `op_kind=move`, `reason=phi_join_register_to_register` |
+| Suppression authority | `select_edge_suppression_authorized=no` |
+| Cast stack publication authority | `cast_dependency_stack_publication_authorized=no` |
+| Fragment status | `generic_move_bundle_materialization_failed` |
+
+This satisfies the diagnostics/probe source scope. The residual owner is not
+the earlier `block_index=4 instruction_index=1` cast-dependency stack
+publication candidate, not the idea-459 suppression matcher target, not stale
+stack-load authority, and not a generic unnamed stack/register move bucket.
+
+Follow-up source idea:
+`ideas/open/462_rv64_preterminator_predecessor_edge_parallel_copy_materialization.md`.
+
+Close validation used existing canonical regression logs and `git diff --check`;
+no implementation, test, review, or baseline-log files were changed by this
+lifecycle transition.
 
 ## Reviewer Reject Signals
 
