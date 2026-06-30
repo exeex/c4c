@@ -19,9 +19,15 @@ instead of mining closed idea text.
     fail-closed contract gaps, runtime mismatch families, timeouts, and BIR or
     semantic producer gaps.
   - Each row should name representative cases and the owning layer.
+- `try_gcc_torture_postmortem.md`
+  - Reviews the preserved `try_gcc_torture` branch as an exploratory run.
+  - Records which changes are worth rewriting, which route choices were traps,
+    and why F128 must be treated as lowest-priority quarantine work instead of
+    the main RV64 gcc_torture route.
 - `regression_delta.md`
   - Records pass-to-fail and fail-to-pass deltas caused by the prepared
-    contract round, with special attention to fail-closed contract regressions.
+    contract round and by comparison with `try_gcc_torture`, with special
+    attention to fail-closed contract regressions and broad pass-count drops.
 - `followup_idea_plan.md`
   - Lists the follow-up ideas generated from the umbrella, their owning layer,
     dependency order, and the docs rows they consume.
@@ -39,6 +45,10 @@ instead of mining closed idea text.
   that row.
 - Do not fix BIR-owned facts by adding MIR/RV64 inference, fallback name
   recovery, raw BIR shape matching, or named testcase shortcuts.
+- Do not let F128 or `conversion.c` drive the postmortem umbrella. F128 is
+  lowest priority unless fresh bucket evidence proves it blocks broad non-F128
+  coverage; eventual F128 support should be external soft-float ABI glue, not
+  compiler-internal softfloat implementation.
 - Later ideas should cite the artifact rows they consume. If a later idea
   disagrees with an earlier row, record the correction in the later artifact
   and propose a follow-up idea to reconcile the source artifact.
