@@ -8,50 +8,73 @@ Current Step Title: Audit Carrier Alias Identity Callers
 
 ## Just Finished
 
-Parked idea 467 after Step 3 exposed a caller/API boundary instead of an
-acceptance-ready planner repair. The attempted hidden `const_cast` mutation is
-rejected, and the const-correct scratch-copy route is insufficient because
-original-module consumers do not share the synthesized alias identity.
+Completed Step 1 audit for idea 468. The caller/API matrix shows that carrier
+alias identity must be published into one shared prepared-module name table
+before const consumers run.
 
-The new active idea 468 owns the prerequisite identity publication boundary:
+Caller matrix:
 
-| Field | Value |
-| --- | --- |
-| Synthesized aliases | `%t50.phi.sel0` / `%t50.phi.sel1` |
-| Needed fact | Shared durable `ValueNameId` identity for carrier aliases after semantic candidate checks pass |
-| Rejected route | Hidden mutation behind `const PreparedNameTables&` |
-| Insufficient route | Scratch-copy collector publication not visible to original-module consumers |
-| Acceptable routes | Explicit mutable pre-consumer publication stage, or consumer-facing API that does not rely on scratch-copy name insertion |
+| Surface | Module access | Shared identity need | Classification |
+| --- | --- | --- | --- |
+| Planner input (`publication_plans.hpp:729`) | `const PreparedNameTables*` | Needs mutation if it publishes alias `ValueNameId`s. | Current API is read-only; hidden mutation is rejected. |
+| Planner lookup (`publication_plans.cpp:2794`, `:3090`) | Existing name lookup only | Needs alias names to exist. | Exact current `unsupported_carrier_alias` rejection point. |
+| Evidence collector (`publication_plans.cpp:3199`) | `const PreparedBirModule&` | Needs stable identity for available records. | Not a safe mutation site. |
+| Available-authority collector (`publication_plans.cpp:3184`) | `const PreparedBirModule&` | Feeds RV64 consumers. | Must read already-published canonical identity. |
+| Prepared dump (`prepared_printer.hpp:11`, `select_chains.cpp:240`) | `const PreparedBirModule&` | Needs stable display names. | Read-only; must not be the publisher. |
+| RV64 function route (`object_emission.cpp:8979`, `:9009`) | `const PreparedBirModule&` | Needs available authority records. | Not a safe mutation site. |
+| RV64 alias-select suppression (`object_emission.cpp:7420`) | Original `prepared.names` lookup | Needs alias result name in the original table. | Proves scratch-copy publication is insufficient. |
+| Prealloc contract-plan phase (`prealloc.cpp:30`, `:42`) | Mutable `PreparedBirModule&` | Can publish before const handoff. | First viable API boundary. |
+| Backend RV64 handoff (`backend.cpp:1566`, `:1570`, `:212`) | Prepared module is produced then passed const | Needs publication before handoff. | Confirms pre-consumer publication boundary. |
+
+Selected first viable boundary: define a producer-owned mutable publication
+stage in prealloc, before prepared dump/RV64 const consumers. The stage should
+publish carrier-alias `ValueNameId`s into canonical `PreparedNameTables` after
+semantic candidate checks pass. It must not use `const_cast`, scratch-copy
+authority, raw `.phi.sel` inference, or RV64 lowering.
+
+Artifact:
+`build/agent_state/468_step1_carrier_alias_identity_callers/audit.md`.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: audit carrier-alias collection callers,
-prepared dump paths, and RV64/object-route prepared-module access. Produce a
-caller matrix showing which consumers need shared identity and where the
-publication/API boundary can live.
+Execute Step 2: define the shared identity publication contract. Recommended
+target is a mutable pre-consumer publication stage such as
+`populate_select_carrier_alias_identity(PreparedBirModule&)`, with focused
+positive and negative contract cases for Step 3.
 
-Suggested artifact directory:
-`build/agent_state/468_step1_carrier_alias_identity_callers/`.
+Step 2 should define:
+
+- required semantic facts for publishing a synthesized carrier-alias name;
+- whether source-use closure is enforced in the publication stage or rechecked
+  by the authority collector;
+- how prepared dump and RV64 const consumers observe the canonical name table;
+- rejected shapes for wrong edge/source/final result, duplicate candidates,
+  raw-name-only aliases, extra source uses, and scratch-copy-only publication.
+
+Expected Step 2 proof:
+
+```sh
+git diff --check
+```
 
 ## Watchouts
 
-- Do not edit implementation files during Step 1.
+- Do not edit implementation in Step 2 unless explicitly delegated.
 - Do not reintroduce `const_cast` or hidden mutation.
-- Do not claim scratch-copy-only publication is sufficient for
-  original-module consumers.
+- Do not claim scratch-copy-only publication is sufficient for original-module
+  consumers.
 - Do not make RV64 lowering changes in this identity/API idea.
-- Do not infer aliases from raw `%*.phi.sel*` spelling, raw select shape,
-  value ids, block labels, function names, testcase names, or dump order.
+- Do not infer aliases from `%*.phi.sel*` spelling, testcase names, dump order,
+  value ids, block labels, or raw shape alone.
 - Do not modify `test_baseline.new.log`, `test_baseline.log`,
   `test_before.log`, `test_after.log`, or `review/`.
 
 ## Proof
 
-Lifecycle split proof:
+Step 1 proof:
 
 ```sh
 git diff --check
-python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
