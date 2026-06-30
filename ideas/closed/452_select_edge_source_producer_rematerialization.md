@@ -1,11 +1,15 @@
 # Select-Edge Source-Producer Rematerialization
 
-Status: Open
+Status: Closed
 Type: Prepared move-bundle materialization authority idea
 Parent: `ideas/closed/450_select_result_branch_publication.md`
 Source Evidence: `build/agent_state/450_step4_residual_disposition/`
+Close Evidence: `build/agent_state/452_step4_residual_disposition/disposition.md`
 Owning Layer: Prepared source-producer facts for predecessor-edge
 out-of-SSA move bundles
+Closed Disposition: Complete for register/immediate select-edge
+source-producer rematerialization; stack-slot pointer dependency routed to
+`ideas/open/453_stack_slot_pointer_select_edge_dependency_materialization.md`
 
 ## Goal
 
@@ -67,6 +71,37 @@ dependency chain from explicit prepared source-producer facts or fail closed.
 - Remaining stack-home, pointer-provenance, instruction-side, or storage
   residuals are routed to their own source ideas instead of being folded into
   this one.
+
+## Completion Notes
+
+Steps 1 and 2 classified the select-edge source-producer shape and defined the
+first bounded contract. Step 3 found no implementation change was needed for
+the selected register/immediate packet: existing object emission already
+rematerializes prepared select-edge compare sources whose dependencies are
+register or immediate compatible, and focused object tests cover accepted and
+fail-closed cases. Step 4 re-probed `20010329-1` and confirmed that the
+remaining `%t18 -> %t22` failure is not more register/immediate
+rematerialization.
+
+The unresolved representative row depends on `%t17 = inttoptr i32 %t16 to ptr`
+with `%t17` stored in stack slot `slot_id=2 offset=16`. That stack-slot pointer
+dependency was explicitly rejected from idea 452's selected packet. Copying
+`%t18` remains unsound because `%t18` is defined in the successor/join block
+after the predecessor-edge move site.
+
+Idea 452 is closed as complete for register/immediate select-edge
+source-producer rematerialization. The remaining stack-slot pointer dependency
+inside select-edge materialization is routed to
+`ideas/open/453_stack_slot_pointer_select_edge_dependency_materialization.md`.
+General stack-home branch operand/condition work remains separately tracked by
+`ideas/open/451_stack_home_branch_operand_materialization.md`.
+
+## Validation
+
+- Step 4 backend proof passed before log roll-forward:
+  `cmake --build build -j2` plus
+  `ctest --test-dir build -j2 --output-on-failure -R '^backend_'`.
+- Step 4 `git diff --check` passed.
 
 ## Reviewer Reject Signals
 
