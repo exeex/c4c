@@ -1,42 +1,41 @@
-# Prepared Frame-Slot Materialization No-Clobber Facts Plan
+# Prepared Frame-Slot Source-Fact Population Plan
 
 Status: Active
-Source Idea: ideas/open/474_prepared_frame_slot_materialization_no_clobber_facts.md
-Activated From: ideas/closed/473_branch_site_stack_slot_materialization_no_clobber_source.md
+Source Idea: ideas/open/475_prepared_frame_slot_source_fact_population.md
+Activated From: ideas/closed/474_prepared_frame_slot_materialization_no_clobber_facts.md
 
 ## Purpose
 
-Create the lower-level prepared source-fact surface needed for later
-branch-site stack-slot certificate production.
+Populate real prepared frame-slot source facts using the carrier/status surface
+completed by idea 474.
 
 ## Goal
 
-Publish frame-slot materialization/write records plus path validity,
-same-slot write exclusion, effect safety, and publication/move/parallel-copy
-non-clobber classifications.
+Produce real materialization/write, path/dominance, same-slot write exclusion,
+effect safety, and publication/move/copy non-clobber facts for scalar branch
+stack slots without raw-shape inference.
 
 ## Core Rule
 
 Do not set downstream branch-stack-load authority availability in this plan.
-This plan owns only independent prepared source facts.
+Populate only the independent prepared source-fact records created by idea 474.
 
 ## Read First
 
-- ideas/open/474_prepared_frame_slot_materialization_no_clobber_facts.md
-- ideas/closed/473_branch_site_stack_slot_materialization_no_clobber_source.md
-- build/agent_state/473_step4_residual_disposition/disposition.md
-- build/agent_state/473_step3_materialization_no_clobber_source/blocker.md
-- build/agent_state/473_step2_materialization_no_clobber_contract/contract.md
+- ideas/open/475_prepared_frame_slot_source_fact_population.md
+- ideas/closed/474_prepared_frame_slot_materialization_no_clobber_facts.md
+- build/agent_state/474_step4_residual_disposition/disposition.md
+- build/agent_state/474_step3_source_fact_carrier/summary.md
+- review/474_step3_source_fact_carrier_review.md
 - src/backend/prealloc/publication_plans.hpp
 - src/backend/prealloc/publication_plans.cpp
 
 ## Current Target
 
 - Primary scalar candidate:
-  - `f.logic.end.14` condition `%t23`, slot `#21`: branch/load identity exists,
-    but no independent materialization/write event, path/dominance proof,
-    same-slot write exclusion, effect safety, or publication/move/copy
-    non-clobber source fact exists.
+  - `f.logic.end.14` condition `%t23`, slot `#21`: carrier can preserve a
+    source-fact row, but real prepared data still reports
+    `missing_materialization_event`.
 - Boundary rows:
   - `%t22` remains a select-result stack-destination boundary.
   - `%t1` and `%t7` remain pointer-status/provenance boundaries.
@@ -44,6 +43,8 @@ This plan owns only independent prepared source facts.
 
 ## Non-Goals
 
+- Defining another carrier/status surface unless Step 1 proves the existing
+  idea 474 surface is structurally insufficient.
 - RV64 branch-load emission or target lowering.
 - Directly marking branch-stack-load records available.
 - Branch-stack-load policy/freshness/clobber consumption.
@@ -60,17 +61,17 @@ This plan owns only independent prepared source facts.
 
 ## Working Model
 
-Idea 473 proved there is no exact branch-site source-fact implementation packet
-without a lower-level carrier. This plan owns that carrier and producer
-surface, not downstream consumers.
+Idea 474 completed the source-fact carrier/status API. This plan owns the next
+producer layer: populating real records from explicit materialization/write and
+no-clobber evidence while preserving protected boundary classes.
 
 ## Execution Rules
 
 - Step 1 is audit/classification only; do not edit implementation there.
 - Keep downstream branch-stack-load authority unavailable until a later packet
   consumes explicit source facts.
-- Preserve pointer-status, select-result, and unsupported-terminator
-  boundaries.
+- Preserve select-result, pointer/provenance, and unsupported-terminator rows
+  as `unsupported_boundary` or separate owners.
 - Classification-only proof:
 
 ```sh
@@ -87,24 +88,24 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Prepared Source-Fact Carrier Requirements
+### Step 1: Audit Real Source-Fact Population Inputs
 
-Inspect prepared/prealloc surfaces for frame-slot writes, value homes, stack
-objects, calls/helpers/inline asm, publications, move bundles, and parallel
-copies. Completion means `todo.md` records the required carrier fields,
-statuses, and first exact producer packet or blocker.
+Inspect real prepared evidence for frame-slot writes, value homes, stack
+objects, path/dominance, same-slot writes, calls/helpers/inline asm,
+publications, move bundles, and parallel copies for `%t23` slot `#21`.
+Completion means `todo.md` records which source facts can be populated and
+which boundary rows remain out of scope.
 
-### Step 2: Define Prepared Source-Fact Contract
+### Step 2: Define Population Contract
 
-Specify records/statuses for materialization/write events, source value and
-frame-slot/object identity, path validity, same-slot write exclusion, effect
-safety, and publication/move/copy non-clobber classification. Completion means
-`todo.md` records positive/negative cases and implementation/test surfaces if
-a bounded producer packet is justified.
+Specify how real prepared evidence populates existing source-fact records and
+which statuses remain fail-closed. Completion means `todo.md` records positive
+and negative cases and names implementation/test surfaces if a bounded producer
+packet is justified.
 
-### Step 3: Implement Or Route Prepared Source-Fact Producer
+### Step 3: Implement Or Route Source-Fact Population
 
-If Step 2 finds a bounded producer packet, implement only that source-fact
+If Step 2 finds a bounded producer packet, implement only that population
 surface with focused coverage. If no implementation is justified, record the
 precise blocker and route it. Completion means proof passes or lifecycle state
 records the split/blocker.
@@ -113,5 +114,5 @@ records the split/blocker.
 
 Re-probe representative facts and classify any remaining first owner.
 Completion means this source idea closes, remains active with one exact
-in-scope packet, or routes downstream branch-site stack-slot source-fact /
-certificate / authority follow-up.
+in-scope packet, or routes downstream certificate/authority / other durable
+follow-up.
