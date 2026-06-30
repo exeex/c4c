@@ -1,60 +1,77 @@
 Status: Active
 Source Idea Path: ideas/open/457_before_instruction_stack_to_register_move_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Before-Instruction Register-Destination Move Bundle
+Current Step ID: 2
+Current Step Title: Define Register-Destination Move Materialization Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 457. Evidence is recorded under
-`build/agent_state/457_step1_before_instruction_register_destination_audit/`.
+Completed Step 2 for idea 457. The register-destination move materialization
+contract is recorded under
+`build/agent_state/457_step2_register_destination_move_contract/contract.md`.
 
-The inherited `20010329-1` probe still has `prepared_exit=0`, `object_exit=2`,
-and `unsupported_move_bundle_target_shape: prepared move bundle requires
-unsupported RV64 moves`. The residual owner is the later
-`move_bundle phase=before_instruction authority=none block_index=4
-instruction_index=2`, not the closed idea 456 cast-dependency consumer.
+Accepted first packet shape: a narrow before-instruction compare-operand
+materialization route, not generic stack-to-register support. Required facts:
 
-| Move | Source value | Destination value | Source home | Destination home | Reason | Carrier use | Scratch/clobber risk | Traversal event | First missing authority |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Register source | `from_value_id=7` / `%t15` | `to_value_id=10` / `%t18` | register `s1` | register `t0` | `consumer_register_to_register` | LHS operand for `%t18 = bir.ule ptr %t15, %t17` | Unsafe as a standalone sequential copy because the paired RHS move writes the same destination value/register | Prepared bundle is printed; current RV64 object route rejects the register-destination bundle shape | Explicit compare-operand materialization contract tying the bundle to binary operand roles plus non-clobbering register/order proof |
-| Stack source | `from_value_id=9` / `%t17` | `to_value_id=10` / `%t18` | stack slot `#2+16`, with separate `rematerialize_cast_from_source status=available`; stack-load path is `missing_stack_freshness` | register `t0` | `consumer_stack_to_register` | RHS operand for `%t18 = bir.ule ptr %t15, %t17` | High if treated as ordinary stack-to-register: stale stack load is not authorized and writing `t0` can clobber the LHS operand | Same before-instruction register-destination bundle; idea 456 only exposed/suppressed the earlier authorized stack-destination publication | Authority to consume only the explicit cast-rematerialization path as compare-operand setup, while rejecting `load_from_stack_slot missing_stack_freshness` |
+- prepared `before_instruction` register-destination move bundle with stable
+  block/instruction identity;
+- explicit prepared source-producer for the same instruction;
+- supported binary compare producer whose result is the destination value;
+- operand-role mapping for every bundle move;
+- GPR-compatible destination home;
+- source operands with GPR register homes, supported immediates, or explicit
+  `rematerialize_cast_from_source status=available` authority;
+- scratch/order proof that a source operand is not clobbered before compare
+  emission, especially for same-destination bundles.
 
-Bucket classification:
+Rejected shapes:
 
-- Accepted ordinary register-destination moves: none. The two rows share
-  destination value/register `%t18`/`t0`, so sequential move semantics are not
-  safe.
-- Candidate first packet: define and then implement only a prepared-fact-driven
-  compare-operand materialization route for before-instruction
-  register-destination bundles when source-producer, operand roles, homes, and
-  scratch/order safety are explicit.
-- Fail-closed: generic `consumer_stack_to_register`, raw stack loads,
-  `load_from_stack_slot missing_stack_freshness`, same-destination bundles
-  without compare-operand semantics, and successor-result copies.
+- `load_from_stack_slot status=missing_stack_freshness`;
+- ordinary `consumer_stack_to_register` without explicit rematerialization or
+  freshness authority;
+- same-destination bundles consumed as sequential ordinary moves;
+- missing source-producer identity, operand-role mapping, source home,
+  destination home, or GPR-compatible destination;
+- stack-slot operands requiring generic stack-home branch operand support;
+- unsupported cast/source widths or unsupported cast source homes;
+- successor-result copies, raw `inttoptr` lowering, pointer provenance,
+  expectation changes, or named-case matching.
 
 ## Suggested Next
 
-Execute Step 2: `Define Register-Destination Move Materialization Contract`.
-Define accepted and rejected before-instruction register-destination move
-shapes for this family, especially the narrow compare-operand materialization
-contract around the paired `%t15/%t17 -> %t18` bundle. The likely Step 3 packet
-must consume prepared move-bundle facts, binary source-producer operand roles,
-source/destination homes, explicit cast-rematerialization authority where
-needed, and scratch/clobber safety. It must not be generic stack-to-register
-support.
+Execute Step 3: `Implement Or Route First Move-Bundle Packet`.
+
+If the current prepared/RV64 event surfaces can expose the required facts,
+implement the smallest semantic consumer for the accepted
+before-instruction compare-operand materialization route. The representative
+class is `%t15` register-home LHS plus `%t17` RHS with explicit
+`rematerialize_cast_from_source status=available`, producing `%t18` in a GPR,
+with non-clobbering scratch/register order. If source-producer identity,
+operand-role authority, source-home authority, or scratch/clobber safety cannot
+be represented, record the exact blocker instead of broadening.
+
+Suggested owned files for Step 3:
+
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `src/backend/prealloc/prepared_object_traversal.hpp` and
+  `src/backend/prealloc/prepared_object_traversal.cpp` only if needed to expose
+  the register-destination bundle event details
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp` only if a focused
+  prepared fixture adjustment is needed
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/457_step3_register_destination_move_materialization/**`
 
 Re-read:
 
 - `ideas/open/457_before_instruction_stack_to_register_move_materialization.md`
 - `build/agent_state/457_step1_before_instruction_register_destination_audit/audit.md`
-- `build/agent_state/457_step1_before_instruction_register_destination_audit/20010329-1.prepared.out`
-- `build/agent_state/457_step1_before_instruction_register_destination_audit/20010329-1.object.err`
+- `build/agent_state/457_step2_register_destination_move_contract/contract.md`
 
-Record owned files/tests and the exact Step 3 proof command if a coherent
-implementation packet exists:
+Step 3 proof command:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
@@ -72,13 +89,16 @@ implementation packet exists:
   `ideas/open/451_stack_home_branch_operand_materialization.md`.
 - Keep pointer-value provenance and generic instruction-side lowering out of
   this plan.
+- Step 3 must reject same-destination move bundles unless it can treat them as
+  compare-operand setup with proven non-clobbering order; do not emit them as
+  sequential ordinary copies.
 - Do not accept or modify `test_baseline.new.log`.
 - Do not touch `test_before.log`, `test_after.log`, baseline logs, or
   `review/`.
 
 ## Proof
 
-Step 1 classification-only validation:
+Step 2 contract-only validation:
 
 ```sh
 git diff --check
