@@ -1,54 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/445_closed_world_no_external_caller_metadata_source.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Classify Possible Metadata Sources
+Current Step ID: 2
+Current Step Title: Define Selected Source Contract Or Rejection
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: classified possible metadata sources for
-closed-world/no-external-caller authority.
+Completed Step 2: defined the selected-source contract and rejected all current
+metadata sources for non-internal `NoExternalCaller`.
 
-Source table:
+Selected-source decision:
 
-| Source candidate | Classification | Reason |
-| --- | --- | --- |
-| Static/internal linkage | Accepted existing baseline | Already feeds `FormalPointerAuthorityKind::InternalOnly` from `LirFunction::is_internal`; not a `NoExternalCaller` source for non-internal definitions. |
-| Explicit CLI/frontend closed-world mode | Missing | `c4cll` currently has target, dump/codegen, optimization, PIC/PIE, include, and split-output flags, but no closed-world/no-external-caller mode. |
-| HIR linkage and visibility | Rejected current source; split-needed only with a tested linker contract | HIR carries static/extern/inline/weak/default/hidden/protected, but only static proves internal-only authority today. |
-| LIR function/module fields | Rejected current source | `is_internal`, `can_elide_if_unreferenced`, `is_declaration`, `link_name_id`, `extern_decls`, and globals identify module structure but do not prove caller-set completeness. |
-| `LinkNameId` / symbol identity | Rejected | Required identity input for any future source, but not no-external-caller authority. |
-| `can_elide_if_unreferenced` and dead-reachability pruning | Rejected | Local discardability/dead-code pruning is not a formal no-external-caller proof for non-internal definitions. |
-| Observed same-module direct calls | Rejected | Call observations are not complete for externally callable definitions. |
-| Function-address escape tracking | Missing/incomplete | Existing metadata preserves some function references, but there is no complete escaped-function summary. |
-| Indirect-call target information | Missing/incomplete | Calls can be marked indirect, but no target set or target-exclusion proof exists. |
-| Prepared/BIR surfaces | Rejected as source; valid consumer boundary | BIR/prepared carries and consumes authority; it must not invent the source from dump rows, callsite counts, or shape. |
-| Linker/runtime visibility semantics | Missing/split-needed | Visibility text exists, but no tested compiler/linker contract equates it to no external caller. |
-| Whole-program/LTO assumption | Missing/split-needed | Plausible future source, but no mode or metadata exists today and it must cover address escape plus indirect calls. |
+- No current compiler-owned metadata source is accepted for
+  `FormalPointerAuthorityKind::NoExternalCaller` on non-internal definitions.
+- Static/internal linkage remains the accepted baseline for
+  `FormalPointerAuthorityKind::InternalOnly` only.
+- `FormalPointerAuthorityKind::NoExternalCaller` should remain unpopulated in
+  the current compiler model.
+- External-linkage definitions such as `930930-1::f` remain `Unknown` and
+  fail-closed.
 
-First executable packet:
+Future accepted source contract:
 
-- No current implementation packet can soundly populate
-  `FormalPointerAuthorityKind::NoExternalCaller`.
-- Step 2 should define the selected-source contract as a rejection in the
-  current compiler model and state the split requirements for a future source,
-  likely a whole-program/LTO-style mode or a tested linker/visibility contract.
-- `930930-1::f` remains fail-closed.
+- Producer-owned explicit closed-world/no-external-caller fact.
+- Semantic function identity for the exact definition.
+- Definition-status proof; declarations and unknown externals are false by
+  default.
+- Complete caller-set coverage.
+- Function-address escape coverage.
+- Indirect-call target exclusion or coverage.
+- Tested visibility/linker semantics if visibility or binding is part of the
+  source.
+- Positive and negative tests proving both publication and fail-closed
+  behavior.
+
+Rejected current signals:
+
+- Observed same-module direct calls or computed-address call sources.
+- Visibility spelling, `LinkNameId`, `can_elide_if_unreferenced`, local
+  reachability, absent extern declarations, prepared wrapper shape, prepared
+  value homes, or testcase shape.
+- Current function-address references or indirect-call markers without a
+  complete escape and target-set proof.
 
 Artifact:
 
-- `build/agent_state/445_step1_metadata_source_classification/classification.md`
+- `build/agent_state/445_step2_source_contract_rejection/rejection.md`
 
 ## Suggested Next
 
-Execute Step 2: Define Selected Source Contract Or Rejection.
+Plan-owner disposition for idea 445.
 
-Recommended Step 2 packet: record that no current metadata source is accepted
-for non-internal `NoExternalCaller`; keep the authority false by default; and
-recommend plan-owner split if a new whole-program/visibility metadata source is
-desired.
+Recommendation: close this plan as source rejection documentation unless the
+project wants to split a new source idea. A future implementation should begin
+from a new compiler-owned whole-program/LTO-style mode or a tested
+linker/visibility contract; do not proceed to Step 3 implementation in this
+plan without that source.
 
 ## Watchouts
 
@@ -64,7 +73,7 @@ desired.
 
 ## Proof
 
-Step 1 classification-only check:
+Step 2 contract/rejection-only check:
 
 ```sh
 git diff --check
