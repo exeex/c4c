@@ -1,77 +1,78 @@
 Status: Active
 Source Idea Path: ideas/open/457_before_instruction_stack_to_register_move_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Register-Destination Move Materialization Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route First Move-Bundle Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for idea 457. The register-destination move materialization
-contract is recorded under
-`build/agent_state/457_step2_register_destination_move_contract/contract.md`.
+Completed Step 3 for idea 457 as a routed blocker, not an RV64 implementation.
+Evidence is recorded under
+`build/agent_state/457_step3_register_destination_move_materialization/blocker.md`.
 
-Accepted first packet shape: a narrow before-instruction compare-operand
-materialization route, not generic stack-to-register support. Required facts:
+The target bundle is:
 
-- prepared `before_instruction` register-destination move bundle with stable
-  block/instruction identity;
-- explicit prepared source-producer for the same instruction;
-- supported binary compare producer whose result is the destination value;
-- operand-role mapping for every bundle move;
-- GPR-compatible destination home;
-- source operands with GPR register homes, supported immediates, or explicit
-  `rematerialize_cast_from_source status=available` authority;
-- scratch/order proof that a source operand is not clobbered before compare
-  emission, especially for same-destination bundles.
+- `move_bundle phase=before_instruction authority=none block_index=4
+  instruction_index=2`
+- `from_value_id=7 to_value_id=10 destination_storage=register
+  reason=consumer_register_to_register`
+- `from_value_id=9 to_value_id=10 destination_storage=register
+  reason=consumer_stack_to_register`
 
-Rejected shapes:
+The compare producer is `%t18 = bir.ule ptr %t15, %t17`, and `%t18` is an
+incoming value for the select-materialization carrier `%t22`. The RHS `%t17`
+has explicit `rematerialize_cast_from_source status=available` authority, while
+the stack-load alternative remains `missing_stack_freshness`.
 
-- `load_from_stack_slot status=missing_stack_freshness`;
-- ordinary `consumer_stack_to_register` without explicit rematerialization or
-  freshness authority;
-- same-destination bundles consumed as sequential ordinary moves;
-- missing source-producer identity, operand-role mapping, source home,
-  destination home, or GPR-compatible destination;
-- stack-slot operands requiring generic stack-home branch operand support;
-- unsupported cast/source widths or unsupported cast source homes;
-- successor-result copies, raw `inttoptr` lowering, pointer provenance,
-  expectation changes, or named-case matching.
+Blocker: the current prepared facts do not say whether this
+before-instruction register-destination bundle should emit in the join block,
+be suppressed because the predecessor-edge publication already rematerializes
+the source producer, or be treated as an edge-owned materialization bundle. The
+bundle has no printed `source_parallel_copy` identity, while the existing RV64
+select-edge source producer path requires predecessor/successor labels to
+consume edge publication intent. Emitting the bundle as same-block moves is
+unsafe because both moves target `%t18`/`t0`; emitting the compare in the join
+block is unsafe for the select carrier because it can overwrite the false-edge
+selected value.
+
+No implementation files were changed. The rejected shapes remain fail-closed:
+generic stack-to-register moves, stale `load_from_stack_slot
+missing_stack_freshness`, same-destination sequential copies, raw `inttoptr`,
+successor-result copies, unsafe scratch/clobber cases, and unrelated move
+bundles.
 
 ## Suggested Next
 
-Execute Step 3: `Implement Or Route First Move-Bundle Packet`.
+Execute Step 4: `Residual Disposition And Close Readiness`.
 
-If the current prepared/RV64 event surfaces can expose the required facts,
-implement the smallest semantic consumer for the accepted
-before-instruction compare-operand materialization route. The representative
-class is `%t15` register-home LHS plus `%t17` RHS with explicit
-`rematerialize_cast_from_source status=available`, producing `%t18` in a GPR,
-with non-clobbering scratch/register order. If source-producer identity,
-operand-role authority, source-home authority, or scratch/clobber safety cannot
-be represented, record the exact blocker instead of broadening.
+Classify idea 457 as blocked on producer/prepared placement metadata unless the
+plan owner wants to keep it active for a precise metadata packet. The durable
+next owner should publish one of:
 
-Suggested owned files for Step 3:
+- explicit before-instruction register-destination bundle placement semantics
+  for select-edge source producers;
+- predecessor/successor edge identity on edge-source producer dependency
+  bundles; or
+- precise suppression authority when the predecessor-edge publication already
+  consumes the source producer.
 
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `src/backend/prealloc/prepared_object_traversal.hpp` and
-  `src/backend/prealloc/prepared_object_traversal.cpp` only if needed to expose
-  the register-destination bundle event details
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp` only if a focused
-  prepared fixture adjustment is needed
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/457_step3_register_destination_move_materialization/**`
+Do not implement RV64 lowering until that authority exists.
 
 Re-read:
 
 - `ideas/open/457_before_instruction_stack_to_register_move_materialization.md`
-- `build/agent_state/457_step1_before_instruction_register_destination_audit/audit.md`
 - `build/agent_state/457_step2_register_destination_move_contract/contract.md`
+- `build/agent_state/457_step3_register_destination_move_materialization/blocker.md`
 
-Step 3 proof command:
+Step 4 proof command if disposition-only:
+
+```sh
+git diff --check
+```
+
+If code/test files unexpectedly change, use:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
@@ -89,19 +90,20 @@ Step 3 proof command:
   `ideas/open/451_stack_home_branch_operand_materialization.md`.
 - Keep pointer-value provenance and generic instruction-side lowering out of
   this plan.
-- Step 3 must reject same-destination move bundles unless it can treat them as
-  compare-operand setup with proven non-clobbering order; do not emit them as
-  sequential ordinary copies.
+- Do not infer edge placement from value ids, block indexes, instruction
+  indexes, or the representative testcase. The missing fact is producer-owned
+  placement/source-producer authority.
+- Do not suppress arbitrary before-instruction register-destination bundles
+  without explicit authority.
 - Do not accept or modify `test_baseline.new.log`.
-- Do not touch `test_before.log`, `test_after.log`, baseline logs, or
-  `review/`.
+- Do not touch `test_before.log`, baseline logs, or `review/`.
 
 ## Proof
 
-Step 2 contract-only validation:
+Step 3 route/blocker validation:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed.
+Result: passed. Proof log: `test_after.log`.
