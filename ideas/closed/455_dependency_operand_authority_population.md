@@ -1,11 +1,15 @@
 # Dependency-Operand Authority Population
 
-Status: Open
+Status: Closed
 Type: Prepared producer/population idea
 Parent: `ideas/closed/454_edge_dependency_operand_materialization_authority.md`
 Source Evidence: `build/agent_state/454_step4_residual_disposition/`
+Close Evidence: `build/agent_state/455_step4_residual_disposition/disposition.md`
 Owning Layer: Prepared output population and printing for dependency-operand
 authority records
+Closed Disposition: Complete for dependency-operand authority population and
+prepared printing. Follow-up:
+`ideas/open/456_rv64_select_edge_cast_dependency_consumer.md`.
 
 ## Goal
 
@@ -64,6 +68,34 @@ fail-closed record and print enough evidence for review.
   and stack-load policy boundaries where expressible.
 - No RV64 consumer packet is selected until populated authority is available
   and lifecycle review explicitly routes back to consumer work.
+
+## Completion Notes
+
+Idea 455 completed population and prepared printing for explicit
+dependency-operand authority records. Step 3 populated the representative
+`20010329-1` `logic.rhs.end.13 -> logic.end.14` `%t18 -> %t22` dependency
+operand `%t17` as `policy=rematerialize_cast_from_source status=available`.
+The printed record ties edge identity, source producer, operand role,
+dependency value, cast producer, cast source, source home, policy, and status.
+
+The parallel `load_from_stack_slot` policy is intentionally printed
+fail-closed as `status=missing_stack_freshness`; that is not unfinished idea
+455 work. If stack-load materialization is needed later, it should route to a
+separate freshness/clobber-safety producer idea.
+
+The selected follow-up is
+`ideas/open/456_rv64_select_edge_cast_dependency_consumer.md`, which may
+consume only the explicit populated `rematerialize_cast_from_source` record.
+Successor-result copies remain rejected.
+
+## Validation
+
+- Step 3 backend proof passed before log roll-forward:
+  `cmake --build build -j2` plus
+  `ctest --test-dir build -j2 --output-on-failure -R '^backend_'`.
+- Step 4 lifecycle proof: `git diff --check` passed.
+- Close-time regression sanity used the rolled-forward backend guard log and
+  found no regression.
 
 ## Reviewer Reject Signals
 

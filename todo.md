@@ -1,66 +1,53 @@
 Status: Active
-Source Idea Path: ideas/open/455_dependency_operand_authority_population.md
+Source Idea Path: ideas/open/456_rv64_select_edge_cast_dependency_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Cast Dependency Consumer Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 for idea 455. Residual disposition artifact:
-`build/agent_state/455_step4_residual_disposition/disposition.md`.
-
-Disposition:
-
-- idea 455 is complete for population and prepared printing of explicit
-  dependency-operand authority records;
-- Step 3 populated the representative `20010329-1`
-  `logic.rhs.end.13 -> logic.end.14` `%t18 -> %t22` dependency operand `%t17`
-  as `policy=rematerialize_cast_from_source status=available`;
-- the printed record ties edge identity, source producer, operand role,
-  dependency value, cast producer, cast source, source home, policy, and status;
-- the parallel `load_from_stack_slot` policy is intentionally printed
-  fail-closed as `status=missing_stack_freshness`;
-- successor-result copies remain rejected;
-- no RV64 target lowering was changed or selected in this packet.
-
-Residual table:
-
-| Residual | Current status | First owner / route |
-| --- | --- | --- |
-| Cast rematerialization population for `%t17` | Complete; printed as `rematerialize_cast_from_source` and `available` | Closed by idea 455 Step 3 |
-| Stack-slot load population for `%t17` | Fail-closed as `missing_stack_freshness` | Separate freshness/clobber-safety producer idea if needed |
-| Successor-result copy of `%t18` | Rejected | Not a valid edge source |
-| RV64 stack-slot pointer select-edge consumer | Not touched | Route only after plan-owner selects a consumer packet |
+Closed idea 455 as complete for dependency-operand authority population and
+prepared printing. The representative `%t17` dependency now has a populated
+`policy=rematerialize_cast_from_source status=available` record, while the
+parallel stack-load route remains fail-closed as `missing_stack_freshness`.
 
 ## Suggested Next
 
-Plan-owner close-readiness review for
-`ideas/open/455_dependency_operand_authority_population.md`.
+Execute Step 1 for idea 456. Re-read:
 
-Recommended lifecycle decision: close idea 455 as complete for
-population/printing. If follow-up work is desired, route stack-slot load
-freshness/clobber authority as a separate producer idea, or select a separate
-consumer packet that consumes the explicit `rematerialize_cast_from_source`
-record. Do not treat the fail-closed stack-load row as unfinished work inside
-this source idea.
+- `ideas/open/456_rv64_select_edge_cast_dependency_consumer.md`
+- `ideas/closed/455_dependency_operand_authority_population.md`
+- `build/agent_state/455_step4_residual_disposition/disposition.md`
+- `build/agent_state/455_step3_dependency_operand_population/summary.md`
+- `build/agent_state/455_step3_dependency_operand_population/20010329-1.prepared.out`
+
+Create `build/agent_state/456_step1_cast_dependency_consumer_audit/` and
+record a bucket table for edge identity, source producer, operand role,
+dependency value, cast producer, cast source, source home, selected
+policy/status, stack-load fail-closed row, and current RV64 move-bundle
+failure. Do not edit implementation in Step 1.
 
 ## Watchouts
 
-- The new authority records are producer/prepared facts only; route target
-  consumption through a separate packet.
-- `load_from_stack_slot` remains unavailable until a separate producer owns
-  freshness and clobber-safety.
-- Successor-result copies remain rejected; only the explicit
-  `rematerialize_cast_from_source` record is available.
+- Consume only populated `rematerialize_cast_from_source status=available`
+  dependency-operand authority.
+- Do not infer from raw `inttoptr`, stack homes, object metadata, filenames,
+  function names, block names, or one prepared dump.
+- Do not consume `load_from_stack_slot` while the row is
+  `missing_stack_freshness`.
+- Do not copy `%t18` from the successor/join block on the predecessor edge.
+- Keep general stack-home branch consumer work routed to
+  `ideas/open/451_stack_home_branch_operand_materialization.md`.
+- Keep pointer-value provenance and generic instruction-side lowering out of
+  this plan.
 - Do not accept or modify `test_baseline.new.log`.
-- Do not touch `test_before.log`, `test_baseline.log`, `test_baseline.new.log`,
-  or `review/`.
+- Do not touch `test_before.log`, `test_after.log`, or `review/`.
 
 ## Proof
 
-Step 4 proof:
+Lifecycle activation validation:
 
 ```sh
 git diff --check
