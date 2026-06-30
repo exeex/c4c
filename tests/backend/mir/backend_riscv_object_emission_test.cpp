@@ -10168,6 +10168,8 @@ int builds_prepared_scalar_divrem_object() {
   constexpr Case cases[] = {
       {bir::BinaryOpcode::SDiv, bir::TypeKind::I32, 0x03de493b, "divw"},
       {bir::BinaryOpcode::SDiv, bir::TypeKind::I64, 0x03de4933, "div"},
+      {bir::BinaryOpcode::UDiv, bir::TypeKind::I32, 0x03de593b, "divuw"},
+      {bir::BinaryOpcode::UDiv, bir::TypeKind::I64, 0x03de5933, "divu"},
       {bir::BinaryOpcode::SRem, bir::TypeKind::I32, 0x03de693b, "remw"},
       {bir::BinaryOpcode::SRem, bir::TypeKind::I64, 0x03de6933, "rem"},
       {bir::BinaryOpcode::URem, bir::TypeKind::I32, 0x03de793b, "remuw"},
@@ -10205,6 +10207,37 @@ int builds_prepared_scalar_divrem_object() {
                   " object to need no relocations");
     }
   }
+  return 0;
+}
+
+int rejects_prepared_scalar_division_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
+
+  auto prepared =
+      make_prepared_scalar_binary_module(bir::BinaryOpcode::UDiv,
+                                         bir::TypeKind::I32);
+  prepared.value_locations.functions[0].value_homes.erase(
+      prepared.value_locations.functions[0].value_homes.begin() + 1);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_scalar_binary_module(bir::BinaryOpcode::UDiv,
+                                         bir::TypeKind::I32);
+  prepared.value_locations.functions[0].value_homes.pop_back();
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_scalar_binary_module(bir::BinaryOpcode::UDiv,
+                                         bir::TypeKind::Ptr);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
   return 0;
 }
 
@@ -13645,6 +13678,7 @@ int main() {
   status |= builds_prepared_scalar_ashr_i64_immediate_object();
   status |= rejects_prepared_scalar_ashr_invalid_immediate_object();
   status |= builds_prepared_scalar_divrem_object();
+  status |= rejects_prepared_scalar_division_fail_closed_shapes();
   status |= rejects_prepared_scalar_compare_publication_missing_home();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= builds_prepared_normalized_sle_select_materialization_object();
