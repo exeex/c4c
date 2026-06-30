@@ -1,42 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/466_representative_select_carrier_alias_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Representative Authority Collection
+Current Step ID: 2
+Current Step Title: Define Representative Authority Evidence Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 466. The representative `20010329-1`
-authority record is not probe-visible, and current evidence cannot soundly
-distinguish not-produced from produced-but-hidden because the collector drops
-unavailable statuses and the prepared printer has no carrier-alias authority
-print hook. There is no concrete evidence yet for a produced
-RV64-mismatched record.
+Completed Step 2 contract definition for idea 466. The next packet is justified
+as a prepared producer/printer/probe evidence surface, not RV64 lowering.
 
-Audit table:
+Required evidence surface:
 
-| Question | Evidence | Classification |
+| Row type | Required facts | Purpose |
 | --- | --- | --- |
-| Representative structural route | Prepared dump has `%t46 = bir.ule ptr %t42, %t45`, duplicate `%t50.phi.sel0/%t50.phi.sel1`, final `%t50`, and `logic.rhs.end.40 -> logic.end.41` edge transfer `%t46 -> %t50`. | Candidate shape exists; raw shape remains non-authoritative. |
-| Operand consumability | `%t42` home `s1`, `%t45` home `s2`, `%t46/%t50` home `t0`. | Not the first blocker. |
-| Prepared printed record | Fresh dump has no `carrier_alias` / `select_carrier` text. `prepared_printer.cpp` has no carrier-alias append hook. | Record is not probe-visible. |
-| Collector behavior | `collect_prepared_select_carrier_alias_authorities` emits only available records and silently skips unavailable statuses. | Missing versus hidden cannot be resolved from dumps. |
-| RV64 matcher | RV64 requires exact function, edge, destination, source, source producer kind/block/instruction match. | Mismatch remains possible but unproven without record fields. |
-| Debugger probe | `build/c4cll` exposes non-debug symbols but not enough local type/debug info to inspect the returned record vector. | Non-editing runtime inspection was insufficient. |
+| Available authority record | Function, predecessor, successor/join label, destination value/id/name, selected source value/id/name, source producer kind/block/instruction, join-transfer carrier kind, carrier aliases with value/id/name/block/instruction, and `source_use_closure_proven`. | Proves a record exists and can be compared with RV64 matcher keys. |
+| Unavailable candidate/status row | Function, edge, destination/source ids and names, publication status, carrier kind, source producer fields, candidate alias count/names where available, and `PreparedSelectCarrierAliasAuthorityStatus`. | Distinguishes missing producer record from hidden record and names exact rejection status. |
+| Representative positive target | `20010329-1` `main`, `logic.rhs.end.40 -> logic.end.41`, `%t46 -> %t50`, binary `ule ptr` source producer, aliases `%t50.phi.sel0/%t50.phi.sel1`. | Lets idea 465 resume only if a matching record is proven present. |
+
+Positive cases: available duplicate-carrier authority for a representative-style
+select-materialization edge with binary source producer, matching final carrier,
+carrier aliases, and proven source-use closure.
+
+Negative cases: missing source producer, unsupported publication, wrong carrier
+kind, non-binary producer, missing final carrier, missing/duplicate/unsupported
+aliases, mismatched carrier alias, non-carrier source use, wrong edge, wrong
+destination/source, and wrong producer coordinate.
 
 Artifact:
-`build/agent_state/466_step1_representative_authority_collection_audit/audit.md`.
+`build/agent_state/466_step2_representative_authority_evidence_contract/contract.md`.
 
 ## Suggested Next
 
-Execute Step 2: define the representative authority evidence contract. The
-next exact packet should require a focused collector/printer/probe surface that
-reports available carrier-alias records and unavailable per-publication
-statuses for the real-style `%t46 -> %t50` route, including function, edge,
-destination/source ids and names, source producer kind/block/instruction,
-carrier aliases, source-use closure, and rejection status.
+Execute Step 3: implement or route the focused representative authority
+evidence packet. Suggested owned files are `publication_plans.hpp/.cpp`,
+prepared-printer surfaces, focused BIR/prepared-printer tests, `todo.md`,
+`test_after.log`, and
+`build/agent_state/466_step3_representative_authority_evidence/*`.
+
+Step 3 proof:
+
+```sh
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+```
 
 ## Watchouts
 
@@ -44,6 +51,7 @@ carrier aliases, source-use closure, and rejection status.
   select shape.
 - Do not claim the record is missing or hidden until a focused evidence surface
   can observe record count and/or rejection status.
+- Unavailable status rows are diagnostics only; they are not RV64 authority.
 - Do not route back to RV64 consumer work unless the record is proven present
   with fields that RV64 mismatches.
 - Do not make RV64 ULE rematerialization changes until representative
@@ -59,7 +67,7 @@ carrier aliases, source-use closure, and rejection status.
 
 ## Proof
 
-Step 1 proof:
+Step 2 proof:
 
 ```sh
 git diff --check
