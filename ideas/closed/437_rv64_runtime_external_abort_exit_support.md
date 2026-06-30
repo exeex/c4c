@@ -1,10 +1,11 @@
 # RV64 Runtime External Abort Exit Support
 
-Status: Open
+Status: Closed
 Type: Runtime external support idea
 Parent: `ideas/closed/435_rv64_coherent_aggregate_sret_call_storage_lowering.md`
 Source Evidence: `build/agent_state/435_step3_sret_memory_return/summary.txt`
 Owning Layer: RV64 runtime external call emission and support policy
+Closed: Step 4 residual disposition and close-readiness review
 
 ## Goal
 
@@ -23,7 +24,7 @@ first remaining non-sret residual as:
 - `unsupported_external_call function='baz' callee='abort' ... reason=unsupported runtime external symbol`
 
 The existing runtime mismatch triage idea excludes unsupported compile/codegen
-failures, so this residual needs separate durable ownership.
+failures, so this residual needed separate durable ownership.
 
 ## In Scope
 
@@ -56,6 +57,46 @@ failures, so this residual needs separate durable ownership.
 - Representative probes no longer misattribute these residuals to aggregate
   `sret` call-storage.
 - Any remaining non-runtime residuals exposed afterward are routed separately.
+
+## Completion Notes
+
+Step 1 classified the accepted policy as narrow runtime external termination
+support:
+
+- Keep existing `strlen` support unchanged.
+- Admit `abort` only as a direct fixed-arity runtime external with zero
+  arguments.
+- Admit `exit` only as a direct fixed-arity runtime external with one argument.
+- Preserve fail-closed diagnostics for unknown runtime externals and unsupported
+  accepted-symbol signatures.
+
+Step 2 added lower-level object-route coverage for accepted `abort` and
+`exit(0)` undefined symbol / `R_RISCV_CALL_PLT` emission. Step 3 added the
+prepared-module policy gate and focused tests for accepted `abort`/`exit(0)`,
+unknown runtime external rejection, and unsupported `abort` signature
+rejection.
+
+Representative probes after rebuilding `c4cll`:
+
+- `tests/c/external/gcc_torture/src/20000917-1.c`: `--codegen asm` exits 0,
+  stderr is empty, and `unsupported_external_call` is absent.
+- `tests/c/external/gcc_torture/src/20020206-1.c`: `--codegen asm` exits 0,
+  stderr is empty, emits `call abort`, and `unsupported_external_call` is
+  absent.
+
+Close evidence:
+
+- `build/agent_state/437_step1_runtime_external_policy/classification.md`
+- `build/agent_state/437_step2_runtime_external_coverage/summary.txt`
+- `build/agent_state/437_step3_runtime_external_policy_gate/summary.txt`
+- `build/agent_state/437_step3_runtime_external_policy_gate/probe_status.txt`
+- Backend regression guard passed with existing canonical logs:
+  `test_before.log` and `test_after.log` both reported `327 passed, 0 failed`.
+- `git diff --check` passed at close.
+
+No new durable follow-up idea was needed from this close review; any later
+non-runtime residual exposed beyond these representative asm probes remains
+outside this source idea and should be classified when encountered.
 
 ## Reviewer Reject Signals
 
