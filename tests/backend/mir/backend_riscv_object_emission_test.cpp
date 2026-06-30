@@ -472,6 +472,61 @@ prepare::PreparedBirModule make_prepared_direct_call_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_runtime_external_call_module(
+    std::string callee, bool with_exit_arg) {
+  prepare::PreparedBirModule prepared;
+  const auto caller_name =
+      prepared.names.function_names.intern(with_exit_arg ? "calls_exit" : "calls_abort");
+
+  bir::CallInst call;
+  call.callee = callee;
+  call.return_type = bir::TypeKind::Void;
+  if (with_exit_arg) {
+    call.args = {bir::Value::immediate_i32(0)};
+    call.arg_types = {bir::TypeKind::I32};
+  }
+  bir::Block caller_entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+  caller_entry.terminator.value = bir::Value::immediate_i32(0);
+  prepared.module.functions.push_back(bir::Function{
+      .name = with_exit_arg ? "calls_exit" : "calls_abort",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(caller_entry)},
+  });
+
+  prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 0,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::move(callee),
+  };
+  if (with_exit_arg) {
+    call_plan.arguments = {prepare::PreparedCallArgumentPlan{
+        .instruction_index = 0,
+        .arg_index = 0,
+        .value_bank = prepare::PreparedRegisterBank::Gpr,
+        .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+        .source_literal = bir::Value::immediate_i32(0),
+        .destination_register_name = std::string{"a0"},
+        .destination_contiguous_width = 1,
+        .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+    }};
+  }
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = caller_name,
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = caller_name,
+      .calls = {std::move(call_plan)},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_variadic_return_zero_module() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
@@ -7785,6 +7840,69 @@ int builds_prepared_text_object_module_without_call_text() {
   return 0;
 }
 
+int builds_prepared_runtime_abort_external_call_object() {
+  const auto prepared =
+      make_prepared_runtime_external_call_module("abort", false);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared abort runtime external RV64 object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* caller = object::find_symbol(*module, "calls_abort");
+  const auto* abort_symbol = object::find_symbol(*module, "abort");
+  if (text == nullptr || caller == nullptr || abort_symbol == nullptr) {
+    return fail("expected abort runtime external object symbols");
+  }
+  if (!object::is_undefined_symbol(*abort_symbol) ||
+      abort_symbol->kind != object::SymbolKind::Function) {
+    return fail("expected abort to remain an undefined function symbol");
+  }
+  if (caller->section != std::optional<object::SectionId>{text->id} ||
+      caller->value != 0 || caller->size_bytes != text->bytes.size()) {
+    return fail("expected abort caller symbol to cover emitted text");
+  }
+  if (module->relocations.size() != 1 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].type != R_RISCV_CALL_PLT ||
+      module->relocations[0].symbol != abort_symbol->id ||
+      module->relocations[0].offset >= caller->size_bytes) {
+    return fail("expected abort runtime external call relocation");
+  }
+  return 0;
+}
+
+int builds_prepared_runtime_exit_external_call_object() {
+  const auto prepared = make_prepared_runtime_external_call_module("exit", true);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared exit runtime external RV64 object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* caller = object::find_symbol(*module, "calls_exit");
+  const auto* exit_symbol = object::find_symbol(*module, "exit");
+  if (text == nullptr || caller == nullptr || exit_symbol == nullptr) {
+    return fail("expected exit runtime external object symbols");
+  }
+  if (!object::is_undefined_symbol(*exit_symbol) ||
+      exit_symbol->kind != object::SymbolKind::Function) {
+    return fail("expected exit to remain an undefined function symbol");
+  }
+  if (module->relocations.size() != 1 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].type != R_RISCV_CALL_PLT ||
+      module->relocations[0].symbol != exit_symbol->id) {
+    return fail("expected exit runtime external call relocation");
+  }
+  const auto call_offset = module->relocations[0].offset;
+  if (call_offset < 4 || call_offset + 8 > caller->size_bytes) {
+    return fail("expected exit argument materialization before call pair");
+  }
+  if (!contains_u32(text->bytes, 0x00000513)) {
+    return fail("expected exit immediate status to materialize in a0");
+  }
+  return 0;
+}
+
 int rejects_prepared_critical_edge_parallel_copy_with_shared_diagnostic() {
   const auto prepared = make_prepared_critical_edge_parallel_copy_module();
   if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
@@ -13905,6 +14023,8 @@ int main() {
   status |= emits_prepared_global_i16_store_instruction();
   status |= serializes_rv64_relocatable_elf_contract();
   status |= serializes_pcrel_hi_lo_relocations_with_auipc_label_symbol();
+  status |= builds_prepared_runtime_abort_external_call_object();
+  status |= builds_prepared_runtime_exit_external_call_object();
   status |= writes_prepared_rv64_relocatable_elf_object_file();
   return status;
 }
