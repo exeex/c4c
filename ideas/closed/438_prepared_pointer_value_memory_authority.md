@@ -1,10 +1,14 @@
 # Prepared Pointer-Value Memory Authority
 
-Status: Open
+Status: Closed
 Type: Producer/prepared authority idea
 Parent: `ideas/closed/433_rv64_global_select_pointer_memory_residuals.md`
 Source Evidence: `build/agent_state/433_step4_residual_disposition/`
 Owning Layer: BIR/prepared memory authority before RV64 pointer-value memory lowering
+Closed Evidence:
+- `build/agent_state/438_step1_pointer_value_memory_audit/audit.md`
+- `build/agent_state/438_step2_pointer_value_authority_contract/contract.md`
+- `build/agent_state/438_step3_pointer_value_authority_coverage/summary.md`
 
 ## Goal
 
@@ -45,6 +49,29 @@ guessing ownership or byte layout from pointer-shaped values.
 - Missing or incoherent authority remains fail-closed.
 - Any target-lowering follow-up consumes explicit prepared facts rather than
   reconstructing authority locally.
+
+## Completion Notes
+
+- Step 1 audited the `930930-1` pointer-value memory records and showed all
+  representative accesses remained `layout_authority=unknown` with
+  `range_verdict=unknown_compatible`.
+- Step 2 defined the prepared authority contract for pointer-value memory:
+  concrete pointer ownership, non-unknown layout authority, complete object
+  extent, matching requested range, `ProvenInBounds`, and valid
+  base-plus-offset facts.
+- Step 3 added `prepare::prepared_pointer_value_memory_has_proven_authority`
+  and focused producer/prepared coverage for accepted authority plus
+  fail-closed missing/incoherent variants.
+- No RV64 target-consumer packet is justified for `930930-1` until producer
+  output carries stronger authority than the current unknown layout and
+  unknown-compatible range.
+- Backend close gate used canonical `test_before.log` and `test_after.log`;
+  both logs report 327 passed, 0 failed, and the non-decreasing regression
+  guard passed.
+
+## Follow-Up Ideas
+
+- `ideas/open/442_pointer_value_memory_provenance_publication.md`
 
 ## Reviewer Reject Signals
 
