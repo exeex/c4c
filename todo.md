@@ -1,44 +1,85 @@
 Status: Active
 Source Idea Path: ideas/open/440_direct_global_return_select_chain_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Direct-Global Evidence
+Current Step ID: 2
+Current Step Title: Define Direct-Global Authority Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: audited direct-global return/select-chain evidence for idea
-440 and recorded classifications under
-`build/agent_state/440_step1_direct_global_audit/`.
+Completed Step 2: defined the direct-global return/select-chain authority
+contract for idea 440 and recorded supporting notes under
+`build/agent_state/440_step2_direct_global_contract/`.
 
-Direct-global bucket table:
+Accepted direct-global return facts:
 
-| bucket | function/block | raw BIR shape | prepared fact | global symbol | value home or terminator use | current authority state | first missing fact |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| direct-global return candidate | `foo/block_1` | `bir.ret ptr @global` | `home @global value_id=4 kind=register reg=t0`; `move_bundle phase=before_return authority=none block_index=1 instruction_index=3` | `@global` | return terminator uses direct global pointer; ABI return move exists | fail-closed candidate | explicit direct-global return authority tying terminator use, global symbol identity, value home/storage, and ABI return use |
-| direct-global select-chain candidate | `foo/block_1` | `%t3 = bir.load_global i32 @global`; `%t4 = bir.add i32 %t3, 1`; `bir.store_global @global, i32 %t4` | `select_chain value=%t3 direct_global_select_chain=yes root_inst=0 source_producer=load_global`; `value=%t4 ... source_producer=binary` | `@global` | `%t3`/`%t4` have register homes; store-source also marks direct-global chain | candidate fact, not authority | accepted direct-global select-chain authority contract/predicate and consumer boundary |
-| direct-global call-argument select-chain | `bar/entry` | `%t0 = bir.load_global i32 @global`; `bir.call ptr foo(i32 %t0)` | `call_arg_source index=0 direct_global_select_chain=yes direct_global_source=%t0 direct_global_root_inst=0`; prepared call arg carries same flag | `@global` | `%t0` has register home and call-arg ABI move to `a0` | candidate fact, not authority | contract deciding whether call arguments may consume direct-global select-chain facts |
-| direct-global select-chain candidate | `bar/block_5` | `%t9 = bir.load_global i32 @global`; `%t10 = bir.add i32 %t9, 1`; `bir.store_global @global, i32 %t10` | `select_chain value=%t9 direct_global_select_chain=yes root_inst=0 source_producer=load_global`; `value=%t10 ... source_producer=binary` | `@global` | `%t9`/`%t10` have register homes; store-source marks direct-global chain | candidate fact, not authority | accepted direct-global select-chain authority contract/predicate and consumer boundary |
-| completed adjacent store publication | `main/entry` | `bir.store_global @global, i32 1` | `source_producer=immediate`; destination `layout_authority=scalar_layout` | `@global` | store-global publication | complete elsewhere | none for idea 440; completed by ideas 446/447 |
-| out-of-scope local publication | `bar/entry` | `bir.store_local %lv.p, ptr %t1` | `intent=store_local_publication source_producer=unknown` | n/a | frame-slot store | local publication gap | local publication owner, not direct-global authority |
-| target terminator residual | module object route | object probe reports `unsupported_terminator_fragment` | object diagnostic only | n/a | BIR terminator lowering | target consumer gap | general terminator/select work belongs to idea 441 unless narrowed to explicit direct-global return authority |
+- Return use is producer-owned: the BIR terminator returns a pointer value with
+  direct semantic global identity; raw `bir.ret ptr @global` spelling is
+  evidence only.
+- The returned value has a valid semantic global `LinkNameId` and prepared
+  value id/home/storage for that same identity.
+- The home/storage is target-consumable for scalar pointer return, currently a
+  GPR/register home for the RV64 packet.
+- A `BeforeReturn` move bundle exists for the same block/instruction with
+  `destination_kind=FunctionReturnAbi`, the same source value id, and a
+  concrete return ABI register/bank.
+- A new explicit direct-global return authority predicate/fact must accept the
+  shape; `authority=none` return moves plus raw BIR are not enough.
 
-Fresh probes confirm the latest store/global prerequisites are current:
-`20041112-1 main.entry.0` now has `source_producer=immediate`, and global
-memory rows have `layout_authority=scalar_layout`. The direct-global return row
-still has only raw return plus prepared home/storage/move evidence, not an
-accepted direct-global return authority fact.
+Accepted direct-global select-chain facts:
+
+- `PreparedDirectGlobalSelectChainDependency` is available and
+  `contains_direct_global_load=true`.
+- The consumer source value has a valid prepared value name/home/storage.
+- The root producer chain reaches a semantic `load_global` of a valid global
+  symbol; select shape or dump text alone is insufficient.
+- `root_is_select` and `root_instruction_index` identify the prepared producer
+  route, but consumers must use the prepared dependency rather than raw index
+  matching.
+- Call arguments may consume the dependency only through prepared call argument
+  routing; generic terminator/select publication remains in idea 441.
+
+Rejected adjacent shapes:
+
+| shape | disposition |
+| --- | --- |
+| raw `bir.ret ptr @global` without explicit prepared return authority | rejected |
+| computed pointer, `inttoptr`, null, local/frame-slot pointer, or opaque pointer return | rejected for direct-global return authority |
+| missing/mismatched value home, storage, symbol identity, or ABI return move | rejected |
+| `direct_global_select_chain=yes` without a valid dependency and consumer route | rejected |
+| generic branch/return/select lowering | idea 441 unless narrowed to explicit direct-global authority |
+| store-global source/layout publication | completed by ideas 439/446/447/448; out of scope |
+| testcase/function/symbol-name matching | rejected as overfit |
 
 ## Suggested Next
 
-Execute Step 2: define the direct-global authority contract. The first bounded
-implementation packet after the contract should start with producer/prepared
-contract coverage for direct-global return authority: raw `bir.ret ptr
-@global` is accepted only with explicit prepared authority tying the return
-terminator, global symbol identity, value home/storage, and ABI return use.
-Select-chain and call-argument facts should be included in the Step 2 contract
-but not broadened into generic terminator/select publication.
+Execute Step 3: add focused producer/prepared contract coverage for
+direct-global return authority first. Suggested owned files/tests:
+
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `src/backend/prealloc/value_locations.hpp` only if an existing move lookup
+  helper needs a small reuse hook
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp` or
+  `tests/backend/bir/backend_prepared_lookup_helper_test.cpp`
+- `tests/backend/bir/backend_prepared_printer_test.cpp` only if a new prepared
+  dump fact is introduced
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/440_step3_direct_global_return_authority/*`
+
+The first Step 3 packet should create or confirm an explicit predicate/fact
+that accepts the coherent direct-global return shape and rejects raw-only,
+missing-home, missing-ABI-move, non-global pointer, computed pointer, and
+mismatched-value-id shapes. It should not implement generic RV64 terminator
+lowering.
+
+Step 3 proof command:
+
+```sh
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+```
 
 ## Watchouts
 
@@ -53,12 +94,15 @@ but not broadened into generic terminator/select publication.
   Step 2 defines the accepted authority predicate and consumer boundary.
 - Keep completed store/global publication facts from ideas 446/447 out of the
   direct-global packet.
+- Do not treat `BeforeReturn` move bundles with `authority=none` as sufficient
+  direct-global return authority without the new explicit predicate/fact.
 - Do not accept or modify `test_baseline.new.log`.
-- Do not touch `test_before.log` or `test_after.log` during activation.
+- Do not touch `test_before.log` or `test_after.log` during this contract-only
+  packet.
 
 ## Proof
 
-Step 1 classification-only validation:
+Step 2 contract-only validation:
 
 ```sh
 git diff --check
