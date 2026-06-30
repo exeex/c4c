@@ -166,6 +166,57 @@ struct PreparedAddress {
          static_cast<std::size_t>(range.end) <= extent.size_bytes;
 }
 
+[[nodiscard]] inline bool prepared_global_symbol_memory_has_publication_authority(
+    const PreparedAddress& address) {
+  if (address.base_kind != PreparedAddressBaseKind::GlobalSymbol ||
+      !address.symbol_name.has_value() ||
+      !address.can_use_base_plus_offset ||
+      address.size_bytes == 0 ||
+      address.align_bytes == 0 ||
+      address.align_bytes > address.size_bytes) {
+    return false;
+  }
+
+  const auto& provenance = address.provenance;
+  if (provenance.base_identity.kind !=
+      bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol) {
+    return false;
+  }
+
+  switch (provenance.layout_authority) {
+    case bir::MemoryLayoutAuthorityKind::Unknown:
+    case bir::MemoryLayoutAuthorityKind::OpaqueCompatibility:
+      return false;
+    case bir::MemoryLayoutAuthorityKind::StructuredLayout:
+    case bir::MemoryLayoutAuthorityKind::ScalarLayout:
+    case bir::MemoryLayoutAuthorityKind::ByteStorageAggregate:
+    case bir::MemoryLayoutAuthorityKind::RenderedTypeFallback:
+      break;
+  }
+
+  const auto& extent = provenance.object_extent;
+  if (!extent.size_known ||
+      extent.completeness != bir::MemoryObjectExtentCompleteness::Complete ||
+      extent.size_bytes == 0) {
+    return false;
+  }
+
+  const auto& range = provenance.requested_range;
+  if (!range.available ||
+      range.overflowed ||
+      !range.end_available ||
+      range.begin != address.byte_offset ||
+      range.size_bytes != address.size_bytes ||
+      provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
+    return false;
+  }
+  if (range.begin < 0 || range.end < range.begin) {
+    return false;
+  }
+  return static_cast<std::size_t>(range.end - range.begin) == address.size_bytes &&
+         static_cast<std::size_t>(range.end) <= extent.size_bytes;
+}
+
 [[nodiscard]] inline std::optional<bir::GlobalAddressMaterializationPolicy>
 prepared_global_symbol_address_policy(
     const PreparedAddress& address,

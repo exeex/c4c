@@ -1,61 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/439_store_source_global_memory_publication_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Publication Authority Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route First Publication Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: defined the publication authority contract for
-store-source/global-memory rows and selected the first executable packet.
+Completed Step 3: added focused producer/prepared coverage for global-memory
+publication authority without editing RV64 target lowering.
 
-Required global-memory facts:
+Implemented:
 
-- prepared global symbol identity;
-- access kind: load, store, or address-only publication;
-- byte offset, width, and alignment;
-- explicit layout/addressability authority for the global object and range;
-- range verdict plus dynamic-array/flexible-object verdict when applicable;
-- a statement of whether the row is allowed as data load/store, address
-  materialization, or direct-global return/select-chain publication.
+- `prepare::prepared_global_symbol_memory_has_publication_authority`, requiring
+  explicit global symbol identity, base-plus-offset support, size/alignment,
+  global provenance identity, complete object extent, proven in-bounds range,
+  and non-unknown/non-opaque layout authority.
+- `prepare::prepared_store_global_publication_has_authority`, requiring a
+  store-global publication, a destination access with global publication
+  authority, and either explicit immediate-source encoding or a named
+  store-source with current value home plus concrete producer metadata.
 
-Required store-source facts:
+Focused tests in `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+cover:
 
-- exact store-source identity for a value or immediate;
-- producer kind, producer block, and producer instruction when applicable;
-- current value home for non-immediate stores, including bank/register or
-  stack-slot home and width;
-- explicit immediate-source encoding for immediate stores, including value and
-  width;
-- publication intent distinguishing global store, local store, and
-  pointer-value memory store.
+- accepted coherent global memory authority;
+- accepted binary-source global store publication with register value home;
+- accepted explicitly encoded immediate source;
+- fail-closed unknown layout authority, unknown-compatible range, non-global
+  provenance, pointer-value memory, missing symbol identity, missing
+  store-source producer, missing source home, local store-source publication,
+  and implicit immediate source.
 
-Classification:
+Remaining gap:
 
-| class | records | disposition |
-| --- | --- | --- |
-| Accepted target-consumable records | none from Step 1 evidence | No RV64 lowering packet is selected yet. |
-| Producer/prepared gaps | `930930-1` `@mem+792` store; `20041112-1` binary stores to `@global+0`; `20041112-1` immediate store to `@global+0` | Need producer/prepared authority before target lowering. |
-| Fail-closed unknowns | `source_producer=unknown`, `source=<none>` without immediate encoding, `layout_authority=unknown`, missing value home | Keep rejected. |
-| Rejected adjacent shapes | pointer-value memory, local frame-slot store publication, direct-global return/select-chain, select/terminator residuals | Out of scope for this packet. |
+- The current store-global planner does not yet publish explicit
+  immediate-source encoding for immediate global stores. The authority predicate
+  accepts such a fact once present, but this packet did not implement that
+  producer repair.
 
 Artifact:
 
-- `build/agent_state/439_step2_publication_authority_contract/contract.md`
+- `build/agent_state/439_step3_global_memory_publication_coverage/summary.md`
 
 ## Suggested Next
 
-Execute Step 3: Implement Or Route First Publication Packet.
+Execute Step 4: Residual Disposition And Close Readiness.
 
-Selected packet: producer/prepared contract coverage for global-memory
-publication authority. Add focused positive/negative coverage for explicit
-global layout authority, explicit store-source producer/value home, explicit
-immediate-source encoding, and fail-closed `source_producer=unknown` plus
-`layout_authority=unknown`. Only change producer code if focused coverage
-exposes a local metadata gap. Do not edit RV64 target lowering until accepted
-prepared facts exist.
+Recommended Step 4 packet: re-check the representative residuals against the
+new authority predicates and decide whether this idea should close as
+producer/prepared contract coverage or stay active for a narrow immediate
+global-store source encoding producer packet. Do not edit RV64 target lowering
+until representative prepared facts satisfy the authority predicates.
 
 ## Watchouts
 
@@ -71,8 +68,10 @@ prepared facts exist.
 
 ## Proof
 
-Step 2 contract-only check:
+Step 3 code/test proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
+
+Result: passed.

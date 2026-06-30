@@ -5285,6 +5285,206 @@ int check_pointer_value_memory_authority_contract() {
   return 0;
 }
 
+prepare::PreparedAddress make_proven_global_symbol_memory_address(
+    c4c::LinkNameId symbol_name) {
+  auto requested_range = bir::make_memory_byte_range(4, 4);
+  return prepare::PreparedAddress{
+      .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+      .symbol_name = symbol_name,
+      .byte_offset = 4,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .can_use_base_plus_offset = true,
+      .provenance =
+          bir::MemoryAccessProvenance{
+              .base_identity =
+                  bir::MemoryProvenanceBaseIdentity{
+                      .kind = bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol,
+                      .spelling = "@g.counter",
+                  },
+              .object_extent =
+                  bir::MemoryObjectExtent{
+                      .completeness = bir::MemoryObjectExtentCompleteness::Complete,
+                      .size_bytes = 16,
+                      .size_known = true,
+                  },
+              .requested_range = requested_range,
+              .layout_authority = bir::MemoryLayoutAuthorityKind::ScalarLayout,
+              .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+          },
+  };
+}
+
+int check_global_memory_publication_authority_contract() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("authority.global");
+  const auto block_label = names.block_labels.intern("entry");
+  const auto symbol_name = names.link_names.intern("g.counter");
+  const auto source_value_name = names.value_names.intern("%sum");
+
+  const auto proven_address =
+      make_proven_global_symbol_memory_address(symbol_name);
+  if (!prepare::prepared_global_symbol_memory_has_publication_authority(
+          proven_address)) {
+    return fail("expected explicit global memory authority to classify target-consumable");
+  }
+
+  auto rejected_address = proven_address;
+  rejected_address.provenance.layout_authority =
+      bir::MemoryLayoutAuthorityKind::Unknown;
+  if (prepare::prepared_global_symbol_memory_has_publication_authority(
+          rejected_address)) {
+    return fail("expected unknown global layout authority to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.provenance.range_verdict =
+      bir::MemoryRangeVerdict::UnknownCompatible;
+  if (prepare::prepared_global_symbol_memory_has_publication_authority(
+          rejected_address)) {
+    return fail("expected unknown-compatible global range to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.provenance.base_identity.kind =
+      bir::MemoryProvenanceBaseIdentityKind::PointerValue;
+  if (prepare::prepared_global_symbol_memory_has_publication_authority(
+          rejected_address)) {
+    return fail("expected non-global provenance identity to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.base_kind = prepare::PreparedAddressBaseKind::PointerValue;
+  rejected_address.pointer_value_name = source_value_name;
+  if (prepare::prepared_global_symbol_memory_has_publication_authority(
+          rejected_address)) {
+    return fail("expected pointer-value memory to stay out of global authority");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.symbol_name = std::nullopt;
+  if (prepare::prepared_global_symbol_memory_has_publication_authority(
+          rejected_address)) {
+    return fail("expected missing global symbol identity to stay fail-closed");
+  }
+
+  const bir::Value source_value = bir::Value::named(bir::TypeKind::I32, "%sum");
+  const bir::BinaryInst binary{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = source_value,
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+      .rhs = bir::Value::immediate_i32(1),
+  };
+  const prepare::PreparedMemoryAccess global_store_access{
+      .function_name = function_name,
+      .block_label = block_label,
+      .inst_index = 2,
+      .stored_value_name = source_value_name,
+      .address = proven_address,
+  };
+  const prepare::PreparedValueHome source_home{
+      .value_id = 7,
+      .function_name = function_name,
+      .value_name = source_value_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"s1"},
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+  const prepare::PreparedEdgePublicationSourceProducer binary_producer{
+      .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .block_label = block_label,
+      .instruction_index = 1,
+      .binary = &binary,
+  };
+  const auto coherent_plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &source_value,
+      .destination_access = &global_store_access,
+      .source_home = &source_home,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreGlobalPublication,
+      .source_producer = &binary_producer,
+      .publication_instruction_index = std::size_t{2},
+  });
+  if (!prepare::prepared_store_global_publication_has_authority(coherent_plan)) {
+    return fail("expected coherent global store source publication authority");
+  }
+
+  auto unknown_layout_access = global_store_access;
+  unknown_layout_access.address.provenance.layout_authority =
+      bir::MemoryLayoutAuthorityKind::Unknown;
+  const auto unknown_layout_plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &source_value,
+      .destination_access = &unknown_layout_access,
+      .source_home = &source_home,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreGlobalPublication,
+      .source_producer = &binary_producer,
+      .publication_instruction_index = std::size_t{2},
+  });
+  if (prepare::prepared_store_global_publication_has_authority(
+          unknown_layout_plan)) {
+    return fail("expected global store with unknown layout authority to stay fail-closed");
+  }
+
+  const auto unknown_source_plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &source_value,
+      .destination_access = &global_store_access,
+      .source_home = &source_home,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreGlobalPublication,
+      .publication_instruction_index = std::size_t{2},
+  });
+  if (prepare::prepared_store_global_publication_has_authority(
+          unknown_source_plan)) {
+    return fail("expected missing store-source producer to stay fail-closed");
+  }
+
+  const auto missing_home_plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &source_value,
+      .destination_access = &global_store_access,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreGlobalPublication,
+      .source_producer = &binary_producer,
+      .publication_instruction_index = std::size_t{2},
+  });
+  if (prepare::prepared_store_global_publication_has_authority(
+          missing_home_plan)) {
+    return fail("expected missing store-source value home to stay fail-closed");
+  }
+
+  const auto local_plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &source_value,
+      .destination_access = &global_store_access,
+      .source_home = &source_home,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      .source_producer = &binary_producer,
+      .publication_instruction_index = std::size_t{2},
+  });
+  if (prepare::prepared_store_global_publication_has_authority(local_plan)) {
+    return fail("expected local store-source publication to stay out of global authority");
+  }
+
+  const bir::Value immediate_source = bir::Value::immediate_i32(1);
+  const auto implicit_immediate_plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &immediate_source,
+      .destination_access = &global_store_access,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreGlobalPublication,
+      .publication_instruction_index = std::size_t{2},
+  });
+  if (prepare::prepared_store_global_publication_has_authority(
+          implicit_immediate_plan)) {
+    return fail("expected implicit immediate store source to stay fail-closed");
+  }
+
+  auto explicit_immediate_plan = implicit_immediate_plan;
+  explicit_immediate_plan.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Immediate;
+  if (!prepare::prepared_store_global_publication_has_authority(
+          explicit_immediate_plan)) {
+    return fail("expected explicit immediate store source encoding to be accepted");
+  }
+
+  return 0;
+}
+
 int check_pointer_carrier_contract_value_homes() {
   auto fixture = make_pointer_carrier_contract_fixture();
   const auto homes = prepare::regalloc_detail::build_prepared_value_homes(
@@ -6394,6 +6594,10 @@ int main() {
   }
 
   if (const int rc = check_pointer_value_memory_authority_contract(); rc != 0) {
+    return rc;
+  }
+
+  if (const int rc = check_global_memory_publication_authority_contract(); rc != 0) {
     return rc;
   }
 

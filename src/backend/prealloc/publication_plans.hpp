@@ -913,6 +913,9 @@ struct PreparedCallArgumentValuePublicationPlans {
 [[nodiscard]] bool prepared_store_source_publication_available(
     const PreparedStoreSourcePublicationPlan& plan);
 
+[[nodiscard]] bool prepared_store_global_publication_has_authority(
+    const PreparedStoreSourcePublicationPlan& plan);
+
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs);

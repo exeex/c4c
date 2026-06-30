@@ -1808,6 +1808,54 @@ bool prepared_store_source_publication_available(
   return plan.status == PreparedStoreSourcePublicationStatus::Available;
 }
 
+bool prepared_store_global_publication_has_authority(
+    const PreparedStoreSourcePublicationPlan& plan) {
+  if (!prepared_store_source_publication_available(plan) ||
+      plan.intent != PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||
+      plan.destination_access == nullptr ||
+      plan.destination_base_kind != PreparedAddressBaseKind::GlobalSymbol ||
+      !prepared_global_symbol_memory_has_publication_authority(
+          plan.destination_access->address)) {
+    return false;
+  }
+
+  if (plan.source_value.kind == bir::Value::Kind::Immediate) {
+    return plan.source_producer_kind ==
+           PreparedEdgePublicationSourceProducerKind::Immediate;
+  }
+
+  if (plan.source_value.kind != bir::Value::Kind::Named ||
+      plan.source_value_name == kInvalidValueName ||
+      plan.source_home == nullptr ||
+      plan.source_home_kind == PreparedValueHomeKind::None ||
+      plan.source_home->value_name != plan.source_value_name ||
+      plan.source_producer_kind ==
+          PreparedEdgePublicationSourceProducerKind::Unknown ||
+      plan.source_producer_kind ==
+          PreparedEdgePublicationSourceProducerKind::Immediate ||
+      !plan.source_producer_block_label.has_value() ||
+      !plan.source_producer_instruction_index.has_value()) {
+    return false;
+  }
+
+  switch (plan.source_producer_kind) {
+    case PreparedEdgePublicationSourceProducerKind::LoadLocal:
+      return plan.source_load_local != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::LoadGlobal:
+      return plan.source_load_global != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Cast:
+      return plan.source_cast != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Binary:
+      return plan.source_binary != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::SelectMaterialization:
+      return plan.source_select != nullptr;
+    case PreparedEdgePublicationSourceProducerKind::Unknown:
+    case PreparedEdgePublicationSourceProducerKind::Immediate:
+      return false;
+  }
+  return false;
+}
+
 PreparedStoreSourcePublicationPlan plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs) {
   PreparedStoreSourcePublicationPlan plan{
