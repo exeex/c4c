@@ -1,12 +1,15 @@
 # Closed-World No-External-Caller Metadata Source
 
-Status: Open
+Status: Closed
 Type: Metadata producer source idea
 Parent: `ideas/closed/444_no_external_caller_formal_authority_producer.md`
 Source Evidence:
 - `build/agent_state/444_step1_no_external_caller_audit/audit.md`
 - `build/agent_state/444_step2_no_external_caller_contract/contract.md`
 Owning Layer: Frontend/LIR/module closed-world metadata before prepared formal pointer authority
+Closed Evidence:
+- `build/agent_state/445_step1_metadata_source_classification/classification.md`
+- `build/agent_state/445_step2_source_contract_rejection/rejection.md`
 
 ## Goal
 
@@ -67,6 +70,32 @@ external-linkage formal pointer provenance.
   pointer values.
 - Any later idea 442 continuation consumes the authority field rather than raw
   callsites or testcase shape.
+
+## Completion Notes
+
+- Step 1 classified current frontend, HIR, LIR, module, linker/visibility,
+  callgraph, and whole-program-mode surfaces.
+- Step 2 rejected every current non-internal metadata source for
+  `FormalPointerAuthorityKind::NoExternalCaller`.
+- Static/internal linkage remains accepted only for `InternalOnly`.
+- `NoExternalCaller` remains unpopulated, and `930930-1::f` remains `Unknown`
+  and fail-closed.
+- A future accepted source would need producer-owned closed-world authority,
+  semantic identity, definition-status proof, complete caller-set coverage,
+  function-address escape coverage, indirect-call target exclusion/coverage,
+  and tested visibility/linker semantics if used.
+- No implementation packet is available in the current compiler model.
+- Close gate used canonical `test_before.log` and `test_after.log`; both logs
+  report 327 passed, 0 failed, and the non-decreasing regression guard passed.
+
+## Future Source Candidates
+
+These are not active follow-up ideas yet because no source has been selected:
+
+- compiler-owned whole-program/LTO-style mode with complete caller and escape
+  semantics;
+- tested linker/visibility contract proving no outside caller can invoke
+  selected non-internal definitions.
 
 ## Reviewer Reject Signals
 
