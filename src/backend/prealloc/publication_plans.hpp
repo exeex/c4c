@@ -298,6 +298,88 @@ struct PreparedDirectGlobalReturnAuthority {
   PreparedRegisterBank return_bank = PreparedRegisterBank::None;
 };
 
+enum class PreparedFusedPointerBranchPublicationStatus {
+  Available,
+  MissingNames,
+  MissingBranchCondition,
+  MissingTerminator,
+  UnsupportedTerminator,
+  UnsupportedBranchCondition,
+  UnsupportedPredicate,
+  UnsupportedCompareType,
+  ConditionMismatch,
+  TargetMismatch,
+  MissingConditionHome,
+  MissingLhsHome,
+  MissingRhsHome,
+  HomeValueMismatch,
+  UnsupportedConditionHome,
+  UnsupportedOperandHome,
+  UnsupportedOperand,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_fused_pointer_branch_publication_status_name(
+    PreparedFusedPointerBranchPublicationStatus status) {
+  switch (status) {
+    case PreparedFusedPointerBranchPublicationStatus::Available:
+      return "available";
+    case PreparedFusedPointerBranchPublicationStatus::MissingNames:
+      return "missing_names";
+    case PreparedFusedPointerBranchPublicationStatus::MissingBranchCondition:
+      return "missing_branch_condition";
+    case PreparedFusedPointerBranchPublicationStatus::MissingTerminator:
+      return "missing_terminator";
+    case PreparedFusedPointerBranchPublicationStatus::UnsupportedTerminator:
+      return "unsupported_terminator";
+    case PreparedFusedPointerBranchPublicationStatus::UnsupportedBranchCondition:
+      return "unsupported_branch_condition";
+    case PreparedFusedPointerBranchPublicationStatus::UnsupportedPredicate:
+      return "unsupported_predicate";
+    case PreparedFusedPointerBranchPublicationStatus::UnsupportedCompareType:
+      return "unsupported_compare_type";
+    case PreparedFusedPointerBranchPublicationStatus::ConditionMismatch:
+      return "condition_mismatch";
+    case PreparedFusedPointerBranchPublicationStatus::TargetMismatch:
+      return "target_mismatch";
+    case PreparedFusedPointerBranchPublicationStatus::MissingConditionHome:
+      return "missing_condition_home";
+    case PreparedFusedPointerBranchPublicationStatus::MissingLhsHome:
+      return "missing_lhs_home";
+    case PreparedFusedPointerBranchPublicationStatus::MissingRhsHome:
+      return "missing_rhs_home";
+    case PreparedFusedPointerBranchPublicationStatus::HomeValueMismatch:
+      return "home_value_mismatch";
+    case PreparedFusedPointerBranchPublicationStatus::UnsupportedConditionHome:
+      return "unsupported_condition_home";
+    case PreparedFusedPointerBranchPublicationStatus::UnsupportedOperandHome:
+      return "unsupported_operand_home";
+    case PreparedFusedPointerBranchPublicationStatus::UnsupportedOperand:
+      return "unsupported_operand";
+  }
+  return "unknown";
+}
+
+struct PreparedFusedPointerBranchPublicationInputs {
+  const PreparedNameTables* names = nullptr;
+  const PreparedBranchCondition* branch_condition = nullptr;
+  const bir::Terminator* terminator = nullptr;
+  const PreparedValueHome* condition_home = nullptr;
+  const PreparedValueHome* lhs_home = nullptr;
+  const PreparedValueHome* rhs_home = nullptr;
+};
+
+struct PreparedFusedPointerBranchPublication {
+  PreparedFusedPointerBranchPublicationStatus status =
+      PreparedFusedPointerBranchPublicationStatus::MissingBranchCondition;
+  const PreparedBranchCondition* branch_condition = nullptr;
+  const bir::Terminator* terminator = nullptr;
+  const PreparedValueHome* condition_home = nullptr;
+  const PreparedValueHome* lhs_home = nullptr;
+  const PreparedValueHome* rhs_home = nullptr;
+  bir::BinaryOpcode predicate = bir::BinaryOpcode::Eq;
+};
+
 struct PreparedEdgePublicationSourceProducer {
   PreparedEdgePublicationSourceProducerKind kind =
       PreparedEdgePublicationSourceProducerKind::Unknown;
@@ -987,6 +1069,13 @@ plan_prepared_direct_global_return_authority(
 
 [[nodiscard]] bool prepared_direct_global_return_authority_available(
     const PreparedDirectGlobalReturnAuthority& authority);
+
+[[nodiscard]] PreparedFusedPointerBranchPublication
+plan_prepared_fused_pointer_branch_publication(
+    const PreparedFusedPointerBranchPublicationInputs& inputs);
+
+[[nodiscard]] bool prepared_fused_pointer_branch_publication_available(
+    const PreparedFusedPointerBranchPublication& publication);
 
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(

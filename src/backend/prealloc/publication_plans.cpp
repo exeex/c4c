@@ -1950,6 +1950,183 @@ bool prepared_direct_global_return_authority_available(
          PreparedDirectGlobalReturnAuthorityStatus::Available;
 }
 
+[[nodiscard]] bool prepared_pointer_value_is_null_immediate(
+    const bir::Value& value) {
+  return value.kind == bir::Value::Kind::Immediate &&
+         value.type == bir::TypeKind::Ptr &&
+         value.immediate == 0 &&
+         value.immediate_bits == 0 &&
+         !value.f128_payload.has_value();
+}
+
+[[nodiscard]] bool prepared_home_names_value(
+    const PreparedNameTables& names,
+    const PreparedValueHome& home,
+    const bir::Value& value) {
+  return value.kind == bir::Value::Kind::Named &&
+         home.function_name != kInvalidFunctionName &&
+         home.value_name != kInvalidValueName &&
+         home.value_id != 0 &&
+         prepared_value_name(names, home.value_name) == value.name;
+}
+
+[[nodiscard]] bool prepared_home_has_gpr_compatible_register(
+    const PreparedValueHome& home) {
+  return (home.kind == PreparedValueHomeKind::Register ||
+          home.kind == PreparedValueHomeKind::PointerBasePlusOffset) &&
+         home.register_name.has_value();
+}
+
+[[nodiscard]] PreparedFusedPointerBranchPublicationStatus
+validate_prepared_pointer_branch_operand_home(
+    const PreparedNameTables& names,
+    const bir::Value& value,
+    const PreparedValueHome* home,
+    PreparedFusedPointerBranchPublicationStatus missing_home_status) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return prepared_pointer_value_is_null_immediate(value)
+               ? PreparedFusedPointerBranchPublicationStatus::Available
+               : PreparedFusedPointerBranchPublicationStatus::UnsupportedOperand;
+  }
+  if (value.kind != bir::Value::Kind::Named || value.type != bir::TypeKind::Ptr ||
+      value.name.empty()) {
+    return PreparedFusedPointerBranchPublicationStatus::UnsupportedOperand;
+  }
+  if (home == nullptr) {
+    return missing_home_status;
+  }
+  if (!prepared_home_names_value(names, *home, value)) {
+    return PreparedFusedPointerBranchPublicationStatus::HomeValueMismatch;
+  }
+  if (!prepared_home_has_gpr_compatible_register(*home)) {
+    return PreparedFusedPointerBranchPublicationStatus::UnsupportedOperandHome;
+  }
+  return PreparedFusedPointerBranchPublicationStatus::Available;
+}
+
+PreparedFusedPointerBranchPublication
+plan_prepared_fused_pointer_branch_publication(
+    const PreparedFusedPointerBranchPublicationInputs& inputs) {
+  PreparedFusedPointerBranchPublication publication{
+      .branch_condition = inputs.branch_condition,
+      .terminator = inputs.terminator,
+      .condition_home = inputs.condition_home,
+      .lhs_home = inputs.lhs_home,
+      .rhs_home = inputs.rhs_home,
+  };
+
+  if (inputs.names == nullptr) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::MissingNames;
+    return publication;
+  }
+  if (inputs.branch_condition == nullptr) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::MissingBranchCondition;
+    return publication;
+  }
+  if (inputs.terminator == nullptr) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::MissingTerminator;
+    return publication;
+  }
+  if (inputs.terminator->kind != bir::TerminatorKind::CondBranch) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::UnsupportedTerminator;
+    return publication;
+  }
+  if (inputs.branch_condition->kind !=
+          PreparedBranchConditionKind::FusedCompare ||
+      !inputs.branch_condition->can_fuse_with_branch ||
+      !inputs.branch_condition->predicate.has_value() ||
+      !inputs.branch_condition->compare_type.has_value() ||
+      !inputs.branch_condition->lhs.has_value() ||
+      !inputs.branch_condition->rhs.has_value()) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::UnsupportedBranchCondition;
+    return publication;
+  }
+  publication.predicate = *inputs.branch_condition->predicate;
+  if (publication.predicate != bir::BinaryOpcode::Eq &&
+      publication.predicate != bir::BinaryOpcode::Ne) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::UnsupportedPredicate;
+    return publication;
+  }
+  if (*inputs.branch_condition->compare_type != bir::TypeKind::Ptr ||
+      inputs.branch_condition->lhs->type != bir::TypeKind::Ptr ||
+      inputs.branch_condition->rhs->type != bir::TypeKind::Ptr) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::UnsupportedCompareType;
+    return publication;
+  }
+  if (inputs.terminator->condition.kind != bir::Value::Kind::Named ||
+      inputs.branch_condition->condition_value.kind != bir::Value::Kind::Named ||
+      inputs.terminator->condition.name !=
+          inputs.branch_condition->condition_value.name) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::ConditionMismatch;
+    return publication;
+  }
+  if (inputs.branch_condition->true_label == kInvalidBlockLabel ||
+      inputs.branch_condition->false_label == kInvalidBlockLabel ||
+      prepared_block_label(*inputs.names, inputs.branch_condition->true_label) !=
+          inputs.terminator->true_label ||
+      prepared_block_label(*inputs.names, inputs.branch_condition->false_label) !=
+          inputs.terminator->false_label) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::TargetMismatch;
+    return publication;
+  }
+  if (inputs.condition_home == nullptr) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::MissingConditionHome;
+    return publication;
+  }
+  if (inputs.terminator->condition.type != bir::TypeKind::I32 ||
+      !prepared_home_names_value(*inputs.names,
+                                 *inputs.condition_home,
+                                 inputs.terminator->condition)) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::HomeValueMismatch;
+    return publication;
+  }
+  if (!prepared_home_has_gpr_compatible_register(*inputs.condition_home)) {
+    publication.status =
+        PreparedFusedPointerBranchPublicationStatus::UnsupportedConditionHome;
+    return publication;
+  }
+
+  const auto lhs_status = validate_prepared_pointer_branch_operand_home(
+      *inputs.names,
+      *inputs.branch_condition->lhs,
+      inputs.lhs_home,
+      PreparedFusedPointerBranchPublicationStatus::MissingLhsHome);
+  if (lhs_status != PreparedFusedPointerBranchPublicationStatus::Available) {
+    publication.status = lhs_status;
+    return publication;
+  }
+  const auto rhs_status = validate_prepared_pointer_branch_operand_home(
+      *inputs.names,
+      *inputs.branch_condition->rhs,
+      inputs.rhs_home,
+      PreparedFusedPointerBranchPublicationStatus::MissingRhsHome);
+  if (rhs_status != PreparedFusedPointerBranchPublicationStatus::Available) {
+    publication.status = rhs_status;
+    return publication;
+  }
+
+  publication.status =
+      PreparedFusedPointerBranchPublicationStatus::Available;
+  return publication;
+}
+
+bool prepared_fused_pointer_branch_publication_available(
+    const PreparedFusedPointerBranchPublication& publication) {
+  return publication.status ==
+         PreparedFusedPointerBranchPublicationStatus::Available;
+}
+
 void publish_store_global_immediate_source_if_authorized(
     PreparedStoreSourcePublicationPlan& plan) {
   if (plan.intent != PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||

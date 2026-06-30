@@ -5773,6 +5773,193 @@ int check_direct_global_return_authority_contract() {
   return 0;
 }
 
+int check_fused_pointer_branch_publication_contract() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("pointer_branch");
+  const auto entry_label = names.block_labels.intern("entry");
+  const auto true_label = names.block_labels.intern("is_true");
+  const auto false_label = names.block_labels.intern("is_false");
+  const auto condition_name = names.value_names.intern("%cmp");
+  const auto lhs_name = names.value_names.intern("%lhs");
+  const auto rhs_name = names.value_names.intern("%rhs");
+
+  bir::Terminator terminator;
+  terminator.kind = bir::TerminatorKind::CondBranch;
+  terminator.condition = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  terminator.true_label = "is_true";
+  terminator.false_label = "is_false";
+
+  const prepare::PreparedBranchCondition branch_condition{
+      .function_name = function_name,
+      .block_label = entry_label,
+      .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+      .condition_value = bir::Value::named(bir::TypeKind::I32, "%cmp"),
+      .predicate = bir::BinaryOpcode::Ne,
+      .compare_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "%lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs"),
+      .can_fuse_with_branch = true,
+      .true_label = true_label,
+      .false_label = false_label,
+  };
+  const prepare::PreparedValueHome condition_home{
+      .value_id = 1,
+      .function_name = function_name,
+      .value_name = condition_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"s2"},
+  };
+  const prepare::PreparedValueHome lhs_home{
+      .value_id = 2,
+      .function_name = function_name,
+      .value_name = lhs_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  };
+  const prepare::PreparedValueHome rhs_home{
+      .value_id = 3,
+      .function_name = function_name,
+      .value_name = rhs_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"s1"},
+  };
+
+  const auto accepted =
+      prepare::plan_prepared_fused_pointer_branch_publication({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .condition_home = &condition_home,
+          .lhs_home = &lhs_home,
+          .rhs_home = &rhs_home,
+      });
+  if (!prepare::prepared_fused_pointer_branch_publication_available(accepted) ||
+      accepted.predicate != bir::BinaryOpcode::Ne ||
+      accepted.condition_home != &condition_home ||
+      accepted.lhs_home != &lhs_home ||
+      accepted.rhs_home != &rhs_home) {
+    return fail("expected coherent fused pointer branch publication");
+  }
+
+  auto relational = branch_condition;
+  relational.predicate = bir::BinaryOpcode::Ult;
+  const auto unsupported_predicate =
+      prepare::plan_prepared_fused_pointer_branch_publication({
+          .names = &names,
+          .branch_condition = &relational,
+          .terminator = &terminator,
+          .condition_home = &condition_home,
+          .lhs_home = &lhs_home,
+          .rhs_home = &rhs_home,
+      });
+  if (unsupported_predicate.status !=
+      prepare::PreparedFusedPointerBranchPublicationStatus::UnsupportedPredicate) {
+    return fail("expected pointer relational branch predicate to stay fail-closed");
+  }
+
+  auto mismatched_condition = terminator;
+  mismatched_condition.condition = bir::Value::named(bir::TypeKind::I32, "%other");
+  const auto condition_mismatch =
+      prepare::plan_prepared_fused_pointer_branch_publication({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &mismatched_condition,
+          .condition_home = &condition_home,
+          .lhs_home = &lhs_home,
+          .rhs_home = &rhs_home,
+      });
+  if (condition_mismatch.status !=
+      prepare::PreparedFusedPointerBranchPublicationStatus::ConditionMismatch) {
+    return fail("expected condition-mismatched pointer branch to stay fail-closed");
+  }
+
+  auto target_mismatch = terminator;
+  target_mismatch.false_label = "other";
+  const auto mismatched_target =
+      prepare::plan_prepared_fused_pointer_branch_publication({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &target_mismatch,
+          .condition_home = &condition_home,
+          .lhs_home = &lhs_home,
+          .rhs_home = &rhs_home,
+      });
+  if (mismatched_target.status !=
+      prepare::PreparedFusedPointerBranchPublicationStatus::TargetMismatch) {
+    return fail("expected target-mismatched pointer branch to stay fail-closed");
+  }
+
+  const auto missing_lhs =
+      prepare::plan_prepared_fused_pointer_branch_publication({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .condition_home = &condition_home,
+          .rhs_home = &rhs_home,
+      });
+  if (missing_lhs.status !=
+      prepare::PreparedFusedPointerBranchPublicationStatus::MissingLhsHome) {
+    return fail("expected missing pointer operand home to stay fail-closed");
+  }
+
+  auto stack_lhs = lhs_home;
+  stack_lhs.kind = prepare::PreparedValueHomeKind::StackSlot;
+  stack_lhs.register_name = std::nullopt;
+  const auto unsupported_home =
+      prepare::plan_prepared_fused_pointer_branch_publication({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .condition_home = &condition_home,
+          .lhs_home = &stack_lhs,
+          .rhs_home = &rhs_home,
+      });
+  if (unsupported_home.status !=
+      prepare::PreparedFusedPointerBranchPublicationStatus::UnsupportedOperandHome) {
+    return fail("expected stack-home pointer branch operand to stay fail-closed");
+  }
+
+  auto nonnull_immediate_rhs = branch_condition;
+  nonnull_immediate_rhs.rhs = bir::Value{
+      .kind = bir::Value::Kind::Immediate,
+      .type = bir::TypeKind::Ptr,
+      .immediate = 8,
+      .immediate_bits = 8,
+  };
+  const auto unsupported_operand =
+      prepare::plan_prepared_fused_pointer_branch_publication({
+          .names = &names,
+          .branch_condition = &nonnull_immediate_rhs,
+          .terminator = &terminator,
+          .condition_home = &condition_home,
+          .lhs_home = &lhs_home,
+      });
+  if (unsupported_operand.status !=
+      prepare::PreparedFusedPointerBranchPublicationStatus::UnsupportedOperand) {
+    return fail("expected non-null pointer immediate branch operand to stay fail-closed");
+  }
+
+  auto integer_compare = branch_condition;
+  integer_compare.compare_type = bir::TypeKind::I32;
+  integer_compare.lhs = bir::Value::named(bir::TypeKind::I32, "%lhs");
+  integer_compare.rhs = bir::Value::named(bir::TypeKind::I32, "%rhs");
+  const auto unsupported_compare_type =
+      prepare::plan_prepared_fused_pointer_branch_publication({
+          .names = &names,
+          .branch_condition = &integer_compare,
+          .terminator = &terminator,
+          .condition_home = &condition_home,
+          .lhs_home = &lhs_home,
+          .rhs_home = &rhs_home,
+      });
+  if (unsupported_compare_type.status !=
+      prepare::PreparedFusedPointerBranchPublicationStatus::UnsupportedCompareType) {
+    return fail("expected non-pointer fused compare to stay outside pointer branch publication");
+  }
+
+  return 0;
+}
+
 int check_populated_immediate_global_store_source_publication() {
   const auto run_case = [](bool coherent_destination) {
     prepare::PreparedBirModule prepared;
@@ -7168,6 +7355,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_direct_global_return_authority_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_fused_pointer_branch_publication_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_populated_immediate_global_store_source_publication();

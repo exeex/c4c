@@ -8231,6 +8231,66 @@ int builds_prepared_fused_ne_ptr_null_compare_branch_object() {
   return 0;
 }
 
+int builds_prepared_fused_ptr_register_compare_branch_object(
+    bir::BinaryOpcode predicate,
+    std::uint32_t expected_branch) {
+  const auto prepared =
+      make_prepared_fused_compare_branch_module(predicate, bir::TypeKind::Ptr);
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared fused pointer register compare branch RV64 object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "cmp_branch");
+  const auto* true_label = object::find_symbol(*module, ".Lcmp_branch_is_true");
+  const auto* false_label = object::find_symbol(*module, ".Lcmp_branch_is_false");
+  if (text == nullptr || function == nullptr || true_label == nullptr ||
+      false_label == nullptr) {
+    return fail("expected fused pointer register compare branch object symbols and text");
+  }
+  if (text->bytes.size() != 32 || text->size_bytes != 32 ||
+      function->value != 0 || function->size_bytes != 32 ||
+      true_label->value != 16 || false_label->value != 24) {
+    return fail("expected fused pointer register compare branch object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00028e13 ||
+      read_u32(text->bytes, 4) != 0x00030e93 ||
+      read_u32(text->bytes, 8) != expected_branch ||
+      read_u32(text->bytes, 12) != 0x0000006f ||
+      read_u32(text->bytes, 16) != 0x00100513 ||
+      read_u32(text->bytes, 20) != 0x00008067 ||
+      read_u32(text->bytes, 24) != 0x00000513 ||
+      read_u32(text->bytes, 28) != 0x00008067) {
+    return fail("expected pointer register compare branch to lower through prepared authority");
+  }
+  if (module->relocations.size() != 2 ||
+      module->relocations[0].section != text->id ||
+      module->relocations[0].offset != 8 ||
+      module->relocations[0].type != R_RISCV_BRANCH ||
+      module->relocations[0].symbol != true_label->id ||
+      module->relocations[0].addend != 0 ||
+      module->relocations[1].section != text->id ||
+      module->relocations[1].offset != 12 ||
+      module->relocations[1].type != R_RISCV_JAL ||
+      module->relocations[1].symbol != false_label->id ||
+      module->relocations[1].addend != 0) {
+    return fail("expected fused pointer register compare branch local relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_fused_ne_ptr_register_compare_branch_object() {
+  return builds_prepared_fused_ptr_register_compare_branch_object(
+      bir::BinaryOpcode::Ne,
+      0x01de1063);
+}
+
+int builds_prepared_fused_eq_ptr_register_compare_branch_object() {
+  return builds_prepared_fused_ptr_register_compare_branch_object(
+      bir::BinaryOpcode::Eq,
+      0x01de0063);
+}
+
 int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering";
@@ -8238,13 +8298,6 @@ int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
   if (expect_prepared_rejection_diagnostic(
           make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Sgt,
                                                     bir::TypeKind::I64),
-          diagnostic) != 0) {
-    return 1;
-  }
-  if (expect_prepared_rejection_diagnostic(
-          make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Eq,
-                                                    bir::TypeKind::Ptr,
-                                                    null_pointer_value()),
           diagnostic) != 0) {
     return 1;
   }
@@ -8257,9 +8310,37 @@ int rejects_prepared_fused_compare_branch_fail_closed_shapes() {
     return 1;
   }
   if (expect_prepared_rejection_diagnostic(
-          make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ne,
+          make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Uge,
                                                     bir::TypeKind::Ptr),
           diagnostic) != 0) {
+    return 1;
+  }
+
+  auto missing_branch_condition =
+      make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ne,
+                                                bir::TypeKind::Ptr);
+  missing_branch_condition.control_flow.functions.front().branch_conditions.clear();
+  if (expect_prepared_rejection_diagnostic(missing_branch_condition,
+                                           diagnostic) != 0) {
+    return 1;
+  }
+
+  auto missing_lhs_home =
+      make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ne,
+                                                bir::TypeKind::Ptr);
+  auto& missing_lhs_homes =
+      missing_lhs_home.value_locations.functions.front().value_homes;
+  missing_lhs_homes.erase(missing_lhs_homes.begin() + 1);
+  if (expect_prepared_rejection_diagnostic(missing_lhs_home, diagnostic) != 0) {
+    return 1;
+  }
+
+  auto target_mismatch =
+      make_prepared_fused_compare_branch_module(bir::BinaryOpcode::Ne,
+                                                bir::TypeKind::Ptr);
+  target_mismatch.control_flow.functions.front().branch_conditions.front().false_label =
+      target_mismatch.names.block_labels.intern("other");
+  if (expect_prepared_rejection_diagnostic(target_mismatch, diagnostic) != 0) {
     return 1;
   }
   return 0;
@@ -14160,6 +14241,8 @@ int main() {
   status |= builds_prepared_fused_sgt_i32_compare_branch_object();
   status |= builds_prepared_fused_sle_i32_compare_branch_object();
   status |= builds_prepared_fused_ne_ptr_null_compare_branch_object();
+  status |= builds_prepared_fused_ne_ptr_register_compare_branch_object();
+  status |= builds_prepared_fused_eq_ptr_register_compare_branch_object();
   status |= rejects_prepared_fused_compare_branch_fail_closed_shapes();
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_traversed_wide_rematerialized_return_object();

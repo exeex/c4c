@@ -2,6 +2,7 @@
 
 #include "../../../prealloc/prepared_contract_verifier.hpp"
 #include "../../../prealloc/prepared_lookups.hpp"
+#include "../../../prealloc/publication_plans.hpp"
 #include "../../../prealloc/target_register_profile.hpp"
 #include "emit.hpp"
 #include "prepared_frame_emit.hpp"
@@ -7189,6 +7190,87 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_compare_branch(
   return fragment;
 }
 
+const c4c::backend::prepare::PreparedValueHome* prepared_pointer_branch_operand_home_for(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::Value& value) {
+  return value.kind == c4c::backend::bir::Value::Kind::Named
+             ? prepared_value_home_for(names, lookups, value)
+             : nullptr;
+}
+
+bool prepared_branch_condition_is_pointer_eq_ne(
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition) {
+  return branch_condition.kind ==
+             c4c::backend::prepare::PreparedBranchConditionKind::FusedCompare &&
+         branch_condition.predicate.has_value() &&
+         (*branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Eq ||
+          *branch_condition.predicate == c4c::backend::bir::BinaryOpcode::Ne) &&
+         branch_condition.compare_type.has_value() &&
+         *branch_condition.compare_type == c4c::backend::bir::TypeKind::Ptr &&
+         branch_condition.lhs.has_value() &&
+         branch_condition.rhs.has_value();
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_fused_pointer_branch(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::bir::Terminator& terminator,
+    std::string true_label,
+    std::string false_label,
+    std::size_t stack_frame_bytes) {
+  if (!prepared_branch_condition_is_pointer_eq_ne(branch_condition)) {
+    return std::nullopt;
+  }
+
+  const auto* condition_home =
+      prepared_value_home_for(names, lookups, branch_condition.condition_value);
+  const auto* lhs_home =
+      prepared_pointer_branch_operand_home_for(names, lookups, *branch_condition.lhs);
+  const auto* rhs_home =
+      prepared_pointer_branch_operand_home_for(names, lookups, *branch_condition.rhs);
+  const auto publication =
+      c4c::backend::prepare::plan_prepared_fused_pointer_branch_publication({
+          .names = &names,
+          .branch_condition = &branch_condition,
+          .terminator = &terminator,
+          .condition_home = condition_home,
+          .lhs_home = lhs_home,
+          .rhs_home = rhs_home,
+      });
+  if (!c4c::backend::prepare::prepared_fused_pointer_branch_publication_available(
+          publication)) {
+    return std::nullopt;
+  }
+  const auto funct3 = rv64_branch_funct3(publication.predicate);
+  if (!funct3.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_move_value_to_register(fragment,
+                                          28,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          *branch_condition.lhs,
+                                          stack_frame_bytes) ||
+      !append_rv64_move_value_to_register(fragment,
+                                          29,
+                                          stack_layout,
+                                          names,
+                                          lookups,
+                                          *branch_condition.rhs,
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  append_rv64_local_branch(fragment, *funct3, 28, 29, std::move(true_label));
+  append_rv64_local_jump(fragment, std::move(false_label));
+  return fragment;
+}
+
 bool prepared_compare_feeds_supported_scalar_trunc_publication(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -7352,6 +7434,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
           branch_condition->predicate.has_value() &&
           branch_condition->lhs.has_value() &&
           branch_condition->rhs.has_value()) {
+        if (prepared_branch_condition_is_pointer_eq_ne(*branch_condition)) {
+          return fragment_for_prepared_fused_pointer_branch(prepared.stack_layout,
+                                                            names,
+                                                            lookups,
+                                                            *branch_condition,
+                                                            block.terminator,
+                                                            true_asm_label,
+                                                            false_asm_label,
+                                                            stack_frame_bytes);
+        }
         return fragment_for_prepared_compare_branch(prepared.stack_layout,
                                                     names,
                                                     lookups,
