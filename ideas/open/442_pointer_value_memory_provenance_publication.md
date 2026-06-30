@@ -6,6 +6,22 @@ Parent: `ideas/closed/438_prepared_pointer_value_memory_authority.md`
 Source Evidence: `build/agent_state/438_step1_pointer_value_memory_audit/`
 Owning Layer: BIR/prepared pointer-value memory provenance publication before RV64 target consumption
 
+## Current Lifecycle State
+
+Parked after Step 4. The internal-only same-module computed-address formal
+pointer provenance packet is complete and valid, but the external-linkage
+`930930-1::f` representative is not close-ready. Observed same-module direct
+calls are not complete authority for an external-linkage callee formal.
+
+Before this idea can extend formal pointer provenance beyond
+`LirFunction::is_internal`, the producer must first expose reliable
+closed-world/internal/private/no-external-caller authority. That prerequisite is
+tracked separately in
+`ideas/open/443_closed_world_formal_pointer_authority.md`.
+
+Pointer-delta propagation, including `%mr_TR - 8`, remains later work only
+after base formal pointer provenance is authorized.
+
 ## Goal
 
 Publish or deliberately reject stronger pointer-value memory provenance for
@@ -75,4 +91,3 @@ facts, need a named opaque-compatibility policy, or must remain unsupported.
   pass/fail accounting changes claimed as provenance publication progress.
 - Reject broad memory-provenance rewrites that hide the old unknown-authority
   failure behind a new helper name.
-

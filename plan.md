@@ -1,83 +1,78 @@
-# Pointer-Value Memory Provenance Publication Plan
+# Closed-World Formal Pointer Authority Plan
 
 Status: Active
-Source Idea: ideas/open/442_pointer_value_memory_provenance_publication.md
+Source Idea: ideas/open/443_closed_world_formal_pointer_authority.md
 
 ## Purpose
 
-Determine whether runtime pointer dereferences can publish concrete prepared
-provenance, require a named opaque-compatibility policy, or must remain
-fail-closed before any RV64 target consumer work.
+Build the producer authority prerequisite needed before idea 442 can extend
+formal pointer provenance beyond internal-only callees.
 
 ## Goal
 
-Classify the `930930-1` pointer-value memory accesses against the idea 438
-authority classifier, then implement or route only the producer publication
-work that can prove explicit pointer provenance, layout, extent, and range.
+Classify available function/linkage/callgraph metadata, define when
+same-module callsites are complete authority for callee formal pointers, and
+add focused producer coverage for accepted closed-world cases and rejected
+external-linkage/no-proof cases.
 
 ## Core Rule
 
-Do not weaken `prepare::prepared_pointer_value_memory_has_proven_authority` and
-do not infer pointer-value memory provenance, object extent, layout, or range
-in RV64 from raw pointer values, integer casts, filenames, function names,
-value names, object labels, or dump shape.
+Do not publish formal pointer provenance for an external-linkage callee from
+observed same-module direct callsites alone. Do not weaken
+`prepare::prepared_pointer_value_memory_has_proven_authority`.
 
 ## Read First
 
+- ideas/open/443_closed_world_formal_pointer_authority.md
 - ideas/open/442_pointer_value_memory_provenance_publication.md
-- build/agent_state/438_step1_pointer_value_memory_audit/audit.md
-- build/agent_state/438_step2_pointer_value_authority_contract/contract.md
-- build/agent_state/438_step3_pointer_value_authority_coverage/summary.md
-- build/agent_state/433_step4_residual_disposition/930930-1.prepared.out
-- build/agent_state/433_step4_residual_disposition/930930-1.object.err
-- src/backend/prealloc/addressing.hpp
+- build/agent_state/442_step4_residual_disposition/classification.md
+- build/agent_state/442_step4_residual_disposition/evidence_snippets.txt
+- build/agent_state/442_step4_residual_disposition/930930-1.prepared.out
+- build/agent_state/442_step4_residual_disposition/930930-1.object.err
 - src/backend/bir/lir_to_bir/memory/provenance.cpp
-- src/backend/prealloc/stack_layout/coordinator.cpp
+- src/backend/prealloc/addressing.hpp
 - tests/backend/bir/backend_prepare_stack_layout_test.cpp
 
 ## Current Targets
 
-- Four `930930-1` pointer-value memory accesses currently reporting
-  `layout_authority=unknown` and `range_verdict=unknown_compatible`.
-- Runtime pointer sources such as `reg1` and `mr_TR - 8`.
-- The idea 438 authority classifier:
-  `prepare::prepared_pointer_value_memory_has_proven_authority`.
-- Any producer path that can publish concrete provenance, complete object
-  extent, matching requested range, and `ProvenInBounds`.
-- Any explicitly named `OpaqueCompatibility` policy if concrete provenance is
-  impossible but the route is semantically owned.
+- The external-linkage formal pointer authority gap exposed by `930930-1::f`.
+- Same-module computed-address call argument sources, including
+  `source_base=@mem source_delta=792`.
+- Function/linkage/callgraph metadata that can prove closed-world,
+  internal/private, or no-external-caller authority.
+- Existing internal-only formal pointer provenance from idea 442, which must be
+  preserved as valid progress.
 
 ## Non-Goals
 
-- Redefining or weakening the idea 438 authority contract.
-- RV64 target-side reconstruction of pointer provenance, layout, extent, or
-  range.
+- Marking `930930-1` done while its external-linkage formal pointer rows remain
+  `layout_authority=unknown` and `range_verdict=unknown_compatible`.
+- Publishing external-linkage formal provenance from observed same-module calls
+  alone.
+- Pointer-delta propagation such as `%mr_TR - 8` before base formal pointer
+  provenance is authorized.
+- RV64 target-side provenance inference.
 - Store-source/global-memory publication, direct-global return/select-chain,
-  or terminator/select publication work.
-- Reopening pointer-cast movement from idea 429 or selected global object data
-  from idea 433.
-- Expectation rewrites, unsupported-marker downgrades, allowlists, runtime
-  comparison changes, or pass/fail accounting changes.
+  terminator/select publication, or selected global object-data work.
+- Accepting the rejected `test_baseline.new.log` full-suite refresh.
 
 ## Working Model
 
-Idea 438 made unknown pointer-value memory authority explicitly
-non-consumable. This plan owns the next producer question: can the prepared
-pipeline publish stronger facts for the runtime pointer patterns, should it
-define a narrow opaque compatibility exception with coverage, or should those
-patterns remain unsupported. RV64 consumer work is out of scope until this
-producer authority is explicit.
+Idea 442's internal-only route is sound. The remaining representative needs a
+separate producer proof that same-module callsites are complete for a callee
+formal. Step 1 should determine what authority already exists and what must be
+added. Only after that authority is covered should idea 442 resume external
+formal provenance or pointer-delta propagation.
 
 ## Execution Rules
 
-- Start with evidence classification; do not edit RV64 lowering in Step 1.
-- Treat `layout_authority=unknown` and `range_verdict=UnknownCompatible` as
-  fail-closed unless a named, tested opaque-compatibility predicate is created.
-- Preserve the existing classifier as the contract boundary; any exception must
-  be explicit and separately covered.
-- Add focused producer/prepared tests, not named testcase shortcuts.
-- If the evidence splits into a separate producer family, create or request a
-  follow-up idea instead of widening this plan.
+- Start with classification; do not edit implementation in Step 1.
+- Keep external-linkage/no-proof callees fail-closed.
+- Treat `LirFunction::is_internal` as already covered by idea 442; do not
+  regress it.
+- If the only available evidence is observed same-module callsites, reject the
+  route as insufficient for external linkage.
+- Use focused producer/prepared tests for any accepted closed-world authority.
 - Classification-only proof: `git diff --check`.
 - Code/test proof, if implementation is selected:
 
@@ -89,33 +84,32 @@ git diff --check
 
 ## Steps
 
-### Step 1: Re-Audit Pointer-Value Provenance Publication
+### Step 1: Audit Closed-World Formal Authority Inputs
 
-Inspect the four `930930-1` pointer-value memory accesses from the 438 audit
-and classify each runtime pointer source as concrete-provenance candidate,
-opaque-compatibility candidate, or intentionally unsupported. Completion means
-`todo.md` records a table for each access with source pointer, current
-authority, missing producer fact, and selected next packet.
+Inspect current function linkage, visibility, callgraph, and prepared producer
+metadata. Classify which inputs can prove same-module callsites are complete for
+formal pointer provenance and which external-linkage shapes must remain
+fail-closed. Completion means `todo.md` records an authority table and the
+first executable producer packet or exact blocker.
 
-### Step 2: Select Concrete Provenance Or Opaque Policy Packet
+### Step 2: Define The Authority Contract
 
-Choose one bounded producer packet: publish concrete provenance for a recurring
-owned runtime pointer pattern, define and test a narrow opaque-compatibility
-policy, or record why the residual must remain fail-closed or split. Completion
-means `todo.md` states the contract, rejected adjacent shapes, owned
-files/tests, and proof command.
+Write the producer contract for internal/private/closed-world/no-external-caller
+formal pointer authority. Include rejected adjacent shapes, especially
+external-linkage callees with only observed same-module callsites. Completion
+means `todo.md` states required facts, focused tests, and owned implementation
+surfaces.
 
-### Step 3: Implement Producer Publication Or Policy Coverage
+### Step 3: Implement Or Route Focused Producer Coverage
 
-Apply the smallest producer/prepared change and focused tests for the selected
-packet, or create a separate lifecycle idea if the packet is outside this
-source idea. Completion means canonical proof passes and `todo.md` records
-whether the affected records pass the authority classifier or the named opaque
-policy.
+Add the smallest producer/prepared coverage and implementation needed for the
+selected authority packet, or split again if the missing metadata belongs to a
+different lifecycle initiative. Completion means proof passes and `todo.md`
+records whether the authority is available for idea 442 to consume.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-check the representative evidence, classify remaining pointer-value memory
-blockers, and decide whether this source idea is complete. Completion means the
-idea closes, remains active with an exact producer packet, or routes a durable
-follow-up before any RV64 target-consumer work.
+Re-check the external-linkage formal provenance blocker, classify any remaining
+rows, and decide whether this source idea is complete. Completion means close,
+keep active with an exact remaining authority packet, or route a durable
+follow-up.
