@@ -2986,6 +2986,7 @@ PreparedSelectCarrierAliasAuthority plan_prepared_select_carrier_alias_authority
   PreparedSelectCarrierAliasAuthority authority{
       .publication = inputs.publication,
   };
+  authority.carrier_alias_candidate_count = inputs.carrier_aliases.size();
   if (inputs.names == nullptr) {
     authority.status = PreparedSelectCarrierAliasAuthorityStatus::MissingNames;
     return authority;
@@ -3184,6 +3185,21 @@ PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
     const PreparedBirModule& prepared) {
   PreparedSelectCarrierAliasAuthorityRecords records;
+  const auto evidence =
+      collect_prepared_select_carrier_alias_authority_evidence(prepared);
+  for (const auto& record : evidence.records) {
+    if (!prepared_select_carrier_alias_authority_available(record.authority)) {
+      continue;
+    }
+    records.records.push_back(record);
+  }
+  return records;
+}
+
+PreparedSelectCarrierAliasAuthorityEvidence
+collect_prepared_select_carrier_alias_authority_evidence(
+    const PreparedBirModule& prepared) {
+  PreparedSelectCarrierAliasAuthorityEvidence evidence;
   for (const auto& function : prepared.control_flow.functions) {
     const auto* bir_function =
         prepared_bir_function_by_name(prepared, function.function_name);
@@ -3194,18 +3210,16 @@ collect_prepared_select_carrier_alias_authorities(
     const auto edge_publications = make_prepared_edge_publication_lookups(
         prepared, function, value_locations, &value_home_lookups);
     for (const auto& publication : edge_publications.publications) {
-      if (bir_function == nullptr ||
-          publication.status != PreparedEdgePublicationLookupStatus::Available ||
-          publication.source_producer_kind !=
-              PreparedEdgePublicationSourceProducerKind::Binary ||
-          publication.carrier_kind !=
-              PreparedJoinTransferCarrierKind::SelectMaterialization) {
-        continue;
-      }
-      const auto* join_block =
-          prepared_bir_block_by_label(*bir_function, publication.successor_label);
-      if (join_block == nullptr) {
-        continue;
+      const auto* join_block = bir_function == nullptr
+                                   ? nullptr
+                                   : prepared_bir_block_by_label(
+                                         *bir_function,
+                                         publication.successor_label);
+      std::vector<PreparedSelectCarrierAliasCandidate> carrier_aliases;
+      if (join_block != nullptr) {
+        carrier_aliases =
+            collect_prepared_select_carrier_alias_candidates(*join_block,
+                                                             publication);
       }
       auto authority = plan_prepared_select_carrier_alias_authority({
           .names = &prepared.names,
@@ -3213,21 +3227,16 @@ collect_prepared_select_carrier_alias_authorities(
           .function = bir_function,
           .value_home_lookups = &value_home_lookups,
           .publication = &publication,
-          .carrier_aliases =
-              collect_prepared_select_carrier_alias_candidates(*join_block,
-                                                               publication),
+          .carrier_aliases = std::move(carrier_aliases),
       });
-      if (!prepared_select_carrier_alias_authority_available(authority)) {
-        continue;
-      }
       clear_temporary_carrier_alias_pointers(authority);
-      records.records.push_back(PreparedSelectCarrierAliasAuthorityRecord{
+      evidence.records.push_back(PreparedSelectCarrierAliasAuthorityRecord{
           .function_name = function.function_name,
           .authority = std::move(authority),
       });
     }
   }
-  return records;
+  return evidence;
 }
 
 PreparedSelectEdgeSourceProducerPlacementRecords

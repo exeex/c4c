@@ -762,6 +762,7 @@ struct PreparedSelectCarrierAliasAuthority {
       PreparedEdgePublicationSourceProducerKind::Unknown;
   std::optional<BlockLabelId> source_producer_block_label;
   std::optional<std::size_t> source_producer_instruction_index;
+  std::size_t carrier_alias_candidate_count = 0;
   std::vector<PreparedSelectCarrierAlias> carrier_aliases;
   bool source_use_closure_proven = false;
 };
@@ -772,6 +773,10 @@ struct PreparedSelectCarrierAliasAuthorityRecord {
 };
 
 struct PreparedSelectCarrierAliasAuthorityRecords {
+  std::vector<PreparedSelectCarrierAliasAuthorityRecord> records;
+};
+
+struct PreparedSelectCarrierAliasAuthorityEvidence {
   std::vector<PreparedSelectCarrierAliasAuthorityRecord> records;
 };
 
@@ -1509,6 +1514,10 @@ plan_prepared_select_carrier_alias_authority(
 
 [[nodiscard]] PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
+    const PreparedBirModule& prepared);
+
+[[nodiscard]] PreparedSelectCarrierAliasAuthorityEvidence
+collect_prepared_select_carrier_alias_authority_evidence(
     const PreparedBirModule& prepared);
 
 [[nodiscard]] PreparedStoreSourcePublicationPlan

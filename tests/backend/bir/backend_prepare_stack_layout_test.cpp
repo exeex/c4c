@@ -1,6 +1,7 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
+#include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/backend/prealloc/regalloc/value_homes.hpp"
 #include "src/target_profile.hpp"
 
@@ -7229,6 +7230,14 @@ int check_select_carrier_alias_authority_contract() {
   if (collected.records.size() != 1) {
     return fail("expected one collected select carrier alias authority record");
   }
+  const auto evidence =
+      prepare::collect_prepared_select_carrier_alias_authority_evidence(prepared);
+  if (evidence.records.size() != 1 ||
+      evidence.records.front().authority.status !=
+          prepare::PreparedSelectCarrierAliasAuthorityStatus::Available ||
+      evidence.records.front().authority.carrier_alias_candidate_count != 2) {
+    return fail("expected carrier alias authority evidence to expose available row");
+  }
   const auto& collected_record = collected.records.front();
   const auto& collected_authority = collected_record.authority;
   if (collected_record.function_name != prepared_function_name ||
@@ -7252,6 +7261,59 @@ int check_select_carrier_alias_authority_contract() {
       collected_authority.carrier_aliases[1].carrier_value_id !=
           std::optional<prepare::PreparedValueId>{21}) {
     return fail("expected collected carrier alias record to preserve facts");
+  }
+  const std::string dump = prepare::print(prepared);
+  if (dump.find("select_carrier_alias_authority "
+                "function=carrier_alias_collector status=available "
+                "predecessor=pred successor=join destination=%selected "
+                "destination_value_id=11 source=%cmp source_value_id=10 "
+                "source_producer=binary source_producer_block=join "
+                "source_producer_inst=0 carrier_alias_candidates=2 "
+                "carrier_aliases=2 source_use_closure=yes") ==
+      std::string::npos) {
+    return fail("expected prepared dump to expose available carrier alias authority");
+  }
+  if (dump.find("alias[0]=%alias0 alias[0]_value_id=20 "
+                "alias[0]_block=join alias[0]_inst=1") ==
+          std::string::npos ||
+      dump.find("alias[1]=%alias1 alias[1]_value_id=21 "
+                "alias[1]_block=join alias[1]_inst=2") ==
+          std::string::npos) {
+    return fail("expected prepared dump to expose carrier alias fields");
+  }
+
+  auto rejected_prepared = prepared;
+  rejected_prepared.module.functions.front().blocks.back().insts.push_back(
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Eq,
+          .result = bir::Value::named(bir::TypeKind::I32, "%extra"),
+          .operand_type = bir::TypeKind::I32,
+          .lhs = prepared_cmp,
+          .rhs = bir::Value::immediate_i32(0),
+      });
+  rejected_prepared.names.value_names.intern("%extra");
+  const auto rejected_collected =
+      prepare::collect_prepared_select_carrier_alias_authorities(
+          rejected_prepared);
+  if (!rejected_collected.records.empty()) {
+    return fail("expected rejected carrier alias evidence to remain non-authority");
+  }
+  const auto rejected_evidence =
+      prepare::collect_prepared_select_carrier_alias_authority_evidence(
+          rejected_prepared);
+  if (rejected_evidence.records.size() != 1 ||
+      rejected_evidence.records.front().authority.status !=
+          prepare::PreparedSelectCarrierAliasAuthorityStatus::NonCarrierSourceUse) {
+    return fail("expected rejected carrier alias evidence to expose status");
+  }
+  const std::string rejected_dump = prepare::print(rejected_prepared);
+  if (rejected_dump.find("select_carrier_alias_authority "
+                         "function=carrier_alias_collector "
+                         "status=non_carrier_source_use") ==
+          std::string::npos ||
+      rejected_dump.find("carrier_alias_candidates=2 carrier_aliases=2 "
+                         "source_use_closure=no") == std::string::npos) {
+    return fail("expected prepared dump to expose rejected carrier alias status");
   }
 
   return 0;

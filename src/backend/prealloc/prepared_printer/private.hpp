@@ -19,6 +19,8 @@ void append_call_argument_value_publications(std::ostringstream& out,
                                              const PreparedBirModule& module);
 void append_select_chain_materializations(std::ostringstream& out,
                                           const PreparedBirModule& module);
+void append_select_carrier_alias_authorities(std::ostringstream& out,
+                                             const PreparedBirModule& module);
 void append_dependency_operand_authorities(std::ostringstream& out,
                                            const PreparedBirModule& module);
 void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModule& module);

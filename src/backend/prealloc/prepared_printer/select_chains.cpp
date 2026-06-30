@@ -237,6 +237,66 @@ void append_select_chain_materializations(std::ostringstream& out,
   }
 }
 
+void append_select_carrier_alias_authorities(std::ostringstream& out,
+                                             const PreparedBirModule& module) {
+  const auto evidence =
+      collect_prepared_select_carrier_alias_authority_evidence(module);
+  if (evidence.records.empty()) {
+    return;
+  }
+  out << "--- prepared-select-carrier-alias-authorities ---\n";
+  for (const auto& record : evidence.records) {
+    const auto& authority = record.authority;
+    out << "  select_carrier_alias_authority function="
+        << maybe_function_name(module.names, record.function_name)
+        << " status="
+        << prepared_select_carrier_alias_authority_status_name(authority.status)
+        << " predecessor="
+        << maybe_block_label(module.names, authority.predecessor_label)
+        << " successor="
+        << maybe_block_label(module.names, authority.successor_label)
+        << " destination="
+        << maybe_value_name(module.names, authority.destination_value_name)
+        << " destination_value_id=" << authority.destination_value_id
+        << " source="
+        << maybe_value_name(module.names, authority.source_value_name);
+    if (authority.source_value_id.has_value()) {
+      out << " source_value_id=" << *authority.source_value_id;
+    }
+    out << " source_producer="
+        << prepared_edge_publication_source_producer_kind_name(
+               authority.source_producer_kind);
+    if (authority.source_producer_block_label.has_value()) {
+      out << " source_producer_block="
+          << maybe_block_label(module.names,
+                               *authority.source_producer_block_label);
+    }
+    append_optional_index(out,
+                          "source_producer_inst",
+                          authority.source_producer_instruction_index);
+    out << " carrier_alias_candidates="
+        << authority.carrier_alias_candidate_count
+        << " carrier_aliases=" << authority.carrier_aliases.size()
+        << " source_use_closure="
+        << yes_no(authority.source_use_closure_proven);
+    for (std::size_t index = 0; index < authority.carrier_aliases.size();
+         ++index) {
+      const auto& alias = authority.carrier_aliases[index];
+      out << " alias[" << index << "]="
+          << maybe_value_name(module.names, alias.carrier_value_name);
+      if (alias.carrier_value_id.has_value()) {
+        out << " alias[" << index << "]_value_id="
+            << *alias.carrier_value_id;
+      }
+      out << " alias[" << index << "]_block="
+          << maybe_block_label(module.names, alias.carrier_block_label)
+          << " alias[" << index << "]_inst="
+          << alias.carrier_instruction_index;
+    }
+    out << "\n";
+  }
+}
+
 void append_dependency_operand_authorities(std::ostringstream& out,
                                            const PreparedBirModule& module) {
   out << "--- prepared-dependency-operand-authorities ---\n";

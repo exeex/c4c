@@ -1,59 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/466_representative_select_carrier_alias_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Representative Authority Evidence Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Representative Authority Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 contract definition for idea 466. The next packet is justified
-as a prepared producer/printer/probe evidence surface, not RV64 lowering.
+Completed Step 3 implementation for idea 466. Prepared evidence now exposes
+select carrier-alias authority rows without changing RV64 lowering: available
+records remain the only authority consumed by RV64, while the new evidence
+collector/printer also reports unavailable per-publication rejection statuses.
 
-Required evidence surface:
+Implementation table:
 
-| Row type | Required facts | Purpose |
+| Surface | Result | Boundary |
 | --- | --- | --- |
-| Available authority record | Function, predecessor, successor/join label, destination value/id/name, selected source value/id/name, source producer kind/block/instruction, join-transfer carrier kind, carrier aliases with value/id/name/block/instruction, and `source_use_closure_proven`. | Proves a record exists and can be compared with RV64 matcher keys. |
-| Unavailable candidate/status row | Function, edge, destination/source ids and names, publication status, carrier kind, source producer fields, candidate alias count/names where available, and `PreparedSelectCarrierAliasAuthorityStatus`. | Distinguishes missing producer record from hidden record and names exact rejection status. |
-| Representative positive target | `20010329-1` `main`, `logic.rhs.end.40 -> logic.end.41`, `%t46 -> %t50`, binary `ule ptr` source producer, aliases `%t50.phi.sel0/%t50.phi.sel1`. | Lets idea 465 resume only if a matching record is proven present. |
-
-Positive cases: available duplicate-carrier authority for a representative-style
-select-materialization edge with binary source producer, matching final carrier,
-carrier aliases, and proven source-use closure.
-
-Negative cases: missing source producer, unsupported publication, wrong carrier
-kind, non-binary producer, missing final carrier, missing/duplicate/unsupported
-aliases, mismatched carrier alias, non-carrier source use, wrong edge, wrong
-destination/source, and wrong producer coordinate.
+| Evidence collector | Added `collect_prepared_select_carrier_alias_authority_evidence` and `PreparedSelectCarrierAliasAuthorityEvidence`. | Existing `collect_prepared_select_carrier_alias_authorities` still filters to available records only. |
+| Prepared printer | Added row-gated `prepared-select-carrier-alias-authorities` dump output. | Empty modules and modules without evidence rows keep existing dump shape. |
+| Focused tests | Covered available duplicate-carrier authority printing and rejected `non_carrier_source_use` evidence that stays non-authority. | No RV64 lowering/test expectation changes. |
+| Representative probe | Fresh `20010329-1` dump now prints the real `%t46 -> %t50` row as `status=unsupported_carrier_alias` with `carrier_alias_candidates=2`. | The record is rejected before becoming available authority; it is not hidden and not RV64-mismatched. |
 
 Artifact:
-`build/agent_state/466_step2_representative_authority_evidence_contract/contract.md`.
+`build/agent_state/466_step3_representative_authority_evidence/summary.md`.
 
 ## Suggested Next
 
-Execute Step 3: implement or route the focused representative authority
-evidence packet. Suggested owned files are `publication_plans.hpp/.cpp`,
-prepared-printer surfaces, focused BIR/prepared-printer tests, `todo.md`,
-`test_after.log`, and
-`build/agent_state/466_step3_representative_authority_evidence/*`.
-
-Step 3 proof:
-
-```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
-```
+Execute Step 4 residual disposition. The representative is now classified as
+rejected by the producer/planner with `unsupported_carrier_alias`, so Step 4
+should decide whether idea 466 is close-ready as evidence/probe work or should
+remain active/split a precise follow-up to diagnose or repair that rejection.
 
 ## Watchouts
 
 - Do not classify the representative as solved from raw duplicate-carrier
   select shape.
-- Do not claim the record is missing or hidden until a focused evidence surface
-  can observe record count and/or rejection status.
 - Unavailable status rows are diagnostics only; they are not RV64 authority.
-- Do not route back to RV64 consumer work unless the record is proven present
-  with fields that RV64 mismatches.
+- Do not route back to RV64 consumer work yet; the representative record is
+  rejected as `unsupported_carrier_alias`, not available with mismatched RV64
+  fields.
+- Any follow-up must explain why two candidate aliases for `%t46 -> %t50` are
+  rejected before authority publication.
 - Do not make RV64 ULE rematerialization changes until representative
   authority is proven present and matchable.
 - Do not infer aliases from `%*.phi.sel*` spelling, raw select shape, value
@@ -67,10 +55,10 @@ Step 3 proof:
 
 ## Proof
 
-Step 2 proof:
+Step 3 proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
 Result: passed.
