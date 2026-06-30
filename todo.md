@@ -1,68 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/471_branch_site_stack_slot_freshness_clobber_safety_metadata.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Freshness Clobber-Safety Producer
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 as a route/blocker packet for idea 471. No producer
-implementation is selected because current prepared inputs do not prove a
-durable branch-site current-value source or no-clobber safety for scalar
-condition stack slots.
+Completed Step 4 residual disposition for idea 471. The plan is close-ready as
+a negative producer-feasibility result: the carrier and planner are adequate,
+but current prepared inputs still cannot prove branch-site stack-slot
+current-value or no-clobber certificates for scalar condition rows.
 
-Checked implementation surfaces:
+Residual classification:
 
-| Surface | Finding |
+| Row | Current disposition | First owner |
 | --- | --- |
-| `PreparedBranchStackLoadAuthorityInputs` | Carrier can express `load_from_stack_slot`, `stack_slot_fresh_at_branch`, and `stack_slot_clobber_safe_at_branch`. |
-| `plan_prepared_branch_stack_load_authority` | Status machine already enforces `missing_policy`, `missing_stack_freshness`, and `missing_stack_clobber_safety`. |
-| `collect_prepared_branch_stack_load_authorities` | Real records still pass `policy=none` and have no source for freshness or clobber-safety booleans. |
-| Representative `%t23` row | Has branch/value/home/frame-slot/object identity, but lacks a producer-owned fact that slot `#21` contains current `%t23` at `f.logic.end.14` and remains unclobbered. |
+| `f.logic.end.14` condition `%t23`, slot `#21` | Identity facts exist, but no durable fact proves the slot contains current `%t23` at the branch site or remains unclobbered. | Split/narrow producer for branch-site current-value plus no-clobber certificate. |
+| `f.logic.end.14` lhs `%t22`, slot `#20` | Select-result stack-destination/materialization remains first. | Select-result / block-entry stack-destination owner. |
+| `f.block_1` `%t2` and `f.block_4` `%t8` | Still `unsupported_terminator`; not eligible for freshness/clobber policy. | Branch-site relationship acceptance owner. |
+| `f.block_1` `%t1` and `f.block_4` `%t7` | Pointer/provenance plus branch-site relationship boundaries remain. | Pointer-value provenance and branch-site relationship owners. |
 
-Exact blocker:
+Lifecycle recommendation: close idea 471 by split/route. Activate a narrower
+producer initiative only for branch-site stack-slot current-value and
+no-clobber certificates. RV64 branch-load consumption remains blocked until
+available `PreparedBranchStackLoadAuthority` records exist.
 
-| Missing fact | Why current inputs are insufficient |
-| --- | --- |
-| Branch-site current-value proof | BIR computes `%t23` near the branch, but no prepared fact says stack slot `#21` contains that current value at the load site. |
-| Path/dominance validity | No prepared certificate ties the value source to all paths reaching the branch site. |
-| Stack-write exclusion | No prepared summary proves no intervening write to the same frame slot/object. |
-| Call/helper/inline-asm safety | Existing call/helper facts are not joined into branch-site slot clobber-safety proof. |
-| Publication/move-bundle safety | Existing publication and move-bundle rows are not joined into a same-slot non-clobber certificate. |
-
-Preserved fail-closed boundaries: `%t22` select-result stack destination,
-`%t1` / `%t7` pointer-provenance rows, and `%t2` / `%t8`
-`unsupported_terminator` rows remain separate owners. No RV64 target lowering
-or raw-shape inference was introduced.
+Preserved boundaries: no RV64 lowering, no consumption of unavailable records,
+no raw-shape inference, no select-result/pointer/unsupported-terminator
+widening, and no baseline/review/log churn.
 
 Artifact:
-`build/agent_state/471_step3_freshness_clobber_producer/blocker.md`.
+`build/agent_state/471_step4_residual_disposition/disposition.md`.
 
 ## Suggested Next
 
-Route a new producer/prepared metadata packet:
-`Define/produce branch-site stack-slot current-value and no-clobber certificate`.
+Plan-owner should close idea 471 or split/activate a new narrow producer idea:
+`branch_site_stack_slot_current_value_no_clobber_certificate`.
 
-Suggested scope:
+Required future facts:
 
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/<next_step>_branch_site_slot_current_value_clobber/**`
-
-Implement only if the producer can explicitly prove current-value source,
-path/dominance validity, stack-write exclusion, call/helper effect safety, and
-publication/move-bundle non-clobber for the exact branch slot. Otherwise keep
-branch-stack-load records unavailable.
+- current-value source identity for the stack slot at the branch site;
+- path/dominance validity from source to branch site;
+- stack-write exclusion for the same frame slot/object;
+- call/helper/inline-asm clobber modeling;
+- publication, move-bundle, and parallel-copy non-clobber proof;
+- focused positive and fail-closed tests before any RV64 consumer work resumes.
 
 Proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 ## Watchouts
@@ -83,11 +72,10 @@ Proof:
 
 ## Proof
 
-Step 3 proof:
+Step 4 proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
-Result: passed. `test_after.log` reports 100% tests passed, 0 tests failed
-out of 327, followed by `git diff --check`.
+Result: passed.
