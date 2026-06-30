@@ -1,50 +1,71 @@
 Status: Active
 Source Idea Path: ideas/open/454_edge_dependency_operand_materialization_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Dependency-Operand Metadata Evidence
+Current Step ID: 2
+Current Step Title: Define Dependency-Operand Authority Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 for idea 454. The audit artifact is
-`build/agent_state/454_step1_dependency_operand_metadata_audit/audit.md`.
+Completed Step 2 for idea 454. The contract artifact is
+`build/agent_state/454_step2_dependency_operand_authority_contract/contract.md`.
 
-Bucket table:
+Accepted shapes:
 
-| Bucket | Operand / edge role | Value home | Object metadata | Cast/source identity | Edge placement | Freshness/clobber evidence | Current prepared facts | First missing producer authority |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| First blocker | `%t17`, RHS dependency of `%t18 = bir.ule ptr %t15, %t17` for edge `%t18 -> %t22` | `value_id=9 kind=stack_slot slot_id=2 offset=16`; storage `frame_slot bank=gpr`. | `object #2 func=main name=%t17 source_kind=regalloc.spill_slot type=ptr size=8 align=8 address_exposed=no requires_home_slot=no permanent_home_slot=no`. | `%t17 = bir.inttoptr i32 %t16 to ptr`; `%t16` is rematerializable immediate `-2147483643`. | Predecessor terminator in `logic.rhs.end.13`; `%t18` is successor-defined in `logic.end.14`; destination `%t22` is register `t0`. | No explicit freshness or clobber-safety fact for reading slot #2 at the edge; later call clobber records do not prove this edge-safe. | Edge publication, select chain, `%t17` home/object, and `%t16` immediate facts exist. | Dependency-operand materialization authority with policy `load_from_stack_slot`, `rematerialize_cast_from_source`, or fail-closed, plus slot/object linkage and freshness/clobber proof. |
-| Usable adjacent operand | `%t15`, LHS dependency of `%t18` | `value_id=7 kind=register reg=s1`. | Not stack-object backed as the dependency operand; local load access is range-proven. | `%t15 = bir.load_local ptr %lv.x`. | Register operand available before the edge branch. | Register home is already target-consumable. | Accepted by existing register/immediate rematerialization path. | None for idea 454. |
-| Possible cast source | `%t16`, source of `%t17` | `value_id=8 kind=rematerializable_immediate imm_i32=-2147483643`. | N/A | `%t16 = bir.add i32 2147483647, 6`; folded immediate in prepared home. | Could feed a cast-rematerialization policy if one is explicit. | Immediate itself has no slot clobber issue. | Immediate home exists. | `rematerialize_cast_from_source` policy plus cast dependency record. |
-| Edge source result | `%t18` | `value_id=10 kind=register reg=t0`. | N/A | `%t18 = bir.ule ptr %t15, %t17`. | Defined in successor/join block, not predecessor-edge copy-available. | No edge-availability proof for copying `%t18`. | Select materialization identifies the edge source. | Must remain fail-closed except through dependency-operand rematerialization. |
-| Destination | `%t22` | `value_id=11 kind=register reg=t0`. | N/A | `%t22 = bir.select ... i32 %t18, 0`. | Available block-entry destination for both incoming edges. | Destination register placement exists. | `block_entry_publication ... destination_storage=register reg=t0`. | None. |
+- Shared requirements: edge identity, source-producer identity, dependency
+  operand identity/role, value id/name/type agreement, predecessor-terminator
+  placement, and available register destination publication.
+- `load_from_stack_slot`: accepted only with stack value-home/object linkage,
+  coherent slot id/offset/size/alignment/pointer width, edge-safe freshness,
+  clobber-safety, and explicit load policy.
+- `rematerialize_cast_from_source`: accepted only with explicit cast producer,
+  cast result matching the dependency operand, explicit source identity,
+  target-consumable source home, supported cast kind, and supported pointer
+  width semantics.
 
-First missing producer authority: shared dependency-operand materialization
-policy representation. The first code packet should not pick only stack-load
-or only cast-rematerialization; it needs a common record that can say
-`load_from_stack_slot`, `rematerialize_cast_from_source`, or fail-closed with
-exact reasons.
+Rejected shapes:
+
+- stack home plus object metadata without policy;
+- raw `inttoptr` plus immediate source without policy;
+- successor/join-block result copies such as `%t18`;
+- dependency records not tied to a specific edge and source producer;
+- missing/mismatched value id/name/type or missing stack object linkage;
+- missing freshness/clobber-safety for stack loads;
+- missing cast source, unsupported cast kind/type/width, or non-consumable cast
+  source home;
+- non-predecessor-terminator placement, unavailable/non-register destination,
+  pointer-value provenance, generic stack-home branch work, or RV64 lowering.
+
+Step 2 conclusion: this producer layer can own the policy representation and
+operand linkage contract. Freshness/clobber-safety remains required for
+`load_from_stack_slot`; if Step 3 cannot express that fact, it should keep
+stack-load authority fail-closed and either implement only a coherent explicit
+cast-rematerialization metadata path or record a metadata blocker.
 
 ## Suggested Next
 
-Step 2: `Define Dependency-Operand Authority Contract`.
+Step 3: `Add Dependency-Operand Authority Metadata Coverage`.
 
-Define the prepared record or predicate shape for dependency operands of edge
-source producers, including:
+Suggested owned files:
 
-- edge and producer identity;
-- operand value id/name/type;
-- value-home/object linkage;
-- cast/source identity when rematerialization is possible;
-- explicit materialization policy and fail-closed statuses;
-- freshness/clobber-safety and edge placement requirements.
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` if route lookup
+  helper coverage is clearer
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/454_step3_dependency_operand_authority_metadata/*`
 
-If freshness/clobber-safety cannot be owned by this producer layer, Step 2
-should route that blocker or lifecycle split before any implementation packet.
+Add the smallest prepared metadata type/status enum/planner or predicate for
+dependency operands of edge source producers. Cover accepted explicit
+`rematerialize_cast_from_source` if current producer facts can express the cast
+relationship and width policy. Cover `load_from_stack_slot` only if
+freshness/clobber-safety can be expressed; otherwise keep it fail-closed with a
+precise status.
 
-Future implementation proof command:
+Proof command:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
@@ -67,7 +88,7 @@ Future implementation proof command:
 
 ## Proof
 
-Step 1 classification proof:
+Step 2 contract proof:
 
 ```sh
 git diff --check
