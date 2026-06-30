@@ -661,6 +661,9 @@ struct Global {
   bool is_thread_local = false;
   bool is_constant = false;
   bool has_scalar_layout_authority = false;
+  bool has_integer_array_layout_authority = false;
+  std::size_t integer_array_element_size_bytes = 0;
+  std::size_t integer_array_element_count = 0;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   std::optional<Value> initializer;

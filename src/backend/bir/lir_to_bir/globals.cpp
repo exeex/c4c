@@ -427,6 +427,9 @@ std::optional<bir::Global> lower_minimal_global_impl(
     lowered.type = integer_array->element_type;
     lowered.is_extern = global.is_extern_decl;
     lowered.is_constant = global.is_const;
+    lowered.has_integer_array_layout_authority = true;
+    lowered.integer_array_element_size_bytes = element_size_bytes;
+    lowered.integer_array_element_count = total_elements;
     lowered.address_materialization_policy =
         lower_global_address_materialization_policy(global, target_profile);
     lowered.size_bytes = total_elements * element_size_bytes;

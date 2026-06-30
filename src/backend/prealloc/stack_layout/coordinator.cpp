@@ -3,6 +3,7 @@
 #include "stack_layout.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
@@ -359,6 +360,63 @@ void publish_scalar_global_layout_authority(PreparedAddress& address,
   provenance.layout_authority = bir::MemoryLayoutAuthorityKind::ScalarLayout;
 }
 
+[[nodiscard]] bool integer_array_global_layout_authority_available(
+    const bir::Global& global) {
+  if (!global.has_integer_array_layout_authority ||
+      global.is_extern ||
+      global.is_thread_local ||
+      global.link_name_id == kInvalidLinkName ||
+      global.integer_array_element_size_bytes == 0 ||
+      global.integer_array_element_count <= 1 ||
+      global.size_bytes == 0 ||
+      global.align_bytes == 0) {
+    return false;
+  }
+  if (global.integer_array_element_count >
+      std::numeric_limits<std::size_t>::max() /
+          global.integer_array_element_size_bytes) {
+    return false;
+  }
+  return global.size_bytes ==
+         global.integer_array_element_count *
+             global.integer_array_element_size_bytes;
+}
+
+void publish_integer_array_global_layout_authority(PreparedAddress& address,
+                                                   const bir::Global& global) {
+  if (!integer_array_global_layout_authority_available(global) ||
+      address.base_kind != PreparedAddressBaseKind::GlobalSymbol ||
+      !address.symbol_name.has_value() ||
+      !address.can_use_base_plus_offset ||
+      address.size_bytes == 0 ||
+      address.align_bytes == 0 ||
+      address.align_bytes > address.size_bytes ||
+      address.size_bytes != global.integer_array_element_size_bytes ||
+      address.byte_offset < 0) {
+    return;
+  }
+
+  const auto offset = static_cast<std::size_t>(address.byte_offset);
+  if (offset % global.integer_array_element_size_bytes != 0) {
+    return;
+  }
+
+  auto& provenance = address.provenance;
+  if (provenance.base_identity.kind !=
+          bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol ||
+      provenance.base_identity.link_name_id != global.link_name_id ||
+      provenance.object_extent.completeness !=
+          bir::MemoryObjectExtentCompleteness::Complete ||
+      !provenance.object_extent.size_known ||
+      provenance.object_extent.size_bytes != global.size_bytes ||
+      provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds ||
+      provenance.layout_authority != bir::MemoryLayoutAuthorityKind::Unknown) {
+    return;
+  }
+
+  provenance.layout_authority = bir::MemoryLayoutAuthorityKind::ByteStorageAggregate;
+}
+
 [[nodiscard]] std::optional<TextId> resolve_prepared_text_id(
     PreparedNameTables& names,
     const bir::Module& module,
@@ -705,6 +763,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
                 : std::optional<std::size_t>{resolved_global->global->size_bytes}),
     };
     publish_scalar_global_layout_authority(prepared, *resolved_global->global);
+    publish_integer_array_global_layout_authority(prepared, *resolved_global->global);
     return prepared;
   }
 
@@ -784,6 +843,7 @@ void finalize_slot_slice_coverage(std::vector<SlotSliceCoverage>& coverage) {
   };
   if (resolved_base_global != nullptr) {
     publish_scalar_global_layout_authority(prepared, *resolved_base_global);
+    publish_integer_array_global_layout_authority(prepared, *resolved_base_global);
   }
   return prepared;
 }

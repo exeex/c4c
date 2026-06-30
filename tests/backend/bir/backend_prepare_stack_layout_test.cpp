@@ -3460,6 +3460,54 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .has_scalar_layout_authority = true,
       .align_bytes = 4,
   });
+  const c4c::LinkNameId int_array_global_id = module.names.link_names.intern("g.i64.array");
+  module.globals.push_back(bir::Global{
+      .name = "g.i64.array",
+      .link_name_id = int_array_global_id,
+      .type = bir::TypeKind::I64,
+      .has_integer_array_layout_authority = true,
+      .integer_array_element_size_bytes = 8,
+      .integer_array_element_count = 10,
+      .size_bytes = 80,
+      .align_bytes = 8,
+  });
+  const c4c::LinkNameId extern_int_array_global_id =
+      module.names.link_names.intern("g.extern.i64.array");
+  module.globals.push_back(bir::Global{
+      .name = "g.extern.i64.array",
+      .link_name_id = extern_int_array_global_id,
+      .type = bir::TypeKind::I64,
+      .is_extern = true,
+      .has_integer_array_layout_authority = true,
+      .integer_array_element_size_bytes = 8,
+      .integer_array_element_count = 10,
+      .size_bytes = 80,
+      .align_bytes = 8,
+  });
+  const c4c::LinkNameId tls_int_array_global_id =
+      module.names.link_names.intern("g.tls.i64.array");
+  module.globals.push_back(bir::Global{
+      .name = "g.tls.i64.array",
+      .link_name_id = tls_int_array_global_id,
+      .type = bir::TypeKind::I64,
+      .is_thread_local = true,
+      .has_integer_array_layout_authority = true,
+      .integer_array_element_size_bytes = 8,
+      .integer_array_element_count = 10,
+      .size_bytes = 80,
+      .align_bytes = 8,
+  });
+  const c4c::LinkNameId missing_extent_int_array_global_id =
+      module.names.link_names.intern("g.missing.extent.i64.array");
+  module.globals.push_back(bir::Global{
+      .name = "g.missing.extent.i64.array",
+      .link_name_id = missing_extent_int_array_global_id,
+      .type = bir::TypeKind::I64,
+      .has_integer_array_layout_authority = true,
+      .integer_array_element_size_bytes = 8,
+      .integer_array_element_count = 10,
+      .align_bytes = 8,
+  });
   const c4c::LinkNameId indirect_target_id = module.names.link_names.intern("callee.fn");
 
   bir::Function function;
@@ -3603,6 +3651,48 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .result = bir::Value::named(bir::TypeKind::I32, "scalar.missing.extent.loaded"),
       .global_name_id = no_extent_global_id,
       .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "array.element.loaded"),
+      .global_name_id = int_array_global_id,
+      .byte_offset = 72,
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "array.out.of.range.loaded"),
+      .global_name_id = int_array_global_id,
+      .byte_offset = 80,
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "array.misaligned.offset.loaded"),
+      .global_name_id = int_array_global_id,
+      .byte_offset = 4,
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "array.partial.width.loaded"),
+      .global_name_id = int_array_global_id,
+      .byte_offset = 8,
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "array.extern.loaded"),
+      .global_name_id = extern_int_array_global_id,
+      .byte_offset = 8,
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "array.tls.loaded"),
+      .global_name_id = tls_int_array_global_id,
+      .byte_offset = 8,
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "array.missing.extent.loaded"),
+      .global_name_id = missing_extent_int_array_global_id,
+      .byte_offset = 8,
+      .align_bytes = 8,
   });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
@@ -5738,7 +5828,7 @@ int check_link_name_authoritative_global_access_activation(
     return fail("expected link-name authoritative global fixture to publish addressing");
   }
   const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
-  if (function_addressing->accesses.size() != 8) {
+  if (function_addressing->accesses.size() != 15) {
     return fail("expected raw structured-global fallbacks to fail closed while compatibility remains");
   }
 
@@ -6052,6 +6142,118 @@ int check_link_name_authoritative_global_access_activation(
       prepare::prepared_global_symbol_memory_has_publication_authority(
           missing_extent_scalar_access->address)) {
     return fail("expected missing-extent scalar global load to stay fail-closed");
+  }
+
+  const auto* integer_array_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 18);
+  if (integer_array_access == nullptr) {
+    return fail("expected in-bounds integer-array global load to publish prepared access");
+  }
+  if (!integer_array_access->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *integer_array_access->result_value_name) !=
+          "array.element.loaded" ||
+      integer_array_access->stored_value_name.has_value() ||
+      integer_array_access->address.base_kind !=
+          prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !integer_array_access->address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *integer_array_access->address.symbol_name) !=
+          "g.i64.array" ||
+      integer_array_access->address.byte_offset != 72 ||
+      integer_array_access->address.size_bytes != 8 ||
+      integer_array_access->address.align_bytes != 8 ||
+      integer_array_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::ByteStorageAggregate ||
+      integer_array_access->address.provenance.object_extent.completeness !=
+          bir::MemoryObjectExtentCompleteness::Complete ||
+      integer_array_access->address.provenance.object_extent.size_bytes != 80 ||
+      !integer_array_access->address.provenance.object_extent.size_known ||
+      integer_array_access->address.provenance.requested_range.begin != 72 ||
+      integer_array_access->address.provenance.requested_range.size_bytes != 8 ||
+      integer_array_access->address.provenance.requested_range.end != 80 ||
+      integer_array_access->address.provenance.range_verdict !=
+          bir::MemoryRangeVerdict::ProvenInBounds ||
+      !prepare::prepared_global_symbol_memory_has_publication_authority(
+          integer_array_access->address)) {
+    return fail("expected in-bounds integer-array element to publish layout authority");
+  }
+
+  const auto* out_of_range_array_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 19);
+  if (out_of_range_array_access == nullptr) {
+    return fail("expected out-of-range integer-array load to publish prepared access");
+  }
+  if (out_of_range_array_access->address.provenance.range_verdict !=
+          bir::MemoryRangeVerdict::ProvenOutOfBounds ||
+      out_of_range_array_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::Unknown ||
+      prepare::prepared_global_symbol_memory_has_publication_authority(
+          out_of_range_array_access->address)) {
+    return fail("expected out-of-range integer-array load to stay fail-closed");
+  }
+
+  const auto* misaligned_array_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 20);
+  if (misaligned_array_access == nullptr) {
+    return fail("expected misaligned integer-array load to publish prepared access");
+  }
+  if (misaligned_array_access->address.provenance.range_verdict !=
+          bir::MemoryRangeVerdict::ProvenInBounds ||
+      misaligned_array_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::Unknown ||
+      prepare::prepared_global_symbol_memory_has_publication_authority(
+          misaligned_array_access->address)) {
+    return fail("expected misaligned integer-array offset to stay fail-closed");
+  }
+
+  const auto* partial_width_array_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 21);
+  if (partial_width_array_access == nullptr) {
+    return fail("expected partial-width integer-array load to publish prepared access");
+  }
+  if (partial_width_array_access->address.provenance.range_verdict !=
+          bir::MemoryRangeVerdict::ProvenInBounds ||
+      partial_width_array_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::Unknown ||
+      prepare::prepared_global_symbol_memory_has_publication_authority(
+          partial_width_array_access->address)) {
+    return fail("expected partial-width integer-array access to stay fail-closed");
+  }
+
+  const auto* extern_array_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 22);
+  if (extern_array_access == nullptr) {
+    return fail("expected extern integer-array load to publish prepared access");
+  }
+  if (extern_array_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::Unknown ||
+      prepare::prepared_global_symbol_memory_has_publication_authority(
+          extern_array_access->address)) {
+    return fail("expected extern integer-array global to stay fail-closed");
+  }
+
+  const auto* tls_array_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 23);
+  if (tls_array_access == nullptr) {
+    return fail("expected TLS integer-array load to publish prepared access");
+  }
+  if (tls_array_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::Unknown ||
+      prepare::prepared_global_symbol_memory_has_publication_authority(
+          tls_array_access->address)) {
+    return fail("expected TLS integer-array global to stay fail-closed");
+  }
+
+  const auto* missing_extent_array_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 24);
+  if (missing_extent_array_access == nullptr) {
+    return fail("expected missing-extent integer-array load to publish prepared access");
+  }
+  if (missing_extent_array_access->address.provenance.object_extent.size_known ||
+      missing_extent_array_access->address.provenance.layout_authority !=
+          bir::MemoryLayoutAuthorityKind::Unknown ||
+      prepare::prepared_global_symbol_memory_has_publication_authority(
+          missing_extent_array_access->address)) {
+    return fail("expected missing-extent integer-array global to stay fail-closed");
   }
 
   return 0;
