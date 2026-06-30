@@ -138,3 +138,15 @@ consumer runs. Completion means focused RV64 object coverage proves the
 accepted authorized bundle and fail-closed generic stack-slot moves,
 `load_from_stack_slot missing_stack_freshness`, raw `inttoptr`,
 successor-copy, scratch-clobber, and unrelated move-bundle cases.
+
+### Step 6: Expose Authorized Before-Instruction Move Bundle To Object Route
+
+Add or route the smallest object traversal surface that lets RV64 object
+emission observe the exact `before_instruction` move bundle for the authorized
+cast-dependency stack publication. The event must be limited to the owned
+`consumer_register_to_stack` publication guarded by populated
+`rematerialize_cast_from_source status=available` authority and carrier-use
+proof. Completion means the Step 5 suppression/consumption hook is reachable,
+while generic before-instruction stack moves, `load_from_stack_slot
+missing_stack_freshness`, raw `inttoptr`, successor-copy, scratch-clobber, and
+unrelated move bundles remain fail-closed.

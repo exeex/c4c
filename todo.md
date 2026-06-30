@@ -1,14 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/456_rv64_select_edge_cast_dependency_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Suppress Authorized Cast-Dependency Stack Publication Bundle
+Current Step ID: 6
+Current Step Title: Expose Authorized Before-Instruction Move Bundle To Object Route
 
 # Current Packet
 
 ## Just Finished
 
-Attempted Step 5 for idea 456 and routed it as blocked. Blocker artifact:
+Plan-owner reviewed the Step 5 blocker for idea 456 and kept the source idea
+active. Blocker artifact:
 `build/agent_state/456_step5_cast_dependency_stack_publication/blocker.md`.
 
 Fresh `20010329-1` probes under
@@ -32,13 +33,13 @@ Blocker: the prepared dump prints the required `before_instruction` move-bundle
 fact, but the current RV64 object traversal does not emit before-instruction
 move-bundle events to `fragment_for_prepared_move_bundle`. A local
 `object_emission.cpp` suppression helper for this exact stack publication is
-therefore unreachable from the delegated consumer hook. Experimental local
-code/test edits were reverted; no implementation files are changed in this
-blocked slice.
+therefore unreachable from the delegated consumer hook. The remaining packet
+is same-family because it only exposes the event needed by the authorized
+cast-dependency consumer route.
 
 ## Suggested Next
 
-Step 6: `Expose Authorized Before-Instruction Move Bundle To Object Route`.
+Execute Step 6: `Expose Authorized Before-Instruction Move Bundle To Object Route`.
 
 Add or route the smallest prepared object traversal/consumer surface that lets
 the RV64 object route see the exact `before_instruction` move bundle for an
@@ -91,7 +92,7 @@ Suggested proof command:
 
 ## Proof
 
-Step 5 proof:
+Lifecycle repair validation:
 
 ```sh
 git diff --check
