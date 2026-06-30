@@ -1,45 +1,80 @@
 Status: Active
 Source Idea Path: ideas/open/456_rv64_select_edge_cast_dependency_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Cast Dependency Consumer Evidence
+Current Step ID: 2
+Current Step Title: Define RV64 Cast Dependency Consumer Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 for idea 456. Audit artifact:
-`build/agent_state/456_step1_cast_dependency_consumer_audit/audit.md`.
+Completed Step 2 for idea 456. Contract artifact:
+`build/agent_state/456_step2_cast_dependency_consumer_contract/contract.md`.
 
-Bucket table:
+Accepted RV64 consumer shape:
 
-| Bucket | Edge identity | Source producer | Operand role | Dependency value | Cast producer/source | Policy/status | RV64 failure | Classification |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| First bounded consumer candidate | `main`, `logic.rhs.end.13 -> logic.end.14`, `%t18 -> %t22` | `binary`, `logic.end.14` inst `2`, `%t18 = ule ptr %t15, %t17` | `rhs` | `%t17`, value id `9`, stack slot `#2`, offset `16` | `%t17 = inttoptr i32 %t16`; `%t16` value id `8`, home `rematerializable_immediate`, imm `-2147483643` | `rematerialize_cast_from_source`, `available` | `unsupported_move_bundle_target_shape` | Coherent RV64 consumer packet candidate |
-| Stack-load alternative | Same edge and `%t17` dependency | Same source producer | `rhs` | `%t17` stack slot `#2` | Not required | `load_from_stack_slot`, `missing_stack_freshness` | Same failure | Fail-closed; no freshness/clobber authority |
-| Successor result copy | Same edge source `%t18` | `%t18` defined in successor block `logic.end.14` | N/A | N/A | N/A | No copy authority | Same failure | Rejected as unsound |
-| Adjacent register/immediate select-edge compares | Later `%t32 -> %t36` / `%t46 -> %t50` classes | Binary compare with target-consumable operands | Existing operands | Register/immediate homes | No stack-slot cast dependency | Already validated by idea 452 | Not current first owner | Out of scope for Step 2 |
+- prepared move bundle is an out-of-SSA/block-entry edge move with matching
+  predecessor/successor, incoming source, and destination value identity;
+- destination has an available register publication/home;
+- source producer is a prepared binary compare available for select-edge
+  rematerialization;
+- dependency operand role and dependency value id/name/type match the compare
+  operand;
+- dependency-operand authority record has
+  `policy=rematerialize_cast_from_source` and `status=available`;
+- cast producer, dependency value, cast source, and source home all match the
+  prepared authority record;
+- cast source home is a GPR-compatible register or rematerializable immediate;
+- RV64 materializes the cast dependency before rematerializing the compare into
+  the edge destination register.
 
-Fresh probes under
-`build/agent_state/456_step1_cast_dependency_consumer_audit/`:
+Rejected shapes:
 
-- prepared route exits 0 and prints the available cast-rematerialization record;
-- object route exits 2 with
-  `unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves`.
+| Shape | Reason |
+| --- | --- |
+| Missing dependency-operand authority | Raw BIR and homes are not authority |
+| Non-available authority | No safe consumer contract |
+| `load_from_stack_slot`, including `missing_stack_freshness` | Freshness/clobber policy is not owned here |
+| Raw `inttoptr` or stack object metadata alone | Producer authority must be explicit |
+| Successor/join-block result copy such as `%t18` | Source result is not available on predecessor edge |
+| Mismatched edge/source/destination/producer/operand/cast/source facts | Cannot bind consumer to the prepared record |
+| Unsupported cast kind, width, aggregate/vector/F128, or non-GPR source home | Outside first RV64 scalar packet |
+
+Materialization order:
+
+1. Match the prepared edge move bundle and destination publication.
+2. Match the source-producer compare and dependency operand role.
+3. Match the available `rematerialize_cast_from_source` authority record.
+4. Materialize the cast source from its prepared home.
+5. Materialize the pointer cast dependency as scalar GPR movement, not a stack
+   load.
+6. Rematerialize the compare using that dependency operand.
+7. Publish the compare result into the prepared edge destination register.
 
 ## Suggested Next
 
-Step 2: `Define RV64 Cast Dependency Consumer Contract`.
+Step 3: `Implement Or Route First Consumer Packet`.
 
-Define the bounded RV64 consumer contract for explicit
-`rematerialize_cast_from_source status=available` dependency-operand authority:
-matching edge/source-producer/operand/dependency/cast/source-home facts,
-materialization order, temporary/register requirements, supported cast widths,
-and fail-closed adjacent shapes. The later implementation packet should be
-semantic and should not consume stack-load, raw `inttoptr`, or successor-copy
-evidence.
+Implement the narrow RV64 consumer for explicit
+`rematerialize_cast_from_source status=available` dependency-operand authority,
+or record the exact blocker if the existing RV64 select-edge materializer lacks
+a safe scratch/register path. The packet should use the prepared authority
+record as the only source of permission and keep stack-load, raw `inttoptr`,
+and successor-copy paths fail-closed.
 
-Future proof command for implementation:
+Suggested owned files:
+
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp` only if helper
+  coverage adjustment is needed
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/456_step3_cast_dependency_consumer/*`
+
+Proof command:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
@@ -63,7 +98,7 @@ Future proof command for implementation:
 
 ## Proof
 
-Step 1 proof:
+Step 2 proof:
 
 ```sh
 git diff --check
