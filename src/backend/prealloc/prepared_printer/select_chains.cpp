@@ -237,4 +237,71 @@ void append_select_chain_materializations(std::ostringstream& out,
   }
 }
 
+void append_dependency_operand_authorities(std::ostringstream& out,
+                                           const PreparedBirModule& module) {
+  out << "--- prepared-dependency-operand-authorities ---\n";
+  const auto records = collect_prepared_dependency_operand_authorities(module);
+  for (const auto& record : records.records) {
+    const auto& authority = record.authority;
+    out << "  dependency_operand_authority function="
+        << maybe_function_name(module.names, record.function_name)
+        << " predecessor="
+        << maybe_block_label(module.names, record.predecessor_label)
+        << " successor="
+        << maybe_block_label(module.names, record.successor_label)
+        << " source="
+        << maybe_value_name(module.names, authority.edge_source_value_name)
+        << " destination="
+        << maybe_value_name(module.names, authority.destination_value_name)
+        << " source_producer="
+        << prepared_edge_publication_source_producer_kind_name(
+               record.source_producer_kind);
+    if (record.source_producer_block_label.has_value()) {
+      out << " source_producer_block="
+          << maybe_block_label(module.names, *record.source_producer_block_label);
+    }
+    append_optional_index(out,
+                          "source_producer_inst",
+                          record.source_producer_instruction_index);
+    out << " operand_role="
+        << prepared_dependency_operand_role_name(authority.operand_role)
+        << " dependency="
+        << maybe_value_name(module.names, authority.dependency_value_name)
+        << " dependency_value_id=" << authority.dependency_value_id
+        << " policy="
+        << prepared_dependency_operand_materialization_policy_name(
+               authority.policy)
+        << " status="
+        << prepared_dependency_operand_authority_status_name(authority.status);
+    if (authority.dependency_slot_id.has_value()) {
+      out << " dependency_slot=#" << *authority.dependency_slot_id;
+    }
+    if (authority.dependency_stack_offset_bytes.has_value()) {
+      out << " dependency_stack_offset="
+          << *authority.dependency_stack_offset_bytes;
+    }
+    if (record.cast_producer_block_label.has_value()) {
+      out << " cast_producer_block="
+          << maybe_block_label(module.names, *record.cast_producer_block_label);
+    }
+    append_optional_index(out,
+                          "cast_producer_inst",
+                          record.cast_producer_instruction_index);
+    if (authority.cast_source_value_id.has_value()) {
+      out << " cast_source="
+          << maybe_value_name(module.names, authority.cast_source_value_name)
+          << " cast_source_value_id=" << *authority.cast_source_value_id
+          << " cast_source_home="
+          << prepared_value_home_kind_name(record.cast_source_home_kind);
+      if (record.cast_source_register_name.has_value()) {
+        out << " cast_source_reg=" << *record.cast_source_register_name;
+      }
+      if (record.cast_source_immediate_i32.has_value()) {
+        out << " cast_source_imm_i32=" << *record.cast_source_immediate_i32;
+      }
+    }
+    out << "\n";
+  }
+}
+
 }  // namespace c4c::backend::prepare

@@ -2377,6 +2377,219 @@ bool prepared_dependency_operand_authority_available(
   return authority.status == PreparedDependencyOperandAuthorityStatus::Available;
 }
 
+namespace {
+
+[[nodiscard]] const PreparedStackObject* dependency_stack_object_for_home(
+    const PreparedStackLayout& stack_layout,
+    const PreparedValueHome* home) {
+  if (home == nullptr || home->kind != PreparedValueHomeKind::StackSlot ||
+      !home->slot_id.has_value()) {
+    return nullptr;
+  }
+  const auto* slot = find_frame_slot_by_id(stack_layout, *home->slot_id);
+  return prepared_stack_object_for_frame_slot(stack_layout, slot);
+}
+
+[[nodiscard]] const PreparedValueHome* value_home_for_named_value(
+    const PreparedNameTables& names,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const bir::Value& value) {
+  const auto value_name = existing_prepared_value_name_id(names, value);
+  if (!value_name.has_value()) {
+    return nullptr;
+  }
+  const auto value_id =
+      find_indexed_prepared_value_id(value_home_lookups,
+                                     nullptr,
+                                     value_locations,
+                                     *value_name);
+  if (!value_id.has_value()) {
+    return nullptr;
+  }
+  return find_indexed_prepared_value_home(value_home_lookups,
+                                          value_locations,
+                                          *value_id);
+}
+
+void clear_temporary_authority_pointers(
+    PreparedDependencyOperandAuthority& authority) {
+  authority.publication = nullptr;
+  authority.dependency_home = nullptr;
+  authority.dependency_stack_object = nullptr;
+  authority.cast_producer = nullptr;
+  authority.cast_source_home = nullptr;
+}
+
+PreparedDependencyOperandAuthorityRecord make_dependency_operand_authority_record(
+    FunctionNameId function_name,
+    const PreparedEdgePublication& publication,
+    PreparedDependencyOperandRole role,
+    const bir::Value& dependency_operand,
+    const PreparedValueHome* dependency_home,
+    const PreparedStackObject* dependency_stack_object,
+    const PreparedEdgePublicationSourceProducer* cast_producer,
+    const PreparedValueHome* cast_source_home,
+    PreparedDependencyOperandMaterializationPolicy policy,
+    const PreparedNameTables& names) {
+  PreparedDependencyOperandAuthorityRecord record{
+      .function_name = function_name,
+      .predecessor_label = publication.predecessor_label,
+      .successor_label = publication.successor_label,
+      .source_producer_kind = publication.source_producer_kind,
+      .source_producer_block_label = publication.source_producer_block_label,
+      .source_producer_instruction_index =
+          publication.source_producer_instruction_index,
+      .cast_producer_block_label =
+          cast_producer != nullptr && cast_producer->block_label != kInvalidBlockLabel
+              ? std::optional<BlockLabelId>{cast_producer->block_label}
+              : std::nullopt,
+      .cast_producer_instruction_index =
+          cast_producer != nullptr
+              ? std::optional<std::size_t>{cast_producer->instruction_index}
+              : std::nullopt,
+      .cast_source_home_kind =
+          cast_source_home != nullptr ? cast_source_home->kind
+                                      : PreparedValueHomeKind::None,
+      .cast_source_register_name =
+          cast_source_home != nullptr ? cast_source_home->register_name
+                                      : std::nullopt,
+      .cast_source_immediate_i32 =
+          cast_source_home != nullptr ? cast_source_home->immediate_i32
+                                      : std::nullopt,
+      .authority = plan_prepared_dependency_operand_authority({
+          .names = &names,
+          .publication = &publication,
+          .dependency_operand = &dependency_operand,
+          .operand_role = role,
+          .dependency_home = dependency_home,
+          .dependency_stack_object = dependency_stack_object,
+          .cast_producer = cast_producer,
+          .cast_source_home = cast_source_home,
+          .policy = policy,
+      }),
+  };
+  clear_temporary_authority_pointers(record.authority);
+  return record;
+}
+
+void collect_dependency_operand_authorities_for_role(
+    PreparedDependencyOperandAuthorityRecords& records,
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedValueHomeLookups* value_home_lookups,
+    const PreparedEdgePublicationSourceProducerLookups& source_producers,
+    const PreparedEdgePublication& publication,
+    PreparedDependencyOperandRole role) {
+  if (publication.source_binary == nullptr) {
+    return;
+  }
+  const auto* dependency_operand =
+      dependency_operand_for_role(*publication.source_binary, role);
+  if (dependency_operand == nullptr ||
+      dependency_operand->kind != bir::Value::Kind::Named ||
+      dependency_operand->type != bir::TypeKind::Ptr) {
+    return;
+  }
+  const auto dependency_name =
+      existing_prepared_value_name_id(prepared.names, *dependency_operand);
+  if (!dependency_name.has_value()) {
+    return;
+  }
+  const auto* dependency_home =
+      value_home_for_named_value(prepared.names,
+                                 value_locations,
+                                 value_home_lookups,
+                                 *dependency_operand);
+  if (dependency_home == nullptr ||
+      dependency_home->kind != PreparedValueHomeKind::StackSlot) {
+    return;
+  }
+  const auto* dependency_stack_object =
+      dependency_stack_object_for_home(prepared.stack_layout, dependency_home);
+  const auto* cast_producer =
+      find_indexed_prepared_edge_publication_source_producer(&source_producers,
+                                                             *dependency_name);
+  const PreparedValueHome* cast_source_home = nullptr;
+  if (cast_producer != nullptr && cast_producer->cast != nullptr) {
+    cast_source_home =
+        value_home_for_named_value(prepared.names,
+                                   value_locations,
+                                   value_home_lookups,
+                                   cast_producer->cast->operand);
+  }
+
+  records.records.push_back(make_dependency_operand_authority_record(
+      function_name,
+      publication,
+      role,
+      *dependency_operand,
+      dependency_home,
+      dependency_stack_object,
+      cast_producer,
+      cast_source_home,
+      PreparedDependencyOperandMaterializationPolicy::RematerializeCastFromSource,
+      prepared.names));
+  records.records.push_back(make_dependency_operand_authority_record(
+      function_name,
+      publication,
+      role,
+      *dependency_operand,
+      dependency_home,
+      dependency_stack_object,
+      nullptr,
+      nullptr,
+      PreparedDependencyOperandMaterializationPolicy::LoadFromStackSlot,
+      prepared.names));
+}
+
+}  // namespace
+
+PreparedDependencyOperandAuthorityRecords
+collect_prepared_dependency_operand_authorities(
+    const PreparedBirModule& prepared) {
+  PreparedDependencyOperandAuthorityRecords records;
+  for (const auto& function : prepared.control_flow.functions) {
+    const auto* value_locations =
+        find_prepared_value_location_function(prepared, function.function_name);
+    const auto value_home_lookups =
+        make_prepared_value_home_lookups(value_locations);
+    const auto edge_publications = make_prepared_edge_publication_lookups(
+        prepared, function, value_locations, &value_home_lookups);
+    const auto source_producers =
+        make_prepared_edge_publication_source_producer_lookups(prepared,
+                                                               function);
+    for (const auto& publication : edge_publications.publications) {
+      if (publication.status != PreparedEdgePublicationLookupStatus::Available ||
+          publication.source_producer_kind !=
+              PreparedEdgePublicationSourceProducerKind::Binary ||
+          publication.source_binary == nullptr) {
+        continue;
+      }
+      collect_dependency_operand_authorities_for_role(
+          records,
+          prepared,
+          function.function_name,
+          value_locations,
+          &value_home_lookups,
+          source_producers,
+          publication,
+          PreparedDependencyOperandRole::Lhs);
+      collect_dependency_operand_authorities_for_role(
+          records,
+          prepared,
+          function.function_name,
+          value_locations,
+          &value_home_lookups,
+          source_producers,
+          publication,
+          PreparedDependencyOperandRole::Rhs);
+    }
+  }
+  return records;
+}
+
 void publish_store_global_immediate_source_if_authorized(
     PreparedStoreSourcePublicationPlan& plan) {
   if (plan.intent != PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||

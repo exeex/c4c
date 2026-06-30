@@ -1430,6 +1430,185 @@ prepare::PreparedBirModule prepare_select_chain_direct_global_dump_module() {
       options);
 }
 
+prepare::PreparedBirModule prepare_dependency_operand_authority_dump_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = riscv_target_profile();
+
+  const auto function_name = prepared.names.function_names.intern(
+      "dependency_operand_population_dump_contract");
+  const auto pred_label = prepared.names.block_labels.intern("pred");
+  const auto join_label = prepared.names.block_labels.intern("join");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto src_name = prepared.names.value_names.intern("%src");
+  const auto dep_name = prepared.names.value_names.intern("%dep");
+  const auto cmp_name = prepared.names.value_names.intern("%cmp");
+  const auto selected_name = prepared.names.value_names.intern("%selected");
+
+  const bir::Value lhs = bir::Value::named(bir::TypeKind::Ptr, "%lhs");
+  const bir::Value src = bir::Value::named(bir::TypeKind::I32, "%src");
+  const bir::Value dep = bir::Value::named(bir::TypeKind::Ptr, "%dep");
+  const bir::Value cmp = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value selected =
+      bir::Value::named(bir::TypeKind::I32, "%selected");
+
+  bir::Function function;
+  function.name = "dependency_operand_population_dump_contract";
+  bir::Block pred;
+  pred.label = "pred";
+  pred.label_id = pred_label;
+  pred.terminator = bir::BranchTerminator{.target_label = "join",
+                                          .target_label_id = join_label};
+  bir::Block join;
+  join.label = "join";
+  join.label_id = join_label;
+  join.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::IntToPtr,
+      .result = dep,
+      .operand = src,
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ule,
+      .result = cmp,
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = lhs,
+      .rhs = dep,
+  });
+  join.terminator = bir::ReturnTerminator{.value = selected};
+  function.blocks.push_back(std::move(pred));
+  function.blocks.push_back(std::move(join));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepare::PreparedControlFlowFunction control_flow;
+  control_flow.function_name = function_name;
+  control_flow.join_transfers.push_back(prepare::PreparedJoinTransfer{
+      .function_name = function_name,
+      .join_block_label = join_label,
+      .result = selected,
+      .kind = prepare::PreparedJoinTransferKind::PhiEdge,
+      .carrier_kind =
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+      .edge_transfers =
+          {
+              prepare::PreparedEdgeValueTransfer{
+                  .predecessor_label = pred_label,
+                  .successor_label = join_label,
+                  .incoming_value = cmp,
+                  .destination_value = selected,
+              },
+          },
+  });
+  control_flow.parallel_copy_bundles.push_back(
+      prepare::PreparedParallelCopyBundle{
+          .predecessor_label = pred_label,
+          .successor_label = join_label,
+          .execution_site =
+              prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+          .execution_block_label = pred_label,
+          .moves =
+              {
+                  prepare::PreparedParallelCopyMove{
+                      .join_transfer_index = 0,
+                      .edge_transfer_index = 0,
+                      .source_value = cmp,
+                      .destination_value = selected,
+                      .carrier_kind =
+                          prepare::PreparedJoinTransferCarrierKind::
+                              SelectMaterialization,
+                  },
+              },
+          .steps =
+              {
+                  prepare::PreparedParallelCopyStep{
+                      .kind = prepare::PreparedParallelCopyStepKind::Move,
+                      .move_index = 0,
+                  },
+              },
+      });
+  prepared.control_flow.functions.push_back(std::move(control_flow));
+
+  prepare::PreparedValueLocationFunction locations;
+  locations.function_name = function_name;
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 7,
+      .function_name = function_name,
+      .value_name = lhs_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"s1"},
+  });
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 8,
+      .function_name = function_name,
+      .value_name = src_name,
+      .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+      .immediate_i32 = -2147483643,
+  });
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 9,
+      .function_name = function_name,
+      .value_name = dep_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{2},
+      .offset_bytes = std::size_t{16},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+  });
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 10,
+      .function_name = function_name,
+      .value_name = cmp_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 11,
+      .function_name = function_name,
+      .value_name = selected_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+  prepare::PreparedMoveBundle bundle;
+  bundle.function_name = function_name;
+  bundle.phase = prepare::PreparedMovePhase::BlockEntry;
+  bundle.authority_kind =
+      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy;
+  bundle.source_parallel_copy_predecessor_label = pred_label;
+  bundle.source_parallel_copy_successor_label = join_label;
+  bundle.moves.push_back(prepare::PreparedMoveResolution{
+      .from_value_id = 10,
+      .to_value_id = 11,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_register_name = std::string{"t0"},
+      .source_parallel_copy_step_index = std::size_t{0},
+      .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+      .source_parallel_copy_predecessor_label = pred_label,
+      .source_parallel_copy_successor_label = join_label,
+  });
+  locations.move_bundles.push_back(std::move(bundle));
+  prepared.value_locations.functions.push_back(std::move(locations));
+
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 2,
+      .function_name = function_name,
+      .value_name = dep_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{2},
+      .object_id = 2,
+      .function_name = function_name,
+      .offset_bytes = 16,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.stack_layout.frame_size_bytes = 24;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  return prepared;
+}
+
 prepare::PreparedBirModule prepare_cross_call_preservation_dump_module() {
   bir::Module module;
   module.target_triple = "riscv64-unknown-linux-gnu";
@@ -2760,6 +2939,7 @@ int complete_module_body_text_printer_rows_are_byte_stable() {
       "--- prepared-store-source-publications ---\n"
       "--- prepared-call-argument-value-publications ---\n"
       "--- prepared-select-chain-materializations ---\n"
+      "--- prepared-dependency-operand-authorities ---\n"
       "--- prepared-variadic-entry-plans ---\n"
       "--- prepared-regalloc ---\n"
       "--- prepared-storage-plans ---\n"
@@ -7489,6 +7669,44 @@ int main() {
                        "source_binary=no source_select=yes direct_global_select_chain=yes "
                        "direct_global_root_is_select=yes direct_global_root_inst=1",
                        "store-source row with concrete direct-global select-chain fields")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto dependency_operand_prepared =
+      prepare_dependency_operand_authority_dump_module();
+  const std::string dependency_operand_dump =
+      prepare::print(dependency_operand_prepared);
+  if (!expect_contains(dependency_operand_dump,
+                       "--- prepared-dependency-operand-authorities ---",
+                       "prepared dependency-operand authority section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          dependency_operand_dump,
+          "dependency_operand_authority "
+          "function=dependency_operand_population_dump_contract "
+          "predecessor=pred successor=join source=%cmp destination=%selected "
+          "source_producer=binary source_producer_block=join "
+          "source_producer_inst=1 operand_role=rhs dependency=%dep "
+          "dependency_value_id=9 policy=rematerialize_cast_from_source "
+          "status=available dependency_slot=#2 dependency_stack_offset=16 "
+          "cast_producer_block=join cast_producer_inst=0 cast_source=%src "
+          "cast_source_value_id=8 cast_source_home=rematerializable_immediate "
+          "cast_source_imm_i32=-2147483643",
+          "prepared dependency-operand cast-rematerialization authority row")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          dependency_operand_dump,
+          "dependency_operand_authority "
+          "function=dependency_operand_population_dump_contract "
+          "predecessor=pred successor=join source=%cmp destination=%selected "
+          "source_producer=binary source_producer_block=join "
+          "source_producer_inst=1 operand_role=rhs dependency=%dep "
+          "dependency_value_id=9 policy=load_from_stack_slot "
+          "status=missing_stack_freshness dependency_slot=#2 "
+          "dependency_stack_offset=16",
+          "prepared dependency-operand stack-load route stays fail-closed")) {
     return EXIT_FAILURE;
   }
 

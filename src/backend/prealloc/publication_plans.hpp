@@ -539,6 +539,26 @@ struct PreparedDependencyOperandAuthority {
       c4c::backend::bir::TypeKind::Void;
 };
 
+struct PreparedDependencyOperandAuthorityRecord {
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  PreparedEdgePublicationSourceProducerKind source_producer_kind =
+      PreparedEdgePublicationSourceProducerKind::Unknown;
+  std::optional<BlockLabelId> source_producer_block_label;
+  std::optional<std::size_t> source_producer_instruction_index;
+  std::optional<BlockLabelId> cast_producer_block_label;
+  std::optional<std::size_t> cast_producer_instruction_index;
+  PreparedValueHomeKind cast_source_home_kind = PreparedValueHomeKind::None;
+  std::optional<std::string> cast_source_register_name;
+  std::optional<std::int32_t> cast_source_immediate_i32;
+  PreparedDependencyOperandAuthority authority;
+};
+
+struct PreparedDependencyOperandAuthorityRecords {
+  std::vector<PreparedDependencyOperandAuthorityRecord> records;
+};
+
 struct PreparedEdgePublicationSourceProducer {
   PreparedEdgePublicationSourceProducerKind kind =
       PreparedEdgePublicationSourceProducerKind::Unknown;
@@ -1242,6 +1262,9 @@ plan_prepared_dependency_operand_authority(
 
 [[nodiscard]] bool prepared_dependency_operand_authority_available(
     const PreparedDependencyOperandAuthority& authority);
+
+[[nodiscard]] PreparedDependencyOperandAuthorityRecords
+collect_prepared_dependency_operand_authorities(const PreparedBirModule& prepared);
 
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
