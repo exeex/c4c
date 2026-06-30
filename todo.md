@@ -1,50 +1,73 @@
 Status: Active
 Source Idea Path: ideas/open/455_dependency_operand_authority_population.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Authority Population Evidence
+Current Step ID: 2
+Current Step Title: Define Population And Printing Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 for idea 455. Audit artifact:
-`build/agent_state/455_step1_authority_population_audit/audit.md`.
+Completed Step 2 for idea 455. Contract artifact:
+`build/agent_state/455_step2_population_printing_contract/contract.md`.
 
-Fresh prepared probe:
-`build/agent_state/455_step1_authority_population_audit/20010329-1.prepared.out`
-with status in
-`build/agent_state/455_step1_authority_population_audit/probe_status.txt`.
+Accepted population shape for the first packet:
 
-Bucket table:
+- source edge is a prepared select-materialization edge transfer with
+  predecessor-terminator placement and available register destination
+  publication;
+- source producer is a prepared binary compare for the incoming edge source;
+- dependency operand role, value id/name/type, and producer operand identity
+  match exactly;
+- dependency operand is a pointer value with an explicit prepared
+  `IntToPtr` cast producer;
+- cast result value id/name/type matches the dependency operand;
+- cast source value has a register or rematerializable immediate GPR home;
+- pointer width and integer source width are explicit and supported by the
+  dependency-operand authority planner;
+- populated record prints policy `rematerialize_cast_from_source`, status,
+  edge identity, producer identity, operand role, cast result, cast source, and
+  source home.
 
-| Candidate | Edge identity | Dependency operand | Value home/object linkage | Cast/source identity | Freshness/clobber facts | Current planner/printing | First missing population fact |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `%t17` RHS dependency for `%t18 -> %t22` | `logic.rhs.end.13 -> logic.end.14`, join result `%t22`, incoming `%t18`, predecessor-terminator parallel copy, destination register `t0` | `%t18 = bir.ule ptr %t15, %t17`, operand role RHS, `%t17` value_id 9 type `ptr` | home `stack_slot slot_id=2 offset=16`; storage `frame_slot ... slot#2+stack16`; object #2 `name=%t17 source_kind=regalloc.spill_slot type=ptr size=8 align=8` | `%t17 = bir.inttoptr i32 %t16 to ptr`; `%t16` value_id 8 has rematerializable immediate `-2147483643` | No explicit slot freshness or clobber-safety fact for loading slot #2 at the edge | Fresh dump has no `dependency_operand`/authority record and no prepared printing for policy/status | Explicit population record tying edge, binary source producer, RHS operand `%t17`, cast producer, source `%t16`, and `rematerialize_cast_from_source` policy/status |
-| `%t17` stack-load alternative | Same edge and RHS operand | `%t17` as stack-slot pointer dependency | Same stack home/object linkage | Not needed for pure load policy | Missing freshness and clobber-safety | No printed policy/status | Freshness/clobber producer facts before any `load_from_stack_slot` population |
-| `%t15` adjacent LHS dependency | Same source producer `%t18` | LHS operand `%t15` | register home `%t15` value_id 7, `s1` | N/A | N/A | Existing register/immediate rematerialization class already handles this shape | No missing idea-455 population fact |
-| `%t18` incoming source result | Edge source copied to `%t22` | `%t18` incoming value | register home `%t18` value_id 10, `t0` | `%t18` is successor-block compare result | N/A | Printed as edge incoming and block-entry move, but not copyable at predecessor edge | Remains rejected; do not populate successor-result copy authority |
+Rejected population shapes:
 
-First coherent next packet: define the population and printing contract for
-explicit `rematerialize_cast_from_source` dependency-operand authority.
-The representative has enough visible ingredients for a bounded cast policy
-candidate, but Step 2 must specify the semantic source-producer relationship
-and printer output before code. Stack-load authority is not first because
-freshness and clobber-safety facts are absent.
+| Shape | Reason |
+| --- | --- |
+| Raw `inttoptr` plus immediate without a populated dependency record | Raw BIR is not authority |
+| Stack home/object metadata alone | Missing explicit policy |
+| `load_from_stack_slot` without freshness and clobber-safety | Unsound slot load at predecessor edge |
+| Successor/join-block `%t18` result copy | Source is not available at predecessor edge |
+| Missing or mismatched edge/source-producer/operand/cast identity | Cannot bind authority to the selected dependency operand |
+| Unsupported cast kind or width, or non-consumable cast source home | Outside first population packet |
+| Unavailable or non-register destination publication | No valid edge placement target |
+
+Printer evidence requirement: prepared output must expose a dependency-operand
+authority section or equivalent line for the populated record, including exact
+fail-closed status for rejected candidates.
 
 ## Suggested Next
 
-Step 2: `Define Population And Printing Contract`.
+Step 3: `Implement Or Route First Population Packet`.
 
-Define the accepted population record for the cast-rematerialization candidate:
-edge identity, source producer identity, dependency operand role/value/type,
-cast producer identity, cast source home, supported width policy, destination
-publication, explicit status, and prepared printing. Also define rejected
-records for missing cast source, unsupported width, stack-load without
-freshness/clobber-safety, successor-result copies, and unavailable edge
-publication.
+Implement the narrow producer/prepared population and printer exposure for
+explicit `rematerialize_cast_from_source` dependency operands. The focused
+representative is `%t17` on the `logic.rhs.end.13 -> logic.end.14` edge, but
+the rule must be semantic: consume prepared edge/source-producer, operand,
+cast/source, home, and destination-publication facts rather than testcase,
+block-name, value-name, or raw dump shape matching.
 
-Future implementation proof command:
+Suggested owned files:
+
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- prepared printer file if the authority record needs new dump output
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `tests/backend/bir/backend_prepared_printer_test.cpp` if printer coverage is clearer
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/455_step3_dependency_operand_population/*`
+
+Proof command:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
@@ -54,7 +77,7 @@ Future implementation proof command:
 
 - Do not route to RV64 target lowering from metadata type existence alone.
 - Do not infer `rematerialize_cast_from_source` from raw `inttoptr`; the
-  population packet needs an explicit prepared record.
+  implementation must populate an explicit prepared record.
 - Do not infer `load_from_stack_slot` from stack home/object metadata without
   freshness and clobber-safety.
 - Do not copy `%t18` from the successor/join block on the predecessor edge.
@@ -67,7 +90,7 @@ Future implementation proof command:
 
 ## Proof
 
-Step 1 classification-only proof:
+Step 2 contract-only proof:
 
 ```sh
 git diff --check
