@@ -1,55 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/433_rv64_global_select_pointer_memory_residuals.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Execute Or Route Residual Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: selected the first coherent executable packet for the RV64
-global/select/pointer residual plan.
+Completed Step 3: implemented the selected narrow RV64 global object-data
+packet for coherent selected object-data contracts.
 
-Selected first packet: narrow RV64 global object-data support for coherent
-selected object-data contracts.
+Implementation summary:
 
-Selection evidence:
+- Added RV64 object-route emission for selected `unsupported_but_coherent`
+  global object data when prepared facts and prepared global facts authorize a
+  pointer-sized zero object. The route emits the object through `.bss` using the
+  prepared selected object-data size/alignment.
+- Added RV64 object-route emission for selected pointer global object data
+  initialized from an explicit prepared link-name symbol. The route emits an
+  8-byte data object with an `R_RISCV_64` relocation to the prepared target
+  symbol.
+- Kept missing/incoherent selected object-data contracts fail-closed through the
+  existing prepared contract verifier diagnostic.
+- Added focused backend coverage for accepted selected symbol-pointer data,
+  accepted selected zero pointer data, and rejected unsupported selected raw
+  pointer data.
 
-- Representative row: `20011019-1`.
-- First object-route owner:
+Files changed:
+
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `todo.md`
+
+Representative probe:
+
+- `20011019-1` prepared probe succeeded.
+- `20011019-1` RV64 object probe now succeeds and no longer stops at
   `unsupported_global_data: prepared selected object-data contract
-  status=unsupported_but_coherent object_label_id=4 object_size_bytes=8
-  emitted_byte_count=0 zero_fill_byte_count=0`.
-- The packet is coherent because object-data fails before later global
-  load/store publication, direct-global select-chain, terminator, or
-  pointer-value memory residuals.
-- No producer split is needed for the first packet; producer/prepared gaps
-  remain separate for later residual routing.
+  status=unsupported_but_coherent`.
 
 Artifacts:
 
-- `build/agent_state/433_step2_first_packet_selection/selection.md`
+- `build/agent_state/433_step3_global_object_data/summary.txt`
+- `build/agent_state/433_step3_global_object_data/20011019-1.prepared.out`
+- `build/agent_state/433_step3_global_object_data/20011019-1.object.err`
 
 ## Suggested Next
 
-Execute Step 3: Execute Or Route Residual Packet.
+Execute Step 4: Residual Disposition And Close Readiness.
 
-First implementation packet:
+Recommended packet:
 
-- Owned files:
-  `src/backend/mir/riscv/codegen/prepared_global_memory_emit.cpp`,
-  `src/backend/mir/riscv/codegen/object_emission.cpp`,
-  `tests/backend/mir/backend_riscv_object_emission_test.cpp`, `todo.md`,
-  `test_after.log`, and `build/agent_state/433_step3_global_object_data/` if
-  implementation probes are needed.
-- Implement only coherent RV64 selected global object-data emission using
-  prepared selected object-data facts as authority.
-- Add focused backend coverage for accepted coherent selected object-data and
-  fail-closed missing/incoherent/unsupported object-data contracts.
-- Preserve fail-closed behavior for unsupported selected data forms.
+- Re-probe the residual bucket rows from the active source idea and classify
+  what remains after the selected object-data packet.
+- Record whether remaining failures belong to global memory publication,
+  direct-global select/return, terminator/select publication, pointer-value
+  memory, or producer/prepared gaps.
+- Decide whether this source idea is close-ready or needs a separate coherent
+  Step 4 target packet/follow-up idea.
 
-Focused proof command for Step 3:
+Suggested proof command:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
@@ -66,18 +77,18 @@ Focused proof command for Step 3:
   work out of scope.
 - If evidence shows a producer/prepared gap, route it to a separate source idea
   instead of bypassing it in RV64.
-- Do not bundle global load/store publication, direct-global select/return,
-  pointer-value memory, terminator/select publication, or producer-gap repairs
-  into the first global object-data packet.
 - Do not infer global object identity, byte layout, zero-fill, relocation base,
   or symbol addressability from raw BIR, testcase filenames, function names, or
   object label numbers.
-- Do not claim the full `20011019-1` row is solved by object-data support; it
-  still contains later global memory/direct-global select residuals.
+- The implemented route is intentionally limited to prepared selected
+  object-data facts plus explicit prepared global initializer facts; do not
+  broaden Step 4 into global load/store publication, direct-global
+  select/return, pointer-value memory, terminator/select publication, or
+  producer-gap repairs without fresh representative evidence.
 
 ## Proof
 
-Step 2 delegated backend proof passed and is captured in `test_after.log`:
+Step 3 delegated backend proof passed and is captured in `test_after.log`:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check

@@ -31,6 +31,7 @@ namespace rv64 = c4c::backend::riscv::codegen;
 constexpr std::uint32_t SHT_RELA = 4;
 constexpr std::uint32_t SHT_SYMTAB = 2;
 constexpr std::uint32_t R_RISCV_CALL_PLT = 19;
+constexpr std::uint32_t R_RISCV_64 = 2;
 constexpr std::uint32_t R_RISCV_PCREL_HI20 = 23;
 constexpr std::uint32_t R_RISCV_PCREL_LO12_I = 24;
 constexpr std::uint32_t R_RISCV_BRANCH = 16;
@@ -12870,7 +12871,7 @@ int rejects_unsupported_prepared_floating_cast_with_precise_diagnostic() {
       "unsupported_floating_cast: RV64 object route supports only prepared FPR width casts and I32/I64-to-F32/F64 integer-to-floating casts");
 }
 
-int rejects_prepared_data_without_asm_fallback() {
+int emits_prepared_selected_symbol_pointer_global_object_storage() {
   auto prepared = make_prepared_direct_call_module();
   const auto target = prepared.module.names.link_names.intern("target");
   const auto global_name = prepared.module.names.link_names.intern("g");
@@ -12883,10 +12884,108 @@ int rejects_prepared_data_without_asm_fallback() {
       .initializer = bir::Value::named_symbol_pointer("@target", target),
   });
   publish_prepared_object_data(prepared);
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected selected symbol-pointer global object data to build");
+  }
+  const auto* data = object::find_section(*module, ".data");
+  if (data == nullptr || !data->writable || data->executable ||
+      data->align_bytes != 8 ||
+      data->bytes != std::vector<std::uint8_t>(8, 0)) {
+    return fail("expected selected symbol-pointer object bytes in data");
+  }
+  const auto* global = object::find_symbol(*module, "g");
+  const auto* target_symbol = object::find_symbol(*module, "target");
+  if (global == nullptr ||
+      global->binding != object::SymbolBinding::Global ||
+      global->kind != object::SymbolKind::Object ||
+      global->section != std::optional<object::SectionId>{data->id} ||
+      global->value != 0 || global->size_bytes != 8 ||
+      target_symbol == nullptr ||
+      !object::is_undefined_symbol(*target_symbol)) {
+    return fail("expected selected symbol-pointer object and target symbols");
+  }
+  const auto data_reloc = std::find_if(
+      module->relocations.begin(),
+      module->relocations.end(),
+      [&](const object::RelocationRecord& relocation) {
+        return relocation.section == data->id && relocation.offset == 0;
+      });
+  if (data_reloc == module->relocations.end() ||
+      data_reloc->type != R_RISCV_64 ||
+      data_reloc->symbol != target_symbol->id ||
+      data_reloc->addend != 0) {
+    return fail("expected selected symbol-pointer R_RISCV_64 relocation");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize selected symbol pointer");
+  }
+  (void)global_name;
+  return 0;
+}
+
+int emits_prepared_selected_zero_pointer_global_bss_storage() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto link_name = prepared.module.names.link_names.intern("cursor");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "cursor",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer = null_pointer_value(),
+  });
+  publish_prepared_object_data(prepared);
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected selected zero pointer global object data to build");
+  }
+  const auto* bss = object::find_section(*module, ".bss");
+  if (bss == nullptr || !bss->writable || bss->executable ||
+      bss->align_bytes != 8 || !bss->bytes.empty() ||
+      bss->size_bytes != 8) {
+    return fail("expected selected zero pointer object reservation in BSS");
+  }
+  const auto* symbol = object::find_symbol(*module, "cursor");
+  if (symbol == nullptr ||
+      symbol->binding != object::SymbolBinding::Global ||
+      symbol->kind != object::SymbolKind::Object ||
+      symbol->section != std::optional<object::SectionId>{bss->id} ||
+      symbol->value != 0 || symbol->size_bytes != 8) {
+    return fail("expected selected zero pointer object symbol in BSS");
+  }
+  const auto bss_reloc = std::find_if(
+      module->relocations.begin(),
+      module->relocations.end(),
+      [&](const object::RelocationRecord& relocation) {
+        return relocation.section == bss->id;
+      });
+  if (bss_reloc != module->relocations.end()) {
+    return fail("expected selected zero pointer BSS object to need no relocation");
+  }
+  return 0;
+}
+
+int rejects_unsupported_selected_global_object_data_shapes() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto link_name = prepared.module.names.link_names.intern("rawptr");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "rawptr",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer = nonnull_pointer_immediate(4096),
+  });
+  publish_prepared_object_data(prepared);
+
   return expect_prepared_rejection_diagnostic(
       prepared,
       "unsupported_global_data: prepared selected object-data contract status=unsupported_but_coherent object_label_id=" +
-          std::to_string(global_name) +
+          std::to_string(link_name) +
           " object_size_bytes=8 emitted_byte_count=0 zero_fill_byte_count=0");
 }
 
@@ -14061,7 +14160,9 @@ int main() {
   status |= builds_prepared_fpr_immediate_return_objects();
   status |= rejects_prepared_fpr_immediate_return_fail_closed_shapes();
   status |= rejects_unsupported_prepared_floating_cast_with_precise_diagnostic();
-  status |= rejects_prepared_data_without_asm_fallback();
+  status |= emits_prepared_selected_symbol_pointer_global_object_storage();
+  status |= emits_prepared_selected_zero_pointer_global_bss_storage();
+  status |= rejects_unsupported_selected_global_object_data_shapes();
   status |= emits_prepared_writable_i32_global_object_storage();
   status |= rejects_prepared_global_object_storage_without_prepared_data_facts();
   status |=
