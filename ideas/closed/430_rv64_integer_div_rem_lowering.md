@@ -1,6 +1,6 @@
 # RV64 Integer Div And Rem Lowering
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Source Evidence: `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`
@@ -60,3 +60,53 @@ Representative rows include `src/20021120-3.c`, `src/20030105-1.c`,
 - Reject helper renames or dispatch reshuffles that leave `bir.udiv`,
   `bir.sdiv`, `bir.urem`, or `bir.srem` rows failing with the same unsupported
   instruction-fragment mode.
+
+## Completion Notes
+
+Closed on 2026-06-30 as a bounded RV64 scalar integer div/rem lowering idea.
+
+Completed focused coverage:
+
+- `UDiv i32` lowers through RV64 `divuw`.
+- `UDiv i64` lowers through RV64 `divu`.
+- `SDiv i32` lowers through RV64 `divw`.
+- `SDiv i64` lowers through RV64 `div`.
+- `URem i32` lowers through RV64 `remuw`.
+- `URem i64` lowers through RV64 `remu`.
+- `SRem i32` lowers through RV64 `remw`.
+- `SRem i64` lowers through RV64 `rem`.
+- Missing prepared operand/result homes and pointer-typed div/rem forms remain
+  fail-closed with `unsupported_instruction_fragment`.
+
+Close-readiness probes under
+`build/agent_state/430_step4_close_readiness/` show the source idea's
+remaining representative failures are not unresolved div/rem target-lowering
+work:
+
+- `20100416-1` passes the RV64 object route with its `udiv i64` fragment.
+- `20021120-3` still fails with mixed call, frame/computed call-argument,
+  load, and store-local publication residuals.
+- `20030105-1` still fails with select materialization, call, load, and
+  store-local publication residuals.
+- `20090113-2` still fails with select materialization, frame/computed
+  call-argument, load, and store-local publication residuals.
+- `20090113-3` still fails with select materialization, frame/computed
+  call-argument, load, and store-local publication residuals.
+
+Residual disposition:
+
+- Call metadata, call-argument publication, load/local-store publication, and
+  local/store producer facts remain under
+  `ideas/open/422_bir_semantic_producer_high_impact_cleanup.md` unless a later
+  plan owner splits a more precise implementation idea.
+- Global-addressing and direct-global residual classes remain under
+  `ideas/open/433_rv64_global_select_pointer_memory_residuals.md`.
+- Select materialization remains a separate non-div/rem owner and must not be
+  folded back into this closed idea.
+
+Close proof:
+
+- Existing canonical `test_before.log` and `test_after.log` cover the backend
+  subset with `327 passed, 0 failed` before and after.
+- The regression guard passed with non-decreasing pass-count semantics:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`.
