@@ -1,11 +1,16 @@
 # RV64 Global Select Pointer Memory Residuals
 
-Status: Open
+Status: Closed
 Type: Implementation and producer-boundary idea
 Parent: `ideas/closed/429_rv64_pointer_address_materialization.md`
 Source Evidence: `build/agent_state/429_step4_close_readiness/`
 Owning Layer: RV64 global object data, direct-global select/return, and pointer-value memory with producer boundaries
 Handoff Directory: `build/agent_state/429_step4_close_readiness/`
+Closed Evidence:
+- `build/agent_state/433_step1_residual_owner_reclassification/classification.md`
+- `build/agent_state/433_step2_first_packet_selection/selection.md`
+- `build/agent_state/433_step3_global_object_data/summary.txt`
+- `build/agent_state/433_step4_residual_disposition/classification.md`
 
 ## Goal
 
@@ -63,6 +68,27 @@ facts first.
   target lowering.
 - The supervisor-delegated backend proof passes for any implementation slice.
 
+## Completion Notes
+
+- Step 1 reclassified residual rows from the 429 close-readiness handoff into
+  owner buckets.
+- Step 2 selected only the coherent selected global object-data packet, guarded
+  by explicit prepared object-data facts.
+- Step 3 implemented that packet; `20011019-1` now passes the RV64 object
+  route and no longer reports the selected object-data diagnostic.
+- Step 4 confirmed remaining representatives are separate residual families,
+  not additional in-scope selected object-data work.
+- Backend close gate used canonical `test_before.log` and `test_after.log`;
+  both logs report 327 passed, 0 failed, and the non-decreasing regression
+  guard passed.
+
+## Follow-Up Ideas
+
+- `ideas/open/438_prepared_pointer_value_memory_authority.md`
+- `ideas/open/439_store_source_global_memory_publication_authority.md`
+- `ideas/open/440_direct_global_return_select_chain_authority.md`
+- `ideas/open/441_terminator_select_publication_authority.md`
+
 ## Reviewer Reject Signals
 
 - Reject RV64 code that infers global object identity, symbol addressability,
@@ -79,3 +105,4 @@ facts first.
   the same owner.
 - Reject broad memory-addressing rewrites that silently absorb prepared
   object-data, global-layout, select-chain, or terminator producer defects.
+
