@@ -1,48 +1,76 @@
 Status: Active
 Source Idea Path: ideas/open/471_branch_site_stack_slot_freshness_clobber_safety_metadata.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Branch-Site Freshness And Clobber Inputs
+Current Step ID: 2
+Current Step Title: Define Freshness Clobber-Safety Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 471. Current prepared evidence exposes
-branch-stack-load records plus useful nearby inputs, but it still does not
-prove that any branch stack slot contains the current branch value at the branch
-site or that the slot is safe from clobber before a load.
+Completed Step 2 contract for idea 471. The contract is bounded to scalar
+condition branch-stack-load rows, with `%t23` at `f.logic.end.14` as the
+representative, but Step 3 must first prove a durable current-value source and
+no-clobber facts before setting any available record.
 
-Representative audit:
+Positive contract:
 
-| Row | Current record | Inputs present | Freshness / clobber evidence | First owner |
-| --- | --- | --- | --- | --- |
-| `f.logic.end.14` condition `%t23` | `value_id=17`, `slot=#21`, `object=#21`, `status=missing_policy` | Stack home/object/frame slot, branch condition, no later call on same block, no move/publication targeting `%t23`. | Missing explicit slot-current-value proof and missing explicit no-clobber proof. | Step 2 contract target. |
-| `f.logic.end.14` lhs `%t22` | `value_id=16`, `slot=#20`, `object=#20`, `status=missing_policy` | Select-chain and block-entry publication rows exist. | Missing; blocked by select-result stack-destination publication. | Select-result/block-entry owner first. |
-| `f.block_1` condition `%t2` | `unsupported_terminator`, `pointer_status=not_pointer` | Stack home/object exists. | Not reachable because branch-site relationship is not accepted. | `unsupported_terminator` prerequisite. |
-| `f.block_1` lhs `%t1` | `unsupported_terminator`, `pointer_status=unknown` | Stack home/object exists. | Not reachable. | `unsupported_terminator` plus pointer/provenance. |
-| `f.block_4` condition `%t8` | `unsupported_terminator`, `pointer_status=not_pointer` | Stack home/object exists. | Not reachable. | `unsupported_terminator` prerequisite. |
-| `f.block_4` lhs `%t7` | `unsupported_terminator`, `pointer_status=unknown` | Stack home/object exists. | Not reachable. | Pointer-value/provenance after branch-site relationship. |
+| Fact group | Required facts |
+| --- | --- |
+| Branch identity | Function, branch block, prepared branch condition, BIR conditional branch terminator, condition value, and targets match. |
+| Slot identity | Value id/name, home, frame slot, object id, offset, size, alignment, and type match. |
+| Current-value source | Producer-owned fact states the slot contains the current branch condition value at the branch site. |
+| Path validity | Source is valid on every authorized path to the branch site. |
+| No clobber | No intervening stack write, call/helper/inline asm, publication, move bundle, or parallel copy can overwrite or invalidate the slot. |
+| Policy integration | Only after the above may `load_from_stack_slot`, `fresh=true`, and `clobber_safe=true` be set. |
 
-First Step 2 target: define the freshness/clobber-safety contract for scalar
-condition records that already have populated branch/value/home/frame-slot/
-object facts, represented by `f.logic.end.14` condition `%t23`. Preserve
-select-result, pointer/provenance, and `unsupported_terminator` rows as
-separate/fail-closed owners.
+Rejected/fail-closed cases:
+
+| Shape | Disposition |
+| --- | --- |
+| Raw BIR adjacency | Rejected; `%t23` computed before the branch does not prove slot `#21` contains `%t23`. |
+| Stack home/object only | Rejected as identity facts only, not freshness. |
+| Missing current-value source or path proof | Fail closed as missing freshness. |
+| Intervening store/call/helper/publication/move-bundle ambiguity | Fail closed as clobber-unsafe. |
+| `%t22` select-result stack destination | Separate owner. |
+| `%t1` / `%t7` pointer/provenance rows | Separate owner. |
+| `%t2` / `%t8` `unsupported_terminator` rows | Separate branch-site relationship prerequisite. |
+
+Selected Step 3 packet: `Implement Or Route Scalar Condition Freshness
+Producer`. Implement only if current prepared facts can prove a durable
+current-value source and no-clobber safety without raw-shape inference;
+otherwise route/block with the exact missing producer owner.
 
 Artifact:
-`build/agent_state/471_step1_freshness_clobber_audit/audit.md`.
+`build/agent_state/471_step2_freshness_clobber_contract/contract.md`.
 
 ## Suggested Next
 
-Execute Step 2: Define Freshness Clobber-Safety Contract. Specify exact facts
-for stack-slot current-value proof, branch-site path/dominance, and no
-intervening clobber; name implementation/test surfaces only if a bounded
-producer packet is justified.
+Execute Step 3: Implement Or Route Freshness Clobber-Safety Producer.
+
+Suggested owned files:
+
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/471_step3_freshness_clobber_producer/**`
+
+Optional prepared printer files only if a new record/status is exposed.
+
+Proof:
+
+```sh
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+```
 
 ## Watchouts
 
-- Do not edit implementation files during Step 1.
+- Do not set freshness/clobber-safety from raw BIR adjacency, stack homes, or
+  object identity alone.
+- Step 3 must block if current-value source, path validity, stack-write
+  summary, call/helper effects, or move/publication clobber facts are missing.
 - Do not implement RV64 branch-load emission in this producer plan.
 - Do not accept unavailable `PreparedBranchStackLoadAuthority` records as
   target authority.
@@ -55,7 +83,7 @@ producer packet is justified.
 
 ## Proof
 
-Classification proof:
+Contract proof:
 
 ```sh
 git diff --check
