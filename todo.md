@@ -1,44 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/465_rv64_ule_select_edge_rematerialization_consumer.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First RV64 Consumer Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 implementation for idea 465. RV64 object emission now
-collects and consumes explicit `PreparedSelectCarrierAliasAuthorityRecords` for
-the select-edge source-producer route, and it rematerializes only authorized
-unsigned pointer `Ule` compares into the destination register. No raw
-`.phi.sel` alias inference, plain successor-defined copy/no-op, stale stack
-load, or generic move support was added.
+Completed Step 4 residual disposition for idea 465. The Step 3 RV64 consumer
+is implemented and covered for the explicit carrier-alias authority fixture,
+but the fresh `20010329-1` representative probe did not advance: object route
+still rejects the same coordinate-bearing `logic.rhs.end.40 -> logic.end.41`
+preterminator copy. Idea 465 is not close-ready as representative progress.
 
-Implementation table:
+Residual table:
 
-| Field | Result |
-| --- | --- |
-| Authority collection | `prepared_function_to_object_function` now collects `collect_prepared_select_carrier_alias_authorities(prepared)`. |
-| Move-bundle consumer | `fragment_for_prepared_move_bundle` passes carrier-alias records to `fragment_for_prepared_select_edge_source_producer`. |
-| Record matching | The selected-source route matches available records by function, predecessor/successor edge, source/destination ids and names, binary source-producer kind, and source-producer block/instruction. |
-| Accepted rematerialization | Duplicate-carrier ULE source producers are accepted only with explicit carrier-alias authority and target-consumable operands. |
-| Instruction-side handling | Authorized carrier alias select instructions and the owned source producer are skipped through record-backed authority instead of raw select shape. |
-| Fail-closed coverage | Tests reject missing alias authority, non-`Ule` source producer, and missing/non-consumable operand homes. |
-| Files changed | `src/backend/mir/riscv/codegen/object_emission.cpp`, `tests/backend/mir/backend_riscv_object_emission_test.cpp`. |
+| Question | Evidence | Disposition |
+| --- | --- | --- |
+| Step 3 consumer coverage | `build/agent_state/465_step3_ule_rematerialization_consumer/summary.md` records accepted/fail-closed backend coverage. | Consumer slice is locally valid for explicit authority. |
+| Fresh prepared route | `20010329-1.prepared.status=0`; prepared dump still shows `%t46 = bir.ule ptr %t42, %t45`, duplicate `%t50.phi.sel0/%t50.phi.sel1`, `%t46 -> %t50`, and `%t42/%t45` GPR homes. | Representative has the structural inputs. |
+| Fresh object route | `20010329-1.object.status=2`; diagnostic remains `unsupported_move_bundle_target_shape ... event_kind=pre_terminator_copies ... logic.rhs.end.40 -> logic.end.41 ... from_value_id=20 to_value_id=21`. | Representative did not advance past the first failing move-bundle event. |
+| Carrier-alias evidence in dump | No printed `carrier_alias` / `select_carrier` record appears in the fresh prepared dump. | Next first-owner is verifying/populating/exposing carrier-alias authority for the real representative, not generic RV64 move support. |
+| Operand boundary | `%t42` home `s1`, `%t45` home `s2` remain GPR-consumable. | Operand consumability is still not the first blocker. |
 
-Artifact:
-`build/agent_state/465_step3_ule_rematerialization_consumer/summary.md`.
+Artifacts:
+`build/agent_state/465_step4_residual_disposition/`.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: residual disposition and close readiness.
-Re-probe or inspect the representative route, classify whether `20010329-1`
-advanced past the carrier-alias ULE rematerialization consumer, and route any
-next first owner without broadening idea 465.
-
-Suggested artifact directory:
-`build/agent_state/465_step4_residual_disposition/`.
+Do not close idea 465 as representative-complete. The next coherent packet
+should first prove why `collect_prepared_select_carrier_alias_authorities` does
+not produce a matching authority record for current `20010329-1`, or add
+focused producer/printer evidence if the record exists but is not visible.
+Only after that should RV64 consumer behavior be revisited.
 
 ## Watchouts
 
@@ -47,6 +42,9 @@ Suggested artifact directory:
 - Do not infer duplicate-carrier aliases from `%*.phi.sel*` spelling, raw
   select shape, value ids, block labels, function names, testcase names, or
   dump order.
+- Do not treat the Step 3 fixture success as representative close-readiness
+  until `20010329-1` publishes and consumes a matching carrier-alias authority
+  record.
 - Preserve record-based fail-closed behavior for missing/wrong alias authority,
   wrong edge, wrong source producer, mismatched carrier/final result, and
   non-consumable operands.
@@ -56,10 +54,10 @@ Suggested artifact directory:
 
 ## Proof
 
-Step 3 proof:
+Step 4 proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 Result: passed.
