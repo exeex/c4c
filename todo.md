@@ -1,70 +1,38 @@
 Status: Active
-Source Idea Path: ideas/open/471_branch_site_stack_slot_freshness_clobber_safety_metadata.md
+Source Idea Path: ideas/open/472_branch_site_stack_slot_current_value_no_clobber_certificate.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Current-Value No-Clobber Certificate Inputs
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 residual disposition for idea 471. The plan is close-ready as
-a negative producer-feasibility result: the carrier and planner are adequate,
-but current prepared inputs still cannot prove branch-site stack-slot
-current-value or no-clobber certificates for scalar condition rows.
+Closed idea 471 as a negative producer-feasibility result. It proved the
+carrier/planner surface is adequate, but real representative rows still lack a
+producer-owned certificate proving current-value source identity and
+no-clobber safety for the branch-site stack slot.
 
-Residual classification:
-
-| Row | Current disposition | First owner |
-| --- | --- |
-| `f.logic.end.14` condition `%t23`, slot `#21` | Identity facts exist, but no durable fact proves the slot contains current `%t23` at the branch site or remains unclobbered. | Split/narrow producer for branch-site current-value plus no-clobber certificate. |
-| `f.logic.end.14` lhs `%t22`, slot `#20` | Select-result stack-destination/materialization remains first. | Select-result / block-entry stack-destination owner. |
-| `f.block_1` `%t2` and `f.block_4` `%t8` | Still `unsupported_terminator`; not eligible for freshness/clobber policy. | Branch-site relationship acceptance owner. |
-| `f.block_1` `%t1` and `f.block_4` `%t7` | Pointer/provenance plus branch-site relationship boundaries remain. | Pointer-value provenance and branch-site relationship owners. |
-
-Lifecycle recommendation: close idea 471 by split/route. Activate a narrower
-producer initiative only for branch-site stack-slot current-value and
-no-clobber certificates. RV64 branch-load consumption remains blocked until
-available `PreparedBranchStackLoadAuthority` records exist.
-
-Preserved boundaries: no RV64 lowering, no consumption of unavailable records,
-no raw-shape inference, no select-result/pointer/unsupported-terminator
-widening, and no baseline/review/log churn.
-
-Artifact:
-`build/agent_state/471_step4_residual_disposition/disposition.md`.
+The new active idea 472 owns only that certificate producer prerequisite. RV64
+branch-load consumption remains blocked until available records exist.
 
 ## Suggested Next
 
-Plan-owner should close idea 471 or split/activate a new narrow producer idea:
-`branch_site_stack_slot_current_value_no_clobber_certificate`.
+Execute Step 1 from `plan.md`: audit current-value and no-clobber certificate
+inputs for the representative branch-stack-load records.
 
-Required future facts:
-
-- current-value source identity for the stack slot at the branch site;
-- path/dominance validity from source to branch site;
-- stack-write exclusion for the same frame slot/object;
-- call/helper/inline-asm clobber modeling;
-- publication, move-bundle, and parallel-copy non-clobber proof;
-- focused positive and fail-closed tests before any RV64 consumer work resumes.
-
-Proof:
-
-```sh
-git diff --check
-```
+Suggested artifact directory:
+`build/agent_state/472_step1_current_value_no_clobber_audit/`.
 
 ## Watchouts
 
-- Do not set freshness/clobber-safety from raw BIR adjacency, stack homes, or
-  object identity alone.
-- Step 3 must block if current-value source, path validity, stack-write
-  summary, call/helper effects, or move/publication clobber facts are missing.
+- Do not edit implementation files during Step 1.
 - Do not implement RV64 branch-load emission in this producer plan.
 - Do not accept unavailable `PreparedBranchStackLoadAuthority` records as
   target authority.
-- Do not infer freshness or clobber safety from stack homes, offsets, object
-  ids, raw BIR, block labels, function names, testcase names, or dump order.
+- Do not infer current value or no-clobber safety from stack homes, offsets,
+  object ids, raw BIR, block labels, function names, testcase names, or dump
+  order.
 - Keep pointer-value/provenance, select-result stack-destination, and
   unsupported-terminator boundaries separate.
 - Do not modify `test_baseline.new.log`, `test_baseline.log`,
@@ -72,10 +40,12 @@ git diff --check
 
 ## Proof
 
-Step 4 proof:
+Lifecycle transition proof:
 
 ```sh
 git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
