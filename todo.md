@@ -8,35 +8,39 @@ Current Step Title: Audit Unsupported Carrier Alias Rejection
 
 ## Just Finished
 
-Closed idea 466 as complete evidence/probe classification and activated idea
-467 for the precise `unsupported_carrier_alias` planner/producer rejection.
+Completed Step 1 audit for idea 467. The representative
+`unsupported_carrier_alias` is caused by the carrier-alias acceptance loop,
+not candidate collection.
 
-The representative row is visible but unavailable:
+Rejection audit:
 
-| Field | Value |
-| --- | --- |
-| Representative | `20010329-1` |
-| Status | `unsupported_carrier_alias` |
-| Edge | `logic.rhs.end.40 -> logic.end.41` |
-| Source / destination | `%t46` / `source_value_id=20` to `%t50` / `destination_value_id=21` |
-| Source producer | `binary`, block `logic.end.41`, instruction `1` |
-| Candidate count | `carrier_alias_candidates=2` |
-| Accepted aliases | `carrier_aliases=0` |
-| Use closure | `source_use_closure=no` |
-| Boundary | Evidence row is diagnostic only, not RV64 authority. |
+| Predicate / fact | Evidence | Verdict |
+| --- | --- | --- |
+| Candidate collection | `carrier_alias_candidates=2`; raw BIR has `%t50.phi.sel0` and `%t50.phi.sel1` payload-using `%t46` and feeding final `%t50`. | Passed. |
+| Candidate shape checks | Candidates are in successor `logic.end.41`, are named values, are distinct from `%t50`, payload-use `%t46`, do not condition-use `%t46`, and feed final `%t50`. | Passed or implied by collection. |
+| Prepared value-name lookup | Planner calls `prepared_named_value_id(*inputs.names, carrier->result)`; prepared dump has homes/storage for `%t50` but no value-id/home rows for `%t50.phi.sel0` or `%t50.phi.sel1`. | First failing predicate. |
+| Accepted aliases | Evidence row reports `carrier_aliases=0` and `source_use_closure=no`. | Failure happens before alias records are appended and before closure proof. |
+
+Exact missing fact: durable prepared value-name identity for synthesized
+carrier alias select results `%t50.phi.sel0` / `%t50.phi.sel1`.
+
+Artifact:
+`build/agent_state/467_step1_unsupported_carrier_alias_audit/audit.md`.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: audit why the prepared carrier-alias planner
-rejects two carrier candidates as `unsupported_carrier_alias` before authority
-publication.
-
-Suggested artifact directory:
-`build/agent_state/467_step1_unsupported_carrier_alias_audit/`.
+Execute Step 2: define the carrier-alias acceptance contract. The contract
+should specify how synthesized carrier alias result names become
+producer-published prepared identity, whether alias value ids/homes are
+optional or required, and the fail-closed cases for unpublished aliases, wrong
+final result, wrong source/edge, duplicate candidates, and extra source uses.
 
 ## Watchouts
 
-- Do not edit implementation files during Step 1.
+- Do not treat candidate discovery as authority; candidates still require
+  prepared identity and closure proof.
+- Do not intern or accept `.phi.sel` names merely because they match the raw
+  spelling pattern.
 - Do not treat unavailable evidence rows as authority.
 - Do not make RV64 ULE rematerialization changes until an available authority
   record exists or a later packet proves an RV64 matcher mismatch against one.
@@ -51,12 +55,10 @@ Suggested artifact directory:
 
 ## Proof
 
-Lifecycle transition proof:
+Step 1 proof:
 
 ```sh
 git diff --check
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
-python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
