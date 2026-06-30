@@ -5264,6 +5264,32 @@ prepare::PreparedBirModule make_prepared_join_transfer_select_with_published_cop
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_join_transfer_select_with_published_copies_stack_result_module() {
+  auto prepared = make_prepared_join_transfer_select_with_published_copies_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto result_name = prepared.names.value_names.find("%selected");
+
+  prepared.stack_layout.frame_size_bytes = 4;
+  prepared.stack_layout.frame_alignment_bytes = 4;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{7},
+          .function_name = function_name,
+          .offset_bytes = 0,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  };
+  auto& result_home = prepared.value_locations.functions.front().value_homes.at(2);
+  result_home = rv64_stack_slot_home(3,
+                                     function_name,
+                                     result_name,
+                                     prepare::PreparedFrameSlotId{7},
+                                     0);
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_join_transfer_select_with_edge_compare_source_module() {
   auto prepared = make_prepared_join_transfer_select_with_published_copies_module();
   const auto function_name = prepared.names.function_names.find("main");
@@ -10090,6 +10116,68 @@ int skips_published_prepared_join_transfer_select_carrier_object() {
   return 0;
 }
 
+int materializes_published_prepared_join_transfer_select_stack_carrier_object() {
+  const auto prepared =
+      make_prepared_join_transfer_select_with_published_copies_stack_result_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected stack-home published join-transfer select RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  const auto* true_copy_label = object::find_symbol(*module, ".Lmain_pred_true");
+  const auto* false_copy_label = object::find_symbol(*module, ".Lmain_pred_false");
+  const auto* join_label = object::find_symbol(*module, ".Lmain_join");
+  const auto* select_true_label = object::find_symbol(*module, ".Lmain_join_select_0_true");
+  const auto* select_end_label = object::find_symbol(*module, ".Lmain_join_select_0_end");
+  if (text == nullptr || main_symbol == nullptr || true_copy_label == nullptr ||
+      false_copy_label == nullptr || join_label == nullptr ||
+      select_true_label == nullptr || select_end_label == nullptr) {
+    return fail("expected stack-home join object to publish block and select labels");
+  }
+  if (text->bytes.size() != 56 || text->size_bytes != 56 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 56 ||
+      true_copy_label->value != 8 || false_copy_label->value != 12 ||
+      join_label->value != 16 || select_true_label->value != 36 ||
+      select_end_label->value != 40) {
+    return fail("expected stack-home join select object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x0000006f ||
+      read_u32(text->bytes, 8) != 0x0000006f ||
+      read_u32(text->bytes, 12) != 0x0000006f ||
+      read_u32(text->bytes, 16) != 0x00048e13 ||
+      read_u32(text->bytes, 20) != 0x00100e93 ||
+      read_u32(text->bytes, 24) != 0x01de1063 ||
+      read_u32(text->bytes, 28) != 0x00030f13 ||
+      read_u32(text->bytes, 32) != 0x0000006f ||
+      read_u32(text->bytes, 36) != 0x00100f13 ||
+      read_u32(text->bytes, 40) != 0x01e12023 ||
+      read_u32(text->bytes, 44) != 0x00012503 ||
+      read_u32(text->bytes, 48) != 0x01010113 ||
+      read_u32(text->bytes, 52) != 0x00008067) {
+    return fail("expected stack-home join carrier to materialize select at join and reload return");
+  }
+  bool saw_select_branch = false;
+  for (const auto& relocation : module->relocations) {
+    const auto symbol_it =
+        std::find_if(module->symbols.begin(),
+                     module->symbols.end(),
+                     [&](const object::SymbolRecord& symbol) {
+                       return symbol.id == relocation.symbol;
+                     });
+    if (symbol_it == module->symbols.end()) {
+      continue;
+    }
+    saw_select_branch =
+        saw_select_branch || symbol_it->name.find("_select_") != std::string::npos;
+  }
+  if (!saw_select_branch) {
+    return fail("expected stack-home join carrier to use local select relocations");
+  }
+  return 0;
+}
+
 int materializes_published_prepared_join_transfer_select_edge_compare_source_object() {
   const auto prepared =
       make_prepared_join_transfer_select_with_edge_compare_source_module();
@@ -12975,6 +13063,7 @@ int main() {
   status |= builds_prepared_normalized_sle_select_materialization_object();
   status |= builds_prepared_small_integer_ordinary_select_materialization_objects();
   status |= skips_published_prepared_join_transfer_select_carrier_object();
+  status |= materializes_published_prepared_join_transfer_select_stack_carrier_object();
   status |= materializes_published_prepared_join_transfer_select_edge_compare_source_object();
   status |=
       materializes_published_prepared_join_transfer_select_dependent_edge_compare_source_object();
