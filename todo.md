@@ -1,60 +1,72 @@
 Status: Active
 Source Idea Path: ideas/open/462_rv64_preterminator_predecessor_edge_parallel_copy_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Coordinate-Bearing Parallel-Copy Evidence
+Current Step ID: 2
+Current Step Title: Define Preterminator Parallel-Copy Materialization Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 for idea 462: audited the coordinate-bearing
-`pre_terminator_copies` / `out_of_ssa_parallel_copy` evidence and prepared
-value-home facts for the exact `logic.rhs.end.40 -> logic.end.41` predecessor
-edge. Supporting artifact:
-`build/agent_state/462_step1_preterminator_parallel_copy_audit/audit.md`.
+Completed Step 2 for idea 462: defined the RV64 preterminator
+predecessor-edge parallel-copy materialization contract. Supporting artifact:
+`build/agent_state/462_step2_preterminator_parallel_copy_contract/contract.md`.
 
-Audit table:
+Accepted materialization conditions:
 
 | Field | Value |
 | --- | --- |
-| Object-route event | `event_kind=pre_terminator_copies`, `function=main`, `block_index=10`, `block_label=logic.rhs.end.40`, `instruction_index=0` |
-| Prepared move bundle | `phase=block_entry`, `authority=out_of_ssa_parallel_copy`, `block_index=10`, `instruction_index=0`, `source_parallel_copy=logic.rhs.end.40 -> logic.end.41` |
-| Edge identity | predecessor `logic.rhs.end.40`, successor `logic.end.41`, `execution_site=predecessor_terminator`, `execution_block=logic.rhs.end.40` |
-| Join/select publication | `join_transfer logic.end.41 result=%t50 kind=phi_edge carrier=select_materialization ownership=authoritative_branch_pair`; incoming `%t46 -> %t50` |
-| Move | `from_value_id=20` / `%t46` to `to_value_id=21` / `%t50`, `destination_storage=register`, `op_kind=move`, `reason=phi_join_register_to_register`, `uses_cycle_temp_source=no` |
-| Source availability | `%t46 value_id=20 kind=register reg=t0`; storage `encoding=register bank=gpr reg=t0 width=1` |
-| Destination availability | `%t50 value_id=21 kind=register reg=t0`; storage `encoding=register bank=gpr reg=t0 width=1` |
-| Edge publication | `block_entry_publication successor=logic.end.41 status=available to_value_id=21 ... reg=t0 block_index=10 instruction_index=0` |
-| Excluded authority paths | `select_edge_suppression_authorized=no`, `cast_dependency_stack_publication_authorized=no` |
-| Current RV64 failure | `fragment_status=generic_move_bundle_materialization_failed` after bundle admission; generic `fragment_for_prepared_move_bundle` lacks this register-source route |
+| Traversal event | `PreparedObjectTraversalEventKind::PreTerminatorCopies` at the current event site |
+| Move bundle authority | `phase=block_entry`, `authority=out_of_ssa_parallel_copy`, coordinates matching the traversal event |
+| Edge identity | `classification.parallel_copy_bundle` exists and matches predecessor, successor, execution block, and `execution_site=predecessor_terminator` |
+| Select publication | destination edge publication intent is `Available` for the same destination value and same parallel-copy bundle |
+| Move shape | acyclic single `Move` step, no cycle temp, destination kind `value`, destination storage `register`, contiguous width 1 |
+| Source | explicit supported immediate or prepared GPR-compatible source value home/storage |
+| Destination | prepared GPR-compatible destination home/storage or explicit single-register destination |
+| Emission | emit nothing when source and destination resolve to the same GPR; otherwise emit one RV64 GPR-to-GPR move |
+| Authority source | prepared coordinate/authority facts only; no raw BIR/testcase/function/value-id inference |
 
-Classification: Step 2 can define a bounded RV64 consumer contract. The
-representative has enough prepared authority for a narrow contract: explicit
-coordinate-bearing event identity, matching parallel-copy and join-transfer
-facts, available destination publication, and GPR-compatible source/destination
-homes. No producer/prepared metadata blocker is visible for this event.
+Rejected adjacent shapes: raw-only or diagnostic-only bundles, missing
+`out_of_ssa_parallel_copy` authority, mismatched event/phase/edge/coordinate,
+missing parallel-copy bundle, unavailable or mismatched select edge publication,
+ordinary block-entry/before-instruction generic moves, stack or non-register
+destinations, missing homes, stack/stale-load sources, FPR/vector/multi-register
+destinations, cycle-temp or multi-step bundles, and generic move-bundle support
+outside this coordinate-backed predecessor-edge route.
+
+No contract ambiguity or producer/prepared metadata blocker is visible for the
+representative event.
 
 ## Suggested Next
 
-Execute Step 2: define the preterminator parallel-copy materialization
-contract. The first candidate contract should accept only coordinate-backed
-`pre_terminator_copies` / `out_of_ssa_parallel_copy` predecessor-terminator
-bundles with single acyclic register-destination moves, available edge
-publication, and GPR-compatible source/destination facts; it should explicitly
-reject raw-only, mismatched-edge, missing-home, non-register destination,
-stack/stale-load, cycle-temp, and generic move-bundle shapes.
+Execute Step 3: implement or route the first preterminator parallel-copy
+consumer packet.
+
+Target files/tests for Step 3:
+
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/462_step3_preterminator_parallel_copy_consumer/**`
+
+Exact Step 3 proof command:
+
+```sh
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+```
 
 ## Watchouts
 
 - Do not add generic stack-to-register, register-to-register, or all-purpose
   move-bundle support.
 - Do not consume `load_from_stack_slot missing_stack_freshness`.
-- Do not treat value ids, block labels, or the testcase name as authority; Step
-  2 should consume coordinate/authority-backed prepared facts.
-- The representative has source and destination both in `t0`; a future
-  materialization contract may admit no-op emission for matching GPR homes, but
-  must not assume all register-register copies are no-ops.
+- The representative has source and destination both in `t0`; Step 3 may admit
+  no-op emission only when homes actually resolve to the same GPR, and must not
+  assume all register-to-register copies are no-ops.
+- Distinct GPR-to-GPR support is acceptable only inside the same
+  coordinate-backed predecessor-edge contract and with focused fail-closed
+  coverage.
 - Do not reopen ideas 456, 458, 459, 460, or 461 without new coordinate-bearing
   evidence that their exact route owns the first failure.
 - Do not modify `test_baseline.new.log`, `test_baseline.log`,
@@ -62,7 +74,7 @@ stack/stale-load, cycle-temp, and generic move-bundle shapes.
 
 ## Proof
 
-Step 1 proof:
+Step 2 proof:
 
 ```sh
 git diff --check
