@@ -1,70 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/453_stack_slot_pointer_select_edge_dependency_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Stack-Slot Pointer Dependency Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route First Stack-Slot Dependency Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for idea 453. The contract rationale is under
-`build/agent_state/453_step2_stack_slot_pointer_dependency_contract/`.
+Completed Step 3 for idea 453 as a routed blocker. No implementation or tests
+were changed. The blocker artifact is
+`build/agent_state/453_step3_stack_slot_pointer_dependency_authority/blocker.md`.
 
-Accepted shape:
+Inspected prepared authority surfaces:
 
-- authoritative `select_materialization` predecessor-edge publication;
-- incoming source is a prepared compare producer to rematerialize into the
-  destination, not a successor-block compare register to copy;
-- non-stack dependency operands have GPR register homes or accepted immediate
-  homes;
-- the pointer dependency has explicit value-home and stack-object facts with
-  coherent slot id, stack offset, size, alignment, pointer width, and target
-  bank;
-- the producer also proves edge placement, freshness, clobber-safety, and one
-  explicit materialization policy: `load_from_stack_slot` or
-  `rematerialize_cast_from_source`;
-- destination selected value has an available register block-entry publication.
+- `PreparedEdgePublication` names the edge source `%t18`, its producer, homes,
+  move bundle, and source-memory metadata.
+- `PreparedEdgePublicationSourceProducer` can point to the `%t18 = ule`
+  `BinaryInst` and other producer instruction kinds.
+- `PreparedTypedStackSourcePublication` only covers direct same-width `i32`
+  stack sources where the stack value is the edge source.
+- `PreparedAggregateStackSourceAuthority` covers aggregate-width stack sources
+  and remains intentionally fail-closed without copy authority.
+- `PreparedFusedPointerBranchPublication` rejects stack-home pointer operands.
 
-Rejected shapes:
+Exact blocker:
 
-- copying `%t18` or another successor/join-block compare result on a
-  predecessor edge;
-- raw-BIR inference from `inttoptr`, compare, stack-slot spelling, block order,
-  testcase names, or one prepared dump;
-- stack-slot homes without explicit freshness/clobber-safety and a load/cast
-  policy;
-- stack object metadata that is not tied to the dependency value id and edge
-  materialization operation;
-- address-exposed, stale, ambiguous, non-pointer-compatible, missing-size, or
-  missing-alignment slots;
-- missing/unavailable edge publication, missing/non-GPR destination, generic
-  stack-home branch operand work, pointer-value provenance, or instruction-side
-  lowering.
+- The `%t18 -> %t22` edge source is `%t18`; the stack-slot value is a dependency
+  operand `%t17`, not the edge source.
+- Current prepared facts expose `%t17`'s stack-slot home and object metadata,
+  and `%t16`'s immediate source, but they do not carry a dependency-operand
+  materialization policy.
+- There is no prepared fact saying to load `%t17` from `slot_id=2 offset=16`,
+  no fact saying to rematerialize `%t17` from `%t16` through `inttoptr`, and no
+  freshness/clobber-safety fact for using the slot at the predecessor-edge move
+  site.
 
-Step 2 conclusion: the first owner is producer/home metadata. Current `%t17`
-facts are candidate evidence, but they still lack a durable edge dependency
-authority and a load-vs-cast materialization policy.
+Missing owner: producer/home metadata. A predicate added over current facts
+would only prove slot identity and size/alignment, not load-vs-cast policy,
+freshness, clobber safety, or edge availability, so RV64 lowering must remain
+fail-closed.
 
 ## Suggested Next
 
-Step 3: `Add Stack-Slot Pointer Dependency Authority Coverage`.
+Step 4: `Residual Disposition And Close Readiness`.
 
-Suggested owned files:
+Record that idea 453 is blocked before RV64 consumption on a producer/home
+metadata surface for dependency-operand materialization. A future executable
+packet should add:
 
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` if a helper test
-  is clearer
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/453_step3_stack_slot_pointer_dependency_authority/*`
+- edge dependency-operand authority, not just edge source authority;
+- an explicit `load_from_stack_slot` vs `rematerialize_cast_from_source`
+  policy;
+- slot freshness/clobber-safety for the predecessor-edge placement;
+- value-home/object linkage for the dependency operand `%t17`.
 
-Add a producer/prepared predicate or contract record for stack-slot pointer
-select-edge dependencies. If current producers cannot express
-freshness/clobber-safety or an explicit load/cast policy, record that
-producer/home metadata blocker instead of editing RV64 lowering.
+If that scope is broader than idea 453, route a lifecycle split for the
+producer/home metadata surface before returning to stack-slot pointer
+select-edge materialization.
 
 Future implementation proof command:
 
@@ -91,10 +84,10 @@ Future implementation proof command:
 
 ## Proof
 
-Step 2 contract proof:
+Step 3 routed-blocker proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed.
+Result: passed. Proof log: `test_after.log`.
