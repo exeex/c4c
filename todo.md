@@ -1,58 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/439_store_source_global_memory_publication_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First Publication Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3: added focused producer/prepared coverage for global-memory
-publication authority without editing RV64 target lowering.
+Completed Step 4: re-checked representative residuals against the Step 3
+global-memory publication authority predicates and recorded close readiness.
 
-Implemented:
+Residual table:
 
-- `prepare::prepared_global_symbol_memory_has_publication_authority`, requiring
-  explicit global symbol identity, base-plus-offset support, size/alignment,
-  global provenance identity, complete object extent, proven in-bounds range,
-  and non-unknown/non-opaque layout authority.
-- `prepare::prepared_store_global_publication_has_authority`, requiring a
-  store-global publication, a destination access with global publication
-  authority, and either explicit immediate-source encoding or a named
-  store-source with current value home plus concrete producer metadata.
+| row | residual | authority result | disposition |
+| --- | --- | --- | --- |
+| `930930-1` | `main.entry.0` stores `%t1` to `@mem+792` | fail-closed | `source_producer=unknown` and `layout_authority=unknown`; producer gap, not RV64 target work. |
+| `20000622-1` | `baz.entry.0` local frame-slot store-source | out of scope | no global memory row; local publication/select residual. |
+| `20041112-1` | `foo.block_1.2` stores binary `%t4` to `@global+0` | fail-closed | binary source has home, but global access still has `layout_authority=unknown`. |
+| `20041112-1` | `bar.block_5.2` stores binary `%t10` to `@global+0` | fail-closed | binary source has home, but global access still has `layout_authority=unknown`. |
+| `20041112-1` | `main.entry.0` stores immediate `1` to `@global+0` | fail-closed | lacks explicit immediate-source encoding and global layout authority. |
+| `20041112-1` | `bir.ret ptr @global` and direct-global select-chain facts | out of scope | separate direct-global return/select-chain authority family. |
+| `930930-1` | pointer-value memory through `%t27` | out of scope | separate pointer-value memory authority family. |
 
-Focused tests in `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-cover:
+Close-readiness decision:
 
-- accepted coherent global memory authority;
-- accepted binary-source global store publication with register value home;
-- accepted explicitly encoded immediate source;
-- fail-closed unknown layout authority, unknown-compatible range, non-global
-  provenance, pointer-value memory, missing symbol identity, missing
-  store-source producer, missing source home, local store-source publication,
-  and implicit immediate source.
+- Idea 439 is close-ready as producer/prepared contract and coverage.
+- Step 3 added durable authority predicates and focused fail-closed coverage.
+- Representative rows still fail because producer facts are absent, not because
+  RV64 should infer them.
+- Remaining immediate global-store source encoding and global layout authority
+  are distinct producer repairs and should be split if selected.
 
-Remaining gap:
+Artifacts:
 
-- The current store-global planner does not yet publish explicit
-  immediate-source encoding for immediate global stores. The authority predicate
-  accepts such a fact once present, but this packet did not implement that
-  producer repair.
-
-Artifact:
-
-- `build/agent_state/439_step3_global_memory_publication_coverage/summary.md`
+- `build/agent_state/439_step4_residual_disposition/classification.md`
+- `build/agent_state/439_step4_residual_disposition/evidence_snippets.txt`
 
 ## Suggested Next
 
-Execute Step 4: Residual Disposition And Close Readiness.
+Plan-owner close review for idea 439.
 
-Recommended Step 4 packet: re-check the representative residuals against the
-new authority predicates and decide whether this idea should close as
-producer/prepared contract coverage or stay active for a narrow immediate
-global-store source encoding producer packet. Do not edit RV64 target lowering
-until representative prepared facts satisfy the authority predicates.
+Recommendation: close this plan as contract/coverage complete. If the next
+residual is selected, split a new producer idea for immediate global-store
+source encoding and/or global layout authority publication. Do not continue
+inside 439 by editing RV64 target lowering.
 
 ## Watchouts
 
@@ -68,10 +60,8 @@ until representative prepared facts satisfy the authority predicates.
 
 ## Proof
 
-Step 3 code/test proof:
+Step 4 residual-disposition proof:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
-
-Result: passed.
