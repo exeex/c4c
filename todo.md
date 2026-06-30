@@ -1,56 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/450_select_result_branch_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Select-Result Publication Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route First Select-Result Packet
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2: defined the select-result branch publication and move-bundle
-materialization contract for idea 450. Supporting artifact:
-`build/agent_state/450_step2_select_result_contract/contract.md`.
+Completed Step 3 by routing the first register-home select-result branch
+packet instead of implementing an unsound consumer-only shortcut. Supporting
+artifact:
+`build/agent_state/450_step3_select_result_branch_publication/blocker.md`.
 
-Accepted first-packet facts:
+Fresh `20010329-1` probes still stop at
+`unsupported_move_bundle_target_shape`. The first `%t22` row has the expected
+prepared select-result branch shape and register homes, but one incoming
+select edge is `%t18 -> %t22`. `%t18` is a successor/join-block compare:
+`%t18 = bir.ule ptr %t15, %t17`, where `%t17` is produced by `inttoptr` and
+currently has a stack-slot pointer home. The existing RV64 select-edge source
+producer rule can rematerialize only supported register/immediate compare
+operands. A plain register-copy fallback from `%t18` would be wrong because
+the out-of-SSA copy executes on the predecessor edge, before `%t18` is defined
+in the successor block.
 
-| Required fact | Accepted boundary |
-| --- | --- |
-| Select-result identity | Prepared `select_chain` has `root_is_select=yes` and `source_producer=select_materialization`. |
-| Branch condition | Prepared `branch_condition` compares that select-result value against integer zero with `Eq` or `Ne`, has coherent true/false labels, and is fuseable with the branch. |
-| Homes | Select-result value and branch-condition value both have GPR-compatible prepared homes. |
-| Move-bundle target | The selected result has available `block_entry_publication` / out-of-SSA move-bundle target facts with `destination_kind=value` and `destination_storage=register`. |
-| Source materialization | Immediate/register incoming values are consumed only through prepared move-bundle source facts and value ids, not rediscovered from raw BIR. |
-
-Rejected adjacent shapes include raw-only select branches, missing
-`select_chain`, missing `branch_condition`, non-zero compare constants,
-predicates outside `Eq`/`Ne`, missing or non-GPR homes, unavailable or
-non-register publication targets, current instruction-side-blocked
-`20000622-1`, and stack-home `930930-1` rows that belong to idea 451.
+No implementation files or tests were changed.
 
 ## Suggested Next
 
-Step 3 should implement `Consume Register-Home Select-Result Branch
-Publications`: consume the accepted prepared contract in the RV64 object route
-for the `20010329-1` `%t22/%t36/%t50` shape, with focused accepted and
-fail-closed coverage.
-
-Suggested Step 3 owned files:
-
-- `src/backend/prealloc/publication_plans.hpp`
-- `src/backend/prealloc/publication_plans.cpp`
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
-- `todo.md`
-- `test_after.log`
-- `build/agent_state/450_step3_select_result_branch_publication/*`
-
-Step 3 proof command:
-
-```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
-```
+Step 4 should perform residual disposition and close-readiness review for idea
+450, with the current route decision recorded: the next executable work is not
+a pure register-home branch consumer. It needs either a focused prepared
+source-producer dependency contract for select-edge rematerialization, or a
+split plan that owns pointer cast / compare dependency rematerialization before
+the register-home select-result branch consumer can be made sound.
 
 ## Watchouts
 
@@ -67,6 +50,11 @@ Step 3 proof command:
 - Do not accept `root_is_select=yes` alone as authority; Step 3 must require
   the full prepared select-chain, branch-condition, homes, and publication
   target contract.
+- Do not copy from a successor-block compare result on a predecessor edge just
+  because the compare result has a register home; the source must be available
+  at the edge or explicitly rematerialized by prepared source-producer facts.
+- Do not fold pointer cast / compare dependency rematerialization into this
+  packet without a focused prepared authority contract.
 - Do not consume non-zero compare constants or predicates outside `Eq`/`Ne`
   in the first packet.
 - Do not infer select-result publication from raw select shape,
@@ -78,10 +66,10 @@ Step 3 proof command:
 
 ## Proof
 
-Step 2 contract-only validation:
+Step 3 route/blocker validation:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed.
+Result: passed. Proof log: `test_after.log`.
