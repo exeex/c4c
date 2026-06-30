@@ -1,6 +1,6 @@
 # PR88904 SRet Object Home Producer Review
 
-Status: Open
+Status: Closed
 Type: Producer contract review idea
 Parent: `ideas/closed/431_prepared_aggregate_abi_contract_review.md`
 Source Evidence:
@@ -8,6 +8,7 @@ Source Evidence:
 - `build/agent_state/431_step1_aggregate_abi_audit/classification.tsv`
 - `build/agent_state/431_step2_abi_fact_coherence/classification.md`
 Owning Layer: Prepared aggregate ABI producer and object-home contracts
+Closed: Step 4 close-readiness review
 
 ## Goal
 
@@ -57,6 +58,50 @@ not be folded into coherent aggregate lowering without producer review.
   aggregate `sret` lowering, and which unrelated residuals remain separate.
 - No target-lowering work consumes `pr88904` as coherent evidence before this
   review completes.
+
+## Completion Notes
+
+The producer-owned ambiguity is resolved as coherent:
+
+- The callee hidden `sret` parameter object home is pointer storage:
+  `type=ptr size=8 align=8`.
+- The caller memory-return payload retains aggregate ABI facts:
+  `size=8 align=4`.
+- These facts describe different entities: the pointer-valued hidden parameter
+  home versus the pointed-to aggregate return payload.
+- Step 2 added semantic RV64 same-module aggregate `sret` coverage that guards
+  this interpretation. No producer implementation repair was needed.
+
+`pr88904` is eligible to be referenced later as coherent aggregate `sret`
+producer evidence with caveats. Later RV64 lowering may use it only for the
+resolved producer contract and must still consume prepared facts semantically,
+not by matching `pr88904`, `foo`, object numbers, line numbers, or dump
+positions.
+
+Separately routed residuals remain outside this producer-review idea:
+
+- inline-asm carriers with unsupported `=*imr`/`*imr` constraints
+- clobber and inline-asm materialization residuals
+- `store_source ... status=missing_destination_access` publication residuals
+- stack-slot block-entry publication residuals
+- select/local-publication residuals
+- generic RV64 object-route `unsupported_instruction_fragment`
+- RV64 target aggregate lowering itself
+- expectation, allowlist, unsupported-marker, runtime-comparison, and
+  pass/fail accounting changes
+
+Close evidence:
+
+- `build/agent_state/436_step1_pr88904_sret_fact_audit/classification.md`
+- `build/agent_state/436_step2_pr88904_contract_coverage/summary.txt`
+- `build/agent_state/436_step3_pr88904_eligibility_disposition/disposition.md`
+- Backend regression guard passed with existing canonical logs:
+  `test_before.log` and `test_after.log` both reported `327 passed, 0 failed`.
+- `git diff --check` passed at close.
+
+No new durable follow-up idea was created during close review because the
+remaining residuals are outside this source idea and were already classified as
+separate from the `sret` object-home producer contract.
 
 ## Reviewer Reject Signals
 
