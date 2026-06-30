@@ -1,11 +1,12 @@
 # Prepared Aggregate ABI Contract Review
 
-Status: Open
+Status: Closed
 Type: Producer contract review idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Source Evidence: `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`
 Owning Layer: Prepared ABI producer first, then RV64 aggregate call lowering
 Handoff Directory: `docs/rv64_gcc_torture_post_contract/`
+Closed: Step 4 close-readiness review
 
 ## Goal
 
@@ -51,6 +52,35 @@ call publication.
 - Any later RV64 aggregate lowering idea cites only coherent prepared ABI rows.
 - The proof includes focused ABI contract tests or a docs-only classification
   proof if this remains review-only.
+
+## Completion Notes
+
+The representative aggregate ABI bucket was classified from Step 1 and Step 2
+evidence under:
+
+- `build/agent_state/431_step1_aggregate_abi_audit/`
+- `build/agent_state/431_step2_abi_fact_coherence/`
+
+Final disposition:
+
+- `src/20010224-1.c` and `src/20020506-1.c` are raw
+  `bir::CallInst::arg_abi` scalar ABI metadata producer defects, not coherent
+  aggregate `sret`/`byval` target-lowering inputs.
+- `src/20000917-1.c` and `src/20020206-1.c` are coherent aggregate
+  `sret(size=12, align=4)` memory-return candidates, parked for later RV64
+  aggregate lowering only after producer contracts are clean.
+- `src/pr88904.c` has real aggregate `sret(size=8, align=4)` facts, but needs
+  producer review for `sret_param` object size/alignment/object-home coherence
+  before it can seed target lowering.
+
+Durable follow-up ownership is split into open ideas:
+
+- `ideas/open/434_bir_call_arg_abi_scalar_metadata_coherence.md`
+- `ideas/open/435_rv64_coherent_aggregate_sret_call_storage_lowering.md`
+- `ideas/open/436_pr88904_sret_object_home_producer_review.md`
+
+No implementation or test files were changed by this review-only idea. Close
+proof was classification evidence plus `git diff --check`.
 
 ## Reviewer Reject Signals
 
