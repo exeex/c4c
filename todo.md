@@ -1,38 +1,70 @@
 Status: Active
 Source Idea Path: ideas/open/453_stack_slot_pointer_select_edge_dependency_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Stack-Slot Pointer Dependency Evidence
+Current Step ID: 2
+Current Step Title: Define Stack-Slot Pointer Dependency Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 for idea 453. The audit artifacts are under
-`build/agent_state/453_step1_stack_slot_pointer_dependency_audit/`.
+Completed Step 2 for idea 453. The contract rationale is under
+`build/agent_state/453_step2_stack_slot_pointer_dependency_contract/`.
 
-Bucket table:
+Accepted shape:
 
-| Bucket | Edge | Incoming value | Compare producer | `%t17` cast producer | Stack-slot home | Slot metadata | Source immediate | Edge placement | Target register | Current prepared authority | First missing fact |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| First in-scope blocker | `logic.rhs.end.13 -> logic.end.14` | `%t18 -> %t22` | `%t18 = bir.ule ptr %t15, %t17`; `%t15` home `s1`. | `%t17 = bir.inttoptr i32 %t16 to ptr`. | `%t17` stack slot `slot_id=2 offset=16`. | `object #2` is `type=ptr size=8 align=8 address_exposed=no requires_home_slot=no permanent_home_slot=no`. | `%t16` rematerializable immediate `-2147483643`. | Predecessor terminator in `logic.rhs.end.13`; `%t18` is successor-defined and not copy-available. | `%t22` register `t0`. | `select_materialization` join transfer, available register `block_entry_publication`, and `select_chain root_is_select=yes`. | Explicit prepared authority for stack-slot pointer dependency materialization: load `%t17`, rematerialize `%t17` from `%t16`, or fail closed with slot identity, width, freshness/clobber safety, placement, and target compatibility. |
-| Already supported edge source | `logic.skip.12 -> logic.end.14` | `0 -> %t22` | Immediate move payload. | N/A | N/A | N/A | Immediate `0`. | Predecessor terminator in `logic.skip.12`. | `%t22` register `t0`. | Prepared move payload plus available register block-entry publication. | None; not the blocker. |
-| Accepted dependency operand | Dependency operand of `%t18` | `%t15` | `%t15 = bir.load_local ptr %lv.x`. | N/A | N/A | Local access is `frame_slot=#0 offset=0 size=8 align=8 base_plus_offset=yes range_verdict=proven_in_bounds`, with `layout_authority=unknown`. | N/A | Register operand is available to the compare rematerialization path. | `%t15` register `s1`. | GPR-compatible home. | No first missing fact for this idea. |
-| Closed sibling class | `%t32 -> %t36`, `%t46 -> %t50` | Successor compare sources | Register/immediate dependency compares validated by idea 452. | N/A | N/A | N/A | Existing register/immediate facts. | Predecessor-edge rematerialization. | Register destinations. | Covered by existing idea 452 route and tests. | None in idea 453. |
+- authoritative `select_materialization` predecessor-edge publication;
+- incoming source is a prepared compare producer to rematerialize into the
+  destination, not a successor-block compare register to copy;
+- non-stack dependency operands have GPR register homes or accepted immediate
+  homes;
+- the pointer dependency has explicit value-home and stack-object facts with
+  coherent slot id, stack offset, size, alignment, pointer width, and target
+  bank;
+- the producer also proves edge placement, freshness, clobber-safety, and one
+  explicit materialization policy: `load_from_stack_slot` or
+  `rematerialize_cast_from_source`;
+- destination selected value has an available register block-entry publication.
 
-First missing fact: a prepared stack-slot pointer dependency materialization
-authority tied to the select-edge move. Current facts do not authorize copying
-`%t18`, loading `%t17` from stack, or bypassing the stack slot by
-rematerializing `%t17` from `%t16`/`inttoptr`.
+Rejected shapes:
+
+- copying `%t18` or another successor/join-block compare result on a
+  predecessor edge;
+- raw-BIR inference from `inttoptr`, compare, stack-slot spelling, block order,
+  testcase names, or one prepared dump;
+- stack-slot homes without explicit freshness/clobber-safety and a load/cast
+  policy;
+- stack object metadata that is not tied to the dependency value id and edge
+  materialization operation;
+- address-exposed, stale, ambiguous, non-pointer-compatible, missing-size, or
+  missing-alignment slots;
+- missing/unavailable edge publication, missing/non-GPR destination, generic
+  stack-home branch operand work, pointer-value provenance, or instruction-side
+  lowering.
+
+Step 2 conclusion: the first owner is producer/home metadata. Current `%t17`
+facts are candidate evidence, but they still lack a durable edge dependency
+authority and a load-vs-cast materialization policy.
 
 ## Suggested Next
 
-Step 2: `Define Stack-Slot Pointer Dependency Contract`.
+Step 3: `Add Stack-Slot Pointer Dependency Authority Coverage`.
 
-Define the accepted/rejected authority for materializing `%t17` as a
-select-edge compare dependency: stack-slot load authority, cast
-rematerialization authority from `%t16`, required producer/home metadata, or a
-split if the first owner is general stack-home branch materialization.
+Suggested owned files:
+
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `tests/backend/bir/backend_prepared_lookup_helper_test.cpp` if a helper test
+  is clearer
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/453_step3_stack_slot_pointer_dependency_authority/*`
+
+Add a producer/prepared predicate or contract record for stack-slot pointer
+select-edge dependencies. If current producers cannot express
+freshness/clobber-safety or an explicit load/cast policy, record that
+producer/home metadata blocker instead of editing RV64 lowering.
 
 Future implementation proof command:
 
@@ -59,7 +91,7 @@ Future implementation proof command:
 
 ## Proof
 
-Step 1 classification proof:
+Step 2 contract proof:
 
 ```sh
 git diff --check
