@@ -3783,13 +3783,26 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
     }
     if (result.source_register_bank != prepare::PreparedRegisterBank::Gpr ||
         result.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
+        result.value_bank != prepare::PreparedRegisterBank::Gpr ||
         !result.source_register_name.has_value() ||
-        !result.destination_register_name.has_value()) {
+        !result.destination_register_name.has_value() ||
+        !result.destination_value_id.has_value() ||
+        !call.result.has_value() ||
+        rv64_floating_type(call.result->type)) {
       return std::nullopt;
     }
     const auto source = rv64_register_number(*result.source_register_name);
-    const auto destination = rv64_register_number(*result.destination_register_name);
-    if (!source.has_value() || !destination.has_value()) {
+    const auto plan_destination =
+        rv64_register_number(*result.destination_register_name);
+    const auto* destination_home =
+        prepared_value_home_for_id(lookups, *result.destination_value_id);
+    const auto destination =
+        destination_home == nullptr ? std::nullopt
+                                    : gpr_register_number_for_home(*destination_home);
+    if (!source.has_value() || !plan_destination.has_value() ||
+        !destination.has_value() || destination_home == nullptr ||
+        destination_home->kind != prepare::PreparedValueHomeKind::Register ||
+        *destination != *plan_destination) {
       return std::nullopt;
     }
     append_rv64_move(fragment, *destination, *source);

@@ -7823,6 +7823,51 @@ int builds_prepared_scalar_same_module_call_object() {
   return 0;
 }
 
+int expect_scalar_register_result_call_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+}
+
+int rejects_prepared_scalar_register_result_call_fail_closed_shapes() {
+  auto prepared = make_prepared_scalar_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].result->destination_value_id =
+      std::nullopt;
+  if (expect_scalar_register_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_same_module_call_module();
+  prepared.value_locations.functions[1].value_homes.clear();
+  if (expect_scalar_register_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_same_module_call_module();
+  prepared.value_locations.functions[1].value_homes[0].register_name =
+      std::string{"s1"};
+  if (expect_scalar_register_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].result->destination_register_bank =
+      prepare::PreparedRegisterBank::Fpr;
+  if (expect_scalar_register_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_scalar_same_module_call_module();
+  prepared.call_plans.functions[0].calls[0].result->value_bank =
+      prepare::PreparedRegisterBank::Fpr;
+  if (expect_scalar_register_result_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int builds_prepared_byval_stack_copy_same_module_call_object() {
   const auto prepared = make_prepared_byval_stack_copy_same_module_call_module();
   const auto result =
@@ -12998,6 +13043,7 @@ int main() {
   status |= builds_prepared_traversed_wide_rematerialized_return_object();
   status |= rejects_prepared_rematerialized_return_without_typed_immediate_fact();
   status |= builds_prepared_scalar_same_module_call_object();
+  status |= rejects_prepared_scalar_register_result_call_fail_closed_shapes();
   status |= builds_prepared_byval_stack_copy_same_module_call_object();
   status |= rejects_prepared_byval_stack_copy_call_fail_closed_shapes();
   status |= builds_prepared_same_module_sret_call_object();
