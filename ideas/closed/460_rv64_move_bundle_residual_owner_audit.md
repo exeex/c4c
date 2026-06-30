@@ -1,11 +1,16 @@
 # RV64 Move-Bundle Residual Owner Audit
 
-Status: Open
+Status: Closed
 Type: RV64 residual-owner audit idea
 Parent: `ideas/closed/459_rv64_select_edge_suppression_placement_consumer.md`
 Source Evidence: `build/agent_state/459_step4_residual_disposition/`
+Close Evidence: `build/agent_state/460_step2_residual_disposition/disposition.md`
 Owning Layer: RV64 move-bundle materialization/suppression residual
 classification
+Closed Disposition: Complete as residual-owner audit; blocked as an
+implementation selector by missing coordinate-bearing RV64 move-bundle
+rejection evidence. Follow-up:
+`ideas/open/461_rv64_move_bundle_coordinate_diagnostics.md`.
 
 ## Goal
 
@@ -57,6 +62,27 @@ audit is needed before selecting another implementation packet.
   leaves the route fail-closed.
 - No code changes or test expectation changes are claimed as progress for this
   audit idea.
+
+## Completion Notes
+
+Idea 460 reproduced the `20010329-1` routes and narrowed the candidate set to
+exposed prepared move-bundle events, but it could not prove the exact first
+failing event from current object diagnostics. Stderr reports only
+`unsupported_move_bundle_target_shape`, and the inherited debugger probe hit
+multiple `fragment_for_prepared_move_bundle` calls without optimized local
+argument state.
+
+The strongest candidate remains the before-instruction stack publication at
+`block_index=4 instruction_index=1` for `%t17`, with available
+cast-rematerialization authority and stale stack-load authority still rejected.
+However, coordinate-bearing evidence is required before selecting lowering or
+reopening ideas 456/458/459.
+
+## Validation
+
+- Step 2 lifecycle proof: `git diff --check` passed.
+- Close-time regression sanity used the rolled-forward backend guard log and
+  found no regression.
 
 ## Reviewer Reject Signals
 
