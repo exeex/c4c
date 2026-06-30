@@ -2590,6 +2590,197 @@ collect_prepared_dependency_operand_authorities(
   return records;
 }
 
+PreparedSelectEdgeSourceProducerPlacement
+plan_prepared_select_edge_source_producer_placement(
+    const PreparedSelectEdgeSourceProducerPlacementInputs& inputs) {
+  PreparedSelectEdgeSourceProducerPlacement placement{
+      .placement_kind = inputs.placement_kind,
+      .publication = inputs.publication,
+      .move_bundle = inputs.move_bundle,
+      .move_bundle_block_label = inputs.move_bundle_block_label,
+  };
+  if (inputs.publication == nullptr) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::MissingPublication;
+    return placement;
+  }
+  placement.predecessor_label = inputs.publication->predecessor_label;
+  placement.successor_label = inputs.publication->successor_label;
+  placement.destination_value_id = inputs.publication->destination_value_id;
+  placement.destination_value_name = inputs.publication->destination_value_name;
+  placement.source_value_id = inputs.publication->source_value_id;
+  placement.source_value_name = inputs.publication->source_value_name;
+  placement.source_producer_block_label =
+      inputs.publication->source_producer_block_label;
+  placement.source_producer_instruction_index =
+      inputs.publication->source_producer_instruction_index;
+
+  if (inputs.move_bundle == nullptr) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::MissingMoveBundle;
+    return placement;
+  }
+  placement.move_bundle_instruction_index = inputs.move_bundle->instruction_index;
+  placement.move_count = inputs.move_bundle->moves.size();
+
+  if (inputs.placement_kind !=
+      PreparedSelectEdgeSourceProducerPlacementKind::
+          PredecessorEdgeConsumedSuppression) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedPlacementKind;
+    return placement;
+  }
+  if (inputs.publication->status !=
+          PreparedEdgePublicationLookupStatus::Available ||
+      inputs.publication->phase != PreparedMovePhase::BlockEntry ||
+      inputs.publication->parallel_copy_execution_site !=
+          PreparedParallelCopyExecutionSite::PredecessorTerminator ||
+      inputs.publication->carrier_kind !=
+          PreparedJoinTransferCarrierKind::SelectMaterialization) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedPublication;
+    return placement;
+  }
+  if (inputs.publication->source_producer_kind !=
+      PreparedEdgePublicationSourceProducerKind::Binary) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedSourceProducer;
+    return placement;
+  }
+  if (inputs.publication->source_binary == nullptr ||
+      !inputs.publication->source_value_id.has_value()) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::MissingSourceProducer;
+    return placement;
+  }
+  if (inputs.publication->source_binary->result !=
+      inputs.publication->source_value) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedSourceProducer;
+    return placement;
+  }
+  if (!inputs.publication->source_producer_block_label.has_value() ||
+      !inputs.publication->source_producer_instruction_index.has_value() ||
+      !inputs.move_bundle_block_label.has_value()) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::MissingProducerSite;
+    return placement;
+  }
+  if (*inputs.publication->source_producer_block_label !=
+          *inputs.move_bundle_block_label ||
+      *inputs.publication->source_producer_instruction_index !=
+          inputs.move_bundle->instruction_index) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::
+            MoveBundleProducerMismatch;
+    return placement;
+  }
+  if (inputs.move_bundle->phase != PreparedMovePhase::BeforeInstruction ||
+      inputs.move_bundle->authority_kind != PreparedMoveAuthorityKind::None) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedMoveBundle;
+    return placement;
+  }
+  if (inputs.move_bundle->moves.empty()) {
+    placement.status =
+        PreparedSelectEdgeSourceProducerPlacementStatus::MissingMove;
+    return placement;
+  }
+
+  for (const auto& move : inputs.move_bundle->moves) {
+    if (move.destination_kind != PreparedMoveDestinationKind::Value ||
+        move.destination_storage_kind != PreparedMoveStorageKind::Register ||
+        move.op_kind != PreparedMoveResolutionOpKind::Move ||
+        move.authority_kind != PreparedMoveAuthorityKind::None ||
+        move.block_index != inputs.move_bundle->block_index ||
+        move.instruction_index != inputs.move_bundle->instruction_index) {
+      placement.status =
+          PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedMove;
+      return placement;
+    }
+    if (move.to_value_id != *inputs.publication->source_value_id) {
+      placement.status =
+          PreparedSelectEdgeSourceProducerPlacementStatus::
+              MoveDestinationMismatch;
+      return placement;
+    }
+  }
+
+  placement.status =
+      PreparedSelectEdgeSourceProducerPlacementStatus::Available;
+  return placement;
+}
+
+bool prepared_select_edge_source_producer_placement_available(
+    const PreparedSelectEdgeSourceProducerPlacement& placement) {
+  return placement.status ==
+         PreparedSelectEdgeSourceProducerPlacementStatus::Available;
+}
+
+namespace {
+
+void clear_temporary_placement_pointers(
+    PreparedSelectEdgeSourceProducerPlacement& placement) {
+  placement.publication = nullptr;
+  placement.move_bundle = nullptr;
+}
+
+[[nodiscard]] std::optional<BlockLabelId> prepared_block_label_for_bundle(
+    const PreparedControlFlowFunction& function,
+    const PreparedMoveBundle& bundle) {
+  if (bundle.block_index >= function.blocks.size()) {
+    return std::nullopt;
+  }
+  const auto block_label = function.blocks[bundle.block_index].block_label;
+  if (block_label == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  return block_label;
+}
+
+}  // namespace
+
+PreparedSelectEdgeSourceProducerPlacementRecords
+collect_prepared_select_edge_source_producer_placements(
+    const PreparedBirModule& prepared) {
+  PreparedSelectEdgeSourceProducerPlacementRecords records;
+  for (const auto& function : prepared.control_flow.functions) {
+    const auto* value_locations =
+        find_prepared_value_location_function(prepared, function.function_name);
+    if (value_locations == nullptr) {
+      continue;
+    }
+    const auto value_home_lookups =
+        make_prepared_value_home_lookups(value_locations);
+    const auto edge_publications = make_prepared_edge_publication_lookups(
+        prepared, function, value_locations, &value_home_lookups);
+    for (const auto& bundle : value_locations->move_bundles) {
+      const auto bundle_block_label =
+          prepared_block_label_for_bundle(function, bundle);
+      for (const auto& publication : edge_publications.publications) {
+        auto placement = plan_prepared_select_edge_source_producer_placement({
+            .publication = &publication,
+            .move_bundle = &bundle,
+            .placement_kind =
+                PreparedSelectEdgeSourceProducerPlacementKind::
+                    PredecessorEdgeConsumedSuppression,
+            .move_bundle_block_label = bundle_block_label,
+        });
+        if (!prepared_select_edge_source_producer_placement_available(
+                placement)) {
+          continue;
+        }
+        clear_temporary_placement_pointers(placement);
+        records.records.push_back(PreparedSelectEdgeSourceProducerPlacementRecord{
+            .function_name = function.function_name,
+            .placement = placement,
+        });
+      }
+    }
+  }
+  return records;
+}
+
 void publish_store_global_immediate_source_if_authorized(
     PreparedStoreSourcePublicationPlan& plan) {
   if (plan.intent != PreparedStoreSourcePublicationIntent::StoreGlobalPublication ||

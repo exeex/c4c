@@ -6285,6 +6285,498 @@ int check_dependency_operand_authority_contract() {
   return 0;
 }
 
+int check_select_edge_source_producer_placement_contract() {
+  prepare::PreparedNameTables names;
+  const auto pred_label = names.block_labels.intern("pred");
+  const auto join_label = names.block_labels.intern("join");
+  const auto other_label = names.block_labels.intern("other");
+  const auto cmp_name = names.value_names.intern("%cmp");
+  const auto lhs_name = names.value_names.intern("%lhs");
+  const auto rhs_name = names.value_names.intern("%rhs");
+  const auto selected_name = names.value_names.intern("%selected");
+
+  const bir::Value lhs = bir::Value::named(bir::TypeKind::Ptr, "%lhs");
+  const bir::Value rhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs");
+  const bir::Value cmp = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value selected = bir::Value::named(bir::TypeKind::I32, "%selected");
+  const bir::BinaryInst compare{
+      .opcode = bir::BinaryOpcode::Ule,
+      .result = cmp,
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = lhs,
+      .rhs = rhs,
+  };
+
+  const prepare::PreparedEdgePublication publication{
+      .status = prepare::PreparedEdgePublicationLookupStatus::Available,
+      .predecessor_label = pred_label,
+      .successor_label = join_label,
+      .destination_value = selected,
+      .source_value = cmp,
+      .destination_value_id = 11,
+      .destination_value_name = selected_name,
+      .source_value_id = 10,
+      .source_value_name = cmp_name,
+      .source_value_kind = bir::Value::Kind::Named,
+      .source_producer_kind =
+          prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .source_producer_block_label = join_label,
+      .source_producer_instruction_index = 2,
+      .source_binary = &compare,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .phase = prepare::PreparedMovePhase::BlockEntry,
+      .carrier_kind =
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+      .parallel_copy_execution_site =
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+      .parallel_copy_execution_block_label = pred_label,
+  };
+  prepare::PreparedMoveBundle bundle{
+      .phase = prepare::PreparedMovePhase::BeforeInstruction,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+      .block_index = 4,
+      .instruction_index = 2,
+  };
+  bundle.moves.push_back(prepare::PreparedMoveResolution{
+      .from_value_id = 7,
+      .to_value_id = 10,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_register_name = std::string{"t0"},
+      .block_index = 4,
+      .instruction_index = 2,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+      .reason = "consumer_register_to_register",
+  });
+  bundle.moves.push_back(prepare::PreparedMoveResolution{
+      .from_value_id = 9,
+      .to_value_id = 10,
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+      .destination_register_name = std::string{"t0"},
+      .block_index = 4,
+      .instruction_index = 2,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+      .reason = "consumer_stack_to_register",
+  });
+
+  const auto accepted =
+      prepare::plan_prepared_select_edge_source_producer_placement({
+          .publication = &publication,
+          .move_bundle = &bundle,
+          .placement_kind =
+              prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+                  PredecessorEdgeConsumedSuppression,
+          .move_bundle_block_label = join_label,
+      });
+  if (!prepare::prepared_select_edge_source_producer_placement_available(
+          accepted) ||
+      accepted.placement_kind !=
+          prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+              PredecessorEdgeConsumedSuppression ||
+      accepted.predecessor_label != pred_label ||
+      accepted.successor_label != join_label ||
+      accepted.source_value_id != std::optional<prepare::PreparedValueId>{10} ||
+      accepted.destination_value_id != 11 ||
+      accepted.source_producer_block_label !=
+          std::optional<c4c::BlockLabelId>{join_label} ||
+      accepted.source_producer_instruction_index != std::optional<std::size_t>{2} ||
+      accepted.move_bundle_block_label !=
+          std::optional<c4c::BlockLabelId>{join_label} ||
+      accepted.move_bundle_instruction_index != 2 ||
+      accepted.move_count != 2) {
+    return fail("expected explicit predecessor-edge consumed suppression authority");
+  }
+
+  const auto missing_kind =
+      prepare::plan_prepared_select_edge_source_producer_placement({
+          .publication = &publication,
+          .move_bundle = &bundle,
+          .move_bundle_block_label = join_label,
+      });
+  if (missing_kind.status !=
+      prepare::PreparedSelectEdgeSourceProducerPlacementStatus::
+          UnsupportedPlacementKind) {
+    return fail("expected missing placement kind to stay fail-closed");
+  }
+
+  auto non_binary_publication = publication;
+  non_binary_publication.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Cast;
+  const auto unsupported_source =
+      prepare::plan_prepared_select_edge_source_producer_placement({
+          .publication = &non_binary_publication,
+          .move_bundle = &bundle,
+          .placement_kind =
+              prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+                  PredecessorEdgeConsumedSuppression,
+          .move_bundle_block_label = join_label,
+      });
+  if (unsupported_source.status !=
+      prepare::PreparedSelectEdgeSourceProducerPlacementStatus::
+          UnsupportedSourceProducer) {
+    return fail("expected non-binary source producer to stay fail-closed");
+  }
+
+  auto unsupported_publication = publication;
+  unsupported_publication.carrier_kind =
+      prepare::PreparedJoinTransferCarrierKind::None;
+  const auto unsupported_carrier =
+      prepare::plan_prepared_select_edge_source_producer_placement({
+          .publication = &unsupported_publication,
+          .move_bundle = &bundle,
+          .placement_kind =
+              prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+                  PredecessorEdgeConsumedSuppression,
+          .move_bundle_block_label = join_label,
+      });
+  if (unsupported_carrier.status !=
+      prepare::PreparedSelectEdgeSourceProducerPlacementStatus::
+          UnsupportedPublication) {
+    return fail("expected non-select carrier publication to stay fail-closed");
+  }
+
+  const auto missing_site =
+      prepare::plan_prepared_select_edge_source_producer_placement({
+          .publication = &publication,
+          .move_bundle = &bundle,
+          .placement_kind =
+              prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+                  PredecessorEdgeConsumedSuppression,
+      });
+  if (missing_site.status !=
+      prepare::PreparedSelectEdgeSourceProducerPlacementStatus::MissingProducerSite) {
+    return fail("expected missing bundle block label to stay fail-closed");
+  }
+
+  const auto wrong_site =
+      prepare::plan_prepared_select_edge_source_producer_placement({
+          .publication = &publication,
+          .move_bundle = &bundle,
+          .placement_kind =
+              prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+                  PredecessorEdgeConsumedSuppression,
+          .move_bundle_block_label = other_label,
+      });
+  if (wrong_site.status !=
+      prepare::PreparedSelectEdgeSourceProducerPlacementStatus::
+          MoveBundleProducerMismatch) {
+    return fail("expected wrong producer site to stay fail-closed");
+  }
+
+  auto out_of_ssa_bundle = bundle;
+  out_of_ssa_bundle.authority_kind =
+      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy;
+  const auto unsupported_bundle =
+      prepare::plan_prepared_select_edge_source_producer_placement({
+          .publication = &publication,
+          .move_bundle = &out_of_ssa_bundle,
+          .placement_kind =
+              prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+                  PredecessorEdgeConsumedSuppression,
+          .move_bundle_block_label = join_label,
+      });
+  if (unsupported_bundle.status !=
+      prepare::PreparedSelectEdgeSourceProducerPlacementStatus::
+          UnsupportedMoveBundle) {
+    return fail("expected out-of-SSA before-instruction bundle to stay fail-closed");
+  }
+
+  auto wrong_destination_bundle = bundle;
+  wrong_destination_bundle.moves[0].to_value_id = 12;
+  const auto wrong_destination =
+      prepare::plan_prepared_select_edge_source_producer_placement({
+          .publication = &publication,
+          .move_bundle = &wrong_destination_bundle,
+          .placement_kind =
+              prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+                  PredecessorEdgeConsumedSuppression,
+          .move_bundle_block_label = join_label,
+      });
+  if (wrong_destination.status !=
+      prepare::PreparedSelectEdgeSourceProducerPlacementStatus::
+          MoveDestinationMismatch) {
+    return fail("expected non-producer move destination to stay fail-closed");
+  }
+
+  auto stack_destination_bundle = bundle;
+  stack_destination_bundle.moves[0].destination_storage_kind =
+      prepare::PreparedMoveStorageKind::StackSlot;
+  const auto stack_destination =
+      prepare::plan_prepared_select_edge_source_producer_placement({
+          .publication = &publication,
+          .move_bundle = &stack_destination_bundle,
+          .placement_kind =
+              prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+                  PredecessorEdgeConsumedSuppression,
+          .move_bundle_block_label = join_label,
+      });
+  if (stack_destination.status !=
+      prepare::PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedMove) {
+    return fail("expected non-register destination move to stay fail-closed");
+  }
+
+  if (prepare::prepared_select_edge_source_producer_placement_kind_name(
+          prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+              PredecessorEdgeConsumedSuppression) !=
+      "predecessor_edge_consumed_suppression") {
+    return fail("expected placement kind name to stay stable");
+  }
+  if (prepare::prepared_select_edge_source_producer_placement_status_name(
+          prepare::PreparedSelectEdgeSourceProducerPlacementStatus::
+              MoveDestinationMismatch) != "move_destination_mismatch") {
+    return fail("expected placement status name to stay stable");
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = riscv_target_profile();
+  const auto function_name =
+      prepared.names.function_names.intern("select_edge_placement_contract");
+  const auto prepared_pred_label = prepared.names.block_labels.intern("pred");
+  const auto prepared_join_label = prepared.names.block_labels.intern("join");
+  prepared.names.value_names.intern("%lhs");
+  prepared.names.value_names.intern("%rhs");
+  const auto prepared_cmp_name = prepared.names.value_names.intern("%cmp");
+  const auto prepared_selected_name =
+      prepared.names.value_names.intern("%selected");
+
+  const bir::Value prepared_lhs = bir::Value::named(bir::TypeKind::Ptr, "%lhs");
+  const bir::Value prepared_rhs = bir::Value::named(bir::TypeKind::Ptr, "%rhs");
+  const bir::Value prepared_cmp = bir::Value::named(bir::TypeKind::I32, "%cmp");
+  const bir::Value prepared_selected =
+      bir::Value::named(bir::TypeKind::I32, "%selected");
+
+  bir::Block pred_block;
+  pred_block.label = "pred";
+  pred_block.label_id = prepared_pred_label;
+  pred_block.terminator = bir::Terminator{bir::BranchTerminator{
+      .target_label = "join",
+      .target_label_id = prepared_join_label,
+  }};
+
+  bir::Block join_block;
+  join_block.label = "join";
+  join_block.label_id = prepared_join_label;
+  join_block.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::PtrToInt,
+      .result = bir::Value::named(bir::TypeKind::I64, "%tmp0"),
+      .operand = prepared_lhs,
+  });
+  join_block.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::PtrToInt,
+      .result = bir::Value::named(bir::TypeKind::I64, "%tmp1"),
+      .operand = prepared_rhs,
+  });
+  join_block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ule,
+      .result = prepared_cmp,
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = prepared_lhs,
+      .rhs = prepared_rhs,
+  });
+
+  bir::Function bir_function;
+  bir_function.name = "select_edge_placement_contract";
+  bir_function.blocks.push_back(std::move(pred_block));
+  bir_function.blocks.push_back(std::move(join_block));
+  prepared.module.functions.push_back(std::move(bir_function));
+
+  prepare::PreparedControlFlowFunction control_flow;
+  control_flow.function_name = function_name;
+  control_flow.blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = prepared_pred_label,
+      .terminator_kind = bir::TerminatorKind::Branch,
+      .branch_target_label = prepared_join_label,
+  });
+  control_flow.blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = prepared_join_label,
+      .terminator_kind = bir::TerminatorKind::Return,
+  });
+  control_flow.join_transfers.push_back(prepare::PreparedJoinTransfer{
+      .function_name = function_name,
+      .join_block_label = prepared_join_label,
+      .result = prepared_selected,
+      .carrier_kind =
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization,
+      .edge_transfers =
+          {
+              prepare::PreparedEdgeValueTransfer{
+                  .predecessor_label = prepared_pred_label,
+                  .successor_label = prepared_join_label,
+                  .incoming_value = prepared_cmp,
+                  .destination_value = prepared_selected,
+              },
+          },
+  });
+  control_flow.parallel_copy_bundles.push_back(prepare::PreparedParallelCopyBundle{
+      .predecessor_label = prepared_pred_label,
+      .successor_label = prepared_join_label,
+      .execution_site =
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+      .execution_block_label = prepared_pred_label,
+      .moves =
+          {
+              prepare::PreparedParallelCopyMove{
+                  .join_transfer_index = 0,
+                  .edge_transfer_index = 0,
+                  .source_value = prepared_cmp,
+                  .destination_value = prepared_selected,
+                  .carrier_kind =
+                      prepare::PreparedJoinTransferCarrierKind::
+                          SelectMaterialization,
+              },
+          },
+      .steps =
+          {
+              prepare::PreparedParallelCopyStep{
+                  .kind = prepare::PreparedParallelCopyStepKind::Move,
+                  .move_index = 0,
+              },
+          },
+  });
+  prepared.control_flow.functions.push_back(std::move(control_flow));
+
+  prepare::PreparedValueLocationFunction locations;
+  locations.function_name = function_name;
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 7,
+      .function_name = function_name,
+      .value_name = prepared.names.value_names.find("%lhs"),
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"s1"},
+  });
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 9,
+      .function_name = function_name,
+      .value_name = prepared.names.value_names.find("%rhs"),
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{2},
+      .offset_bytes = std::size_t{16},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+  });
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 10,
+      .function_name = function_name,
+      .value_name = prepared_cmp_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+  locations.value_homes.push_back(prepare::PreparedValueHome{
+      .value_id = 11,
+      .function_name = function_name,
+      .value_name = prepared_selected_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"t0"},
+  });
+  locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = function_name,
+      .phase = prepare::PreparedMovePhase::BlockEntry,
+      .authority_kind =
+          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+      .block_index = 0,
+      .instruction_index = 0,
+      .source_parallel_copy_predecessor_label = prepared_pred_label,
+      .source_parallel_copy_successor_label = prepared_join_label,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = 10,
+                  .to_value_id = 11,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"t0"},
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .source_parallel_copy_step_index = std::size_t{0},
+                  .authority_kind =
+                      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  .source_parallel_copy_predecessor_label = prepared_pred_label,
+                  .source_parallel_copy_successor_label = prepared_join_label,
+              },
+          },
+  });
+  locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = function_name,
+      .phase = prepare::PreparedMovePhase::BeforeInstruction,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+      .block_index = 1,
+      .instruction_index = 2,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = 7,
+                  .to_value_id = 10,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"t0"},
+                  .block_index = 1,
+                  .instruction_index = 2,
+                  .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+              },
+              prepare::PreparedMoveResolution{
+                  .from_value_id = 9,
+                  .to_value_id = 10,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"t0"},
+                  .block_index = 1,
+                  .instruction_index = 2,
+                  .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+              },
+          },
+  });
+  prepared.value_locations.functions.push_back(std::move(locations));
+
+  const auto collected =
+      prepare::collect_prepared_select_edge_source_producer_placements(prepared);
+  if (collected.records.size() != 1) {
+    return fail("expected one collected select-edge placement authority record");
+  }
+  const auto& collected_record = collected.records.front();
+  const auto& collected_placement = collected_record.placement;
+  if (collected_record.function_name != function_name ||
+      !prepare::prepared_select_edge_source_producer_placement_available(
+          collected_placement) ||
+      collected_placement.placement_kind !=
+          prepare::PreparedSelectEdgeSourceProducerPlacementKind::
+              PredecessorEdgeConsumedSuppression ||
+      collected_placement.predecessor_label != prepared_pred_label ||
+      collected_placement.successor_label != prepared_join_label ||
+      collected_placement.source_value_id !=
+          std::optional<prepare::PreparedValueId>{10} ||
+      collected_placement.destination_value_id != 11 ||
+      collected_placement.source_producer_block_label !=
+          std::optional<c4c::BlockLabelId>{prepared_join_label} ||
+      collected_placement.source_producer_instruction_index !=
+          std::optional<std::size_t>{2} ||
+      collected_placement.move_bundle_block_label !=
+          std::optional<c4c::BlockLabelId>{prepared_join_label} ||
+      collected_placement.move_bundle_instruction_index != 2 ||
+      collected_placement.move_count != 2 ||
+      collected_placement.publication != nullptr ||
+      collected_placement.move_bundle != nullptr) {
+    return fail("expected collected placement record to preserve semantic facts");
+  }
+
+  prepared.value_locations.functions.front().move_bundles.back().block_index = 0;
+  const auto mismatched_collected =
+      prepare::collect_prepared_select_edge_source_producer_placements(prepared);
+  if (!mismatched_collected.records.empty()) {
+    return fail("expected collector to reject mismatched bundle placement");
+  }
+
+  (void)lhs_name;
+  (void)rhs_name;
+  return 0;
+}
+
 int check_populated_immediate_global_store_source_publication() {
   const auto run_case = [](bool coherent_destination) {
     prepare::PreparedBirModule prepared;
@@ -7686,6 +8178,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_dependency_operand_authority_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_select_edge_source_producer_placement_contract();
+      rc != 0) {
     return rc;
   }
   if (const int rc = check_populated_immediate_global_store_source_publication();

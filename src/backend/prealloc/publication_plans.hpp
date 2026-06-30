@@ -559,6 +559,114 @@ struct PreparedDependencyOperandAuthorityRecords {
   std::vector<PreparedDependencyOperandAuthorityRecord> records;
 };
 
+enum class PreparedSelectEdgeSourceProducerPlacementKind {
+  None,
+  PredecessorEdgeConsumedSuppression,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_select_edge_source_producer_placement_kind_name(
+    PreparedSelectEdgeSourceProducerPlacementKind kind) {
+  switch (kind) {
+    case PreparedSelectEdgeSourceProducerPlacementKind::None:
+      return "none";
+    case PreparedSelectEdgeSourceProducerPlacementKind::
+        PredecessorEdgeConsumedSuppression:
+      return "predecessor_edge_consumed_suppression";
+  }
+  return "unknown";
+}
+
+enum class PreparedSelectEdgeSourceProducerPlacementStatus {
+  Available,
+  MissingPublication,
+  MissingMoveBundle,
+  UnsupportedPlacementKind,
+  UnsupportedPublication,
+  MissingSourceProducer,
+  UnsupportedSourceProducer,
+  MissingProducerSite,
+  MoveBundleProducerMismatch,
+  UnsupportedMoveBundle,
+  MissingMove,
+  UnsupportedMove,
+  MoveDestinationMismatch,
+  AmbiguousPublication,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_select_edge_source_producer_placement_status_name(
+    PreparedSelectEdgeSourceProducerPlacementStatus status) {
+  switch (status) {
+    case PreparedSelectEdgeSourceProducerPlacementStatus::Available:
+      return "available";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::MissingPublication:
+      return "missing_publication";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::MissingMoveBundle:
+      return "missing_move_bundle";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedPlacementKind:
+      return "unsupported_placement_kind";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedPublication:
+      return "unsupported_publication";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::MissingSourceProducer:
+      return "missing_source_producer";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedSourceProducer:
+      return "unsupported_source_producer";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::MissingProducerSite:
+      return "missing_producer_site";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::MoveBundleProducerMismatch:
+      return "move_bundle_producer_mismatch";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedMoveBundle:
+      return "unsupported_move_bundle";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::MissingMove:
+      return "missing_move";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::UnsupportedMove:
+      return "unsupported_move";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::MoveDestinationMismatch:
+      return "move_destination_mismatch";
+    case PreparedSelectEdgeSourceProducerPlacementStatus::AmbiguousPublication:
+      return "ambiguous_publication";
+  }
+  return "unknown";
+}
+
+struct PreparedSelectEdgeSourceProducerPlacementInputs {
+  const PreparedEdgePublication* publication = nullptr;
+  const PreparedMoveBundle* move_bundle = nullptr;
+  PreparedSelectEdgeSourceProducerPlacementKind placement_kind =
+      PreparedSelectEdgeSourceProducerPlacementKind::None;
+  std::optional<BlockLabelId> move_bundle_block_label;
+};
+
+struct PreparedSelectEdgeSourceProducerPlacement {
+  PreparedSelectEdgeSourceProducerPlacementStatus status =
+      PreparedSelectEdgeSourceProducerPlacementStatus::MissingPublication;
+  PreparedSelectEdgeSourceProducerPlacementKind placement_kind =
+      PreparedSelectEdgeSourceProducerPlacementKind::None;
+  const PreparedEdgePublication* publication = nullptr;
+  const PreparedMoveBundle* move_bundle = nullptr;
+  BlockLabelId predecessor_label = kInvalidBlockLabel;
+  BlockLabelId successor_label = kInvalidBlockLabel;
+  PreparedValueId destination_value_id = 0;
+  ValueNameId destination_value_name = kInvalidValueName;
+  std::optional<PreparedValueId> source_value_id;
+  ValueNameId source_value_name = kInvalidValueName;
+  std::optional<BlockLabelId> source_producer_block_label;
+  std::optional<std::size_t> source_producer_instruction_index;
+  std::optional<BlockLabelId> move_bundle_block_label;
+  std::size_t move_bundle_instruction_index = 0;
+  std::size_t move_count = 0;
+};
+
+struct PreparedSelectEdgeSourceProducerPlacementRecord {
+  FunctionNameId function_name = kInvalidFunctionName;
+  PreparedSelectEdgeSourceProducerPlacement placement;
+};
+
+struct PreparedSelectEdgeSourceProducerPlacementRecords {
+  std::vector<PreparedSelectEdgeSourceProducerPlacementRecord> records;
+};
+
 struct PreparedEdgePublicationSourceProducer {
   PreparedEdgePublicationSourceProducerKind kind =
       PreparedEdgePublicationSourceProducerKind::Unknown;
@@ -1265,6 +1373,17 @@ plan_prepared_dependency_operand_authority(
 
 [[nodiscard]] PreparedDependencyOperandAuthorityRecords
 collect_prepared_dependency_operand_authorities(const PreparedBirModule& prepared);
+
+[[nodiscard]] PreparedSelectEdgeSourceProducerPlacement
+plan_prepared_select_edge_source_producer_placement(
+    const PreparedSelectEdgeSourceProducerPlacementInputs& inputs);
+
+[[nodiscard]] bool prepared_select_edge_source_producer_placement_available(
+    const PreparedSelectEdgeSourceProducerPlacement& placement);
+
+[[nodiscard]] PreparedSelectEdgeSourceProducerPlacementRecords
+collect_prepared_select_edge_source_producer_placements(
+    const PreparedBirModule& prepared);
 
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
