@@ -10241,6 +10241,37 @@ int rejects_prepared_scalar_division_fail_closed_shapes() {
   return 0;
 }
 
+int rejects_prepared_scalar_remainder_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
+
+  auto prepared =
+      make_prepared_scalar_binary_module(bir::BinaryOpcode::SRem,
+                                         bir::TypeKind::I32);
+  prepared.value_locations.functions[0].value_homes.erase(
+      prepared.value_locations.functions[0].value_homes.begin());
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_scalar_binary_module(bir::BinaryOpcode::URem,
+                                         bir::TypeKind::I64);
+  prepared.value_locations.functions[0].value_homes.pop_back();
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_scalar_binary_module(bir::BinaryOpcode::SRem,
+                                         bir::TypeKind::Ptr);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int rejects_prepared_scalar_compare_publication_missing_home() {
   constexpr const char* diagnostic =
       "unsupported_scalar_compare_publication: RV64 object route requires prepared scalar compare result homes and materializable operands";
@@ -13679,6 +13710,7 @@ int main() {
   status |= rejects_prepared_scalar_ashr_invalid_immediate_object();
   status |= builds_prepared_scalar_divrem_object();
   status |= rejects_prepared_scalar_division_fail_closed_shapes();
+  status |= rejects_prepared_scalar_remainder_fail_closed_shapes();
   status |= rejects_prepared_scalar_compare_publication_missing_home();
   status |= builds_prepared_join_transfer_select_materialization_object();
   status |= builds_prepared_normalized_sle_select_materialization_object();

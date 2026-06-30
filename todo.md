@@ -1,41 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/430_rv64_integer_div_rem_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Lower Or Validate Scalar Remainder
+Current Step ID: 4
+Current Step Title: Re-Probe Representatives And Decide Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2, Lower Or Validate Scalar Division.
+Completed Step 3, Lower Or Validate Scalar Remainder.
 
-Implemented the focused validation packet for scalar division in
+Implemented the focused validation packet for scalar remainder in
 `tests/backend/mir/backend_riscv_object_emission_test.cpp`; implementation
 files did not need changes.
 
-Coverage added:
+Coverage preserved and validated:
 
-- `UDiv i32` now has focused object-emission coverage for RV64 `divuw`.
-- `UDiv i64` now has focused object-emission coverage for RV64 `divu`.
-- Existing `SDiv i32`/`SDiv i64` focused coverage remains in the same test.
+- `SRem i32` has focused object-emission coverage for RV64 `remw`.
+- `SRem i64` has focused object-emission coverage for RV64 `rem`.
+- `URem i32` has focused object-emission coverage for RV64 `remuw`.
+- `URem i64` has focused object-emission coverage for RV64 `remu`.
 
 Fail-closed coverage added:
 
-- missing RHS prepared home rejects with `unsupported_instruction_fragment`;
-- missing result prepared home rejects with `unsupported_instruction_fragment`;
-- pointer-typed `UDiv` rejects with `unsupported_instruction_fragment`.
+- missing LHS prepared home for `SRem` rejects with
+  `unsupported_instruction_fragment`;
+- missing result prepared home for `URem` rejects with
+  `unsupported_instruction_fragment`;
+- pointer-typed `SRem` rejects with `unsupported_instruction_fragment`.
 
-Step artifact: `build/agent_state/430_step2_scalar_division/summary.tsv`.
+Step artifact: `build/agent_state/430_step3_scalar_remainder/summary.tsv`.
 The representative rows were not reclassified as passing in this packet; the
 failing rows from Step 1 still include call, select, frame-slot argument,
 local-publication, or global/select residuals.
 
 ## Suggested Next
 
-Execute Step 3: validate scalar remainder lowering by preserving focused
-`SRem`/`URem` coverage for `i32`/`i64`, tightening fail-closed remainder shapes
-if needed, and avoiding representative-row claims.
+Execute Step 4: re-probe the representative div/rem rows and decide close
+readiness for this source idea, separating focused div/rem coverage from
+remaining call/select/local-publication/global residuals.
 
 ## Watchouts
 
@@ -46,8 +49,8 @@ if needed, and avoiding representative-row claims.
 - Do not claim row-level representative progress from focused div/rem coverage;
   the failing representatives also contain call, select, frame-slot argument,
   local-publication, or global/select residuals.
-- Keep the Step 2 implementation boundary: no object-emission code changes
-  were required for division.
+- Keep the Step 2/Step 3 implementation boundary: no object-emission code
+  changes were required for division or remainder.
 - Keep floating-point division, F128/I128 helper work, pointer/address,
   select/join, aggregate ABI, call publication, and global memory residuals
   outside this plan.
@@ -56,7 +59,7 @@ if needed, and avoiding representative-row claims.
 
 ## Proof
 
-Step 2 focused division validation proof passed:
+Step 3 focused remainder validation proof passed:
 
 ```sh
 { cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
