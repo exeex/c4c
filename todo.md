@@ -1,50 +1,78 @@
 Status: Active
 Source Idea Path: ideas/open/470_branch_stack_load_policy_freshness.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Branch-Site Policy Freshness Inputs
+Current Step ID: 2
+Current Step Title: Define Policy Freshness Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 470. Current prepared records expose the
-branch-stack-load rows, but no real row has target-consumable
-`load_from_stack_slot` authority because policy, freshness, and clobber-safety
-facts are not produced.
+Completed Step 2 contract for idea 470. The first accepted shape is bounded to
+scalar branch-condition records that already reach `missing_policy` with
+coherent branch/value/home/frame-slot/object facts.
 
-Representative audit:
+Positive contract:
 
-| Row | Current record | Policy | Freshness | Clobber safety | Boundary | First owner |
-| --- | --- | --- | --- | --- | --- | --- |
-| `f.block_1` condition `%t2` | `unsupported_terminator`, `pointer_status=not_pointer` | Not reachable yet | Missing | Missing | Scalar condition | Branch-site relationship acceptance before policy. |
-| `f.block_1` lhs `%t1` | `unsupported_terminator`, `pointer_status=unknown` | Not reachable yet | Missing | Missing | Pointer status unknown | Branch-site relationship first; pointer/provenance separate. |
-| `f.block_4` condition `%t8` | `unsupported_terminator`, `pointer_status=not_pointer` | Not reachable yet | Missing | Missing | Scalar condition paired with pointer lhs | Branch-site relationship first. |
-| `f.block_4` lhs `%t7` | `unsupported_terminator`, `pointer_status=unknown` | Not reachable yet | Missing | Missing | Pointer-value/provenance | Pointer-value/provenance remains first owner before target consumption. |
-| `f.logic.end.14` condition `%t23` | `value=%t23`, `value_id=17`, `slot=#21`, `object=#21`, `status=missing_policy` | Missing `load_from_stack_slot` | Missing | Missing | Scalar condition | First bounded policy/freshness/clobber candidate. |
-| `f.logic.end.14` lhs `%t22` | `value=%t22`, `value_id=16`, `slot=#20`, `object=#20`, `status=missing_policy` | Missing | Missing | Missing | Select-result stack destination | Keep fail-closed; select-result owner remains separate. |
+| Fact group | Required facts |
+| --- | --- |
+| Branch identity | Prepared branch condition and matching BIR conditional branch terminator agree on condition and targets. |
+| Role | `condition` only for the first packet. |
+| Value/home/object | Named scalar condition, stack-slot home, frame slot, and stack object all match by value id/name, slot/object id, offset, size, and alignment. |
+| Policy | Explicit `load_from_stack_slot`; `none` remains unavailable. |
+| Freshness | Explicit proof that the slot contains the current condition value at the branch site. |
+| Clobber safety | Explicit proof that no store/call/helper/publication/move/stack write can clobber the slot before the branch load. |
+| Pointer status | `not_pointer` only for the first positive scalar condition class. |
 
-First exact Step 2 target: define the policy/freshness/clobber contract for
-scalar condition records already populated through branch/value/home/frame-slot
-facts, represented by `f.logic.end.14` condition `%t23`. Preserve
-`unsupported_terminator`, pointer-status unknown, pointer-value provenance, and
-select-result stack-destination rows as rejected/fail-closed shapes unless a
-separate prerequisite packet proves them.
+Rejected/fail-closed shapes:
+
+| Shape | Disposition |
+| --- | --- |
+| `unsupported_terminator` rows (`f.block_1`, `f.block_4`) | Keep fail-closed until branch-site relationship acceptance is separately proven. |
+| Pointer operands `%t1` / `%t7` | Keep fail-closed unless pointer/provenance status is explicit; not in first packet. |
+| Select-result stack destination `%t22` | Keep separate; do not accept as first scalar condition policy proof. |
+| Lhs/rhs operands | Out of first positive packet. |
+| Missing policy/freshness/clobber safety | Must remain explicit unavailable statuses. |
+| Raw-shape-only evidence | Rejected. Stack-slot spelling, offsets, block labels, names, and testcase shape are not authority. |
+
+Selected Step 3 packet: `Populate Scalar Condition Branch-Stack-Load Policy`.
+Implement only producer/prepared population for scalar condition rows that
+already have coherent branch/value/home/frame-slot/object facts; route/block if
+freshness or clobber-safety cannot be proven without raw-shape inference.
 
 Artifact:
-`build/agent_state/470_step1_policy_freshness_audit/audit.md`.
+`build/agent_state/470_step2_policy_freshness_contract/contract.md`.
 
 ## Suggested Next
 
-Execute Step 2: Define Policy Freshness Contract. Record accepted scalar
-condition facts, rejected adjacent shapes, target files/tests for a bounded
-producer packet if justified, and whether the `unsupported_terminator`
-branch-site relationship gap is a prerequisite packet or remains an
-unavailable status.
+Execute Step 3: Implement Or Route Policy Freshness Packet.
+
+Suggested owned files:
+
+- `src/backend/prealloc/publication_plans.hpp`
+- `src/backend/prealloc/publication_plans.cpp`
+- `src/backend/prealloc/prepared_printer/**` only if field/status exposure
+  needs a small adjustment
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `tests/backend/bir/backend_prepared_printer_test.cpp` only if printer
+  coverage changes
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/470_step3_policy_freshness_population/**`
+
+Proof:
+
+```sh
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+```
 
 ## Watchouts
 
-- Do not edit implementation files during Step 2 unless explicitly redirected.
+- Do not edit RV64 target lowering.
+- Do not set `load_from_stack_slot` unless freshness and clobber safety are
+  also explicitly proven.
+- Preserve `unsupported_terminator` rows as unavailable unless a separate
+  prerequisite packet proves the branch-site relationship.
 - Do not implement RV64 branch-load emission in this producer plan.
 - Do not accept unavailable `PreparedBranchStackLoadAuthority` records as
   target authority.
@@ -57,7 +85,7 @@ unavailable status.
 
 ## Proof
 
-Classification proof:
+Contract proof:
 
 ```sh
 git diff --check
