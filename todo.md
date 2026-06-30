@@ -1,54 +1,68 @@
 Status: Active
 Source Idea Path: ideas/open/448_array_aggregate_global_layout_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Non-Scalar Global Layout Evidence
+Current Step ID: 2
+Current Step Title: Define Array/Aggregate Layout Authority Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: audited inherited non-scalar prepared global-symbol memory
-evidence from the 446 Step 4 residual artifacts.
+Completed Step 2: defined the array/aggregate global layout authority contract
+and selected the first bounded implementation packet.
 
-Representative row table:
+Contract summary:
 
-| row | evidence | current authority | first missing producer fact |
-| --- | --- | --- | --- |
-| `930930-1 @mem+792` | Source declares `ptr_t mem[100]`; prepared BIR stores `%t1` to `@mem+792`, width 8, align 8; call-argument source comments use computed addresses from `@mem` at deltas 800, 48, 64, 792, and 792. | `layout_authority=unknown`, `range_verdict=proven_in_bounds`, `dynamic_array_verdict=unknown`; object extent/completeness is not printed. | Explicit non-scalar layout authority kind plus durable producer facts for semantic `@mem` shape, complete extent, element stride/count or aggregate layout, offset, width, alignment, and range. |
-
-Bucket table:
-
-| bucket | rows | disposition |
-| --- | --- | --- |
-| Coherent non-scalar authority candidate | `930930-1` `main.entry.0` store to `@mem+792` | Only inherited non-scalar global-symbol memory row. It has semantic global symbol, offset, width, alignment, and a proven in-bounds range, but remains fail-closed because layout authority is unknown. |
-| Missing/incoherent authority | `930930-1 @mem+792` | Prepared evidence does not publish a non-scalar layout-authority kind or visible object shape/extent facts for consumers, even though range proof is in bounds. |
-| Out-of-scope rows | `20041112-1 @global+0` scalar rows; `20041112-1` direct-global address/return row; `20000622-1` frame-slot rows | Scalar global layout authority was completed by idea 446. Direct-global return/select-chain, local/frame-slot rows, pointer-value memory, and immediate store-source encoding are separate owners. |
-| Blockers | none for Step 2 contract | Evidence is sufficient to define the contract before implementation. |
+| scope | decision |
+| --- | --- |
+| Narrow accepted class | Integer-array globals only: semantic `GlobalSymbol` identity, known definition, non-TLS/non-string, producer-owned element stride, element count, complete storage size, linear addressability, complete object extent, valid access width/alignment, and `ProvenInBounds` requested range. |
+| Representative fit | `930930-1 @mem+792` is a coherent integer-array candidate: source declares `ptr_t mem[100]`, prepared access is offset 792, width 8, align 8, and range is proven in bounds. It is not accepted yet because durable integer-array layout authority is not published. |
+| Authority kind | Use existing non-scalar predicate-compatible authority, likely `ByteStorageAggregate`, unless Step 3 adds a more precise enum. Do not use `ScalarLayout` for this plan. |
+| Broader aggregates | Not selected for Step 3. Structured aggregate support needs semantic structured type identity, complete field layout, field/byte-lane offset ownership, padding/packing handling, and durable prepared facts. |
+| Rejected shapes | Unknown or opaque authority, scalar globals, raw-only unresolved globals, extern/declaration-only globals, TLS globals, strings, pointer arrays without explicit layout facts, rendered-text-only aggregates, missing extent, out-of-range access, pointer-value/frame-slot/direct-global return rows, and immediate-source encoding. |
 
 Artifacts:
 
-- `build/agent_state/448_step1_non_scalar_global_layout_audit/audit.md`
-- `build/agent_state/448_step1_non_scalar_global_layout_audit/rows.tsv`
+- `build/agent_state/448_step2_non_scalar_layout_contract/contract.md`
 
 ## Suggested Next
 
-Execute Step 2: Define Array/Aggregate Layout Authority Contract.
+Execute Step 3: Implement Or Route First Non-Scalar Authority Packet.
 
-Recommended contract focus: decide whether the first implementation packet is
-integer-array global layout authority for semantic globals with producer-owned
-element stride, element count, complete storage size, and linear addressability,
-or whether a durable producer metadata gap blocks implementation. The likely
-first implementation target after the contract is a narrow integer-array
-carrier in the BIR/prepared producer path, similar in shape to scalar global
-authority but explicitly non-scalar and not keyed to `@mem`, offset `792`, or
-RV64 target behavior.
+Selected packet: `Publish Integer-Array Global Layout Authority`.
+
+Proposed implementation:
+
+- add durable integer-array layout metadata to `bir::Global` or an equivalent
+  prepared-accessible producer carrier: authority bit, element size/stride,
+  element count, and complete storage size;
+- populate it only from the integer-array lowering branch in
+  `src/backend/bir/lir_to_bir/globals.cpp`;
+- publish non-scalar layout authority in
+  `src/backend/prealloc/stack_layout/coordinator.cpp` only for semantic
+  in-bounds integer-array global accesses compatible with a single element;
+- add focused BIR/prepared tests for accepted integer-array access and
+  fail-closed scalar, aggregate, string, extern/TLS, raw-only unresolved,
+  missing-extent, out-of-range, incompatible offset/width, pointer-value, and
+  direct-global/address-only boundaries.
+
+Proposed owned files:
+
+- `src/backend/bir/bir.hpp`
+- `src/backend/bir/lir_to_bir/globals.cpp`
+- `src/backend/prealloc/stack_layout/coordinator.cpp`
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+- `todo.md`
+- `test_after.log`
+- `build/agent_state/448_step3_integer_array_global_layout_authority/*`
 
 ## Watchouts
 
 - Keep this plan limited to array/aggregate global layout authority.
 - Do not infer non-scalar layout authority in RV64 from raw BIR, symbol names,
   object labels, representative filenames, offsets, or dump shape.
+- Do not broaden Step 3 into structured aggregate layout; split if aggregate
+  support is needed.
 - Do not claim scalar `layout_authority=scalar_layout` rows as progress for
   this non-scalar plan.
 - Keep immediate global-store source encoding with
@@ -60,7 +74,7 @@ RV64 target behavior.
 
 ## Proof
 
-Step 1 classification-only check:
+Step 2 contract-only check:
 
 ```sh
 git diff --check
