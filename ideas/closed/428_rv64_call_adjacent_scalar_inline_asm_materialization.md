@@ -1,6 +1,6 @@
 # RV64 Call-Adjacent Scalar And Inline-Asm Materialization
 
-Status: Open
+Status: Closed
 Type: Implementation idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Source Evidence: `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`
@@ -77,6 +77,38 @@ object-materialization idea rather than the prepared producer/carrier layer.
 `pr40657` (`=*m`) and `pr56982` (`~{memory}` clobber-only) remain outside the
 scalar GPR producer/carrier follow-up and must stay fail-closed here unless a
 separate idea owns those shapes.
+
+## Completion Notes
+
+Closed on 2026-06-30 after the reactivated RV64 object-materialization runbook
+completed close-readiness validation.
+
+Completed coverage:
+
+- Coherent prepared GPR call-result publication is validated by focused backend
+  coverage and the delegated backend proof.
+- Scalar call-argument publication remains covered by the existing frame-slot
+  scalar value argument route and focused backend coverage.
+- Coherent scalar GPR inline-asm materialization is validated for complete
+  carriers, including `.insn r`, `.insn d`, read/write `+r`, tied `.insn r`,
+  substitution helpers, and empty-template tied `=r,0`.
+- Representative RV64 object-route probes under
+  `build/agent_state/428_step4_close_readiness/` show `pr38533` and `pr45695`
+  now pass `--codegen obj`.
+
+Out-of-scope leftovers:
+
+- `pr49279` remains a mixed scalar plus `~{memory}` clobber carrier and is not
+  completion-blocking for this scalar GPR materialization idea.
+- `pr40657` remains the unsupported `=*m` memory-constraint class.
+- `pr56982` remains clobber-only `~{memory}` with no scalar publication.
+
+Close proof:
+
+- Existing canonical `test_before.log` and `test_after.log` cover the backend
+  subset with `327 passed, 0 failed` before and after.
+- The regression guard passed with non-decreasing pass-count semantics:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`.
 
 ## Reviewer Reject Signals
 
