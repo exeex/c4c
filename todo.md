@@ -8,40 +8,47 @@ Current Step Title: Re-Probe Representatives And Decide Close Readiness
 
 ## Just Finished
 
-Step 3 audited the remaining coherent scalar GPR inline-asm input/output
-surface after Step 2 and found no additional in-scope implementation packet.
+Step 4 re-probed representative rows and decided close readiness for the RV64
+call-adjacent scalar inline-asm materialization plan.
 
 Completed work:
 
-- Fresh local probes against the current working tree used
-  `./build/c4cll -I tests/c/external/gcc_torture --target
-  riscv64-linux-gnu --codegen obj` and `--dump-prepared-bir` for `pr38533`,
-  `pr45695`, `pr49279`, `pr40657`, and `pr56982`.
-- `pr38533`: prepared dump still shows complete empty-template `=r,0` scalar
-  GPR carriers with no `missing_operand0_home` or
-  `tied_input_output_home_mismatch`; RV64 object compilation now succeeds.
-- `pr45695`: prepared dump still shows the complete empty-template `=r,0`
-  scalar GPR carrier with `home=yes`; RV64 object compilation now succeeds.
-- `pr49279`: prepared dump shows a coherent tied scalar GPR carrier, but it is
-  mixed with `~{memory}` clobber metadata. RV64 object compilation still fails
-  at `unsupported_instruction_fragment`; this remains outside the Step 3 scalar
-  input/output packet by constraint.
-- `pr40657`: prepared dump remains the `=*m` memory-constraint class with
-  `unsupported_constraint0:=*m` and `unsupported_operand_constraint0`; this is
-  out of scope.
-- `pr56982`: prepared dump remains clobber-only `~{memory}` with no scalar
-  publication; this is out of scope.
-- Existing focused RV64 object-emission tests already cover the coherent
-  scalar GPR inline-asm consumer paths selected by this plan: structured and
-  text `.insn r`, `.insn d`, read/write `+r`, tied `.insn r`, substitution
-  helpers, and the Step 2 empty-template tied `=r,0` route. No remaining
-  coherent scalar GPR input/output carrier shape was found that fits this
-  packet's constraints.
+- Probe artifacts are saved under
+  `build/agent_state/428_step4_close_readiness/`; the concise classification is
+  `build/agent_state/428_step4_close_readiness/probe_summary.tsv` and
+  supporting snippets are in
+  `build/agent_state/428_step4_close_readiness/README.md`.
+- Probe command shape:
+  `./build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
+  --dump-prepared-bir|--codegen obj <case>`.
+- `pr38533`: prepared probe passes, `missing_operand0_home=no`,
+  `tied_input_output_home_mismatch=no`, no unsupported memory/clobber marker,
+  and RV64 `--codegen obj` now succeeds.
+- `pr45695`: prepared probe passes, `missing_operand0_home=no`,
+  `tied_input_output_home_mismatch=no`, no unsupported memory/clobber marker,
+  and RV64 `--codegen obj` now succeeds.
+- `pr49279`: prepared probe passes and the old tied-home producer facts are
+  absent, but the row is a mixed scalar publication plus `~{memory}` clobber
+  carrier. RV64 `--codegen obj` still rejects at
+  `unsupported_instruction_fragment`; this is outside this plan by constraint.
+- `pr40657`: sanity row remains the `=*m` memory-constraint class with
+  `unsupported_constraint=yes`; RV64 `--codegen obj` still rejects at
+  `unsupported_instruction_fragment`. This is outside this plan.
+- `pr56982`: sanity row remains clobber-only `~{memory}` with no scalar
+  publication; RV64 `--codegen obj` still rejects at
+  `unsupported_instruction_fragment`. This is outside this plan.
+- Acceptance coverage: coherent scalar GPR inline-asm carriers selected by this
+  plan now have focused backend coverage and representative object-route
+  evidence, including `.insn r`, `.insn d`, read/write `+r`, tied `.insn r`,
+  substitution helpers, and empty-template tied `=r,0`.
+- Close readiness: from this executor's evidence, the source idea appears ready
+  for lifecycle close review. Remaining representative failures are explicitly
+  out-of-scope memory/clobber classes and should not be folded into this plan.
 
 ## Suggested Next
 
-Execute Step 4: re-probe the representatives and decide close readiness for
-the RV64 call-adjacent scalar inline-asm materialization plan.
+Ask the plan owner to review lifecycle close readiness for
+`ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md`.
 
 ## Watchouts
 
@@ -51,7 +58,8 @@ the RV64 call-adjacent scalar inline-asm materialization plan.
   evidence as a producer regression, not RV64 consumer work.
 - Keep `=*m` memory constraints, mixed or clobber-only `~{memory}` carriers,
   frame-slot address arguments, symbol/address arguments, prior-preservation
-  routing, aggregate ABI, vector, and F128 outside the first consumer packet.
+  routing, aggregate ABI, vector, and F128 outside this plan unless a new
+  source idea is created.
 - Do not change expectations, allowlists, unsupported markers, runtime
   comparison, or pass/fail accounting.
 
