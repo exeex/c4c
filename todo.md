@@ -8,17 +8,47 @@ Current Step Title: Audit Store-Source And Global-Memory Evidence
 
 ## Just Finished
 
-Activated `ideas/open/439_store_source_global_memory_publication_authority.md`
-as the next active plan. Selection rationale: it is the next concrete
-unblocked residual from the 433 split. The parked 442 formal pointer
-provenance route remains blocked for external-linkage representatives because
-the no-external-caller source chain found no current metadata source.
+Completed Step 1: audited store-source and global-memory residual evidence for
+`930930-1`, `20000622-1`, and `20041112-1`.
+
+Bucket table:
+
+| bucket | rows | representative evidence | decision |
+| --- | --- | --- | --- |
+| Accepted target-consumable candidates | none | No inspected global-symbol row has both explicit global layout/addressability authority and a complete acceptable store-source/value-home contract. | No implementation packet selected from Step 1. |
+| Producer/prepared gaps | `930930-1` `main.entry.0`; `20041112-1` `foo.block_1.2`, `bar.block_5.2`, `main.entry.0`; local store-source rows in all three representatives | `930930-1` global store has `source_producer=unknown`; `20041112-1` known binary stores have register homes but `layout_authority=unknown`; immediate store has `source=<none>` and `source_producer=unknown`. | Needs a publication-authority contract before producer or target code is selected. |
+| Fail-closed unknowns | `930930-1` global store and pointer-value memory; `20000622-1` local store-source; `20041112-1` immediate global store | Unknown producer/layout facts are not target-consumable. | Keep fail-closed. |
+| Unrelated/non-goals | `930930-1` pointer-value memory; `20000622-1` select materialization; `20041112-1` direct-global return/select-chain and terminator failure | These map to pointer-value memory, select/terminator publication, or direct-global return authority. | Do not fold into this plan packet. |
+
+Representative row notes:
+
+- `930930-1`: `bir.store_global @mem, offset 792, i64 %t1` has stored value
+  `%t1` with a register home in `main`, but the store-source publication is
+  `source_producer=unknown`, and the global access has
+  `layout_authority=unknown`.
+- `20000622-1`: no global memory row; only a local frame-slot store-source
+  row with `source_producer=unknown` plus select-materialization residuals.
+- `20041112-1`: `foo` and `bar` global stores to `@global` at offset 0 have
+  binary store-source producers and register value homes for `%t4`/`%t10`, but
+  the global accesses still report `layout_authority=unknown`; `main.entry.0`
+  stores immediate `1` but its store-source row is `source=<none>` with
+  `source_producer=unknown`.
+
+Artifacts:
+
+- `build/agent_state/439_step1_store_source_global_memory_audit/audit.md`
+- `build/agent_state/439_step1_store_source_global_memory_audit/rows.tsv`
 
 ## Suggested Next
 
-Execute Step 1: audit the store-source and global-memory publication evidence
-under `build/agent_state/433_step4_residual_disposition/` for `930930-1`,
-`20000622-1`, and `20041112-1`.
+Execute Step 2: Define Publication Authority Contract.
+
+Recommended packet: contract-only. Define the minimum prepared facts required
+for global symbol identity, offset, width, alignment, layout/addressability
+authority, store-source identity, producer kind, value home, and immediate
+source encoding. Keep `source_producer=unknown`, `layout_authority=unknown`,
+pointer-value memory, direct-global return, and select/terminator residuals
+fail-closed.
 
 ## Watchouts
 
@@ -34,7 +64,7 @@ under `build/agent_state/433_step4_residual_disposition/` for `930930-1`,
 
 ## Proof
 
-Activation-only lifecycle change. Required local check:
+Step 1 classification-only check:
 
 ```sh
 git diff --check
