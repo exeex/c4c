@@ -1,51 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/464_select_carrier_alias_metadata.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Duplicate Carrier Alias Metadata Gap
+Current Step ID: 2
+Current Step Title: Define Carrier-Alias Authority Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 464. Existing prepared state has the join
-transfer, edge transfer, source-producer lookup, edge publication, and
-placement records needed around the duplicate carrier shape, but no durable
-carrier-alias metadata surface proves `%t50.phi.sel0` / `%t50.phi.sel1` are
-aliases of final `%t50`.
+Completed Step 2 contract definition for idea 464. A bounded
+producer/prepared metadata packet is justified: publish durable carrier-alias
+authority records for select-materialization join transfers, with use-closure
+proof for the selected source producer.
 
-Audit table:
+Contract table:
 
 | Field | Value |
 | --- | --- |
-| Existing join facts | `PreparedJoinTransfer` carries function, join block, final result, select-materialization carrier kind, edge transfers, and source transfer indexes |
-| Existing edge/source facts | `PreparedEdgePublication` carries predecessor/successor, source/destination values and ids, source producer kind/site, move, join transfer, edge transfer, and carrier kind |
-| Existing producer facts | `select_chain_lookups` publishes per-value source producers, including `SelectMaterialization` for select results and `Binary` for `%t46` |
-| Existing placement facts | `PreparedSelectEdgeSourceProducerPlacement` records source-producer suppression placement for before-instruction bundles, not duplicate carrier aliases |
-| Current classifier limit | `prepared_join_transfer_matches_select` requires `select.result.name == join_transfer.result.name`, so `%t50.phi.sel0` / `%t50.phi.sel1` classify as ordinary selects rather than aliases |
-| First missing surface | Producer-owned prepared carrier-alias record keyed by function, edge, join transfer, source value, destination value, carrier values, and source producer |
-| Step 2 readiness | A carrier-alias authority contract is definable; implementation should remain in prepared control-flow/publication metadata and tests, not RV64 |
+| Accepted fact | One carrier-alias authority record per carrier value, keyed by function, predecessor/successor edge, join transfer, final destination value, selected source value, source-producer site, and carrier value/instruction |
+| Use closure | All uses of the selected source-producer result must be the selected edge source or authorized carrier aliases for the same final join-transfer result |
+| Positive case | Duplicate carrier selects such as `%t50.phi.sel0` / `%t50.phi.sel1` alias final `%t50` for the same `%t46 -> %t50` select-materialization edge |
+| Negative cases | Wrong final result, wrong source value, wrong edge, raw-name-only `%*.phi.sel*` shape, extra non-carrier use, missing/ambiguous edge publication, missing/ambiguous source producer |
+| Target files | `src/backend/prealloc/control_flow.hpp`, `src/backend/prealloc/prepared_object_traversal.*`, `src/backend/prealloc/select_chain_lookups.*`, `src/backend/prealloc/publication_plans.*`, focused `tests/backend/bir/` coverage |
+| Consumer boundary | No RV64 ULE rematerialization or target consumer change in idea 464; later RV64 work may consume this fact only after it exists |
+| Step 3 proof command | `{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check` |
 
 Artifact:
-`build/agent_state/464_step1_duplicate_carrier_alias_audit/audit.md`.
+`build/agent_state/464_step2_carrier_alias_contract/contract.md`.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: define the carrier-alias authority contract,
-including required record fields, use-closure requirements, positive/negative
-test cases, and the exact future metadata packet files.
+Execute Step 3 from `plan.md`: implement or route the carrier-alias metadata
+packet in the prepared control-flow/publication layer with focused positive
+and fail-closed tests. Do not touch RV64 target lowering.
 
 Suggested artifact directory:
-`build/agent_state/464_step2_carrier_alias_contract/`.
+`build/agent_state/464_step3_carrier_alias_metadata/`.
 
 ## Watchouts
 
-- Do not edit implementation files during Step 1.
 - Do not make RV64 ULE rematerialization or target consumer changes before the
   metadata exists.
 - Do not infer duplicate-carrier authority from `%*.phi.sel*` spelling, raw
   select shape, value ids, block labels, function names, testcase names, or
   dump order.
+- Preserve fail-closed behavior for extra non-carrier uses and mismatched
+  source/destination/edge facts.
 - Do not implement a plain `%t46 -> %t50` copy or same-register no-op.
 - Do not add generic stack-to-register, register-to-register, or all-purpose
   move-bundle support.
@@ -55,7 +55,7 @@ Suggested artifact directory:
 
 ## Proof
 
-Step 1 proof:
+Step 2 proof:
 
 ```sh
 git diff --check
