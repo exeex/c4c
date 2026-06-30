@@ -1,63 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/454_edge_dependency_operand_materialization_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route First Producer Metadata Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 454. Summary artifact:
-`build/agent_state/454_step3_dependency_operand_authority_metadata/summary.md`.
+Completed Step 4 for idea 454. Disposition artifact:
+`build/agent_state/454_step4_residual_disposition/disposition.md`.
 
-Implemented metadata-only surface:
+Residual decision:
 
-- `PreparedDependencyOperandMaterializationPolicy`
-- `PreparedDependencyOperandAuthorityStatus`
-- `PreparedDependencyOperandAuthorityInputs`
-- `PreparedDependencyOperandAuthority`
-- `plan_prepared_dependency_operand_authority`
-- `prepared_dependency_operand_authority_available`
+- idea 454 is complete as producer/prepared authority metadata work;
+- Step 3 published the shared metadata planner and focused coverage for
+  explicit `rematerialize_cast_from_source` and explicit
+  `load_from_stack_slot` policies;
+- stack-slot loads remain fail-closed without explicit freshness and
+  clobber-safety;
+- raw `%t17` stack home/object metadata and raw `%t17 = inttoptr %t16` remain
+  insufficient authority by themselves;
+- no RV64 target lowering was changed or selected in this residual packet.
 
-Accepted authority:
+Residual routing table:
 
-- edge publication must be available, block-entry,
-  predecessor-terminator placed, register-destination, and backed by a binary
-  source producer;
-- dependency operand must match the selected producer operand role;
-- dependency value home must match the operand value id/name/type;
-- stack-backed operands must have coherent stack object linkage;
-- `rematerialize_cast_from_source` requires explicit cast producer, supported
-  `IntToPtr` width, matching cast result, and register or rematerializable
-  immediate cast-source home;
-- `load_from_stack_slot` requires explicit freshness and clobber-safety.
-
-Focused tests cover accepted explicit cast-rematerialization, accepted explicit
-stack-load only with freshness/clobber-safety, and fail-closed missing policy,
-missing cast source, bad cast source home, unsupported cast width, missing
-freshness, missing clobber-safety, home mismatch, operand mismatch, and
-unavailable edge publication.
-
-No RV64 target lowering was changed or allowed to consume the new authority in
-this packet.
+| Residual | Disposition | First owner |
+| --- | --- | --- |
+| Dependency-operand authority metadata surface | Complete for idea 454 | Closed by Step 3 planner/tests |
+| Dump-visible/populated records for representative edges | Separate population/printing packet if lifecycle requires prepared output records beyond the current planner/predicate surface | Plan-owner-selected producer/prepared follow-up |
+| `%t17` `load_from_stack_slot` route | Fail-closed until a producer supplies freshness and clobber-safety | Future producer packet, not RV64 inference |
+| `%t17` `rematerialize_cast_from_source` route | Supported by metadata only when explicit cast/source authority is supplied | Future population packet if the real edge should use this policy |
+| Stack-slot pointer select-edge consumer | Do not route directly from idea 454 | Plan-owner decision before returning to idea 453/consumer work |
 
 ## Suggested Next
 
-Step 4: `Residual Disposition And Close Readiness`.
+Plan-owner close-readiness review.
 
-Re-check the `%t17` dependency-operand authority status against the new
-metadata surface. Classify whether idea 454 is complete as a producer/prepared
-authority prerequisite, whether a separate population/printing packet remains,
-or whether lifecycle should route back to the stack-slot pointer select-edge
-consumer only after a plan-owner decision. Do not select RV64 target lowering
-inside this packet.
-
-Future proof command:
-
-```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
-```
+Recommended disposition: close idea 454 as complete for the dependency-operand
+authority metadata prerequisite. If lifecycle requires the new authority to be
+automatically populated or printed for the `20010329-1` `%t17` edge before any
+consumer work, split or activate a separate producer/prepared population packet
+first. Route back to the stack-slot pointer select-edge consumer only after
+plan-owner selection and only with explicit prepared authority available.
 
 ## Watchouts
 
@@ -76,10 +61,10 @@ Future proof command:
 
 ## Proof
 
-Step 3 backend proof:
+Step 4 metadata/evidence-only proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
-Result: passed. Proof log: `test_after.log`.
+Result: passed.
