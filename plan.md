@@ -1,81 +1,78 @@
-# Semantic LIR-To-BIR Admission High-Impact Cleanup Plan
+# BIR Semantic GEP Local-Memory Admission Producer Plan
 
 Status: Active
-Source Idea: ideas/open/496_semantic_lir_to_bir_admission_high_impact_cleanup.md
-Resumed After: ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md
+Source Idea: ideas/open/499_semantic_gep_local_memory_admission_producer.md
+Activated From: ideas/closed/496_semantic_lir_to_bir_admission_high_impact_cleanup.md
 
 ## Purpose
 
-Resume the semantic admission cleanup after the scalar local-load producer
-closed. The first task is to reclassify high-frequency semantic `lir_to_bir`
-failures with `local_array_scalar_local_loads` available, then route remaining
-producer gaps without moving semantic responsibility into RV64 lowering.
+Implement the focused producer route selected by idea 496 Step 2 for the
+`62`-row semantic `gep local-memory` admission family.
 
 ## Goal
 
-Classify and repair high-impact semantic LIR-to-BIR admission failures while
-requiring downstream local-load consumers to use published semantic facts.
+Publish or deliberately reject semantic local-memory GEP admission records using
+explicit BIR producer authority, without RV64/MIR reconstructing missing facts.
 
 ## Core Rule
 
-Semantic admission or downstream lowering may consume `local_array_scalar_local_loads`;
-it must not reconstruct local object, element offset, layout, range,
-provenance, exact-address checks, or scalar load identity from provenance
-records, lower proof surfaces, final homes, raw testcase shape, names, or target
-behavior.
+Semantic GEP local-memory admission may become available only when source
+object, local-address/provenance, element path, offset/layout, range, and
+coordinate authority are explicit. Raw LIR/BIR shape, final homes, names,
+testcase shape, lowered target behavior, and route-local slots are not
+availability evidence.
 
 ## Read First
 
-- ideas/open/496_semantic_lir_to_bir_admission_high_impact_cleanup.md
-- ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md
-- build/agent_state/483_step2_scalar_local_loads_from_provenance/summary.md
-- build/agent_state/483_step3_residual_disposition_after_scalar_local_loads/disposition.md
-- build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv
-- docs/rv64_gcc_torture_post_contract/failure_bucket_map.md
-- docs/rv64_gcc_torture_post_contract/followup_idea_plan.md
+- ideas/open/499_semantic_gep_local_memory_admission_producer.md
+- ideas/closed/496_semantic_lir_to_bir_admission_high_impact_cleanup.md
+- build/agent_state/496_step1_semantic_admission_after_scalar_local_loads/summary.md
+- build/agent_state/496_step1_semantic_admission_after_scalar_local_loads/semantic_family_counts.tsv
+- build/agent_state/496_step1_semantic_admission_after_scalar_local_loads/semantic_family_representatives.tsv
+- build/agent_state/496_step2_next_owner_selection/decision.md
+- build/agent_state/496_step2_next_owner_selection/open_idea_inventory.tsv
 
 ## Current Targets
 
 - Inputs:
-  - current semantic `lir_to_bir` failure bucket evidence;
-  - `local_array_scalar_local_loads` as the completed scalar local-load fact
-    surface;
-  - open producer/lowering idea inventory.
+  - current semantic `gep local-memory` admission rows;
+  - existing BIR local-memory, provenance, layout, and coordinate surfaces;
+  - representative cases `src/pr44468.c`, `src/pr48571-1.c`,
+    `src/pr65956.c`, `src/pr80421.c`, and `src/20000717-4.c`.
 - Outputs:
-  - refreshed semantic-admission classification after the scalar local-load
-    producer closed;
-  - producer-owned follow-up packets for remaining semantic families;
-  - explicit sequencing for any RV64/MIR consumer that can now consume scalar
-    local-load facts.
+  - classified GEP local-memory subfamilies and first-owner decisions;
+  - a narrow semantic GEP admission contract;
+  - producer implementation or precise blocker for the first admissible
+    subfamily.
 
 ## Non-Goals
 
-- Reopening local-array provenance, checker-input, proof-fact, range-proof, or
-  selected-path producers without concrete regression evidence.
-- Reconstructing scalar local-load facts inside RV64/MIR lowering.
-- Move-bundle materialization, F128/long-double soft-float implementation,
-  runtime mismatch triage, or global/stack-frame infrastructure unless the
-  refreshed classification proves they are the next owner.
+- RV64/MIR lowering or target reconstruction of missing producer facts.
+- Reopening scalar local-load, local-address provenance, checker-input,
+  proof-fact, range-proof, or selected-path producers without concrete
+  regression evidence.
+- Store local-memory, direct-call, scalar/local-memory, memcpy/memset, alloca,
+  signature, control-flow, F128, move-bundle, runtime mismatch, global-data, or
+  stack-frame work.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline churn.
 
 ## Working Model
 
-Idea 496 is a producer-side cleanup and routing plan. It should use the newly
-closed 483 fact surface to separate resolved local-array scalar-load admission
-from remaining semantic producer failures. It can then either define the next
-producer packet or hand a fact-consuming RV64/MIR idea forward when producer
-authority already exists.
+Idea 499 owns BIR semantic GEP local-memory admission. It should first classify
+the selected 62-row family by producer authority, then implement only the
+subfamily whose source object, derivation/provenance, element path, layout, and
+coordinates are explicit enough to admit safely.
 
 ## Execution Rules
 
-- Treat `local_array_scalar_local_loads` as the only scalar local-array
-  local-load authority for downstream consumers.
-- Preserve fail-closed statuses for missing/non-available scalar-load facts and
-  for unrelated aggregate/member, variadic, global, runtime, unsupported type,
-  bootstrap, raw-shape-only, target-only, and coordinate-confusion families.
-- If a remaining failure lacks producer authority, create or select a producer
-  idea before any RV64 lowering work.
+- Preserve fail-closed diagnostics for missing source object, missing
+  derivation, missing provenance, aggregate/member boundary, pointer-derived
+  runtime provenance, variadic/runtime boundary, unsupported type,
+  raw-shape-only evidence, target-only evidence, and coordinate confusion.
+- If classification discovers a lower producer prerequisite, record that
+  prerequisite and request lifecycle routing instead of implementing RV64
+  inference.
 - Code-changing proof:
 
 ```sh
@@ -93,20 +90,30 @@ git diff --check
 
 ## Steps
 
-### Step 1: Reclassify Semantic Admission After Scalar Local Loads
+### Step 1: Classify GEP Local-Memory Admission Rows
 
-Refresh the semantic `lir_to_bir` admission bucket with
-`local_array_scalar_local_loads` available and identify which failures are now
-fact-consuming downstream work versus still-missing producer authority.
+Reproduce and classify the 62-row `gep local-memory semantic family` by
+producer authority and representative subfamily.
 
-Completion means the handoff directory records refreshed counts,
-representative rows, resolved local-array scalar-load coverage, and remaining
-first-owner families without RV64 reconstructing semantic facts.
+Completion means a durable artifact records row counts, representatives,
+available candidate shapes, fail-closed boundary shapes, and the first
+implementation or prerequisite owner.
 
-### Step 2: Select The Next Producer Or Consumer Packet
+### Step 2: Define The Semantic GEP Admission Contract
 
-Use Step 1 classification to choose the next implementation packet.
+Write the narrow contract for the first admissible subfamily, including required
+source object, derivation/provenance, element path, layout/range, and coordinate
+authority fields.
 
-Completion means `todo.md` names the selected next owner, distinguishes
-producer gaps from valid consumers of `local_array_scalar_local_loads`, and
-records whether lifecycle should switch to a more specific open idea.
+Completion means the contract names available and unavailable statuses and
+states whether implementation can proceed or a lower producer must be routed
+first.
+
+### Step 3: Implement Or Route The First Producer Packet
+
+Implement the first safe semantic GEP admission producer packet, or record the
+exact lower prerequisite if Step 2 proves implementation is blocked.
+
+Completion means focused backend coverage proves the available path and
+representative fail-closed boundaries, or `todo.md` records the lifecycle route
+for the lower prerequisite.

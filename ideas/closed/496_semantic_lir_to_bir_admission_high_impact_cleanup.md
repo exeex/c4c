@@ -1,11 +1,12 @@
 # Semantic LIR-To-BIR Admission High-Impact Cleanup
 
-Status: Open
+Status: Closed
 Type: BIR semantic producer admission cleanup idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Handoff Directory: `docs/rv64_gcc_torture_post_contract/`
 Owning Layer: BIR semantic producer, before RV64 prepared-object consumption
 Resumed After: ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md
+Closed By: lifecycle review after Step 2 next-owner selection
 
 ## Goal
 
@@ -27,6 +28,39 @@ Idea 483 now publishes `local_array_scalar_local_loads` for clean local-array
 scalar local loads. This cleanup should reclassify the semantic-admission
 bucket using that surface and route only remaining producer gaps; RV64 lowering
 must consume the fact surface rather than reconstructing local-load authority.
+
+## Completion Notes
+
+Idea 496 is complete as the post-scalar-local-load semantic admission routing
+container.
+
+Completed evidence:
+
+- `build/agent_state/496_step1_semantic_admission_after_scalar_local_loads/summary.md`
+- `build/agent_state/496_step1_semantic_admission_after_scalar_local_loads/semantic_family_counts.tsv`
+- `build/agent_state/496_step1_semantic_admission_after_scalar_local_loads/semantic_family_representatives.tsv`
+- `build/agent_state/496_step1_semantic_admission_after_scalar_local_loads/local_load_disposition.tsv`
+- `build/agent_state/496_step2_next_owner_selection/decision.md`
+- `build/agent_state/496_step2_next_owner_selection/open_idea_inventory.tsv`
+
+Step 2 selected the focused BIR semantic `gep local-memory` admission producer
+as the next owner for the `62`-row family represented by `src/pr44468.c`,
+`src/pr48571-1.c`, `src/pr65956.c`, `src/pr80421.c`, and
+`src/20000717-4.c`. No existing open idea was a clean, unblocked match, so the
+next lifecycle state is:
+
+`ideas/open/499_semantic_gep_local_memory_admission_producer.md`
+
+The selected route is a producer packet, not an RV64/MIR consumer of
+`local_array_scalar_local_loads`.
+
+## Final Residual Disposition
+
+Resolved local-array scalar-load rows should consume
+`local_array_scalar_local_loads`. Remaining producer families stay split by
+first owner: `gep local-memory` first, then store local-memory, direct-call,
+scalar/local-memory, runtime/intrinsic, alloca, control-flow, signature, and
+other smaller semantic families as later work.
 
 ## In Scope
 
