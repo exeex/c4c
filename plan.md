@@ -1,52 +1,50 @@
-# BIR Local Array Address Derivation And Index-Range Authority Carrier Plan
+# BIR Index Range Proof And Path-Dominance Carrier Plan
 
 Status: Active
-Source Idea: ideas/open/485_bir_local_array_address_derivation_index_range_authority_carrier.md
-Activated From: ideas/closed/484_bir_semantic_local_address_provenance_array_element_authority.md
+Source Idea: ideas/open/486_bir_index_range_proof_path_dominance_carrier.md
+Activated From: ideas/closed/485_bir_local_array_address_derivation_index_range_authority_carrier.md
 
 ## Purpose
 
-Create the lower-level authority carrier needed before local-address
-provenance packaging or scalar local-load production can resume.
+Provide the dynamic index range proof and path/dominance carrier needed before
+dynamic local-array GEP rows can become available.
 
 ## Goal
 
-Publish durable local-array address derivation and index-range authority facts
-from producer-owned data, not route-local lowering coincidences.
+Publish durable range proof, path/dominance validity, and index no-clobber facts
+for dynamic local-array indices.
 
 ## Core Rule
 
-Do not infer authority from route-local `element_slots`, `base_index`, lowered
-index values, type text, testcase names, value names, dump order, final homes,
-or target fallback behavior without durable producer identity.
+Do not infer index range from loop shape, value names, testcase names, dump
+order, final homes, or RV64 target behavior. A dynamic row is available only
+with explicit proof source, path coverage, dominance, and no-clobber facts.
 
 ## Read First
 
-- ideas/open/485_bir_local_array_address_derivation_index_range_authority_carrier.md
-- ideas/closed/484_bir_semantic_local_address_provenance_array_element_authority.md
-- build/agent_state/484_step3_local_address_authority_producer/blocker.md
-- build/agent_state/484_step4_residual_disposition/disposition.md
+- ideas/open/486_bir_index_range_proof_path_dominance_carrier.md
+- ideas/closed/485_bir_local_array_address_derivation_index_range_authority_carrier.md
+- build/agent_state/485_step3_local_array_carrier_producer/summary.md
+- build/agent_state/485_step4_residual_disposition/disposition.md
 
 ## Current Target
 
-- First accepted blocked shape:
-  - `src/pr38048-1.c`
-  - `decl mat: int[2][1]`
-  - `decl a: int*[1] = mat#L0`
-  - `det#L2 += a#L1[i#L3][0]`
+- First blocked dynamic carrier row:
+  - dynamic local-array GEP currently unavailable as
+    `missing_index_range_proof`
+  - representative family: `pr38048-1.c` style `a#L1[i#L3][0]`
 - First packet:
-  - audit existing BIR/HIR local-memory lowering surfaces and determine whether
-    a durable source-object/derivation/index-range carrier can be produced.
+  - audit current control-flow/proof surfaces for explicit range proof,
+    path/dominance validity, and index no-clobber facts.
 
 ## Non-Goals
 
+- Local-array source-object, derivation, or layout carrier records already
+  completed by idea 485.
+- Idea 484 packaging.
 - Scalar local-load consumption.
-- Packaging into idea 484's higher-level provenance record.
-- Generic GEP/address lowering beyond local array-element carrier work.
-- Integer-pointer round-trip acceptance.
-- Local-memory stores, calls, memcpy/memset, alloca, bootstrap, aggregate
-  member, union/object-representation, F128, volatile/atomic, complex, vector,
-  or RV64/MIR lowering.
+- RV64/MIR lowering.
+- Broad generic range analysis beyond dynamic local-array index proof.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline/log
   churn.
@@ -55,17 +53,17 @@ or target fallback behavior without durable producer identity.
 
 ## Working Model
 
-Idea 484 proved the higher-level local-address provenance record cannot be
-implemented until local-array address derivation, ordered element paths,
-dynamic index range proof, layout/range, and provenance statuses exist as
-durable producer facts.
+Idea 485 publishes durable source-object, derivation, and constant
+element-path/layout carrier records. Dynamic element paths remain unavailable
+until an index proof carrier can show that the index is in range at the
+consumer access and unchanged along the covered path.
 
 ## Execution Rules
 
-- Step 1 is audit/classification unless it identifies a bounded carrier surface
-  already supported by current producer data.
-- Any implementation packet must add durable authority or explicit unavailable
-  status coverage.
+- Step 1 is audit/classification unless it identifies an existing bounded
+  proof surface.
+- Any implementation packet must add durable proof records or explicit
+  unavailable statuses.
 - Classification-only proof:
 
 ```sh
@@ -82,29 +80,27 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Local Array Carrier Inputs
+### Step 1: Audit Index Range Proof Inputs
 
-Inspect local-memory lowering carriers and representative rows to identify
-which source-object, derivation, element-path, index/range, layout/range, and
-provenance facts are currently durable versus route-local. Completion means
-`todo.md` records accepted carrier inputs and missing lower-level facts.
+Inspect current BIR/HIR/control-flow surfaces for dynamic index range proof,
+path/dominance, and no-clobber evidence. Completion means `todo.md` records
+available proof inputs, missing facts, and whether a bounded contract exists.
 
-### Step 2: Define Address Derivation And Index-Range Carrier Contract
+### Step 2: Define Range Proof And Path-Dominance Contract
 
-Define the durable carrier shape and unavailable statuses. Completion means the
-contract names fields for source object identity, derivation site, ordered
-element path, index identities, range proof, path/dominance validity,
-layout/range, scalar in-bounds status, and provenance status.
+Define required carrier fields and unavailable statuses. Completion means the
+contract names proof source, index identity, bounds, comparison predicate,
+path/dominance validity, no-clobber validity, and fail-closed statuses.
 
-### Step 3: Implement Or Route Carrier Producer
+### Step 3: Implement Or Route Proof Carrier
 
-Implement the bounded carrier packet if Step 2 identifies one. If current data
-cannot prove index ranges or derivation identity without raw-shape inference,
-record the exact lower owner and stop without changing idea 484 packaging,
-scalar loads, or RV64 lowering.
+Implement the bounded proof carrier if Step 2 identifies one. If current data
+cannot prove path/dominance or no-clobber without raw-shape inference, record
+the exact lower owner and stop without changing idea 485, idea 484, scalar
+loads, or RV64 lowering.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe the selected representatives and decide whether idea 485 is complete,
-blocked by another lower-level source, or ready to hand off to idea 484
-packaging work.
+Re-probe selected dynamic index representatives and decide whether 486 is
+complete, blocked by another lower-level source, or ready to hand back to idea
+485/484 packaging work.

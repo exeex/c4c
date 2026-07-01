@@ -1,69 +1,57 @@
 Status: Active
-Source Idea Path: ideas/open/485_bir_local_array_address_derivation_index_range_authority_carrier.md
+Source Idea Path: ideas/open/486_bir_index_range_proof_path_dominance_carrier.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Index Range Proof Inputs
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 for idea 485 by recording residual disposition after the
-local array carrier records landed.
+Closed idea 485 as complete for source-object, derivation, and layout carrier
+records and activated prerequisite idea 486, `BIR Index Range Proof And
+Path-Dominance Carrier`.
 
-Close-readiness classification:
+Reason:
 
-| Scope | Disposition |
-| --- | --- |
-| Source-object carrier records | Complete for static local arrays lowered from explicit local array `alloca` evidence |
-| Derivation records | Complete for explicit local array/view GEP paths with durable source-object identity |
-| Element-path/layout records | Complete for constant in-bounds static local-array GEP paths |
-| Dynamic index representative rows | Still unavailable as `missing_index_range_proof`; no loop-shape or value-name inference is allowed |
-| Path/dominance validity | Not produced by idea 485; requires a separate producer for range proof and consumer-path coverage |
-| Idea 484 packaging | May resume only to consume/classify the new source-object/derivation/layout carrier surface; dynamic representative packaging remains blocked until index-range/path-dominance authority exists |
-| Scalar local-load production | Must remain blocked for dynamic local array loads until local-address provenance is fully available; no scalar-load consumer was enabled by idea 485 |
+- idea 485 Step 3 added durable local-array source-object, derivation, and
+  element-path/layout records;
+- dynamic local-array GEP rows remain unavailable as
+  `missing_index_range_proof`;
+- range proof, path/dominance validity, and index no-clobber are separate
+  proof-carrier responsibilities.
 
-Representative Step 3 coverage already proves:
+Key evidence:
 
-| Case | Expected carrier result |
-| --- | --- |
-| Static `[4 x i32]` local array plus constant GEP | source-object, derivation, and element-path/layout records are `available` |
-| Static `[4 x i32]` local array plus dynamic GEP | source-object/derivation/path shape exists, path status is `missing_index_range_proof` |
-| Local aggregate/member GEP | no local-array carrier authority is published |
-
-Artifact:
-
+- `build/agent_state/485_step3_local_array_carrier_producer/summary.md`
 - `build/agent_state/485_step4_residual_disposition/disposition.md`
 
 ## Suggested Next
 
-Route the next owner to a dedicated `BIR index range proof and path-dominance
-carrier` idea/packet. Its first job should be to publish explicit range proof,
-dominance/path coverage, and index no-clobber facts for dynamic local array
-indices before idea 484 packaging or scalar local-load production consumes
-dynamic rows.
+Execute Step 1: audit index range proof inputs for dynamic local-array indices.
+Determine whether current control-flow/proof surfaces can provide explicit
+proof source, bounds, path/dominance coverage, and no-clobber facts for a
+representative dynamic local-array access.
 
 ## Watchouts
 
-- The Step 3 carrier records are producer metadata only; downstream scalar
-  local-load consumption and RV64/MIR lowering remain out of scope.
-- Dynamic representatives such as the `pr38048-1.c` `a#L1[i#L3][0]` shape
-  still lack range/path proof and must remain unavailable until a producer
-  publishes those facts.
-- Aggregate/member, global, integer-pointer round-trip, variadic/runtime,
-  F128, complex/vector, volatile/atomic, bootstrap, raw-shape-only, and
-  target-only/final-home-only cases remain fail-closed.
-- The new records are not printed yet; focused tests inspect lowered BIR
-  directly.
-- Idea 485 is close-ready as the source-object/derivation/layout carrier slice
-  once the supervisor accepts the Step 3 code and this Step 4 disposition.
+- Do not infer index range from loop shape, value names, testcase names, dump
+  order, final homes, or RV64 target behavior.
+- Do not mark dynamic GEP rows available without proof source,
+  path/dominance, and no-clobber facts.
+- Do not change idea 485 carrier records, idea 484 packaging, scalar local-load
+  consumption, or RV64/MIR lowering in this proof-carrier packet.
+- Do not touch `review/`, canonical logs, baseline files, implementation files,
+  or tests until an executor receives a bounded packet.
 
 ## Proof
 
-Delegated proof:
+Lifecycle validation:
 
 ```sh
 git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
