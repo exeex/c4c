@@ -1648,6 +1648,12 @@ c4c_add_backend_rv64_object_runtime_case(
   EXPECTED_RUN_CODE 6
   LABELS scalar return call local scan
 )
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_callee_saved_gpr_live_across_call
+  SRC "${BACKEND_CASE_ROOT}/riscv64_callee_saved_gpr_live_across_call.c"
+  CASE_TIMEOUT_SEC 10
+  LABELS scalar return call callee_saved prepared_gpr scan
+)
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_return_add_sub_chain
   SRC "${BACKEND_CASE_ROOT}/return_add_sub_chain.c"
