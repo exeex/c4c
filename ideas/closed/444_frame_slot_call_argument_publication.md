@@ -88,3 +88,19 @@ segfault rows share the same owner.
 - Reject broad call-lowering rewrites that are not tied to frame-slot
   call-argument publication or that leave the old missing-publication failure
   mode intact behind a new abstraction name.
+
+## Closure Note
+
+Closed after the prepared publication layer began carrying frame-slot address
+payload authority for call arguments and RV64 object lowering consumed that
+published payload instead of stale register state.
+
+Accepted proof used the object route. Fresh `src/20080506-2.c` validation
+showed `payload_frame_slot_present=yes`, `clang_qemu_rc=0`, `c4c_qemu_rc=0`,
+and `representative_match=yes`. Focused ordinary-C coverage
+`backend_obj_runtime_rv64_frame_slot_pointer_arg_preserves_payload` passed, and
+the backend subset passed 331/331.
+
+Text `--codegen asm` remains outside this route's acceptance scope; the
+ordinary-C coverage probe recorded that optional text execution still returned
+qemu 132 and was intentionally not registered as supported coverage.
