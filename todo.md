@@ -1,35 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Implement Real Bounded Effect Scan Or Classify Lower Blocker
+Current Step ID: 5
+Current Step Title: Residual Disposition And Handback Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 classified the lower blocker instead of publishing synthetic
-availability. The production tree has Step 3 endpoint bridge records and
-selected proof-edge proof coordinates, but it does not yet have a production
-builder that owns the proof-source-to-endpoint interval and populates ordered
-effect-source records from prepared/BIR sources.
+Step 5 completed residual disposition after Step 4 classified the lower
+blocker. Idea 494 cannot resume available interval fact publication yet: Step
+3 provides bounded endpoint bridge records, but the lower endpoint/effect
+owner still must add ordered effect-source stream population for the selected
+proof-source-to-endpoint interval before any available no-clobber facts can be
+published.
 
-The blocker is recorded in
-`build/agent_state/497_step4_lower_blocker/blocker.md` as missing ordered
-effect-source stream population. No available no-clobber facts were published.
+The disposition is recorded in
+`build/agent_state/497_step5_residual_disposition/disposition.md`.
 
 ## Suggested Next
 
-Add the lower production effect-stream builder before attempting Step 4
-availability. The next coherent packet should define and populate comparable
-effect-source records for the selected proof-source-to-endpoint interval, then
-wire the interval classifier to consume the builder-backed bounded scan record
-without requiring the legacy `endpoint_bridge_available` compatibility boolean.
+Return to the lower effect-source owner. The next coherent packet should
+define and populate comparable ordered effect-source records for the selected
+proof-source-to-endpoint interval, then wire the interval classifier to consume
+the builder-backed bounded scan record without requiring the legacy
+`endpoint_bridge_available` compatibility boolean.
 
 ## Watchouts
 
 - Step 3 intentionally added endpoint records only; available interval facts
-  still require Step 4's bounded effect scan.
+  still require a production bounded effect scan backed by ordered effect
+  sources.
 - Do not treat `lir_producer_instruction_index` as a prepared traversal index,
   BIR instruction index, or ordered effect endpoint.
 - The committed interval surface still exposes synthetic compatibility
@@ -41,13 +42,15 @@ without requiring the legacy `endpoint_bridge_available` compatibility boolean.
 - Do not populate idea 489 proof facts, idea 486 checker inputs, idea 490
   certification, idea 484 packaging, scalar local-load consumption, or RV64/MIR
   lowering.
+- Idea 494 should remain in fail-closed status mode until the lower
+  effect-source stream builder exists.
 
 ## Proof
 
 ```sh
-cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' && git diff --check
+git diff --check
 ```
 
-Result: passed. The build completed, all 328 `backend_` tests passed, and
-`git diff --check` reported no whitespace errors. No root proof log was written
-because this delegated packet listed `test_after.log` under Do Not Touch.
+Result: passed. `git diff --check` reported no whitespace errors. No root
+proof log was written because this delegated packet listed `test_after.log`
+under Do Not Touch.
