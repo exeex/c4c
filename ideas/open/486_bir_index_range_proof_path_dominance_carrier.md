@@ -1,6 +1,6 @@
 # BIR Index Range Proof And Path-Dominance Carrier
 
-Status: Closed
+Status: Open
 Type: BIR semantic proof carrier/producer prerequisite idea
 Parent: `ideas/closed/485_bir_local_array_address_derivation_index_range_authority_carrier.md`
 Source Evidence:
@@ -8,6 +8,7 @@ Source Evidence:
 - `build/agent_state/485_step4_residual_disposition/disposition.md`
 Owning Layer: BIR semantic index range proof and path/dominance authority
 Closed By: lifecycle review after Step 4
+Reopened After: ideas/closed/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
 
 ## Completion Notes
 
@@ -52,12 +53,34 @@ Required follow-up scope:
 
 ## Residual Disposition
 
-Real dynamic row availability remains blocked. Idea 486 did not add idea 485
+Real dynamic row availability was previously blocked by missing real proof
+facts. Idea 489 now publishes `local_array_proof_facts` from production
+`local_array_index_range_proofs`, so reopened 486 should populate checker inputs
+from that proof-fact surface.
+
+The reopened work must keep the original checker/status carrier boundary:
+consume proof facts, preserve fail-closed statuses, and do not add idea 485
 carrier consumer changes, idea 484 packaging, scalar local-load consumption,
 RV64/MIR lowering, or any raw loop-shape/value-name/testcase-name inference.
 
 `MemoryDynamicArrayRangeVerdict::BoundedByElementCount` remains insufficient by
 itself because it lacks proof source, path/dominance, and no-clobber authority.
+
+## Reopened Lifecycle Disposition
+
+Idea 489 Step 6 says checker input population can resume:
+
+- `local_array_proof_facts` publishes `Available` only from matching production
+  range certificates for the same dynamic local-array producer;
+- fail-closed representatives remain distinguishable for missing/non-available
+  proof facts, selected-path-only or interval-only inference, unsupported
+  boundary, missing coordinate, clobber, alias/phi ambiguity, unknown effect,
+  non-covering path, non-dominating/non-guarding proof, and coordinate
+  confusion;
+- idea 486 should consume `local_array_proof_facts` instead of re-deriving
+  availability from `local_array_index_range_proofs`, selected paths, interval
+  effects, endpoint bridges, final homes, raw testcase shape, or synthetic
+  effect inputs.
 
 ## Validation
 
@@ -68,8 +91,9 @@ git diff --check
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
 ```
 
-Both passed. `test_after.log` was absent at close time, and this lifecycle task
-forbade touching canonical logs, so no new after log was generated.
+Both passed in the original close. The lifecycle retry that reopened 486
+generated `test_after.log` and ran the regression-guard self-comparison against
+the backend `test_before.log`; the guard stayed at `328/328` passed.
 
 ## Reviewer Reject Signals
 

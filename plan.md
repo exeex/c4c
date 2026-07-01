@@ -1,69 +1,66 @@
-# BIR Dynamic Local-Array Proof Population From LIR Coordinates Plan
+# BIR Index Range Proof Checker Input Population Plan
 
 Status: Active
-Source Idea: ideas/open/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
-Reopened After: ideas/closed/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md
+Source Idea: ideas/open/486_bir_index_range_proof_path_dominance_carrier.md
+Reopened After: ideas/closed/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
 
 ## Purpose
 
-Resume idea 489 after the lower path/no-clobber certificate producer closed.
-The active work is no longer to discover missing lower owners; it is to
-populate dynamic local-array proof facts by consuming the now-production
-`local_array_index_range_proofs` certificate surface.
+Resume idea 486 after the proof-fact producer layer closed. The original idea
+added the checker/status carrier with synthetic inputs; the active work is to
+populate production checker inputs by consuming `local_array_proof_facts`.
 
 ## Goal
 
-Populate real dynamic local-array proof facts for LIR-coordinate-backed
-producer rows without re-deriving path coverage, dominance/guard validity, or
-same-value/no-clobber evidence.
+Turn available dynamic local-array proof facts into checker inputs for the
+existing index range/path-dominance carrier while preserving fail-closed status
+mapping.
 
 ## Core Rule
 
-Dynamic local-array proof facts may be marked available only from matching
-`local_array_index_range_proofs` records. Branch proximity, selected path
-availability alone, interval facts alone, endpoint bridges, final homes, target
-behavior, raw testcase shape, synthetic effect inputs, and
-`lir_producer_instruction_index` reinterpretation remain insufficient.
+Checker inputs may use `local_array_proof_facts` as authority. They must not
+infer availability from raw selected paths, interval effects, endpoint bridges,
+final homes, `local_array_index_range_proofs` directly, testcase shape, names,
+or target behavior.
 
 ## Read First
 
-- ideas/open/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
-- ideas/closed/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md
-- build/agent_state/489_step2_lir_coordinate_proof_population_contract/contract.md
-- build/agent_state/489_step3_proof_population_route/route.md
-- build/agent_state/489_step4_residual_disposition/disposition.md
-- build/agent_state/490_step5_range_proof_from_lower_authorities/summary.md
-- build/agent_state/490_step6_residual_disposition_after_lower_authorities/disposition.md
+- ideas/open/486_bir_index_range_proof_path_dominance_carrier.md
+- ideas/closed/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
+- build/agent_state/486_step3_range_proof_path_dominance_carrier/summary.md
+- build/agent_state/486_step4_residual_disposition/disposition.md
+- build/agent_state/489_step5_proof_facts_from_range_certificates/summary.md
+- build/agent_state/489_step6_residual_disposition_after_proof_facts/disposition.md
 
 ## Resumed State
 
-- Idea 488 exposed durable `lir_producer_*` coordinates and lookup keys.
-- Idea 489 previously routed because path/no-clobber certificates were absent.
-- Idea 490 now publishes `local_array_index_range_proofs` from lower
-  selected-path and interval-effect authorities.
-- Idea 489 can resume proof population by consuming those certificates.
+- Idea 486 already owns the range proof status vocabulary, checker input
+  structure, proof record, and `evaluate_local_array_index_range_proof`.
+- Idea 489 now publishes `local_array_proof_facts` from matching production
+  `local_array_index_range_proofs`.
+- Reopened 486 should bridge proof facts into checker inputs and leave the
+  existing checker semantics intact.
 
 ## Current Targets
 
 - Inputs:
-  - dynamic local-array element path records with available `lir_producer_*`
-    coordinates and `address_derivation` role;
-  - `local_array_index_range_proofs` records populated by idea 490;
-  - existing dynamic local-array proof fact/checker-facing surfaces.
+  - dynamic local-array element path records from idea 485;
+  - `local_array_proof_facts` records from idea 489;
+  - existing checker input and proof record surfaces from idea 486.
 - Outputs:
-  - available proof facts for clean bounded dynamic local-array rows;
-  - precise unavailable status mapping for certificate failures;
-  - residual disposition stating whether idea 486 checker input population can
-    resume.
+  - production checker inputs populated from matching available proof facts;
+  - available checker records for clean bounded dynamic rows;
+  - distinguishable fail-closed statuses when proof facts are missing,
+    unavailable, mismatched, or ambiguous;
+  - residual disposition for whether idea 484 packaging can resume.
 
 ## Non-Goals
 
-- Recomputing selected proof-edge path coverage or interval no-clobber from
-  raw control-flow/effect data.
-- Reopening closed lower owners 490 through 498 unless a concrete regression
+- Recomputing selected-path coverage, dominance/guard validity, or
+  same-value/no-clobber interval facts.
+- Consuming `local_array_index_range_proofs` directly as checker input evidence.
+- Reopening closed lower owners 487 through 489 unless a concrete regression
   proves their handback wrong.
-- Populating idea 486 checker inputs directly unless this active plan explicitly
-  reaches that downstream handoff.
 - Idea 484 packaging, scalar local-load consumption, RV64/MIR lowering, or
   broad generic range analysis.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
@@ -72,21 +69,21 @@ behavior, raw testcase shape, synthetic effect inputs, and
 
 ## Working Model
 
-Idea 489 owns the proof-fact producer layer above the certificate surface.
-It should treat `local_array_index_range_proofs` as the lower authority and
-translate available certificates into proof facts that downstream checker input
-population can consume. It must preserve fail-closed certificate statuses
-instead of hiding them behind generic availability.
+Idea 486 owns the checker input layer and range proof verdict/status carrier.
+It should treat `local_array_proof_facts` as the immediate production proof
+source, map available proof facts into existing checker inputs, and preserve
+unavailable proof-fact statuses rather than replacing them with generic
+missing-proof failures.
 
 ## Execution Rules
 
+- Match checker inputs to proof facts by element path identity, producer lookup
+  key, proof identity, dynamic index, and normalized bounds where those fields
+  exist.
 - Preserve `lir_producer_instruction_index` as an LIR producer-site coordinate.
-- Match proof facts to certificate records by element path identity, producer
-  lookup key, proof identity, dynamic index, and normalized bounds where those
-  fields exist.
 - Do not infer availability from selected paths, interval effects, endpoint
-  bridges, final homes, names, or testcase shape.
-- Keep proof fact publication separate from checker input population.
+  bridges, final homes, branch proximity, names, or testcase shape.
+- Keep checker input population separate from idea 484 provenance packaging.
 - Code-changing proof:
 
 ```sh
@@ -103,24 +100,24 @@ git diff --check
 
 ## Steps
 
-### Step 5: Populate Proof Facts From Range Proof Certificates
+### Step 5: Populate Checker Inputs From Proof Facts
 
-Wire dynamic local-array proof fact publication to consume matching
-`local_array_index_range_proofs`.
+Wire production checker input population to consume matching
+`local_array_proof_facts`.
 
 Completion means focused backend coverage proves one clean production-backed
-available proof fact and preserves fail-closed behavior for missing certificate,
-non-available certificate, selected-path-only or interval-only inference,
+available checker record and preserves fail-closed behavior for missing proof
+fact, non-available proof fact, selected-path-only or interval-only inference,
 unsupported boundary, missing coordinate, clobber, alias/phi, unknown effect,
 non-covering path, non-dominating/non-guarding proof, and coordinate-confusion
 representatives.
 
-### Step 6: Residual Disposition For Idea 486
+### Step 6: Residual Disposition For Idea 484
 
 Re-probe available and fail-closed representatives after Step 5 and decide
-whether idea 486 checker input population can resume, or whether another proof
-fact owner remains first.
+whether idea 484 packaging can resume, or whether another checker-input owner
+remains first.
 
 Completion means `todo.md` records the residual disposition, names the next
-idea that should resume, and identifies any remaining lower blocker if 486
+idea that should resume, and identifies any remaining lower blocker if 484
 cannot resume.
