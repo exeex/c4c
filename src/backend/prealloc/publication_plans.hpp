@@ -2280,6 +2280,8 @@ void populate_local_array_index_range_proofs(PreparedBirModule& prepared);
 
 void populate_local_array_proof_facts(PreparedBirModule& prepared);
 
+void populate_local_array_index_range_checker_inputs(PreparedBirModule& prepared);
+
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs);

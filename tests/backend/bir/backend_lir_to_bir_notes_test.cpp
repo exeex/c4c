@@ -8401,6 +8401,141 @@ int expect_local_array_proof_fact_consumes_range_certificates() {
   return 0;
 }
 
+int expect_local_array_checker_inputs_consume_proof_facts() {
+  const auto path = make_dynamic_local_array_selected_edge_path();
+  const auto selected_path = bir::evaluate_local_array_selected_proof_edge_path(
+      complete_selected_proof_edge_inputs(&path));
+  const auto interval_effect = bir::LocalArrayIntervalEffectRecord{
+      .status = bir::LocalArrayIntervalEffectStatus::Available,
+      .selected_path = &selected_path,
+      .lir_producer_lookup_key = selected_path.lir_producer_lookup_key,
+      .lir_producer_function_name = selected_path.lir_producer_function_name,
+      .lir_producer_block_label = selected_path.lir_producer_block_label,
+      .lir_producer_instruction_index =
+          selected_path.lir_producer_instruction_index,
+      .dynamic_index = bir::Value::named(TypeKind::I64, "%idx"),
+      .proof_function_name = selected_path.proof_function_name,
+      .proof_block_label = selected_path.proof_block_label,
+      .selected_successor_label = selected_path.selected_successor_label,
+  };
+  const auto range_proof =
+      bir::evaluate_local_array_index_range_proof_certificate(
+          bir::LocalArrayRangeProofCertificateInputs{
+              .element_path = &path,
+              .selected_path = &selected_path,
+              .interval_effect = &interval_effect,
+          });
+  const auto proof_fact = bir::evaluate_local_array_proof_fact(
+      bir::LocalArrayProofFactInputs{
+          .element_path = &path,
+          .range_proof = &range_proof,
+      });
+  if (proof_fact.status != bir::LocalArrayRangeProofStatus::Available) {
+    return fail("checker input fixture should start from an available proof fact");
+  }
+
+  const auto available = bir::evaluate_local_array_index_range_checker_input(
+      bir::LocalArrayIndexRangeCheckerInputInputs{
+          .element_path = &path,
+          .proof_fact = &proof_fact,
+      });
+  if (available.status != bir::LocalArrayRangeProofStatus::Available ||
+      available.proof_fact != &proof_fact ||
+      available.checker_record.status != bir::LocalArrayRangeProofStatus::Available ||
+      available.checker_record.dynamic_index !=
+          bir::Value::named(TypeKind::I64, "%idx") ||
+      available.inputs.element_path != &path ||
+      available.inputs.consumer_function_name != path.lir_producer_function_name ||
+      available.inputs.consumer_instruction_index !=
+          path.lir_producer_instruction_index ||
+      !available.inputs.no_clobber_known) {
+    return fail("checker input should publish available records from available proof facts");
+  }
+  auto operand_mismatch = proof_fact;
+  operand_mismatch.proof_lhs = bir::Value::named(TypeKind::I64, "%other.lhs");
+  operand_mismatch.proof_rhs = bir::Value::immediate_i64(4);
+  const auto operand_mismatch_record =
+      bir::evaluate_local_array_index_range_checker_input(
+          bir::LocalArrayIndexRangeCheckerInputInputs{
+              .element_path = &path,
+              .proof_fact = &operand_mismatch,
+          });
+  if (operand_mismatch_record.status !=
+          bir::LocalArrayRangeProofStatus::OperandRoleMismatch ||
+      operand_mismatch_record.checker_record.status !=
+          bir::LocalArrayRangeProofStatus::OperandRoleMismatch ||
+      operand_mismatch_record.inputs.operand_roles_match_index) {
+    return fail("checker input should preserve operand-role validation");
+  }
+
+  const auto expect_status =
+      [&](bir::LocalArrayIndexRangeCheckerInputInputs inputs,
+          bir::LocalArrayRangeProofStatus expected_status,
+          const char* failure_message) -> int {
+    const auto record =
+        bir::evaluate_local_array_index_range_checker_input(inputs);
+    if (record.status != expected_status ||
+        record.checker_record.status != expected_status) {
+      return fail(failure_message);
+    }
+    return 0;
+  };
+
+  if (bir::local_array_range_proof_status_name(
+          bir::LocalArrayRangeProofStatus::MissingProofFact) !=
+      "missing_proof_fact") {
+    return fail("checker input missing-proof-fact status name should remain stable");
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayIndexRangeCheckerInputInputs{.element_path = &path},
+          bir::LocalArrayRangeProofStatus::MissingProofFact,
+          "checker input should reject missing proof facts");
+      rc != 0) {
+    return rc;
+  }
+
+  auto coordinate_confusion = proof_fact;
+  coordinate_confusion.element_path = nullptr;
+  coordinate_confusion.lir_producer_lookup_key = "other";
+  if (const int rc = expect_status(
+          bir::LocalArrayIndexRangeCheckerInputInputs{
+              .element_path = &path,
+              .proof_fact = &coordinate_confusion,
+          },
+          bir::LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion,
+          "checker input should reject coordinate-confused proof facts");
+      rc != 0) {
+    return rc;
+  }
+
+  const bir::LocalArrayRangeProofStatus statuses[] = {
+      bir::LocalArrayRangeProofStatus::SelectedPathOnlyInference,
+      bir::LocalArrayRangeProofStatus::IntervalEffectOnlyInference,
+      bir::LocalArrayRangeProofStatus::UnsupportedBoundary,
+      bir::LocalArrayRangeProofStatus::MissingLirProducerCoordinate,
+      bir::LocalArrayRangeProofStatus::InlineAsmClobbersIndex,
+      bir::LocalArrayRangeProofStatus::IndexPhiOrAliasUnresolved,
+      bir::LocalArrayRangeProofStatus::CallOrHelperEffectUnknown,
+      bir::LocalArrayRangeProofStatus::PathNotCoveringConsumer,
+      bir::LocalArrayRangeProofStatus::ProofNotDominatingConsumer,
+  };
+  for (const auto status : statuses) {
+    auto failing_fact = proof_fact;
+    failing_fact.status = status;
+    if (const int rc = expect_status(
+            bir::LocalArrayIndexRangeCheckerInputInputs{
+                .element_path = &path,
+                .proof_fact = &failing_fact,
+            },
+            status,
+            "checker input should preserve non-available proof fact status");
+        rc != 0) {
+      return rc;
+    }
+  }
+  return 0;
+}
+
 int expect_real_dynamic_local_array_row_remains_unavailable_without_range_proof() {
   auto result =
       try_lower_to_bir_with_options(make_local_array_carrier_dynamic_gep_module(),
@@ -10590,6 +10725,11 @@ int main() {
           expect_local_array_proof_fact_consumes_range_certificates();
       local_array_proof_fact_status != 0) {
     return local_array_proof_fact_status;
+  }
+  if (const int local_array_checker_input_status =
+          expect_local_array_checker_inputs_consume_proof_facts();
+      local_array_checker_input_status != 0) {
+    return local_array_checker_input_status;
   }
   if (const int real_dynamic_local_array_status =
           expect_real_dynamic_local_array_row_remains_unavailable_without_range_proof();

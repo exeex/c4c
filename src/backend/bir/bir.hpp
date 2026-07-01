@@ -1981,6 +1981,7 @@ evaluate_local_array_selected_proof_edge_path(
 enum class LocalArrayRangeProofStatus : unsigned char {
   Available,
   MissingLocalArrayPath,
+  MissingProofFact,
   MissingRangeProofCertificate,
   MissingSelectedProofEdgePath,
   SelectedPathOnlyInference,
@@ -2023,6 +2024,8 @@ enum class LocalArrayRangeProofStatus : unsigned char {
       return "available";
     case LocalArrayRangeProofStatus::MissingLocalArrayPath:
       return "missing_local_array_path";
+    case LocalArrayRangeProofStatus::MissingProofFact:
+      return "missing_proof_fact";
     case LocalArrayRangeProofStatus::MissingRangeProofCertificate:
       return "missing_range_proof_certificate";
     case LocalArrayRangeProofStatus::MissingSelectedProofEdgePath:
@@ -2163,6 +2166,13 @@ struct LocalArrayIndexRangeProofRecord {
   std::optional<std::size_t> proof_instruction_index;
   LocalArrayRangeProofSourceKind proof_source_kind =
       LocalArrayRangeProofSourceKind::None;
+  Value proof_lhs;
+  Value proof_rhs;
+  TypeKind compare_type = TypeKind::Void;
+  LocalArrayRangeProofPredicate lower_predicate =
+      LocalArrayRangeProofPredicate::Unknown;
+  LocalArrayRangeProofPredicate upper_predicate =
+      LocalArrayRangeProofPredicate::Unknown;
   std::int64_t normalized_lower_bound = 0;
   std::size_t normalized_upper_bound = 0;
   bool lower_bound_inclusive = true;
@@ -2200,6 +2210,13 @@ struct LocalArrayProofFactRecord {
   std::optional<std::size_t> proof_instruction_index;
   LocalArrayRangeProofSourceKind proof_source_kind =
       LocalArrayRangeProofSourceKind::None;
+  Value proof_lhs;
+  Value proof_rhs;
+  TypeKind compare_type = TypeKind::Void;
+  LocalArrayRangeProofPredicate lower_predicate =
+      LocalArrayRangeProofPredicate::Unknown;
+  LocalArrayRangeProofPredicate upper_predicate =
+      LocalArrayRangeProofPredicate::Unknown;
   std::int64_t normalized_lower_bound = 0;
   std::size_t normalized_upper_bound = 0;
   bool lower_bound_inclusive = true;
@@ -2208,6 +2225,20 @@ struct LocalArrayProofFactRecord {
   bool proof_dominates_consumer = false;
   bool path_covers_consumer = false;
   bool no_clobber_known = false;
+};
+
+struct LocalArrayIndexRangeCheckerInputInputs {
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  const LocalArrayProofFactRecord* proof_fact = nullptr;
+};
+
+struct LocalArrayIndexRangeCheckerInputRecord {
+  LocalArrayRangeProofStatus status =
+      LocalArrayRangeProofStatus::MissingLocalArrayPath;
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  const LocalArrayProofFactRecord* proof_fact = nullptr;
+  LocalArrayIndexRangeProofInputs inputs;
+  LocalArrayIndexRangeProofRecord checker_record;
 };
 
 [[nodiscard]] inline const LocalArrayIndexRecord* single_dynamic_local_array_index(
@@ -2261,6 +2292,11 @@ evaluate_local_array_index_range_proof(
       .consumer_instruction_index = inputs.consumer_instruction_index,
       .proof_instruction_index = inputs.proof_instruction_index,
       .proof_source_kind = inputs.proof_source_kind,
+      .proof_lhs = inputs.proof_lhs,
+      .proof_rhs = inputs.proof_rhs,
+      .compare_type = inputs.compare_type,
+      .lower_predicate = inputs.lower_predicate,
+      .upper_predicate = inputs.upper_predicate,
       .normalized_lower_bound = inputs.lower_bound,
       .normalized_upper_bound = inputs.upper_bound,
       .lower_bound_inclusive = inputs.lower_bound_inclusive,
@@ -2750,6 +2786,11 @@ evaluate_local_array_proof_fact(const LocalArrayProofFactInputs& inputs) {
   fact.proof_block_label = inputs.range_proof->proof_block_label;
   fact.proof_instruction_index = inputs.range_proof->proof_instruction_index;
   fact.proof_source_kind = inputs.range_proof->proof_source_kind;
+  fact.proof_lhs = inputs.range_proof->proof_lhs;
+  fact.proof_rhs = inputs.range_proof->proof_rhs;
+  fact.compare_type = inputs.range_proof->compare_type;
+  fact.lower_predicate = inputs.range_proof->lower_predicate;
+  fact.upper_predicate = inputs.range_proof->upper_predicate;
   fact.normalized_lower_bound = inputs.range_proof->normalized_lower_bound;
   fact.normalized_upper_bound = inputs.range_proof->normalized_upper_bound;
   fact.lower_bound_inclusive = inputs.range_proof->lower_bound_inclusive;
@@ -2822,6 +2863,113 @@ evaluate_local_array_proof_fact(const LocalArrayProofFactInputs& inputs) {
 
   fact.status = LocalArrayRangeProofStatus::Available;
   return fact;
+}
+
+[[nodiscard]] inline bool local_array_proof_fact_matches_element_path(
+    const LocalArrayProofFactRecord& proof_fact,
+    const LocalArrayElementPathRecord& element_path) {
+  if (proof_fact.element_path == &element_path) {
+    return true;
+  }
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      single_dynamic_local_array_index(element_path, &saw_multiple_dynamic_indices);
+  return dynamic_index != nullptr &&
+         !saw_multiple_dynamic_indices &&
+         proof_fact.lir_producer_lookup_key ==
+             element_path.lir_producer_lookup_key &&
+         proof_fact.lir_producer_function_name ==
+             element_path.lir_producer_function_name &&
+         proof_fact.lir_producer_block_label ==
+             element_path.lir_producer_block_label &&
+         proof_fact.lir_producer_instruction_index ==
+             element_path.lir_producer_instruction_index &&
+         local_array_range_proof_same_value(proof_fact.dynamic_index,
+                                            dynamic_index->value);
+}
+
+[[nodiscard]] inline LocalArrayIndexRangeCheckerInputRecord
+evaluate_local_array_index_range_checker_input(
+    const LocalArrayIndexRangeCheckerInputInputs& inputs) {
+  LocalArrayIndexRangeCheckerInputRecord record{
+      .element_path = inputs.element_path,
+      .proof_fact = inputs.proof_fact,
+  };
+  if (inputs.element_path == nullptr) {
+    record.status = LocalArrayRangeProofStatus::MissingLocalArrayPath;
+    record.checker_record.status = record.status;
+    return record;
+  }
+  if (inputs.proof_fact == nullptr) {
+    record.status = LocalArrayRangeProofStatus::MissingProofFact;
+    record.inputs.element_path = inputs.element_path;
+    record.checker_record = LocalArrayIndexRangeProofRecord{
+        .status = record.status,
+        .element_path = inputs.element_path,
+    };
+    return record;
+  }
+  if (!local_array_proof_fact_matches_element_path(*inputs.proof_fact,
+                                                   *inputs.element_path)) {
+    record.status = LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion;
+    record.inputs.element_path = inputs.element_path;
+    record.checker_record = LocalArrayIndexRangeProofRecord{
+        .status = record.status,
+        .element_path = inputs.element_path,
+    };
+    return record;
+  }
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      single_dynamic_local_array_index(*inputs.element_path,
+                                       &saw_multiple_dynamic_indices);
+  const bool operand_roles_match_index =
+      dynamic_index != nullptr &&
+      !saw_multiple_dynamic_indices &&
+      (local_array_range_proof_same_value(inputs.proof_fact->proof_lhs,
+                                          dynamic_index->value) ||
+       local_array_range_proof_same_value(inputs.proof_fact->proof_rhs,
+                                          dynamic_index->value));
+
+  record.inputs = LocalArrayIndexRangeProofInputs{
+      .element_path = inputs.element_path,
+      .consumer_function_name = inputs.proof_fact->lir_producer_function_name,
+      .proof_function_name = inputs.proof_fact->proof_function_name,
+      .consumer_block_label = inputs.proof_fact->lir_producer_block_label,
+      .proof_block_label = inputs.proof_fact->proof_block_label,
+      .consumer_instruction_index =
+          inputs.proof_fact->lir_producer_instruction_index,
+      .proof_instruction_index = inputs.proof_fact->proof_instruction_index,
+      .proof_source_kind = inputs.proof_fact->proof_source_kind,
+      .proof_lhs = inputs.proof_fact->proof_lhs,
+      .proof_rhs = inputs.proof_fact->proof_rhs,
+      .compare_type = inputs.proof_fact->compare_type,
+      .lower_predicate = inputs.proof_fact->lower_predicate,
+      .upper_predicate = inputs.proof_fact->upper_predicate,
+      .lower_bound_available = true,
+      .lower_bound = inputs.proof_fact->normalized_lower_bound,
+      .lower_bound_inclusive = inputs.proof_fact->lower_bound_inclusive,
+      .upper_bound_available = true,
+      .upper_bound = inputs.proof_fact->normalized_upper_bound,
+      .upper_bound_exclusive = inputs.proof_fact->upper_bound_exclusive,
+      .operand_roles_match_index = operand_roles_match_index,
+      .path_validity_known = inputs.proof_fact->path_validity_known,
+      .proof_dominates_consumer =
+          inputs.proof_fact->proof_dominates_consumer,
+      .path_covers_consumer = inputs.proof_fact->path_covers_consumer,
+      .no_clobber_known = inputs.proof_fact->no_clobber_known,
+  };
+  if (inputs.proof_fact->status != LocalArrayRangeProofStatus::Available) {
+    record.status = inputs.proof_fact->status;
+    record.checker_record = LocalArrayIndexRangeProofRecord{
+        .status = record.status,
+        .element_path = inputs.element_path,
+    };
+    return record;
+  }
+  record.checker_record = evaluate_local_array_index_range_proof(record.inputs);
+  record.status = record.checker_record.status;
+  return record;
 }
 
 enum class GlobalAddressMaterializationPolicy {
@@ -4971,6 +5119,8 @@ struct Function {
   std::vector<LocalArrayIntervalEffectRecord> local_array_interval_effects;
   std::vector<LocalArrayIndexRangeProofRecord> local_array_index_range_proofs;
   std::vector<LocalArrayProofFactRecord> local_array_proof_facts;
+  std::vector<LocalArrayIndexRangeCheckerInputRecord>
+      local_array_index_range_checker_inputs;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;

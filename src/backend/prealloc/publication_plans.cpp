@@ -5579,6 +5579,54 @@ void populate_local_array_proof_facts(PreparedBirModule& prepared) {
   }
 }
 
+[[nodiscard]] const bir::LocalArrayProofFactRecord*
+find_local_array_proof_fact_for_path(
+    const bir::Function& function,
+    const bir::LocalArrayElementPathRecord& path,
+    bool* duplicate) {
+  const bir::LocalArrayProofFactRecord* found = nullptr;
+  if (duplicate != nullptr) {
+    *duplicate = false;
+  }
+  for (const auto& proof_fact : function.local_array_proof_facts) {
+    if (!bir::local_array_proof_fact_matches_element_path(proof_fact, path)) {
+      continue;
+    }
+    if (found != nullptr) {
+      if (duplicate != nullptr) {
+        *duplicate = true;
+      }
+      return found;
+    }
+    found = &proof_fact;
+  }
+  return found;
+}
+
+void populate_local_array_index_range_checker_inputs(
+    PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.local_array_index_range_checker_inputs.clear();
+    for (const auto& path : function.local_array_element_paths) {
+      bool duplicate_proof_fact = false;
+      const auto* proof_fact = find_local_array_proof_fact_for_path(
+          function, path, &duplicate_proof_fact);
+      auto checker_input = bir::evaluate_local_array_index_range_checker_input(
+          bir::LocalArrayIndexRangeCheckerInputInputs{
+              .element_path = &path,
+              .proof_fact = duplicate_proof_fact ? nullptr : proof_fact,
+          });
+      if (duplicate_proof_fact) {
+        checker_input.status =
+            bir::LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion;
+        checker_input.checker_record.status = checker_input.status;
+      }
+      function.local_array_index_range_checker_inputs.push_back(
+          std::move(checker_input));
+    }
+  }
+}
+
 PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
     const PreparedBirModule& prepared) {

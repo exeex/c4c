@@ -342,6 +342,11 @@ int production_publish_contract_plans_populates_local_array_interval_effects() {
           bir::LocalArrayRangeProofStatus::MissingLirProducerCoordinate) {
     return fail("expected production publication to populate fail-closed proof fact");
   }
+  if (published_function.local_array_index_range_checker_inputs.size() != 1 ||
+      published_function.local_array_index_range_checker_inputs.front().status !=
+          bir::LocalArrayRangeProofStatus::MissingLirProducerCoordinate) {
+    return fail("expected production publication to populate fail-closed checker input");
+  }
   return 0;
 }
 
@@ -412,6 +417,89 @@ int populates_clean_local_array_ordered_effect_stream() {
       function.local_array_proof_facts.front().dynamic_index !=
           bir::Value::named(bir::TypeKind::I64, "%idx")) {
     return fail("expected production range certificate to publish one available proof fact");
+  }
+  prepare::populate_local_array_index_range_checker_inputs(prepared);
+  if (function.local_array_index_range_checker_inputs.size() != 1 ||
+      function.local_array_index_range_checker_inputs.front().status !=
+          bir::LocalArrayRangeProofStatus::Available ||
+      function.local_array_index_range_checker_inputs.front().proof_fact !=
+          &function.local_array_proof_facts.front() ||
+      function.local_array_index_range_checker_inputs.front()
+              .checker_record.status !=
+          bir::LocalArrayRangeProofStatus::Available) {
+    return fail("expected production proof fact to publish one available checker input");
+  }
+  return 0;
+}
+
+int local_array_checker_input_population_requires_matching_proof_fact() {
+  auto prepared = make_effect_stream_prepared_module({
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp2"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::CastInst{
+          .opcode = bir::CastOpcode::Bitcast,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+      },
+  });
+  auto& function = prepared.module.functions.front();
+  prepare::populate_local_array_index_range_checker_inputs(prepared);
+  if (function.local_array_index_range_checker_inputs.size() != 1 ||
+      function.local_array_index_range_checker_inputs.front().status !=
+          bir::LocalArrayRangeProofStatus::MissingProofFact) {
+    return fail("expected checker input publication to reject missing proof facts");
+  }
+
+  prepare::populate_local_array_ordered_effect_source_streams(prepared);
+  prepare::populate_local_array_interval_effects(prepared);
+  prepare::populate_local_array_index_range_proofs(prepared);
+  prepare::populate_local_array_proof_facts(prepared);
+  function.local_array_proof_facts.front().status =
+      bir::LocalArrayRangeProofStatus::IntervalEffectOnlyInference;
+  prepare::populate_local_array_index_range_checker_inputs(prepared);
+  if (function.local_array_index_range_checker_inputs.size() != 1 ||
+      function.local_array_index_range_checker_inputs.front().status !=
+          bir::LocalArrayRangeProofStatus::IntervalEffectOnlyInference) {
+    return fail("expected checker input publication to preserve non-available proof fact status");
+  }
+
+  prepare::populate_local_array_proof_facts(prepared);
+  function.local_array_proof_facts.front().proof_lhs =
+      bir::Value::named(bir::TypeKind::I64, "%other.lhs");
+  function.local_array_proof_facts.front().proof_rhs =
+      bir::Value::immediate_i64(4);
+  prepare::populate_local_array_index_range_checker_inputs(prepared);
+  if (function.local_array_index_range_checker_inputs.size() != 1 ||
+      function.local_array_index_range_checker_inputs.front().status !=
+          bir::LocalArrayRangeProofStatus::OperandRoleMismatch) {
+    return fail("expected checker input publication to preserve operand-role mismatch");
+  }
+  if (function.local_array_index_range_checker_inputs.front()
+          .inputs.operand_roles_match_index) {
+    return fail("expected checker input publication to mark operand roles mismatched");
+  }
+
+  prepare::populate_local_array_proof_facts(prepared);
+  function.local_array_proof_facts.front().status =
+      bir::LocalArrayRangeProofStatus::Available;
+  function.local_array_proof_facts.push_back(function.local_array_proof_facts.front());
+  prepare::populate_local_array_index_range_checker_inputs(prepared);
+  if (function.local_array_index_range_checker_inputs.size() != 1 ||
+      function.local_array_index_range_checker_inputs.front().status !=
+          bir::LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion) {
+    return fail("expected checker input publication to reject duplicate proof facts");
   }
   return 0;
 }
@@ -959,6 +1047,10 @@ int main() {
     return rc;
   }
   if (int rc = populates_clean_local_array_ordered_effect_stream(); rc != 0) {
+    return rc;
+  }
+  if (int rc = local_array_checker_input_population_requires_matching_proof_fact();
+      rc != 0) {
     return rc;
   }
   if (int rc = local_array_proof_fact_population_requires_matching_range_certificate();
