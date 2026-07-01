@@ -89,3 +89,38 @@ Reject any route or slice that:
   classification edits without authoritative prepared contract records
 - retains the old `requires all parameters in supported GPR or prepared FPR
   register homes` failure mode behind a renamed check
+
+## Closure Notes
+
+Closed after producer/lowering, prealloc, and RV64 object admission published
+and consumed explicit stack-passed parameter homes for ordinary-C scalar
+formals beyond the current RV64 register-argument budget.
+
+Completed evidence:
+
+- Ordinary-C stack call/formal ABI metadata is published before prealloc.
+- Authorized fixed stack-passed formals without a unique prior spill-slot home
+  now receive prepared stack homes from producer authority.
+- RV64 object admission consumes only explicit prepared `passed_on_stack` and
+  frame-slot facts for scalar stack-passed formals.
+- Focused coverage proves accepted I64 and F64 stack-passed formal homes and
+  fail-closed malformed offsets, frame slots, source kinds, missing
+  `passed_on_stack`, memory class, and F128.
+- `src/20001017-1.c`, `src/20010518-1.c`, `src/pr27073.c`, and
+  `src/pr69447.c` no longer expose the old `unsupported_param_home` gap when
+  prepared homes are coherent.
+
+Validation:
+
+- Focused stack-parameter subset passed, 22/22.
+- Backend subset passed, 345/345.
+- Regression guard passed against `test_before.log`: before 331/331, after
+  345/345, no new failures or slow tests.
+
+Remaining non-goals:
+
+- `src/20001017-1.c` still hits the pre-existing `unsupported_stack_frame ...
+  fpr:fs1` stack-frame diagnostic.
+- `src/20010518-1.c`, `src/pr27073.c`, and `src/pr69447.c` now pass the
+  parameter-home gate and later hit `unsupported_move_bundle_target_shape` for
+  generic stack-to-stack value moves.
