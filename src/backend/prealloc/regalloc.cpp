@@ -59,6 +59,7 @@ using regalloc_detail::allocate_stack_slot;
 using regalloc_detail::next_frame_slot_id;
 using regalloc_detail::publish_regalloc_stack_slots;
 using regalloc_detail::normalized_value_size;
+using regalloc_detail::normalized_value_alignment;
 using regalloc_detail::published_register_group_width;
 using regalloc_detail::resolve_call_arg_abi;
 using regalloc_detail::resolve_register_class;
@@ -101,6 +102,75 @@ constexpr std::size_t kMaxPublishedInterferenceValueCount = 512;
     }
   }
   return false;
+}
+
+[[nodiscard]] bool rv64_authorized_stack_passed_formal_needs_home(
+    const PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
+    const bir::Function* function,
+    const PreparedRegallocValue& value) {
+  if (target_profile.arch != c4c::TargetArch::Riscv64 ||
+      function == nullptr ||
+      function->is_variadic ||
+      value.value_kind != PreparedValueKind::Parameter ||
+      value.value_name == kInvalidValueName ||
+      value.assigned_stack_slot.has_value()) {
+    return false;
+  }
+
+  const std::string_view value_name = prepared_value_name(names, value.value_name);
+  const bir::Param* matched_param = nullptr;
+  for (const auto& param : function->params) {
+    if (param.name != value_name) {
+      continue;
+    }
+    if (matched_param != nullptr) {
+      return false;
+    }
+    matched_param = &param;
+  }
+  if (matched_param == nullptr ||
+      matched_param->is_varargs ||
+      matched_param->is_sret ||
+      matched_param->is_byval ||
+      matched_param->type == bir::TypeKind::Void ||
+      matched_param->type == bir::TypeKind::I128 ||
+      matched_param->type == bir::TypeKind::F128 ||
+      bir::is_vrm_register_type(matched_param->type) ||
+      !matched_param->abi.has_value()) {
+    return false;
+  }
+
+  const auto& abi = *matched_param->abi;
+  if (!abi.passed_on_stack ||
+      abi.passed_in_register ||
+      abi.byval_copy ||
+      abi.sret_pointer ||
+      abi.primary_class == bir::AbiValueClass::Memory ||
+      abi.type != matched_param->type ||
+      value.type != matched_param->type ||
+      abi.size_bytes == 0 ||
+      abi.align_bytes == 0) {
+    return false;
+  }
+  if (abi.primary_class != bir::AbiValueClass::Integer &&
+      abi.primary_class != bir::AbiValueClass::Sse &&
+      abi.primary_class != bir::AbiValueClass::X87) {
+    return false;
+  }
+
+  const std::size_t value_size = normalized_value_size(value);
+  const std::size_t value_align = normalized_value_alignment(value);
+  const std::size_t formal_size =
+      matched_param->size_bytes == 0 ? abi.size_bytes : matched_param->size_bytes;
+  const std::size_t formal_align =
+      matched_param->align_bytes == 0 ? abi.align_bytes : matched_param->align_bytes;
+  return value_size != 0 &&
+         value_align != 0 &&
+         formal_size == value_size &&
+         formal_align == value_align &&
+         abi.size_bytes == value_size &&
+         abi.align_bytes == value_align;
 }
 
 void append_prepared_move_bundle(PreparedValueLocationFunction& function_locations,
@@ -778,6 +848,22 @@ void BirPreAlloc::run_regalloc() {
         continue;
       }
 
+      value.assigned_stack_slot = allocate_stack_slot(value,
+                                                      prepared_.stack_layout,
+                                                      next_slot_id,
+                                                      next_offset_bytes,
+                                                      frame_alignment_bytes);
+      value.allocation_status = PreparedAllocationStatus::AssignedStackSlot;
+      ++assigned_stack_count;
+    }
+
+    for (auto& value : regalloc_function.values) {
+      if (!rv64_authorized_stack_passed_formal_needs_home(prepared_.names,
+                                                          prepared_.target_profile,
+                                                          function,
+                                                          value)) {
+        continue;
+      }
       value.assigned_stack_slot = allocate_stack_slot(value,
                                                       prepared_.stack_layout,
                                                       next_slot_id,

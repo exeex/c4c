@@ -8,76 +8,70 @@ Current Step Title: Complete Producer Homes For Authorized Stack Formals
 
 ## Just Finished
 
-Step 4 of `plan.md` published ordinary-C RV64 stack-parameter ABI metadata
-before RV64 consumption.
+Step 5 of `plan.md` completed producer/prealloc homes for metadata-authorized
+ordinary RV64 stack-passed formals that still lacked unique prepared homes.
 
 Implementation boundary:
 
-- `lir_to_bir/module.cpp` now applies an RV64 ordinary-C ABI pressure pass
-  after BIR lowering and before prealloc consumption.
-- The pass marks only eligible fixed scalar call arguments and formals beyond
-  the current eight-slot RV64 ordinary-C ABI register budget as
-  `passed_on_stack`.
-- The pass skips variadic functions/calls, byval, sret, memory-class
-  aggregates, I128, F128, VRM/vector-like values, missing ABI records, and
-  zero-sized or zero-aligned ABI records.
-- Step 3 remains the prealloc authority boundary: caller offsets and formal
-  homes still require explicit `passed_on_stack` ABI metadata. RV64 object
-  emission, unsupported markers, expectation files, allowlists, runtime
-  comparison, and scan accounting were not changed.
+- `regalloc.cpp` now runs a producer-side completion pass after ordinary
+  allocation and before regalloc stack slots are published.
+- The pass assigns a prepared stack slot only for RV64 fixed formals whose
+  BIR formal carries explicit ordinary-C `param.abi->passed_on_stack`
+  authority and whose type, size, alignment, ABI class, and value kind all
+  agree.
+- The existing unique spill-slot path remains the first authority path for
+  formals such as `%p.B`, `%p.fdB`, and `%p.fdC`.
+- The new completion path rejects missing or ambiguous formal identity,
+  missing ABI, register-passed ABI, byval, sret, variadic functions/formals,
+  memory-class aggregates, I128, F128, VRM/vector-like values, zero-sized or
+  zero-aligned ABI records, and unsupported ABI classes.
+- RV64 object emission, unsupported markers, expectations outside the focused
+  dump contract, allowlists, runtime comparison, and scan accounting were not
+  changed.
 
 Representative before/after facts for `tests/c/external/gcc_torture/src/20001017-1.c`:
 
-- Before: caller stack ABI bindings for indexes 8-12 had
-  `destination_storage=stack_slot` but no `stack_offset`.
-- After Step 4: caller stack ABI bindings for indexes 8-12 publish explicit
-  offsets `0`, `8`, `16`, `24`, and `32`.
-- Before: callee homes for `%p.B`, `%p.fdB`, `%p.b`, `%p.C`, and `%p.fdC`
-  were all `kind=none`.
-- After Step 4: `%p.B`, `%p.fdB`, and `%p.fdC` publish stack-slot homes at
-  `slot#9+stack32`, `slot#10+stack40`, and `slot#11+stack44`.
-- `%p.b` and `%p.C` remain `kind=none`: the producer metadata now marks them
-  stack-passed, but prealloc has no unique regalloc spill-slot home for those
-  values in this representative. No index/name fallback or RV64 inference was
-  added to manufacture those homes.
+- Before Step 5: `%p.B`, `%p.fdB`, and `%p.fdC` had stack homes at
+  `slot#9+stack32`, `slot#10+stack40`, and `slot#11+stack44`; `%p.b` and
+  `%p.C` were still `kind=none`.
+- After Step 5: `%p.B`, `%p.fdB`, and `%p.fdC` remain on the same stack homes.
+- After Step 5: `%p.b` publishes `kind=stack_slot slot_id=12 offset=48` and
+  `%p.C` publishes `kind=stack_slot slot_id=13 offset=56` from producer
+  prealloc slots.
+- Caller ABI bindings for indexes 8-12 remain explicit stack offsets `0`,
+  `8`, `16`, `24`, and `32`.
+- No RV64 consumer reconstruction, parameter-index fallback, testcase-shape
+  matching, or raw name-derived offset inference was added.
 
 ## Suggested Next
 
-Step 5 should complete producer/prealloc homes for metadata-authorized ordinary
-stack-passed formals that still lack unique prepared homes. The packet should
-target `%p.b` and `%p.C` in the representative route as evidence of the general
-producer path, while preserving the existing unique-home path for `%p.B`,
-`%p.fdB`, and `%p.fdC`.
-
-Do not move to RV64 consumption until all coherent ordinary stack-passed
-formals in the representative row publish prepared homes from producer
-authority.
+Step 6 should route RV64 consumption through the now-published prepared formal
+homes and verify the representative route advances past the old
+`unsupported_param_home` family without reconstructing offsets in RV64.
 
 ## Watchouts
 
-- The callee helper still deliberately requires explicit
-  `param.abi->passed_on_stack` plus a unique matching `regalloc.spill_slot`
-  object and frame slot. Missing ABI, ambiguous, duplicate, byval, sret,
-  varargs, F128, dynamic, or aggregate forms remain fail-closed.
-- `%p.b` and `%p.C` are now metadata-authorized stack-passed formals but still
-  lack unique prepared homes. Do not let Step 5 synthesize their home offsets
-  in RV64; Step 5 owns the producer-side completion before RV64 consumption.
-- `20001017-1.c` object codegen still fails before parameter-home consumption
-  at `unsupported_stack_frame ... fpr:fs1`; do not treat this plan repair as
-  object advancement.
-- Existing byval/sret/memory aggregate paths remain outside this metadata pass
-  and were covered by the focused byval subset.
+- The producer homes are frame slots for callee-side prepared publication,
+  not incoming call-argument ABI offsets. RV64 consumption must still use the
+  prepared home records instead of deriving incoming offsets from argument
+  index or parameter spelling.
+- `20001017-1.c` object codegen still fails at the existing non-goal
+  `unsupported_stack_frame ... fpr:fs1` diagnostic.
+- Existing byval and memory aggregate paths stayed outside the completion
+  pass and were covered by the focused preservation subset.
 
 ## Proof
 
 - `cmake --build build --target c4cll` passed.
 - `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20001017-1.c`
   was captured before and after under
-  `build/agent_state/512_step4_stack_parameter_metadata/20001017-1/`.
-- `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20001017-1.c -o build/agent_state/512_step4_stack_parameter_metadata/20001017-1/20001017-1.o`
+  `build/agent_state/512_step5_producer_homes/20001017-1/`.
+- `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20001017-1.c -o build/agent_state/512_step5_producer_homes/20001017-1/20001017-1.o`
   still fails with rc 2 at the existing `fpr:fs1` unsupported stack-frame
   diagnostic.
-- `ctest --test-dir build -j --output-on-failure -R 'stack_passed_parameter_home|prepare_frame_stack_call_contract|prealloc_formal_publications|backend_riscv_object_emission|riscv64_byval|rv64_runtime_riscv64_byval' | tee test_after.log`
-  passed, 15/15. `test_after.log` is the canonical proof log for this packet.
-- `git diff --check -- src/backend/bir/lir_to_bir/module.cpp tests/backend/CMakeLists.txt todo.md`
+- `cmake -S . -B build` refreshed CTest metadata after the focused dump
+  contract changed.
+- `ctest --test-dir build -j --output-on-failure -R 'stack_passed_parameter_home|prepare_frame_stack_call_contract|prealloc_formal_publications|backend_riscv_object_emission|riscv64_byval|rv64_runtime_riscv64_byval|riscv64_aggregate' | tee test_after.log`
+  passed, 22/22. `test_after.log` is the canonical proof log for this packet.
+- `git diff --check -- src/backend/prealloc/regalloc.cpp tests/backend/CMakeLists.txt todo.md`
   passed.
