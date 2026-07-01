@@ -1,75 +1,78 @@
-# Dynamic Local-Array LIR Producer Interval Effect Classifier Plan
+# Dynamic Local-Array LIR Producer Endpoint Bridge Effect Scan Plan
 
 Status: Active
-Source Idea: ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
-Activated From: ideas/closed/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md
+Source Idea: ideas/open/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md
+Activated From: ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
 
 ## Purpose
 
-Classify dynamic-index same-value/no-clobber interval effects now that selected
-proof-edge path records are populated.
+Provide the lower endpoint/effect prerequisite that blocked plan 494 after its
+fail-closed interval status surface landed.
 
 ## Goal
 
-Publish explicit available/unavailable interval effect facts keyed to populated
-selected proof-edge path records and dynamic local-array `lir_producer_lookup_key`
-rows.
+Bridge dynamic local-array LIR producer rows to ordered prepared/BIR
+address-derivation endpoints and scan the selected proof-source-to-endpoint
+interval for real effects.
 
 ## Core Rule
 
-Do not infer same-value/no-clobber from selected path availability alone,
-testcase shape, final homes, or target behavior. Interval facts must come from
-explicit producer/prepared evidence or fail closed with a precise status.
+Do not infer endpoint order or same-value/no-clobber from selected path
+availability, testcase shape, final homes, target behavior, synthetic bridge
+flags, or `lir_producer_instruction_index` alone. Endpoint and effect facts
+must come from an authoritative prepared/BIR bridge plus a bounded effect scan,
+or fail closed with a precise status.
 
 ## Read First
 
+- ideas/open/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md
 - ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
-- ideas/closed/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md
-- build/agent_state/493_step3_collector_population/summary.md
-- build/agent_state/493_step4_residual_disposition/disposition.md
+- build/agent_state/494_step3_interval_effect_status_surface/summary.md
+- build/agent_state/494_step4_residual_disposition/disposition.md
 
 ## Current Target
 
 - Inputs:
-  - populated `local_array_selected_proof_edge_paths` records;
-  - local-array element path dynamic-index identity;
-  - proof branch/compare identity and selected outcome;
-  - `lir_producer_lookup_key` binding;
-  - prepared/BIR effect surfaces for assignments, phi/alias, calls/helpers,
-    inline asm, publications, move bundles, and parallel copies.
+  - dynamic local-array `lir_producer_lookup_key` rows;
+  - `lir_producer_instruction_index` as a LIR producer-site coordinate;
+  - selected proof-source/path records from the existing 493/494 surfaces;
+  - prepared/BIR address derivation and effect-stream surfaces.
 - Outputs:
-  - available same-value/no-clobber interval facts;
-  - fail-closed unavailable records/statuses for unknown or clobbering effects.
+  - authoritative prepared/BIR address-derivation endpoint binding for the
+    same local-array producer;
+  - bounded proof-source-to-endpoint effect scan results;
+  - precise unavailable statuses for missing endpoint, clobber, alias, unknown
+    effect, and coordinate confusion.
 
 ## Non-Goals
 
-- Re-implementing selected proof-edge path record API or collector population.
-- Populating idea 489 proof facts or idea 486 checker inputs.
+- Populating idea 489 proof facts directly.
+- Populating idea 486 checker inputs directly.
+- Idea 490 path/no-clobber certification beyond this lower prerequisite.
 - Idea 484 packaging.
 - Scalar local-load consumption.
 - RV64/MIR lowering.
-- LIR-to-prepared/BIR same-block ordering conversion beyond unavailable status
-  reporting.
-- Broad generic range analysis.
+- Rewriting selected proof-edge path collection from idea 493.
+- Treating selected-path availability, final homes, target behavior, testcase
+  names, or synthetic bridge flags as proof.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline/log
   churn.
-- Touching `review/`, `test_before.log`, `test_after.log`,
-  `test_baseline.log`, or `test_baseline.new.log`.
 
 ## Working Model
 
-Idea 493 provides the selected branch/edge/path and dominance/guard side of the
-proof. This runbook owns the separate interval classifier that proves the
-dynamic index remains same-value and unclobbered across that selected interval.
+Plan 494 now owns only a fail-closed interval status surface. This runbook owns
+the lower bridge from LIR producer coordinates into ordered prepared/BIR
+endpoint/effect evidence. If the bridge cannot be built truthfully, stop with
+the exact lower blocker rather than publishing available no-clobber facts.
 
 ## Execution Rules
 
-- Step 1 is audit/classification unless the exact interval classifier path is
-  already bounded.
-- Any implementation packet must publish interval facts/statuses only; it must
-  not populate proof facts, checker inputs, packaging, scalar loads, or RV64
-  lowering.
+- Step 1 is audit/classification unless the exact endpoint bridge is already
+  bounded.
+- Implementation packets must publish endpoint/effect evidence or precise
+  unavailable statuses only; they must not populate downstream proof facts,
+  checker inputs, packaging, scalar loads, or RV64 lowering.
 - Classification-only proof:
 
 ```sh
@@ -86,28 +89,36 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Interval Effect Inputs
+### Step 1: Audit Producer-To-Endpoint Surfaces
 
-Inspect dynamic-index identity, selected proof-edge records, interval boundary
-surfaces, and effect/no-clobber inputs for assignments, phi/alias,
-calls/helpers, inline asm, publications, move bundles, and parallel copies.
-Completion means `todo.md` records whether a bounded classifier can be built or
-names the exact lower blocker.
+Inspect local-array producer rows, prepared/BIR address-derivation records,
+effect-stream ordering, and selected proof-source/path inputs. Completion
+means `todo.md` records whether a bounded endpoint bridge can be built or names
+the exact lower blocker.
 
-### Step 2: Define Interval Effect Classifier Contract
+### Step 2: Define Endpoint Bridge And Effect Scan Contract
 
-Define the interval key, start/end semantics, same-value criterion, effect
-classes, unavailable statuses, and same-block fail-closed policy. Completion
-means the contract can drive focused available/fail-closed tests.
+Define the producer key, endpoint identity, interval boundary semantics,
+effect classes, no-clobber criterion, and fail-closed statuses. Completion
+means the contract can drive focused bridge and effect-scan tests without
+coordinate confusion.
 
-### Step 3: Implement Or Route Interval Effect Classifier
+### Step 3: Implement Or Route Endpoint Bridge
 
-Implement the bounded classifier if Step 2 identifies one. If current inputs
-cannot truthfully classify interval effects, record the exact lower owner and
-stop without changing proof population or downstream consumers.
+Implement the bounded producer-key-to-prepared/BIR endpoint bridge if Step 2
+identifies one. If current inputs cannot truthfully bind the endpoint, record
+the exact lower owner and stop without publishing available interval facts.
 
-### Step 4: Residual Disposition And Close Readiness
+### Step 4: Implement Or Route Bounded Effect Scan
 
-Re-probe selected representatives and decide whether 494 is complete, blocked
-by another lower-level source, or ready to hand forward to idea 490
-path/no-clobber certification.
+Implement the selected proof-source-to-endpoint effect scan if the bridge is
+available. Cover assignments/redefinitions, phi/alias transfers, calls/helpers,
+inline asm, publications, move bundles, parallel copies, and unknown modeled
+effects. If the scan cannot be built truthfully, record the exact lower owner
+and stop.
+
+### Step 5: Residual Disposition And Handback Readiness
+
+Re-probe bridged and fail-closed representatives and decide whether idea 494
+can resume available interval fact publication, or whether another lower
+endpoint/effect owner remains first.
