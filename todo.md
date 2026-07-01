@@ -1,37 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/487_bir_dynamic_local_array_proof_source_path_no_clobber_population.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Real Proof Population Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Real Proof Population
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 contract/routing classification for idea 487.
+Completed Step 3 routing packet for idea 487.
 
-Decision:
+Route decision:
 
-| Contract question | Step 2 answer |
+| Route question | Step 3 answer |
 | --- | --- |
-| Can a real proof-source/path/no-clobber population contract be implemented now? | No. The checker contract exists, and branch/control-flow facts exist, but dynamic local-array paths still lack a durable consumer coordinate and prepared exposure key. |
-| First lower-level contract required | Dynamic local-array element-path consumer-coordinate / prepared-exposure carrier. |
-| Required carrier fields | Shared function identity, element-path identity, dynamic index value, source object, derivation result, layout/range, consumer block label, consumer instruction index, consumer operation role, and stable prepared lookup key. |
-| Later proof population requirements | Same-function proof source, normalized lower/upper predicates and bounds, operand-role match to the dynamic index, path/dominance coverage, and no-clobber/same-value interval facts. |
-| Fail-closed statuses | Missing proof source/bounds/path/no-clobber, unsupported source/predicate/index width, operand-role or bound mismatch, non-dominating/uncovered path, clobbered or redefined index, effect-unknown intervals, raw-shape-only, target-only/final-home-only, and protected boundaries. |
-| Step 3 readiness | Not ready for real proof population. Step 3 should route or split to the consumer-coordinate/prepared-exposure carrier prerequisite. |
+| Is real proof-source/path/no-clobber population implemented now? | No. It remains blocked by missing dynamic local-array consumer-coordinate / prepared-exposure authority. |
+| Exact blocker | Current dynamic local-array path records do not identify the GEP/access consumer block label and instruction index or expose a stable prepared lookup key shared with prepared control-flow facts. |
+| Proposed prerequisite owner/title | `BIR Dynamic Local-Array Consumer Coordinate Prepared Exposure`. |
+| Required prerequisite fields | Shared function identity, path result, source object, derivation result, dynamic index value, element type/size/count/offset/status, consumer block label, consumer instruction index, consumer operation role, stable prepared lookup key, and unsupported-boundary status. |
+| Why not implement proof population now? | It would require raw-shape/name/proximity/dump-order matching between branch facts and dynamic local-array consumers, which is explicitly rejected. |
+| Later idea 487 packet after prerequisite | Populate normalized branch/compare proof-source records, proof-to-consumer path/dominance coverage, and index no-clobber/same-value interval facts, then feed the idea 486 checker. |
 
 Supporting artifacts:
 
 - `build/agent_state/487_step1_real_proof_population_inputs/audit.md`
 - `build/agent_state/487_step2_real_proof_population_contract/contract.md`
+- `build/agent_state/487_step3_route_consumer_coordinate_prerequisite/route.md`
 
 ## Suggested Next
 
-Execute Step 3 as a routing packet: record that real proof-source/path/no-clobber
-population is blocked until the lower-level dynamic local-array
-consumer-coordinate / prepared-exposure carrier exists, or split/activate that
-carrier owner if lifecycle policy requires it.
+Execute Step 4 residual disposition for idea 487: decide whether this idea is
+close-ready as a routed blocker, should remain active only after the prerequisite
+carrier lands, or should be split by activating the proposed
+`BIR Dynamic Local-Array Consumer Coordinate Prepared Exposure` owner.
 
 ## Watchouts
 
@@ -47,10 +48,14 @@ carrier owner if lifecycle policy requires it.
   order, or implicit proximity between a branch and a dynamic GEP/access.
 - Keep idea 486 checker/status vocabulary unchanged; the missing work is real
   producer evidence, not another synthetic checker case.
+- Do not create implementation/test changes in idea 487 until the consumer
+  coordinate/prepared-exposure carrier exists.
+- Preserve idea 485 carrier, idea 484 packaging, scalar local-load consumption,
+  and RV64/MIR lowering as separate boundaries.
 
 ## Proof
 
-Step 2 validation:
+Step 3 validation:
 
 ```sh
 git diff --check
