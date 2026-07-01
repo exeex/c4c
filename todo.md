@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/513_rv64_stack_to_stack_prepared_move_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Rebuild Stack-To-Stack Move Evidence
+Current Step ID: 2
+Current Step Title: Trace RV64 Move-Bundle Consumption
 
 # Current Packet
 
