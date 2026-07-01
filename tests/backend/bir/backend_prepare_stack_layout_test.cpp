@@ -2,6 +2,7 @@
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
+#include "src/backend/prealloc/publication_plans.hpp"
 #include "src/backend/prealloc/regalloc/value_homes.hpp"
 #include "src/target_profile.hpp"
 
@@ -81,6 +82,16 @@ c4c::FunctionNameId find_function_name_id(const prepare::PreparedBirModule& prep
 const bir::Function* find_bir_function(const prepare::PreparedBirModule& prepared,
                                        std::string_view function_name) {
   for (const auto& function : prepared.module.functions) {
+    if (function.name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+bir::Function* find_mutable_bir_function(prepare::PreparedBirModule& prepared,
+                                         std::string_view function_name) {
+  for (auto& function : prepared.module.functions) {
     if (function.name == function_name) {
       return &function;
     }
@@ -1034,6 +1045,295 @@ std::optional<prepare::PreparedBirModule> prepare_lir_byte_storage_overlay_modul
   planner.run_legalize();
   planner.run_stack_layout();
   return std::move(planner.prepared());
+}
+
+enum class SelectedProofEdgeFixtureShape {
+  CrossBlockAvailable,
+  SameBlockProducer,
+  NonCoveringProducer,
+  EarlierNonCoveringThenAvailable,
+  MultipleAvailable,
+};
+
+lir::LirModule make_lir_selected_proof_edge_path_module(
+    SelectedProofEdgeFixtureShape shape) {
+  lir::LirModule module;
+  module.target_profile = riscv_target_profile();
+
+  lir::LirFunction function;
+  function.name = "stack_layout_local_array_selected_proof_edge_path";
+  function.signature_text =
+      "define void @stack_layout_local_array_selected_proof_edge_path(i64 %idx)";
+  function.params.emplace_back("%idx", c4c::TypeSpec{.base = c4c::TB_LONG});
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.arr"),
+      .type_str = lir::LirTypeRef("[4 x i32]"),
+      .count = lir::LirOperand(""),
+      .align = 4,
+  });
+
+  if (shape == SelectedProofEdgeFixtureShape::EarlierNonCoveringThenAvailable ||
+      shape == SelectedProofEdgeFixtureShape::MultipleAvailable) {
+    lir::LirBlock prelude;
+    prelude.label = "prelude";
+    prelude.insts.push_back(lir::LirCmpOp{
+        .result = lir::LirOperand("%pre.cmp"),
+        .predicate = lir::LirCmpPredicateRef("ult"),
+        .type_str = lir::LirTypeRef("i64"),
+        .lhs = lir::LirOperand("%idx"),
+        .rhs = lir::LirOperand("4"),
+    });
+    prelude.terminator = lir::LirCondBr{
+        .cond_name = "%pre.cmp",
+        .true_label =
+            shape == SelectedProofEdgeFixtureShape::MultipleAvailable ? "guard" : "exit",
+        .false_label =
+            shape == SelectedProofEdgeFixtureShape::MultipleAvailable ? "exit" : "other",
+    };
+    function.blocks.push_back(std::move(prelude));
+  }
+
+  lir::LirBlock guard;
+  guard.label = "guard";
+  guard.insts.push_back(lir::LirCmpOp{
+      .result = lir::LirOperand("%cmp"),
+      .predicate = lir::LirCmpPredicateRef("ult"),
+      .type_str = lir::LirTypeRef("i64"),
+      .lhs = lir::LirOperand("%idx"),
+      .rhs = lir::LirOperand("4"),
+  });
+  if (shape == SelectedProofEdgeFixtureShape::SameBlockProducer) {
+    guard.insts.push_back(lir::LirGepOp{
+        .result = lir::LirOperand("%elt.ptr"),
+        .element_type = lir::LirTypeRef("i32"),
+        .ptr = lir::LirOperand("%lv.arr"),
+        .inbounds = true,
+        .indices = {"i64 %idx"},
+    });
+  }
+  guard.terminator = lir::LirCondBr{
+      .cond_name = "%cmp",
+      .true_label =
+          shape == SelectedProofEdgeFixtureShape::NonCoveringProducer ? "exit" : "body",
+      .false_label =
+          shape == SelectedProofEdgeFixtureShape::NonCoveringProducer ? "other" : "exit",
+  };
+
+  lir::LirBlock body;
+  body.label = "body";
+  if (shape != SelectedProofEdgeFixtureShape::SameBlockProducer) {
+    body.insts.push_back(lir::LirGepOp{
+        .result = lir::LirOperand("%elt.ptr"),
+        .element_type = lir::LirTypeRef("i32"),
+        .ptr = lir::LirOperand("%lv.arr"),
+        .inbounds = true,
+        .indices = {"i64 %idx"},
+    });
+  }
+  body.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  lir::LirBlock exit;
+  exit.label = "exit";
+  exit.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(guard));
+  function.blocks.push_back(std::move(body));
+  function.blocks.push_back(std::move(exit));
+  if (shape == SelectedProofEdgeFixtureShape::NonCoveringProducer ||
+      shape == SelectedProofEdgeFixtureShape::EarlierNonCoveringThenAvailable) {
+    lir::LirBlock other;
+    other.label = "other";
+    other.terminator = lir::LirRet{
+        .value_str = std::nullopt,
+        .type_str = "void",
+    };
+    function.blocks.push_back(std::move(other));
+  }
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+std::optional<prepare::PreparedBirModule>
+prepare_lir_selected_proof_edge_path_module(SelectedProofEdgeFixtureShape shape) {
+  const auto lowered = c4c::backend::try_lower_to_bir_with_options(
+      make_lir_selected_proof_edge_path_module(shape),
+      c4c::backend::BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    for (const auto& note : lowered.notes) {
+      std::cerr << "selected-proof-edge fixture lowering note [" << note.phase
+                << "]: " << note.message << "\n";
+    }
+    return std::nullopt;
+  }
+
+  prepare::PrepareOptions options;
+  options.run_regalloc = false;
+  return prepare::prepare_semantic_bir_module_with_options(
+      *lowered.module,
+      riscv_target_profile(),
+      options);
+}
+
+const bir::LocalArraySelectedProofEdgePathRecord*
+first_selected_proof_edge_record(const prepare::PreparedBirModule& prepared) {
+  const auto* function =
+      find_bir_function(prepared, "stack_layout_local_array_selected_proof_edge_path");
+  if (function == nullptr || function->local_array_selected_proof_edge_paths.empty()) {
+    return nullptr;
+  }
+  return &function->local_array_selected_proof_edge_paths.front();
+}
+
+int check_lir_selected_proof_edge_path_population_available(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* function =
+      find_bir_function(prepared, "stack_layout_local_array_selected_proof_edge_path");
+  if (function == nullptr) {
+    return fail("selected proof-edge path fixture function was not prepared");
+  }
+  if (function->local_array_element_paths.size() != 1 ||
+      function->local_array_selected_proof_edge_paths.size() != 1) {
+    return fail("selected proof-edge path collector should publish one path record");
+  }
+  const auto& record = function->local_array_selected_proof_edge_paths.front();
+  if (record.status != bir::LocalArraySelectedProofEdgePathStatus::Available ||
+      record.path_result_name != "%elt.ptr" ||
+      record.source_object_name != "%lv.arr" ||
+      record.lir_producer_function_name !=
+          "stack_layout_local_array_selected_proof_edge_path" ||
+      record.lir_producer_block_label != "body" ||
+      !record.lir_producer_instruction_index.has_value() ||
+      *record.lir_producer_instruction_index != 0 ||
+      record.lir_producer_operation_role !=
+          bir::LocalArrayLirProducerOperationRole::AddressDerivation ||
+      record.lir_producer_coordinate_status !=
+          bir::LocalArrayLirProducerCoordinateStatus::Available ||
+      record.lir_producer_lookup_key !=
+          "lir-producer:stack_layout_local_array_selected_proof_edge_path:"
+          "body:0:%elt.ptr:%lv.arr:%elt.ptr:%idx" ||
+      record.proof_function_name !=
+          "stack_layout_local_array_selected_proof_edge_path" ||
+      record.proof_block_label != "guard" ||
+      record.proof_predicate != bir::LocalArraySelectedProofEdgePredicate::Ult ||
+      record.proof_compare_type != bir::TypeKind::I64 ||
+      record.proof_lhs.name != "%idx" ||
+      record.proof_rhs.immediate != 4 ||
+      record.bound_contribution !=
+          bir::LocalArraySelectedProofEdgeBoundContribution::Upper ||
+      !record.normalized_bound.has_value() ||
+      *record.normalized_bound != 4 ||
+      record.bound_inclusive ||
+      record.selected_outcome != bir::LocalArraySelectedProofEdgeOutcome::True ||
+      record.selected_successor_label != "body" ||
+      record.non_selected_successor_label != "exit" ||
+      !record.path_validity_known ||
+      !record.selected_edge_reaches_lir_producer ||
+      !record.selected_edge_covers_lir_producer ||
+      !record.proof_dominates_lir_producer ||
+      !record.proof_guards_lir_producer) {
+    return fail("selected proof-edge path collector did not publish the expected available record");
+  }
+  return 0;
+}
+
+int check_lir_selected_proof_edge_path_ignores_earlier_non_available_candidate() {
+  auto prepared = prepare_lir_selected_proof_edge_path_module(
+      SelectedProofEdgeFixtureShape::EarlierNonCoveringThenAvailable);
+  if (!prepared.has_value()) {
+    return fail("selected proof-edge earlier-fallback fixture should lower to BIR");
+  }
+  const auto* record = first_selected_proof_edge_record(*prepared);
+  if (record == nullptr ||
+      record->status != bir::LocalArraySelectedProofEdgePathStatus::Available ||
+      record->proof_block_label != "guard" ||
+      record->selected_successor_label != "body") {
+    return fail("later available proof source should win over earlier non-available candidate");
+  }
+  return 0;
+}
+
+int check_lir_selected_proof_edge_path_status(
+    SelectedProofEdgeFixtureShape shape,
+    bir::LocalArraySelectedProofEdgePathStatus expected_status,
+    const char* failure_message) {
+  auto prepared = prepare_lir_selected_proof_edge_path_module(shape);
+  if (!prepared.has_value()) {
+    return fail("selected proof-edge path fixture should lower to BIR");
+  }
+  const auto* record = first_selected_proof_edge_record(*prepared);
+  if (record == nullptr || record->status != expected_status) {
+    return fail(failure_message);
+  }
+  return 0;
+}
+
+int check_lir_selected_proof_edge_path_mutated_fail_closed() {
+  auto prepared = prepare_lir_selected_proof_edge_path_module(
+      SelectedProofEdgeFixtureShape::CrossBlockAvailable);
+  if (!prepared.has_value()) {
+    return fail("selected proof-edge mutation fixture should lower to BIR");
+  }
+  auto* function = find_mutable_bir_function(
+      *prepared, "stack_layout_local_array_selected_proof_edge_path");
+  if (function == nullptr || function->local_array_element_paths.empty()) {
+    return fail("selected proof-edge mutation fixture should expose a local-array path");
+  }
+
+  auto expect_mutated_status =
+      [&](auto mutate,
+          bir::LocalArraySelectedProofEdgePathStatus expected_status,
+          const char* failure_message) -> int {
+    auto mutated = *prepared;
+    auto* mutated_function = find_mutable_bir_function(
+        mutated, "stack_layout_local_array_selected_proof_edge_path");
+    if (mutated_function == nullptr || mutated_function->local_array_element_paths.empty()) {
+      return fail("selected proof-edge mutated fixture lost its local-array path");
+    }
+    mutate(mutated_function->local_array_element_paths.front());
+    prepare::populate_local_array_selected_proof_edge_paths(mutated);
+    const auto* record = first_selected_proof_edge_record(mutated);
+    if (record == nullptr || record->status != expected_status) {
+      return fail(failure_message);
+    }
+    return 0;
+  };
+
+  if (const int rc = expect_mutated_status(
+          [](bir::LocalArrayElementPathRecord& path) {
+            path.lir_producer_function_name = "other_function";
+          },
+          bir::LocalArraySelectedProofEdgePathStatus::ProofFunctionMismatch,
+          "selected proof-edge collector should reject proof function mismatch");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_mutated_status(
+          [](bir::LocalArrayElementPathRecord& path) {
+            path.lir_producer_operation_role =
+                bir::LocalArrayLirProducerOperationRole::LoadConsumer;
+          },
+          bir::LocalArraySelectedProofEdgePathStatus::UnsupportedLirProducerRole,
+          "selected proof-edge collector should reject non-address-derivation roles");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_mutated_status(
+          [](bir::LocalArrayElementPathRecord& path) {
+            path.lir_producer_coordinate_status =
+                bir::LocalArrayLirProducerCoordinateStatus::MissingLirProducerCoordinate;
+          },
+          bir::LocalArraySelectedProofEdgePathStatus::MissingLirProducerCoordinate,
+          "selected proof-edge collector should reject unavailable LIR producer coordinates");
+      rc != 0) {
+    return rc;
+  }
+  return 0;
 }
 
 std::optional<prepare::PreparedBirModule>
@@ -10483,6 +10783,46 @@ int main() {
   }
   if (const int rc =
           check_byte_storage_overlay_local_slot_activation(*byte_storage_overlay_prepared);
+      rc != 0) {
+    return rc;
+  }
+  auto selected_proof_edge_prepared = prepare_lir_selected_proof_edge_path_module(
+      SelectedProofEdgeFixtureShape::CrossBlockAvailable);
+  if (!selected_proof_edge_prepared.has_value()) {
+    return fail("expected selected proof-edge path fixture to lower to BIR");
+  }
+  if (const int rc = check_lir_selected_proof_edge_path_population_available(
+          *selected_proof_edge_prepared);
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_lir_selected_proof_edge_path_status(
+          SelectedProofEdgeFixtureShape::SameBlockProducer,
+          bir::LocalArraySelectedProofEdgePathStatus::MissingSameBlockOrdering,
+          "same-block selected proof-edge path should fail closed on missing ordering");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_lir_selected_proof_edge_path_status(
+          SelectedProofEdgeFixtureShape::NonCoveringProducer,
+          bir::LocalArraySelectedProofEdgePathStatus::NonCoveringPath,
+          "non-covering selected proof-edge path should fail closed");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc =
+          check_lir_selected_proof_edge_path_ignores_earlier_non_available_candidate();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_lir_selected_proof_edge_path_status(
+          SelectedProofEdgeFixtureShape::MultipleAvailable,
+          bir::LocalArraySelectedProofEdgePathStatus::UnsupportedBoundary,
+          "multiple available selected proof-edge candidates should fail closed");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_lir_selected_proof_edge_path_mutated_fail_closed();
       rc != 0) {
     return rc;
   }

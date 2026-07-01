@@ -3975,6 +3975,24 @@ namespace {
   return nullptr;
 }
 
+[[nodiscard]] bir::Function* prepared_bir_function_by_name(
+    PreparedBirModule& prepared,
+    FunctionNameId function_name) {
+  if (function_name == kInvalidFunctionName) {
+    return nullptr;
+  }
+  const auto function_name_text = prepared_function_name(prepared.names, function_name);
+  if (function_name_text.empty()) {
+    return nullptr;
+  }
+  for (auto& function : prepared.module.functions) {
+    if (function.name == function_name_text) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] const bir::Block* prepared_bir_block_by_label(
     const bir::Function& function,
     BlockLabelId block_label) {
@@ -4378,6 +4396,436 @@ collect_prepared_select_carrier_alias_candidates(
 }
 
 }  // namespace
+
+namespace {
+
+struct PreparedSelectedProofEdgePathMatrices {
+  std::vector<std::vector<bool>> reaches;
+  std::vector<std::vector<bool>> dominates;
+};
+
+struct PreparedSelectedProofEdgeBoundFacts {
+  bool available = false;
+  bir::LocalArraySelectedProofEdgePredicate predicate =
+      bir::LocalArraySelectedProofEdgePredicate::Unknown;
+  bir::LocalArraySelectedProofEdgeBoundContribution contribution =
+      bir::LocalArraySelectedProofEdgeBoundContribution::None;
+  std::optional<std::int64_t> normalized_bound;
+  bool bound_inclusive = true;
+};
+
+[[nodiscard]] std::optional<std::size_t> selected_proof_edge_block_index_by_label(
+    const PreparedControlFlowFunction& function,
+    BlockLabelId label) {
+  for (std::size_t index = 0; index < function.blocks.size(); ++index) {
+    if (function.blocks[index].block_label == label) {
+      return index;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::vector<std::size_t> selected_proof_edge_block_successors(
+    const PreparedControlFlowFunction& function,
+    const PreparedControlFlowBlock& block) {
+  std::vector<std::size_t> successors;
+  auto append_label = [&](BlockLabelId label) {
+    if (label == kInvalidBlockLabel) {
+      return;
+    }
+    const auto index = selected_proof_edge_block_index_by_label(function, label);
+    if (index.has_value() &&
+        std::find(successors.begin(), successors.end(), *index) == successors.end()) {
+      successors.push_back(*index);
+    }
+  };
+
+  if (block.terminator_kind == bir::TerminatorKind::Branch) {
+    append_label(block.branch_target_label);
+  } else if (block.terminator_kind == bir::TerminatorKind::CondBranch) {
+    append_label(block.true_label);
+    append_label(block.false_label);
+  }
+  return successors;
+}
+
+[[nodiscard]] PreparedSelectedProofEdgePathMatrices
+make_selected_proof_edge_path_matrices(
+    const PreparedControlFlowFunction& function) {
+  const std::size_t count = function.blocks.size();
+  std::vector<std::vector<std::size_t>> predecessors(count);
+  std::vector<std::vector<bool>> reaches(count, std::vector<bool>(count, false));
+  for (std::size_t source_index = 0; source_index < count; ++source_index) {
+    for (const auto successor :
+         selected_proof_edge_block_successors(function, function.blocks[source_index])) {
+      if (successor < count) {
+        predecessors[successor].push_back(source_index);
+      }
+    }
+
+    auto& source_reaches = reaches[source_index];
+    source_reaches[source_index] = true;
+    std::vector<std::size_t> worklist{source_index};
+    while (!worklist.empty()) {
+      const auto index = worklist.back();
+      worklist.pop_back();
+      for (const auto successor :
+           selected_proof_edge_block_successors(function, function.blocks[index])) {
+        if (successor < count && !source_reaches[successor]) {
+          source_reaches[successor] = true;
+          worklist.push_back(successor);
+        }
+      }
+    }
+  }
+
+  std::vector<std::vector<bool>> dominates(count, std::vector<bool>(count, true));
+  if (count != 0) {
+    std::fill(dominates.front().begin(), dominates.front().end(), false);
+    dominates.front().front() = true;
+  }
+
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (std::size_t index = 1; index < count; ++index) {
+      std::vector<bool> next(count, !predecessors[index].empty());
+      if (predecessors[index].empty()) {
+        std::fill(next.begin(), next.end(), false);
+      } else {
+        for (const auto predecessor : predecessors[index]) {
+          for (std::size_t candidate = 0; candidate < count; ++candidate) {
+            next[candidate] = next[candidate] && dominates[predecessor][candidate];
+          }
+        }
+      }
+      next[index] = true;
+      if (next != dominates[index]) {
+        dominates[index] = std::move(next);
+        changed = true;
+      }
+    }
+  }
+
+  return PreparedSelectedProofEdgePathMatrices{
+      .reaches = std::move(reaches),
+      .dominates = std::move(dominates),
+  };
+}
+
+[[nodiscard]] bool selected_proof_edge_matrix_value(
+    const std::vector<std::vector<bool>>& matrix,
+    std::size_t source_index,
+    std::size_t target_index) {
+  return source_index < matrix.size() &&
+         target_index < matrix[source_index].size() &&
+         matrix[source_index][target_index];
+}
+
+[[nodiscard]] std::optional<bir::LocalArraySelectedProofEdgePredicate>
+selected_proof_edge_predicate(bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Slt:
+      return bir::LocalArraySelectedProofEdgePredicate::Slt;
+    case bir::BinaryOpcode::Sle:
+      return bir::LocalArraySelectedProofEdgePredicate::Sle;
+    case bir::BinaryOpcode::Sgt:
+      return bir::LocalArraySelectedProofEdgePredicate::Sgt;
+    case bir::BinaryOpcode::Sge:
+      return bir::LocalArraySelectedProofEdgePredicate::Sge;
+    case bir::BinaryOpcode::Ult:
+      return bir::LocalArraySelectedProofEdgePredicate::Ult;
+    case bir::BinaryOpcode::Ule:
+      return bir::LocalArraySelectedProofEdgePredicate::Ule;
+    case bir::BinaryOpcode::Ugt:
+      return bir::LocalArraySelectedProofEdgePredicate::Ugt;
+    case bir::BinaryOpcode::Uge:
+      return bir::LocalArraySelectedProofEdgePredicate::Uge;
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] bool selected_proof_edge_upper_predicate(bir::BinaryOpcode opcode) {
+  return opcode == bir::BinaryOpcode::Slt || opcode == bir::BinaryOpcode::Sle ||
+         opcode == bir::BinaryOpcode::Ult || opcode == bir::BinaryOpcode::Ule;
+}
+
+[[nodiscard]] bool selected_proof_edge_inclusive_predicate(bir::BinaryOpcode opcode) {
+  return opcode == bir::BinaryOpcode::Sle || opcode == bir::BinaryOpcode::Sge ||
+         opcode == bir::BinaryOpcode::Ule || opcode == bir::BinaryOpcode::Uge;
+}
+
+[[nodiscard]] std::optional<bir::Value> selected_proof_edge_dynamic_index(
+    const bir::LocalArrayElementPathRecord& path) {
+  std::optional<bir::Value> dynamic_index;
+  for (const auto& index : path.indices) {
+    if (index.kind != bir::LocalArrayIndexKind::Dynamic) {
+      continue;
+    }
+    if (dynamic_index.has_value() || index.value.kind != bir::Value::Kind::Named) {
+      return std::nullopt;
+    }
+    dynamic_index = index.value;
+  }
+  return dynamic_index;
+}
+
+[[nodiscard]] bool selected_proof_edge_values_same_name_and_type(
+    const bir::Value& lhs,
+    const bir::Value& rhs) {
+  return lhs.kind == bir::Value::Kind::Named &&
+         rhs.kind == bir::Value::Kind::Named &&
+         lhs.name == rhs.name &&
+         lhs.type == rhs.type;
+}
+
+[[nodiscard]] bool selected_proof_edge_immediate_bound(
+    const bir::Value& value,
+    bir::TypeKind expected_type) {
+  return value.kind == bir::Value::Kind::Immediate && value.type == expected_type;
+}
+
+[[nodiscard]] PreparedSelectedProofEdgeBoundFacts
+selected_proof_edge_bound_facts(
+    const bir::LocalArrayElementPathRecord& path,
+    const PreparedBranchCondition& branch_condition) {
+  if (branch_condition.kind != PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition.predicate.has_value() ||
+      !branch_condition.compare_type.has_value() ||
+      !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value()) {
+    return {};
+  }
+  const auto predicate = selected_proof_edge_predicate(*branch_condition.predicate);
+  if (!predicate.has_value()) {
+    return {};
+  }
+  const auto dynamic_index = selected_proof_edge_dynamic_index(path);
+  if (!dynamic_index.has_value() ||
+      dynamic_index->type != *branch_condition.compare_type) {
+    return {};
+  }
+
+  const auto& lhs = *branch_condition.lhs;
+  const auto& rhs = *branch_condition.rhs;
+  PreparedSelectedProofEdgeBoundFacts facts{
+      .available = true,
+      .predicate = *predicate,
+      .contribution = bir::LocalArraySelectedProofEdgeBoundContribution::Unknown,
+      .bound_inclusive =
+          selected_proof_edge_inclusive_predicate(*branch_condition.predicate),
+  };
+  if (selected_proof_edge_values_same_name_and_type(lhs, *dynamic_index) &&
+      selected_proof_edge_immediate_bound(rhs, *branch_condition.compare_type)) {
+    facts.normalized_bound = rhs.immediate;
+    facts.contribution =
+        selected_proof_edge_upper_predicate(*branch_condition.predicate)
+            ? bir::LocalArraySelectedProofEdgeBoundContribution::Upper
+            : bir::LocalArraySelectedProofEdgeBoundContribution::Lower;
+    return facts;
+  }
+  if (selected_proof_edge_values_same_name_and_type(rhs, *dynamic_index) &&
+      selected_proof_edge_immediate_bound(lhs, *branch_condition.compare_type)) {
+    facts.normalized_bound = lhs.immediate;
+    facts.contribution =
+        selected_proof_edge_upper_predicate(*branch_condition.predicate)
+            ? bir::LocalArraySelectedProofEdgeBoundContribution::Lower
+            : bir::LocalArraySelectedProofEdgeBoundContribution::Upper;
+    return facts;
+  }
+  return {};
+}
+
+[[nodiscard]] bir::LocalArraySelectedProofEdgePathInputs
+make_missing_selected_proof_edge_path_inputs(
+    const bir::LocalArrayElementPathRecord& path,
+    std::string_view function_name) {
+  return bir::LocalArraySelectedProofEdgePathInputs{
+      .element_path = &path,
+      .proof_function_name = std::string(function_name),
+  };
+}
+
+[[nodiscard]] bir::LocalArraySelectedProofEdgePathInputs
+make_selected_proof_edge_path_inputs(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function_cf,
+    const PreparedSelectedProofEdgePathMatrices& matrices,
+    const bir::LocalArrayElementPathRecord& path,
+    const PreparedBranchCondition& branch_condition) {
+  const auto function_name = prepared_function_name(names, function_cf.function_name);
+  auto inputs = make_missing_selected_proof_edge_path_inputs(path, function_name);
+  const auto bound_facts = selected_proof_edge_bound_facts(path, branch_condition);
+  if (!bound_facts.available) {
+    return inputs;
+  }
+
+  const BlockLabelId producer_label =
+      names.block_labels.find(path.lir_producer_block_label);
+  const auto proof_index =
+      selected_proof_edge_block_index_by_label(function_cf, branch_condition.block_label);
+  const auto true_index =
+      selected_proof_edge_block_index_by_label(function_cf, branch_condition.true_label);
+  const auto false_index =
+      selected_proof_edge_block_index_by_label(function_cf, branch_condition.false_label);
+  const auto producer_index =
+      selected_proof_edge_block_index_by_label(function_cf, producer_label);
+
+  inputs.proof_block_label =
+      std::string(prepared_block_label(names, branch_condition.block_label));
+  inputs.proof_condition_value = branch_condition.condition_value;
+  inputs.proof_source_available = true;
+  inputs.proof_predicate = bound_facts.predicate;
+  inputs.proof_compare_type = *branch_condition.compare_type;
+  inputs.proof_lhs = *branch_condition.lhs;
+  inputs.proof_rhs = *branch_condition.rhs;
+  inputs.bound_contribution = bound_facts.contribution;
+  inputs.normalized_bound = bound_facts.normalized_bound;
+  inputs.bound_inclusive = bound_facts.bound_inclusive;
+
+  if (!proof_index.has_value() || !true_index.has_value() ||
+      !false_index.has_value() || !producer_index.has_value() ||
+      branch_condition.true_label == kInvalidBlockLabel ||
+      branch_condition.false_label == kInvalidBlockLabel) {
+    return inputs;
+  }
+  if (*proof_index == *producer_index) {
+    inputs.selected_outcome = bir::LocalArraySelectedProofEdgeOutcome::True;
+    inputs.selected_successor_label =
+        std::string(prepared_block_label(names, branch_condition.true_label));
+    inputs.non_selected_successor_label =
+        std::string(prepared_block_label(names, branch_condition.false_label));
+    inputs.same_block_candidate = true;
+    return inputs;
+  }
+
+  const bool true_reaches = selected_proof_edge_matrix_value(
+      matrices.reaches, *true_index, *producer_index);
+  const bool false_reaches = selected_proof_edge_matrix_value(
+      matrices.reaches, *false_index, *producer_index);
+  if (true_reaches == false_reaches) {
+    if (!true_reaches) {
+      inputs.selected_outcome = bir::LocalArraySelectedProofEdgeOutcome::True;
+      inputs.selected_successor_label =
+          std::string(prepared_block_label(names, branch_condition.true_label));
+      inputs.non_selected_successor_label =
+          std::string(prepared_block_label(names, branch_condition.false_label));
+      inputs.path_validity_known = true;
+    }
+    return inputs;
+  }
+
+  const bool selected_true = true_reaches;
+  inputs.selected_outcome = selected_true
+                                ? bir::LocalArraySelectedProofEdgeOutcome::True
+                                : bir::LocalArraySelectedProofEdgeOutcome::False;
+  inputs.selected_successor_label =
+      std::string(prepared_block_label(
+          names, selected_true ? branch_condition.true_label
+                               : branch_condition.false_label));
+  inputs.non_selected_successor_label =
+      std::string(prepared_block_label(
+          names, selected_true ? branch_condition.false_label
+                               : branch_condition.true_label));
+  inputs.path_validity_known = true;
+  inputs.selected_edge_reaches_lir_producer = true;
+  inputs.selected_edge_covers_lir_producer = true;
+  inputs.proof_dominates_lir_producer = selected_proof_edge_matrix_value(
+      matrices.dominates, *producer_index, *proof_index);
+  inputs.proof_guards_lir_producer = inputs.proof_dominates_lir_producer;
+  return inputs;
+}
+
+[[nodiscard]] bir::LocalArraySelectedProofEdgePathRecord
+collect_selected_proof_edge_path_record(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function_cf,
+    const PreparedSelectedProofEdgePathMatrices& matrices,
+    const bir::LocalArrayElementPathRecord& path,
+    std::string_view function_name,
+    bool duplicate_key) {
+  if (duplicate_key) {
+    auto inputs = make_missing_selected_proof_edge_path_inputs(path, function_name);
+    inputs.unsupported_boundary = true;
+    return bir::evaluate_local_array_selected_proof_edge_path(inputs);
+  }
+
+  std::optional<bir::LocalArraySelectedProofEdgePathRecord> available;
+  std::optional<bir::LocalArraySelectedProofEdgePathRecord> fallback;
+  for (const auto& branch_condition : function_cf.branch_conditions) {
+    auto candidate = bir::evaluate_local_array_selected_proof_edge_path(
+        make_selected_proof_edge_path_inputs(names,
+                                             function_cf,
+                                             matrices,
+                                             path,
+                                             branch_condition));
+    if (candidate.status == bir::LocalArraySelectedProofEdgePathStatus::Available) {
+      if (available.has_value()) {
+        auto inputs = make_missing_selected_proof_edge_path_inputs(path, function_name);
+        inputs.unsupported_boundary = true;
+        return bir::evaluate_local_array_selected_proof_edge_path(inputs);
+      }
+      available = std::move(candidate);
+      continue;
+    }
+    if (!fallback.has_value() &&
+        candidate.status != bir::LocalArraySelectedProofEdgePathStatus::MissingProofSource) {
+      fallback = std::move(candidate);
+    }
+  }
+  if (available.has_value()) {
+    return *available;
+  }
+  if (fallback.has_value()) {
+    return *fallback;
+  }
+  return bir::evaluate_local_array_selected_proof_edge_path(
+      make_missing_selected_proof_edge_path_inputs(path, function_name));
+}
+
+[[nodiscard]] bool selected_proof_edge_duplicate_key(
+    const bir::Function& function,
+    const bir::LocalArrayElementPathRecord& path) {
+  if (path.lir_producer_lookup_key.empty()) {
+    return false;
+  }
+  std::size_t count = 0;
+  for (const auto& candidate : function.local_array_element_paths) {
+    if (candidate.lir_producer_lookup_key == path.lir_producer_lookup_key) {
+      ++count;
+    }
+  }
+  return count > 1;
+}
+
+}  // namespace
+
+void populate_local_array_selected_proof_edge_paths(PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.local_array_selected_proof_edge_paths.clear();
+  }
+
+  for (const auto& function_cf : prepared.control_flow.functions) {
+    auto* bir_function = prepared_bir_function_by_name(prepared, function_cf.function_name);
+    if (bir_function == nullptr) {
+      continue;
+    }
+    const auto function_name =
+        prepared_function_name(prepared.names, function_cf.function_name);
+    const auto matrices = make_selected_proof_edge_path_matrices(function_cf);
+    for (const auto& path : bir_function->local_array_element_paths) {
+      bir_function->local_array_selected_proof_edge_paths.push_back(
+          collect_selected_proof_edge_path_record(
+              prepared.names,
+              function_cf,
+              matrices,
+              path,
+              function_name,
+              selected_proof_edge_duplicate_key(*bir_function, path)));
+    }
+  }
+}
 
 PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
