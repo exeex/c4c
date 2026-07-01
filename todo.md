@@ -1,54 +1,96 @@
 Status: Active
 Source Idea Path: ideas/open/509_rv64_fixed_prepared_stack_frame_emission.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Rebuild Fixed-Frame Evidence
+Current Step ID: 2
+Current Step Title: Trace RV64 Fixed-Frame Consumption
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 of `plan.md` rebuilt the fixed-frame evidence for
-`tests/c/external/gcc_torture/src/20030209-1.c` without code or test edits.
-The idea 424 handoff artifacts and fresh Step 1 probes agree: prepared BIR
-publishes a coherent fixed frame for `main` with `frame_size=80000`,
-`frame_alignment=8`, `has_dynamic_stack=no`, and `fixed_slots_use_fp=no`.
-The prepared stack layout contains 10000 fixed slots for `main`; sample slot
-facts are `slot #0 offset=0 size=4 align=4`, `slot #1 offset=8 size=8 align=8`,
-and `slot #9999 offset=79992 size=8 align=8`. The prepared frame plan
-republishes the same 10000-slot order from `slot_id=#0` through
-`slot_id=#9999`.
+Step 2 of `plan.md` traced the minimal RV64 object-emission consumer path for
+coherent prepared fixed-frame plans without code or test edits. The producer
+fact path is:
+`src/backend/prealloc/frame.hpp` defines `PreparedStackLayout` with
+`frame_size_bytes`, `frame_alignment_bytes`, and `frame_slots`;
+`PreparedFrameSlot` owns `slot_id`, `function_name`, `offset_bytes`,
+`size_bytes`, `align_bytes`, and `fixed_location`; and
+`PreparedFramePlanFunction` republishes per-function `frame_size_bytes`,
+`frame_alignment_bytes`, `saved_callee_registers`, `frame_slot_order`,
+`has_dynamic_stack`, and `uses_frame_pointer_for_fixed_slots`.
+`src/backend/prealloc/frame_plan.cpp:199` `populate_frame_plan` seeds
+frame size/alignment from prepared addressing, folds matching
+`prepared.stack_layout.frame_slots` into `frame_slot_order`, extends frame
+size/alignment from slot extents, records dynamic stack use, assigns
+saved-register slots only for non-dynamic frames, sorts/deduplicates
+`frame_slot_order`, and sets `uses_frame_pointer_for_fixed_slots` only when a
+dynamic frame also has fixed slots. `src/backend/prealloc/stack_layout/lookups.cpp:5`
+provides `find_frame_slot_by_id` for prepared slot membership checks.
 
-The current RV64 object route still rejects the representative before object
-emission with:
-`unsupported_stack_frame: RV64 object route requires a supported prepared stack frame`.
-The code rejection point is
-`src/backend/mir/riscv/codegen/object_emission.cpp:10280`: `prepared_function_to_object_function`
-calls `rv64_object_stack_frame_size(addressing, frame_plan, prepared.stack_layout)`,
-and the helper returns `std::nullopt` because it rounds the prepared frame to
-16-byte alignment and only accepts sizes that fit a signed 12-bit immediate.
-For this representative, the 80000-byte fixed frame is outside that current
-consumer limit. The route has not yet reached the later FPR save-slot rejection;
-prepared FPR save slots for `fs1` and `fs2` remain a watchout, not part of this
-fixed-frame packet.
+The RV64 object consumer entry point is
+`src/backend/mir/riscv/codegen/object_emission.cpp:10237`
+`prepared_function_to_object_function`. It looks up `addressing` with
+`prepare::find_prepared_addressing`, looks up `frame_plan` with
+`prepare::find_prepared_frame_plan`, then gates object emission through
+`rv64_object_stack_frame_size(addressing, frame_plan, prepared.stack_layout)`.
+`rv64_object_stack_frame_size` currently combines addressing and prepared frame
+sizes, extends by saved-register slot extents, rounds to a 16-byte frame, and
+rejects unless the aligned frame fits a signed 12-bit immediate. That helper is
+the current fixed-frame validation and large-frame admission boundary.
+
+For Step 3, keep the implementation boundary around
+`rv64_object_stack_frame_size`, `make_rv64_stack_frame_prologue_fragment`,
+`append_rv64_stack_frame_epilogue`,
+`make_rv64_call_frame_prologue_fragment`, and
+`append_rv64_call_frame_epilogue`. Split validation from immediate
+encodability: accept only coherent fixed prepared frame plans and keep missing
+plans, dynamic stack, `uses_frame_pointer_for_fixed_slots`, contradictory
+stack-layout vs frame-plan facts, incomplete saved-register placement, size
+overflow, unsupported alignment, and non-fixed-frame variants fail-closed.
+Reuse `append_rv64_load_immediate` as the existing large-constant helper and add
+a narrow stack-pointer adjustment helper for large prepared frame sizes instead
+of widening testcase-specific logic. The `has_call` path separately checks
+`rv64_call_frame_size` and `rv64_call_frame_ra_offset` for signed 12-bit
+encodability; large fixed frames with calls need that boundary handled or left
+explicitly fail-closed. The representative has calls.
+
+For Step 4, the fixed-slot addressing boundary is the family of helpers that
+currently validate prepared slot facts and then collapse to signed 12-bit
+offsets: `prepared_stack_slot_home_offset`,
+`prepared_stack_slot_home_offset_for_value`,
+`prepared_frame_slot_absolute_offset`,
+`fragment_for_prepared_frame_address_materialization`,
+`prepared_frame_slot_address_materialization_offset`, and
+`append_rv64_materialize_or_move_store_value`. Direct load/store consumers flow
+through `fragment_for_prepared_store_local` and
+`fragment_for_prepared_load_local`. Low-level encoders such as
+`append_rv64_store_register_to_stack`, `append_rv64_load_stack_to_register`,
+`append_rv64_store_fpr_to_stack`, and `append_rv64_load_stack_to_fpr` should
+remain immediate-offset encoders; large fixed-slot offsets should be handled by
+a fact-driven address materialization boundary above them.
 
 Artifacts:
-- `build/agent_state/424_step2_infrastructure_classification/20030209-1/`
-- `build/agent_state/509_step1_fixed_frame_evidence/dump-prepared-bir.txt`
-- `build/agent_state/509_step1_fixed_frame_evidence/prepared-frame-evidence.rg.txt`
-- `build/agent_state/509_step1_fixed_frame_evidence/prepared-stack-layout-sample.rg.txt`
-- `build/agent_state/509_step1_fixed_frame_evidence/prepared-stack-layout-slot-count.txt`
-- `build/agent_state/509_step1_fixed_frame_evidence/prepared-frame-slot-order-count.txt`
-- `build/agent_state/509_step1_fixed_frame_evidence/codegen-obj.txt.stderr`
-- `build/agent_state/509_step1_fixed_frame_evidence/codegen-obj.txt.rc`
+- `build/agent_state/509_step2_fixed_frame_trace/trace_summary.md`
+- `build/agent_state/509_step2_fixed_frame_trace/producer_fact_path.rg.txt`
+- `build/agent_state/509_step2_fixed_frame_trace/rv64_consumer_path.rg.txt`
+- `build/agent_state/509_step2_fixed_frame_trace/prepared_frame_structs.snip.txt`
+- `build/agent_state/509_step2_fixed_frame_trace/frame_plan_population.snip.txt`
+- `build/agent_state/509_step2_fixed_frame_trace/object_entry_and_frame_gate.snip.txt`
+- `build/agent_state/509_step2_fixed_frame_trace/stack_frame_size_gate.snip.txt`
+- `build/agent_state/509_step2_fixed_frame_trace/prologue_epilogue_helpers.snip.txt`
+- `build/agent_state/509_step2_fixed_frame_trace/encoding_immediate_helpers.snip.txt`
+- `build/agent_state/509_step2_fixed_frame_trace/value_home_offset_gate.snip.txt`
+- `build/agent_state/509_step2_fixed_frame_trace/frame_slot_memory_offset_gate.snip.txt`
+- `build/agent_state/509_step2_fixed_frame_trace/frame_address_materialization_gate.snip.txt`
 
 ## Suggested Next
 
-Execute Step 2: trace the minimal RV64 object-emission consumer path for
-prepared fixed-frame facts. Start at `rv64_object_stack_frame_size`, then follow
-stack adjustment and frame-slot offset consumers that currently require signed
-12-bit immediates so the next code packet can validate coherent fixed frames
-and materialize large stack adjustments from prepared facts.
+Execute Step 3: implement fixed-frame validation and large stack-pointer
+adjustment in `src/backend/mir/riscv/codegen/object_emission.cpp`. Keep the
+first code packet narrow: accept coherent fixed prepared frames beyond signed
+12-bit frame sizes, materialize large prologue/epilogue stack adjustments from
+prepared frame facts, and keep unsupported variants fail-closed before touching
+fixed-slot load/store addressing.
 
 ## Watchouts
 
@@ -58,19 +100,29 @@ and materialize large stack adjustments from prepared facts.
   from testcase names, raw slot counts, source shape, or magic constants.
 - Do not include dynamic stack, FPR, F128, vector, varargs, producer-layout, or
   broad ABI support in this plan.
-- The representative prepared plan also lists saved registers
-  `gpr:s1`, `fpr:fs1`, and `fpr:fs2`. Step 1 confirms the current generic
-  rejection occurs before `diagnose_unsupported_prepared_saved_register_bank`;
-  do not use FPR save-slot support as the first fixed-frame repair.
+- Preserve the FPR/F128/vector boundary: `diagnose_unsupported_prepared_saved_register_bank`
+  must continue rejecting non-GPR saved-register facts. The representative
+  prepared plan lists `gpr:s1`, `fpr:fs1`, and `fpr:fs2`, so fixing the generic
+  fixed-frame admission gate may expose the existing non-GPR saved-register
+  diagnostic next.
+- Do not infer frame size, stack offsets, slot widths, slot alignments, or call
+  frame shape from `src/20030209-1.c`, `80000`, `10000`, source layout, or raw
+  slot counts.
+- Step 4 should not weaken low-level load/store immediate encoders. Add or
+  reuse a fact-driven address materialization helper above the encoders for
+  large fixed-slot offsets.
 
 ## Proof
 
-- `scripts/plan_review_state.py set-step --step-id 1 --step-title 'Rebuild Fixed-Frame Evidence'`
-- `./build/c4cll --dump-prepared-bir --target riscv64-linux-gnu --mir-focus-function main tests/c/external/gcc_torture/src/20030209-1.c > build/agent_state/509_step1_fixed_frame_evidence/dump-prepared-bir.txt 2> build/agent_state/509_step1_fixed_frame_evidence/dump-prepared-bir.txt.stderr`
-  - return code: `0`
-- `./build/c4cll --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20030209-1.c -o build/agent_state/509_step1_fixed_frame_evidence/20030209-1.o > build/agent_state/509_step1_fixed_frame_evidence/codegen-obj.txt 2> build/agent_state/509_step1_fixed_frame_evidence/codegen-obj.txt.stderr`
-  - return code: `2`, expected current rejection for Step 1 evidence
-- `rg` filters over the prepared dump recorded the exact frame facts and counts
-  under `build/agent_state/509_step1_fixed_frame_evidence/`.
-- `test_after.log` is not applicable for this evidence-only packet; the
-  supervisor requested artifact-local probe logs instead.
+- `scripts/plan_review_state.py set-step --step-id 2 --step-title 'Trace RV64 Fixed-Frame Consumption'`
+- `rg` and `sed` traces over `src/backend/prealloc/frame.hpp`,
+  `src/backend/prealloc/frame_plan.cpp`,
+  `src/backend/prealloc/stack_layout/lookups.cpp`,
+  `src/backend/mir/riscv/codegen/prepared_frame_emit.cpp`,
+  `src/backend/mir/riscv/codegen/prepared_function_emit.cpp`, and
+  `src/backend/mir/riscv/codegen/object_emission.cpp` recorded the producer
+  and RV64 consumer paths under
+  `build/agent_state/509_step2_fixed_frame_trace/`.
+- `git diff --check -- todo.md`
+- `test_after.log` is not applicable for this trace-only packet; the
+  supervisor requested `todo.md` and artifact-local trace proof instead.
