@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/512_stack_passed_parameter_home_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Publish Stack-Passed Parameter Homes
+Current Step ID: 4
+Current Step Title: Publish Ordinary-C ABI Metadata For Stack Parameters
 
 # Current Packet
 
@@ -52,19 +52,22 @@ Representative before/after facts for `tests/c/external/gcc_torture/src/20001017
 
 ## Suggested Next
 
-Execute Step 4 by consuming the newly published producer records through the
-RV64 route:
+Execute repaired Step 4 by publishing the ordinary-C ABI metadata that the
+representative route still lacks before any RV64 consumption work:
 
-- Keep RV64 reading prepared call/formal records directly; do not reconstruct
-  stack offsets from argument index, source shape, or parameter spelling.
-- Confirm whether the current `fpr:fs1` save-slot rejection must remain a
-  non-goal blocker or be handled by a separate active-plan step before the old
-  parameter-home rejection can be observed again in object codegen.
-- Preserve the fail-closed behavior for stack-passed formals without explicit
-  producer ABI and coherent home facts, demonstrated here by
-  `%p.B`, `%p.fdB`, `%p.b`, `%p.C`, and `%p.fdC` remaining `kind=none`.
-- Keep byval, sret, and aggregate/memory ABI paths out of the ordinary stack
-  argument offset publication route.
+- Trace why `tests/c/external/gcc_torture/src/20001017-1.c` reaches
+  prealloc without explicit ordinary stack call-argument `passed_on_stack`
+  offsets and without fixed-formal `param.abi->passed_on_stack` metadata.
+- Publish those facts in the producer path that owns ordinary-C ABI metadata.
+  Preserve the Step 3 boundary: no index/name fallback, no RV64 inference, and
+  no source-shape reconstruction.
+- Prove prepared dumps for the representative row now show caller stack
+  offsets for stack arguments and callee stack-slot homes for the ordinary
+  stack-passed parameters.
+- Keep byval, sret, memory aggregate, varargs, F128, dynamic stack, and
+  ambiguous-formal paths fail-closed unless they carry explicit authority.
+- Leave RV64 consumption for Step 5, after the representative has homes to
+  consume.
 
 ## Watchouts
 
@@ -75,9 +78,12 @@ RV64 route:
 - The caller helper deliberately refuses RV64 destination stack offsets for
   byval, sret, and memory-class aggregate arguments. Those paths remain owned
   by existing byval/aggregate transport logic.
+- `20001017-1.c` still lacks explicit ordinary-C call/formal stack ABI
+  authority. Current Step 5 RV64 consumption would be premature until Step 4
+  publishes representative producer metadata.
 - `20001017-1.c` object codegen still fails before parameter-home consumption
-  at `unsupported_stack_frame ... fpr:fs1`; this slice does not claim object
-  advancement.
+  at `unsupported_stack_frame ... fpr:fs1`; do not treat this plan repair as
+  object advancement.
 - The new dump test proves the representative row does not infer stack offsets
   or stack homes without explicit authority. Synthetic C++ contract coverage
   proves explicit ordinary caller/formal producer facts.

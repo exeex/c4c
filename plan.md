@@ -152,7 +152,34 @@ Completion check:
   and missing or ambiguous homes still reject.
 - `todo.md` records the final publication boundary.
 
-## Step 4: Consume Published Homes Through RV64
+## Step 4: Publish Ordinary-C ABI Metadata For Stack Parameters
+
+Goal: Publish the missing ordinary-C call/formal ABI metadata needed by the
+representative route before RV64 consumption.
+
+Actions:
+
+- Trace why `src/20001017-1.c` reaches producer/prealloc without explicit
+  ordinary stack call-argument `passed_on_stack` offsets and without fixed
+  formal `param.abi->passed_on_stack` metadata.
+- Publish that metadata in the frontend/lowering/prealloc producer path that
+  owns ordinary-C ABI facts; do not recreate the withdrawn index/name fallback.
+- Keep byval, sret, memory aggregate, varargs, F128, dynamic stack, and
+  ambiguous-formal paths fail-closed unless they already carry explicit
+  authority.
+- Prove `src/20001017-1.c` now exposes caller stack offsets and callee
+  stack-slot homes for the ordinary stack-passed parameters in prepared dumps.
+- Preserve existing explicit-ABI synthetic coverage from Step 3.
+
+Completion check:
+
+- `cmake --build build --target c4cll` passes.
+- Focused dumps show the representative row now has explicit caller stack
+  offsets and fixed-formal stack homes from producer ABI metadata.
+- Focused tests prove the producer metadata path and fail-closed variants.
+- `todo.md` records the producer boundary and any still-missing ABI authority.
+
+## Step 5: Consume Published Homes Through RV64
 
 Goal: Confirm RV64 object emission consumes the prepared homes directly and
 advances the representative ordinary-C route.
@@ -174,7 +201,7 @@ Completion check:
   reconstructing them.
 - `git diff --check` passes for touched files.
 
-## Step 5: Reclassify Remaining Param-Home Rows
+## Step 6: Reclassify Remaining Param-Home Rows
 
 Goal: Check the remaining bucket rows and separate covered ordinary-C cases
 from narrower follow-up features.
@@ -196,7 +223,7 @@ Completion check:
 - Focused coverage covers at least one stack-passed parameter path beyond a
   named-case-only proof.
 
-## Step 6: Validate And Handoff
+## Step 7: Validate And Handoff
 
 Goal: Prove the slice and prepare the source idea for closure or a narrowed
 follow-up if unsupported ABI shapes remain.
