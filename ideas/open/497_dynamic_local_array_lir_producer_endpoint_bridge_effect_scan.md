@@ -6,12 +6,13 @@ Parent: `ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classif
 Source Evidence:
 - `build/agent_state/494_step3_interval_effect_status_surface/summary.md`
 - `build/agent_state/494_step4_residual_disposition/disposition.md`
+- `review/497_step4_bounded_effect_scan_review.md`
+- `build/agent_state/498_step5_residual_disposition/disposition.md`
 Owning Layer: Lower endpoint/effect owner for local-array address derivation
-Lifecycle Note: Parked after Step 5. Step 3 supplied bounded endpoint bridge
-records, but 497 cannot complete and 494 cannot resume availability until
-`ideas/open/498_dynamic_local_array_ordered_effect_source_stream_builder.md`
-builds production ordered effect-source stream population for the selected
-proof-source-to-endpoint interval.
+Lifecycle Note: Resumed after closed idea 498. Step 3 supplied bounded
+endpoint bridge records, and
+`build/agent_state/498_step5_residual_disposition/disposition.md` says the
+stored ordered effect-source stream is now ready for 497 consumption.
 
 ## Goal
 
@@ -28,19 +29,17 @@ records plus LIR producer coordinates alone. The missing prerequisite is a
 coordinate-safe endpoint bridge into the prepared/BIR effect stream and a real
 bounded effect scan over that interval.
 
-## Parked State
+## Resumed State
 
 The endpoint bridge portion is available for supported rows through
 `bir::LocalArrayEndpointBridgeRecord`, and selected proof-source coordinates
-are present through the selected proof-edge path surface. Production still
-lacks a builder that owns the selected proof-source-to-endpoint interval and
+are present through the selected proof-edge path surface. Idea 498 added the
+lower builder that owns the selected proof-source-to-endpoint interval and
 emits comparable ordered effect-source records from prepared/BIR sources.
 
-Resume this idea only after the lower ordered effect-source stream builder can
-populate assignments/redefinitions, memory accesses, phi/alias transfers,
-calls/helpers, inline asm, publications, move bundles, parallel copies, and
-unknown modeled effects in one comparable stream, failing closed when any
-effect source cannot be ordered or modeled.
+The remaining 497 work is to consume that stored ordered effect-source stream
+through the endpoint bridge, reject the prior synthetic bounded-scan route, and
+record whether idea 494 can resume available interval fact publication.
 
 ## In Scope
 
