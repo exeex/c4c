@@ -8,30 +8,40 @@ Current Step Title: Publish Available Interval Facts From Stored Stream
 
 ## Just Finished
 
-Lifecycle switched from closed idea 497 back to idea 494 after the 497 Step 5
-disposition said no lower endpoint/effect blocker remains.
+Implemented Step 5 from `plan.md`: BIR functions now have a
+`local_array_interval_effects` fact surface, and
+`populate_local_array_interval_effects` publishes those facts only by consuming
+the selected proof-edge path, its endpoint bridge, and exactly one matching
+stored production `local_array_ordered_effect_source_streams` record. Repair
+follow-up wired the hook into
+`BirPreAlloc::publish_contract_plans()` immediately after ordered effect-source
+stream population, with focused structural coverage through
+`publish_contract_plans()`.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: publish available interval facts only from a
-matching production ordered effect-source stream consumed through the endpoint
-bridge, while preserving the existing fail-closed status surface.
+Execute Step 6 from `plan.md`: record the residual disposition for idea 490
+path/no-clobber certification after the stored-stream interval facts are now
+published.
 
 ## Watchouts
 
-- Do not infer availability from selected path availability, synthetic bridge
-  flags, caller-supplied effect vectors, final homes, target behavior, or
-  `lir_producer_instruction_index` alone.
-- Keep downstream proof-fact population, checker input population, idea 490
-  certification, packaging, scalar loads, and RV64/MIR lowering out of this
-  plan.
+- Step 5 intentionally does not populate idea 489 proof facts, idea 486 checker
+  inputs, idea 490 certification, packaging, scalar loads, or RV64/MIR lowering.
+- `populate_local_array_interval_effects` does not synthesize or populate the
+  ordered stream itself; callers must have production stream records present or
+  the interval fact remains fail-closed as missing stream evidence.
+- The focused production-wiring test clears preseeded rows, calls
+  `BirPreAlloc::publish_contract_plans()`, and asserts production publication
+  rebuilds selected paths, endpoint bridges, ordered streams, and interval
+  facts through the public API.
 
 ## Proof
 
-Lifecycle switch proof:
+Implementation proof:
 
 ```sh
-git diff --check
+cmake --build build -j2 > test_after.log 2>&1 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' >> test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
 ```
 
-Result: passed.
+Result: passed. Output preserved in `test_after.log`.

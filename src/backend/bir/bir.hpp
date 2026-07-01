@@ -4477,6 +4477,7 @@ struct Function {
   std::vector<LocalArrayEndpointBridgeRecord> local_array_endpoint_bridges;
   std::vector<LocalArrayOrderedEffectSourceStream>
       local_array_ordered_effect_source_streams;
+  std::vector<LocalArrayIntervalEffectRecord> local_array_interval_effects;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;

@@ -214,12 +214,37 @@ prepare::PreparedBirModule make_effect_stream_prepared_module(
   const auto function_name = prepared.names.function_names.intern("stream_fixture");
   const auto guard_label = prepared.names.block_labels.intern("guard");
   const auto body_label = prepared.names.block_labels.intern("body");
+  const auto exit_label = prepared.names.block_labels.intern("exit");
   prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
       .function_name = function_name,
       .blocks = {
-          prepare::PreparedControlFlowBlock{.block_label = guard_label},
+          prepare::PreparedControlFlowBlock{
+              .block_label = guard_label,
+              .terminator_kind = bir::TerminatorKind::CondBranch,
+              .true_label = body_label,
+              .false_label = exit_label,
+          },
           prepare::PreparedControlFlowBlock{.block_label = body_label},
+          prepare::PreparedControlFlowBlock{.block_label = exit_label},
       },
+      .branch_conditions = {
+          prepare::PreparedBranchCondition{
+              .function_name = function_name,
+              .block_label = guard_label,
+              .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+              .condition_value = bir::Value::named(bir::TypeKind::I1, "%cmp"),
+              .predicate = bir::BinaryOpcode::Ult,
+              .compare_type = bir::TypeKind::I64,
+              .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+              .rhs = bir::Value::immediate_i64(4),
+              .can_fuse_with_branch = true,
+              .true_label = body_label,
+              .false_label = exit_label,
+          },
+      },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
   });
   prepared.module.functions.push_back(bir::Function{
       .name = "stream_fixture",
@@ -241,6 +266,10 @@ prepare::PreparedBirModule make_effect_stream_prepared_module(
               .insts = std::move(body_insts),
               .label_id = body_label,
           },
+          bir::Block{
+              .label = "exit",
+              .label_id = exit_label,
+          },
       },
   });
   auto& function = prepared.module.functions.front();
@@ -250,6 +279,60 @@ prepare::PreparedBirModule make_effect_stream_prepared_module(
   function.local_array_endpoint_bridges.push_back(
       effect_stream_endpoint_bridge(&path));
   return prepared;
+}
+
+int production_publish_contract_plans_populates_local_array_interval_effects() {
+  auto prepared = make_effect_stream_prepared_module({
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp2"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::CastInst{
+          .opcode = bir::CastOpcode::Bitcast,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+      },
+  });
+  auto& function = prepared.module.functions.front();
+  function.local_array_selected_proof_edge_paths.clear();
+  function.local_array_endpoint_bridges.clear();
+  function.local_array_ordered_effect_source_streams.clear();
+  function.local_array_interval_effects.clear();
+
+  prepare::BirPreAlloc prealloc(std::move(prepared));
+  prealloc.publish_contract_plans();
+  const auto& published_function = prealloc.prepared().module.functions.front();
+  if (published_function.local_array_selected_proof_edge_paths.size() != 1 ||
+      published_function.local_array_selected_proof_edge_paths.front().status !=
+          bir::LocalArraySelectedProofEdgePathStatus::Available) {
+    return fail("expected production publication to rebuild selected proof-edge path");
+  }
+  if (published_function.local_array_endpoint_bridges.size() != 1 ||
+      published_function.local_array_endpoint_bridges.front().status !=
+          bir::LocalArrayEndpointBridgeStatus::Available) {
+    return fail("expected production publication to rebuild endpoint bridge");
+  }
+  if (published_function.local_array_ordered_effect_source_streams.size() != 1 ||
+      published_function.local_array_ordered_effect_source_streams.front().status !=
+          bir::LocalArrayOrderedEffectSourceStreamStatus::MissingLowerBoundaryCoordinate) {
+    return fail("expected production publication to build ordered stream before interval fact");
+  }
+  if (published_function.local_array_interval_effects.size() != 1 ||
+      published_function.local_array_interval_effects.front().status !=
+          bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate) {
+    return fail("expected production publication to populate interval effect fact");
+  }
+  return 0;
 }
 
 int populates_clean_local_array_ordered_effect_stream() {
@@ -291,6 +374,17 @@ int populates_clean_local_array_ordered_effect_stream() {
   if (effect.status != bir::LocalArrayIntervalEffectStatus::Available) {
     return fail("expected clean production stream to classify as available");
   }
+  prepare::populate_local_array_interval_effects(prepared);
+  const auto& facts = function.local_array_interval_effects;
+  if (facts.size() != 1 ||
+      facts.front().status != bir::LocalArrayIntervalEffectStatus::Available ||
+      facts.front().lir_producer_lookup_key !=
+          function.local_array_selected_proof_edge_paths.front()
+              .lir_producer_lookup_key ||
+      facts.front().dynamic_index !=
+          bir::Value::named(bir::TypeKind::I64, "%idx")) {
+    return fail("expected stored production stream to publish one available interval fact");
+  }
   return 0;
 }
 
@@ -325,6 +419,12 @@ int local_array_interval_consumer_requires_populated_matching_stream() {
       bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) {
     return fail("expected empty production stream records to fail closed");
   }
+  prepare::populate_local_array_interval_effects(prepared);
+  if (function.local_array_interval_effects.size() != 1 ||
+      function.local_array_interval_effects.front().status !=
+          bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) {
+    return fail("expected interval fact publication to reject missing stored stream");
+  }
 
   function.local_array_ordered_effect_source_streams.push_back(
       bir::LocalArrayOrderedEffectSourceStream{
@@ -351,6 +451,12 @@ int local_array_interval_consumer_requires_populated_matching_stream() {
   if (effect.status !=
       bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) {
     return fail("expected synthetic path-only stream evidence to fail closed");
+  }
+  prepare::populate_local_array_interval_effects(prepared);
+  if (function.local_array_interval_effects.size() != 1 ||
+      function.local_array_interval_effects.front().status !=
+          bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) {
+    return fail("expected interval fact publication to reject synthetic path-only stream evidence");
   }
 
   prepare::populate_local_array_ordered_effect_source_streams(prepared);
@@ -380,6 +486,12 @@ int local_array_interval_consumer_requires_populated_matching_stream() {
       bir::LocalArrayIntervalEffectStatus::MissingPreparedBirEndpointBridge) {
     return fail("expected missing endpoint bridge to fail closed");
   }
+  prepare::populate_local_array_interval_effects(missing_endpoint);
+  if (missing_endpoint_function.local_array_interval_effects.size() != 1 ||
+      missing_endpoint_function.local_array_interval_effects.front().status !=
+          bir::LocalArrayIntervalEffectStatus::MissingPreparedBirEndpointBridge) {
+    return fail("expected interval fact publication to reject missing endpoint bridge");
+  }
 
   function.local_array_ordered_effect_source_streams.push_back(
       function.local_array_ordered_effect_source_streams.front());
@@ -390,6 +502,12 @@ int local_array_interval_consumer_requires_populated_matching_stream() {
   if (effect.status !=
       bir::LocalArrayIntervalEffectStatus::DuplicateOrderedEffectSourceStream) {
     return fail("expected duplicate matching stream records to fail closed");
+  }
+  prepare::populate_local_array_interval_effects(prepared);
+  if (function.local_array_interval_effects.size() != 1 ||
+      function.local_array_interval_effects.front().status !=
+          bir::LocalArrayIntervalEffectStatus::DuplicateOrderedEffectSourceStream) {
+    return fail("expected interval fact publication to reject duplicate stored streams");
   }
   return 0;
 }
@@ -436,6 +554,12 @@ int ordered_effect_stream_fails_closed_on_missing_proof_coordinate() {
       bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate) {
     return fail("expected missing proof coordinate to reach interval classifier");
   }
+  prepare::populate_local_array_interval_effects(prepared);
+  if (function.local_array_interval_effects.size() != 1 ||
+      function.local_array_interval_effects.front().status !=
+          bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate) {
+    return fail("expected interval fact publication to reject missing proof coordinate");
+  }
   return 0;
 }
 
@@ -476,6 +600,12 @@ int ordered_effect_stream_fails_closed_on_unordered_boundary() {
   if (effect.status !=
       bir::LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary) {
     return fail("expected unordered boundary to reach interval classifier");
+  }
+  prepare::populate_local_array_interval_effects(prepared);
+  if (function.local_array_interval_effects.size() != 1 ||
+      function.local_array_interval_effects.front().status !=
+          bir::LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary) {
+    return fail("expected interval fact publication to reject unordered boundaries");
   }
   return 0;
 }
@@ -535,6 +665,12 @@ int ordered_effect_stream_records_unknown_and_clobber_sources() {
       bir::LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown) {
     return fail("expected first in-interval unknown call source to fail closed");
   }
+  prepare::populate_local_array_interval_effects(prepared);
+  if (function.local_array_interval_effects.size() != 1 ||
+      function.local_array_interval_effects.front().status !=
+          bir::LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown) {
+    return fail("expected interval fact publication to reject unknown call effects");
+  }
   return 0;
 }
 
@@ -571,6 +707,12 @@ int ordered_effect_stream_records_clobber_sources() {
   if (effect.status !=
       bir::LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex) {
     return fail("expected production clobber source to fail closed");
+  }
+  prepare::populate_local_array_interval_effects(prepared);
+  if (function.local_array_interval_effects.size() != 1 ||
+      function.local_array_interval_effects.front().status !=
+          bir::LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex) {
+    return fail("expected interval fact publication to reject clobbering effects");
   }
   return 0;
 }
@@ -654,6 +796,12 @@ int ordered_effect_stream_records_phi_alias_sources() {
       bir::LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved) {
     return fail("expected production phi/alias source to fail closed");
   }
+  prepare::populate_local_array_interval_effects(prepared);
+  if (function.local_array_interval_effects.size() != 1 ||
+      function.local_array_interval_effects.front().status !=
+          bir::LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved) {
+    return fail("expected interval fact publication to reject phi/alias ambiguity");
+  }
   return 0;
 }
 
@@ -673,6 +821,11 @@ int main() {
     return rc;
   }
   if (int rc = records_shape_without_aarch64_policy(); rc != 0) {
+    return rc;
+  }
+  if (int rc =
+          production_publish_contract_plans_populates_local_array_interval_effects();
+      rc != 0) {
     return rc;
   }
   if (int rc = populates_clean_local_array_ordered_effect_stream(); rc != 0) {

@@ -2274,6 +2274,8 @@ void populate_local_array_endpoint_bridges(PreparedBirModule& prepared);
 
 void populate_local_array_ordered_effect_source_streams(PreparedBirModule& prepared);
 
+void populate_local_array_interval_effects(PreparedBirModule& prepared);
+
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs);

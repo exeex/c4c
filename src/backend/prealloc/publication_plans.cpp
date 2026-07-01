@@ -5401,6 +5401,20 @@ void populate_local_array_ordered_effect_source_streams(
   }
 }
 
+void populate_local_array_interval_effects(PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.local_array_interval_effects.clear();
+    for (const auto& selected_path :
+         function.local_array_selected_proof_edge_paths) {
+      const auto* endpoint_bridge =
+          find_local_array_endpoint_bridge_for_path(function, selected_path);
+      function.local_array_interval_effects.push_back(
+          bir::evaluate_local_array_interval_effect(
+              function, &selected_path, endpoint_bridge));
+    }
+  }
+}
+
 PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
     const PreparedBirModule& prepared) {
