@@ -1,6 +1,6 @@
 # BIR Semantic Local-Address Provenance And Array-Element Access Authority
 
-Status: Open
+Status: Closed
 Type: BIR semantic producer prerequisite idea
 Parent: `ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md`
 Source Evidence:
@@ -10,15 +10,19 @@ Source Evidence:
 Owning Layer: BIR semantic local-address/provenance producer
 Closed By: lifecycle review after Step 4
 Reopened After: ideas/closed/486_bir_index_range_proof_path_dominance_carrier.md
+Closed After Reopen: lifecycle review after Step 6
 
 ## Completion Notes
 
-Idea 484 is closed as a negative/blocked producer result.
+Idea 484 is complete for local-address/array-element provenance authority
+packaging.
 
 The runbook audited local-address and array-element access evidence, defined a
 sound local-address/array-element provenance authority contract, then proved the
 current BIR/HIR local-memory lowering data cannot implement that contract
-without raw-shape inference.
+without raw-shape inference. It was later reopened after the lower authority
+chain closed, and Step 5 published the production
+`local_array_local_address_provenances` surface from matching checker inputs.
 
 Completed evidence:
 
@@ -26,6 +30,8 @@ Completed evidence:
 - `build/agent_state/484_step2_local_address_provenance_contract/contract.md`
 - `build/agent_state/484_step3_local_address_authority_producer/blocker.md`
 - `build/agent_state/484_step4_residual_disposition/disposition.md`
+- `build/agent_state/484_step5_local_address_provenance_from_checker_inputs/summary.md`
+- `build/agent_state/484_step6_residual_disposition_after_local_address_provenance/disposition.md`
 
 No scalar-load consumption, RV64/MIR lowering, expectation rewrite, or
 testcase-specific shortcut is selected.
@@ -50,13 +56,19 @@ Required follow-up scope:
   global, variadic/runtime, unsupported type, bootstrap, raw-shape-only, and
   target-only cases.
 
-## Residual Disposition
+## Final Residual Disposition
 
-The lower-level authority chain now exists through idea 486. Reopened 484
-should add the small packaging packet that exposes
-`local_array_index_range_checker_inputs` in the Step 2
-local-address/array-element record shape. Only after that record exists should
-idea 483-style scalar local-load production resume.
+No idea-484 blocker remains for local-address provenance packaging. Reopened
+Step 5 publishes `local_array_local_address_provenances` only from matching
+available `local_array_index_range_checker_inputs`, with matching source
+object, derivation, element path, dynamic index, scalar in-bounds layout, and
+producer coordinate identity.
+
+Idea 483 scalar local-load production can resume by consuming
+`local_array_local_address_provenances`. It should not re-derive provenance
+from checker inputs, proof facts, range certificates, selected paths, interval
+effects, endpoint bridges, final homes, raw testcase shape, synthetic effect
+inputs, or target behavior.
 
 Remaining boundaries:
 
@@ -96,7 +108,9 @@ python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
 
 Both passed in the original close. The lifecycle retry that reopened 484
 generated `test_after.log` and ran the regression-guard self-comparison against
-the backend `test_before.log`; the guard stayed at `328/328` passed.
+the backend `test_before.log`; the guard stayed at `328/328` passed. The final
+close/switch retry to idea 483 used the corrected self-comparison command and
+preserved the same `328/328` result.
 
 ## Reviewer Reject Signals
 

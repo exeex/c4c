@@ -1,6 +1,6 @@
 # BIR Semantic Local-Memory Scalar Load Producer
 
-Status: Closed
+Status: Open
 Type: Focused BIR semantic producer implementation idea
 Parent: `ideas/closed/422_bir_semantic_producer_high_impact_cleanup.md`
 Source Evidence:
@@ -9,6 +9,7 @@ Source Evidence:
 - `build/agent_state/422_step4_residual_disposition/disposition.md`
 Owning Layer: BIR semantic local-memory load producer
 Closed By: lifecycle review after corrected Step 1 search
+Reopened After: ideas/closed/484_bir_semantic_local_address_provenance_array_element_authority.md
 
 ## Completion Notes
 
@@ -42,7 +43,7 @@ non-round-trip part of `pr22098-1.c`.
 
 ## Residual Disposition
 
-The following representative classes remain fail-closed for 483:
+The following representative classes previously remained fail-closed for 483:
 
 - `src/pr22098-{1,2,3}.c`: compound literal array element through pointer or
   integer-pointer round-trip.
@@ -56,6 +57,30 @@ The following representative classes remain fail-closed for 483:
   struct/union access.
 - Union, complex, F128, object-representation, global, runtime/call, variadic,
   and bootstrap-adjacent rows.
+
+Idea 484 now publishes `local_array_local_address_provenances` for the local
+array element provenance prerequisite. Reopened 483 should consume that surface
+for scalar local-load production and should not re-derive provenance from
+checker inputs, proof facts, range certificates, selected paths, interval
+effects, endpoint bridges, final homes, raw testcase shape, synthetic effect
+inputs, or target behavior.
+
+## Reopened Lifecycle Disposition
+
+Idea 484 Step 6 says scalar local-load production can resume:
+
+- `local_array_local_address_provenances` publishes available records only from
+  matching available checker inputs with matching source object, derivation,
+  element path, dynamic index, scalar in-bounds layout, and producer coordinate
+  identity;
+- fail-closed representatives remain distinguishable for missing/non-available
+  checker input, missing source object, missing derivation, missing dynamic
+  index, missing range, out-of-bounds, aggregate/member, integer-pointer
+  round-trip, global source object, variadic/runtime boundary, unsupported
+  type, bootstrap boundary, raw-shape-only evidence, target-only evidence, and
+  coordinate confusion;
+- idea 483 should consume `local_array_local_address_provenances` instead of
+  re-deriving local-address provenance.
 
 ## Closed Scope
 
@@ -81,8 +106,9 @@ git diff --check
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
 ```
 
-Both passed. `test_after.log` was absent at close time, and this lifecycle task
-forbade touching canonical logs, so no new after log was generated.
+Both passed in the original routed close. The lifecycle retry that reopened 483
+generated `test_after.log` with the regression-guard self-comparison against
+the backend `test_before.log`; the guard stayed at `328/328` passed.
 
 ## Reviewer Reject Signals
 
