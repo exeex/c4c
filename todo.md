@@ -1,34 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Selected Proof-Edge Record Homes
+Current Step ID: 2
+Current Step Title: Define Record/Status API Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 audited candidate homes and helper inputs for a selected proof-edge path
-record/status API keyed to dynamic local-array `lir_producer_lookup_key`.
+Step 2 defined the selected proof-edge path record/status API contract for
+dynamic local-array `lir_producer_lookup_key` records.
 
-| Area | Step 1 classification |
+| Area | Step 2 contract |
 | --- | --- |
-| Preferred record home | `bir::Function` local-array metadata, as a sibling to `local_array_element_paths`. |
-| Existing anchor | `LocalArrayElementPathRecord` already carries all `lir_producer_*` fields and `lir_producer_lookup_key`. |
-| Proof-source inputs | `PreparedBranchCondition` and fused compare operand producer facts provide branch/compare identity. |
-| Helper inputs | Prepared successor, reachability, and dominance helper algorithms exist but are helper-local, not durable facts. |
-| Visibility | Existing BIR backend tests directly inspect local-array records; prepared-printer exposure was not found and can remain optional unless Step 2 requires dump visibility. |
-| Step 2 readiness | A bounded record/status API contract can be defined now; no lower blocker prevents contract definition. |
+| Preferred home | Add a sibling record family under `bir::Function` local-array metadata, keyed to `LocalArrayElementPathRecord` and exact `lir_producer_lookup_key`. |
+| Ownership boundary | Prealloc/control-flow helpers may compute selected-edge/path facts, but downstream authority begins only after explicit records/statuses are stored. |
+| Record fields | Include stable path/key fields, all `lir_producer_*`, proof branch/compare identity, selected outcome, edge tuple, path coverage, dominance/guard validity, same-block unavailable status, and optional bound contribution fields. |
+| Status vocabulary | Require visible statuses for available, missing key/path/proof source/edge/outcome, non-covering path, non-dominating proof, unsupported boundary, same-block ordering, coordinate confusion, raw-shape-only, and target/final-home-only. |
+| Visibility | Direct backend/BIR tests are sufficient for the first packet; printer exposure is optional display work. |
+| Step 3 rule | Implement unless targeted inspection finds a concrete BIR/prealloc ownership or API blocker. |
 
-Artifact: `build/agent_state/492_step1_selected_proof_edge_record_homes_audit/audit.md`.
+Artifact: `build/agent_state/492_step2_selected_proof_edge_record_status_contract/contract.md`.
 
 ## Suggested Next
 
-Execute Step 2: define the selected proof-edge path record/status API contract.
-Use the BIR local-array metadata family as the preferred home, require exact
-`lir_producer_lookup_key` matching, include proof branch/compare identity,
-selected outcome, edge tuple, path coverage, dominance/guard validity, and the
-fail-closed status vocabulary.
+Execute Step 3: implement the BIR local-array selected proof-edge path
+record/status API with focused backend/BIR tests, or route only if a concrete
+ownership/API blocker prevents adding the record home.
 
 ## Watchouts
 
@@ -40,12 +38,14 @@ fail-closed status vocabulary.
 - Keep `lir_producer_instruction_index` as a LIR producer-site coordinate.
 - Same-block ordering remains unavailable unless a later bridge truthfully
   relates LIR producer coordinates to the relevant execution coordinate.
+- Do not populate idea 489 proof facts or idea 486 checker inputs from this API
+  packet; those are later consumers.
 - Existing untracked `review/*.md` files are transient and must remain
   untouched.
 
 ## Proof
 
-Step 1 validation:
+Step 2 validation:
 
 ```sh
 git diff --check
