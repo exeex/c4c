@@ -8,14 +8,25 @@ Current Step Title: Rebuild Infrastructure Bucket Evidence
 
 ## Just Finished
 
-Activation initialized this execution state for `plan.md` Step 1.
+Completed `plan.md` Step 1 by rebuilding the infrastructure bucket inventory
+from the fresh RV64 gcc_torture backend-object handoff artifacts. Direct TSV
+and per-case-log extraction confirms:
+
+- `unsupported_stack_frame`: 84 rows
+- `unsupported_global_data`: 40 rows
+- `unsupported_param_home`: 4 rows
+
+Representative rows and final diagnostics are recorded in
+`docs/rv64_gcc_torture_post_contract/infrastructure_bucket_evidence.md`.
+Local row evidence was also written under
+`build/agent_state/424_step1_infrastructure_bucket_evidence/`.
 
 ## Suggested Next
 
-Execute Step 1: rebuild the current `unsupported_stack_frame`,
-`unsupported_global_data`, and `unsupported_param_home` evidence from the RV64
-gcc_torture handoff artifacts, then identify representative rows and dump paths
-for classification.
+Execute Step 2: create focused BIR, prepared-BIR, MIR, and object-emission
+dumps for representative rows from each target bucket, then classify each as a
+producer-contract gap, coherent RV64 emission gap, or intentionally parked
+scope.
 
 ## Watchouts
 
@@ -29,7 +40,17 @@ for classification.
   this review.
 - Do not change expectations, allowlists, unsupported markers, runtime
   comparison, or pass/fail accounting.
+- The full-scan target row directories only preserve `case.log`; Step 2 needs
+  focused dumps before making owner decisions.
+- Keep runtime mismatch rows and the older instruction-fragment residual plan
+  separate from this infrastructure inventory.
 
 ## Proof
 
-Lifecycle activation only. No build or test proof required yet.
+Evidence-only proof was written to `test_after.log`:
+
+- `scripts/plan_review_state.py set-step --step-id 1 --step-title 'Rebuild Infrastructure Bucket Evidence'`
+- `awk`/`rg` extraction over
+  `build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv` and
+  per-case logs
+- `git diff --check -- todo.md docs/rv64_gcc_torture_post_contract`
