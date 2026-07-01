@@ -76,3 +76,19 @@ RV64 emission gaps:
 
 Rows with missing or ambiguous producer authority should remain fail-closed and
 be routed to producer-contract follow-up work rather than RV64 reconstruction.
+
+## Step 2 Representative Classification
+
+Fresh focused dumps were written under
+`build/agent_state/424_step2_infrastructure_classification/`.
+
+| Row | Classification | Handoff note |
+| --- | --- | --- |
+| `src/20000603-1.c` | Coherent RV64 emission gap | Prepared callee-saved GPR save-slot facts are explicit; RV64 object emission still rejects save-slot support. |
+| `src/20030209-1.c` | Coherent RV64 emission gap | Prepared fixed-frame facts are explicit for a large `80000` byte frame; RV64 object emission still rejects generic prepared frame support. |
+| `src/20000412-1.c` | Coherent RV64 emission gap | Selected object data is `unsupported_but_coherent` with object label and size; RV64 must emit the coherent object-data contract. |
+| `src/930513-2.c` | Producer-contract gap | Direct global accesses exist, but the static-local object has no object label, size, or zero-fill/data extent authority. |
+| `src/20001017-1.c` | Producer-contract gap | Stack-passed parameter homes are `none`/offsetless in prepared facts; RV64 must keep failing closed until ABI homes are published. |
+
+Step 3 should turn this into the durable row-backed handoff doc, preserving the
+split between producer-contract work and RV64 emission work.
