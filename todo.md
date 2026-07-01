@@ -1,45 +1,43 @@
 Status: Active
-Source Idea Path: ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
+Source Idea Path: ideas/open/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Residual Disposition For Idea 490
+Current Step ID: 5
+Current Step Title: Publish Range Proof Certificates From Lower Authorities
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 6 from `plan.md`: recorded the residual disposition for idea
-490 in
-`build/agent_state/494_step6_residual_disposition_after_stored_stream/disposition.md`
-after re-probing the Step 5 production `local_array_interval_effects` surface.
-The disposition says idea 490 path/no-clobber certification can resume; no
-lower interval/effect blocker remains for the available stored-stream
-representative or the covered fail-closed representatives.
+Lifecycle switch completed: closed idea 494 after its Step 6 disposition and
+reopened idea 490 as the active implementation owner for path/no-clobber
+range proof certification.
 
 ## Suggested Next
 
-Ask the plan owner to decide whether to close idea 494 and resume idea 490, or
-to perform any lifecycle-only handoff the supervisor wants before certification
-work resumes.
+Execute Step 5 from `plan.md`: publish range proof certificates only from
+matching available `local_array_selected_proof_edge_paths` and
+`local_array_interval_effects` records.
 
 ## Watchouts
 
-- Step 6 did not implement idea 490 certification; it only records that the
-  lower 494 interval-effect fact surface is now ready for that work.
-- Idea 490 should consume `local_array_interval_effects` rather than
-  recomputing availability from selected paths, endpoint bridges, raw testcase
-  shape, final homes, or synthetic effect inputs.
-- The Step 5 surface already preserves fail-closed statuses for missing/path-only
-  streams, duplicate streams, missing endpoint bridge, missing coordinates,
-  unordered boundaries, coordinate confusion, clobber, alias/phi, and unknown
-  effect representatives.
+- Do not infer no-clobber from selected path records alone, endpoint bridges
+  alone, final homes, target behavior, raw testcase shape, or synthetic effect
+  inputs.
+- Preserve fail-closed behavior for missing lower records, duplicate or
+  mismatched evidence, clobber, alias/phi, unknown effects, missing
+  coordinates, unsupported boundaries, non-covering paths,
+  non-dominating/non-guarding proofs, and coordinate confusion.
+- Idea 489 proof population and idea 486 checker input population remain
+  downstream work.
 
 ## Proof
 
-Disposition proof:
+Lifecycle close/switch proof:
 
 ```sh
-cmake --build build -j2 > test_after.log 2>&1 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' >> test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
+cmake --build build -j2 > test_after.log 2>&1 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' >> test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
 ```
 
-Result: passed. Output preserved in `test_after.log`.
+Result: passed. Backend remained at 328 passed, 0 failed. Output preserved in
+`test_after.log`.

@@ -1,9 +1,9 @@
 # Dynamic Local-Array LIR Producer Path/No-Clobber Certificate
 
-Status: Closed
+Status: Open
 Type: Routed certificate investigation
 Parent: `ideas/closed/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md`
-Closed By: lifecycle split to `ideas/open/491_dynamic_local_array_selected_proof_edge_path_certificate.md`
+Previously Closed By: lifecycle split to `ideas/open/491_dynamic_local_array_selected_proof_edge_path_certificate.md`
 Source Evidence:
 - `build/agent_state/489_step3_proof_population_route/route.md`
 - `build/agent_state/489_step4_residual_disposition/disposition.md`
@@ -34,11 +34,11 @@ binding for a specific `lir_producer_lookup_key`.
 - Preserved the later dynamic-index interval effect/no-clobber classifier as a
   separate owner after selected proof-edge path certification exists.
 
-## Follow-Up
+## Historical Follow-Up
 
-The next active owner is:
+The routed follow-up was:
 
-`ideas/open/491_dynamic_local_array_selected_proof_edge_path_certificate.md`
+`ideas/closed/491_dynamic_local_array_selected_proof_edge_path_certificate.md`
 
 That follow-up owns the first missing certificate family:
 
@@ -50,14 +50,40 @@ That follow-up owns the first missing certificate family:
   non-dominating/non-guarding proof, unsupported boundary, missing same-block
   ordering, and prepared/BIR coordinate confusion.
 
-After that exists, a later separate owner should classify dynamic-index
-interval effects and no-clobber facts over the certified path.
+After that existed, later separate owners classified dynamic-index interval
+effects and no-clobber facts over the certified path. Those lower owners are
+now complete.
+
+## Reopened Lifecycle Disposition
+
+Idea 490 is reopened after the lower owner chain completed:
+
+- idea 491 selected proof-edge path certificate route;
+- idea 492 selected proof-edge path record/status API;
+- idea 493 selected proof-edge path collector/population;
+- idea 494 interval effect classifier;
+- idea 497 endpoint bridge effect scan;
+- idea 498 ordered effect-source stream builder.
+
+The resumed implementation scope is no longer to rediscover the missing lower
+owners. It is to publish the path/no-clobber certificate facts that idea 489
+routed here, using the now-populated lower authorities:
+
+- `local_array_selected_proof_edge_paths` for selected proof edge, path
+  coverage, dominance or guard validity, and LIR producer binding;
+- `local_array_interval_effects` for dynamic-index same-value/no-clobber over
+  the selected proof-source-to-endpoint interval.
+
+The first resumed packet should bridge those authorities into the existing
+dynamic local-array range proof status surface without inferring availability
+from selected paths alone, endpoint bridges alone, final homes, target
+behavior, raw testcase shape, or synthetic effect inputs.
 
 ## Preserved Boundaries
 
 - Do not populate idea 486 checker inputs directly from this routed result.
-- Do not resume idea 489 proof population until selected proof-edge path
-  certification and dynamic-index interval effect classification both exist.
+- Do not resume idea 489 proof population from this source until this reopened
+  certificate producer publishes explicit range proof facts.
 - Do not treat `lir_producer_instruction_index` as a prepared traversal or BIR
   instruction coordinate.
 - Do not route this as idea 484 packaging, scalar local-load consumption,

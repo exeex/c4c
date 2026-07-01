@@ -1,6 +1,6 @@
 # Dynamic Local-Array LIR Producer Interval Effect Classifier
 
-Status: Open
+Status: Closed
 Type: BIR/prepared dynamic-index interval effect classifier idea
 Parent: `ideas/closed/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md`
 Source Evidence:
@@ -85,6 +85,30 @@ Resumed 494 work must keep the original fail-closed statuses, but may now
 publish `available` only when the stored stream consumer proves clean bounded
 same-value/no-clobber evidence for the selected proof-source-to-endpoint
 interval.
+
+## Completion Notes
+
+Idea 494 is complete after resumed Steps 5 and 6.
+
+Completed evidence:
+
+- `build/agent_state/494_step5_available_interval_from_stored_stream/summary.md`
+- `build/agent_state/494_step6_residual_disposition_after_stored_stream/disposition.md`
+
+The production BIR surface now publishes `local_array_interval_effects` from
+selected proof-edge path records, endpoint bridge authority, and exactly one
+matching production ordered effect-source stream. The available representative
+and fail-closed representatives for missing/path-only streams, duplicate
+streams, missing endpoint bridge, missing coordinates, unordered boundaries,
+coordinate confusion, clobber, alias/phi, and unknown effects are covered.
+
+The next lifecycle owner is reopened idea 490:
+
+`ideas/open/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md`
+
+That owner should consume `local_array_selected_proof_edge_paths` and
+`local_array_interval_effects` as lower authorities for path/no-clobber range
+proof certification.
 
 ## Reviewer Reject Signals
 
