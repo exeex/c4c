@@ -332,6 +332,11 @@ int production_publish_contract_plans_populates_local_array_interval_effects() {
           bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate) {
     return fail("expected production publication to populate interval effect fact");
   }
+  if (published_function.local_array_index_range_proofs.size() != 1 ||
+      published_function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::MissingLirProducerCoordinate) {
+    return fail("expected production publication to populate fail-closed range proof certificate");
+  }
   return 0;
 }
 
@@ -385,6 +390,14 @@ int populates_clean_local_array_ordered_effect_stream() {
           bir::Value::named(bir::TypeKind::I64, "%idx")) {
     return fail("expected stored production stream to publish one available interval fact");
   }
+  prepare::populate_local_array_index_range_proofs(prepared);
+  if (function.local_array_index_range_proofs.size() != 1 ||
+      function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::Available ||
+      function.local_array_index_range_proofs.front().dynamic_index !=
+          bir::Value::named(bir::TypeKind::I64, "%idx")) {
+    return fail("expected stored lower authorities to publish one available range proof certificate");
+  }
   return 0;
 }
 
@@ -425,6 +438,12 @@ int local_array_interval_consumer_requires_populated_matching_stream() {
           bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) {
     return fail("expected interval fact publication to reject missing stored stream");
   }
+  prepare::populate_local_array_index_range_proofs(prepared);
+  if (function.local_array_index_range_proofs.size() != 1 ||
+      function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::MissingIntervalEffect) {
+    return fail("expected range proof publication to reject missing interval effects");
+  }
 
   function.local_array_ordered_effect_source_streams.push_back(
       bir::LocalArrayOrderedEffectSourceStream{
@@ -457,6 +476,12 @@ int local_array_interval_consumer_requires_populated_matching_stream() {
       function.local_array_interval_effects.front().status !=
           bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) {
     return fail("expected interval fact publication to reject synthetic path-only stream evidence");
+  }
+  prepare::populate_local_array_index_range_proofs(prepared);
+  if (function.local_array_index_range_proofs.size() != 1 ||
+      function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::MissingIntervalEffect) {
+    return fail("expected range proof publication to reject synthetic path-only stream evidence");
   }
 
   prepare::populate_local_array_ordered_effect_source_streams(prepared);
@@ -492,6 +517,12 @@ int local_array_interval_consumer_requires_populated_matching_stream() {
           bir::LocalArrayIntervalEffectStatus::MissingPreparedBirEndpointBridge) {
     return fail("expected interval fact publication to reject missing endpoint bridge");
   }
+  prepare::populate_local_array_index_range_proofs(missing_endpoint);
+  if (missing_endpoint_function.local_array_index_range_proofs.size() != 1 ||
+      missing_endpoint_function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::UnsupportedBoundary) {
+    return fail("expected range proof publication to reject missing endpoint bridge");
+  }
 
   function.local_array_ordered_effect_source_streams.push_back(
       function.local_array_ordered_effect_source_streams.front());
@@ -508,6 +539,12 @@ int local_array_interval_consumer_requires_populated_matching_stream() {
       function.local_array_interval_effects.front().status !=
           bir::LocalArrayIntervalEffectStatus::DuplicateOrderedEffectSourceStream) {
     return fail("expected interval fact publication to reject duplicate stored streams");
+  }
+  prepare::populate_local_array_index_range_proofs(prepared);
+  if (function.local_array_index_range_proofs.size() != 1 ||
+      function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::MissingIntervalEffect) {
+    return fail("expected range proof publication to reject duplicate stored streams");
   }
   return 0;
 }
@@ -560,6 +597,12 @@ int ordered_effect_stream_fails_closed_on_missing_proof_coordinate() {
           bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate) {
     return fail("expected interval fact publication to reject missing proof coordinate");
   }
+  prepare::populate_local_array_index_range_proofs(prepared);
+  if (function.local_array_index_range_proofs.size() != 1 ||
+      function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::MissingLirProducerCoordinate) {
+    return fail("expected range proof publication to reject missing proof coordinate");
+  }
   return 0;
 }
 
@@ -606,6 +649,12 @@ int ordered_effect_stream_fails_closed_on_unordered_boundary() {
       function.local_array_interval_effects.front().status !=
           bir::LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary) {
     return fail("expected interval fact publication to reject unordered boundaries");
+  }
+  prepare::populate_local_array_index_range_proofs(prepared);
+  if (function.local_array_index_range_proofs.size() != 1 ||
+      function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::UnsupportedBoundary) {
+    return fail("expected range proof publication to reject unordered boundaries");
   }
   return 0;
 }
@@ -671,6 +720,12 @@ int ordered_effect_stream_records_unknown_and_clobber_sources() {
           bir::LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown) {
     return fail("expected interval fact publication to reject unknown call effects");
   }
+  prepare::populate_local_array_index_range_proofs(prepared);
+  if (function.local_array_index_range_proofs.size() != 1 ||
+      function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::CallOrHelperEffectUnknown) {
+    return fail("expected range proof publication to reject unknown call effects");
+  }
   return 0;
 }
 
@@ -713,6 +768,12 @@ int ordered_effect_stream_records_clobber_sources() {
       function.local_array_interval_effects.front().status !=
           bir::LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex) {
     return fail("expected interval fact publication to reject clobbering effects");
+  }
+  prepare::populate_local_array_index_range_proofs(prepared);
+  if (function.local_array_index_range_proofs.size() != 1 ||
+      function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::InlineAsmClobbersIndex) {
+    return fail("expected range proof publication to reject clobbering effects");
   }
   return 0;
 }
@@ -801,6 +862,12 @@ int ordered_effect_stream_records_phi_alias_sources() {
       function.local_array_interval_effects.front().status !=
           bir::LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved) {
     return fail("expected interval fact publication to reject phi/alias ambiguity");
+  }
+  prepare::populate_local_array_index_range_proofs(prepared);
+  if (function.local_array_index_range_proofs.size() != 1 ||
+      function.local_array_index_range_proofs.front().status !=
+          bir::LocalArrayRangeProofStatus::IndexPhiOrAliasUnresolved) {
+    return fail("expected range proof publication to reject phi/alias ambiguity");
   }
   return 0;
 }

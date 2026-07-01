@@ -1981,9 +1981,15 @@ evaluate_local_array_selected_proof_edge_path(
 enum class LocalArrayRangeProofStatus : unsigned char {
   Available,
   MissingLocalArrayPath,
+  MissingSelectedProofEdgePath,
+  SelectedPathOnlyInference,
+  MissingIntervalEffect,
+  IntervalEffectOnlyInference,
   MissingDynamicIndex,
   MissingProofSource,
   UnsupportedProofSource,
+  MissingLirProducerCoordinate,
+  PreparedBirCoordinateConfusion,
   MissingLowerBound,
   MissingUpperBound,
   UnsupportedPredicate,
@@ -2001,6 +2007,7 @@ enum class LocalArrayRangeProofStatus : unsigned char {
   CallOrHelperEffectUnknown,
   CallOrHelperClobbersIndex,
   InlineAsmEffectUnknown,
+  InlineAsmClobbersIndex,
   PublicationOrMoveEffectUnknown,
   PublicationOrMoveClobbersIndex,
   RawShapeOnly,
@@ -2015,12 +2022,24 @@ enum class LocalArrayRangeProofStatus : unsigned char {
       return "available";
     case LocalArrayRangeProofStatus::MissingLocalArrayPath:
       return "missing_local_array_path";
+    case LocalArrayRangeProofStatus::MissingSelectedProofEdgePath:
+      return "missing_selected_proof_edge_path";
+    case LocalArrayRangeProofStatus::SelectedPathOnlyInference:
+      return "selected_path_only_inference";
+    case LocalArrayRangeProofStatus::MissingIntervalEffect:
+      return "missing_interval_effect";
+    case LocalArrayRangeProofStatus::IntervalEffectOnlyInference:
+      return "interval_effect_only_inference";
     case LocalArrayRangeProofStatus::MissingDynamicIndex:
       return "missing_dynamic_index";
     case LocalArrayRangeProofStatus::MissingProofSource:
       return "missing_proof_source";
     case LocalArrayRangeProofStatus::UnsupportedProofSource:
       return "unsupported_proof_source";
+    case LocalArrayRangeProofStatus::MissingLirProducerCoordinate:
+      return "missing_lir_producer_coordinate";
+    case LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion:
+      return "prepared_bir_coordinate_confusion";
     case LocalArrayRangeProofStatus::MissingLowerBound:
       return "missing_lower_bound";
     case LocalArrayRangeProofStatus::MissingUpperBound:
@@ -2055,6 +2074,8 @@ enum class LocalArrayRangeProofStatus : unsigned char {
       return "call_or_helper_clobbers_index";
     case LocalArrayRangeProofStatus::InlineAsmEffectUnknown:
       return "inline_asm_effect_unknown";
+    case LocalArrayRangeProofStatus::InlineAsmClobbersIndex:
+      return "inline_asm_clobbers_index";
     case LocalArrayRangeProofStatus::PublicationOrMoveEffectUnknown:
       return "publication_or_move_effect_unknown";
     case LocalArrayRangeProofStatus::PublicationOrMoveClobbersIndex:
@@ -2147,6 +2168,13 @@ struct LocalArrayIndexRangeProofRecord {
   bool proof_dominates_consumer = false;
   bool path_covers_consumer = false;
   bool no_clobber_known = false;
+};
+
+struct LocalArrayRangeProofCertificateInputs {
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  const LocalArraySelectedProofEdgePathRecord* selected_path = nullptr;
+  const LocalArrayIntervalEffectRecord* interval_effect = nullptr;
+  bool interval_effect_only = false;
 };
 
 [[nodiscard]] inline const LocalArrayIndexRecord* single_dynamic_local_array_index(
@@ -2331,6 +2359,306 @@ evaluate_local_array_index_range_proof(
 
   record.status = LocalArrayRangeProofStatus::Available;
   return record;
+}
+
+[[nodiscard]] inline bool local_array_range_proof_same_value(
+    const Value& lhs,
+    const Value& rhs) {
+  return !lhs.name.empty() &&
+         lhs.kind == rhs.kind &&
+         lhs.type == rhs.type &&
+         lhs.name == rhs.name;
+}
+
+[[nodiscard]] inline bool local_array_selected_proof_edge_path_matches_element_path(
+    const LocalArraySelectedProofEdgePathRecord& selected_path,
+    const LocalArrayElementPathRecord& element_path) {
+  if (selected_path.element_path == &element_path) {
+    return true;
+  }
+  return !selected_path.path_result_name.empty() &&
+         selected_path.path_result_name == element_path.result_name &&
+         selected_path.source_object_name == element_path.source_object_name &&
+         selected_path.derivation_result_name ==
+             element_path.derivation_result_name &&
+         selected_path.lir_producer_lookup_key ==
+             element_path.lir_producer_lookup_key &&
+         selected_path.lir_producer_function_name ==
+             element_path.lir_producer_function_name &&
+         selected_path.lir_producer_block_label ==
+             element_path.lir_producer_block_label &&
+         selected_path.lir_producer_instruction_index ==
+             element_path.lir_producer_instruction_index;
+}
+
+[[nodiscard]] inline bool local_array_interval_effect_matches_selected_path(
+    const LocalArrayIntervalEffectRecord& interval_effect,
+    const LocalArraySelectedProofEdgePathRecord& selected_path) {
+  if (interval_effect.selected_path == &selected_path) {
+    return true;
+  }
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      selected_path.element_path == nullptr
+          ? nullptr
+          : single_dynamic_local_array_index(*selected_path.element_path,
+                                             &saw_multiple_dynamic_indices);
+  return dynamic_index != nullptr &&
+         !saw_multiple_dynamic_indices &&
+         interval_effect.lir_producer_lookup_key ==
+             selected_path.lir_producer_lookup_key &&
+         interval_effect.lir_producer_function_name ==
+             selected_path.lir_producer_function_name &&
+         interval_effect.lir_producer_block_label ==
+             selected_path.lir_producer_block_label &&
+         interval_effect.lir_producer_instruction_index ==
+             selected_path.lir_producer_instruction_index &&
+         interval_effect.proof_function_name ==
+             selected_path.proof_function_name &&
+         interval_effect.proof_block_label == selected_path.proof_block_label &&
+         interval_effect.selected_successor_label ==
+             selected_path.selected_successor_label &&
+         local_array_range_proof_same_value(interval_effect.dynamic_index,
+                                            dynamic_index->value);
+}
+
+[[nodiscard]] constexpr LocalArrayRangeProofStatus
+local_array_range_proof_status_from_selected_path(
+    LocalArraySelectedProofEdgePathStatus status) {
+  switch (status) {
+    case LocalArraySelectedProofEdgePathStatus::Available:
+      return LocalArrayRangeProofStatus::MissingIntervalEffect;
+    case LocalArraySelectedProofEdgePathStatus::MissingLocalArrayPath:
+      return LocalArrayRangeProofStatus::MissingLocalArrayPath;
+    case LocalArraySelectedProofEdgePathStatus::MissingLirProducerLookupKey:
+    case LocalArraySelectedProofEdgePathStatus::MissingLirProducerCoordinate:
+      return LocalArrayRangeProofStatus::MissingLirProducerCoordinate;
+    case LocalArraySelectedProofEdgePathStatus::UnsupportedLirProducerRole:
+      return LocalArrayRangeProofStatus::UnsupportedProofSource;
+    case LocalArraySelectedProofEdgePathStatus::MissingProofSource:
+      return LocalArrayRangeProofStatus::MissingProofSource;
+    case LocalArraySelectedProofEdgePathStatus::ProofFunctionMismatch:
+      return LocalArrayRangeProofStatus::ProofFunctionMismatch;
+    case LocalArraySelectedProofEdgePathStatus::MissingSelectedEdge:
+    case LocalArraySelectedProofEdgePathStatus::MissingSelectedOutcome:
+      return LocalArrayRangeProofStatus::MissingPathValidity;
+    case LocalArraySelectedProofEdgePathStatus::NonCoveringPath:
+      return LocalArrayRangeProofStatus::PathNotCoveringConsumer;
+    case LocalArraySelectedProofEdgePathStatus::NonDominatingOrGuardingProof:
+      return LocalArrayRangeProofStatus::ProofNotDominatingConsumer;
+    case LocalArraySelectedProofEdgePathStatus::UnsupportedBoundary:
+    case LocalArraySelectedProofEdgePathStatus::MissingSameBlockOrdering:
+      return LocalArrayRangeProofStatus::UnsupportedBoundary;
+    case LocalArraySelectedProofEdgePathStatus::PreparedBirCoordinateConfusion:
+      return LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion;
+    case LocalArraySelectedProofEdgePathStatus::RawShapeOnly:
+      return LocalArrayRangeProofStatus::RawShapeOnly;
+    case LocalArraySelectedProofEdgePathStatus::TargetOrFinalHomeOnly:
+      return LocalArrayRangeProofStatus::TargetOnlyOrFinalHomeOnly;
+  }
+  return LocalArrayRangeProofStatus::MissingSelectedProofEdgePath;
+}
+
+[[nodiscard]] constexpr LocalArrayRangeProofStatus
+local_array_range_proof_status_from_interval_effect(
+    LocalArrayIntervalEffectStatus status) {
+  switch (status) {
+    case LocalArrayIntervalEffectStatus::Available:
+      return LocalArrayRangeProofStatus::Available;
+    case LocalArrayIntervalEffectStatus::MissingLirProducerLookupKey:
+    case LocalArrayIntervalEffectStatus::MissingLirProducerCoordinate:
+    case LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate:
+      return LocalArrayRangeProofStatus::MissingLirProducerCoordinate;
+    case LocalArrayIntervalEffectStatus::UnsupportedLirProducerRole:
+      return LocalArrayRangeProofStatus::UnsupportedProofSource;
+    case LocalArrayIntervalEffectStatus::MissingDynamicIndex:
+      return LocalArrayRangeProofStatus::MissingDynamicIndex;
+    case LocalArrayIntervalEffectStatus::DynamicIndexOperandMismatch:
+      return LocalArrayRangeProofStatus::OperandRoleMismatch;
+    case LocalArrayIntervalEffectStatus::MissingSelectedEdgeOrOutcome:
+    case LocalArrayIntervalEffectStatus::MissingPathValidity:
+      return LocalArrayRangeProofStatus::MissingPathValidity;
+    case LocalArrayIntervalEffectStatus::PathNotCoveringLirProducer:
+      return LocalArrayRangeProofStatus::PathNotCoveringConsumer;
+    case LocalArrayIntervalEffectStatus::MissingPreparedBirEndpointBridge:
+    case LocalArrayIntervalEffectStatus::MissingSameBlockOrdering:
+    case LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary:
+      return LocalArrayRangeProofStatus::UnsupportedBoundary;
+    case LocalArrayIntervalEffectStatus::PreparedBirCoordinateConfusion:
+      return LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion;
+    case LocalArrayIntervalEffectStatus::SelectedPathOnlyInference:
+      return LocalArrayRangeProofStatus::SelectedPathOnlyInference;
+    case LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream:
+    case LocalArrayIntervalEffectStatus::DuplicateOrderedEffectSourceStream:
+      return LocalArrayRangeProofStatus::MissingIntervalEffect;
+    case LocalArrayIntervalEffectStatus::IndexValueRedefined:
+      return LocalArrayRangeProofStatus::IndexValueRedefined;
+    case LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved:
+      return LocalArrayRangeProofStatus::IndexPhiOrAliasUnresolved;
+    case LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown:
+      return LocalArrayRangeProofStatus::CallOrHelperEffectUnknown;
+    case LocalArrayIntervalEffectStatus::CallOrHelperClobbersIndex:
+      return LocalArrayRangeProofStatus::CallOrHelperClobbersIndex;
+    case LocalArrayIntervalEffectStatus::InlineAsmEffectUnknown:
+      return LocalArrayRangeProofStatus::InlineAsmEffectUnknown;
+    case LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex:
+      return LocalArrayRangeProofStatus::InlineAsmClobbersIndex;
+    case LocalArrayIntervalEffectStatus::PublicationEffectUnknown:
+    case LocalArrayIntervalEffectStatus::MoveBundleEffectUnknown:
+    case LocalArrayIntervalEffectStatus::ParallelCopyEffectUnknown:
+    case LocalArrayIntervalEffectStatus::UnknownEffect:
+      return LocalArrayRangeProofStatus::PublicationOrMoveEffectUnknown;
+    case LocalArrayIntervalEffectStatus::PublicationClobbersIndex:
+    case LocalArrayIntervalEffectStatus::MoveBundleClobbersIndex:
+    case LocalArrayIntervalEffectStatus::ParallelCopyClobbersIndex:
+      return LocalArrayRangeProofStatus::PublicationOrMoveClobbersIndex;
+    case LocalArrayIntervalEffectStatus::RawShapeOnly:
+      return LocalArrayRangeProofStatus::RawShapeOnly;
+  }
+  return LocalArrayRangeProofStatus::MissingIntervalEffect;
+}
+
+[[nodiscard]] inline std::optional<LocalArrayRangeProofPredicate>
+local_array_range_upper_predicate_from_selected_path(
+    LocalArraySelectedProofEdgePredicate predicate) {
+  switch (predicate) {
+    case LocalArraySelectedProofEdgePredicate::Ult:
+    case LocalArraySelectedProofEdgePredicate::Ule:
+      return LocalArrayRangeProofPredicate::Ult;
+    case LocalArraySelectedProofEdgePredicate::Slt:
+    case LocalArraySelectedProofEdgePredicate::Sle:
+      return LocalArrayRangeProofPredicate::Slt;
+    case LocalArraySelectedProofEdgePredicate::Unknown:
+    case LocalArraySelectedProofEdgePredicate::Sgt:
+    case LocalArraySelectedProofEdgePredicate::Sge:
+    case LocalArraySelectedProofEdgePredicate::Ugt:
+    case LocalArraySelectedProofEdgePredicate::Uge:
+    case LocalArraySelectedProofEdgePredicate::Eq:
+    case LocalArraySelectedProofEdgePredicate::Ne:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] inline LocalArrayIndexRangeProofRecord
+evaluate_local_array_index_range_proof_certificate(
+    const LocalArrayRangeProofCertificateInputs& inputs) {
+  LocalArrayIndexRangeProofRecord record{.element_path = inputs.element_path};
+  if (inputs.element_path == nullptr) {
+    record.status = LocalArrayRangeProofStatus::MissingLocalArrayPath;
+    return record;
+  }
+  if (inputs.interval_effect_only) {
+    record.status = LocalArrayRangeProofStatus::IntervalEffectOnlyInference;
+    return record;
+  }
+  if (inputs.selected_path == nullptr) {
+    record.status = LocalArrayRangeProofStatus::MissingSelectedProofEdgePath;
+    return record;
+  }
+  if (!local_array_selected_proof_edge_path_matches_element_path(
+          *inputs.selected_path, *inputs.element_path)) {
+    record.status = LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+  if (inputs.selected_path->status !=
+      LocalArraySelectedProofEdgePathStatus::Available) {
+    record.status = local_array_range_proof_status_from_selected_path(
+        inputs.selected_path->status);
+    return record;
+  }
+  if (inputs.interval_effect == nullptr) {
+    record.status = LocalArrayRangeProofStatus::SelectedPathOnlyInference;
+    return record;
+  }
+  if (!local_array_interval_effect_matches_selected_path(*inputs.interval_effect,
+                                                         *inputs.selected_path)) {
+    record.status = LocalArrayRangeProofStatus::MissingIntervalEffect;
+    return record;
+  }
+  if (inputs.interval_effect->status != LocalArrayIntervalEffectStatus::Available) {
+    record.status = local_array_range_proof_status_from_interval_effect(
+        inputs.interval_effect->status);
+    return record;
+  }
+
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      single_dynamic_local_array_index(*inputs.element_path,
+                                       &saw_multiple_dynamic_indices);
+  if (dynamic_index == nullptr || saw_multiple_dynamic_indices) {
+    record.status = saw_multiple_dynamic_indices
+                        ? LocalArrayRangeProofStatus::IndexPhiOrAliasUnresolved
+                        : LocalArrayRangeProofStatus::MissingDynamicIndex;
+    return record;
+  }
+  if (!inputs.selected_path->normalized_bound.has_value() ||
+      inputs.selected_path->bound_contribution !=
+          LocalArraySelectedProofEdgeBoundContribution::Upper) {
+    record.status = LocalArrayRangeProofStatus::MissingUpperBound;
+    return record;
+  }
+  const auto upper_predicate =
+      local_array_range_upper_predicate_from_selected_path(
+          inputs.selected_path->proof_predicate);
+  if (!upper_predicate.has_value()) {
+    record.status = LocalArrayRangeProofStatus::UnsupportedPredicate;
+    return record;
+  }
+  std::int64_t upper_bound = *inputs.selected_path->normalized_bound;
+  if (inputs.selected_path->bound_inclusive) {
+    if (upper_bound == std::numeric_limits<std::int64_t>::max()) {
+      record.status = LocalArrayRangeProofStatus::UnsupportedBoundary;
+      return record;
+    }
+    ++upper_bound;
+  }
+  if (upper_bound < 0) {
+    record.status = LocalArrayRangeProofStatus::UnsupportedBoundary;
+    return record;
+  }
+
+  return evaluate_local_array_index_range_proof(
+      LocalArrayIndexRangeProofInputs{
+          .element_path = inputs.element_path,
+          .consumer_function_name =
+              inputs.selected_path->lir_producer_function_name,
+          .proof_function_name = inputs.selected_path->proof_function_name,
+          .consumer_block_label = inputs.selected_path->lir_producer_block_label,
+          .proof_block_label = inputs.selected_path->proof_block_label,
+          .consumer_instruction_index =
+              inputs.selected_path->lir_producer_instruction_index,
+          .proof_instruction_index = inputs.selected_path->proof_instruction_index,
+          .proof_source_kind = LocalArrayRangeProofSourceKind::BranchCondition,
+          .proof_lhs = inputs.selected_path->proof_lhs,
+          .proof_rhs = inputs.selected_path->proof_rhs,
+          .compare_type = inputs.selected_path->proof_compare_type,
+          .lower_predicate = inputs.selected_path->proof_predicate ==
+                                     LocalArraySelectedProofEdgePredicate::Ult ||
+                                 inputs.selected_path->proof_predicate ==
+                                     LocalArraySelectedProofEdgePredicate::Ule
+                             ? LocalArrayRangeProofPredicate::Uge
+                             : LocalArrayRangeProofPredicate::Sge,
+          .upper_predicate = *upper_predicate,
+          .lower_bound_available = true,
+          .lower_bound = 0,
+          .lower_bound_inclusive = true,
+          .upper_bound_available = true,
+          .upper_bound = static_cast<std::size_t>(upper_bound),
+          .upper_bound_exclusive = true,
+          .operand_roles_match_index =
+              local_array_range_proof_same_value(
+                  inputs.selected_path->proof_lhs, dynamic_index->value) ||
+              local_array_range_proof_same_value(
+                  inputs.selected_path->proof_rhs, dynamic_index->value),
+          .path_validity_known = inputs.selected_path->path_validity_known,
+          .proof_dominates_consumer =
+              inputs.selected_path->proof_dominates_lir_producer ||
+              inputs.selected_path->proof_guards_lir_producer,
+          .path_covers_consumer =
+              inputs.selected_path->selected_edge_covers_lir_producer,
+          .no_clobber_known = true,
+      });
 }
 
 enum class GlobalAddressMaterializationPolicy {
@@ -4478,6 +4806,7 @@ struct Function {
   std::vector<LocalArrayOrderedEffectSourceStream>
       local_array_ordered_effect_source_streams;
   std::vector<LocalArrayIntervalEffectRecord> local_array_interval_effects;
+  std::vector<LocalArrayIndexRangeProofRecord> local_array_index_range_proofs;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;

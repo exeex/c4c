@@ -2276,6 +2276,8 @@ void populate_local_array_ordered_effect_source_streams(PreparedBirModule& prepa
 
 void populate_local_array_interval_effects(PreparedBirModule& prepared);
 
+void populate_local_array_index_range_proofs(PreparedBirModule& prepared);
+
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs);

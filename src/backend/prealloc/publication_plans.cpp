@@ -5415,6 +5415,125 @@ void populate_local_array_interval_effects(PreparedBirModule& prepared) {
   }
 }
 
+[[nodiscard]] const bir::LocalArraySelectedProofEdgePathRecord*
+find_local_array_selected_proof_edge_path_for_path(
+    const bir::Function& function,
+    const bir::LocalArrayElementPathRecord& path,
+    bool* duplicate) {
+  const bir::LocalArraySelectedProofEdgePathRecord* found = nullptr;
+  if (duplicate != nullptr) {
+    *duplicate = false;
+  }
+  for (const auto& selected_path :
+       function.local_array_selected_proof_edge_paths) {
+    if (!bir::local_array_selected_proof_edge_path_matches_element_path(
+            selected_path, path)) {
+      continue;
+    }
+    if (found != nullptr) {
+      if (duplicate != nullptr) {
+        *duplicate = true;
+      }
+      return found;
+    }
+    found = &selected_path;
+  }
+  return found;
+}
+
+[[nodiscard]] const bir::LocalArrayIntervalEffectRecord*
+find_local_array_interval_effect_for_selected_path(
+    const bir::Function& function,
+    const bir::LocalArraySelectedProofEdgePathRecord& selected_path,
+    bool* duplicate) {
+  const bir::LocalArrayIntervalEffectRecord* found = nullptr;
+  if (duplicate != nullptr) {
+    *duplicate = false;
+  }
+  for (const auto& interval_effect : function.local_array_interval_effects) {
+    if (!bir::local_array_interval_effect_matches_selected_path(
+            interval_effect, selected_path)) {
+      continue;
+    }
+    if (found != nullptr) {
+      if (duplicate != nullptr) {
+        *duplicate = true;
+      }
+      return found;
+    }
+    found = &interval_effect;
+  }
+  return found;
+}
+
+[[nodiscard]] bool local_array_interval_effect_matches_path_without_selected_path(
+    const bir::LocalArrayIntervalEffectRecord& interval_effect,
+    const bir::LocalArrayElementPathRecord& path) {
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      bir::single_dynamic_local_array_index(path, &saw_multiple_dynamic_indices);
+  return dynamic_index != nullptr &&
+         !saw_multiple_dynamic_indices &&
+         interval_effect.lir_producer_lookup_key ==
+             path.lir_producer_lookup_key &&
+         interval_effect.lir_producer_function_name ==
+             path.lir_producer_function_name &&
+         interval_effect.lir_producer_block_label ==
+             path.lir_producer_block_label &&
+         interval_effect.lir_producer_instruction_index ==
+             path.lir_producer_instruction_index &&
+         bir::local_array_range_proof_same_value(interval_effect.dynamic_index,
+                                                 dynamic_index->value);
+}
+
+[[nodiscard]] bool has_interval_effect_only_evidence_for_path(
+    const bir::Function& function,
+    const bir::LocalArrayElementPathRecord& path) {
+  for (const auto& interval_effect : function.local_array_interval_effects) {
+    if (local_array_interval_effect_matches_path_without_selected_path(
+            interval_effect, path)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void populate_local_array_index_range_proofs(PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.local_array_index_range_proofs.clear();
+    for (const auto& path : function.local_array_element_paths) {
+      bool duplicate_selected_path = false;
+      const auto* selected_path =
+          find_local_array_selected_proof_edge_path_for_path(
+              function, path, &duplicate_selected_path);
+      bool duplicate_interval_effect = false;
+      const auto* interval_effect =
+          selected_path == nullptr || duplicate_selected_path
+              ? nullptr
+              : find_local_array_interval_effect_for_selected_path(
+                    function, *selected_path, &duplicate_interval_effect);
+      auto proof = bir::evaluate_local_array_index_range_proof_certificate(
+          bir::LocalArrayRangeProofCertificateInputs{
+              .element_path = &path,
+              .selected_path =
+                  duplicate_selected_path ? nullptr : selected_path,
+              .interval_effect =
+                  duplicate_interval_effect ? nullptr : interval_effect,
+              .interval_effect_only =
+                  selected_path == nullptr &&
+                  has_interval_effect_only_evidence_for_path(function, path),
+          });
+      if (duplicate_selected_path) {
+        proof.status =
+            bir::LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion;
+      } else if (duplicate_interval_effect) {
+        proof.status = bir::LocalArrayRangeProofStatus::MissingIntervalEffect;
+      }
+      function.local_array_index_range_proofs.push_back(std::move(proof));
+    }
+  }
+}
+
 PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
     const PreparedBirModule& prepared) {
