@@ -1,0 +1,30 @@
+condition	status
+available local-object GEP with matching source object, derivation, element path, checker/range, and coordinate authority	Available
+missing element path	MissingElementPath
+missing source object	MissingSourceObject
+source object not local	SourceObjectNotLocal
+global/static source object	GlobalSourceObject
+missing source object layout	MissingSourceObjectLayout
+missing object-to-slot relation	MissingObjectToSlotRelation
+missing derivation	MissingDerivation
+derivation not proven local	DerivationNotProvenLocal
+missing derived pointer identity	MissingDerivedPointerIdentity
+missing dynamic index identity	MissingIndexIdentity
+missing or unavailable checker/range proof	MissingIndexRangeProof
+range proof does not dominate consumer	RangeProofNotDominatingConsumer
+range proof path does not cover consumer	RangeProofPathNotCoveringConsumer
+index clobbered before consumer	IndexValueClobberedBeforeConsumer
+element or byte range out of bounds	ElementOutOfBounds
+non-scalar element	ElementNotScalar
+layout/range mismatch	LayoutRangeMismatch
+unknown provenance	UnknownProvenance
+integer pointer round trip	IntegerPointerRoundTrip
+aggregate/member/flexible/alias boundary	AggregateOrMemberBoundary
+union/object representation boundary	UnionOrObjectRepresentationBoundary
+variadic or va_arg boundary	VariadicOrVaArgBoundary
+runtime/call/string intrinsic boundary	RuntimeOrCallBoundary
+unsupported F128/complex/vector/volatile/atomic type	F128ComplexVectorOrVolatileAtomicBoundary
+bootstrap boundary	BootstrapBoundary
+raw-shape-only evidence	RawShapeOnly
+target/final-home-only evidence	TargetOnlyOrFinalHomeOnly
+coordinate mismatch or duplicate identity	PreparedBirCoordinateConfusion
