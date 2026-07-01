@@ -5766,6 +5766,35 @@ void populate_local_array_semantic_geps(PreparedBirModule& prepared) {
   }
 }
 
+void populate_global_static_semantic_geps(PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.global_static_semantic_geps.clear();
+    for (const auto& authority : function.global_static_gep_authorities) {
+      auto record = bir::evaluate_global_static_semantic_gep(
+          bir::GlobalStaticSemanticGepInputs{.authority = &authority});
+      const auto duplicate_identity =
+          std::count_if(function.global_static_gep_authorities.begin(),
+                        function.global_static_gep_authorities.end(),
+                        [&](const bir::GlobalStaticGepAuthorityRecord&
+                                candidate) {
+                          return candidate.lir_producer_lookup_key ==
+                                     authority.lir_producer_lookup_key &&
+                                 candidate.global_name ==
+                                     authority.global_name &&
+                                 candidate.result_name ==
+                                     authority.result_name &&
+                                 candidate.byte_offset ==
+                                     authority.byte_offset;
+                        }) > 1;
+      if (duplicate_identity) {
+        record.status = bir::GlobalStaticGepAuthorityStatus::
+            PreparedBirCoordinateConfusion;
+      }
+      function.global_static_semantic_geps.push_back(std::move(record));
+    }
+  }
+}
+
 [[nodiscard]] bool local_array_load_has_pointer_value_address(
     const bir::LoadLocalInst& load) {
   return load.address.has_value() &&
@@ -5799,6 +5828,7 @@ find_local_array_local_address_provenance_for_load(
 
 void populate_local_array_scalar_local_loads(PreparedBirModule& prepared) {
   populate_local_array_semantic_geps(prepared);
+  populate_global_static_semantic_geps(prepared);
   for (auto& function : prepared.module.functions) {
     function.local_array_scalar_local_loads.clear();
     for (const auto& block : function.blocks) {

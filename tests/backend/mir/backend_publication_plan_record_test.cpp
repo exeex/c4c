@@ -590,6 +590,108 @@ int local_array_semantic_gep_population_requires_matching_provenance() {
   return 0;
 }
 
+bir::GlobalStaticGepAuthorityRecord make_available_global_static_gep_authority() {
+  return bir::GlobalStaticGepAuthorityRecord{
+      .status = bir::GlobalStaticGepAuthorityStatus::Available,
+      .derivation_kind = bir::GlobalStaticGepDerivationKind::DirectGlobal,
+      .global_name = "numbers",
+      .global_link_name_id = c4c::LinkNameId{42},
+      .result_name = "%elt",
+      .base_pointer_name = "@numbers",
+      .source_type_text = "[4 x i32]",
+      .layout_path_type_text = "[4 x i32]",
+      .source_size_bytes = 16,
+      .byte_offset = 8,
+      .element_type = bir::TypeKind::I32,
+      .element_type_text = "i32",
+      .element_size_bytes = 4,
+      .element_count = 1,
+      .element_stride_bytes = 4,
+      .has_constant_range = true,
+      .has_dynamic_range = false,
+      .layout_authority = bir::MemoryLayoutAuthorityKind::StructuredLayout,
+      .range_verdict = bir::MemoryRangeVerdict::ProvenInBounds,
+      .coordinate_status = bir::GlobalStaticGepCoordinateStatus::Available,
+      .lir_producer_function_name = "global_fixture",
+      .lir_producer_block_label = "entry",
+      .lir_producer_instruction_index = std::size_t{0},
+      .lir_producer_lookup_key = "global_fixture:entry:0:numbers:%elt:8",
+  };
+}
+
+int global_static_semantic_gep_population_requires_matching_authority() {
+  if (bir::evaluate_global_static_semantic_gep(
+          bir::GlobalStaticSemanticGepInputs{})
+          .status !=
+      bir::GlobalStaticGepAuthorityStatus::MissingGlobalSourceObject) {
+    return fail("expected global/static semantic GEP admission to reject missing authority");
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module.functions.push_back(bir::Function{
+      .name = "global_fixture",
+      .global_static_gep_authorities =
+          {make_available_global_static_gep_authority()},
+  });
+  auto& function = prepared.module.functions.front();
+  prepare::populate_global_static_semantic_geps(prepared);
+  if (function.global_static_semantic_geps.size() != 1 ||
+      function.global_static_semantic_geps.front().status !=
+          bir::GlobalStaticGepAuthorityStatus::Available ||
+      function.global_static_semantic_geps.front().authority !=
+          &function.global_static_gep_authorities.front() ||
+      function.global_static_semantic_geps.front().global_name != "numbers" ||
+      function.global_static_semantic_geps.front().global_link_name_id !=
+          c4c::LinkNameId{42} ||
+      function.global_static_semantic_geps.front().result_name != "%elt" ||
+      function.global_static_semantic_geps.front().byte_offset != 8 ||
+      function.global_static_semantic_geps.front().element_type !=
+          bir::TypeKind::I32 ||
+      function.global_static_semantic_geps.front().element_size_bytes != 4 ||
+      function.global_static_semantic_geps.front().range_verdict !=
+          bir::MemoryRangeVerdict::ProvenInBounds ||
+      function.global_static_semantic_geps.front().coordinate_status !=
+          bir::GlobalStaticGepCoordinateStatus::Available) {
+    return fail("expected available authority to publish final global/static semantic GEP admission");
+  }
+
+  function.global_static_gep_authorities.front().status =
+      bir::GlobalStaticGepAuthorityStatus::StringOrGlobalPointerProvenanceBoundary;
+  prepare::populate_global_static_semantic_geps(prepared);
+  if (function.global_static_semantic_geps.size() != 1 ||
+      function.global_static_semantic_geps.front().status !=
+          bir::GlobalStaticGepAuthorityStatus::
+              StringOrGlobalPointerProvenanceBoundary) {
+    return fail("expected final global/static semantic GEP admission to preserve pointer/string boundary");
+  }
+
+  function.global_static_gep_authorities.front() =
+      make_available_global_static_gep_authority();
+  function.global_static_gep_authorities.front().coordinate_status =
+      bir::GlobalStaticGepCoordinateStatus::MissingLirInstructionIndex;
+  prepare::populate_global_static_semantic_geps(prepared);
+  if (function.global_static_semantic_geps.size() != 1 ||
+      function.global_static_semantic_geps.front().status !=
+          bir::GlobalStaticGepAuthorityStatus::PreparedBirCoordinateConfusion) {
+    return fail("expected final global/static semantic GEP admission to reject coordinate confusion");
+  }
+
+  function.global_static_gep_authorities = {
+      make_available_global_static_gep_authority(),
+      make_available_global_static_gep_authority(),
+  };
+  prepare::populate_global_static_semantic_geps(prepared);
+  if (function.global_static_semantic_geps.size() != 2 ||
+      function.global_static_semantic_geps.front().status !=
+          bir::GlobalStaticGepAuthorityStatus::PreparedBirCoordinateConfusion ||
+      function.global_static_semantic_geps.back().status !=
+          bir::GlobalStaticGepAuthorityStatus::PreparedBirCoordinateConfusion) {
+    return fail("expected final global/static semantic GEP admission to reject duplicate authority identities");
+  }
+
+  return 0;
+}
+
 int local_array_scalar_local_load_population_requires_matching_provenance() {
   const auto expect_shifted_load_status =
       [](bir::LoadLocalInst shifted_load,
@@ -1389,6 +1491,11 @@ int main() {
   }
   if (int rc =
           local_array_semantic_gep_population_requires_matching_provenance();
+      rc != 0) {
+    return rc;
+  }
+  if (int rc =
+          global_static_semantic_gep_population_requires_matching_authority();
       rc != 0) {
     return rc;
   }

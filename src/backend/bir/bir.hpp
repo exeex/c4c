@@ -3799,6 +3799,137 @@ struct GlobalStaticGepAuthorityRecord {
   std::string lir_producer_lookup_key;
 };
 
+struct GlobalStaticSemanticGepInputs {
+  const GlobalStaticGepAuthorityRecord* authority = nullptr;
+};
+
+struct GlobalStaticSemanticGepRecord {
+  GlobalStaticGepAuthorityStatus status =
+      GlobalStaticGepAuthorityStatus::MissingGlobalSourceObject;
+  const GlobalStaticGepAuthorityRecord* authority = nullptr;
+  GlobalStaticGepDerivationKind derivation_kind =
+      GlobalStaticGepDerivationKind::Unknown;
+  std::string global_name;
+  LinkNameId global_link_name_id = kInvalidLinkName;
+  std::string result_name;
+  std::string base_pointer_name;
+  std::string source_type_text;
+  std::string layout_path_type_text;
+  std::size_t source_size_bytes = 0;
+  std::size_t byte_offset = 0;
+  TypeKind element_type = TypeKind::Void;
+  std::string element_type_text;
+  std::size_t element_size_bytes = 0;
+  std::size_t element_count = 0;
+  std::size_t element_stride_bytes = 0;
+  bool has_constant_range = false;
+  bool has_dynamic_range = false;
+  Value dynamic_index;
+  MemoryLayoutAuthorityKind layout_authority = MemoryLayoutAuthorityKind::Unknown;
+  MemoryRangeVerdict range_verdict = MemoryRangeVerdict::UnknownCompatible;
+  GlobalStaticGepCoordinateStatus coordinate_status =
+      GlobalStaticGepCoordinateStatus::MissingLirProducerCoordinate;
+  std::string lir_producer_function_name;
+  std::string lir_producer_block_label;
+  std::optional<std::size_t> lir_producer_instruction_index;
+  std::string lir_producer_lookup_key;
+};
+
+[[nodiscard]] inline GlobalStaticSemanticGepRecord
+evaluate_global_static_semantic_gep(
+    const GlobalStaticSemanticGepInputs& inputs) {
+  GlobalStaticSemanticGepRecord record{
+      .authority = inputs.authority,
+  };
+  if (inputs.authority == nullptr) {
+    record.status = GlobalStaticGepAuthorityStatus::MissingGlobalSourceObject;
+    return record;
+  }
+
+  const auto& authority = *inputs.authority;
+  record.status = authority.status;
+  record.derivation_kind = authority.derivation_kind;
+  record.global_name = authority.global_name;
+  record.global_link_name_id = authority.global_link_name_id;
+  record.result_name = authority.result_name;
+  record.base_pointer_name = authority.base_pointer_name;
+  record.source_type_text = authority.source_type_text;
+  record.layout_path_type_text = authority.layout_path_type_text;
+  record.source_size_bytes = authority.source_size_bytes;
+  record.byte_offset = authority.byte_offset;
+  record.element_type = authority.element_type;
+  record.element_type_text = authority.element_type_text;
+  record.element_size_bytes = authority.element_size_bytes;
+  record.element_count = authority.element_count;
+  record.element_stride_bytes = authority.element_stride_bytes;
+  record.has_constant_range = authority.has_constant_range;
+  record.has_dynamic_range = authority.has_dynamic_range;
+  record.dynamic_index = authority.dynamic_index;
+  record.layout_authority = authority.layout_authority;
+  record.range_verdict = authority.range_verdict;
+  record.coordinate_status = authority.coordinate_status;
+  record.lir_producer_function_name = authority.lir_producer_function_name;
+  record.lir_producer_block_label = authority.lir_producer_block_label;
+  record.lir_producer_instruction_index =
+      authority.lir_producer_instruction_index;
+  record.lir_producer_lookup_key = authority.lir_producer_lookup_key;
+
+  if (authority.status != GlobalStaticGepAuthorityStatus::Available) {
+    return record;
+  }
+  if (authority.global_name.empty()) {
+    record.status =
+        GlobalStaticGepAuthorityStatus::MissingGlobalSourceObject;
+    return record;
+  }
+  if (authority.global_link_name_id == kInvalidLinkName) {
+    record.status = GlobalStaticGepAuthorityStatus::MissingGlobalIdentity;
+    return record;
+  }
+  if (authority.source_size_bytes == 0) {
+    record.status = GlobalStaticGepAuthorityStatus::MissingGlobalLayout;
+    return record;
+  }
+  if (authority.result_name.empty()) {
+    record.status =
+        GlobalStaticGepAuthorityStatus::MissingDerivedPointerIdentity;
+    return record;
+  }
+  if (authority.layout_path_type_text.empty()) {
+    record.status = GlobalStaticGepAuthorityStatus::MissingLayoutPath;
+    return record;
+  }
+  if (authority.element_size_bytes == 0) {
+    record.status = GlobalStaticGepAuthorityStatus::MissingElementByteRange;
+    return record;
+  }
+  if (!authority.has_constant_range && !authority.has_dynamic_range) {
+    record.status =
+        GlobalStaticGepAuthorityStatus::MissingDynamicRangeAuthority;
+    return record;
+  }
+  if (authority.range_verdict != MemoryRangeVerdict::ProvenInBounds) {
+    record.status = authority.range_verdict == MemoryRangeVerdict::ProvenOutOfBounds
+                        ? GlobalStaticGepAuthorityStatus::ElementOutOfBounds
+                        : GlobalStaticGepAuthorityStatus::
+                              MissingDynamicRangeAuthority;
+    return record;
+  }
+  if (authority.element_type == TypeKind::Ptr) {
+    record.status =
+        GlobalStaticGepAuthorityStatus::StringOrGlobalPointerProvenanceBoundary;
+    return record;
+  }
+  if (authority.coordinate_status != GlobalStaticGepCoordinateStatus::Available) {
+    record.status =
+        GlobalStaticGepAuthorityStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+
+  record.status = GlobalStaticGepAuthorityStatus::Available;
+  return record;
+}
+
 enum class BinaryOpcode : unsigned char {
   Add,
   Sub,
@@ -5817,6 +5948,8 @@ struct Function {
       local_array_scalar_local_loads;
   std::vector<GlobalStaticGepAuthorityRecord>
       global_static_gep_authorities;
+  std::vector<GlobalStaticSemanticGepRecord>
+      global_static_semantic_geps;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;
