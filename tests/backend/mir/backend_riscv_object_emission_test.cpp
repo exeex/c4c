@@ -10004,6 +10004,24 @@ int rejects_prepared_prior_preserved_arg_call_fail_closed_shapes() {
   }
 
   prepared = make_prepared_prior_preserved_arg_call_module();
+  auto& fpr_saved = prepared.frame_plan.functions[0].saved_callee_registers[0];
+  fpr_saved.bank = prepare::PreparedRegisterBank::Fpr;
+  fpr_saved.register_name = "fs1";
+  fpr_saved.occupied_register_names = {"fs1"};
+  fpr_saved.placement->bank = prepare::PreparedRegisterBank::Fpr;
+  fpr_saved.slot_placement->bank = prepare::PreparedRegisterBank::Fpr;
+  fpr_saved.slot_placement->register_name = "fs1";
+  fpr_saved.slot_placement->occupied_register_names = {"fs1"};
+  fpr_saved.slot_placement->register_placement = fpr_saved.placement;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_stack_frame: RV64 object route does not support "
+          "non-GPR prepared callee-saved register save slots (fpr:fs1)") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_prior_preserved_arg_call_module();
   prepared.call_plans.functions[0]
       .calls[0]
       .preserved_values[0]

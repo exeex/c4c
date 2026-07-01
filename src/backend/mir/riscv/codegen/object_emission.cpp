@@ -3138,6 +3138,38 @@ std::optional<std::int32_t> rv64_saved_callee_gpr_stack_offset(
   return static_cast<std::int32_t>(*slot.stack_offset_bytes);
 }
 
+std::optional<std::string> diagnose_unsupported_prepared_saved_register_bank(
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan) {
+  if (frame_plan == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& saved : frame_plan->saved_callee_registers) {
+    if (saved.bank != prepare::PreparedRegisterBank::Gpr) {
+      return "unsupported_stack_frame: RV64 object route does not support "
+             "non-GPR prepared callee-saved register save slots (" +
+             std::string(prepare::prepared_register_bank_name(saved.bank)) +
+             ":" + saved.register_name + ")";
+    }
+    if (saved.placement.has_value() &&
+        saved.placement->bank != prepare::PreparedRegisterBank::Gpr) {
+      return "unsupported_stack_frame: RV64 object route does not support "
+             "non-GPR prepared callee-saved register placements (" +
+             std::string(
+                 prepare::prepared_register_bank_name(saved.placement->bank)) +
+             ":" + saved.register_name + ")";
+    }
+    if (saved.slot_placement.has_value() &&
+        saved.slot_placement->bank != prepare::PreparedRegisterBank::Gpr) {
+      return "unsupported_stack_frame: RV64 object route does not support "
+             "non-GPR prepared callee-saved register save-slot placements (" +
+             std::string(prepare::prepared_register_bank_name(
+                 saved.slot_placement->bank)) +
+             ":" + saved.register_name + ")";
+    }
+  }
+  return std::nullopt;
+}
+
 bool append_rv64_saved_callee_gpr_spills(
     RiscvEncodedFragment& fragment,
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
@@ -10250,6 +10282,10 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   if (!stack_frame_bytes.has_value()) {
     return make_rv64_prepared_function_rejection(
         "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame");
+  }
+  if (auto diagnostic =
+          diagnose_unsupported_prepared_saved_register_bank(frame_plan)) {
+    return make_rv64_prepared_function_rejection(std::move(*diagnostic));
   }
   if (auto diagnostic =
           diagnose_unsupported_prepared_param_homes(prepared.stack_layout,
