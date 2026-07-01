@@ -5534,6 +5534,51 @@ void populate_local_array_index_range_proofs(PreparedBirModule& prepared) {
   }
 }
 
+[[nodiscard]] const bir::LocalArrayIndexRangeProofRecord*
+find_local_array_index_range_proof_for_path(
+    const bir::Function& function,
+    const bir::LocalArrayElementPathRecord& path,
+    bool* duplicate) {
+  const bir::LocalArrayIndexRangeProofRecord* found = nullptr;
+  if (duplicate != nullptr) {
+    *duplicate = false;
+  }
+  for (const auto& range_proof : function.local_array_index_range_proofs) {
+    if (!bir::local_array_range_proof_matches_element_path(range_proof, path)) {
+      continue;
+    }
+    if (found != nullptr) {
+      if (duplicate != nullptr) {
+        *duplicate = true;
+      }
+      return found;
+    }
+    found = &range_proof;
+  }
+  return found;
+}
+
+void populate_local_array_proof_facts(PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.local_array_proof_facts.clear();
+    for (const auto& path : function.local_array_element_paths) {
+      bool duplicate_range_proof = false;
+      const auto* range_proof = find_local_array_index_range_proof_for_path(
+          function, path, &duplicate_range_proof);
+      auto fact = bir::evaluate_local_array_proof_fact(
+          bir::LocalArrayProofFactInputs{
+              .element_path = &path,
+              .range_proof = duplicate_range_proof ? nullptr : range_proof,
+          });
+      if (duplicate_range_proof) {
+        fact.status =
+            bir::LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion;
+      }
+      function.local_array_proof_facts.push_back(std::move(fact));
+    }
+  }
+}
+
 PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
     const PreparedBirModule& prepared) {

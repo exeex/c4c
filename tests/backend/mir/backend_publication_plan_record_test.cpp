@@ -337,6 +337,11 @@ int production_publish_contract_plans_populates_local_array_interval_effects() {
           bir::LocalArrayRangeProofStatus::MissingLirProducerCoordinate) {
     return fail("expected production publication to populate fail-closed range proof certificate");
   }
+  if (published_function.local_array_proof_facts.size() != 1 ||
+      published_function.local_array_proof_facts.front().status !=
+          bir::LocalArrayRangeProofStatus::MissingLirProducerCoordinate) {
+    return fail("expected production publication to populate fail-closed proof fact");
+  }
   return 0;
 }
 
@@ -397,6 +402,64 @@ int populates_clean_local_array_ordered_effect_stream() {
       function.local_array_index_range_proofs.front().dynamic_index !=
           bir::Value::named(bir::TypeKind::I64, "%idx")) {
     return fail("expected stored lower authorities to publish one available range proof certificate");
+  }
+  prepare::populate_local_array_proof_facts(prepared);
+  if (function.local_array_proof_facts.size() != 1 ||
+      function.local_array_proof_facts.front().status !=
+          bir::LocalArrayRangeProofStatus::Available ||
+      function.local_array_proof_facts.front().range_proof !=
+          &function.local_array_index_range_proofs.front() ||
+      function.local_array_proof_facts.front().dynamic_index !=
+          bir::Value::named(bir::TypeKind::I64, "%idx")) {
+    return fail("expected production range certificate to publish one available proof fact");
+  }
+  return 0;
+}
+
+int local_array_proof_fact_population_requires_matching_range_certificate() {
+  auto prepared = make_effect_stream_prepared_module({
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::CastInst{
+          .opcode = bir::CastOpcode::Bitcast,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+      },
+  });
+  auto& function = prepared.module.functions.front();
+  prepare::populate_local_array_proof_facts(prepared);
+  if (function.local_array_proof_facts.size() != 1 ||
+      function.local_array_proof_facts.front().status !=
+          bir::LocalArrayRangeProofStatus::MissingRangeProofCertificate) {
+    return fail("expected proof fact publication to reject missing range certificates");
+  }
+
+  prepare::populate_local_array_ordered_effect_source_streams(prepared);
+  prepare::populate_local_array_interval_effects(prepared);
+  prepare::populate_local_array_index_range_proofs(prepared);
+  function.local_array_index_range_proofs.front().status =
+      bir::LocalArrayRangeProofStatus::SelectedPathOnlyInference;
+  prepare::populate_local_array_proof_facts(prepared);
+  if (function.local_array_proof_facts.size() != 1 ||
+      function.local_array_proof_facts.front().status !=
+          bir::LocalArrayRangeProofStatus::SelectedPathOnlyInference) {
+    return fail("expected proof fact publication to preserve non-available certificate status");
+  }
+
+  function.local_array_index_range_proofs.front().status =
+      bir::LocalArrayRangeProofStatus::Available;
+  function.local_array_index_range_proofs.push_back(
+      function.local_array_index_range_proofs.front());
+  prepare::populate_local_array_proof_facts(prepared);
+  if (function.local_array_proof_facts.size() != 1 ||
+      function.local_array_proof_facts.front().status !=
+          bir::LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion) {
+    return fail("expected proof fact publication to reject duplicate coordinate-confused certificates");
   }
   return 0;
 }
@@ -896,6 +959,10 @@ int main() {
     return rc;
   }
   if (int rc = populates_clean_local_array_ordered_effect_stream(); rc != 0) {
+    return rc;
+  }
+  if (int rc = local_array_proof_fact_population_requires_matching_range_certificate();
+      rc != 0) {
     return rc;
   }
   if (int rc = local_array_interval_consumer_requires_populated_matching_stream();

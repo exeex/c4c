@@ -8290,6 +8290,117 @@ int expect_local_array_range_proof_certificate_consumes_lower_authorities() {
   return 0;
 }
 
+int expect_local_array_proof_fact_consumes_range_certificates() {
+  const auto path = make_dynamic_local_array_selected_edge_path();
+  const auto selected_path = bir::evaluate_local_array_selected_proof_edge_path(
+      complete_selected_proof_edge_inputs(&path));
+  const auto interval_effect = bir::LocalArrayIntervalEffectRecord{
+      .status = bir::LocalArrayIntervalEffectStatus::Available,
+      .selected_path = &selected_path,
+      .lir_producer_lookup_key = selected_path.lir_producer_lookup_key,
+      .lir_producer_function_name = selected_path.lir_producer_function_name,
+      .lir_producer_block_label = selected_path.lir_producer_block_label,
+      .lir_producer_instruction_index =
+          selected_path.lir_producer_instruction_index,
+      .dynamic_index = bir::Value::named(TypeKind::I64, "%idx"),
+      .proof_function_name = selected_path.proof_function_name,
+      .proof_block_label = selected_path.proof_block_label,
+      .selected_successor_label = selected_path.selected_successor_label,
+  };
+  const auto range_proof =
+      bir::evaluate_local_array_index_range_proof_certificate(
+          bir::LocalArrayRangeProofCertificateInputs{
+              .element_path = &path,
+              .selected_path = &selected_path,
+              .interval_effect = &interval_effect,
+          });
+  if (range_proof.status != bir::LocalArrayRangeProofStatus::Available) {
+    return fail("proof fact fixture should start from an available range certificate");
+  }
+  const auto available = bir::evaluate_local_array_proof_fact(
+      bir::LocalArrayProofFactInputs{
+          .element_path = &path,
+          .range_proof = &range_proof,
+      });
+  if (available.status != bir::LocalArrayRangeProofStatus::Available ||
+      available.element_path != &path ||
+      available.range_proof != &range_proof ||
+      available.dynamic_index != bir::Value::named(TypeKind::I64, "%idx") ||
+      available.lir_producer_lookup_key != path.lir_producer_lookup_key ||
+      available.normalized_lower_bound != 0 ||
+      available.normalized_upper_bound != path.element_count ||
+      !available.path_validity_known ||
+      !available.proof_dominates_consumer ||
+      !available.path_covers_consumer ||
+      !available.no_clobber_known) {
+    return fail("proof fact should publish available facts from an available range certificate");
+  }
+
+  const auto expect_status =
+      [&](bir::LocalArrayProofFactInputs inputs,
+          bir::LocalArrayRangeProofStatus expected_status,
+          const char* failure_message) -> int {
+    const auto record = bir::evaluate_local_array_proof_fact(inputs);
+    if (record.status != expected_status) {
+      return fail(failure_message);
+    }
+    return 0;
+  };
+
+  if (bir::local_array_range_proof_status_name(
+          bir::LocalArrayRangeProofStatus::MissingRangeProofCertificate) !=
+      "missing_range_proof_certificate") {
+    return fail("proof fact missing-certificate status name should remain stable");
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayProofFactInputs{.element_path = &path},
+          bir::LocalArrayRangeProofStatus::MissingRangeProofCertificate,
+          "proof fact should reject missing range certificates");
+      rc != 0) {
+    return rc;
+  }
+
+  auto coordinate_confusion = range_proof;
+  coordinate_confusion.element_path = nullptr;
+  if (const int rc = expect_status(
+          bir::LocalArrayProofFactInputs{
+              .element_path = &path,
+              .range_proof = &coordinate_confusion,
+          },
+          bir::LocalArrayRangeProofStatus::PreparedBirCoordinateConfusion,
+          "proof fact should reject coordinate-confused certificates");
+      rc != 0) {
+    return rc;
+  }
+
+  const bir::LocalArrayRangeProofStatus statuses[] = {
+      bir::LocalArrayRangeProofStatus::SelectedPathOnlyInference,
+      bir::LocalArrayRangeProofStatus::IntervalEffectOnlyInference,
+      bir::LocalArrayRangeProofStatus::UnsupportedBoundary,
+      bir::LocalArrayRangeProofStatus::MissingLirProducerCoordinate,
+      bir::LocalArrayRangeProofStatus::InlineAsmClobbersIndex,
+      bir::LocalArrayRangeProofStatus::IndexPhiOrAliasUnresolved,
+      bir::LocalArrayRangeProofStatus::CallOrHelperEffectUnknown,
+      bir::LocalArrayRangeProofStatus::PathNotCoveringConsumer,
+      bir::LocalArrayRangeProofStatus::ProofNotDominatingConsumer,
+  };
+  for (const auto status : statuses) {
+    auto failing_proof = range_proof;
+    failing_proof.status = status;
+    if (const int rc = expect_status(
+            bir::LocalArrayProofFactInputs{
+                .element_path = &path,
+                .range_proof = &failing_proof,
+            },
+            status,
+            "proof fact should preserve non-available certificate status");
+        rc != 0) {
+      return rc;
+    }
+  }
+  return 0;
+}
+
 int expect_real_dynamic_local_array_row_remains_unavailable_without_range_proof() {
   auto result =
       try_lower_to_bir_with_options(make_local_array_carrier_dynamic_gep_module(),
@@ -10474,6 +10585,11 @@ int main() {
           expect_local_array_range_proof_certificate_consumes_lower_authorities();
       local_array_range_proof_certificate_status != 0) {
     return local_array_range_proof_certificate_status;
+  }
+  if (const int local_array_proof_fact_status =
+          expect_local_array_proof_fact_consumes_range_certificates();
+      local_array_proof_fact_status != 0) {
+    return local_array_proof_fact_status;
   }
   if (const int real_dynamic_local_array_status =
           expect_real_dynamic_local_array_row_remains_unavailable_without_range_proof();

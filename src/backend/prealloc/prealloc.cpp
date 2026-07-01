@@ -53,6 +53,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_local_array_ordered_effect_source_streams(prepared_);
   populate_local_array_interval_effects(prepared_);
   populate_local_array_index_range_proofs(prepared_);
+  populate_local_array_proof_facts(prepared_);
   populate_variadic_entry_plans(prepared_);
   populate_frame_plan(prepared_);
   populate_storage_plans(prepared_);
