@@ -1,39 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Collector Population
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 implemented the bounded selected proof-edge path collector/population
-packet.
+Step 4 classified idea 493 as close-ready after Step 3 implemented the real
+selected proof-edge path collector/population packet.
 
-| Area | Step 3 outcome |
+| Area | Step 4 disposition |
 | --- | --- |
-| Population hook | `BirPreAlloc::publish_contract_plans()` now populates `Function::local_array_selected_proof_edge_paths` after local-array path records and prepared control-flow facts are available. |
-| Matching | Collector matches prepared function spelling plus exact `lir_producer_lookup_key`; duplicate keys and multiple available proof candidates fail closed as `unsupported_boundary`. |
-| Proof source | Accepts only prepared fused branch compares with predicate/type/lhs/rhs and true/false successors, and only when one compare operand is the dynamic local-array index and the other is an immediate bound. |
-| Path facts | Reachability and dominance are computed from the prepared CFG and published as durable record/status fields through `evaluate_local_array_selected_proof_edge_path`. |
-| Selection repair | Available proof candidates are tracked separately from non-available fallbacks, so an earlier irrelevant/non-covering branch cannot block a later valid proof source; only multiple available candidates are ambiguous. |
-| Covered statuses | Focused tests cover a real available cross-block record, earlier non-available before later available, multiple available ambiguity, plus `missing_same_block_ordering`, `non_covering_path`, `proof_function_mismatch`, `unsupported_lir_producer_role`, and `missing_lir_producer_coordinate`. |
-| Preserved boundary | No interval/no-clobber classification, idea 489 proof facts, idea 486 checker inputs, idea 484 packaging, scalar-load consumption, or RV64/MIR lowering were added. |
+| Implemented surface | Idea 493 now populates real `Function::local_array_selected_proof_edge_paths` from prepared branch/control-flow facts and exact dynamic local-array `lir_producer_lookup_key` matches. |
+| Close readiness | 493 is complete as the selected proof-edge path collector/population slice; no further in-scope collector packet remains before lifecycle close/handoff review. |
+| Hand-forward state | Selected path certification can now feed the next missing producer family, but it is not enough by itself to populate idea 489 proof facts or idea 486 checker inputs. |
+| Next owner | `dynamic local-array LIR producer interval effect classifier`, covering same-value/no-clobber facts for the dynamic index over the selected proof-source-to-LIR-producer interval. |
+| 490/489 readiness | Idea 490 can resume later with selected proof-edge path records available, but still needs interval-effect facts before full path/no-clobber certificate production; idea 489 resumes only after both path and interval facts exist. |
+| Preserved boundary | No interval/no-clobber classification, idea 489 proof facts, idea 486 checker inputs, idea 484 packaging, scalar-load consumption, same-block ordering bridge, or RV64/MIR lowering belong in 493. |
 
-Artifact: `build/agent_state/493_step3_collector_population/summary.md`.
+Artifact: `build/agent_state/493_step4_residual_disposition/disposition.md`.
 
 ## Suggested Next
 
-Execute Step 4: residual disposition and close-readiness classification for
-idea 493 after the collector population surface landed.
+Plan-owner lifecycle review: close or hand off idea 493 as the completed
+selected proof-edge path collector/population slice, then activate or route the
+next owner for dynamic-index interval effect/no-clobber classification.
 
 ## Watchouts
 
-- Dynamic-index interval effect/no-clobber classification remains a later
-  owner; Step 3 intentionally did not classify or consume those facts.
-- Do not populate idea 489 proof facts or idea 486 checker inputs directly in
-  the residual packet.
+- Dynamic-index interval effect/no-clobber classification remains the next
+  missing producer family; Step 4 is disposition only.
+- Do not populate idea 489 proof facts or idea 486 checker inputs directly from
+  selected proof-edge path records alone.
 - Keep `lir_producer_instruction_index` as a LIR producer-site coordinate, not
   a prepared/BIR instruction index.
 - Same-block proof/producer cases remain fail-closed unless a later truthful
@@ -43,12 +43,10 @@ idea 493 after the collector population surface landed.
 
 ## Proof
 
-Step 3 validation:
+Step 4 validation:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 Result: passed.
-
-Proof log: `test_after.log`.
