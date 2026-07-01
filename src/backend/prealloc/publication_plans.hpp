@@ -738,6 +738,109 @@ struct PreparedFrameSlotSourceFactRecords {
   std::vector<PreparedFrameSlotSourceFactRecord> records;
 };
 
+enum class PreparedSemanticWriteEventAuthorityKind {
+  None,
+  ExplicitSemanticResultWrite,
+  Unsupported,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_semantic_write_event_authority_kind_name(
+    PreparedSemanticWriteEventAuthorityKind kind) {
+  switch (kind) {
+    case PreparedSemanticWriteEventAuthorityKind::None:
+      return "none";
+    case PreparedSemanticWriteEventAuthorityKind::ExplicitSemanticResultWrite:
+      return "explicit_semantic_result_write";
+    case PreparedSemanticWriteEventAuthorityKind::Unsupported:
+      return "unsupported";
+  }
+  return "unknown";
+}
+
+enum class PreparedSemanticWriteEventCarrierStatus {
+  Available,
+  MissingSemanticResultIdentity,
+  MissingEventAuthority,
+  StorageOnlyMove,
+  SemanticResultMismatch,
+  DestinationMismatch,
+  UnsupportedEventAuthority,
+  UnsupportedBoundary,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_semantic_write_event_carrier_status_name(
+    PreparedSemanticWriteEventCarrierStatus status) {
+  switch (status) {
+    case PreparedSemanticWriteEventCarrierStatus::Available:
+      return "available";
+    case PreparedSemanticWriteEventCarrierStatus::MissingSemanticResultIdentity:
+      return "missing_semantic_result_identity";
+    case PreparedSemanticWriteEventCarrierStatus::MissingEventAuthority:
+      return "missing_event_authority";
+    case PreparedSemanticWriteEventCarrierStatus::StorageOnlyMove:
+      return "storage_only_move";
+    case PreparedSemanticWriteEventCarrierStatus::SemanticResultMismatch:
+      return "semantic_result_mismatch";
+    case PreparedSemanticWriteEventCarrierStatus::DestinationMismatch:
+      return "destination_mismatch";
+    case PreparedSemanticWriteEventCarrierStatus::UnsupportedEventAuthority:
+      return "unsupported_event_authority";
+    case PreparedSemanticWriteEventCarrierStatus::UnsupportedBoundary:
+      return "unsupported_boundary";
+  }
+  return "unknown";
+}
+
+struct PreparedSemanticWriteEventCarrierInputs {
+  const PreparedNameTables* names = nullptr;
+  const bir::Value* semantic_result = nullptr;
+  PreparedValueId semantic_result_value_id = 0;
+  ValueNameId semantic_result_value_name = kInvalidValueName;
+  std::optional<bir::BinaryOpcode> semantic_binary_opcode;
+  std::optional<BlockLabelId> semantic_producer_block_label;
+  std::optional<std::size_t> semantic_producer_instruction_index;
+  const PreparedFrameSlot* target_frame_slot = nullptr;
+  const PreparedStackObject* target_stack_object = nullptr;
+  PreparedSemanticWriteEventAuthorityKind event_authority =
+      PreparedSemanticWriteEventAuthorityKind::None;
+  const bir::Value* event_source_value = nullptr;
+  PreparedValueId event_source_value_id = 0;
+  ValueNameId event_source_value_name = kInvalidValueName;
+  const PreparedFrameSlot* event_frame_slot = nullptr;
+  const PreparedStackObject* event_stack_object = nullptr;
+  std::optional<BlockLabelId> event_block_label;
+  std::optional<std::size_t> event_instruction_index;
+  bool storage_only_move = false;
+  bool unsupported_boundary = false;
+};
+
+struct PreparedSemanticWriteEventCarrier {
+  PreparedSemanticWriteEventCarrierStatus status =
+      PreparedSemanticWriteEventCarrierStatus::MissingSemanticResultIdentity;
+  PreparedSemanticWriteEventAuthorityKind event_authority =
+      PreparedSemanticWriteEventAuthorityKind::None;
+  PreparedValueId semantic_result_value_id = 0;
+  ValueNameId semantic_result_value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind semantic_result_type =
+      c4c::backend::bir::TypeKind::Void;
+  std::optional<bir::BinaryOpcode> semantic_binary_opcode;
+  std::optional<BlockLabelId> semantic_producer_block_label;
+  std::optional<std::size_t> semantic_producer_instruction_index;
+  PreparedValueId event_source_value_id = 0;
+  ValueNameId event_source_value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind event_source_type =
+      c4c::backend::bir::TypeKind::Void;
+  std::optional<BlockLabelId> event_block_label;
+  std::optional<std::size_t> event_instruction_index;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<PreparedObjectId> stack_object_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::size_t> stack_size_bytes;
+  std::optional<std::size_t> stack_align_bytes;
+};
+
 enum class PreparedSemanticMaterializationEventKind {
   None,
   ExplicitWrite,
@@ -1992,6 +2095,13 @@ plan_prepared_frame_slot_source_fact(
 
 [[nodiscard]] PreparedFrameSlotSourceFactRecords
 collect_prepared_frame_slot_source_facts(const PreparedBirModule& prepared);
+
+[[nodiscard]] PreparedSemanticWriteEventCarrier
+plan_prepared_semantic_write_event_carrier(
+    const PreparedSemanticWriteEventCarrierInputs& inputs);
+
+[[nodiscard]] bool prepared_semantic_write_event_carrier_available(
+    const PreparedSemanticWriteEventCarrier& carrier);
 
 [[nodiscard]] PreparedSemanticMaterializationInterval
 plan_prepared_semantic_materialization_interval(

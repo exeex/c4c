@@ -7022,6 +7022,174 @@ int check_frame_slot_source_fact_carrier_contract() {
   return 0;
 }
 
+int check_semantic_write_event_carrier_contract() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("semantic_write_event");
+  const auto producer_label = names.block_labels.intern("logic.end.14");
+  const auto event_label = names.block_labels.intern("logic.end.14");
+  const auto result_name = names.value_names.intern("%t23");
+  const auto storage_name = names.value_names.intern("%t22");
+  const bir::Value result = bir::Value::named(bir::TypeKind::I32, "%t23");
+  const bir::Value storage_only_source =
+      bir::Value::named(bir::TypeKind::I32, "%t22");
+
+  const prepare::PreparedFrameSlot target_frame_slot{
+      .slot_id = prepare::PreparedFrameSlotId{21},
+      .object_id = 21,
+      .function_name = function_name,
+      .offset_bytes = 156,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+  const prepare::PreparedStackObject target_object{
+      .object_id = 21,
+      .function_name = function_name,
+      .value_name = result_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+
+  prepare::PreparedSemanticWriteEventCarrierInputs accepted_inputs{
+      .names = &names,
+      .semantic_result = &result,
+      .semantic_result_value_id = 23,
+      .semantic_result_value_name = result_name,
+      .semantic_binary_opcode = bir::BinaryOpcode::Ne,
+      .semantic_producer_block_label = producer_label,
+      .semantic_producer_instruction_index = std::size_t{2},
+      .target_frame_slot = &target_frame_slot,
+      .target_stack_object = &target_object,
+      .event_authority =
+          prepare::PreparedSemanticWriteEventAuthorityKind::
+              ExplicitSemanticResultWrite,
+      .event_source_value = &result,
+      .event_source_value_id = 23,
+      .event_source_value_name = result_name,
+      .event_frame_slot = &target_frame_slot,
+      .event_stack_object = &target_object,
+      .event_block_label = event_label,
+      .event_instruction_index = std::size_t{3},
+  };
+
+  const auto accepted =
+      prepare::plan_prepared_semantic_write_event_carrier(accepted_inputs);
+  if (!prepare::prepared_semantic_write_event_carrier_available(accepted) ||
+      accepted.status !=
+          prepare::PreparedSemanticWriteEventCarrierStatus::Available ||
+      accepted.event_authority !=
+          prepare::PreparedSemanticWriteEventAuthorityKind::
+              ExplicitSemanticResultWrite ||
+      accepted.semantic_result_value_id != 23 ||
+      accepted.semantic_result_value_name != result_name ||
+      accepted.semantic_result_type != bir::TypeKind::I32 ||
+      accepted.semantic_binary_opcode !=
+          std::optional<bir::BinaryOpcode>{bir::BinaryOpcode::Ne} ||
+      accepted.event_source_value_id != 23 ||
+      accepted.event_source_value_name != result_name ||
+      accepted.event_source_type != bir::TypeKind::I32 ||
+      accepted.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{21}} ||
+      accepted.stack_object_id !=
+          std::optional<prepare::PreparedObjectId>{21} ||
+      accepted.stack_offset_bytes != std::optional<std::size_t>{156} ||
+      accepted.stack_size_bytes != std::optional<std::size_t>{4} ||
+      accepted.stack_align_bytes != std::optional<std::size_t>{4}) {
+    return fail("expected explicit semantic write-event carrier to be available");
+  }
+
+  auto missing_identity_inputs = accepted_inputs;
+  missing_identity_inputs.semantic_binary_opcode = std::nullopt;
+  const auto missing_identity =
+      prepare::plan_prepared_semantic_write_event_carrier(
+          missing_identity_inputs);
+  if (missing_identity.status !=
+      prepare::PreparedSemanticWriteEventCarrierStatus::
+          MissingSemanticResultIdentity) {
+    return fail("expected missing semantic result identity to stay fail-closed");
+  }
+
+  auto missing_authority_inputs = accepted_inputs;
+  missing_authority_inputs.event_authority =
+      prepare::PreparedSemanticWriteEventAuthorityKind::None;
+  missing_authority_inputs.event_source_value = nullptr;
+  missing_authority_inputs.event_frame_slot = nullptr;
+  missing_authority_inputs.event_stack_object = nullptr;
+  missing_authority_inputs.event_block_label = std::nullopt;
+  missing_authority_inputs.event_instruction_index = std::nullopt;
+  const auto missing_authority =
+      prepare::plan_prepared_semantic_write_event_carrier(
+          missing_authority_inputs);
+  if (missing_authority.status !=
+      prepare::PreparedSemanticWriteEventCarrierStatus::MissingEventAuthority) {
+    return fail("expected real semantic write without event authority to stay unavailable");
+  }
+
+  auto storage_only_inputs = accepted_inputs;
+  storage_only_inputs.storage_only_move = true;
+  storage_only_inputs.event_authority =
+      prepare::PreparedSemanticWriteEventAuthorityKind::None;
+  storage_only_inputs.event_source_value = &storage_only_source;
+  storage_only_inputs.event_source_value_id = 22;
+  storage_only_inputs.event_source_value_name = storage_name;
+  const auto storage_only =
+      prepare::plan_prepared_semantic_write_event_carrier(storage_only_inputs);
+  if (storage_only.status !=
+      prepare::PreparedSemanticWriteEventCarrierStatus::StorageOnlyMove) {
+    return fail("expected authority-none storage movement to be classified separately");
+  }
+
+  auto semantic_mismatch_inputs = accepted_inputs;
+  semantic_mismatch_inputs.event_source_value = &storage_only_source;
+  semantic_mismatch_inputs.event_source_value_id = 22;
+  semantic_mismatch_inputs.event_source_value_name = storage_name;
+  const auto semantic_mismatch =
+      prepare::plan_prepared_semantic_write_event_carrier(
+          semantic_mismatch_inputs);
+  if (semantic_mismatch.status !=
+      prepare::PreparedSemanticWriteEventCarrierStatus::SemanticResultMismatch) {
+    return fail("expected semantic result mismatch to stay fail-closed");
+  }
+
+  auto wrong_slot = target_frame_slot;
+  wrong_slot.slot_id = prepare::PreparedFrameSlotId{22};
+  auto destination_mismatch_inputs = accepted_inputs;
+  destination_mismatch_inputs.event_frame_slot = &wrong_slot;
+  const auto destination_mismatch =
+      prepare::plan_prepared_semantic_write_event_carrier(
+          destination_mismatch_inputs);
+  if (destination_mismatch.status !=
+      prepare::PreparedSemanticWriteEventCarrierStatus::DestinationMismatch) {
+    return fail("expected write-event destination mismatch to stay fail-closed");
+  }
+
+  auto unsupported_authority_inputs = accepted_inputs;
+  unsupported_authority_inputs.event_authority =
+      prepare::PreparedSemanticWriteEventAuthorityKind::Unsupported;
+  const auto unsupported_authority =
+      prepare::plan_prepared_semantic_write_event_carrier(
+          unsupported_authority_inputs);
+  if (unsupported_authority.status !=
+      prepare::PreparedSemanticWriteEventCarrierStatus::
+          UnsupportedEventAuthority) {
+    return fail("expected unsupported write-event authority to stay fail-closed");
+  }
+
+  auto unsupported_boundary_inputs = accepted_inputs;
+  unsupported_boundary_inputs.unsupported_boundary = true;
+  const auto unsupported_boundary =
+      prepare::plan_prepared_semantic_write_event_carrier(
+          unsupported_boundary_inputs);
+  if (unsupported_boundary.status !=
+      prepare::PreparedSemanticWriteEventCarrierStatus::UnsupportedBoundary) {
+    return fail("expected protected write-event boundary to stay separate");
+  }
+
+  return 0;
+}
+
 int check_semantic_materialization_interval_contract() {
   prepare::PreparedNameTables names;
   const auto function_name = names.function_names.intern("semantic_materialization");
@@ -10290,6 +10458,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_frame_slot_source_fact_carrier_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_semantic_write_event_carrier_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_semantic_materialization_interval_contract(); rc != 0) {

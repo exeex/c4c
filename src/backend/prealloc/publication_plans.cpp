@@ -2718,6 +2718,119 @@ bool prepared_frame_slot_source_fact_available(
   return fact.status == PreparedFrameSlotSourceFactStatus::Available;
 }
 
+PreparedSemanticWriteEventCarrier plan_prepared_semantic_write_event_carrier(
+    const PreparedSemanticWriteEventCarrierInputs& inputs) {
+  PreparedSemanticWriteEventCarrier carrier{
+      .event_authority = inputs.event_authority,
+      .semantic_result_value_id = inputs.semantic_result_value_id,
+      .semantic_result_value_name = inputs.semantic_result_value_name,
+      .semantic_binary_opcode = inputs.semantic_binary_opcode,
+      .semantic_producer_block_label = inputs.semantic_producer_block_label,
+      .semantic_producer_instruction_index =
+          inputs.semantic_producer_instruction_index,
+      .event_source_value_id = inputs.event_source_value_id,
+      .event_source_value_name = inputs.event_source_value_name,
+      .event_block_label = inputs.event_block_label,
+      .event_instruction_index = inputs.event_instruction_index,
+  };
+
+  if (inputs.unsupported_boundary) {
+    carrier.status = PreparedSemanticWriteEventCarrierStatus::UnsupportedBoundary;
+    return carrier;
+  }
+  if (inputs.names == nullptr || inputs.semantic_result == nullptr ||
+      inputs.semantic_result_value_name == kInvalidValueName ||
+      !inputs.semantic_binary_opcode.has_value()) {
+    carrier.status =
+        PreparedSemanticWriteEventCarrierStatus::MissingSemanticResultIdentity;
+    return carrier;
+  }
+  carrier.semantic_result_type = inputs.semantic_result->type;
+  if (inputs.semantic_result->kind != bir::Value::Kind::Named ||
+      inputs.semantic_result->name.empty() ||
+      inputs.names->value_names.find(inputs.semantic_result->name) !=
+          inputs.semantic_result_value_name) {
+    carrier.status =
+        PreparedSemanticWriteEventCarrierStatus::MissingSemanticResultIdentity;
+    return carrier;
+  }
+  if (inputs.storage_only_move) {
+    carrier.status = PreparedSemanticWriteEventCarrierStatus::StorageOnlyMove;
+    return carrier;
+  }
+  if (inputs.event_authority ==
+      PreparedSemanticWriteEventAuthorityKind::Unsupported) {
+    carrier.status =
+        PreparedSemanticWriteEventCarrierStatus::UnsupportedEventAuthority;
+    return carrier;
+  }
+  if (inputs.event_authority ==
+          PreparedSemanticWriteEventAuthorityKind::None ||
+      inputs.event_source_value == nullptr ||
+      inputs.event_frame_slot == nullptr || inputs.event_stack_object == nullptr ||
+      !inputs.event_block_label.has_value() ||
+      !inputs.event_instruction_index.has_value()) {
+    carrier.status =
+        PreparedSemanticWriteEventCarrierStatus::MissingEventAuthority;
+    return carrier;
+  }
+  if (inputs.event_authority !=
+      PreparedSemanticWriteEventAuthorityKind::ExplicitSemanticResultWrite) {
+    carrier.status =
+        PreparedSemanticWriteEventCarrierStatus::UnsupportedEventAuthority;
+    return carrier;
+  }
+  if (inputs.target_frame_slot == nullptr ||
+      inputs.target_stack_object == nullptr ||
+      inputs.target_frame_slot->object_id !=
+          inputs.target_stack_object->object_id ||
+      inputs.target_frame_slot->function_name !=
+          inputs.target_stack_object->function_name) {
+    carrier.status = PreparedSemanticWriteEventCarrierStatus::DestinationMismatch;
+    return carrier;
+  }
+  carrier.slot_id = inputs.target_frame_slot->slot_id;
+  carrier.stack_object_id = inputs.target_stack_object->object_id;
+  carrier.stack_offset_bytes = inputs.target_frame_slot->offset_bytes;
+  carrier.stack_size_bytes = inputs.target_frame_slot->size_bytes;
+  carrier.stack_align_bytes = inputs.target_frame_slot->align_bytes;
+
+  carrier.event_source_type = inputs.event_source_value->type;
+  if (*inputs.event_source_value != *inputs.semantic_result ||
+      inputs.event_source_value->type != inputs.semantic_result->type ||
+      inputs.event_source_value_id != inputs.semantic_result_value_id ||
+      inputs.event_source_value_name != inputs.semantic_result_value_name) {
+    carrier.status =
+        PreparedSemanticWriteEventCarrierStatus::SemanticResultMismatch;
+    return carrier;
+  }
+  if (inputs.event_frame_slot->slot_id != inputs.target_frame_slot->slot_id ||
+      inputs.event_frame_slot->object_id != inputs.target_frame_slot->object_id ||
+      inputs.event_frame_slot->function_name !=
+          inputs.target_frame_slot->function_name ||
+      inputs.event_frame_slot->offset_bytes !=
+          inputs.target_frame_slot->offset_bytes ||
+      inputs.event_frame_slot->size_bytes !=
+          inputs.target_frame_slot->size_bytes ||
+      inputs.event_frame_slot->align_bytes !=
+          inputs.target_frame_slot->align_bytes ||
+      inputs.event_stack_object->object_id !=
+          inputs.target_stack_object->object_id ||
+      inputs.event_stack_object->function_name !=
+          inputs.target_stack_object->function_name) {
+    carrier.status = PreparedSemanticWriteEventCarrierStatus::DestinationMismatch;
+    return carrier;
+  }
+
+  carrier.status = PreparedSemanticWriteEventCarrierStatus::Available;
+  return carrier;
+}
+
+bool prepared_semantic_write_event_carrier_available(
+    const PreparedSemanticWriteEventCarrier& carrier) {
+  return carrier.status == PreparedSemanticWriteEventCarrierStatus::Available;
+}
+
 PreparedSemanticMaterializationInterval
 plan_prepared_semantic_materialization_interval(
     const PreparedSemanticMaterializationIntervalInputs& inputs) {
