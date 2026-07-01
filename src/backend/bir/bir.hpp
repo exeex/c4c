@@ -1109,6 +1109,210 @@ struct LocalArraySelectedProofEdgePathRecord {
     const LocalArrayElementPathRecord& path,
     bool* saw_multiple);
 
+enum class LocalArrayEndpointBridgeStatus : unsigned char {
+  Available,
+  MissingProducerRow,
+  DuplicateProducerRow,
+  InvalidProducerCoordinate,
+  CoordinateConfusion,
+  MissingPreparedBirEndpointBridge,
+  DuplicateEndpoint,
+  MismatchedFunction,
+  MismatchedResultValue,
+  MismatchedSourceObject,
+  MismatchedDerivationResult,
+  MismatchedDynamicIndex,
+  UnsupportedOperationRole,
+  MissingEndpointOrder,
+};
+
+[[nodiscard]] constexpr std::string_view local_array_endpoint_bridge_status_name(
+    LocalArrayEndpointBridgeStatus status) {
+  switch (status) {
+    case LocalArrayEndpointBridgeStatus::Available:
+      return "available";
+    case LocalArrayEndpointBridgeStatus::MissingProducerRow:
+      return "missing_producer_row";
+    case LocalArrayEndpointBridgeStatus::DuplicateProducerRow:
+      return "duplicate_producer_row";
+    case LocalArrayEndpointBridgeStatus::InvalidProducerCoordinate:
+      return "invalid_producer_coordinate";
+    case LocalArrayEndpointBridgeStatus::CoordinateConfusion:
+      return "coordinate_confusion";
+    case LocalArrayEndpointBridgeStatus::MissingPreparedBirEndpointBridge:
+      return "missing_prepared_bir_endpoint_bridge";
+    case LocalArrayEndpointBridgeStatus::DuplicateEndpoint:
+      return "duplicate_endpoint";
+    case LocalArrayEndpointBridgeStatus::MismatchedFunction:
+      return "mismatched_function";
+    case LocalArrayEndpointBridgeStatus::MismatchedResultValue:
+      return "mismatched_result_value";
+    case LocalArrayEndpointBridgeStatus::MismatchedSourceObject:
+      return "mismatched_source_object";
+    case LocalArrayEndpointBridgeStatus::MismatchedDerivationResult:
+      return "mismatched_derivation_result";
+    case LocalArrayEndpointBridgeStatus::MismatchedDynamicIndex:
+      return "mismatched_dynamic_index";
+    case LocalArrayEndpointBridgeStatus::UnsupportedOperationRole:
+      return "unsupported_operation_role";
+    case LocalArrayEndpointBridgeStatus::MissingEndpointOrder:
+      return "missing_endpoint_order";
+  }
+  return "unknown";
+}
+
+struct LocalArrayEndpointBridgeInputs {
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  bool duplicate_producer_row = false;
+  bool prepared_bir_coordinate_confusion = false;
+  bool endpoint_available = false;
+  bool duplicate_endpoint = false;
+  bool mismatched_function = false;
+  bool mismatched_result_value = false;
+  bool mismatched_source_object = false;
+  bool mismatched_derivation_result = false;
+  bool mismatched_dynamic_index = false;
+  bool missing_endpoint_order = false;
+  std::string prepared_function_name;
+  std::string prepared_block_label;
+  std::optional<std::size_t> prepared_block_index;
+  std::string bir_block_label;
+  std::optional<std::size_t> endpoint_instruction_index;
+  std::string address_materialization_kind;
+  std::string result_value_name;
+  std::string matched_source_object_name;
+  std::string matched_derivation_result_name;
+};
+
+struct LocalArrayEndpointBridgeRecord {
+  LocalArrayEndpointBridgeStatus status =
+      LocalArrayEndpointBridgeStatus::MissingProducerRow;
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  std::string path_result_name;
+  std::string source_object_name;
+  std::string derivation_result_name;
+  std::string lir_producer_function_name;
+  std::string lir_producer_block_label;
+  std::optional<std::size_t> lir_producer_instruction_index;
+  LocalArrayLirProducerOperationRole lir_producer_operation_role =
+      LocalArrayLirProducerOperationRole::None;
+  std::string lir_producer_lookup_key;
+  LocalArrayLirProducerCoordinateStatus lir_producer_coordinate_status =
+      LocalArrayLirProducerCoordinateStatus::MissingLirProducerCoordinate;
+  Value dynamic_index;
+  std::string prepared_function_name;
+  std::string prepared_block_label;
+  std::optional<std::size_t> prepared_block_index;
+  std::string bir_block_label;
+  std::optional<std::size_t> endpoint_instruction_index;
+  std::string address_materialization_kind;
+  std::string result_value_name;
+  std::string matched_source_object_name;
+  std::string matched_derivation_result_name;
+};
+
+[[nodiscard]] inline LocalArrayEndpointBridgeRecord
+evaluate_local_array_endpoint_bridge(
+    const LocalArrayEndpointBridgeInputs& inputs) {
+  LocalArrayEndpointBridgeRecord record{
+      .element_path = inputs.element_path,
+  };
+
+  if (inputs.prepared_bir_coordinate_confusion) {
+    record.status = LocalArrayEndpointBridgeStatus::CoordinateConfusion;
+    return record;
+  }
+  if (inputs.element_path == nullptr) {
+    record.status = LocalArrayEndpointBridgeStatus::MissingProducerRow;
+    return record;
+  }
+
+  const auto& path = *inputs.element_path;
+  record.path_result_name = path.result_name;
+  record.source_object_name = path.source_object_name;
+  record.derivation_result_name = path.derivation_result_name;
+  record.lir_producer_function_name = path.lir_producer_function_name;
+  record.lir_producer_block_label = path.lir_producer_block_label;
+  record.lir_producer_instruction_index = path.lir_producer_instruction_index;
+  record.lir_producer_operation_role = path.lir_producer_operation_role;
+  record.lir_producer_lookup_key = path.lir_producer_lookup_key;
+  record.lir_producer_coordinate_status = path.lir_producer_coordinate_status;
+  record.prepared_function_name = inputs.prepared_function_name;
+  record.prepared_block_label = inputs.prepared_block_label;
+  record.prepared_block_index = inputs.prepared_block_index;
+  record.bir_block_label = inputs.bir_block_label;
+  record.endpoint_instruction_index = inputs.endpoint_instruction_index;
+  record.address_materialization_kind = inputs.address_materialization_kind;
+  record.result_value_name = inputs.result_value_name;
+  record.matched_source_object_name = inputs.matched_source_object_name;
+  record.matched_derivation_result_name = inputs.matched_derivation_result_name;
+
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      single_dynamic_local_array_index(path, &saw_multiple_dynamic_indices);
+  if (dynamic_index != nullptr) {
+    record.dynamic_index = dynamic_index->value;
+  }
+
+  if (inputs.duplicate_producer_row) {
+    record.status = LocalArrayEndpointBridgeStatus::DuplicateProducerRow;
+    return record;
+  }
+  if (path.lir_producer_lookup_key.empty() ||
+      path.lir_producer_coordinate_status !=
+          LocalArrayLirProducerCoordinateStatus::Available) {
+    record.status = LocalArrayEndpointBridgeStatus::InvalidProducerCoordinate;
+    return record;
+  }
+  if (path.lir_producer_operation_role !=
+      LocalArrayLirProducerOperationRole::AddressDerivation) {
+    record.status = LocalArrayEndpointBridgeStatus::UnsupportedOperationRole;
+    return record;
+  }
+  if (dynamic_index == nullptr || saw_multiple_dynamic_indices) {
+    record.status = LocalArrayEndpointBridgeStatus::MismatchedDynamicIndex;
+    return record;
+  }
+  if (inputs.mismatched_derivation_result) {
+    record.status = LocalArrayEndpointBridgeStatus::MismatchedDerivationResult;
+    return record;
+  }
+  if (inputs.mismatched_function) {
+    record.status = LocalArrayEndpointBridgeStatus::MismatchedFunction;
+    return record;
+  }
+  if (inputs.mismatched_result_value) {
+    record.status = LocalArrayEndpointBridgeStatus::MismatchedResultValue;
+    return record;
+  }
+  if (inputs.mismatched_source_object) {
+    record.status = LocalArrayEndpointBridgeStatus::MismatchedSourceObject;
+    return record;
+  }
+  if (inputs.mismatched_dynamic_index) {
+    record.status = LocalArrayEndpointBridgeStatus::MismatchedDynamicIndex;
+    return record;
+  }
+  if (inputs.duplicate_endpoint) {
+    record.status = LocalArrayEndpointBridgeStatus::DuplicateEndpoint;
+    return record;
+  }
+  if (!inputs.endpoint_available) {
+    record.status =
+        LocalArrayEndpointBridgeStatus::MissingPreparedBirEndpointBridge;
+    return record;
+  }
+  if (inputs.missing_endpoint_order ||
+      !inputs.prepared_block_index.has_value() ||
+      !inputs.endpoint_instruction_index.has_value()) {
+    record.status = LocalArrayEndpointBridgeStatus::MissingEndpointOrder;
+    return record;
+  }
+
+  record.status = LocalArrayEndpointBridgeStatus::Available;
+  return record;
+}
+
 enum class LocalArrayIntervalEffectStatus : unsigned char {
   Available,
   MissingLirProducerLookupKey,
@@ -4022,6 +4226,7 @@ struct Function {
   std::vector<LocalArrayElementPathRecord> local_array_element_paths;
   std::vector<LocalArraySelectedProofEdgePathRecord>
       local_array_selected_proof_edge_paths;
+  std::vector<LocalArrayEndpointBridgeRecord> local_array_endpoint_bridges;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;

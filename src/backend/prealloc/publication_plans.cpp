@@ -4799,6 +4799,226 @@ collect_selected_proof_edge_path_record(
   return count > 1;
 }
 
+[[nodiscard]] const PreparedFrameSlot* find_endpoint_bridge_frame_slot(
+    const PreparedStackLayout& stack_layout,
+    PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const PreparedStackObject* find_endpoint_bridge_stack_object(
+    const PreparedStackLayout& stack_layout,
+    PreparedObjectId object_id) {
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == object_id) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::string endpoint_bridge_frame_slot_source_object_name(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    const PreparedAddressMaterialization& materialization) {
+  if (!materialization.frame_slot_id.has_value()) {
+    return {};
+  }
+  const auto* frame_slot =
+      find_endpoint_bridge_frame_slot(stack_layout, *materialization.frame_slot_id);
+  if (frame_slot == nullptr) {
+    return {};
+  }
+  const auto* object =
+      find_endpoint_bridge_stack_object(stack_layout, frame_slot->object_id);
+  if (object == nullptr) {
+    return {};
+  }
+  return std::string(prepared_stack_object_name(names, *object));
+}
+
+[[nodiscard]] bool endpoint_bridge_materialization_uses_lir_coordinate_only(
+    const PreparedNameTables& names,
+    const bir::LocalArrayElementPathRecord& path,
+    const PreparedAddressMaterialization& materialization) {
+  return path.lir_producer_instruction_index.has_value() &&
+         materialization.block_label != kInvalidBlockLabel &&
+         prepared_block_label(names, materialization.block_label) ==
+             path.lir_producer_block_label &&
+         materialization.inst_index == *path.lir_producer_instruction_index;
+}
+
+[[nodiscard]] const bir::Value* endpoint_bridge_inst_result_value(
+    const bir::Inst& inst) {
+  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+    return &binary->result;
+  }
+  if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+    return &select->result;
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+    return &cast->result;
+  }
+  if (const auto* phi = std::get_if<bir::PhiInst>(&inst)) {
+    return &phi->result;
+  }
+  if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+    return call->result.has_value() ? &*call->result : nullptr;
+  }
+  if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+    return &load_local->result;
+  }
+  if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+    return &load_global->result;
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool populate_endpoint_bridge_from_bir_result(
+    const bir::Function& bir_function,
+    const bir::LocalArrayElementPathRecord& path,
+    bir::LocalArrayEndpointBridgeInputs& inputs) {
+  bool matched = false;
+  for (std::size_t block_index = 0; block_index < bir_function.blocks.size();
+       ++block_index) {
+    const auto& block = bir_function.blocks[block_index];
+    for (std::size_t inst_index = 0; inst_index < block.insts.size();
+         ++inst_index) {
+      const auto* result = endpoint_bridge_inst_result_value(block.insts[inst_index]);
+      if (result == nullptr ||
+          result->kind != bir::Value::Kind::Named ||
+          result->name != path.result_name) {
+        continue;
+      }
+      if (matched) {
+        inputs.duplicate_endpoint = true;
+        return false;
+      }
+      matched = true;
+      inputs.endpoint_available = true;
+      inputs.prepared_block_label = block.label;
+      inputs.prepared_block_index = block_index;
+      inputs.bir_block_label = block.label;
+      inputs.endpoint_instruction_index = inst_index;
+      inputs.address_materialization_kind = "bir_address_derivation";
+      inputs.result_value_name = result->name;
+      inputs.matched_source_object_name = path.source_object_name;
+      inputs.matched_derivation_result_name = path.derivation_result_name;
+    }
+  }
+  return matched;
+}
+
+[[nodiscard]] bir::LocalArrayEndpointBridgeInputs make_endpoint_bridge_inputs(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function_cf,
+    const PreparedAddressingFunction* addressing,
+    const PreparedStackLayout& stack_layout,
+    const bir::Function& bir_function,
+    const bir::LocalArrayElementPathRecord& path,
+    std::string_view function_name,
+    bool duplicate_key) {
+  bir::LocalArrayEndpointBridgeInputs inputs{
+      .element_path = &path,
+      .duplicate_producer_row = duplicate_key,
+      .prepared_function_name = std::string(function_name),
+  };
+  if (path.derivation_result_name != path.result_name) {
+    inputs.mismatched_derivation_result = true;
+  }
+
+  bool saw_multiple_dynamic_indices = false;
+  (void)bir::single_dynamic_local_array_index(path, &saw_multiple_dynamic_indices);
+  if (saw_multiple_dynamic_indices) {
+    inputs.mismatched_dynamic_index = true;
+  }
+
+  if (addressing == nullptr ||
+      addressing->function_name != function_cf.function_name) {
+    inputs.mismatched_function = addressing != nullptr;
+    return inputs;
+  }
+
+  const PreparedAddressMaterialization* matched = nullptr;
+  bool saw_duplicate = false;
+  bool saw_coordinate_only_candidate = false;
+  bool saw_same_source_different_result = false;
+  bool saw_same_result_mismatched_source = false;
+
+  for (const auto& materialization : addressing->address_materializations) {
+    if (materialization.function_name != function_cf.function_name) {
+      continue;
+    }
+    saw_coordinate_only_candidate =
+        saw_coordinate_only_candidate ||
+        endpoint_bridge_materialization_uses_lir_coordinate_only(
+            names, path, materialization);
+
+    const std::string result_value_name =
+        materialization.result_value_name.has_value()
+            ? std::string(prepared_value_name(names,
+                                              *materialization.result_value_name))
+            : std::string{};
+    const std::string source_object_name =
+        endpoint_bridge_frame_slot_source_object_name(
+            names, stack_layout, materialization);
+
+    const bool same_result = result_value_name == path.result_name;
+    const bool same_source = source_object_name == path.source_object_name;
+    if (same_source && !same_result) {
+      saw_same_source_different_result = true;
+    }
+    if (same_result && !same_source) {
+      saw_same_result_mismatched_source = true;
+    }
+    if (materialization.kind != PreparedAddressMaterializationKind::FrameSlot ||
+        !same_result || !same_source) {
+      continue;
+    }
+    if (matched != nullptr) {
+      saw_duplicate = true;
+      continue;
+    }
+    matched = &materialization;
+    inputs.prepared_block_label =
+        std::string(prepared_block_label(names, materialization.block_label));
+    inputs.bir_block_label = inputs.prepared_block_label;
+    inputs.prepared_block_index = find_prepared_block_index_in_function(
+        names, bir_function, materialization.block_label);
+    inputs.endpoint_instruction_index = materialization.inst_index;
+    inputs.address_materialization_kind =
+        std::string(prepared_address_materialization_kind_name(
+            materialization.kind));
+    inputs.result_value_name = result_value_name;
+    inputs.matched_source_object_name = source_object_name;
+    inputs.matched_derivation_result_name = path.derivation_result_name;
+  }
+
+  if (saw_duplicate) {
+    inputs.duplicate_endpoint = true;
+    return inputs;
+  }
+  if (matched == nullptr) {
+    if (populate_endpoint_bridge_from_bir_result(bir_function, path, inputs)) {
+      return inputs;
+    }
+    inputs.prepared_bir_coordinate_confusion = saw_coordinate_only_candidate;
+    inputs.mismatched_result_value = saw_same_source_different_result;
+    inputs.mismatched_source_object = saw_same_result_mismatched_source;
+    return inputs;
+  }
+
+  inputs.endpoint_available = true;
+  inputs.missing_endpoint_order =
+      !inputs.prepared_block_index.has_value() ||
+      !inputs.endpoint_instruction_index.has_value();
+  return inputs;
+}
+
 }  // namespace
 
 void populate_local_array_selected_proof_edge_paths(PreparedBirModule& prepared) {
@@ -4823,6 +5043,38 @@ void populate_local_array_selected_proof_edge_paths(PreparedBirModule& prepared)
               path,
               function_name,
               selected_proof_edge_duplicate_key(*bir_function, path)));
+    }
+  }
+}
+
+void populate_local_array_endpoint_bridges(PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.local_array_endpoint_bridges.clear();
+  }
+
+  for (const auto& function_cf : prepared.control_flow.functions) {
+    auto* bir_function =
+        prepared_bir_function_by_name(prepared, function_cf.function_name);
+    if (bir_function == nullptr) {
+      continue;
+    }
+    const auto function_name =
+        prepared_function_name(prepared.names, function_cf.function_name);
+    const auto* addressing =
+        find_prepared_addressing_function(prepared.addressing,
+                                          function_cf.function_name);
+    for (const auto& path : bir_function->local_array_element_paths) {
+      bir_function->local_array_endpoint_bridges.push_back(
+          bir::evaluate_local_array_endpoint_bridge(
+              make_endpoint_bridge_inputs(
+                  prepared.names,
+                  function_cf,
+                  addressing,
+                  prepared.stack_layout,
+                  *bir_function,
+                  path,
+                  function_name,
+                  selected_proof_edge_duplicate_key(*bir_function, path))));
     }
   }
 }

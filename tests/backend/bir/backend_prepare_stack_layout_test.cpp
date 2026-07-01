@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 
 namespace {
 
@@ -1190,6 +1191,102 @@ first_selected_proof_edge_record(const prepare::PreparedBirModule& prepared) {
   return &function->local_array_selected_proof_edge_paths.front();
 }
 
+const bir::LocalArrayEndpointBridgeRecord*
+first_endpoint_bridge_record(const prepare::PreparedBirModule& prepared) {
+  const auto* function =
+      find_bir_function(prepared, "stack_layout_local_array_selected_proof_edge_path");
+  if (function == nullptr || function->local_array_endpoint_bridges.empty()) {
+    return nullptr;
+  }
+  return &function->local_array_endpoint_bridges.front();
+}
+
+prepare::PreparedAddressingFunction* find_mutable_prepared_addressing_function(
+    prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_name_id = find_function_name_id(prepared, function_name);
+  if (function_name_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  for (auto& addressing : prepared.addressing.functions) {
+    if (addressing.function_name == function_name_id) {
+      return &addressing;
+    }
+  }
+  return nullptr;
+}
+
+bool rename_first_bir_result(prepare::PreparedBirModule& prepared,
+                             std::string_view function_name,
+                             std::string_view old_name,
+                             std::string new_name) {
+  auto* function = find_mutable_bir_function(prepared, function_name);
+  if (function == nullptr) {
+    return false;
+  }
+  for (auto& block : function->blocks) {
+    for (auto& inst : block.insts) {
+      bir::Value* result = nullptr;
+      if (auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+        result = &binary->result;
+      } else if (auto* select = std::get_if<bir::SelectInst>(&inst)) {
+        result = &select->result;
+      } else if (auto* cast = std::get_if<bir::CastInst>(&inst)) {
+        result = &cast->result;
+      } else if (auto* phi = std::get_if<bir::PhiInst>(&inst)) {
+        result = &phi->result;
+      } else if (auto* call = std::get_if<bir::CallInst>(&inst);
+                 call != nullptr && call->result.has_value()) {
+        result = &*call->result;
+      } else if (auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+        result = &load_local->result;
+      } else if (auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+        result = &load_global->result;
+      }
+      if (result != nullptr && result->name == old_name) {
+        result->name = std::move(new_name);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool duplicate_first_bir_result(prepare::PreparedBirModule& prepared,
+                                std::string_view function_name,
+                                std::string_view result_name) {
+  auto* function = find_mutable_bir_function(prepared, function_name);
+  if (function == nullptr) {
+    return false;
+  }
+  for (auto& block : function->blocks) {
+    for (const auto& inst : block.insts) {
+      const bir::Value* result = nullptr;
+      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+        result = &binary->result;
+      } else if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+        result = &select->result;
+      } else if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+        result = &cast->result;
+      } else if (const auto* phi = std::get_if<bir::PhiInst>(&inst)) {
+        result = &phi->result;
+      } else if (const auto* call = std::get_if<bir::CallInst>(&inst);
+                 call != nullptr && call->result.has_value()) {
+        result = &*call->result;
+      } else if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+        result = &load_local->result;
+      } else if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+        result = &load_global->result;
+      }
+      if (result != nullptr && result->name == result_name) {
+        block.insts.push_back(inst);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 int check_lir_selected_proof_edge_path_population_available(
     const prepare::PreparedBirModule& prepared) {
   const auto* function =
@@ -1242,6 +1339,48 @@ int check_lir_selected_proof_edge_path_population_available(
   return 0;
 }
 
+int check_lir_local_array_endpoint_bridge_population_available(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* function =
+      find_bir_function(prepared, "stack_layout_local_array_selected_proof_edge_path");
+  if (function == nullptr) {
+    return fail("endpoint bridge fixture function was not prepared");
+  }
+  if (function->local_array_element_paths.size() != 1 ||
+      function->local_array_endpoint_bridges.size() != 1) {
+    return fail("endpoint bridge collector should publish one bridge record");
+  }
+  const auto& record = function->local_array_endpoint_bridges.front();
+  if (record.status != bir::LocalArrayEndpointBridgeStatus::Available ||
+      record.path_result_name != "%elt.ptr" ||
+      record.source_object_name != "%lv.arr" ||
+      record.derivation_result_name != "%elt.ptr" ||
+      record.lir_producer_function_name !=
+          "stack_layout_local_array_selected_proof_edge_path" ||
+      record.lir_producer_block_label != "body" ||
+      !record.lir_producer_instruction_index.has_value() ||
+      *record.lir_producer_instruction_index != 0 ||
+      record.lir_producer_operation_role !=
+          bir::LocalArrayLirProducerOperationRole::AddressDerivation ||
+      record.lir_producer_lookup_key !=
+          "lir-producer:stack_layout_local_array_selected_proof_edge_path:"
+          "body:0:%elt.ptr:%lv.arr:%elt.ptr:%idx" ||
+      record.dynamic_index.name != "%idx" ||
+      record.prepared_function_name !=
+          "stack_layout_local_array_selected_proof_edge_path" ||
+      record.prepared_block_label != "body" ||
+      !record.prepared_block_index.has_value() ||
+      record.bir_block_label != "body" ||
+      !record.endpoint_instruction_index.has_value() ||
+      record.address_materialization_kind != "bir_address_derivation" ||
+      record.result_value_name != "%elt.ptr" ||
+      record.matched_source_object_name != "%lv.arr" ||
+      record.matched_derivation_result_name != "%elt.ptr") {
+    return fail("endpoint bridge collector did not publish the expected available record");
+  }
+  return 0;
+}
+
 int check_lir_selected_proof_edge_path_ignores_earlier_non_available_candidate() {
   auto prepared = prepare_lir_selected_proof_edge_path_module(
       SelectedProofEdgeFixtureShape::EarlierNonCoveringThenAvailable);
@@ -1254,6 +1393,92 @@ int check_lir_selected_proof_edge_path_ignores_earlier_non_available_candidate()
       record->proof_block_label != "guard" ||
       record->selected_successor_label != "body") {
     return fail("later available proof source should win over earlier non-available candidate");
+  }
+  return 0;
+}
+
+int check_lir_local_array_endpoint_bridge_mutated_fail_closed() {
+  auto prepared = prepare_lir_selected_proof_edge_path_module(
+      SelectedProofEdgeFixtureShape::CrossBlockAvailable);
+  if (!prepared.has_value()) {
+    return fail("endpoint bridge mutation fixture should lower to BIR");
+  }
+
+  constexpr std::string_view kFunctionName =
+      "stack_layout_local_array_selected_proof_edge_path";
+  auto expect_mutated_status =
+      [&](auto mutate,
+          bir::LocalArrayEndpointBridgeStatus expected_status,
+          const char* failure_message) -> int {
+    auto mutated = *prepared;
+    mutate(mutated);
+    prepare::populate_local_array_endpoint_bridges(mutated);
+    const auto* record = first_endpoint_bridge_record(mutated);
+    if (record == nullptr || record->status != expected_status) {
+      return fail(failure_message);
+    }
+    return 0;
+  };
+
+  if (const int rc = expect_mutated_status(
+          [&](prepare::PreparedBirModule& mutated) {
+            auto* addressing =
+                find_mutable_prepared_addressing_function(mutated, kFunctionName);
+            if (addressing != nullptr) {
+              addressing->address_materializations.clear();
+            }
+            (void)rename_first_bir_result(
+                mutated, kFunctionName, "%elt.ptr", "%missing.endpoint");
+          },
+          bir::LocalArrayEndpointBridgeStatus::MissingPreparedBirEndpointBridge,
+          "endpoint bridge collector should fail closed on missing endpoint");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_mutated_status(
+          [&](prepare::PreparedBirModule& mutated) {
+            (void)duplicate_first_bir_result(mutated, kFunctionName, "%elt.ptr");
+          },
+          bir::LocalArrayEndpointBridgeStatus::DuplicateEndpoint,
+          "endpoint bridge collector should fail closed on duplicate endpoints");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_mutated_status(
+          [&](prepare::PreparedBirModule& mutated) {
+            auto* addressing =
+                find_mutable_prepared_addressing_function(mutated, kFunctionName);
+            if (addressing != nullptr) {
+              addressing->address_materializations.clear();
+              addressing->address_materializations.push_back(
+                  prepare::PreparedAddressMaterialization{
+                      .function_name = find_function_name_id(mutated, kFunctionName),
+                      .block_label = find_block_label_id(mutated, "body"),
+                      .inst_index = std::size_t{0},
+                      .kind = prepare::PreparedAddressMaterializationKind::FrameSlot,
+                      .result_value_name =
+                          mutated.names.value_names.intern("%other.ptr"),
+                  });
+            }
+            (void)rename_first_bir_result(
+                mutated, kFunctionName, "%elt.ptr", "%coordinate.only.ptr");
+          },
+          bir::LocalArrayEndpointBridgeStatus::CoordinateConfusion,
+          "endpoint bridge collector should fail closed on LIR-coordinate-only matches");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_mutated_status(
+          [&](prepare::PreparedBirModule& mutated) {
+            auto* function = find_mutable_bir_function(mutated, kFunctionName);
+            if (function != nullptr && !function->local_array_element_paths.empty()) {
+              function->local_array_element_paths.front().indices.clear();
+            }
+          },
+          bir::LocalArrayEndpointBridgeStatus::MismatchedDynamicIndex,
+          "endpoint bridge collector should fail closed on missing dynamic index identity");
+      rc != 0) {
+    return rc;
   }
   return 0;
 }
@@ -10796,6 +11021,11 @@ int main() {
       rc != 0) {
     return rc;
   }
+  if (const int rc = check_lir_local_array_endpoint_bridge_population_available(
+          *selected_proof_edge_prepared);
+      rc != 0) {
+    return rc;
+  }
   if (const int rc = check_lir_selected_proof_edge_path_status(
           SelectedProofEdgeFixtureShape::SameBlockProducer,
           bir::LocalArraySelectedProofEdgePathStatus::MissingSameBlockOrdering,
@@ -10823,6 +11053,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_lir_selected_proof_edge_path_mutated_fail_closed();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_lir_local_array_endpoint_bridge_mutated_fail_closed();
       rc != 0) {
     return rc;
   }

@@ -7246,6 +7246,203 @@ int expect_local_array_selected_proof_edge_api_fails_closed_for_missing_facts() 
   return 0;
 }
 
+int expect_local_array_endpoint_bridge_api_records_authoritative_endpoint() {
+  const auto path = make_dynamic_local_array_selected_edge_path();
+  const auto bridge = bir::evaluate_local_array_endpoint_bridge(
+      bir::LocalArrayEndpointBridgeInputs{
+          .element_path = &path,
+          .endpoint_available = true,
+          .prepared_function_name = "selected_edge_fixture",
+          .prepared_block_label = "body",
+          .prepared_block_index = std::size_t{1},
+          .bir_block_label = "body",
+          .endpoint_instruction_index = std::size_t{4},
+          .address_materialization_kind = "frame_slot",
+          .result_value_name = "%elt.ptr",
+          .matched_source_object_name = "%lv.arr",
+          .matched_derivation_result_name = "%elt.ptr",
+      });
+  if (bridge.status != bir::LocalArrayEndpointBridgeStatus::Available ||
+      bridge.element_path != &path ||
+      bridge.path_result_name != "%elt.ptr" ||
+      bridge.source_object_name != "%lv.arr" ||
+      bridge.derivation_result_name != "%elt.ptr" ||
+      bridge.lir_producer_lookup_key !=
+          "lir-producer:selected_edge_fixture:body:4:%elt.ptr:%lv.arr:%elt.ptr:%idx" ||
+      bridge.dynamic_index.name != "%idx" ||
+      bridge.prepared_function_name != "selected_edge_fixture" ||
+      bridge.prepared_block_label != "body" ||
+      !bridge.prepared_block_index.has_value() ||
+      *bridge.prepared_block_index != 1 ||
+      bridge.bir_block_label != "body" ||
+      !bridge.endpoint_instruction_index.has_value() ||
+      *bridge.endpoint_instruction_index != 4 ||
+      bridge.address_materialization_kind != "frame_slot" ||
+      bridge.result_value_name != "%elt.ptr" ||
+      bridge.matched_source_object_name != "%lv.arr" ||
+      bridge.matched_derivation_result_name != "%elt.ptr") {
+    return fail("endpoint bridge API should record an authoritative prepared/BIR endpoint");
+  }
+
+  bir::Function function;
+  function.local_array_element_paths.push_back(path);
+  function.local_array_endpoint_bridges.push_back(bridge);
+  if (function.local_array_endpoint_bridges.size() != 1 ||
+      function.local_array_endpoint_bridges.front().status !=
+          bir::LocalArrayEndpointBridgeStatus::Available) {
+    return fail("endpoint bridge record should live in BIR local-array metadata");
+  }
+  return 0;
+}
+
+int expect_local_array_endpoint_bridge_api_fails_closed_for_missing_facts() {
+  const auto path = make_dynamic_local_array_selected_edge_path();
+  const auto expect_status =
+      [&](bir::LocalArrayEndpointBridgeInputs inputs,
+          bir::LocalArrayEndpointBridgeStatus expected_status,
+          const char* failure_message) -> int {
+    const auto record = bir::evaluate_local_array_endpoint_bridge(inputs);
+    if (record.status != expected_status) {
+      return fail(failure_message);
+    }
+    return 0;
+  };
+
+  if (bir::local_array_endpoint_bridge_status_name(
+          bir::LocalArrayEndpointBridgeStatus::MissingPreparedBirEndpointBridge) !=
+          "missing_prepared_bir_endpoint_bridge" ||
+      bir::local_array_endpoint_bridge_status_name(
+          bir::LocalArrayEndpointBridgeStatus::DuplicateEndpoint) !=
+          "duplicate_endpoint" ||
+      bir::local_array_endpoint_bridge_status_name(
+          bir::LocalArrayEndpointBridgeStatus::CoordinateConfusion) !=
+          "coordinate_confusion" ||
+      bir::local_array_endpoint_bridge_status_name(
+          bir::LocalArrayEndpointBridgeStatus::MismatchedDynamicIndex) !=
+          "mismatched_dynamic_index") {
+    return fail("endpoint bridge status names should remain stable");
+  }
+
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{},
+          bir::LocalArrayEndpointBridgeStatus::MissingProducerRow,
+          "endpoint bridge should reject missing producer row");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{.element_path = &path},
+          bir::LocalArrayEndpointBridgeStatus::MissingPreparedBirEndpointBridge,
+          "endpoint bridge should fail closed without a prepared/BIR endpoint");
+      rc != 0) {
+    return rc;
+  }
+
+  auto missing_key = path;
+  missing_key.lir_producer_lookup_key.clear();
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{.element_path = &missing_key},
+          bir::LocalArrayEndpointBridgeStatus::InvalidProducerCoordinate,
+          "endpoint bridge should reject missing LIR producer key");
+      rc != 0) {
+    return rc;
+  }
+
+  auto unsupported_role = path;
+  unsupported_role.lir_producer_operation_role =
+      bir::LocalArrayLirProducerOperationRole::LoadConsumer;
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{.element_path = &unsupported_role},
+          bir::LocalArrayEndpointBridgeStatus::UnsupportedOperationRole,
+          "endpoint bridge should reject non-address-derivation producer rows");
+      rc != 0) {
+    return rc;
+  }
+
+  auto missing_dynamic_index = path;
+  missing_dynamic_index.indices.clear();
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{.element_path = &missing_dynamic_index},
+          bir::LocalArrayEndpointBridgeStatus::MismatchedDynamicIndex,
+          "endpoint bridge should reject missing dynamic index identity");
+      rc != 0) {
+    return rc;
+  }
+
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{
+              .element_path = &path,
+              .duplicate_producer_row = true,
+          },
+          bir::LocalArrayEndpointBridgeStatus::DuplicateProducerRow,
+          "endpoint bridge should reject duplicate producer rows");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{
+              .element_path = &path,
+              .prepared_bir_coordinate_confusion = true,
+          },
+          bir::LocalArrayEndpointBridgeStatus::CoordinateConfusion,
+          "endpoint bridge should reject coordinate confusion");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{
+              .element_path = &path,
+              .duplicate_endpoint = true,
+          },
+          bir::LocalArrayEndpointBridgeStatus::DuplicateEndpoint,
+          "endpoint bridge should reject duplicate endpoints");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{
+              .element_path = &path,
+              .mismatched_result_value = true,
+          },
+          bir::LocalArrayEndpointBridgeStatus::MismatchedResultValue,
+          "endpoint bridge should reject mismatched result values");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{
+              .element_path = &path,
+              .mismatched_source_object = true,
+          },
+          bir::LocalArrayEndpointBridgeStatus::MismatchedSourceObject,
+          "endpoint bridge should reject mismatched source objects");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{
+              .element_path = &path,
+              .mismatched_derivation_result = true,
+          },
+          bir::LocalArrayEndpointBridgeStatus::MismatchedDerivationResult,
+          "endpoint bridge should reject mismatched derivation results");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayEndpointBridgeInputs{
+              .element_path = &path,
+              .endpoint_available = true,
+              .missing_endpoint_order = true,
+          },
+          bir::LocalArrayEndpointBridgeStatus::MissingEndpointOrder,
+          "endpoint bridge should reject endpoints without order");
+      rc != 0) {
+    return rc;
+  }
+  return 0;
+}
+
 int expect_local_array_interval_effect_status_surface_fails_closed() {
   const auto path = make_dynamic_local_array_selected_edge_path();
   const auto selected_path = bir::evaluate_local_array_selected_proof_edge_path(
@@ -9802,6 +9999,16 @@ int main() {
           expect_local_array_selected_proof_edge_api_fails_closed_for_missing_facts();
       selected_proof_edge_fail_closed_status != 0) {
     return selected_proof_edge_fail_closed_status;
+  }
+  if (const int endpoint_bridge_status =
+          expect_local_array_endpoint_bridge_api_records_authoritative_endpoint();
+      endpoint_bridge_status != 0) {
+    return endpoint_bridge_status;
+  }
+  if (const int endpoint_bridge_fail_closed_status =
+          expect_local_array_endpoint_bridge_api_fails_closed_for_missing_facts();
+      endpoint_bridge_fail_closed_status != 0) {
+    return endpoint_bridge_fail_closed_status;
   }
   if (const int interval_effect_status =
           expect_local_array_interval_effect_status_surface_fails_closed();
