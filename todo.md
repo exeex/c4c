@@ -1,54 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/486_bir_index_range_proof_path_dominance_carrier.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Index Range Proof Inputs
+Current Step ID: 2
+Current Step Title: Define Range Proof And Path-Dominance Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 for idea 486 by auditing current index range proof,
-path/dominance, and no-clobber inputs for dynamic local-array indices.
+Completed Step 2 for idea 486 by defining the dynamic local-array index range
+proof and path-dominance carrier contract.
 
-Representative audit:
+Accepted carrier requirements:
 
-| Field | Current input | Classification |
-| --- | --- | --- |
-| Source object | `local_array_source_objects` from static local array `alloca` | available from idea 485 |
-| Derivation | `local_array_derivations` from explicit local array/view GEP | available from idea 485 |
-| Element path/layout | `local_array_element_paths` with element count/size and byte layout | available from idea 485 |
-| Dynamic index identity | `LocalArrayIndexRecord::value` carries the BIR index value, e.g. `%idx` | available |
-| Current dynamic status | `LocalArrayCarrierStatus::MissingIndexRangeProof` | intentionally unavailable |
-| Proof source identity | no durable compare/branch proof source record tied to the local-array index | missing |
-| Lower/upper bound facts | no durable normalized `0 <= index < element_count` proof | missing |
-| Predicate/operand mapping | branch conditions expose compare fields, but no carrier maps them to local-array index bounds | missing |
-| Path/dominance validity | prepared CFG has block/branch facts and some reachability-style helpers, but no proof-to-GEP consumer certificate | missing |
-| Index no-clobber/same-value | no record proving the index value is unchanged between proof source and GEP consumer | missing |
+| Record family | Required fields |
+| --- | --- |
+| Consumer identity | function id/name, local-array source object, derivation id/result, element-path id/result, consumer block/instruction coordinate, dynamic index value, element count, element size/stride |
+| Proof source | proof block label, proof instruction/terminator coordinate, source kind, predicate, compare type, lhs/rhs operands, structured value ids/names where available |
+| Lower bound | index operand role, lower bound value, inclusivity, width/signedness policy, normalized proof of `0 <= index` or equivalent |
+| Upper bound | index operand role, upper bound value, inclusivity, width/signedness policy, normalized proof of `index < element_count` or equivalent |
+| Path/dominance | proof source dominates or guards the consumer, consumer path is covered by the proven branch edge/path, function/control-flow identity matches |
+| No-clobber/same-value | no assignment, phi replacement, move/publication, helper/call, inline asm, or other effect invalidates the index value between proof source and consumer |
 
-Existing usable surfaces:
+Required fail-closed statuses:
 
-- `bir::MemoryDynamicArrayFacts` can compute passive byte-range envelope
-  verdicts after requested ranges are known, but it is not proof-source or
-  path authority.
-- `PreparedControlFlowFunction` exposes structured blocks and branch
-  conditions.
-- Prepared lookup helpers show reachability/dominance-style filtering exists
-  for other domains, but there is no index-range proof carrier today.
-- Existing path/clobber status vocabularies in frame-slot and semantic
-  materialization records are useful precedent, not direct authority for
-  dynamic local-array indices.
+- `missing_local_array_path`, `missing_dynamic_index`,
+  `missing_proof_source`, `unsupported_proof_source`,
+  `missing_lower_bound`, `missing_upper_bound`,
+  `unsupported_predicate`, `unsupported_index_width`,
+  `operand_role_mismatch`, `bound_value_mismatch`,
+  `proof_function_mismatch`, `proof_not_dominating_consumer`,
+  `path_not_covering_consumer`, `missing_path_validity`,
+  `missing_no_clobber`, `index_value_clobbered`,
+  `index_value_redefined`, `index_phi_or_alias_unresolved`,
+  `call_or_helper_effect_unknown`, `call_or_helper_clobbers_index`,
+  `inline_asm_effect_unknown`, `publication_or_move_effect_unknown`,
+  `publication_or_move_clobbers_index`, `raw_shape_only`,
+  `target_only_or_final_home_only`, and `unsupported_boundary`.
+
+Step 3 readiness:
+
+- A bounded implementation packet is justified for an independent
+  metadata/status surface with a planner/checker API that can accept synthetic
+  complete inputs and produce `available`.
+- Real dynamic local-array rows must remain unavailable unless producer data can
+  provide proof source, normalized bounds, path/dominance, and no-clobber facts.
+- If current producer data cannot supply those links without raw-shape
+  inference, Step 3 should route to the exact lower-level producer blocker
+  rather than marking dynamic rows available.
 
 Artifact:
 
-- `build/agent_state/486_step1_index_range_proof_inputs/audit.md`
+- `build/agent_state/486_step2_range_proof_path_dominance_contract/contract.md`
 
 ## Suggested Next
 
-Execute Step 2: define the dynamic local-array index range proof carrier
-contract. Require explicit proof source identity, bound facts, predicate/operand
-role mapping, path/dominance validity, and index no-clobber/same-value evidence;
-preserve dynamic rows as unavailable when any fact is missing.
+Execute Step 3: implement or route the first range proof/path-dominance carrier
+packet. Keep it bounded to metadata/status publication and focused coverage;
+do not consume it from idea 484 packaging or scalar local-load production.
 
 ## Watchouts
 
@@ -61,6 +70,12 @@ preserve dynamic rows as unavailable when any fact is missing.
 - `MemoryDynamicArrayRangeVerdict::BoundedByElementCount` is not enough by
   itself for idea 486; it lacks proof-source, dominance/path, and no-clobber
   authority.
+- `PreparedControlFlowFunction::branch_conditions` exposes compare fields but
+  does not by itself prove that a branch condition covers a later dynamic GEP
+  consumer.
+- Synthetic positive coverage is acceptable for the first status surface; real
+  dynamic rows remain unavailable until producer data supplies every required
+  fact.
 - Do not touch `review/`, canonical logs, baseline files, implementation files,
   or tests until an executor receives a bounded packet.
 
