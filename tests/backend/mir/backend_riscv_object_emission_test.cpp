@@ -7504,6 +7504,92 @@ prepare::PreparedBirModule make_prepared_scalar_gpr_stack_slot_param_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_stack_passed_scalar_param_home_module(
+    bir::TypeKind type = bir::TypeKind::I64,
+    bir::AbiValueClass abi_class = bir::AbiValueClass::Integer) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("stack_passed_scalar_param_home");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto param_name = prepared.names.value_names.intern("%p.late");
+  const auto object_id = prepare::PreparedObjectId{12};
+  const auto slot_id = prepare::PreparedFrameSlotId{14};
+  const std::size_t size_bytes = type == bir::TypeKind::I32 ? 4 : 8;
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "stack_passed_scalar_param_home",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .params = {bir::Param{
+          .type = type,
+          .name = "%p.late",
+          .size_bytes = size_bytes,
+          .align_bytes = size_bytes,
+          .abi = bir::CallArgAbiInfo{
+              .type = type,
+              .size_bytes = size_bytes,
+              .align_bytes = size_bytes,
+              .primary_class = abi_class,
+              .passed_in_register = false,
+              .passed_on_stack = true,
+          },
+      }},
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = object_id,
+      .function_name = function_name,
+      .value_name = param_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = type,
+      .size_bytes = size_bytes,
+      .align_bytes = size_bytes,
+      .address_exposed = false,
+      .requires_home_slot = false,
+      .permanent_home_slot = false,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = object_id,
+      .function_name = function_name,
+      .offset_bytes = 48,
+      .size_bytes = size_bytes,
+      .align_bytes = size_bytes,
+  });
+  prepared.stack_layout.frame_size_bytes = 64;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 8,
+          .function_name = function_name,
+          .value_name = param_name,
+          .kind = prepare::PreparedValueHomeKind::StackSlot,
+          .slot_id = slot_id,
+          .offset_bytes = std::size_t{48},
+          .size_bytes = size_bytes,
+          .align_bytes = size_bytes,
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_fpr_formal_param_home_module(
     bool publish_target_identity) {
   prepare::PreparedBirModule prepared;
@@ -10440,6 +10526,93 @@ int rejects_scalar_gpr_stack_slot_param_home_fail_closed_shapes() {
       std::size_t{2048};
   prepared.stack_layout.frame_slots[0].offset_bytes = 2048;
   if (expect_scalar_gpr_stack_slot_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int expect_stack_passed_scalar_param_home_rejection(
+    const prepare::PreparedBirModule& prepared) {
+  return expect_prepared_rejection_diagnostic(
+      prepared,
+      "unsupported_param_home: RV64 object route requires stack-passed scalar formal homes to match prepared frame-slot facts");
+}
+
+int builds_stack_passed_scalar_param_home_object() {
+  const auto prepared = make_prepared_stack_passed_scalar_param_home_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared stack-passed scalar formal home to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function =
+      object::find_symbol(*module, "stack_passed_scalar_param_home");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected stack-passed scalar formal object to publish text/function");
+  }
+  if (text->bytes.size() != 12 || text->size_bytes != 12 ||
+      function->value != 0 || function->size_bytes != 12 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected stack-passed scalar formal object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xfc010113 ||
+      read_u32(text->bytes, 4) != 0x04010113 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected stack-passed formal to use prepared home without entry register store");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected stack-passed scalar formal object to need no relocations");
+  }
+
+  const auto floating =
+      make_prepared_stack_passed_scalar_param_home_module(bir::TypeKind::F64,
+                                                         bir::AbiValueClass::Sse);
+  if (!rv64::build_rv64_prepared_text_object_module(floating).has_value()) {
+    return fail("expected prepared stack-passed F64 formal home to build");
+  }
+  return 0;
+}
+
+int rejects_stack_passed_scalar_param_home_fail_closed_shapes() {
+  auto prepared = make_prepared_stack_passed_scalar_param_home_module();
+  prepared.value_locations.functions[0].value_homes[0].offset_bytes =
+      std::size_t{56};
+  if (expect_stack_passed_scalar_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_passed_scalar_param_home_module();
+  prepared.stack_layout.frame_slots[0].size_bytes = 4;
+  if (expect_stack_passed_scalar_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_passed_scalar_param_home_module();
+  prepared.stack_layout.objects[0].source_kind = "local";
+  if (expect_stack_passed_scalar_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_passed_scalar_param_home_module();
+  prepared.module.functions[0].params[0].abi->passed_on_stack = false;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_passed_scalar_param_home_module();
+  prepared.module.functions[0].params[0].abi->primary_class =
+      bir::AbiValueClass::Memory;
+  if (expect_stack_passed_scalar_param_home_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_stack_passed_scalar_param_home_module(
+      bir::TypeKind::F128, bir::AbiValueClass::Sse);
+  if (expect_stack_passed_scalar_param_home_rejection(prepared) != 0) {
     return 1;
   }
 
@@ -17051,6 +17224,8 @@ int main() {
   status |= rejects_byval_stack_slot_param_home_fail_closed_shapes();
   status |= builds_scalar_gpr_stack_slot_param_home_object();
   status |= rejects_scalar_gpr_stack_slot_param_home_fail_closed_shapes();
+  status |= builds_stack_passed_scalar_param_home_object();
+  status |= rejects_stack_passed_scalar_param_home_fail_closed_shapes();
   status |= rejects_byval_stack_slot_pointer_access_fail_closed_shapes();
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();
   status |= rejects_raw_fpr_formal_param_home_without_target_identity();
