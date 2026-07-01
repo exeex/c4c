@@ -1,56 +1,55 @@
-# BIR Semantic Local-Memory Scalar Load Producer Plan
+# BIR Semantic Local-Address Provenance And Array-Element Access Authority Plan
 
 Status: Active
-Source Idea: ideas/open/483_bir_semantic_local_memory_scalar_load_producer.md
-Activated From: ideas/closed/422_bir_semantic_producer_high_impact_cleanup.md
+Source Idea: ideas/open/484_bir_semantic_local_address_provenance_array_element_authority.md
+Activated From: ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md
 
 ## Purpose
 
-Implement the first selected BIR semantic producer follow-up from idea 422:
-ordinary scalar local-memory load facts.
+Provide the prerequisite local-address and array-element provenance authority
+that blocked the scalar local-load producer route.
 
 ## Goal
 
-Publish explicit semantic producer facts for scalar local-memory loads only
-when the producer has durable source object, access range, layout, and result
-identity evidence.
+Publish explicit BIR semantic authority for local object identity,
+array-decay/index/offset, element layout/range, and pointer-to-local-element
+provenance when the producer has durable source facts.
 
 ## Core Rule
 
-Keep this a BIR semantic producer repair. Do not recover missing facts in
-prepared/RV64 lowering from raw shape, value names, testcase names, final homes,
-or target fallback inference.
+This is a producer-authority packet, not scalar load consumption. Do not infer
+local-address provenance from raw shape, value names, testcase names, final
+homes, or RV64 target fallback behavior.
 
 ## Read First
 
-- ideas/open/483_bir_semantic_local_memory_scalar_load_producer.md
-- ideas/closed/422_bir_semantic_producer_high_impact_cleanup.md
-- build/agent_state/422_step2_bir_producer_buckets/bucket_table.tsv
-- build/agent_state/422_step3_first_producer_packet/decision.md
-- build/agent_state/422_step4_residual_disposition/disposition.md
+- ideas/open/484_bir_semantic_local_address_provenance_array_element_authority.md
+- ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md
+- build/agent_state/483_step1_corrected_local_load_search/audit.md
+- build/agent_state/483_step1_corrected_local_load_search/local_load_rows.tsv
+- review/483_step1_local_load_route_review.md
 
 ## Current Target
 
-- Selected bucket: local-memory load, 79 rows.
-- Representative rows:
-  - `src/20041124-1.c`
-  - `src/20071219-1.c`
-  - `src/991228-1.c`
-  - `src/multi-ix.c`
-  - `src/pr22098-1.c`
+- First blocked local-load representatives:
+  - `src/pr22098-1.c`: compound literal array element through pointer
+    `p#L1 = &<clit>#L3[(++a#L0)]`;
+  - `src/pr38048-1.c`: local pointer `a = mat` with
+    `det += a#L1[i#L3][0]`;
+  - `src/multi-ix.c`: direct local-array element samples that need precise
+    function/site separation from variadic/va_arg ownership.
 - First packet:
-  - audit focused local-memory load probes and select the narrowest scalar
-    local-load shape for contract definition.
+  - audit which local-address/array-element authority shape is bounded enough
+    for a producer contract.
 
 ## Non-Goals
 
-- Local-memory GEP/address, store, direct-call metadata, memcpy/memset,
-  alloca-derived, scalar/local-memory mixed, function-signature, call-return,
-  scalar-binop, or bootstrap producer repair.
-- Aggregate/member, pointer/provenance, byval/va_arg, volatile/atomic, complex,
-  vector, or F128 load support unless a later lifecycle split selects them.
-- RV64 target lowering, prepared consumer inference, branch/select consumers,
-  stack-home materialization, call lowering, or return lowering.
+- Scalar local-memory load consumption.
+- Integer-pointer round-trip acceptance.
+- Generic GEP/address lowering beyond selected local array-element authority.
+- Local-memory store, direct-call metadata, memcpy/memset, alloca,
+  function-signature, call-return, scalar-binop, or bootstrap repairs.
+- RV64/MIR recovery or target lowering.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline/log
   churn.
@@ -59,19 +58,17 @@ or target fallback inference.
 
 ## Working Model
 
-Idea 422 selected local-memory load as the largest coherent BIR semantic
-producer bucket. This runbook starts with focused probes because the row-level
-scan gives family labels and representatives, but not a complete implementation
-contract for every local-load shape.
+Idea 483 proved the local-memory load bucket has no clean scalar local-object
+representative without local-address/provenance prerequisites. This runbook
+owns that prerequisite and must finish before returning to scalar local-load
+production.
 
 ## Execution Rules
 
-- Step 1 is probe/classification work; do not implement until a scalar
-  local-load shape is selected.
-- Any code-changing packet must include focused positive and fail-closed
-  backend/BIR coverage.
-- Keep proof local first, then use backend subset proof for code-changing
-  packets.
+- Step 1 is audit/classification unless it identifies a bounded already-owned
+  producer surface.
+- Any implementation packet must publish durable authority or fail-closed
+  status that later local-load producers can consume.
 - Classification-only proof:
 
 ```sh
@@ -88,31 +85,30 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Focused Local-Load Representative Evidence
+### Step 1: Audit Local-Address Array-Element Authority Evidence
 
-Inspect the selected representative rows and collect focused BIR/prepared
-evidence for failing function, load instruction identity, source object or
-frame slot, access range, scalar result type, and adjacent contaminating
-features. Completion means `todo.md` records accepted and rejected first-packet
-load shapes.
+Inspect the blocked representative rows and determine which local-address or
+array-element authority shape is bounded enough for a producer contract.
+Completion means `todo.md` records accepted/rejected candidates and the exact
+facts needed for source object, array decay, index/offset, layout/range, and
+provenance.
 
-### Step 2: Define Scalar Local-Load Producer Contract
+### Step 2: Define Local-Address Provenance Contract
 
-Define the smallest sound contract for admitting a scalar local-memory load
-semantic producer. Completion means the contract names required explicit facts,
-accepted ordinary C shape, and fail-closed statuses for GEP, store,
-aggregate/member, pointer/provenance, byval/va_arg, volatile/atomic, complex,
-vector, F128, bootstrap, and raw-shape inference.
+Define the smallest sound contract for local object address and array-element
+provenance authority. Completion means the contract names accepted evidence,
+required record fields, and fail-closed statuses for integer-pointer
+round-trips, unknown provenance, global sources, aggregate/member ownership,
+variadic/va_arg, runtime/call, F128, bootstrap, and raw-shape inference.
 
-### Step 3: Implement Or Route Scalar Local-Load Producer
+### Step 3: Implement Or Route Authority Producer
 
 Implement the bounded producer packet if Step 2 identifies one. If current BIR
-or prepared surfaces cannot expose the required facts, record the exact
-lower-level owner and stop without changing RV64 lowering or expectations.
+or HIR surfaces cannot provide the required facts, record the exact lower-level
+owner and stop without changing scalar load consumption or RV64 lowering.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe the selected local-load representatives. Completion means lifecycle
-state records whether the scalar local-load producer slice is complete, whether
-another local-load subfamily remains, or whether work should hand off to the
-next BIR producer bucket.
+Re-probe the selected representatives. Completion means lifecycle state records
+whether local-load production can resume, another prerequisite remains first,
+or this source idea is complete as a negative/blocked producer result.

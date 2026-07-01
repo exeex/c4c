@@ -1,88 +1,58 @@
 Status: Active
-Source Idea Path: ideas/open/483_bir_semantic_local_memory_scalar_load_producer.md
+Source Idea Path: ideas/open/484_bir_semantic_local_address_provenance_array_element_authority.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Audit Focused Local-Load Representative Evidence
+Current Step Title: Audit Local-Address Array-Element Authority Evidence
 
 # Current Packet
 
 ## Just Finished
 
-Continued Step 1 for idea 483 by searching the full 79-row local-memory load
-bucket for a non-pointer/provenance ordinary scalar local-object load
-representative after reviewer rejection of `pr22098-1.c`.
+Closed idea 483 as a routed blocker and activated prerequisite idea 484,
+`BIR Semantic Local-Address Provenance And Array-Element Access Authority`.
 
-Evidence generated:
+Reason:
 
-- `build/agent_state/483_step1_corrected_local_load_search/local_load_rows.tsv`
-  lists all 79 bucket rows;
-- `build/agent_state/483_step1_corrected_local_load_search/probes/*.dump_hir.*`
-  contains fresh HIR probes for all 79 rows;
-- `build/agent_state/483_step1_corrected_local_load_search/hir_direct_local_array_candidates.tsv`
-  records direct local-array-looking candidates;
-- `build/agent_state/483_step1_corrected_local_load_search/hir_plain_local_rhs_candidates.tsv`
-  records broader plain local RHS candidates.
+- corrected Step 1 for idea 483 searched the full 79-row local-memory load
+  bucket;
+- no non-pointer/provenance ordinary scalar local-object load representative
+  was found;
+- representative rows require local object, array decay, index/offset, element
+  layout, and pointer-to-local-element provenance facts before scalar load
+  production can safely proceed.
 
-Search result:
-
-- no non-pointer/provenance ordinary scalar local-object load representative was
-  found in the 79-row bucket;
-- the apparent scalar candidates all require a rejected prerequisite:
-  pointer/provenance, array-decay/GEP, aggregate/member, union/object
-  representation, variadic/va_arg, global source, or runtime/call
-  contamination.
-
-Representative rejected candidates:
-
-| Candidate | Observed shape | Rejection |
-| --- | --- | --- |
-| `src/pr22098-{1,2,3}.c` | compound literal array element through pointer or integer-pointer round-trip | Pointer/provenance or integer-pointer authority required. |
-| `src/multi-ix.c` | `a0#L1[0] -> i0#L41` style local array loads | Variadic/va_arg contaminated; latest failure is `s`, not the direct load site. |
-| `src/pr38048-1.c` | `det += a#L1[i#L3][0]` | Uses local pointer `a = mat`; needs array-decay/address/provenance facts. |
-| `src/20050826-2.c` | `rt#L2[1] = rt#L2[0]` | Aggregate struct array copy plus pointer-array/call contamination. |
-| `src/pr33870-1.c`, `src/pr33870.c` | `p#L3 = a#L2[0]` | Pointer value loaded from local array; pointer-list/struct-member merge route. |
-| `src/pr15262.c`, `src/pr15296.c` | pointer-parameter struct/union member loads | Aggregate/member and alias/provenance boundary. |
-
-Corrected blocker/prerequisite:
-
-- Step 2 should not define a scalar local-load implementation contract from
-  the current 79-row evidence;
-- the prerequisite first owner is `BIR semantic local-address/provenance and
-  array-element access authority`;
-- that owner must expose local object, array decay, index/offset, element
-  layout, and pointer-to-local-element provenance facts before idea 483 can
-  safely consume these rows.
-
-Artifact:
+Key evidence:
 
 - `build/agent_state/483_step1_corrected_local_load_search/audit.md`
+- `build/agent_state/483_step1_corrected_local_load_search/local_load_rows.tsv`
+- `review/483_step1_local_load_route_review.md`
 
 ## Suggested Next
 
-Route the next packet to lifecycle/plan-owner or a new source idea for `BIR
-semantic local-address/provenance and array-element access authority`. Do not
-advance idea 483 to a scalar local-load implementation contract until that
-prerequisite is available.
+Execute Step 1: audit local-address array-element authority evidence. Decide
+which representative shape is bounded enough for a producer contract, starting
+with `pr22098-1.c`, `pr38048-1.c`, and `multi-ix.c` only as evidence sources,
+not testcase-specific implementation targets.
 
 ## Watchouts
 
-- Do not proceed to Step 2 with any pointer/provenance, GEP, aggregate/member,
-  byval/va_arg, volatile/atomic, complex, vector, F128, bootstrap, or target
-  fallback shape as the selected scalar local-load target under idea 483.
-- Do not repair missing BIR semantic facts in RV64/MIR.
-- Do not infer producer facts from testcase names, value names, raw dump order,
-  final homes, or target fallback behavior.
-- Keep pointer/provenance and array-decay/GEP loads fail-closed unless a
-  separate source idea explicitly owns the prerequisite facts.
+- Do not implement scalar local-load consumption in this idea.
+- Do not accept integer-pointer round-trip provenance.
+- Do not infer local-address authority from testcase names, value names, raw
+  dump order, final homes, or RV64 target fallback behavior.
+- Keep global, aggregate/member, variadic/va_arg, runtime/call, F128,
+  bootstrap, and unsupported provenance shapes fail-closed.
 - Do not touch `review/`, canonical logs, baseline files, implementation files,
-  or tests.
+  or tests until an executor receives a bounded packet.
 
 ## Proof
 
-Delegated proof:
+Lifecycle validation:
 
 ```sh
 git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
