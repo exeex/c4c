@@ -1,6 +1,6 @@
 # Dynamic Local-Array LIR Producer Endpoint Bridge Effect Scan
 
-Status: Open
+Status: Closed
 Type: BIR/prepared endpoint bridge and bounded effect scan idea
 Parent: `ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md`
 Source Evidence:
@@ -13,6 +13,13 @@ Lifecycle Note: Resumed after closed idea 498. Step 3 supplied bounded
 endpoint bridge records, and
 `build/agent_state/498_step5_residual_disposition/disposition.md` says the
 stored ordered effect-source stream is now ready for 497 consumption.
+
+Closure Note: Closed after Step 5 recorded
+`build/agent_state/497_step5_residual_disposition_after_498/disposition.md`.
+The lower endpoint/effect prerequisite now consumes exactly one matching
+production ordered effect-source stream through the endpoint bridge, proves
+bridged clean availability plus the required fail-closed representatives, and
+hands execution back to idea 494.
 
 ## Goal
 

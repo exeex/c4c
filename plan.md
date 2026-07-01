@@ -1,107 +1,107 @@
-# Dynamic Local-Array LIR Producer Endpoint Bridge Effect Scan Plan
+# Dynamic Local-Array LIR Producer Interval Effect Classifier Plan
 
 Status: Active
-Source Idea: ideas/open/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md
-Activated From: ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
-Resumed After: ideas/closed/498_dynamic_local_array_ordered_effect_source_stream_builder.md
+Source Idea: ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
+Resumed After: ideas/closed/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md
 
 ## Purpose
 
-Finish the lower endpoint/effect prerequisite that blocked plan 494 by
-consuming the production ordered effect-source stream built by closed idea 498.
+Resume idea 494 after the lower endpoint/effect bridge work closed. The
+classifier already has a fail-closed interval status surface; it can now publish
+available same-value/no-clobber interval facts only by consuming the stored
+ordered effect-source stream supplied through the endpoint bridge.
 
 ## Goal
 
-Bridge dynamic local-array LIR producer rows to ordered prepared/BIR
-address-derivation endpoints and scan the selected proof-source-to-endpoint
-interval for real effects, without synthetic availability.
+Classify dynamic local-array index intervals from selected proof-source edge to
+LIR producer address derivation as available or precisely unavailable, without
+synthetic no-clobber inference.
 
 ## Core Rule
 
-Do not infer endpoint order or same-value/no-clobber from selected path
-availability, testcase shape, final homes, target behavior, synthetic bridge
-flags, caller-supplied coverage booleans, caller-supplied effect vectors, or
-`lir_producer_instruction_index` alone. Endpoint and effect facts must come
-from the authoritative endpoint bridge plus the stored ordered effect-source
-stream, or fail closed with a precise status.
+`available` may be emitted only when dynamic-index identity, selected path
+binding, endpoint bridge authority, and exactly one matching production
+`local_array_ordered_effect_source_streams` record prove the bounded interval is
+same-value/no-clobber. Selected path availability, testcase shape, final homes,
+target behavior, synthetic bridge flags, caller-supplied effect vectors, and
+`lir_producer_instruction_index` alone remain insufficient.
 
 ## Read First
 
-- ideas/open/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md
-- review/497_step4_bounded_effect_scan_review.md
-- build/agent_state/498_step5_residual_disposition/disposition.md
 - ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
+- build/agent_state/494_step2_interval_effect_contract/contract.md
 - build/agent_state/494_step3_interval_effect_status_surface/summary.md
 - build/agent_state/494_step4_residual_disposition/disposition.md
+- ideas/closed/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md
+- build/agent_state/497_step5_residual_disposition_after_498/disposition.md
+- ideas/closed/498_dynamic_local_array_ordered_effect_source_stream_builder.md
 
 ## Resumed State
 
+- Completed 494 work:
+  - Step 1 identified the missing endpoint/effect bridge blocker.
+  - Step 2 defined the interval classifier contract and status vocabulary.
+  - Step 3 implemented the fail-closed status surface.
+  - Step 4 parked 494 until a lower endpoint/effect owner supplied the missing
+    bridge and scan.
 - Completed lower work:
-  - Step 3 endpoint bridge records exist through
-    `bir::LocalArrayEndpointBridgeRecord`.
-  - Idea 498 closed after adding production-populated
-    `local_array_ordered_effect_source_streams`.
-  - The 498 handback says clean, clobber, alias/phi, unknown effect,
-    missing-coordinate, and boundary-ordering representatives no longer have a
-    lower blocker in idea 498.
-- Blocking review context:
-  - The previous Step 4 route was rejected because synthetic scan inputs could
-    publish availability without real prepared/BIR effect-source population.
-  - The interval classifier must not require the legacy
-    `endpoint_bridge_available` compatibility flag when a valid stored stream
-    record is available.
+  - Idea 497 closed after consuming the stored ordered effect-source stream
+    through the endpoint bridge.
+  - Idea 497 Step 5 says no lower endpoint/effect blocker remains for 494.
 
 ## Current Target
 
 - Inputs:
-  - dynamic local-array `lir_producer_lookup_key` rows;
-  - `lir_producer_instruction_index` as a LIR producer-site coordinate only;
-  - selected proof-source/path records from the existing 493/494 surfaces;
-  - `LocalArrayEndpointBridgeRecord`;
-  - production-populated ordered effect-source stream records from idea 498.
+  - populated selected proof-edge path records;
+  - dynamic local-array producer rows keyed by `lir_producer_lookup_key`;
+  - structured dynamic-index identity from local-array element paths and proof
+    compare operands;
+  - endpoint bridge records;
+  - production-populated ordered effect-source stream records.
 - Outputs:
-  - truthful bounded proof-source-to-endpoint effect scan results;
-  - precise unavailable statuses for missing endpoint, clobber, alias/phi,
-    unknown effect, missing coordinate, unordered boundary, duplicate stream,
-    path-only evidence, and coordinate confusion;
-  - residual disposition that says whether idea 494 can resume available
-    interval fact publication.
+  - available same-value/no-clobber interval facts for clean bounded rows;
+  - precise unavailable statuses for missing producer keys, missing
+    coordinates, unsupported roles, dynamic-index mismatch, missing path/order,
+    missing endpoint bridge, selected-path-only evidence, duplicate streams,
+    clobbers, alias/phi, unknown effects, unordered boundaries, and coordinate
+    confusion;
+  - residual disposition stating whether idea 490 can resume path/no-clobber
+    certification.
 
 ## Non-Goals
 
+- Re-implementing selected proof-edge path record collection.
+- Reopening closed ideas 497 or 498 unless a concrete regression proves their
+  handback wrong.
 - Populating idea 489 proof facts directly.
 - Populating idea 486 checker inputs directly.
-- Idea 490 path/no-clobber certification beyond this lower prerequisite.
-- Idea 484 packaging.
-- Scalar local-load consumption.
-- RV64/MIR lowering.
-- Rewriting selected proof-edge path collection from idea 493.
-- Reopening closed idea 498 unless a concrete regression proves its handback
-  wrong.
-- Treating selected-path availability, final homes, target behavior, testcase
-  names, synthetic bridge flags, synthetic effect-source lists, or synthetic
-  coverage booleans as proof.
+- Idea 490 path/no-clobber certification itself.
+- Idea 484 packaging, scalar local-load consumption, or RV64/MIR lowering.
+- Broad generic range analysis.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline/log
   churn.
 
 ## Working Model
 
-Plan 494 owns the eventual interval status consumer. Plan 497 owns the lower
-bridge from LIR producer coordinates into ordered prepared/BIR endpoint/effect
-evidence. Closed idea 498 now owns production population of ordered
-effect-source streams. This runbook resumes 497 at the consumption and
-handback boundary.
+Idea 494 owns interval effect classification facts. Closed idea 497 owns the
+lower bridge from LIR producer coordinates to ordered prepared/BIR endpoint and
+effect-stream evidence. This runbook resumes at the consumer boundary and must
+turn the previously fail-closed status surface into truthful available facts
+only for rows backed by clean stored stream evidence.
 
 ## Execution Rules
 
-- Implementation packets must publish endpoint/effect evidence or precise
-  unavailable statuses only; they must not populate downstream proof facts,
-  checker inputs, packaging, scalar loads, or RV64 lowering.
-- A positive available result must consume exactly one matching stored ordered
-  effect-source stream for the bridged local-array producer interval.
-- Empty records, duplicate matching records, path-only evidence, unsupported
-  statuses, unordered boundaries, and missing coordinates must fail closed.
+- Preserve `lir_producer_instruction_index` as a LIR producer-site coordinate;
+  do not reinterpret it as prepared traversal order, BIR instruction index, or
+  effect endpoint.
+- Keep all existing fail-closed statuses distinguishable unless the source idea
+  explicitly allows a narrower mapping.
+- Positive availability must consume exactly one matching production ordered
+  effect-source stream for the selected proof-source-to-endpoint interval.
+- Empty records, duplicate streams, path-only evidence, unsupported statuses,
+  unordered boundaries, missing coordinates, and coordinate confusion must fail
+  closed.
 - Code-changing proof:
 
 ```sh
@@ -118,26 +118,27 @@ git diff --check
 
 ## Steps
 
-### Step 4: Consume Stored Ordered Effect Stream
+### Step 5: Publish Available Interval Facts From Stored Stream
 
-Replace the rejected synthetic bounded-scan route with consumption of
-production-populated `local_array_ordered_effect_source_streams` through the
-Step 3 endpoint bridge. The interval classifier must consume a valid stored
-stream record without also requiring the legacy `endpoint_bridge_available`
-compatibility boolean.
+Wire the 494 interval classifier to the lower stored-stream consumer from
+closed idea 497. A clean selected proof-edge path and dynamic local-array
+producer row may classify as `available` only when the dynamic index matches,
+the selected path covers the producer, the endpoint bridge matches the producer
+key, and exactly one matching production ordered effect-source stream reports a
+clean bounded interval.
 
-Completion means focused tests prove a clean production-populated stream can
-classify as available, while empty records, path-only evidence, duplicate
-matching records, missing endpoint, clobber, alias/phi, unknown effect,
-missing-coordinate, unordered-boundary, and coordinate-confusion
-representatives fail closed with distinguishable statuses.
+Completion means focused backend coverage proves one production-backed
+available representative and preserves fail-closed behavior for missing bridge,
+selected-path-only inference, duplicate stream, clobber, alias/phi, unknown
+effect, missing coordinate, unordered boundary, and coordinate-confusion
+representatives.
 
-### Step 5: Residual Disposition And Handback Readiness
+### Step 6: Residual Disposition For Idea 490
 
-Re-probe bridged and fail-closed representatives after Step 4 and decide
-whether idea 494 can resume available interval fact publication, or whether
-another lower endpoint/effect owner remains first.
+Re-probe available and fail-closed representatives after Step 5 and decide
+whether idea 490 path/no-clobber certification can resume, or whether another
+lower interval/effect owner remains first.
 
 Completion means `todo.md` records the residual disposition, names the next
-idea that should resume, and identifies any remaining lower blocker if 494
+idea that should resume, and identifies any remaining lower blocker if 490
 cannot resume.

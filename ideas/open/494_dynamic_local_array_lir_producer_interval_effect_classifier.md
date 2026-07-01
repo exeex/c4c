@@ -68,25 +68,23 @@ source and LIR producer site.
 - Residual disposition states whether idea 490 path/no-clobber certification
   can resume or whether another lower interval/effect owner remains first.
 
-## Blocked Lifecycle Disposition
+## Resumed Lifecycle Disposition
 
-Plan 494 exhausted on Step 4 and is parked blocked, not closed. The completed
-slice provides a fail-closed interval status surface and records the residual
-disposition in
+Plan 494 previously exhausted on Step 4 and parked blocked after recording the
+fail-closed interval status surface in
 `build/agent_state/494_step4_residual_disposition/disposition.md`.
 
-Idea 490 path/no-clobber certification cannot resume from 494 yet because the
-classifier still lacks an authoritative bridge from
-`lir_producer_lookup_key` / `lir_producer_instruction_index` to the ordered
-prepared/BIR address-derivation endpoint for the same local-array producer.
-The endpoint must be part of a real bounded effect scan. Until that lower
-bridge exists, 494 must continue to publish precise unavailable statuses such
-as `missing_prepared_bir_endpoint_bridge` or
-`selected_path_only_inference` rather than available same-value/no-clobber
-facts.
+Closed idea 497 now supplies the lower endpoint/effect prerequisite. Its Step 5
+disposition in
+`build/agent_state/497_step5_residual_disposition_after_498/disposition.md`
+says the classifier can resume available interval fact publication by consuming
+the exact matching production `local_array_ordered_effect_source_streams`
+record through the endpoint bridge.
 
-Follow-up is split into
-`ideas/open/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md`.
+Resumed 494 work must keep the original fail-closed statuses, but may now
+publish `available` only when the stored stream consumer proves clean bounded
+same-value/no-clobber evidence for the selected proof-source-to-endpoint
+interval.
 
 ## Reviewer Reject Signals
 
