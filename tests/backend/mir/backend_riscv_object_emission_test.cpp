@@ -12118,27 +12118,28 @@ int materializes_published_prepared_join_transfer_select_stack_carrier_object() 
       select_true_label == nullptr || select_end_label == nullptr) {
     return fail("expected stack-home join object to publish block and select labels");
   }
-  if (text->bytes.size() != 56 || text->size_bytes != 56 ||
-      main_symbol->value != 0 || main_symbol->size_bytes != 56 ||
+  if (text->bytes.size() != 60 || text->size_bytes != 60 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 60 ||
       true_copy_label->value != 8 || false_copy_label->value != 12 ||
-      join_label->value != 16 || select_true_label->value != 36 ||
-      select_end_label->value != 40) {
+      join_label->value != 20 || select_true_label->value != 40 ||
+      select_end_label->value != 44) {
     return fail("expected stack-home join select object text layout");
   }
   if (read_u32(text->bytes, 0) != 0xff010113 ||
       read_u32(text->bytes, 4) != 0x0000006f ||
       read_u32(text->bytes, 8) != 0x0000006f ||
-      read_u32(text->bytes, 12) != 0x0000006f ||
-      read_u32(text->bytes, 16) != 0x00048e13 ||
-      read_u32(text->bytes, 20) != 0x00100e93 ||
-      read_u32(text->bytes, 24) != 0x01de1063 ||
-      read_u32(text->bytes, 28) != 0x00030f13 ||
-      read_u32(text->bytes, 32) != 0x0000006f ||
-      read_u32(text->bytes, 36) != 0x00100f13 ||
-      read_u32(text->bytes, 40) != 0x01e12023 ||
-      read_u32(text->bytes, 44) != 0x00012503 ||
-      read_u32(text->bytes, 48) != 0x01010113 ||
-      read_u32(text->bytes, 52) != 0x00008067) {
+      read_u32(text->bytes, 12) != 0x00612023 ||
+      read_u32(text->bytes, 16) != 0x0000006f ||
+      read_u32(text->bytes, 20) != 0x00048e13 ||
+      read_u32(text->bytes, 24) != 0x00100e93 ||
+      read_u32(text->bytes, 28) != 0x01de1063 ||
+      read_u32(text->bytes, 32) != 0x00030f13 ||
+      read_u32(text->bytes, 36) != 0x0000006f ||
+      read_u32(text->bytes, 40) != 0x00100f13 ||
+      read_u32(text->bytes, 44) != 0x01e12023 ||
+      read_u32(text->bytes, 48) != 0x00012503 ||
+      read_u32(text->bytes, 52) != 0x01010113 ||
+      read_u32(text->bytes, 56) != 0x00008067) {
     return fail("expected stack-home join carrier to materialize select at join and reload return");
   }
   bool saw_select_branch = false;
@@ -12837,7 +12838,8 @@ int publishes_select_publication_stack_home_move_intent_fields() {
   }
   stack_destination_select->result =
       bir::Value::named(bir::TypeKind::I16, "%selected");
-  stack_destination_select->true_value = bir::Value::immediate_i16(1);
+  stack_destination_select->true_value =
+      bir::Value::named(bir::TypeKind::I16, "%fallback");
   stack_destination_select->false_value =
       bir::Value::named(bir::TypeKind::I16, "%fallback");
   stack_destination_join.terminator.value =
@@ -12848,16 +12850,22 @@ int publishes_select_publication_stack_home_move_intent_fields() {
   stack_destination_join_transfer.result =
       bir::Value::named(bir::TypeKind::I16, "%selected");
   stack_destination_join_transfer.incomings.at(0).value =
-      bir::Value::immediate_i16(1);
+      bir::Value::named(bir::TypeKind::I16, "%fallback");
   stack_destination_join_transfer.incomings.at(1).value =
       bir::Value::named(bir::TypeKind::I16, "%fallback");
   stack_destination_join_transfer.edge_transfers.at(0).incoming_value =
-      bir::Value::immediate_i16(1);
+      bir::Value::named(bir::TypeKind::I16, "%fallback");
   stack_destination_join_transfer.edge_transfers.at(0).destination_value =
       bir::Value::named(bir::TypeKind::I16, "%selected");
   stack_destination_join_transfer.edge_transfers.at(1).incoming_value =
       bir::Value::named(bir::TypeKind::I16, "%fallback");
   stack_destination_join_transfer.edge_transfers.at(1).destination_value =
+      bir::Value::named(bir::TypeKind::I16, "%selected");
+  auto& stack_destination_true_parallel_copy =
+      stack_destination.control_flow.functions.front().parallel_copy_bundles.at(0);
+  stack_destination_true_parallel_copy.moves.front().source_value =
+      bir::Value::named(bir::TypeKind::I16, "%fallback");
+  stack_destination_true_parallel_copy.moves.front().destination_value =
       bir::Value::named(bir::TypeKind::I16, "%selected");
   auto& stack_destination_parallel_copy =
       stack_destination.control_flow.functions.front().parallel_copy_bundles.at(1);
@@ -12911,8 +12919,142 @@ int publishes_select_publication_stack_home_move_intent_fields() {
       stack_destination_intent.instruction_text != "sh t1, 4(sp)") {
     return fail("expected i16 register-source stack-destination select-publication intent fields");
   }
-  if (rv64::build_rv64_prepared_text_object_module(stack_destination).has_value()) {
-    return fail("expected i16 stack-destination select-publication to remain fail-closed");
+  const auto stack_destination_module =
+      rv64::build_rv64_prepared_text_object_module(stack_destination);
+  if (!stack_destination_module.has_value()) {
+    return fail("expected i16 stack-destination select-publication to materialize");
+  }
+  const auto* stack_destination_text =
+      object::find_section(*stack_destination_module, ".text");
+  if (stack_destination_text == nullptr ||
+      !contains_u32(stack_destination_text->bytes, 0x00611223)) {
+    return fail("expected i16 stack-destination select-publication to emit sh t1, 4(sp)");
+  }
+
+  auto byte_stack_destination = stack_destination;
+  auto& byte_function = byte_stack_destination.module.functions.front();
+  byte_function.return_type = bir::TypeKind::I8;
+  byte_function.return_size_bytes = 1;
+  byte_function.return_align_bytes = 1;
+  auto& byte_join = byte_function.blocks.at(3);
+  auto* byte_select = std::get_if<bir::SelectInst>(&byte_join.insts.front());
+  if (byte_select == nullptr) {
+    return fail("expected prepared byte select fixture");
+  }
+  byte_select->result = bir::Value::named(bir::TypeKind::I8, "%selected");
+  byte_select->true_value = bir::Value::named(bir::TypeKind::I8, "%fallback");
+  byte_select->false_value = bir::Value::named(bir::TypeKind::I8, "%fallback");
+  byte_join.terminator.value =
+      bir::Value::named(bir::TypeKind::I8, "%selected");
+  auto& byte_join_transfer =
+      byte_stack_destination.control_flow.functions.front().join_transfers.front();
+  byte_join_transfer.result = bir::Value::named(bir::TypeKind::I8, "%selected");
+  byte_join_transfer.incomings.at(0).value =
+      bir::Value::named(bir::TypeKind::I8, "%fallback");
+  byte_join_transfer.incomings.at(1).value =
+      bir::Value::named(bir::TypeKind::I8, "%fallback");
+  byte_join_transfer.edge_transfers.at(0).incoming_value =
+      bir::Value::named(bir::TypeKind::I8, "%fallback");
+  byte_join_transfer.edge_transfers.at(0).destination_value =
+      bir::Value::named(bir::TypeKind::I8, "%selected");
+  byte_join_transfer.edge_transfers.at(1).incoming_value =
+      bir::Value::named(bir::TypeKind::I8, "%fallback");
+  byte_join_transfer.edge_transfers.at(1).destination_value =
+      bir::Value::named(bir::TypeKind::I8, "%selected");
+  auto& byte_true_parallel_copy =
+      byte_stack_destination.control_flow.functions.front().parallel_copy_bundles.at(0);
+  byte_true_parallel_copy.moves.front().source_value =
+      bir::Value::named(bir::TypeKind::I8, "%fallback");
+  byte_true_parallel_copy.moves.front().destination_value =
+      bir::Value::named(bir::TypeKind::I8, "%selected");
+  auto& byte_parallel_copy =
+      byte_stack_destination.control_flow.functions.front().parallel_copy_bundles.at(1);
+  byte_parallel_copy.moves.front().source_value =
+      bir::Value::named(bir::TypeKind::I8, "%fallback");
+  byte_parallel_copy.moves.front().destination_value =
+      bir::Value::named(bir::TypeKind::I8, "%selected");
+  byte_stack_destination.value_locations.functions.front().value_homes.at(2) =
+      rv64_sized_stack_slot_home(3,
+                                 stack_destination_function_name,
+                                 stack_destination_result_name,
+                                 prepare::PreparedFrameSlotId{8},
+                                 4,
+                                 1);
+  byte_stack_destination.stack_layout.frame_slots.front().size_bytes = 1;
+  byte_stack_destination.stack_layout.frame_slots.front().align_bytes = 1;
+  const auto byte_stack_destination_module =
+      rv64::build_rv64_prepared_text_object_module(byte_stack_destination);
+  if (!byte_stack_destination_module.has_value()) {
+    return fail("expected i8 stack-destination select-publication to materialize");
+  }
+  const auto* byte_stack_destination_text =
+      object::find_section(*byte_stack_destination_module, ".text");
+  if (byte_stack_destination_text == nullptr ||
+      !contains_u32(byte_stack_destination_text->bytes, 0x00610223)) {
+    return fail("expected i8 stack-destination select-publication to emit sb t1, 4(sp)");
+  }
+
+  auto word_stack_destination = stack_destination;
+  auto& word_function = word_stack_destination.module.functions.front();
+  word_function.return_type = bir::TypeKind::I32;
+  word_function.return_size_bytes = 4;
+  word_function.return_align_bytes = 4;
+  auto& word_join = word_function.blocks.at(3);
+  auto* word_select = std::get_if<bir::SelectInst>(&word_join.insts.front());
+  if (word_select == nullptr) {
+    return fail("expected prepared word select fixture");
+  }
+  word_select->result = bir::Value::named(bir::TypeKind::I32, "%selected");
+  word_select->true_value = bir::Value::named(bir::TypeKind::I32, "%fallback");
+  word_select->false_value = bir::Value::named(bir::TypeKind::I32, "%fallback");
+  word_join.terminator.value =
+      bir::Value::named(bir::TypeKind::I32, "%selected");
+  auto& word_join_transfer =
+      word_stack_destination.control_flow.functions.front().join_transfers.front();
+  word_join_transfer.result = bir::Value::named(bir::TypeKind::I32, "%selected");
+  word_join_transfer.incomings.at(0).value =
+      bir::Value::named(bir::TypeKind::I32, "%fallback");
+  word_join_transfer.incomings.at(1).value =
+      bir::Value::named(bir::TypeKind::I32, "%fallback");
+  word_join_transfer.edge_transfers.at(0).incoming_value =
+      bir::Value::named(bir::TypeKind::I32, "%fallback");
+  word_join_transfer.edge_transfers.at(0).destination_value =
+      bir::Value::named(bir::TypeKind::I32, "%selected");
+  word_join_transfer.edge_transfers.at(1).incoming_value =
+      bir::Value::named(bir::TypeKind::I32, "%fallback");
+  word_join_transfer.edge_transfers.at(1).destination_value =
+      bir::Value::named(bir::TypeKind::I32, "%selected");
+  auto& word_true_parallel_copy =
+      word_stack_destination.control_flow.functions.front().parallel_copy_bundles.at(0);
+  word_true_parallel_copy.moves.front().source_value =
+      bir::Value::named(bir::TypeKind::I32, "%fallback");
+  word_true_parallel_copy.moves.front().destination_value =
+      bir::Value::named(bir::TypeKind::I32, "%selected");
+  auto& word_parallel_copy =
+      word_stack_destination.control_flow.functions.front().parallel_copy_bundles.at(1);
+  word_parallel_copy.moves.front().source_value =
+      bir::Value::named(bir::TypeKind::I32, "%fallback");
+  word_parallel_copy.moves.front().destination_value =
+      bir::Value::named(bir::TypeKind::I32, "%selected");
+  word_stack_destination.value_locations.functions.front().value_homes.at(2) =
+      rv64_sized_stack_slot_home(3,
+                                 stack_destination_function_name,
+                                 stack_destination_result_name,
+                                 prepare::PreparedFrameSlotId{8},
+                                 4,
+                                 4);
+  word_stack_destination.stack_layout.frame_slots.front().size_bytes = 4;
+  word_stack_destination.stack_layout.frame_slots.front().align_bytes = 4;
+  const auto word_stack_destination_module =
+      rv64::build_rv64_prepared_text_object_module(word_stack_destination);
+  if (!word_stack_destination_module.has_value()) {
+    return fail("expected i32 stack-destination select-publication to materialize");
+  }
+  const auto* word_stack_destination_text =
+      object::find_section(*word_stack_destination_module, ".text");
+  if (word_stack_destination_text == nullptr ||
+      !contains_u32(word_stack_destination_text->bytes, 0x00612223)) {
+    return fail("expected i32 stack-destination select-publication to emit sw t1, 4(sp)");
   }
 
   stack_destination.value_locations.functions.front()
@@ -12930,6 +13072,89 @@ int publishes_select_publication_stack_home_move_intent_fields() {
           rv64::EdgePublicationMoveIntentStatus::UnsupportedDestinationHome ||
       large_offset_intent.destination_stack_offset_bytes.has_value()) {
     return fail("expected large stack-destination offset to remain fail-closed");
+  }
+  if (rv64::build_rv64_prepared_text_object_module(stack_destination).has_value()) {
+    return fail("expected large-offset stack-destination select-publication to remain fail-closed");
+  }
+
+  auto stack_to_stack_destination =
+      make_prepared_join_transfer_select_with_published_copies_module();
+  auto& stack_to_stack_function =
+      stack_to_stack_destination.module.functions.front();
+  stack_to_stack_function.return_type = bir::TypeKind::I16;
+  stack_to_stack_function.return_size_bytes = 2;
+  stack_to_stack_function.return_align_bytes = 2;
+  auto& stack_to_stack_join = stack_to_stack_function.blocks.at(3);
+  auto* stack_to_stack_select =
+      std::get_if<bir::SelectInst>(&stack_to_stack_join.insts.front());
+  if (stack_to_stack_select == nullptr) {
+    return fail("expected prepared stack-to-stack select fixture");
+  }
+  stack_to_stack_select->result =
+      bir::Value::named(bir::TypeKind::I16, "%selected");
+  stack_to_stack_select->true_value = bir::Value::immediate_i16(1);
+  stack_to_stack_select->false_value =
+      bir::Value::named(bir::TypeKind::I16, "%fallback");
+  stack_to_stack_join.terminator.value =
+      bir::Value::named(bir::TypeKind::I16, "%selected");
+  auto& stack_to_stack_join_transfer =
+      stack_to_stack_destination.control_flow.functions.front().join_transfers.front();
+  stack_to_stack_join_transfer.result =
+      bir::Value::named(bir::TypeKind::I16, "%selected");
+  stack_to_stack_join_transfer.incomings.at(0).value =
+      bir::Value::immediate_i16(1);
+  stack_to_stack_join_transfer.incomings.at(1).value =
+      bir::Value::named(bir::TypeKind::I16, "%fallback");
+  stack_to_stack_join_transfer.edge_transfers.at(0).incoming_value =
+      bir::Value::immediate_i16(1);
+  stack_to_stack_join_transfer.edge_transfers.at(0).destination_value =
+      bir::Value::named(bir::TypeKind::I16, "%selected");
+  stack_to_stack_join_transfer.edge_transfers.at(1).incoming_value =
+      bir::Value::named(bir::TypeKind::I16, "%fallback");
+  stack_to_stack_join_transfer.edge_transfers.at(1).destination_value =
+      bir::Value::named(bir::TypeKind::I16, "%selected");
+  auto& stack_to_stack_parallel_copy =
+      stack_to_stack_destination.control_flow.functions.front()
+          .parallel_copy_bundles.at(1);
+  stack_to_stack_parallel_copy.moves.front().source_value =
+      bir::Value::named(bir::TypeKind::I16, "%fallback");
+  stack_to_stack_parallel_copy.moves.front().destination_value =
+      bir::Value::named(bir::TypeKind::I16, "%selected");
+  auto& stack_to_stack_homes =
+      stack_to_stack_destination.value_locations.functions.front().value_homes;
+  stack_to_stack_homes.at(1) = rv64_i16_stack_slot_home(
+      2,
+      stack_destination_function_name,
+      false_name,
+      prepare::PreparedFrameSlotId{9},
+      0);
+  stack_to_stack_homes.at(2) = rv64_i16_stack_slot_home(
+      3,
+      stack_destination_function_name,
+      stack_destination_result_name,
+      prepare::PreparedFrameSlotId{8},
+      4);
+  stack_to_stack_destination.stack_layout.frame_size_bytes = 8;
+  stack_to_stack_destination.stack_layout.frame_alignment_bytes = 4;
+  stack_to_stack_destination.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{9},
+          .function_name = stack_destination_function_name,
+          .offset_bytes = 0,
+          .size_bytes = 2,
+          .align_bytes = 2,
+      },
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{8},
+          .function_name = stack_destination_function_name,
+          .offset_bytes = 4,
+          .size_bytes = 2,
+          .align_bytes = 2,
+      },
+  };
+  if (rv64::build_rv64_prepared_text_object_module(stack_to_stack_destination)
+          .has_value()) {
+    return fail("expected stack-to-stack select-publication destination to remain fail-closed");
   }
 
   return 0;
