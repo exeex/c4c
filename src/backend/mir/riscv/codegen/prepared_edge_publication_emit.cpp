@@ -263,6 +263,52 @@ bool has_existing_concrete_i64_stack_source_register_policy(
          intent.source_stack_size_bytes == std::optional<std::size_t>{8};
 }
 
+bool has_select_publication_pointer_stack_source_register_policy(
+    const EdgePublicationMoveIntent& intent,
+    const c4c::backend::prepare::PreparedEdgePublication& publication) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  return publication.carrier_kind ==
+             prepare::PreparedJoinTransferCarrierKind::SelectMaterialization &&
+         publication.source_value.type == bir::TypeKind::Ptr &&
+         publication.destination_value.type == bir::TypeKind::Ptr &&
+         publication.destination_storage_kind ==
+             prepare::PreparedMoveStorageKind::Register &&
+         publication.move != nullptr &&
+         publication.move->authority_kind ==
+             prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
+         publication.move->destination_kind ==
+             prepare::PreparedMoveDestinationKind::Value &&
+         publication.move->op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+         publication.source_value_id.has_value() &&
+         publication.move->from_value_id == *publication.source_value_id &&
+         publication.move->to_value_id == publication.destination_value_id &&
+         intent.source_stack_offset_bytes.has_value() &&
+         intent.source_stack_size_bytes == std::optional<std::size_t>{8};
+}
+
+bool is_supported_direct_register_to_stack_publication_size(
+    std::optional<std::size_t> size_bytes) {
+  return size_bytes == std::optional<std::size_t>{1} ||
+         size_bytes == std::optional<std::size_t>{2} ||
+         size_bytes == std::optional<std::size_t>{4};
+}
+
+std::optional<std::string> rv64_store_mnemonic_for_stack_publication_size(
+    std::optional<std::size_t> size_bytes) {
+  if (size_bytes == std::optional<std::size_t>{1}) {
+    return std::string{"sb"};
+  }
+  if (size_bytes == std::optional<std::size_t>{2}) {
+    return std::string{"sh"};
+  }
+  if (size_bytes == std::optional<std::size_t>{4}) {
+    return std::string{"sw"};
+  }
+  return std::nullopt;
+}
+
 bir::Route5PublicationSourceKind route5_source_kind_from_prepared(
     c4c::backend::prepare::PreparedEdgePublicationSourceProducerKind kind) {
   namespace prepare = c4c::backend::prepare;
@@ -480,6 +526,8 @@ RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
       .status = EdgePublicationMoveIntentStatus::UnsupportedPublication,
       .publication = publication,
       .destination_value_id = publication->destination_value_id,
+      .source_type = publication->source_value.type,
+      .destination_type = publication->destination_value.type,
   };
   if (publication->source_value_id.has_value()) {
     intent.source_value_id = *publication->source_value_id;
@@ -547,6 +595,28 @@ RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
                                                                    *publication) &&
             destination_home.register_name.has_value()) {
           intent.destination_register = *destination_home.register_name;
+          if (fits_signed_12_bit_load_offset(*intent.source_stack_offset_bytes)) {
+            intent.instruction_text =
+                "ld " + intent.destination_register + ", " + *source_operand;
+          } else {
+            const auto offset_text = std::to_string(*intent.source_stack_offset_bytes);
+            intent.instruction_text =
+                "li t6, " + offset_text +
+                "\n    add t6, sp, t6" +
+                "\n    ld " + intent.destination_register + ", 0(t6)";
+          }
+          return intent;
+        }
+        if (has_select_publication_pointer_stack_source_register_policy(
+                intent,
+                *publication) &&
+            destination_home.register_name.has_value()) {
+          intent.destination_register = *destination_home.register_name;
+          intent.destination_register_bank = prepare::PreparedRegisterBank::Gpr;
+          if (publication->move->destination_register_placement.has_value()) {
+            intent.destination_register_placement =
+                publication->move->destination_register_placement;
+          }
           if (fits_signed_12_bit_load_offset(*intent.source_stack_offset_bytes)) {
             intent.instruction_text =
                 "ld " + intent.destination_register + ", " + *source_operand;
@@ -653,15 +723,26 @@ RiscvEdgePublicationMoveAdapter::consume_prepared_backed_move_intent() const {
   // intentionally remain fail-closed.
   if (destination_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
       destination_home.offset_bytes.has_value() &&
-      destination_home.size_bytes == std::optional<std::size_t>{4} &&
+      is_supported_direct_register_to_stack_publication_size(
+          destination_home.size_bytes) &&
       fits_signed_12_bit_load_offset(*destination_home.offset_bytes)) {
     intent.status = EdgePublicationMoveIntentStatus::Available;
     intent.destination_stack_slot_id = destination_home.slot_id;
     intent.destination_stack_offset_bytes = *destination_home.offset_bytes;
     intent.destination_stack_size_bytes = *destination_home.size_bytes;
     if (has_direct_register_source_for_stack_destination(intent)) {
+      const auto store_mnemonic =
+          rv64_store_mnemonic_for_stack_publication_size(
+              destination_home.size_bytes);
+      if (!store_mnemonic.has_value()) {
+        intent.destination_stack_slot_id.reset();
+        intent.destination_stack_offset_bytes.reset();
+        intent.destination_stack_size_bytes.reset();
+        intent.status = EdgePublicationMoveIntentStatus::UnsupportedDestinationHome;
+        return intent;
+      }
       intent.instruction_text =
-          "sw " + intent.source_register + ", " +
+          *store_mnemonic + " " + intent.source_register + ", " +
           std::to_string(*destination_home.offset_bytes) + "(sp)";
       return intent;
     }

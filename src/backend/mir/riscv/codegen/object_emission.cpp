@@ -8182,6 +8182,9 @@ bool prepared_select_publication_destination_is_stack_home(
           prepare::PreparedJoinTransferCarrierKind::SelectMaterialization) {
     return false;
   }
+  if (intent.destination_stack_size_bytes != std::optional<std::size_t>{4}) {
+    return false;
+  }
   const auto* destination_home =
       prepared_value_home_for_id(lookups, *destination_value_id);
   return destination_home != nullptr &&
