@@ -1,6 +1,6 @@
 # Dynamic Local-Array Ordered Effect-Source Stream Builder
 
-Status: Open
+Status: Closed
 Type: BIR/prepared ordered effect-source stream builder idea
 Parent: `ideas/open/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md`
 Source Evidence:
@@ -74,6 +74,15 @@ idea 494 must remain fail-closed.
   coordinate, and boundary-ordering failures.
 - Residual disposition states whether idea 497 can resume and consume the
   builder-backed scan.
+
+## Closure Notes
+
+Closed after Step 5 residual disposition. The production ordered
+effect-source stream builder now covers the selected dynamic local-array
+proof-source-to-endpoint interval with clean availability and fail-closed
+representatives for clobber, alias/phi, unknown effect, missing comparable
+coordinate, and boundary ordering. Idea 497 can resume against the stored
+builder-backed stream; no lower idea-498 blocker remains for that handback.
 
 ## Reviewer Reject Signals
 
