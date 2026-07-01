@@ -179,7 +179,38 @@ Completion check:
 - Focused tests prove the producer metadata path and fail-closed variants.
 - `todo.md` records the producer boundary and any still-missing ABI authority.
 
-## Step 5: Consume Published Homes Through RV64
+## Step 5: Complete Producer Homes For Authorized Stack Formals
+
+Goal: Publish missing prepared homes for metadata-authorized ordinary
+stack-passed formals that do not already have a unique regalloc spill-slot
+home.
+
+Actions:
+
+- Inspect the post-Step 4 representative facts for ordinary stack-passed
+  formals where `param.abi->passed_on_stack` is present but the prepared home
+  remains `kind=none`.
+- Add a narrow producer/prealloc home-publication path for coherent ordinary-C
+  stack formals that have ABI authority but no unique regalloc spill-slot home.
+- Preserve the existing unique-home path for formals such as `%p.B`, `%p.fdB`,
+  and `%p.fdC`; do not replace it with name, index, or RV64 consumer
+  inference.
+- Keep ambiguous, missing-ABI, byval, sret, varargs, F128, aggregate, dynamic,
+  duplicate, and unsupported storage forms fail-closed.
+- Prove the representative row now publishes prepared homes for `%p.b` and
+  `%p.C` from producer authority before RV64 consumption.
+
+Completion check:
+
+- `cmake --build build --target c4cll` passes.
+- Focused dumps show `%p.b` and `%p.C` have explicit prepared stack homes
+  without RV64 reconstructing offsets.
+- Focused tests cover both the new authorized-formal producer path and
+  fail-closed variants.
+- `todo.md` records the producer boundary and any remaining unsupported ABI
+  shapes.
+
+## Step 6: Consume Published Homes Through RV64
 
 Goal: Confirm RV64 object emission consumes the prepared homes directly and
 advances the representative ordinary-C route.
@@ -201,7 +232,7 @@ Completion check:
   reconstructing them.
 - `git diff --check` passes for touched files.
 
-## Step 6: Reclassify Remaining Param-Home Rows
+## Step 7: Reclassify Remaining Param-Home Rows
 
 Goal: Check the remaining bucket rows and separate covered ordinary-C cases
 from narrower follow-up features.
@@ -223,7 +254,7 @@ Completion check:
 - Focused coverage covers at least one stack-passed parameter path beyond a
   named-case-only proof.
 
-## Step 7: Validate And Handoff
+## Step 8: Validate And Handoff
 
 Goal: Prove the slice and prepare the source idea for closure or a narrowed
 follow-up if unsupported ABI shapes remain.

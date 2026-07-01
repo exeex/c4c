@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/512_stack_passed_parameter_home_publication.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Publish Ordinary-C ABI Metadata For Stack Parameters
+Current Step ID: 5
+Current Step Title: Complete Producer Homes For Authorized Stack Formals
 
 # Current Packet
 
@@ -43,9 +43,15 @@ Representative before/after facts for `tests/c/external/gcc_torture/src/20001017
 
 ## Suggested Next
 
-Supervisor should review whether Step 5 can proceed with the now-published
-caller offsets and partial callee homes, or whether `%p.b`/`%p.C` need a narrow
-producer home-publication packet first.
+Step 5 should complete producer/prealloc homes for metadata-authorized ordinary
+stack-passed formals that still lack unique prepared homes. The packet should
+target `%p.b` and `%p.C` in the representative route as evidence of the general
+producer path, while preserving the existing unique-home path for `%p.B`,
+`%p.fdB`, and `%p.fdC`.
+
+Do not move to RV64 consumption until all coherent ordinary stack-passed
+formals in the representative row publish prepared homes from producer
+authority.
 
 ## Watchouts
 
@@ -55,7 +61,7 @@ producer home-publication packet first.
   varargs, F128, dynamic, or aggregate forms remain fail-closed.
 - `%p.b` and `%p.C` are now metadata-authorized stack-passed formals but still
   lack unique prepared homes. Do not let Step 5 synthesize their home offsets
-  in RV64.
+  in RV64; Step 5 owns the producer-side completion before RV64 consumption.
 - `20001017-1.c` object codegen still fails before parameter-home consumption
   at `unsupported_stack_frame ... fpr:fs1`; do not treat this plan repair as
   object advancement.
