@@ -1,6 +1,6 @@
 # Select-Publication Move-Bundle Evidence And Authority
 
-Status: Open
+Status: Closed
 Type: Focused producer/evidence splitter idea
 Parent: `ideas/open/495_prepared_move_bundle_materialization_bucket_review.md`
 Source Evidence:
@@ -73,3 +73,31 @@ target materializer can consume them.
   out-of-SSA, before-return, or other RV64 materialization work.
 - Reject expectation, allowlist, unsupported-marker, pass/fail accounting, or
   runtime-comparison changes as proof of progress.
+
+## Completion
+
+Closed after Step 4 residual disposition. Idea 504 was an evidence/authority
+idea, not an RV64 materialization idea:
+
+- Step 1 inspected the three ambiguous select-publication rows and found that
+  lower prepared facts existed, but the early RV64 rejection path lacked
+  structured evidence.
+- Step 2 published structured select-publication rejection evidence while
+  preserving the existing fail-closed admission predicate.
+- Step 3 classified the three rows with the new evidence and found no coherent
+  final RV64 select-publication consumer packet ready from this row set.
+
+Residual routing:
+
+- `src/builtin-constant.c` and `src/pr58726.c` are real
+  select-publication evidence rows, but need lower stack-source and
+  stack-destination intent support before any RV64 select-publication consumer
+  is ready. That follow-up is recorded in
+  `ideas/open/505_select_publication_stack_home_intent_support.md`.
+- `src/pr37924.c` is no longer a select-publication row. It is a generic
+  out-of-SSA `phi_join_immediate_materialization` failure and is recorded in
+  `ideas/open/506_rv64_out_of_ssa_phi_join_immediate_materialization.md`.
+
+Any downstream RV64 gcc-torture admission reclassification or broader bucket
+refresh should be handled as a separate lifecycle initiative, not by expanding
+this evidence/authority idea.

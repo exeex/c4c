@@ -1,84 +1,79 @@
-# Select-Publication Move-Bundle Evidence And Authority Plan
+# Select-Publication Stack-Home Intent Support Plan
 
 Status: Active
-Source Idea: ideas/open/504_select_publication_move_bundle_evidence_authority.md
-Activated From: ideas/closed/503_rv64_before_return_prepared_move_materialization.md
+Source Idea: ideas/open/505_select_publication_stack_home_intent_support.md
+Activated From: ideas/closed/504_select_publication_move_bundle_evidence_authority.md
 
 ## Purpose
 
-Resolve the remaining select-publication move-bundle rows split out by idea
-495 before any RV64 materialization treats them as lowerable.
+Follow the residual evidence from idea 504 by repairing the lower
+select-publication intent support needed before any final RV64 consumer can be
+considered.
 
 ## Goal
 
-Publish or route enough select-publication move-bundle evidence to decide
-whether the three ambiguous rows are coherent RV64-lowerable move bundles or
-producer-authority gaps.
+Teach the select-publication intent layer to represent stack-source and
+stack-destination publication moves explicitly, or preserve precise
+fail-closed statuses when prepared facts are insufficient.
 
 ## Core Rule
 
-Select-publication move bundles may become RV64-lowerable only after explicit
-prepared/BIR evidence provides event kind, phase, authority, parallel-copy
-status, execution site, destination storage, source storage when available, and
-move reason. Absent case-log tokens, testcase names, raw BIR shape, object
-output, and final registers are not authority.
+Supported select-publication stack-home intent may be published only from
+explicit prepared source/destination homes, stack layout, value identity, edge
+identity, carrier, and move-bundle facts. RV64 materialization, raw shape,
+source names, object output, final registers, and case-log absence are not
+intent authority.
 
 ## Read First
 
-- ideas/open/504_select_publication_move_bundle_evidence_authority.md
-- ideas/closed/495_prepared_move_bundle_materialization_bucket_review.md
-- ideas/closed/501_rv64_before_instruction_prepared_move_materialization.md
-- ideas/closed/502_rv64_out_of_ssa_parallel_copy_move_materialization.md
-- ideas/closed/503_rv64_before_return_prepared_move_materialization.md
-- build/agent_state/495_step2_move_bundle_coherence/summary.md
-- build/agent_state/495_step2_move_bundle_coherence/classification.tsv
-- build/agent_state/495_step2_move_bundle_coherence/owner_matrix.tsv
-- build/agent_state/495_step2_move_bundle_coherence/representative_classification.tsv
+- ideas/open/505_select_publication_stack_home_intent_support.md
+- ideas/closed/504_select_publication_move_bundle_evidence_authority.md
+- build/agent_state/504_step3_select_publication_consumer_classification/summary.md
+- build/agent_state/504_step3_select_publication_consumer_classification/rows.tsv
+- build/agent_state/504_step3_select_publication_consumer_classification/classification_counts.tsv
 
 ## Current Targets
 
 - Inputs:
-  - three `select_publication_move_bundle` rows from idea 495 Step 2;
-  - current prepared/BIR select-publication and move-bundle record streams;
-  - current case-log event publication for move-bundle diagnostics.
+  - `src/builtin-constant.c`, classified as
+    `intent_status_unsupported_source_home`;
+  - `src/pr58726.c`, classified as
+    `intent_status_unsupported_destination_home`;
+  - current `EdgePublicationMoveIntent`, prepared homes, stack layout, edge
+    publication, and move-bundle evidence surfaces.
 - Outputs:
-  - explicit evidence for event, phase, authority, parallel-copy status,
-    execution site, destination storage, source storage when available, and
-    move reason; or
-  - distinguishable fail-closed statuses for missing, ambiguous,
-    contradictory, or raw-shape-only select-publication authority;
-  - a separate RV64 consumer idea if coherent lowerable select-publication
-    materialization remains after the evidence packet.
+  - supported stack-source and stack-destination select-publication intent
+    when facts are explicit; or
+  - distinguishable fail-closed statuses when intent cannot be supported;
+  - a later separate RV64 consumer idea only if supported intent proves a
+    coherent lowerable family.
 
 ## Non-Goals
 
-- RV64 materialization of select-publication move bundles before authority is
-  explicit.
-- Before-instruction moves completed by idea 501.
-- Out-of-SSA/pre-terminator moves completed by idea 502.
-- Before-return moves completed by idea 503.
-- Inferring authority from source names, case-log absence, raw BIR shape,
-  object output, final registers, or target behavior.
+- Final RV64 select-publication materialization.
+- Generic out-of-SSA immediate materialization for `src/pr37924.c`, now owned
+  by idea 506.
+- Reopening move-bundle materialization completed by ideas 501-503.
+- Inferring homes or authority from testcase names, raw BIR shape, object
+  output, final registers, target behavior, or absent diagnostic tokens.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline churn.
 
 ## Working Model
 
-Idea 495 Step 2 found three select-publication rows whose current case-log
-tokens omit the move-bundle authority details needed for a safe RV64 consumer.
-This idea is a producer/evidence splitter first. It should publish or route the
-missing evidence, then split any coherent lowerable family into a separate RV64
-materialization idea.
+Idea 504 proved that two select-publication rows are real evidence rows but
+are not consumer-ready because the intent layer reports unsupported stack-home
+statuses. This plan should inspect and repair that intent surface before any
+target materialization work is split.
 
 ## Execution Rules
 
-- Audit producer records before proposing target lowering.
-- Keep unavailable cases distinguishable instead of collapsing them into one
-  generic unsupported status.
-- Do not lower the three select-publication rows in RV64 during the evidence
-  packet.
-- If evidence proves a coherent consumer family, create a separate focused
-  open idea for that RV64 materialization work.
+- Audit intent construction before changing target lowering.
+- Preserve unavailable statuses for missing, ambiguous, contradictory, or
+  raw-shape-only evidence.
+- Do not implement RV64 select-publication lowering in this idea.
+- If supported intent creates a coherent consumer family, split that consumer
+  into a new focused open idea.
 - Code-changing proof:
 
 ```sh
@@ -96,37 +91,34 @@ git diff --check
 
 ## Steps
 
-### Step 1: Inspect Select-Publication Evidence Surfaces
+### Step 1: Inspect Stack-Home Intent Construction
 
-Audit the prepared/BIR select-publication record stream and current
-move-bundle diagnostic publication for the three ambiguous rows.
+Inspect `EdgePublicationMoveIntent` construction for select-publication
+stack-source and stack-destination rows.
 
-Completion means `todo.md` records the exact missing fields, producer surfaces,
-representative rows, and whether this idea can publish evidence directly or
-must route a lower prerequisite.
+Completion means `todo.md` records the exact helper surfaces, missing intent
+fields, representative rows, and whether implementation can proceed.
 
-### Step 2: Publish Or Route Select-Publication Authority
+### Step 2: Publish Supported Or Fail-Closed Stack-Home Intent
 
-Publish durable select-publication move-bundle evidence when underlying facts
-exist, or record the precise lower producer gap when they do not.
+Publish supported stack-source/stack-destination intent when prepared facts are
+explicit, or preserve precise unsupported statuses otherwise.
 
-Completion means backend coverage proves explicit available or fail-closed
-evidence statuses without RV64 materialization.
+Completion means focused backend coverage proves available and fail-closed
+intent statuses without RV64 materialization.
 
-### Step 3: Split Any Coherent RV64 Consumer
+### Step 3: Split Any RV64 Select-Publication Consumer
 
-If Step 2 proves a coherent lowerable select-publication family, create a
-separate focused RV64 materialization idea.
+If Step 2 proves a coherent lowerable select-publication consumer family,
+create a separate RV64 materialization idea.
 
-Completion means the new idea names its evidence rows, owner boundary,
-acceptance criteria, and reviewer reject signals, or `todo.md` records why no
-consumer idea is available yet.
+Completion means the consumer idea exists with evidence rows and reject
+signals, or `todo.md` records why no consumer is ready.
 
-### Step 4: Residual Disposition For Select-Publication Evidence
+### Step 4: Residual Disposition For Intent Support
 
-Decide whether idea 504 can close after evidence publication/routing and
-consumer splitting, or whether the plan needs a narrowed follow-up step.
+Decide whether idea 505 can close after intent support and consumer splitting,
+or whether a narrowed follow-up remains.
 
-Completion means `todo.md` records the residual disposition and the active
-lifecycle state is closed, switched, or extended with no more than one active
-plan.
+Completion means the lifecycle state is closed, switched, or extended with no
+more than one active plan.
