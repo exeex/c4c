@@ -1,53 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/484_bir_semantic_local_address_provenance_array_element_authority.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Authority Producer
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 484 as a routed blocker, not an implementation.
-Targeted inspection found that the current BIR/HIR producer data is
-route-local lowering state and cannot publish the Step 2 authority record
-without raw-shape inference.
+Completed Step 4 for idea 484 by recording residual disposition and handoff
+readiness after Step 3 routed the producer authority blocker.
 
-Step 3 decision:
+Lifecycle disposition:
 
-| Decision | Evidence | First missing authority |
-| --- | --- | --- |
-| Route, no implementation | `LocalArraySlots`, `LocalPointerArrayBase`, `DynamicLocalPointerArrayAccess`, `DynamicLocalAggregateArrayAccess`, and `PointerAddress` carry route-local slots, lowered index values, offsets, and type text only. | Lower-level semantic local-array address derivation and index-range authority carrier. |
+| Question | Disposition |
+| --- | --- |
+| Is idea 484 complete as a producer implementation? | No. The required authority cannot be produced from current BIR/HIR route-local lowering data without raw-shape inference. |
+| Is idea 484 close-ready as a negative/blocked producer result? | Yes. It defined the required contract and identified the exact lower-level prerequisite. |
+| Can scalar local-load production resume? | No. It still lacks explicit pointer-to-local-element provenance and index/range authority. |
+| Can RV64/MIR lowering proceed? | No. Target lowering would consume unproven address/provenance facts. |
 
-Missing facts for an accepted producer:
+Exact prerequisite follow-up:
 
-- stable local object identity tied to declaration/storage, object rank,
-  layout, range, and lifetime;
-- explicit array-decay/local-address derivation identity and source site;
-- ordered element path from the source object to the consumer address;
-- dynamic index range proof with proof source and path/dominance validity;
-- element layout/range and scalar in-bounds proof;
-- pointer-to-local-element provenance status tied to source object, derived
-  pointer/view, element path, and consumer use;
-- durable unavailable statuses from the Step 2 contract.
+`BIR local array address derivation and index-range authority carrier`
 
-Rejected Step 3 implementation approach:
+Follow-up scope:
 
-- do not infer authority from route-local `element_slots`, `base_index`,
-  lowered index values, type text, raw `pr38048-1.c` expression shape, value
-  spellings, dump order, final homes, or RV64 fallback behavior.
+- durable local array or local compound-literal source-object identity;
+- explicit array-decay/local-address derivation identity and site;
+- ordered element path from source object to consumer address;
+- dynamic index identity and range proof with proof source plus
+  path/dominance validity;
+- element layout/range and scalar in-bounds status;
+- pointer-to-local-element provenance status;
+- unavailable statuses for missing source object, missing derivation,
+  missing index/range, out-of-bounds, aggregate/member, integer-pointer
+  round-trip, global, variadic/runtime, unsupported type, bootstrap,
+  raw-shape-only, and target-only cases.
+
+Residuals for idea 484 after that prerequisite:
+
+- package the lower-level authority into the Step 2 local-address/array-element
+  record shape;
+- then hand back to scalar local-load producer work;
+- keep RV64/MIR lowering and scalar-load consumption out of idea 484 until the
+  authority records exist.
 
 Artifact:
 
-- `build/agent_state/484_step3_local_address_authority_producer/blocker.md`
+- `build/agent_state/484_step4_residual_disposition/disposition.md`
 
 ## Suggested Next
 
-Execute Step 4 residual disposition for idea 484. Recommended lifecycle route:
-split or activate the lower-level producer packet named `local array address
-derivation and index-range authority carrier`; resume idea 484 only after that
-surface can publish explicit object, derivation, element-path, index-range,
-layout/range, provenance, and unavailable-status records.
+Ask the plan owner to close or split idea 484 as a blocked/negative producer
+result and activate the prerequisite follow-up above if continuing this failure
+family.
 
 ## Watchouts
 
@@ -69,7 +76,7 @@ layout/range, provenance, and unavailable-status records.
 Delegated proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 Result: passed.
