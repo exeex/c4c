@@ -1,54 +1,80 @@
 Status: Active
 Source Idea Path: ideas/open/475_prepared_frame_slot_source_fact_population.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Real Source-Fact Population Inputs
+Current Step ID: 2
+Current Step Title: Define Population Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 475. Existing prepared evidence can populate
-target identity for the `%t23` scalar condition row, but it still cannot
-populate an available real source fact for slot `#21`.
+Completed Step 2 contract for idea 475. The real source-fact population
+contract is defined for scalar compare-result rows, but no bounded
+implementation packet is justified from current evidence.
 
-Representative source-fact population table:
+Decision: route Step 3 as blocker-only unless a lower-level producer first
+publishes explicit semantic instruction-result materialization/write events and
+interval no-clobber facts. The existing idea 474 carrier can represent the
+facts, but current prepared data cannot populate them for `%t23` slot `#21`
+without raw-shape inference.
 
-| Row/family | Existing usable inputs | Rejected / missing inputs | Classification |
-| --- | --- | --- | --- |
-| `f.logic.end.14` condition `%t23`, slot `#21` | `branch_condition logic.end.14 ... condition=%t23 compare=ne i32 %t22, 0`; `home %t23 value_id=17 kind=stack_slot slot_id=21 offset=156`; `object #21 ... type=i32 size=4 align=4`; `branch_stack_load_authority ... role=condition value=%t23 ... status=missing_policy slot=#21 object=#21`. | No explicit write/materialization event for the `%t23 = ne i32 %t22, 0` result into slot `#21`; no path/dominance proof; no same-slot write exclusion; no call/helper/inline-asm effect-safety proof; no publication/move/parallel-copy non-clobber classification. | In-scope scalar candidate, but current real status remains `missing_materialization_event`. |
-| Nearby `%t23` move bundle | `move_bundle phase=before_instruction authority=none block_index=11 instruction_index=3` has `move from_value_id=16 to_value_id=17 destination_storage=stack_slot reason=consumer_stack_to_stack`. | This is a plain value copy from `%t22` to `%t23` storage, not a semantic compare-result materialization of `%t23`; authority is `none`; source value would mismatch the required `%t23` current-value claim. | Rejected as population evidence; would be `materialization_value_mismatch` or missing semantic materialization if fed to the carrier. |
-| `%t22` select-result stack destination, slot `#20` | `select_chain ... value=%t22 root_is_select=yes`; block-entry publications for `%t22` exist but are `unsupported_destination_storage`; branch-stack-load row has `role=lhs value=%t22 ... status=missing_policy`. | Select-result/block-entry stack-destination publication is outside idea 475; no source-fact population should treat it as ordinary `%t23` materialization. | Protected `unsupported_boundary`; separate select-result/block-entry owner. |
-| `%t1` / `%t7` pointer/provenance rows | Stack homes and branch conditions exist for pointer relational branches. | Pointer status/provenance remains unknown or pointer-value derived; idea 475 must not solve pointer provenance through stack-slot source facts. | Protected `unsupported_boundary`; separate pointer/provenance owner. |
-| `%t2` / `%t8` unsupported-terminator relationship rows | Branch-stack-load records exist with durable unavailable status. | Branch-site relationship is still `unsupported_terminator`; source-fact population must not accept these rows. | Protected `unsupported_boundary`; separate branch-site relationship / terminator owner. |
+Positive contract for a real scalar compare-result source fact:
 
-First exact Step 2 target: define the real source-fact population contract for
-the scalar `%t23` row. It must say which prepared records can establish a
-semantic compare-result materialization/write into slot `#21`, path validity,
-same-slot write exclusion, and effect non-clobber facts, and it must reject the
-current `authority=none` stack-to-stack copy as insufficient.
+| Required fact | Contract |
+| --- | --- |
+| Target identity | Function, block, branch role, target value id/name/type, frame slot id, stack object id, offset, size, and alignment must match the existing source-fact carrier. |
+| Semantic producer | A prepared producer record must identify the scalar compare instruction result, e.g. `%t23 = ne i32 %t22, 0`, with opcode/type/operands and result value id. |
+| Materialization/write event | A prepared event must explicitly write or materialize that exact result value into the target frame slot/object. |
+| Path validity | A path/dominance or edge-scope fact must prove the event reaches the branch consumer site. |
+| Same-slot exclusion | The interval from materialization to consumer must classify same-slot writes as absent. |
+| Effect safety | Calls, helpers, inline asm, publications, move bundles, and parallel copies in the interval must be classified non-clobbering for the target slot/object. |
+
+Negative / fail-closed cases:
+
+| Shape | Disposition |
+| --- | --- |
+| `from_value_id=16 -> to_value_id=17` stack move | Rejected. It is a plain `%t22` to `%t23` storage copy with `authority=none`, not semantic materialization of `%t23 = ne i32 %t22, 0`; using it would be source/value mismatch or raw-shape inference. |
+| Final stack home/storage only | Rejected as insufficient. |
+| Raw BIR adjacency only | Rejected as insufficient without prepared materialization/write event. |
+| Visible calls/moves/copies/publications without slot classifier | Fail closed as missing effect/non-clobber proof. |
+| `%t22` select-result stack destination | Protected `unsupported_boundary`; separate owner. |
+| `%t1` / `%t7` pointer/provenance rows | Protected `unsupported_boundary`; separate owner. |
+| `%t2` / `%t8` unsupported-terminator rows | Protected `unsupported_boundary`; separate owner. |
+| Downstream branch-stack-load availability or RV64 consumption | Out of scope until available source-fact records exist. |
+
+Exact Step 3 blocker:
+
+- no current prepared record models semantic scalar instruction-result
+  materialization/write into a frame slot;
+- no current path/dominance fact ties such an event to `f.logic.end.14`;
+- no current same-slot write exclusion or effect non-clobber classifier exists
+  for slot `#21`;
+- the only nearby move into value `#17` is `authority=none` and carries source
+  value `#16`, so it cannot populate the `%t23` current-value source fact.
 
 Artifacts:
 
-- `build/agent_state/475_step1_source_fact_population_audit/audit.md`
+- `build/agent_state/475_step2_source_fact_population_contract/contract.md`
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: Define Population Contract. The contract should
-decide whether a bounded producer packet exists for semantic scalar compare
-materialization into a frame slot, or whether the exact blocker is missing
-instruction-result materialization/write and interval no-clobber metadata.
+Execute Step 3 as a routing/blocker packet for idea 475. Record that no real
+source-fact population implementation is selected until a separate lower-level
+producer supplies semantic instruction-result frame-slot materialization/write
+events plus path and no-clobber interval facts. Do not edit implementation in
+that route packet unless the supervisor explicitly supplies a new producer
+surface.
 
 ## Watchouts
 
-- Do not mark downstream `PreparedBranchStackLoadAuthority` available in idea
-  475.
-- Do not infer `%t23` materialization from stack homes, final storage, raw BIR
-  adjacency, value names, block names, testcase shape, or dump order.
-- The `from_value_id=16 -> to_value_id=17` stack move is not proof of the
-  `%t23 = ne i32 %t22, 0` result.
-- Keep `%t22` select-result stack-destination, `%t1/%t7` pointer/provenance,
-  and `%t2/%t8` unsupported-terminator rows separate.
+- Do not reuse the `%t22 -> %t23` stack move as a source fact.
+- Do not infer materialization/current-value/no-clobber from BIR adjacency,
+  final stack homes, storage, offsets, value ids, value names, block names,
+  testcase shape, or dump order.
+- Keep select-result stack-destination, pointer/provenance, and
+  unsupported-terminator rows as protected boundaries.
+- Keep downstream `PreparedBranchStackLoadAuthority` unavailable and do not
+  edit RV64 target lowering.
 
 ## Proof
 
