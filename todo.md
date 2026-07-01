@@ -1,72 +1,68 @@
 Status: Active
 Source Idea Path: ideas/open/477_real_semantic_materialization_interval_fact_population.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Real Semantic Fact Population
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 477 as a routed blocker. No implementation was
-selected because the current prepared/prealloc surface does not expose a
-durable semantic materialization/write event carrier for scalar
-instruction-result frame-slot writes.
+Completed Step 4 residual disposition for idea 477 after Step 3 routed real
+semantic fact population to a missing lower-level event carrier.
 
-Blocker classification:
+Residual disposition:
 
-| Required fact | Current carrier state | Step 3 disposition |
+| Row / family | Current state | Disposition |
 | --- | --- | --- |
-| Semantic identity for `%t23 = ne i32 %t22, 0` | Present through BIR instruction and prepared branch condition. | Usable input only. |
-| Destination slot/object for `%t23` | Present through value home/storage and object `#21`. | Usable input only. |
-| Semantic materialization/write event | No prepared event says the semantic compare result `%t23` was written/materialized into slot `#21`. | Missing required carrier; blocks real population. |
-| `%t22 -> %t23` stack move | Present as `before_instruction authority=none`, `from_value_id=16 to_value_id=17`, destination stack slot. | Rejected storage movement; cannot be used as semantic materialization. |
-| Path/no-clobber interval facts | No event-to-consumer path proof, same-slot write exclusion, or effect non-clobber facts exist. | Missing secondary facts; cannot be populated until event carrier exists. |
-| Source-fact / branch-stack-load / RV64 consumers | Downstream of available semantic facts. | Untouched and remain blocked. |
+| Real `%t23 = ne i32 %t22, 0` into slot `#21` | Semantic identity, consumer, destination slot/object facts exist. | Still unavailable for real population. |
+| Semantic materialization/write event carrier | No durable prepared event proves `%t23` was written/materialized into slot `#21`. | First remaining owner; required before idea 477 can continue. |
+| `%t22 -> %t23` storage move | Present with `authority=none`, `from_value_id=16 to_value_id=17`. | Rejected; not semantic materialization. |
+| Path/no-clobber interval facts | No event-to-consumer path proof, same-slot exclusion, or effect non-clobber classifications exist. | Secondary missing facts after event carrier. |
+| Source-fact population | Depends on available real semantic materialization/interval records. | Still blocked. |
+| Branch-stack-load authority / RV64 | Downstream of source facts and authority. | Out of scope and blocked. |
+| `%t22` select-result stack destination | Protected select-result/block-entry stack-destination family. | Separate owner. |
+| `%t1` / `%t7` pointer/provenance rows | Protected pointer/provenance family. | Separate owner. |
+| `%t2` / `%t8` unsupported-terminator rows | Protected branch-site relationship family. | Separate owner. |
 
-Implementation/API blocker:
+Close / split readiness:
 
-- The existing `PreparedSemanticMaterializationInterval` planner can accept
-  explicit synthetic facts, but real collection has no authoritative producer
-  event to feed it.
-- Existing prepared facts only prove identity, destination home/storage, and
-  move bundles. Treating those as a semantic write would require raw-shape
-  inference or reuse of the rejected `%t22 -> %t23` storage-only move.
-- Therefore Step 3 must route to a lower-level producer/API initiative that
-  publishes semantic instruction-result frame-slot write/materialization events
-  with event site, source result identity, destination slot/object, and
-  authority before real interval population can proceed.
+- Idea 477 is close-ready only as a routed blocker, not as completed real fact
+  population.
+- It should not remain active unless the next packet is explicitly narrowed to
+  the lower-level event carrier producer.
+- Recommended lifecycle route: split or activate a new producer idea for
+  authoritative semantic instruction-result frame-slot write/materialization
+  event carriers. After that exists, return to real interval population for
+  path coverage, same-slot exclusion, and effect non-clobber classification.
 
 Artifacts:
 
-- `build/agent_state/477_step3_real_semantic_fact_population/blocker.md`
-- `build/agent_state/477_step3_real_semantic_fact_population/summary.md`
-- `test_after.log`
+- `build/agent_state/477_step4_real_semantic_fact_population_residual/disposition.md`
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: Residual Disposition And Close Readiness.
-Classify idea 477 as blocked/split-needed unless the plan owner chooses a
-lower-level semantic write-event carrier producer as the next active owner.
+Plan-owner should close/split idea 477 as blocked on the lower-level semantic
+write-event carrier, or keep it active only by explicitly selecting that event
+carrier producer as the next exact packet.
 
 ## Watchouts
 
-- Do not add real population by inferring from raw BIR adjacency, final stack
-  homes, storage offsets, object ids, dump order, or testcase shape.
-- Do not accept `%t22 -> %t23` `authority=none` storage movement as semantic
-  compare-result materialization.
-- Do not touch downstream `PreparedFrameSlotSourceFact`,
-  `PreparedBranchStackLoadAuthority`, or RV64 lowering while the event carrier
-  is missing.
-- Keep select-result stack-destination, pointer/provenance, and
-  unsupported-terminator boundaries separate.
+- Do not claim real `%t23` semantic fact population from identity and
+  destination facts alone.
+- Do not reuse `%t22 -> %t23` `authority=none` storage movement as semantic
+  materialization.
+- Keep downstream source-fact population, branch-stack-load authority, and RV64
+  lowering blocked until available real semantic records exist.
+- Preserve select-result stack-destination, pointer/provenance, and
+  unsupported-terminator boundaries as separate owners.
 
 ## Proof
 
 Delegated proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 Result: passed.
