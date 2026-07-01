@@ -1,65 +1,62 @@
 Status: Active
 Source Idea Path: ideas/open/475_prepared_frame_slot_source_fact_population.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Source-Fact Population
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 475 as a routing/blocker packet. No implementation
-is selected for real source-fact population from current prepared evidence.
+Completed Step 4 residual disposition for idea 475 after the Step 3
+source-fact population blocker.
 
-Exact blocker:
+Decision: idea 475 is close-ready as a routed/blocked population attempt. It
+should not remain active for another implementation packet until a lower-level
+prepared producer exists for semantic instruction-result frame-slot
+materialization/write records plus path/no-clobber interval facts.
 
-| Missing lower-level producer surface | Why it blocks `%t23` slot `#21` |
-| --- | --- |
-| Semantic instruction-result frame-slot materialization/write record | No prepared record states that `%t23 = ne i32 %t22, 0` is written/materialized into frame slot `#21`. |
-| Path/dominance or edge-scope proof | No record proves a materialization/write reaches `f.logic.end.14` on the branch-consumer path. |
-| Same-slot write exclusion | No interval fact proves slot `#21` is not overwritten between materialization and consumer. |
-| Call/helper/inline-asm slot effect safety | No fact proves calls/helpers/inline asm are safe for slot `#21` over the interval. |
-| Publication/move-bundle/parallel-copy non-clobber classification | Visible events are not classified as non-clobbering for slot `#21`. |
+Residual disposition:
 
-Rejected current evidence:
+| Row/family | Current state | First remaining owner |
+| --- | --- | --- |
+| `f.logic.end.14` condition `%t23`, slot `#21` | Target identity is known, but no real source fact can be populated. The existing carrier can represent the fact, but no prepared event writes/materializes `%t23 = ne i32 %t22, 0` into slot `#21`. | Lower-level semantic instruction-result frame-slot materialization/write producer. |
+| Path and interval facts for `%t23` | No dominance/path, same-slot exclusion, call/helper/inline-asm safety, or publication/move/parallel-copy non-clobber facts are available for slot `#21`. | Lower-level path/no-clobber interval producer. |
+| `%t22 -> %t23` stack move | Rejected as evidence; `authority=none`, source value `#16`, destination value `#17`, not semantic compare-result materialization. | No owner in idea 475; future producer must create semantic event instead. |
+| `%t22` select-result stack destination | Protected boundary. | Separate select-result/block-entry stack-destination owner. |
+| `%t1` / `%t7` pointer/provenance rows | Protected boundary. | Separate pointer-value/provenance owner. |
+| `%t2` / `%t8` unsupported-terminator rows | Protected boundary. | Separate branch-site relationship / terminator owner. |
+| Downstream branch-stack-load authority and RV64 | Still blocked. | Later consumers only after real available source facts exist. |
 
-- The nearby `move from_value_id=16 to_value_id=17 destination_storage=stack_slot`
-  remains rejected. It copies `%t22` storage into `%t23` storage with
-  `authority=none`; it is not semantic materialization of `%t23 = ne i32 %t22,
-  0`.
-- Final stack homes, storage, offsets, object ids, raw BIR adjacency, value
-  names, block names, testcase shape, and dump order remain insufficient.
+Lifecycle recommendation: plan-owner should close or split idea 475. The
+durable follow-up should be a new lower-level prepared producer idea for:
 
-Protected boundaries:
-
-| Boundary row | Disposition |
-| --- | --- |
-| `%t22` select-result stack destination | Preserve as separate select-result/block-entry stack-destination owner. |
-| `%t1` / `%t7` pointer/provenance rows | Preserve as separate pointer-value/provenance owner. |
-| `%t2` / `%t8` unsupported-terminator rows | Preserve as separate branch-site relationship / terminator owner. |
-| Downstream branch-stack-load authority | Remains unavailable until real `available` source-fact records exist and a later consumer owns the transition. |
-| RV64 branch-load emission | Out of scope for idea 475. |
+- semantic scalar instruction-result identity;
+- explicit frame-slot materialization/write events;
+- path/dominance or edge-scope proof to the consumer;
+- same-slot write exclusion;
+- call/helper/inline-asm slot effect safety;
+- publication/move-bundle/parallel-copy non-clobber classification.
 
 Artifacts:
 
-- `build/agent_state/475_step3_source_fact_population_blocker/blocker.md`
+- `build/agent_state/475_step4_source_fact_population_residual/disposition.md`
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: Residual Disposition And Close Readiness. Record
-that idea 475 should close or split because the first remaining owner is a
-lower-level prepared producer for semantic instruction-result frame-slot
-materialization/write records plus path/no-clobber interval facts.
+Hand to plan-owner for lifecycle closure/split. If work continues, activate a
+new lower-level producer idea before returning to source-fact population,
+branch-stack-load authority, or RV64 consumption.
 
 ## Watchouts
 
-- Do not edit `src/backend/prealloc/publication_plans.*` or tests for this
-  blocker route.
-- Do not reopen the carrier/status surface from idea 474; the carrier can
-  represent the facts, but the producer facts are absent.
-- Do not mark `PreparedBranchStackLoadAuthority` available, consume these rows
-  in RV64, or infer source facts from raw shape.
-- Keep protected boundary rows out of the source-fact population route.
+- Do not implement source-fact population from current evidence; it would
+  require raw-shape inference.
+- Do not reuse the `%t22 -> %t23` stack move as materialization evidence.
+- Do not mark `PreparedBranchStackLoadAuthority` available or edit RV64
+  lowering.
+- Keep select-result stack-destination, pointer/provenance, and
+  unsupported-terminator rows in their own owners.
 
 ## Proof
 
