@@ -30,6 +30,9 @@ files, and target behavior are not availability evidence.
 - build/agent_state/499_step1_gep_local_memory_classification/classification_counts.tsv
 - build/agent_state/499_step1_gep_local_memory_classification/representative_shapes.tsv
 - build/agent_state/499_step3_gep_local_memory_producer/summary.md
+- build/agent_state/500_step1_global_static_gep_classification/summary.md
+- build/agent_state/500_step2_global_static_gep_contract/contract.md
+- build/agent_state/500_step3_global_static_gep_authority_implementation/summary.md
 
 ## Current Targets
 
@@ -42,7 +45,10 @@ files, and target behavior are not availability evidence.
     boundary;
   - a narrow semantic global/static GEP admission contract or precise lower
     prerequisite route;
-  - producer implementation only if current authority surfaces are sufficient.
+  - `global_static_gep_authority` certificate publication from global GEP
+    lowering;
+  - final semantic global/static GEP admission records that consume matching
+    available authority certificates.
 
 ## Non-Goals
 
@@ -57,18 +63,21 @@ files, and target behavior are not availability evidence.
 
 ## Working Model
 
-Idea 500 owns only global/static GEP admission. It should first determine
-whether current producer surfaces expose enough global/static object authority.
-If not, it should route to the exact lower producer prerequisite instead of
-adding RV64 target inference.
+Idea 500 owns global/static GEP admission. Step 3 filled the lower certificate
+prerequisite by publishing `global_static_gep_authority` records during global
+GEP lowering. The remaining work is the final admission consumer that marks
+semantic global/static GEPs available only from matching available authority
+records.
 
 ## Execution Rules
 
 - Preserve fail-closed diagnostics for missing global/static source object,
   missing layout/range, missing provenance, relocation/selected-data gaps,
   raw-shape-only evidence, target-only evidence, and coordinate confusion.
-- If classification discovers a lower producer prerequisite, record that
-  prerequisite and request lifecycle routing before implementation.
+- Consume `global_static_gep_authority` as the sole authority surface for final
+  semantic global/static GEP admission. Do not reconstruct the certificate from
+  prepared object data, final homes, relocations, raw testcase shape, or target
+  behavior.
 - Code-changing proof:
 
 ```sh
@@ -111,3 +120,24 @@ the exact lower prerequisite if Step 2 proves implementation is blocked.
 Completion means focused backend coverage proves the available path and
 representative fail-closed boundaries, or `todo.md` records the lifecycle route
 for the lower prerequisite.
+
+### Step 4: Publish Semantic Admission From Global/Static GEP Authority
+
+Publish final semantic global/static GEP admission records by consuming matching
+available `global_static_gep_authority` records.
+
+Completion means focused backend coverage proves an available direct
+global/static GEP admission and preserves fail-closed behavior for missing
+authority, non-available authority, string/global-pointer provenance boundary,
+runtime/string intrinsic boundary, missing global identity, missing
+layout/range, raw-shape-only evidence, target-only evidence, and coordinate
+confusion.
+
+### Step 5: Residual Disposition For GEP Boundaries
+
+Record whether idea 500 can close after Step 4 or whether another focused
+producer owner remains for string/global-pointer provenance or runtime/string
+intrinsic consumers.
+
+Completion means `todo.md` records the residual disposition and names the next
+idea or lifecycle state if downstream work can resume.
