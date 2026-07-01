@@ -1,48 +1,49 @@
-# Dynamic Local-Array LIR Producer Path/No-Clobber Certificate Plan
+# Dynamic Local-Array Selected Proof-Edge Path Certificate Plan
 
 Status: Active
-Source Idea: ideas/open/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md
-Activated From: ideas/closed/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
+Source Idea: ideas/open/491_dynamic_local_array_selected_proof_edge_path_certificate.md
+Activated From: ideas/closed/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md
 
 ## Purpose
 
-Produce the path/no-clobber certificate needed before dynamic local-array proof
-population can feed real facts into the idea 486 checker.
+Produce the lower selected proof-edge path certificate needed before dynamic
+local-array interval effect/no-clobber work can resume.
 
 ## Goal
 
-Publish durable path coverage, dominance/guard, and dynamic-index same-value
-certificates keyed to `lir_producer_*` coordinates.
+Publish durable selected proof edge/outcome, path coverage, and
+dominance/guard validity facts keyed to `lir_producer_*` coordinates.
 
 ## Core Rule
 
-Do not infer path coverage or no-clobber from branch proximity, loop shape,
-value names, testcase names, dump order, final homes, or target behavior. The
-certificate must be keyed to the LIR producer site and explicit proof source.
+Do not infer selected proof edges, path coverage, dominance, guard validity, or
+same-block ordering from branch proximity, loop shape, value names, testcase
+names, dump order, final homes, or target behavior. The certificate must be
+explicit and keyed to the LIR producer site.
 
 ## Read First
 
-- ideas/open/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md
-- ideas/closed/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
-- build/agent_state/489_step3_proof_population_route/route.md
-- build/agent_state/489_step4_residual_disposition/disposition.md
+- ideas/open/491_dynamic_local_array_selected_proof_edge_path_certificate.md
+- ideas/closed/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md
+- build/agent_state/490_step3_certificate_producer_route/route.md
+- build/agent_state/490_step4_residual_disposition/disposition.md
 
 ## Current Target
 
 - Missing certificate fields:
-  - proof branch/compare identity and selected edge/outcome;
-  - path coverage from proof source to `lir_producer_*`;
-  - dominance or guard validity;
-  - dynamic index same-value/no-clobber interval facts;
-  - modeled effects for assignments, phi/alias, calls/helpers, inline asm,
-    publications, move bundles, and parallel copies.
+  - proof branch/compare identity;
+  - selected proof edge/outcome;
+  - proof-source-to-LIR-producer path coverage;
+  - dominance or guard validity under the selected outcome;
+  - same-block ordering safety or explicit fail-closed status.
 - First packet:
-  - audit current prepared/BIR path and effect surfaces for a bounded
+  - audit current prepared/BIR selected-edge and path surfaces for a bounded
     certificate producer.
 
 ## Non-Goals
 
-- Populating idea 486 checker inputs directly.
+- Dynamic-index same-value/no-clobber interval effect classification.
+- Populating idea 489 proof facts or idea 486 checker inputs.
 - Idea 484 packaging.
 - Scalar local-load consumption.
 - RV64/MIR lowering.
@@ -56,16 +57,18 @@ certificate must be keyed to the LIR producer site and explicit proof source.
 
 ## Working Model
 
-Idea 489 proved proof population has candidate proof sources and LIR producer
-binding keys, but lacks a durable certificate tying proof source to producer
-site and dynamic-index interval validity.
+Idea 490 found candidate branch/compare proof sources and LIR producer binding
+keys, but no durable selected-edge/path/order certificate. This runbook owns
+that lower certificate only. Later interval effect/no-clobber classification
+stays separate.
 
 ## Execution Rules
 
-- Step 1 is audit/classification unless an already-bounded certificate surface
-  exists.
-- Any implementation packet must publish certificate facts or explicit
-  unavailable statuses and must not mark checker inputs available directly.
+- Step 1 is audit/classification unless an already-bounded selected proof-edge
+  certificate surface exists.
+- Any implementation packet must publish explicit certificate facts or
+  unavailable statuses and must not mark proof-population or checker inputs
+  available directly.
 - Classification-only proof:
 
 ```sh
@@ -82,29 +85,29 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit LIR Producer Certificate Inputs
+### Step 1: Audit Selected Proof-Edge Path Certificate Inputs
 
-Inspect prepared branch/compare facts, dominance/reachability surfaces, and
-effect/no-clobber evidence for dynamic indices keyed to `lir_producer_*`.
-Completion means `todo.md` records available certificate inputs and missing
-lower-level facts.
+Inspect prepared branch/compare facts, selected edge/outcome surfaces,
+dominance/reachability helpers, `lir_producer_*` keys, and same-block ordering
+boundaries. Completion means `todo.md` records available certificate inputs and
+the exact missing lower facts, if any.
 
-### Step 2: Define Path/No-Clobber Certificate Contract
+### Step 2: Define Selected Proof-Edge Path Certificate Contract
 
-Define the certificate shape and unavailable statuses. Completion means the
-contract names proof-source, selected edge/outcome, path coverage,
-dominance/guard validity, no-clobber/effect modeling, and coordinate-confusion
-rejections.
+Define the selected-edge path certificate shape and unavailable statuses.
+Completion means the contract names proof-source identity, selected
+edge/outcome, LIR producer key, path coverage, dominance/guard validity,
+same-block ordering policy, and coordinate-confusion rejections.
 
-### Step 3: Implement Or Route Certificate Producer
+### Step 3: Implement Or Route Selected Edge Path Certificate
 
 Implement the bounded certificate packet if Step 2 identifies one. If current
-data cannot prove path coverage or no-clobber without inference, record the
-exact lower owner and stop without changing idea 489 population, idea 484,
-scalar loads, or RV64 lowering.
+data cannot prove selected edge/path coverage without inference, record the
+exact lower owner and stop without changing interval effects, proof population,
+checker inputs, packaging, scalar loads, or RV64 lowering.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe selected representatives and decide whether 490 is complete, blocked
-by another lower-level source, or ready to hand back to idea 489 proof
-population.
+Re-probe selected representatives and decide whether 491 is complete, blocked
+by another lower-level source, or ready to hand forward to dynamic-index
+interval effect/no-clobber classification.
