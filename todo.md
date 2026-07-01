@@ -1,74 +1,87 @@
 Status: Active
 Source Idea Path: ideas/open/512_stack_passed_parameter_home_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Rebuild Stack-Parameter Evidence
+Current Step ID: 2
+Current Step Title: Trace Producer ABI Home Publication
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 of `plan.md` rebuilt stack-parameter evidence for
-`tests/c/external/gcc_torture/src/20001017-1.c` at current `HEAD`.
+Step 2 of `plan.md` traced the producer ABI/prealloc path for
+stack-passed parameter homes without changing implementation code.
 
-Fresh artifacts live under
-`build/agent_state/512_step1_stack_parameter_evidence/20001017-1/`.
-The old idea-424 handoff still describes the underlying producer gap, but the
-surface object diagnostic has changed:
+Producer fact path:
 
-- Old 424 object diagnostic:
-  `unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes`.
-- Current object diagnostic:
-  `unsupported_stack_frame: RV64 object route does not support non-GPR prepared callee-saved register save slots (fpr:fs1)`.
+- Frontend/lowering already carries formal/call ABI metadata in
+  `bir::Param::abi` and `bir::CallInst::arg_abi`.
+- `src/backend/prealloc/regalloc/call_return_abi.cpp` classifies each call
+  argument with `call_arg_storage_kind`, computes ABI register indexes with
+  `call_arg_abi_register_index`, and should be the shared source of stack
+  destination offsets through `call_arg_destination_stack_offset_bytes`.
+- `src/backend/prealloc/regalloc.cpp` publishes call-site ABI bindings in
+  `append_prepared_call_abi_bindings`; stack-slot bindings already keep
+  `destination_storage_kind=StackSlot` and use
+  `destination_stack_offset_bytes` when the helper returns an offset.
+- `src/backend/prealloc/regalloc/call_moves.cpp` publishes matching
+  `PreparedMoveResolution` records for call-argument moves; it also uses
+  `call_arg_destination_stack_offset_bytes`, so RV64 currently gets
+  offsetless stack destinations at both the ABI-binding and move-resolution
+  surfaces.
+- `src/backend/prealloc/regalloc/value_homes.cpp` publishes callee fixed
+  formal register homes in `classify_prepared_value_home` by matching
+  `PreparedRegallocValue` parameter names to `bir::Function::params` and
+  deriving the ABI register name. Ordinary RV64 fixed formals passed on the
+  incoming stack have no equivalent branch, so they fall through to later
+  allocation state or `PreparedValueHomeKind::None`.
+- `src/backend/prealloc/formal_publications.cpp` already validates formal
+  publication plans for `IncomingStackToHome`; it fails closed with
+  `MissingStackOffset`, `MissingValueHome`, `MissingAbiInfo`,
+  `UnsupportedHomeKind`, or `UnsupportedFormalSource` when required producer
+  facts are absent.
 
-The current prepared dump still exposes the stack-parameter-home gap beneath
-that earlier FPR save-slot rejection:
+Where facts are preserved or lost:
 
-- Callee `@bug` parameters 0-7 publish register homes:
-  `%p.Cref=a0`, `%p.transb=a1`, `%p.m=a2`, `%p.n=a3`, `%p.k=a4`,
-  `%p.a=a5`, `%p.A=a6`, `%p.fdA=a7`.
-- Callee stack-passed parameters remain missing homes:
-  `%p.B value_id=8 kind=none`, `%p.fdB value_id=9 kind=none`,
-  `%p.b value_id=10 kind=none`, `%p.C value_id=11 kind=none`, and
-  `%p.fdC value_id=12 kind=none`.
-- Stack-layout already has regalloc spill-slot objects and offsets for some
-  of those values:
-  `%p.B` object `#9` slot `#9` offset `32` size `8` align `8`,
-  `%p.fdB` object `#10` slot `#10` offset `40` size `4` align `4`, and
-  `%p.fdC` object `#11` slot `#11` offset `44` size `4` align `4`.
-  `%p.b` and `%p.C` have no matching value-home object in this dump.
-- Caller `@main` call-plan arguments 8-12 all print `to=none`; value-location
-  ABI bindings publish `destination_storage=stack_slot abi_index=8..12` but
-  do not publish `stack_offset`.
-- Named caller stack arguments 8 and 11 have source-frame authority for the
-  local objects (`%lv.B.0` slot `#1` offset `8`, `%lv.C.0` slot `#2` offset
-  `16`), but that is source materialization, not call-destination/home
-  authority.
-
-Current partial support to preserve:
-
-- `src/backend/mir/riscv/codegen/object_emission.cpp` already has fail-closed
-  validation for prepared scalar GPR formal stack-slot homes, byval homes, and
-  sret homes when producer facts include kind, slot id, offset, size, align,
-  and matching prepared frame-slot/object facts.
-- `src/backend/prealloc/regalloc.cpp` already records stack-slot ABI bindings
-  when `call_arg_destination_stack_offset_bytes` returns an offset.
-- `src/backend/prealloc/regalloc/call_return_abi.cpp` currently computes call
-  stack offsets only for x86_64 and AArch64; for RV64 it returns `nullopt`,
-  leaving the bindings offsetless.
-- `src/backend/prealloc/regalloc/value_homes.cpp` publishes fixed formal
-  register homes and special F128/variadic stack homes, but ordinary RV64
-  stack-passed fixed formals still fall through to `kind=none` when they are
-  not assigned register homes.
+- Register homes are already preserved at both caller and callee surfaces:
+  caller bindings/moves get register names, occupied register names, register
+  placements, and contiguous width; callee formals get `Register` homes and
+  RV64 target-register identity where supported.
+- Caller stack homes lose offset authority because
+  `call_arg_destination_stack_offset_bytes` returns `nullopt` for RV64 before
+  walking the ABI arguments. `append_prepared_call_abi_bindings` and
+  `append_call_arg_move_resolution` therefore publish stack-slot destination
+  kind and ABI index but no `destination_stack_offset_bytes`.
+- Callee stack homes lose storage kind/slot facts because the fixed-formal
+  branch in `classify_prepared_value_home` only special-cases variadic homes,
+  F128 stack locals, and register-passed fixed formals. Ordinary fixed
+  `passed_on_stack` scalar formals are not mapped to a prepared incoming
+  stack-slot home with offset, size, and alignment.
+- Width/alignment authority exists in `bir::CallArgAbiInfo` and the existing
+  stack argument sizing helpers, but it is not yet connected to RV64 caller
+  stack offsets or callee fixed-formal stack homes.
 
 ## Suggested Next
 
-Execute Step 2: trace the producer ABI/prealloc publication path around
-`regalloc/call_return_abi.cpp`, `regalloc.cpp`, `regalloc/call_moves.cpp`, and
-`regalloc/value_homes.cpp`. The likely boundary is publishing RV64 stack
-argument destination offsets for caller ABI bindings and ordinary fixed-arity
-callee `PreparedValueHomeKind::StackSlot` homes from producer ABI/prealloc
-facts, while keeping RV64 object emission as a consumer of those facts.
+Execute Step 3 by adding producer-side RV64 stack-argument/formal publication:
+
+- Extend the shared ABI helper boundary in
+  `src/backend/prealloc/regalloc/call_return_abi.cpp` so ordinary RV64
+  stack-passed call arguments that already require stack destinations receive
+  explicit destination stack offsets. Reuse the existing stack-argument size
+  and alignment helpers rather than teaching RV64 object emission an ABI
+  formula.
+- Add a narrow fixed-formal stack-home helper in
+  `src/backend/prealloc/regalloc/value_homes.cpp` that maps ordinary
+  non-varargs, non-byval, non-sret RV64 formals with `param.abi->passed_on_stack`
+  to `PreparedValueHomeKind::StackSlot` only when the producer can publish
+  coherent offset, size, alignment, and frame-slot/home identity.
+- Keep `append_prepared_call_abi_bindings`,
+  `append_call_arg_move_resolution`, and `plan_prepared_formal_publication` as
+  consumers of those producer facts. RV64 should continue consuming prepared
+  records and should not infer offsets from argument index, parameter name, or
+  testcase shape.
+- Add focused prepared-contract tests around caller stack ABI bindings and
+  callee fixed-formal stack homes before any RV64 object-route widening.
 
 ## Watchouts
 
@@ -76,8 +89,13 @@ facts, while keeping RV64 object emission as a consumer of those facts.
   stack-passed parameter homes.
 - Do not infer stack argument homes in RV64 from argument indexes, ABI
   formulas, source call shape, parameter names, or named gcc_torture rows.
+- Preserve existing fail-closed behavior for missing stack offsets, ambiguous
+  or duplicate homes, missing value homes, missing ABI metadata, unsupported
+  varargs, F128 stack-passed local-home special cases, byval/sret/aggregate
+  ABI paths, dynamic stack cases, and unrelated call/result shapes.
 - Keep varargs, F128, aggregate ABI, dynamic stack work, broad RV64 call
-  lowering, and unrelated ABI repairs out of this plan.
+  lowering, and unrelated ABI repairs out of this plan unless the supervisor
+  splits a new source idea.
 - `20001017-1.c` currently trips `fpr:fs1` save-slot rejection before the old
   `unsupported_param_home` check, so Step 2 should use prepared dumps and
   focused synthetic probes to prove the producer facts instead of treating the
@@ -88,13 +106,15 @@ facts, while keeping RV64 object emission as a consumer of those facts.
 
 ## Proof
 
-- `cmake --build build --target c4cll` passed.
-- `./build/c4cll --dump-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20001017-1.c`
-  passed; output captured at
-  `build/agent_state/512_step1_stack_parameter_evidence/20001017-1/dump-bir.txt`.
-- `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20001017-1.c`
-  passed; output captured at
-  `build/agent_state/512_step1_stack_parameter_evidence/20001017-1/dump-prepared-bir.txt`.
-- `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20001017-1.c -o build/agent_state/512_step1_stack_parameter_evidence/20001017-1/20001017-1.o`
-  failed as expected with rc `2` and current `fpr:fs1` stack-frame diagnostic.
+- Trace-only packet; no build was required and no root-level proof log was
+  rewritten.
+- Inspected the active `plan.md`, `todo.md`, Step 1 evidence notes, and the
+  producer/consumer files named by the packet:
+  `src/backend/prealloc/regalloc/call_return_abi.cpp`,
+  `src/backend/prealloc/regalloc.cpp`,
+  `src/backend/prealloc/regalloc/call_moves.cpp`,
+  `src/backend/prealloc/regalloc/value_homes.cpp`,
+  `src/backend/prealloc/formal_publications.cpp`,
+  `src/backend/prealloc/publication_plans.cpp`, and
+  `src/backend/mir/riscv/codegen/object_emission.cpp`.
 - `git diff --check -- todo.md` passed.
