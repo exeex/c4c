@@ -12735,6 +12735,12 @@ int publishes_select_publication_stack_home_move_intent_fields() {
       bir::Value::named(bir::TypeKind::Ptr, "%fallback");
   stack_source_join_transfer.edge_transfers.at(1).destination_value =
       bir::Value::named(bir::TypeKind::Ptr, "%selected");
+  auto& stack_source_true_parallel_copy =
+      stack_source.control_flow.functions.front().parallel_copy_bundles.at(0);
+  stack_source_true_parallel_copy.moves.front().source_value =
+      null_pointer_value();
+  stack_source_true_parallel_copy.moves.front().destination_value =
+      bir::Value::named(bir::TypeKind::Ptr, "%selected");
   auto& stack_source_parallel_copy =
       stack_source.control_flow.functions.front().parallel_copy_bundles.at(1);
   stack_source_parallel_copy.moves.front().source_value =
@@ -12751,6 +12757,10 @@ int publishes_select_publication_stack_home_move_intent_fields() {
       prepare::PreparedFrameSlotId{7},
       8,
       8);
+  stack_source.value_locations.functions.front()
+      .move_bundles.at(0)
+      .moves.front()
+      .source_immediate_i32 = 0;
   stack_source.stack_layout.frame_size_bytes = 16;
   stack_source.stack_layout.frame_alignment_bytes = 8;
   stack_source.stack_layout.frame_slots = {prepare::PreparedFrameSlot{
@@ -12787,8 +12797,22 @@ int publishes_select_publication_stack_home_move_intent_fields() {
       stack_source_intent.instruction_text != "ld a0, 8(sp)") {
     return fail("expected pointer stack-source select-publication intent fields");
   }
+  const auto stack_source_module =
+      rv64::build_rv64_prepared_text_object_module(stack_source);
+  if (!stack_source_module.has_value()) {
+    return fail("expected pointer stack-source select-publication to materialize");
+  }
+  const auto* stack_source_text =
+      object::find_section(*stack_source_module, ".text");
+  if (stack_source_text == nullptr ||
+      !contains_u32(stack_source_text->bytes, 0x00813503)) {
+    return fail("expected pointer stack-source select-publication to emit ld a0, 8(sp)");
+  }
+
+  stack_source.value_locations.functions.front().value_homes.at(1).offset_bytes =
+      4096;
   if (rv64::build_rv64_prepared_text_object_module(stack_source).has_value()) {
-    return fail("expected pointer stack-source select-publication to remain fail-closed");
+    return fail("expected large-offset pointer stack-source select-publication to remain fail-closed");
   }
 
   auto stack_destination =
