@@ -1,32 +1,33 @@
-# RV64 Out-Of-SSA Parallel-Copy Move Materialization Plan
+# RV64 Before-Return Prepared Move Materialization Plan
 
 Status: Active
-Source Idea: ideas/open/502_rv64_out_of_ssa_parallel_copy_move_materialization.md
-Activated From: ideas/closed/501_rv64_before_instruction_prepared_move_materialization.md
+Source Idea: ideas/open/503_rv64_before_return_prepared_move_materialization.md
+Activated From: ideas/closed/502_rv64_out_of_ssa_parallel_copy_move_materialization.md
 
 ## Purpose
 
-Implement the next coherent move-bundle follow-up split out by idea 495: RV64
-materialization for prepared out-of-SSA pre-terminator parallel copies.
+Implement the isolated coherent before-return move-bundle follow-up split out
+by idea 495 without broadening return lowering or ABI behavior.
 
 ## Goal
 
-Materialize coherent prepared out-of-SSA parallel-copy move bundles in RV64
-while preserving predecessor-edge execution semantics and prepared
-parallel-copy authority.
+Materialize the coherent prepared before-return stack-to-return-register move
+in RV64 from explicit prepared facts.
 
 ## Core Rule
 
-RV64 may lower out-of-SSA parallel copies only from explicit prepared authority
-records that provide the predecessor execution site, parallel-copy semantics,
-destination storage, and move reason. Raw block order, source shape, filenames,
-labels, final homes, and target output are not edge or phi authority.
+RV64 may lower the before-return move only when prepared move-bundle facts
+provide the return-adjacent execution point, source storage, destination
+register, move reason, and value homes. Testcase shape, source names, raw BIR
+order, final homes, target register conventions, and object output are not
+return move authority.
 
 ## Read First
 
-- ideas/open/502_rv64_out_of_ssa_parallel_copy_move_materialization.md
+- ideas/open/503_rv64_before_return_prepared_move_materialization.md
 - ideas/closed/495_prepared_move_bundle_materialization_bucket_review.md
 - ideas/closed/501_rv64_before_instruction_prepared_move_materialization.md
+- ideas/closed/502_rv64_out_of_ssa_parallel_copy_move_materialization.md
 - build/agent_state/495_step2_move_bundle_coherence/summary.md
 - build/agent_state/495_step2_move_bundle_coherence/classification.tsv
 - build/agent_state/495_step2_move_bundle_coherence/owner_matrix.tsv
@@ -35,47 +36,38 @@ labels, final homes, and target output are not edge or phi authority.
 ## Current Targets
 
 - Inputs:
-  - 91 coherent prepared out-of-SSA/pre-terminator rows from idea 495 Step 2;
+  - one coherent prepared before-return row from idea 495 Step 2;
   - prepared move-bundle facts with `event_kind=pre_terminator_copies`,
-    `phase=block_entry`, `authority=out_of_ssa_parallel_copy`,
-    `parallel_copy=yes`, and `execution_site=predecessor_terminator`.
+    `phase=before_return`, `authority=none`, `parallel_copy=no`, destination
+    `register`, and move reason `return_stack_to_register`.
 - Outputs:
-  - RV64 materialization for `phi_join_register_to_register` moves;
-  - RV64 materialization for
-    `edge_consumer_preservation_register_to_register` moves;
-  - RV64 materialization for
-    `edge_consumer_preservation_register_to_stack` moves;
-  - focused backend coverage for representative rows and fail-closed
+  - RV64 materialization for the prepared stack-to-return-register move;
+  - focused backend coverage for the representative row and fail-closed
     incomplete-authority boundaries.
 
 ## Non-Goals
 
-- Before-instruction consumer moves already completed by idea 501.
-- Before-return move materialization.
+- General return lowering, call ABI rewrites, or stack-frame redesign.
+- Before-instruction moves already completed by idea 501.
+- Out-of-SSA/pre-terminator moves already completed by idea 502.
 - Select-publication evidence or authority repair.
-- Inventing predecessor/successor, phi, edge, execution-site, or storage
-  identity in RV64.
-- Producer/prepared fact changes unless implementation proves a separate
-  producer gap and routes it to a new idea.
-- F128, call ABI, broad stack-frame rewrites, expectation rewrites,
-  unsupported-marker downgrades, allowlists, pass/fail accounting changes,
-  runtime-comparison changes, or baseline churn.
+- Inferring return storage from testcase shape, source names, raw BIR order, or
+  target register conventions without prepared facts.
+- Expectation rewrites, unsupported-marker downgrades, allowlists,
+  pass/fail accounting changes, runtime-comparison changes, or baseline churn.
 
 ## Working Model
 
-Idea 495 Step 2 found this family has coherent prepared parallel-copy
-authority and is blocked at RV64 materialization. Implementation should consume
-the prepared bundle semantics, preserve predecessor-terminator execution, and
-avoid serializing parallel copies in a way that clobbers live sources.
+Idea 495 Step 2 found one coherent before-return row:
+`return_stack_to_register`, represented by `src/20080719-1.c`. The execution
+point is return-adjacent and should remain separately proven even if
+implementation can share local helpers with other move materializers.
 
 ## Execution Rules
 
-- Consume prepared out-of-SSA parallel-copy records, not case-log text.
-- Preserve predecessor-edge execution semantics.
-- Preserve parallel-copy cycle/order safety from the prepared bundle
-  representation.
-- Keep missing edge identity, missing execution site, incomplete parallel-copy
-  facts, and contradictory storage fail-closed.
+- Consume prepared before-return move records, not case-log text.
+- Preserve return-adjacent execution semantics.
+- Keep missing return move authority or ambiguous return storage fail-closed.
 - If implementation discovers missing producer facts, stop and route that
   producer gap instead of inferring in RV64.
 - Code-changing proof:
@@ -95,35 +87,27 @@ git diff --check
 
 ## Steps
 
-### Step 1: Inspect Out-Of-SSA Parallel-Copy Surfaces
+### Step 1: Inspect Before-Return Move Surfaces
 
-Locate the prepared out-of-SSA parallel-copy publication and RV64 consumption
-surfaces for predecessor-terminator move bundles.
+Locate the prepared before-return move-bundle publication and RV64 consumption
+surfaces for the `return_stack_to_register` shape.
 
 Completion means `todo.md` records the exact records/helpers to consume, the
-representative proof rows, and whether the current prepared facts are complete
+representative proof row, and whether the current prepared facts are complete
 enough for implementation.
 
-### Step 2: Materialize Phi Join Register Moves
+### Step 2: Materialize The Before-Return Move
 
-Implement RV64 lowering for coherent prepared
-`phi_join_register_to_register` out-of-SSA parallel copies.
+Implement RV64 lowering for the coherent prepared before-return
+`return_stack_to_register` move.
 
-Completion means focused backend coverage proves a representative phi-join row
-and preserves fail-closed behavior for missing or ambiguous prepared facts.
+Completion means focused backend coverage proves the representative
+before-return row and preserves fail-closed behavior for missing or ambiguous
+prepared facts.
 
-### Step 3: Materialize Edge Consumer Preservation Moves
+### Step 3: Residual Disposition For Before-Return Moves
 
-Implement RV64 lowering for coherent prepared edge-consumer preservation moves,
-including register-to-register and register-to-stack destination families.
-
-Completion means focused backend coverage proves representative edge-consumer
-preservation rows and keeps the path scoped to prepared out-of-SSA
-parallel-copy authority.
-
-### Step 4: Residual Disposition For Out-Of-SSA Moves
-
-Decide whether idea 502 can close after out-of-SSA parallel-copy materialization
+Decide whether idea 503 can close after the before-return move is materialized
 or whether a new focused producer/consumer idea is needed.
 
 Completion means `todo.md` records the residual disposition and the active

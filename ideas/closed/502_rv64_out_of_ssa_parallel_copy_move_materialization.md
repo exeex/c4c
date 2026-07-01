@@ -1,6 +1,6 @@
 # RV64 Out-Of-SSA Parallel-Copy Move Materialization
 
-Status: Open
+Status: Closed
 Type: Focused RV64 materialization idea
 Parent: `ideas/open/495_prepared_move_bundle_materialization_bucket_review.md`
 Source Evidence:
@@ -70,3 +70,27 @@ Representative rows include `src/20020619-1.c`, `src/20020206-2.c`, and
   moves, select-publication evidence, or producer repairs.
 - Reject expectation, allowlist, unsupported-marker, pass/fail accounting, or
   runtime-comparison changes as progress.
+
+## Completion
+
+Closed after Step 4 residual disposition. The focused out-of-SSA
+predecessor-terminator parallel-copy materialization scope is complete:
+
+- Step 1 inspected the prepared out-of-SSA parallel-copy publication and RV64
+  consumption surfaces.
+- Step 2 implemented coherent `phi_join_register_to_register` materialization
+  for the 62-row family.
+- Step 3 implemented coherent edge-consumer preservation materialization for
+  the 26 register-destination rows and 3 stack-destination rows.
+- All paths consume prepared out-of-SSA authority records and keep adjacent
+  incomplete, confused, or out-of-scope shapes fail-closed.
+
+Remaining move-bundle families are not part of idea 502. The before-return
+shape remains queued in
+`ideas/open/503_rv64_before_return_prepared_move_materialization.md`, and
+select-publication evidence/authority remains queued in
+`ideas/open/504_select_publication_move_bundle_evidence_authority.md`.
+
+Any downstream RV64 gcc-torture admission reclassification or broader bucket
+refresh should be handled as a separate lifecycle initiative, not by expanding
+this materialization idea.
