@@ -15973,6 +15973,54 @@ int emits_prepared_writable_i32_global_object_storage() {
   return 0;
 }
 
+int emits_prepared_global_object_storage_from_prepared_record_authority() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto link_name = prepared.module.names.link_names.intern("raw_counter");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "raw_counter",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(7),
+  });
+  publish_prepared_object_data(prepared);
+
+  auto& object_data = prepared.object_data.globals.front();
+  object_data.object_label_text = "prepared_counter";
+  object_data.section_kind = prepare::PreparedObjectDataSectionKind::ReadOnlyData;
+  object_data.align_bytes = 16;
+  object_data.emitted_bytes = {0xaa, 0xbb, 0xcc, 0xdd};
+  object_data.public_symbol = false;
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared RV64 object path to emit from prepared record authority");
+  }
+  if (object::find_symbol(*module, "raw_counter") != nullptr) {
+    return fail("expected raw global spelling not to define object storage");
+  }
+  const auto* rodata = object::find_section(*module, ".rodata");
+  if (rodata == nullptr || rodata->writable || rodata->executable ||
+      rodata->align_bytes != 16 ||
+      rodata->bytes != std::vector<std::uint8_t>{0xaa, 0xbb, 0xcc, 0xdd}) {
+    return fail("expected prepared section, alignment, and bytes to drive object data");
+  }
+  const auto* symbol = object::find_symbol(*module, "prepared_counter");
+  if (symbol == nullptr ||
+      symbol->binding != object::SymbolBinding::Local ||
+      symbol->kind != object::SymbolKind::Object ||
+      symbol->section != std::optional<object::SectionId>{rodata->id} ||
+      symbol->value != 0 || symbol->size_bytes != 4) {
+    return fail("expected prepared object label, visibility, and extent on symbol");
+  }
+  const auto image = rv64::write_rv64_relocatable_elf_object(*module);
+  if (!image.has_value()) {
+    return fail("expected RV64 ELF writer to serialize prepared-authority object");
+  }
+  return 0;
+}
+
 int rejects_prepared_global_object_storage_without_prepared_data_facts() {
   auto prepared = make_prepared_direct_call_module();
   const auto link_name = prepared.module.names.link_names.intern("counter");
@@ -17149,6 +17197,7 @@ int main() {
   status |= emits_prepared_selected_zero_pointer_global_bss_storage();
   status |= rejects_unsupported_selected_global_object_data_shapes();
   status |= emits_prepared_writable_i32_global_object_storage();
+  status |= emits_prepared_global_object_storage_from_prepared_record_authority();
   status |= rejects_prepared_global_object_storage_without_prepared_data_facts();
   status |=
       rejects_prepared_global_object_storage_incoherent_prepared_data_facts();

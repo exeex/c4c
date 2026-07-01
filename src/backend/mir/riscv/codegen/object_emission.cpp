@@ -11921,6 +11921,12 @@ object::SymbolId rv64_find_or_declare_relocation_symbol(
       .id;
 }
 
+object::SymbolBinding rv64_prepared_object_data_symbol_binding(
+    const prepare::PreparedGlobalObjectData& object_data) {
+  return object_data.public_symbol ? object::SymbolBinding::Global
+                                   : object::SymbolBinding::Local;
+}
+
 std::optional<std::string> append_rv64_prepared_data_objects(
     object::ObjectModule& object_module,
     const c4c::backend::prepare::PreparedBirModule& prepared) {
@@ -12068,7 +12074,7 @@ std::optional<std::string> append_rv64_prepared_data_objects(
     }
     object::define_symbol(object_module,
                           label,
-                          object::SymbolBinding::Global,
+                          rv64_prepared_object_data_symbol_binding(*object_data),
                           object::SymbolKind::Object,
                           section->id,
                           offset,
