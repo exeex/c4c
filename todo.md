@@ -8,34 +8,41 @@ Current Step Title: Reproduce The Move-Bundle Bucket
 
 ## Just Finished
 
-Idea 500 closed after Step 4 published final semantic global/static GEP
-admission records from matching available `global_static_gep_authority`
-records. Pointer/string, runtime/string intrinsic, aggregate/member, RV64/MIR
-lowering, and object emission consumers remain outside idea 500.
+Step 1 reproduced the current `unsupported_move_bundle_target_shape` bucket by
+joining `build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv` rows to
+their referenced case logs and filtering for the bucket label. The reproduced
+bucket has 423 source-case rows out of 1,467 summary data rows; 420 rows carry
+ordinary prepared-move diagnostics with function/block evidence, and 3 rows are
+select-publication move-bundle diagnostics without per-function tokens in the
+case log.
 
-Lifecycle switched to idea 495 because the remaining open inventory already
-contains the priority `unsupported_move_bundle_target_shape` review/splitter
-from the RV64 gcc_torture follow-up plan.
+Durable evidence is recorded under
+`build/agent_state/495_step1_move_bundle_bucket/`: `rows.tsv`,
+`parsed_rows.tsv`, `source_cases.txt`, `shape_counts.txt`,
+`fragment_status_counts.txt`, `function_block_counts.txt`,
+`shape_matrix.tsv`, `representative_rows.tsv`, and `summary.md`.
 
 ## Suggested Next
 
-Execute Step 1 by reproducing the current move-bundle bucket from
-`build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv` and writing a
-durable row-count and representative-shape artifact.
+Execute Step 2 classification over the reproduced bucket. Classify first-owner
+families for ordinary before-instruction consumer move materialization,
+out-of-SSA/pre-terminator parallel-copy materialization, the single
+before-return return move, and the 3 select-publication move-bundle rows.
 
 ## Watchouts
 
-- Do not implement move-bundle lowering in this review idea.
-- Do not infer move authority, edge identity, storage class, or phi/join
-  semantics in RV64 from raw BIR shape or testcase names.
-- Preserve RV64 gcc_torture as external evidence and keep default CTest
-  contracts unchanged.
+- This packet made no implementation changes.
+- The summary TSV itself does not contain the bucket label; the label is in the
+  referenced case logs.
+- Do not treat source names as authority. Use the parsed move-bundle event
+  tokens, authority, phase, destination storage, parallel-copy flag, and move
+  reason for Step 2 classification.
 - Preserve existing untracked review artifacts and the rejected
   `test_baseline.new.log`.
 
 ## Proof
 
-Lifecycle close/switch proof:
+Step 1 evidence-only proof:
 
 ```sh
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed > test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
