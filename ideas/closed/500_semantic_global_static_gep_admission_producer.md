@@ -1,6 +1,6 @@
 # BIR Semantic Global/Static GEP Admission Producer
 
-Status: Open
+Status: Closed
 Type: Focused BIR semantic producer implementation idea
 Parent: `ideas/closed/499_semantic_gep_local_memory_admission_producer.md`
 Source Evidence:
@@ -77,3 +77,23 @@ Reject this idea as progress if the change:
   broad global-data work into this focused packet;
 - changes expectations, unsupported markers, allowlists, pass/fail accounting,
   runtime comparison, or baseline logs as proof of progress.
+
+## Completion
+
+Closed after Step 4 published the final BIR semantic global/static GEP
+admission producer surface:
+
+- Step 1 reproduced and classified the six global/static GEP rows split out by
+  idea 499.
+- Step 2 defined the contract and routed the missing lower prerequisite to
+  `global_static_gep_authority`.
+- Step 3 published production `GlobalStaticGepAuthorityRecord` records during
+  global GEP lowering.
+- Step 4 published final `GlobalStaticSemanticGepRecord` /
+  `global_static_semantic_geps` records from matching available
+  `GlobalStaticGepAuthorityRecord` records.
+
+The direct global/static GEP producer scope is complete. Pointer/string,
+runtime/string intrinsic, aggregate/member, RV64/MIR lowering, and object
+emission consumers remain outside this focused idea and should resume only
+through separately owned open ideas.
