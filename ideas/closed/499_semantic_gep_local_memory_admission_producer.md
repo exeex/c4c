@@ -1,6 +1,6 @@
 # BIR Semantic GEP Local-Memory Admission Producer
 
-Status: Open
+Status: Closed
 Type: Focused BIR semantic producer implementation idea
 Parent: `ideas/closed/496_semantic_lir_to_bir_admission_high_impact_cleanup.md`
 Source Evidence:
@@ -10,6 +10,7 @@ Source Evidence:
 - `build/agent_state/496_step2_next_owner_selection/decision.md`
 - `build/agent_state/496_step2_next_owner_selection/open_idea_inventory.tsv`
 Owning Layer: BIR semantic GEP/local-memory admission producer
+Closed By: lifecycle review after Step 3
 
 ## Goal
 
@@ -67,6 +68,40 @@ and is scoped to runtime pointer dereferences, not semantic local GEP admission.
   remain distinguishable and fail closed.
 - Any downstream RV64/MIR work is sequenced only after producer facts close with
   proof.
+
+## Completion Notes
+
+Idea 499 is complete for the focused direct local-object semantic GEP
+local-memory producer packet.
+
+Completed evidence:
+
+- `build/agent_state/499_step1_gep_local_memory_classification/summary.md`
+- `build/agent_state/499_step1_gep_local_memory_classification/classification_counts.tsv`
+- `build/agent_state/499_step1_gep_local_memory_classification/representative_shapes.tsv`
+- `build/agent_state/499_step2_gep_local_memory_contract/contract.md`
+- `build/agent_state/499_step2_gep_local_memory_contract/status_matrix.tsv`
+- `build/agent_state/499_step3_gep_local_memory_producer/summary.md`
+
+Step 3 published `LocalArraySemanticGepRecord` and
+`local_array_semantic_geps` from matching available
+`LocalArrayLocalAddressProvenanceRecord` authority for local-object
+`AddressDerivation` paths. It preserves fail-closed status propagation for
+missing, duplicate, non-local, or non-available lower authority and does not
+infer GEP authority from raw shape, final homes, names, route-local slots, or
+RV64/MIR target behavior.
+
+## Final Residual Disposition
+
+The direct local-object GEP subfamily is complete. The six global/static object
+GEP rows are a separate producer owner and should be handled by:
+
+`ideas/open/500_semantic_global_static_gep_admission_producer.md`
+
+The remaining 53 non-local boundary rows stay fail-closed or prerequisite-owned
+until separate producer authority exists for pointer/formal provenance,
+runtime/string intrinsics, aggregate/member/flexible/alias layouts, and
+variadic routing.
 
 ## Reviewer Reject Signals
 
