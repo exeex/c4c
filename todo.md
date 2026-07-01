@@ -1,42 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/488_bir_dynamic_local_array_consumer_coordinate_prepared_exposure.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Consumer Coordinate Exposure Inputs
+Current Step ID: 2
+Current Step Title: Define Consumer Coordinate Exposure Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 488.
+Completed Step 2 contract definition for idea 488.
 
-Audit result:
+Contract:
 
-| Surface | Available fields | Missing coordinate/exposure | Classification |
-| --- | --- | --- | --- |
-| BIR local-array path records | Path result, source object, derivation result, dynamic index, element type/size/count, byte offset, and status. | Consumer block label, consumer instruction index, operation role, and stable prepared lookup key. | Good payload, missing coordinate. |
-| Local GEP publisher | Recognizes supported dynamic local-array pointer/aggregate paths and publishes `missing_index_range_proof` records. | Caller does not pass block/instruction coordinate into `publish_local_array_path_record`. | First producer seam for coordinate capture. |
-| BIR lowered instruction stream | Blocks and instructions have labels/positions after lowering. | No back-reference from function-level `local_array_element_paths` to the instruction site. | Possible unique-match exposure only if fail-closed. |
-| Prepared object traversal | `PreparedObjectTraversalEvent` exposes block index, instruction index, prepared block, BIR block, and instruction pointer. | No local-array path classification or lookup attached to traversal events. | Good prepared exposure surface after BIR coordinate exists. |
-| Prepared control-flow lookup | Prepared block/branch facts share function and block identity. | No local-array consumer lookup table keyed to prepared control-flow coordinates. | Later lookup consumer. |
+| Contract field | Step 2 decision |
+| --- | --- |
+| Preferred implementation shape | Producer-site coordinate capture: thread BIR block label and instruction index into local-memory/GEP lowering and publish coordinate-bearing dynamic local-array path records. |
+| Required coordinate fields | Function identity, path result, source object, derivation result, dynamic index value, element type, element size, element count, byte offset, source path status, consumer block label, consumer instruction index, consumer operation role, and stable prepared lookup key. |
+| Supported first operation role | `address_derivation`, meaning the local-array GEP/path-producing instruction itself. |
+| Deferred/rejected roles | Load consumers, store consumers, unknown consumers, and target/final-home-only consumers stay fail-closed until separate use-linking packets exist. |
+| Prepared lookup key | Function + block + instruction + path result + source object + derivation result + dynamic index. |
+| Fallback unique-match policy | A post-lowering collector is allowed only if it proves exactly one matching BIR instruction/result and one path record, with matching function/source/derivation/index where available; otherwise it fails closed. |
+| Fail-closed statuses | Missing block/instruction/key, duplicate coordinate candidates, duplicate path records, mismatched function/block/result/source/derivation/index, unsupported role, protected boundaries, raw-shape-only, and target/final-home-only inference. |
+| Step 3 readiness | A bounded implementation packet exists for metadata/exposure only; no proof-source/path/no-clobber population or downstream consumers. |
 
-Conclusion: a bounded exposure contract exists, but it must begin with durable
-consumer-coordinate capture/exposure. The clean first implementation shape is
-to thread block label and instruction index into local-memory/GEP lowering and
-publish coordinate-bearing local-array path records. A post-lowering prepared
-collector could be acceptable only if it matches path result values to exact BIR
-instruction events uniquely and fails closed for missing, duplicate, or
-mismatched candidates.
+Step 3 should implement the smallest metadata/exposure surface for the
+`address_derivation` role or route the exact API blocker if producer-site
+coordinate threading conflicts with the current lowerer signatures.
 
-Supporting artifact:
+Supporting artifacts:
 
 - `build/agent_state/488_step1_consumer_coordinate_exposure_inputs/audit.md`
+- `build/agent_state/488_step2_consumer_coordinate_exposure_contract/contract.md`
 
 ## Suggested Next
 
-Execute Step 2: define the consumer-coordinate/prepared-exposure contract,
-including required fields, supported operation roles, lookup keys, and
-fail-closed cases for missing/duplicate/mismatched coordinate matches.
+Execute Step 3: implement or route the bounded dynamic local-array
+consumer-coordinate/prepared-exposure metadata packet for the
+`address_derivation` role, with focused positive and fail-closed coverage.
 
 ## Watchouts
 
@@ -54,10 +54,13 @@ fail-closed cases for missing/duplicate/mismatched coordinate matches.
   instruction/result evidence and fail closed otherwise.
 - Do not treat prepared traversal coordinates alone as proof that a traversal
   event is the local-array consumer; the path record must be explicitly linked.
+- Keep load/store use-linking, proof-source/path/no-clobber population, idea
+  484 packaging, scalar local-load consumption, and RV64/MIR lowering out of
+  Step 3.
 
 ## Proof
 
-Step 1 validation:
+Step 2 validation:
 
 ```sh
 git diff --check
