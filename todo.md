@@ -1,72 +1,67 @@
 Status: Active
 Source Idea Path: ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Interval Effect Classifier Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Interval Effect Classifier
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 fail-closed interval effect classifier contract completed in
-`build/agent_state/494_step2_interval_effect_contract/contract.md`.
+Step 3 added a real fail-closed interval effect status surface and focused
+tests without publishing available interval facts.
 
-The contract defines:
+Implemented `LocalArrayIntervalEffectStatus`,
+`LocalArrayIntervalEffectInputs`, `LocalArrayIntervalEffectRecord`, and
+`evaluate_local_array_interval_effect` in `src/backend/bir/bir.hpp`. The
+surface is keyed to an available selected proof-edge path and dynamic
+local-array producer row, checks structured dynamic-index identity, preserves
+the LIR-producer coordinate distinction, and exposes the Step 2 unavailable
+statuses including `missing_prepared_bir_endpoint_bridge`,
+`prepared_bir_coordinate_confusion`, `missing_same_block_ordering`,
+`selected_path_only_inference`, and each effect-family unknown/clobber status.
 
-- interval key fields from populated selected proof-edge path records plus the
-  dynamic local-array `lir_producer_lookup_key`;
-- interval start as the selected proof edge/successor entry and interval end as
-  the address-derivation event for the same producer key;
-- the current endpoint blocker:
-  `lir_producer_instruction_index` is only a LIR producer-site coordinate, not
-  a prepared/BIR ordered endpoint;
-- same-value criteria requiring structured dynamic-index identity, selected
-  path coverage, resolved phi/alias transfers, and a bounded effect scan;
-- effect classes for assignment/redefinition, phi/alias/join transfer,
-  calls/helpers, inline asm, publications, move bundles, parallel copies, and
-  unknown modeled effects;
-- unavailable statuses for missing producer/key/path/index evidence,
-  `missing_prepared_bir_endpoint_bridge`,
-  `prepared_bir_coordinate_confusion`, `missing_same_block_ordering`,
-  `selected_path_only_inference`, and effect-family unknown/clobber cases;
-- same-block fail-closed policy unless a future truthful ordering bridge proves
-  the proof source precedes the address derivation;
-- the explicit availability rule: all otherwise promising rows remain
-  unavailable until a real LIR-producer-to-prepared/BIR endpoint bridge exists,
-  and the classifier must refuse coordinate confusion or selected-path-only
-  inference.
+Added synthetic coverage in
+`tests/backend/bir/backend_lir_to_bir_notes_test.cpp` proving that a complete
+selected proof-edge fixture remains fail-closed with
+`missing_prepared_bir_endpoint_bridge`, same-block rows remain fail-closed
+without truthful ordering, coordinate confusion and selected-path-only
+inference are rejected, and bridged synthetic effect-family flags report their
+precise unavailable status. The evaluator still returns
+`selected_path_only_inference` instead of `available` for a bridged/scanned
+synthetic row with no real lower-owned effect scan.
+
+Recorded the Step 3 summary in
+`build/agent_state/494_step3_interval_effect_status_surface/summary.md`.
 
 ## Suggested Next
 
-Route Step 3 to the lower endpoint bridge owner, or add only fail-closed
-status surface/tests that preserve the contract. Do not implement available
-interval facts until a real prepared/BIR endpoint bridge exists for the
-local-array `lir_producer_lookup_key`.
+Step 4 should perform residual disposition: route the remaining lower blocker
+to the owner of the LIR-producer-to-prepared/BIR endpoint bridge, or decide
+whether idea 494 should stop as blocked until that bridge exists.
 
 ## Watchouts
 
-- Do not infer same-value/no-clobber from selected path records alone.
+- Do not infer same-value/no-clobber from selected path records alone; Step 3
+  still fails closed for selected-path-only inference.
 - Do not populate idea 489 proof facts or idea 486 checker inputs directly.
 - Keep `lir_producer_instruction_index` as a LIR producer-site coordinate.
+- The exact lower blocker is still the missing authoritative bridge from
+  `lir_producer_lookup_key` / `lir_producer_instruction_index` to an ordered
+  prepared/BIR address-derivation endpoint for the same local-array producer.
 - Same-block proof/producer cases remain fail-closed unless a later truthful
-  ordering bridge exists.
-- The missing endpoint bridge also affects cross-block available records when
-  the selected successor block is the producer block: effects before the
-  address derivation cannot be separated from later block effects.
-- `available` is contractually disallowed for this slice; use
-  `missing_prepared_bir_endpoint_bridge`, `prepared_bir_coordinate_confusion`,
-  `missing_same_block_ordering`, `selected_path_only_inference`, or the precise
-  effect-family unavailable status.
+  prepared/BIR ordering bridge proves source-before-address-derivation.
+- `available` remains disallowed by this slice; the new surface intentionally
+  does not make a no-flag synthetic bridged row available.
 - Existing untracked `review/*.md` files are transient and must remain
   untouched.
 
 ## Proof
 
-Step 2 contract proof:
+Step 3 code-changing proof:
 
 ```sh
-git diff --check
+cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' && git diff --check
 ```
 
-Result: passed. This delegated classification-only proof does not write
-`test_after.log`; the packet kept canonical log files out of scope.
+Result: passed. Output captured in `test_after.log`.

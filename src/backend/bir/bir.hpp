@@ -1105,6 +1105,304 @@ struct LocalArraySelectedProofEdgePathRecord {
   bool proof_guards_lir_producer = false;
 };
 
+[[nodiscard]] inline const LocalArrayIndexRecord* single_dynamic_local_array_index(
+    const LocalArrayElementPathRecord& path,
+    bool* saw_multiple);
+
+enum class LocalArrayIntervalEffectStatus : unsigned char {
+  Available,
+  MissingLirProducerLookupKey,
+  MissingLirProducerCoordinate,
+  UnsupportedLirProducerRole,
+  MissingDynamicIndex,
+  DynamicIndexOperandMismatch,
+  MissingSelectedEdgeOrOutcome,
+  MissingPathValidity,
+  PathNotCoveringLirProducer,
+  MissingPreparedBirEndpointBridge,
+  PreparedBirCoordinateConfusion,
+  MissingSameBlockOrdering,
+  SelectedPathOnlyInference,
+  IndexValueRedefined,
+  IndexPhiOrAliasUnresolved,
+  CallOrHelperEffectUnknown,
+  CallOrHelperClobbersIndex,
+  InlineAsmEffectUnknown,
+  InlineAsmClobbersIndex,
+  PublicationEffectUnknown,
+  PublicationClobbersIndex,
+  MoveBundleEffectUnknown,
+  MoveBundleClobbersIndex,
+  ParallelCopyEffectUnknown,
+  ParallelCopyClobbersIndex,
+  UnknownEffect,
+  RawShapeOnly,
+};
+
+[[nodiscard]] constexpr std::string_view local_array_interval_effect_status_name(
+    LocalArrayIntervalEffectStatus status) {
+  switch (status) {
+    case LocalArrayIntervalEffectStatus::Available:
+      return "available";
+    case LocalArrayIntervalEffectStatus::MissingLirProducerLookupKey:
+      return "missing_lir_producer_lookup_key";
+    case LocalArrayIntervalEffectStatus::MissingLirProducerCoordinate:
+      return "missing_lir_producer_coordinate";
+    case LocalArrayIntervalEffectStatus::UnsupportedLirProducerRole:
+      return "unsupported_lir_producer_role";
+    case LocalArrayIntervalEffectStatus::MissingDynamicIndex:
+      return "missing_dynamic_index";
+    case LocalArrayIntervalEffectStatus::DynamicIndexOperandMismatch:
+      return "dynamic_index_operand_mismatch";
+    case LocalArrayIntervalEffectStatus::MissingSelectedEdgeOrOutcome:
+      return "missing_selected_edge_or_outcome";
+    case LocalArrayIntervalEffectStatus::MissingPathValidity:
+      return "missing_path_validity";
+    case LocalArrayIntervalEffectStatus::PathNotCoveringLirProducer:
+      return "path_not_covering_lir_producer";
+    case LocalArrayIntervalEffectStatus::MissingPreparedBirEndpointBridge:
+      return "missing_prepared_bir_endpoint_bridge";
+    case LocalArrayIntervalEffectStatus::PreparedBirCoordinateConfusion:
+      return "prepared_bir_coordinate_confusion";
+    case LocalArrayIntervalEffectStatus::MissingSameBlockOrdering:
+      return "missing_same_block_ordering";
+    case LocalArrayIntervalEffectStatus::SelectedPathOnlyInference:
+      return "selected_path_only_inference";
+    case LocalArrayIntervalEffectStatus::IndexValueRedefined:
+      return "index_value_redefined";
+    case LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved:
+      return "index_phi_or_alias_unresolved";
+    case LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown:
+      return "call_or_helper_effect_unknown";
+    case LocalArrayIntervalEffectStatus::CallOrHelperClobbersIndex:
+      return "call_or_helper_clobbers_index";
+    case LocalArrayIntervalEffectStatus::InlineAsmEffectUnknown:
+      return "inline_asm_effect_unknown";
+    case LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex:
+      return "inline_asm_clobbers_index";
+    case LocalArrayIntervalEffectStatus::PublicationEffectUnknown:
+      return "publication_effect_unknown";
+    case LocalArrayIntervalEffectStatus::PublicationClobbersIndex:
+      return "publication_clobbers_index";
+    case LocalArrayIntervalEffectStatus::MoveBundleEffectUnknown:
+      return "move_bundle_effect_unknown";
+    case LocalArrayIntervalEffectStatus::MoveBundleClobbersIndex:
+      return "move_bundle_clobbers_index";
+    case LocalArrayIntervalEffectStatus::ParallelCopyEffectUnknown:
+      return "parallel_copy_effect_unknown";
+    case LocalArrayIntervalEffectStatus::ParallelCopyClobbersIndex:
+      return "parallel_copy_clobbers_index";
+    case LocalArrayIntervalEffectStatus::UnknownEffect:
+      return "unknown_effect";
+    case LocalArrayIntervalEffectStatus::RawShapeOnly:
+      return "raw_shape_only";
+  }
+  return "unknown";
+}
+
+struct LocalArrayIntervalEffectInputs {
+  const LocalArraySelectedProofEdgePathRecord* selected_path = nullptr;
+  bool endpoint_bridge_available = false;
+  bool same_block_ordering_known = false;
+  bool effect_scan_available = false;
+  bool prepared_bir_coordinate_confusion = false;
+  bool selected_path_only_inference = false;
+  bool index_value_redefined = false;
+  bool index_phi_or_alias_unresolved = false;
+  bool call_or_helper_effect_unknown = false;
+  bool call_or_helper_clobbers_index = false;
+  bool inline_asm_effect_unknown = false;
+  bool inline_asm_clobbers_index = false;
+  bool publication_effect_unknown = false;
+  bool publication_clobbers_index = false;
+  bool move_bundle_effect_unknown = false;
+  bool move_bundle_clobbers_index = false;
+  bool parallel_copy_effect_unknown = false;
+  bool parallel_copy_clobbers_index = false;
+  bool unknown_effect = false;
+  bool raw_shape_only = false;
+};
+
+struct LocalArrayIntervalEffectRecord {
+  LocalArrayIntervalEffectStatus status =
+      LocalArrayIntervalEffectStatus::MissingPathValidity;
+  const LocalArraySelectedProofEdgePathRecord* selected_path = nullptr;
+  std::string lir_producer_lookup_key;
+  std::string lir_producer_function_name;
+  std::string lir_producer_block_label;
+  std::optional<std::size_t> lir_producer_instruction_index;
+  Value dynamic_index;
+  std::string proof_function_name;
+  std::string proof_block_label;
+  std::string selected_successor_label;
+};
+
+[[nodiscard]] inline bool local_array_interval_effect_same_value(
+    const Value& lhs,
+    const Value& rhs) {
+  return !lhs.name.empty() &&
+         lhs.kind == rhs.kind &&
+         lhs.type == rhs.type &&
+         lhs.name == rhs.name;
+}
+
+[[nodiscard]] inline LocalArrayIntervalEffectRecord
+evaluate_local_array_interval_effect(
+    const LocalArrayIntervalEffectInputs& inputs) {
+  LocalArrayIntervalEffectRecord record{
+      .selected_path = inputs.selected_path,
+  };
+
+  if (inputs.raw_shape_only) {
+    record.status = LocalArrayIntervalEffectStatus::RawShapeOnly;
+    return record;
+  }
+  if (inputs.prepared_bir_coordinate_confusion) {
+    record.status =
+        LocalArrayIntervalEffectStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+  if (inputs.selected_path == nullptr ||
+      inputs.selected_path->status != LocalArraySelectedProofEdgePathStatus::Available) {
+    record.status = LocalArrayIntervalEffectStatus::MissingPathValidity;
+    return record;
+  }
+
+  const auto& selected_path = *inputs.selected_path;
+  record.lir_producer_lookup_key = selected_path.lir_producer_lookup_key;
+  record.lir_producer_function_name = selected_path.lir_producer_function_name;
+  record.lir_producer_block_label = selected_path.lir_producer_block_label;
+  record.lir_producer_instruction_index =
+      selected_path.lir_producer_instruction_index;
+  record.proof_function_name = selected_path.proof_function_name;
+  record.proof_block_label = selected_path.proof_block_label;
+  record.selected_successor_label = selected_path.selected_successor_label;
+
+  if (selected_path.lir_producer_lookup_key.empty()) {
+    record.status =
+        LocalArrayIntervalEffectStatus::MissingLirProducerLookupKey;
+    return record;
+  }
+  if (selected_path.lir_producer_coordinate_status !=
+      LocalArrayLirProducerCoordinateStatus::Available) {
+    record.status =
+        LocalArrayIntervalEffectStatus::MissingLirProducerCoordinate;
+    return record;
+  }
+  if (selected_path.lir_producer_operation_role !=
+      LocalArrayLirProducerOperationRole::AddressDerivation) {
+    record.status = LocalArrayIntervalEffectStatus::UnsupportedLirProducerRole;
+    return record;
+  }
+  if (selected_path.selected_outcome == LocalArraySelectedProofEdgeOutcome::None ||
+      selected_path.selected_successor_label.empty()) {
+    record.status =
+        LocalArrayIntervalEffectStatus::MissingSelectedEdgeOrOutcome;
+    return record;
+  }
+  if (!selected_path.path_validity_known) {
+    record.status = LocalArrayIntervalEffectStatus::MissingPathValidity;
+    return record;
+  }
+  if (!selected_path.selected_edge_reaches_lir_producer ||
+      !selected_path.selected_edge_covers_lir_producer) {
+    record.status =
+        LocalArrayIntervalEffectStatus::PathNotCoveringLirProducer;
+    return record;
+  }
+
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      selected_path.element_path == nullptr
+          ? nullptr
+          : single_dynamic_local_array_index(*selected_path.element_path,
+                                             &saw_multiple_dynamic_indices);
+  if (dynamic_index == nullptr || saw_multiple_dynamic_indices) {
+    record.status = LocalArrayIntervalEffectStatus::MissingDynamicIndex;
+    return record;
+  }
+  record.dynamic_index = dynamic_index->value;
+  if (!local_array_interval_effect_same_value(selected_path.proof_lhs,
+                                              record.dynamic_index) &&
+      !local_array_interval_effect_same_value(selected_path.proof_rhs,
+                                              record.dynamic_index)) {
+    record.status =
+        LocalArrayIntervalEffectStatus::DynamicIndexOperandMismatch;
+    return record;
+  }
+
+  if (selected_path.proof_block_label == selected_path.lir_producer_block_label &&
+      !inputs.same_block_ordering_known) {
+    record.status = LocalArrayIntervalEffectStatus::MissingSameBlockOrdering;
+    return record;
+  }
+  if (!inputs.endpoint_bridge_available) {
+    record.status =
+        LocalArrayIntervalEffectStatus::MissingPreparedBirEndpointBridge;
+    return record;
+  }
+  if (inputs.selected_path_only_inference || !inputs.effect_scan_available) {
+    record.status = LocalArrayIntervalEffectStatus::SelectedPathOnlyInference;
+    return record;
+  }
+  if (inputs.index_value_redefined) {
+    record.status = LocalArrayIntervalEffectStatus::IndexValueRedefined;
+    return record;
+  }
+  if (inputs.index_phi_or_alias_unresolved) {
+    record.status =
+        LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved;
+    return record;
+  }
+  if (inputs.call_or_helper_effect_unknown) {
+    record.status = LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown;
+    return record;
+  }
+  if (inputs.call_or_helper_clobbers_index) {
+    record.status = LocalArrayIntervalEffectStatus::CallOrHelperClobbersIndex;
+    return record;
+  }
+  if (inputs.inline_asm_effect_unknown) {
+    record.status = LocalArrayIntervalEffectStatus::InlineAsmEffectUnknown;
+    return record;
+  }
+  if (inputs.inline_asm_clobbers_index) {
+    record.status = LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex;
+    return record;
+  }
+  if (inputs.publication_effect_unknown) {
+    record.status = LocalArrayIntervalEffectStatus::PublicationEffectUnknown;
+    return record;
+  }
+  if (inputs.publication_clobbers_index) {
+    record.status = LocalArrayIntervalEffectStatus::PublicationClobbersIndex;
+    return record;
+  }
+  if (inputs.move_bundle_effect_unknown) {
+    record.status = LocalArrayIntervalEffectStatus::MoveBundleEffectUnknown;
+    return record;
+  }
+  if (inputs.move_bundle_clobbers_index) {
+    record.status = LocalArrayIntervalEffectStatus::MoveBundleClobbersIndex;
+    return record;
+  }
+  if (inputs.parallel_copy_effect_unknown) {
+    record.status = LocalArrayIntervalEffectStatus::ParallelCopyEffectUnknown;
+    return record;
+  }
+  if (inputs.parallel_copy_clobbers_index) {
+    record.status = LocalArrayIntervalEffectStatus::ParallelCopyClobbersIndex;
+    return record;
+  }
+  if (inputs.unknown_effect) {
+    record.status = LocalArrayIntervalEffectStatus::UnknownEffect;
+    return record;
+  }
+
+  record.status = LocalArrayIntervalEffectStatus::SelectedPathOnlyInference;
+  return record;
+}
+
 [[nodiscard]] inline LocalArraySelectedProofEdgePathRecord
 evaluate_local_array_selected_proof_edge_path(
     const LocalArraySelectedProofEdgePathInputs& inputs) {

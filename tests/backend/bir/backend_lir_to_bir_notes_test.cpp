@@ -7246,6 +7246,300 @@ int expect_local_array_selected_proof_edge_api_fails_closed_for_missing_facts() 
   return 0;
 }
 
+int expect_local_array_interval_effect_status_surface_fails_closed() {
+  const auto path = make_dynamic_local_array_selected_edge_path();
+  const auto selected_path = bir::evaluate_local_array_selected_proof_edge_path(
+      complete_selected_proof_edge_inputs(&path));
+  if (selected_path.status != bir::LocalArraySelectedProofEdgePathStatus::Available) {
+    return fail("interval effect fixture should start from an available selected proof-edge path");
+  }
+
+  const auto expect_status =
+      [&](bir::LocalArrayIntervalEffectInputs inputs,
+          bir::LocalArrayIntervalEffectStatus expected_status,
+          const char* failure_message) -> int {
+    const auto record = bir::evaluate_local_array_interval_effect(inputs);
+    if (record.status != expected_status) {
+      return fail(failure_message);
+    }
+    return 0;
+  };
+
+  if (bir::local_array_interval_effect_status_name(
+          bir::LocalArrayIntervalEffectStatus::MissingPreparedBirEndpointBridge) !=
+          "missing_prepared_bir_endpoint_bridge" ||
+      bir::local_array_interval_effect_status_name(
+          bir::LocalArrayIntervalEffectStatus::SelectedPathOnlyInference) !=
+          "selected_path_only_inference" ||
+      bir::local_array_interval_effect_status_name(
+          bir::LocalArrayIntervalEffectStatus::PublicationEffectUnknown) !=
+          "publication_effect_unknown" ||
+      bir::local_array_interval_effect_status_name(
+          bir::LocalArrayIntervalEffectStatus::ParallelCopyClobbersIndex) !=
+          "parallel_copy_clobbers_index") {
+    return fail("interval effect status names should remain stable");
+  }
+
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{.selected_path = &selected_path},
+          bir::LocalArrayIntervalEffectStatus::MissingPreparedBirEndpointBridge,
+          "interval effect classifier should fail closed without endpoint bridge");
+      rc != 0) {
+    return rc;
+  }
+
+  auto missing_key = selected_path;
+  missing_key.lir_producer_lookup_key.clear();
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{.selected_path = &missing_key},
+          bir::LocalArrayIntervalEffectStatus::MissingLirProducerLookupKey,
+          "interval effect classifier should reject missing LIR producer key");
+      rc != 0) {
+    return rc;
+  }
+
+  auto missing_coordinate = selected_path;
+  missing_coordinate.lir_producer_coordinate_status =
+      bir::LocalArrayLirProducerCoordinateStatus::MissingLirProducerCoordinate;
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{.selected_path = &missing_coordinate},
+          bir::LocalArrayIntervalEffectStatus::MissingLirProducerCoordinate,
+          "interval effect classifier should reject missing LIR producer coordinate");
+      rc != 0) {
+    return rc;
+  }
+
+  auto unsupported_role = selected_path;
+  unsupported_role.lir_producer_operation_role =
+      bir::LocalArrayLirProducerOperationRole::LoadConsumer;
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{.selected_path = &unsupported_role},
+          bir::LocalArrayIntervalEffectStatus::UnsupportedLirProducerRole,
+          "interval effect classifier should reject non-address-derivation producer roles");
+      rc != 0) {
+    return rc;
+  }
+
+  auto missing_dynamic_index_path = path;
+  missing_dynamic_index_path.indices.clear();
+  auto missing_dynamic_index = selected_path;
+  missing_dynamic_index.element_path = &missing_dynamic_index_path;
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{.selected_path = &missing_dynamic_index},
+          bir::LocalArrayIntervalEffectStatus::MissingDynamicIndex,
+          "interval effect classifier should reject missing dynamic index identity");
+      rc != 0) {
+    return rc;
+  }
+
+  auto mismatched_operand = selected_path;
+  mismatched_operand.proof_lhs = bir::Value::named(TypeKind::I64, "%other");
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{.selected_path = &mismatched_operand},
+          bir::LocalArrayIntervalEffectStatus::DynamicIndexOperandMismatch,
+          "interval effect classifier should reject proof/index operand mismatch");
+      rc != 0) {
+    return rc;
+  }
+
+  auto missing_edge = selected_path;
+  missing_edge.selected_successor_label.clear();
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{.selected_path = &missing_edge},
+          bir::LocalArrayIntervalEffectStatus::MissingSelectedEdgeOrOutcome,
+          "interval effect classifier should reject missing selected edge");
+      rc != 0) {
+    return rc;
+  }
+
+  auto missing_path_validity = selected_path;
+  missing_path_validity.path_validity_known = false;
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{.selected_path = &missing_path_validity},
+          bir::LocalArrayIntervalEffectStatus::MissingPathValidity,
+          "interval effect classifier should reject missing path validity");
+      rc != 0) {
+    return rc;
+  }
+
+  auto non_covering_path = selected_path;
+  non_covering_path.selected_edge_covers_lir_producer = false;
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{.selected_path = &non_covering_path},
+          bir::LocalArrayIntervalEffectStatus::PathNotCoveringLirProducer,
+          "interval effect classifier should reject a path that does not cover the producer");
+      rc != 0) {
+    return rc;
+  }
+
+  auto same_block = selected_path;
+  same_block.proof_block_label = same_block.lir_producer_block_label;
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{.selected_path = &same_block},
+          bir::LocalArrayIntervalEffectStatus::MissingSameBlockOrdering,
+          "interval effect classifier should reject same-block rows without truthful ordering");
+      rc != 0) {
+    return rc;
+  }
+
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{
+              .selected_path = &selected_path,
+              .endpoint_bridge_available = true,
+              .effect_scan_available = true,
+              .prepared_bir_coordinate_confusion = true,
+          },
+          bir::LocalArrayIntervalEffectStatus::PreparedBirCoordinateConfusion,
+          "interval effect classifier should reject coordinate confusion");
+      rc != 0) {
+    return rc;
+  }
+
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{
+              .selected_path = &selected_path,
+              .endpoint_bridge_available = true,
+          },
+          bir::LocalArrayIntervalEffectStatus::SelectedPathOnlyInference,
+          "interval effect classifier should reject selected-path-only inference");
+      rc != 0) {
+    return rc;
+  }
+
+  const auto make_bridged_scanned = [&]() {
+    return bir::LocalArrayIntervalEffectInputs{
+        .selected_path = &selected_path,
+        .endpoint_bridge_available = true,
+        .effect_scan_available = true,
+    };
+  };
+  auto inputs = make_bridged_scanned();
+  inputs.index_value_redefined = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::IndexValueRedefined,
+          "interval effect classifier should report index redefinition");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.index_phi_or_alias_unresolved = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved,
+          "interval effect classifier should report unresolved phi/alias identity");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.call_or_helper_effect_unknown = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown,
+          "interval effect classifier should report unknown call/helper effects");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.call_or_helper_clobbers_index = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::CallOrHelperClobbersIndex,
+          "interval effect classifier should report call/helper clobbers");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.inline_asm_effect_unknown = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::InlineAsmEffectUnknown,
+          "interval effect classifier should report unknown inline asm effects");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.inline_asm_clobbers_index = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex,
+          "interval effect classifier should report inline asm clobbers");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.publication_effect_unknown = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::PublicationEffectUnknown,
+          "interval effect classifier should report unknown publication effects");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.publication_clobbers_index = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::PublicationClobbersIndex,
+          "interval effect classifier should report publication clobbers");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.move_bundle_effect_unknown = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::MoveBundleEffectUnknown,
+          "interval effect classifier should report unknown move-bundle effects");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.move_bundle_clobbers_index = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::MoveBundleClobbersIndex,
+          "interval effect classifier should report move-bundle clobbers");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.parallel_copy_effect_unknown = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::ParallelCopyEffectUnknown,
+          "interval effect classifier should report unknown parallel-copy effects");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.parallel_copy_clobbers_index = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::ParallelCopyClobbersIndex,
+          "interval effect classifier should report parallel-copy clobbers");
+      rc != 0) {
+    return rc;
+  }
+  inputs = make_bridged_scanned();
+  inputs.unknown_effect = true;
+  if (const int rc = expect_status(
+          inputs,
+          bir::LocalArrayIntervalEffectStatus::UnknownEffect,
+          "interval effect classifier should report unknown modeled effects");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_status(
+          make_bridged_scanned(),
+          bir::LocalArrayIntervalEffectStatus::SelectedPathOnlyInference,
+          "interval effect classifier should not publish available facts in this slice");
+      rc != 0) {
+    return rc;
+  }
+  return 0;
+}
+
 int expect_local_array_range_proof_checker_accepts_complete_synthetic_inputs() {
   const auto path = make_dynamic_local_array_range_proof_path();
   const auto proof = bir::evaluate_local_array_index_range_proof(
@@ -9508,6 +9802,11 @@ int main() {
           expect_local_array_selected_proof_edge_api_fails_closed_for_missing_facts();
       selected_proof_edge_fail_closed_status != 0) {
     return selected_proof_edge_fail_closed_status;
+  }
+  if (const int interval_effect_status =
+          expect_local_array_interval_effect_status_surface_fails_closed();
+      interval_effect_status != 0) {
+    return interval_effect_status;
   }
   if (const int local_array_range_proof_status =
           expect_local_array_range_proof_checker_accepts_complete_synthetic_inputs();
