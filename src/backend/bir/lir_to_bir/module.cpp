@@ -1,6 +1,7 @@
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -79,6 +80,49 @@ bool is_aarch64_fp_abi_lane(const bir::CallArgAbiInfo& abi) {
 void mark_aarch64_stack_arg(bir::CallArgAbiInfo& abi) {
   abi.passed_in_register = false;
   abi.passed_on_stack = true;
+}
+
+void mark_rv64_stack_arg(bir::CallArgAbiInfo& abi) {
+  abi.passed_in_register = false;
+  abi.passed_on_stack = true;
+}
+
+bool rv64_ordinary_c_stack_arg_candidate(const bir::CallArgAbiInfo& abi) {
+  if (abi.byval_copy || abi.sret_pointer || abi.passed_on_stack ||
+      abi.primary_class == bir::AbiValueClass::Memory ||
+      abi.type == bir::TypeKind::Void || abi.type == bir::TypeKind::I128 ||
+      abi.type == bir::TypeKind::F128 || bir::is_vrm_register_type(abi.type) ||
+      abi.size_bytes == 0 || abi.align_bytes == 0) {
+    return false;
+  }
+  return abi.passed_in_register &&
+         (abi.primary_class == bir::AbiValueClass::Integer ||
+          abi.primary_class == bir::AbiValueClass::Sse ||
+          abi.primary_class == bir::AbiValueClass::X87);
+}
+
+void apply_rv64_ordinary_c_stack_pressure_to_abi(
+    std::size_t count,
+    const std::function<bir::CallArgAbiInfo*(std::size_t)>& abi_at) {
+  constexpr std::size_t kRv64OrdinaryCAbiRegisterCount = 8;
+  std::size_t next_register = 0;
+  for (std::size_t index = 0; index < count; ++index) {
+    auto* abi = abi_at(index);
+    if (abi == nullptr) {
+      continue;
+    }
+    if (!rv64_ordinary_c_stack_arg_candidate(*abi)) {
+      if (abi->passed_in_register && !abi->passed_on_stack) {
+        ++next_register;
+      }
+      continue;
+    }
+    if (next_register >= kRv64OrdinaryCAbiRegisterCount) {
+      mark_rv64_stack_arg(*abi);
+      continue;
+    }
+    ++next_register;
+  }
 }
 
 template <typename NameAt, typename AbiAt>
@@ -213,6 +257,54 @@ void apply_aarch64_fixed_hfa_pressure(c4c::TargetArch arch, bir::Module& module)
         if (callee != nullptr) {
           apply_aarch64_fixed_hfa_call_pressure(*callee, *call);
         }
+      }
+    }
+  }
+}
+
+void apply_rv64_ordinary_c_stack_param_pressure(bir::Function& function) {
+  if (function.is_variadic) {
+    return;
+  }
+  apply_rv64_ordinary_c_stack_pressure_to_abi(
+      function.params.size(),
+      [&](std::size_t index) -> bir::CallArgAbiInfo* {
+        auto& param = function.params[index];
+        if (param.is_varargs || param.is_sret || param.is_byval ||
+            !param.abi.has_value()) {
+          return nullptr;
+        }
+        return &*param.abi;
+      });
+}
+
+void apply_rv64_ordinary_c_stack_call_pressure(bir::CallInst& call) {
+  if (call.is_variadic) {
+    return;
+  }
+  apply_rv64_ordinary_c_stack_pressure_to_abi(
+      call.arg_abi.size(),
+      [&](std::size_t index) -> bir::CallArgAbiInfo* {
+        if (index >= call.arg_abi.size()) {
+          return nullptr;
+        }
+        return &call.arg_abi[index];
+      });
+}
+
+void apply_rv64_ordinary_c_stack_pressure(c4c::TargetArch arch, bir::Module& module) {
+  if (arch != c4c::TargetArch::Riscv64) {
+    return;
+  }
+  for (auto& function : module.functions) {
+    apply_rv64_ordinary_c_stack_param_pressure(function);
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        auto* call = std::get_if<bir::CallInst>(&inst);
+        if (call == nullptr) {
+          continue;
+        }
+        apply_rv64_ordinary_c_stack_call_pressure(*call);
       }
     }
   }
@@ -1762,6 +1854,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
   publish_same_module_formal_pointer_provenance(&module, global_types);
   apply_aarch64_fixed_hfa_pressure(context.target_profile.arch, module);
+  apply_rv64_ordinary_c_stack_pressure(context.target_profile.arch, module);
 
   context.note(
       "module",
