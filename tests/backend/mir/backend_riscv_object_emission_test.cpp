@@ -15712,23 +15712,227 @@ int emits_prepared_selected_zero_pointer_global_bss_storage() {
 }
 
 int rejects_unsupported_selected_global_object_data_shapes() {
-  auto prepared = make_prepared_direct_call_module();
-  const auto link_name = prepared.module.names.link_names.intern("rawptr");
-  prepared.module.globals.push_back(bir::Global{
-      .name = "rawptr",
-      .link_name_id = link_name,
-      .type = bir::TypeKind::Ptr,
-      .size_bytes = 8,
-      .align_bytes = 8,
-      .initializer = nonnull_pointer_immediate(4096),
-  });
-  publish_prepared_object_data(prepared);
+  {
+    auto prepared = make_prepared_direct_call_module();
+    const auto link_name = prepared.module.names.link_names.intern("rawptr");
+    prepared.module.globals.push_back(bir::Global{
+        .name = "rawptr",
+        .link_name_id = link_name,
+        .type = bir::TypeKind::Ptr,
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .initializer = nonnull_pointer_immediate(4096),
+    });
+    publish_prepared_object_data(prepared);
 
-  return expect_prepared_rejection_diagnostic(
-      prepared,
-      "unsupported_global_data: prepared selected object-data contract status=unsupported_but_coherent object_label_id=" +
-          std::to_string(link_name) +
-          " object_size_bytes=8 emitted_byte_count=0 zero_fill_byte_count=0");
+    if (expect_prepared_rejection_diagnostic(
+            prepared,
+            "unsupported_global_data: prepared selected object-data contract status=unsupported_but_coherent object_label_id=" +
+                std::to_string(link_name) +
+                " object_size_bytes=8 emitted_byte_count=0 zero_fill_byte_count=0") !=
+        0) {
+      return 1;
+    }
+  }
+
+  {
+    auto prepared = make_prepared_direct_call_module();
+    const auto link_name = prepared.module.names.link_names.intern("tls_cursor");
+    prepared.module.globals.push_back(bir::Global{
+        .name = "tls_cursor",
+        .link_name_id = link_name,
+        .type = bir::TypeKind::Ptr,
+        .is_thread_local = true,
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .initializer = null_pointer_value(),
+    });
+    publish_prepared_object_data(prepared);
+
+    if (expect_prepared_rejection_diagnostic(
+            prepared,
+            "unsupported_global_data: prepared selected object-data contract status=unsupported_but_coherent object_label_id=" +
+                std::to_string(link_name) +
+                " object_size_bytes=8 emitted_byte_count=0 zero_fill_byte_count=0") !=
+        0) {
+      return 1;
+    }
+  }
+
+  {
+    auto prepared = make_prepared_direct_call_module();
+    const auto link_name = prepared.module.names.link_names.intern("got_cursor");
+    prepared.module.globals.push_back(bir::Global{
+        .name = "got_cursor",
+        .link_name_id = link_name,
+        .type = bir::TypeKind::Ptr,
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .initializer = null_pointer_value(),
+        .address_materialization_policy =
+            bir::GlobalAddressMaterializationPolicy::GotRequired,
+    });
+    publish_prepared_object_data(prepared);
+
+    if (expect_prepared_rejection_diagnostic(
+            prepared,
+            "unsupported_global_data: prepared selected object-data contract status=unsupported_but_coherent object_label_id=" +
+                std::to_string(link_name) +
+                " object_size_bytes=8 emitted_byte_count=0 zero_fill_byte_count=0") !=
+        0) {
+      return 1;
+    }
+  }
+
+  {
+    auto prepared = make_prepared_direct_call_module();
+    const auto link_name = prepared.module.names.link_names.intern("no_extent");
+    prepared.module.globals.push_back(bir::Global{
+        .name = "no_extent",
+        .link_name_id = link_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .initializer = bir::Value::immediate_i32(7),
+    });
+    publish_prepared_object_data(prepared);
+    prepared.object_data.globals.front().has_object_byte_range = false;
+
+    if (expect_prepared_rejection_diagnostic_contains(
+            prepared,
+            {"unsupported_global_data:",
+             "status=missing_object_byte_range",
+             "object_label_id=" + std::to_string(link_name)}) != 0) {
+      return 1;
+    }
+  }
+
+  {
+    auto prepared = make_prepared_direct_call_module();
+    prepared.module.globals.push_back(bir::Global{
+        .name = "missing_bytes",
+        .link_name_id = prepared.module.names.link_names.intern("missing_bytes"),
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .initializer = bir::Value::immediate_i32(7),
+    });
+    publish_prepared_object_data(prepared);
+    auto& object_data = prepared.object_data.globals.front();
+    object_data.requires_emitted_bytes = false;
+    object_data.has_emitted_bytes = false;
+    object_data.emitted_bytes.clear();
+
+    if (expect_prepared_rejection_diagnostic_contains(
+            prepared,
+            {"unsupported_global_data:",
+             "missing emitted-byte authority"}) != 0) {
+      return 1;
+    }
+  }
+
+  {
+    auto prepared = make_prepared_direct_call_module();
+    prepared.module.globals.push_back(bir::Global{
+        .name = "missing_zero_fill",
+        .link_name_id = prepared.module.names.link_names.intern("missing_zero_fill"),
+        .type = bir::TypeKind::I32,
+        .size_bytes = 8,
+        .align_bytes = 4,
+        .initializer_elements =
+            {
+                bir::Value::immediate_i32(0),
+                bir::Value::immediate_i32(0),
+            },
+    });
+    publish_prepared_object_data(prepared);
+    auto& object_data = prepared.object_data.globals.front();
+    object_data.requires_zero_fill = false;
+    object_data.has_zero_fill = false;
+    object_data.zero_fill_byte_count = 0;
+
+    if (expect_prepared_rejection_diagnostic_contains(
+            prepared,
+            {"unsupported_global_data:",
+             "missing zero-fill authority"}) != 0) {
+      return 1;
+    }
+  }
+
+  {
+    auto prepared = make_prepared_direct_call_module();
+    const auto link_name = prepared.module.names.link_names.intern("needs_reloc");
+    prepared.module.globals.push_back(bir::Global{
+        .name = "needs_reloc",
+        .link_name_id = link_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .initializer = bir::Value::immediate_i32(7),
+    });
+    publish_prepared_object_data(prepared);
+    auto& object_data = prepared.object_data.globals.front();
+    object_data.requires_relocation = true;
+    object_data.has_relocation = false;
+
+    if (expect_prepared_rejection_diagnostic_contains(
+            prepared,
+            {"unsupported_global_data:",
+             "status=missing_relocation",
+             "object_label_id=" + std::to_string(link_name)}) != 0) {
+      return 1;
+    }
+  }
+
+  {
+    auto prepared = make_prepared_direct_call_module();
+    const auto link_name =
+        prepared.module.names.link_names.intern("ambiguous_reloc");
+    prepared.module.globals.push_back(bir::Global{
+        .name = "ambiguous_reloc",
+        .link_name_id = link_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .initializer = bir::Value::immediate_i32(7),
+    });
+    publish_prepared_object_data(prepared);
+    prepared.object_data.globals.front().conflicting_relocation = true;
+
+    if (expect_prepared_rejection_diagnostic_contains(
+            prepared,
+            {"unsupported_global_data:",
+             "status=conflicting_relocation",
+             "object_label_id=" + std::to_string(link_name)}) != 0) {
+      return 1;
+    }
+  }
+
+  {
+    auto prepared = make_prepared_direct_call_module();
+    const auto link_name = prepared.module.names.link_names.intern("invalid_init");
+    prepared.module.globals.push_back(bir::Global{
+        .name = "invalid_init",
+        .link_name_id = link_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .initializer = bir::Value::immediate_i32(7),
+    });
+    publish_prepared_object_data(prepared);
+    prepared.object_data.globals.front()
+        .invalid_pre_prepared_initializer_semantics = true;
+
+    if (expect_prepared_rejection_diagnostic_contains(
+            prepared,
+            {"unsupported_global_data:",
+             "status=invalid_pre_prepared_initializer_semantics",
+             "object_label_id=" + std::to_string(link_name)}) != 0) {
+      return 1;
+    }
+  }
+
+  return 0;
 }
 
 int emits_prepared_writable_i32_global_object_storage() {

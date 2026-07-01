@@ -11789,6 +11789,35 @@ object::SymbolKind rv64_prepared_link_symbol_kind(
              : object::SymbolKind::Function;
 }
 
+bool rv64_prepared_object_data_has_emission_identity(
+    const prepare::PreparedGlobalObjectData& object_data) {
+  return object_data.has_object_label && object_data.object_label.has_value() &&
+         !object_data.object_label_text.empty() &&
+         object_data.has_publication_identity &&
+         object_data.has_object_byte_range &&
+         object_data.object_byte_offset == 0 &&
+         object_data.object_size_bytes != 0 && object_data.align_bytes != 0;
+}
+
+bool rv64_prepared_object_data_is_selected_fallback_candidate(
+    const c4c::backend::bir::Global& global,
+    const prepare::PreparedGlobalObjectData& object_data,
+    prepare::PreparedSelectedObjectDataContractStatus status) {
+  return status ==
+             prepare::PreparedSelectedObjectDataContractStatus::
+                 UnsupportedButCoherent &&
+         rv64_prepared_object_data_has_emission_identity(object_data) &&
+         !global.is_extern && !global.is_thread_local && !global.is_constant &&
+         global.address_materialization_policy !=
+             c4c::backend::bir::GlobalAddressMaterializationPolicy::GotRequired &&
+         object_data.requires_unsupported_marker &&
+         object_data.has_unsupported_marker &&
+         !object_data.requires_emitted_bytes && !object_data.has_emitted_bytes &&
+         object_data.emitted_bytes.empty() && !object_data.requires_zero_fill &&
+         !object_data.has_zero_fill && object_data.zero_fill_byte_count == 0 &&
+         !object_data.requires_relocation && !object_data.has_relocation;
+}
+
 bool rv64_is_selected_zero_fill_object_data(
     const c4c::backend::bir::Global& global,
     const prepare::PreparedGlobalObjectData& object_data,
@@ -11808,19 +11837,11 @@ bool rv64_is_selected_zero_fill_object_data(
       global.initializer_symbol_name_id == c4c::kInvalidLinkName &&
       !global.initializer_symbol_name.has_value() &&
       global.initializer_elements.empty();
-  return status ==
-             prepare::PreparedSelectedObjectDataContractStatus::
-                 UnsupportedButCoherent &&
-         !global.is_extern &&
-         !global.is_thread_local &&
-         !global.is_constant &&
+  return rv64_prepared_object_data_is_selected_fallback_candidate(
+             global, object_data, status) &&
          (has_no_initializer || has_zero_pointer_initializer) &&
          object_data.object_label == global.link_name_id &&
-         object_data.object_byte_offset == 0 &&
-         object_data.object_size_bytes != 0 &&
-         object_data.align_bytes != 0 &&
-         object_data.emitted_bytes.empty() &&
-         object_data.zero_fill_byte_count == 0;
+         object_data.object_size_bytes == global.size_bytes;
 }
 
 std::optional<std::string> rv64_selected_symbol_pointer_initializer_label(
@@ -11828,12 +11849,8 @@ std::optional<std::string> rv64_selected_symbol_pointer_initializer_label(
     const c4c::backend::bir::Global& global,
     const prepare::PreparedGlobalObjectData& object_data,
     prepare::PreparedSelectedObjectDataContractStatus status) {
-  if (status !=
-          prepare::PreparedSelectedObjectDataContractStatus::
-              UnsupportedButCoherent ||
-      global.is_extern ||
-      global.is_thread_local ||
-      global.is_constant ||
+  if (!rv64_prepared_object_data_is_selected_fallback_candidate(
+          global, object_data, status) ||
       global.type != c4c::backend::bir::TypeKind::Ptr ||
       global.size_bytes != 8 ||
       global.align_bytes < 8 ||
@@ -11845,11 +11862,8 @@ std::optional<std::string> rv64_selected_symbol_pointer_initializer_label(
       global.initializer_symbol_name_id != c4c::kInvalidLinkName ||
       !global.initializer_elements.empty() ||
       object_data.object_label != global.link_name_id ||
-      object_data.object_byte_offset != 0 ||
       object_data.object_size_bytes != 8 ||
-      object_data.align_bytes < 8 ||
-      !object_data.emitted_bytes.empty() ||
-      object_data.zero_fill_byte_count != 0) {
+      object_data.align_bytes < 8) {
     return std::nullopt;
   }
   auto label = rv64_prepared_link_name_label(
@@ -11858,6 +11872,39 @@ std::optional<std::string> rv64_selected_symbol_pointer_initializer_label(
     return std::nullopt;
   }
   return label;
+}
+
+std::optional<std::string> rv64_prepared_object_data_admission_diagnostic(
+    const prepare::PreparedGlobalObjectData& object_data) {
+  if (!rv64_prepared_object_data_has_emission_identity(object_data)) {
+    return "RV64 object route missing selected object-data identity, extent, or alignment authority";
+  }
+  if (object_data.requires_unsupported_marker ||
+      object_data.has_unsupported_marker || object_data.unsupported_but_coherent) {
+    return "RV64 object route cannot emit unsupported-marker selected object-data";
+  }
+  if (object_data.requires_relocation || object_data.has_relocation) {
+    return "RV64 object route cannot emit prepared relocation object data without relocation records";
+  }
+
+  switch (object_data.section_kind) {
+    case prepare::PreparedObjectDataSectionKind::Bss:
+      if (!object_data.requires_zero_fill || !object_data.has_zero_fill ||
+          object_data.zero_fill_byte_count != object_data.object_size_bytes ||
+          object_data.has_emitted_bytes || !object_data.emitted_bytes.empty()) {
+        return "RV64 object route missing zero-fill authority for prepared global";
+      }
+      return std::nullopt;
+    case prepare::PreparedObjectDataSectionKind::ReadOnlyData:
+    case prepare::PreparedObjectDataSectionKind::Data:
+      if (!object_data.requires_emitted_bytes || !object_data.has_emitted_bytes ||
+          object_data.emitted_bytes.size() != object_data.object_size_bytes ||
+          object_data.has_zero_fill || object_data.zero_fill_byte_count != 0) {
+        return "RV64 object route missing emitted-byte authority for prepared global";
+      }
+      return std::nullopt;
+  }
+  return "RV64 object route cannot classify prepared global section authority";
 }
 
 object::SymbolId rv64_find_or_declare_relocation_symbol(
@@ -11936,6 +11983,9 @@ std::optional<std::string> append_rv64_prepared_data_objects(
       if (!supports_zero_fill && !symbol_pointer_label.has_value()) {
         return "unsupported_global_data: " + report.detail;
       }
+    } else if (auto diagnostic =
+                   rv64_prepared_object_data_admission_diagnostic(*object_data)) {
+      return "unsupported_global_data: " + *diagnostic;
     }
 
     const auto label = rv64_prepared_object_data_label(*object_data);

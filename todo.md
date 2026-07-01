@@ -1,76 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/510_rv64_selected_object_data_emission.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Trace RV64 Object-Data Consumption
+Current Step ID: 3
+Current Step Title: Implement Contract Admission And Fail-Closed Guards
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` traced prepared selected object-data publication through
-contract verification into the RV64 object-data consumer, without code or test
-edits.
+Step 3 of `plan.md` implemented RV64 selected object-data contract admission
+and fail-closed guards without changing expectations, scan accounting, or broad
+emission behavior.
 
-- Trace artifacts were recorded under
-  `build/agent_state/510_step2_object_data_trace/`:
-  `trace_summary.md` and `source_locations.txt`.
-- Producer fact path: `src/backend/prealloc/prealloc.cpp` calls
-  `prepare::populate_prepared_object_data_plans`; publication lives in
-  `src/backend/prealloc/object_data.cpp`, which writes
-  `PreparedGlobalObjectData` records into `prepared.object_data.globals`.
-- Supported publication currently requires an explicit global link label,
-  nonzero alignment, nonzero object extent, non-TLS storage, non-GOT-required
-  address materialization, and immediate or immediate-element initializer
-  bytes. It publishes section kind, object offset/size, alignment, emitted
-  bytes or zero-fill count, and the matching contract booleans.
-- Unsupported publication uses `unsupported_global_object_data`: it may carry
-  label, extent, alignment, publication identity, and unsupported-marker facts,
-  but it does not publish consumable emitted bytes, zero-fill payload,
-  relocation payload, or intentional section authority for RV64 emission.
-- Verifier path:
-  `PreparedSelectedObjectDataContractFacts` is classified by
-  `classify_prepared_selected_object_data_contract` and reported by
-  `verify_prepared_selected_object_data_contract`. Missing facts are
-  `ProducerMissing`, conflicting facts are `ProducerIncoherent`,
-  `UnsupportedButCoherent` is `TargetUnsupportedButCoherent`, and invalid
-  pre-prepared initializer semantics are `PrePreparedSemanticFailure`.
-- RV64 consumer entry point:
-  `src/backend/mir/riscv/codegen/object_emission.cpp` function
-  `append_rv64_prepared_data_objects`. It finds the selected record with
-  `prepare::find_prepared_global_object_data`, builds facts with
-  `rv64_selected_object_data_contract_facts`, verifies the contract, and emits
-  only coherent records plus two existing narrow `unsupported_but_coherent`
-  admissions.
-- Existing partial support to preserve: coherent initialized globals,
-  coherent zero-fill globals, coherent constant globals, selected
-  symbol-pointer relocation globals, selected zero-pointer/no-initializer BSS,
-  and the current fail-closed diagnostics for missing or incoherent prepared
-  data facts.
-- Reusable helper boundaries: section selection/creation through
-  `object::get_or_create_section`, alignment through `object::align_section`,
-  initialized bytes through `object::append_section_bytes`, zero-fill
-  reservation through `object::reserve_section_bytes`, symbol definition
-  through `object::define_symbol`, duplicate/undefined checks through
-  `object::find_symbol` and `object::is_undefined_symbol`, relocation target
-  declaration through `rv64_find_or_declare_relocation_symbol`, and relocation
-  attachment through `object::attach_relocation`.
-- Unsupported variants that must continue to fail closed: missing labels,
-  missing publication identity, missing extents/object byte ranges, missing
-  emitted-byte authority, missing zero-fill authority, missing or ambiguous
-  relocation authority, unsupported marker-only records, thread-local storage,
-  GOT-required globals, producer-incoherent records, invalid pre-prepared
-  initializer semantics, and records without explicit section/data authority.
+- Changed files:
+  `src/backend/mir/riscv/codegen/object_emission.cpp`,
+  `tests/backend/mir/backend_riscv_object_emission_test.cpp`, and `todo.md`.
+- Admission boundary: coherent prepared records are admitted only when the
+  selected object-data record has explicit label text, publication identity,
+  zero object offset, nonzero extent, nonzero alignment, and the payload
+  authority required by its prepared section kind. `.data` and `.rodata`
+  require prepared emitted bytes exactly matching object extent; `.bss`
+  requires prepared zero-fill count exactly matching object extent.
+- Existing partial support remains limited to coherent initialized globals,
+  coherent BSS/zero-fill, coherent constants/rodata, selected symbol-pointer
+  relocation globals, and selected zero-pointer/no-initializer BSS.
+- The two existing `unsupported_but_coherent` fallback admissions now require
+  explicit prepared label/extent/alignment/publication identity, unsupported
+  marker authority, no emitted-byte/zero-fill/relocation authority flags, and
+  reject TLS and GOT-required globals.
+- Focused tests cover fail-closed variants for marker-only selected records,
+  TLS, GOT-required globals, missing object byte range, missing emitted bytes,
+  missing zero-fill, missing relocation, conflicting relocation, invalid
+  pre-prepared initializer semantics, and the existing missing-label and
+  producer-incoherent diagnostics.
+- Representative `tests/c/external/gcc_torture/src/20000412-1.c` remains
+  fail-closed with
+  `unsupported_global_data: prepared selected object-data contract status=unsupported_but_coherent object_label_id=2 object_size_bytes=1656 emitted_byte_count=0 zero_fill_byte_count=0`;
+  this is expected for Step 3 because the prepared facts still lack selected
+  byte, zero-fill, or relocation authority.
 
 ## Suggested Next
 
-Execute Step 3: add a small RV64 admission helper for selected object-data
-records that are already prepared-authoritative, and keep every other shape on
-the verifier diagnostic path. The boundary should require explicit prepared
-object label, object extent, alignment, section/data authority, and the exact
-payload authority needed by the chosen emission path: emitted bytes for data or
-rodata, zero-fill count for BSS, and relocation-ready identity before any
-relocation emission.
+Execute Step 4: emit prepared object data only for records admitted by the new
+guard boundary, using prepared object labels, extents, section authority,
+emitted bytes, zero-fill counts, and relocation facts when those facts exist.
 
 ## Watchouts
 
@@ -78,9 +51,9 @@ relocation emission.
   `1656`, raw global spelling, C source shape, or testcase identity.
 - Do not treat `PreparedGlobalObjectData::section_kind`'s default `Data` value
   as section authority for an `unsupported_but_coherent` marker-only record.
-- Current relocation support for selected symbol-pointer globals still reads
-  raw BIR initializer shape; Step 3/4 should not broaden relocation emission
-  until prepared relocation facts exist.
+- Current relocation support for selected symbol-pointer globals remains the
+  pre-existing narrow fallback from raw BIR initializer shape; Step 4 should
+  not broaden relocation emission unless prepared relocation records exist.
 - Thread-local storage, GOT-required globals, missing static-local object
   labels, parameter homes, unrelated global access widths, and F128 stay out
   of this RV64 consumer slice.
@@ -90,16 +63,16 @@ relocation emission.
 
 ## Proof
 
-- `scripts/plan_review_state.py set-step --step-id 2 --step-title 'Trace RV64 Object-Data Consumption'`
+- `scripts/plan_review_state.py set-step --step-id 3 --step-title 'Implement Contract Admission And Fail-Closed Guards'`
   passed.
-- Source trace commands used `rg` and `sed` over
-  `src/backend/prealloc/object_data.*`,
-  `src/backend/prealloc/prepared_contract_verifier.*`,
-  `src/backend/mir/riscv/codegen/object_emission.cpp`,
-  `src/backend/mir/object/model.*`, and
-  `tests/backend/mir/backend_riscv_object_emission_test.cpp`.
-- `git diff --check -- todo.md` is the delegated final proof for this
-  trace-only packet.
-- `test_after.log` was not produced because this packet's delegated proof is
-  the step-state command plus `git diff --check -- todo.md`, not a build/test
-  subset.
+- `cmake --build build --target c4cll` passed.
+- `cmake --build build --target backend_riscv_object_emission_test` passed.
+- `ctest --test-dir build --output-on-failure -R '^backend_riscv_object_emission$'`
+  passed.
+- Focused representative probe:
+  `build/c4cll -I /workspaces/c4c --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000412-1.c -o build/agent_state/510_step3_object_data_admission/20000412-1.o`
+  failed closed with the expected marker-only selected object-data diagnostic.
+- `git diff --check -- src/backend/mir/riscv/codegen/object_emission.cpp tests/backend/mir/backend_riscv_object_emission_test.cpp todo.md`
+  passed.
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed and
+  wrote canonical proof log `test_after.log`.
