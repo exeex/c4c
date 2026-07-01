@@ -2,6 +2,40 @@
 
 Status: Step 3 ranking complete for the regenerated row set.
 
+## 2026-07-01 Fresh Whole-Scan Bucket Summary
+
+A later supervisor scan on `main` produced a complete external RV64
+gcc_torture backend-object result:
+
+- `1467` total
+- `314` pass
+- `1153` fail
+
+Merged evidence:
+
+- `build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv`
+- `build/agent_state/rv64_gcc_c_torture_backend_failed.full.txt`
+
+First-owner bucket summary from that scan:
+
+| Bucket | Count | First routing decision |
+| --- | ---: | --- |
+| `unsupported_move_bundle_target_shape` | 423 | Highest priority; split prepared move-bundle authority gaps from coherent RV64 materialization work. |
+| `semantic lir_to_bir` admission | 373 | BIR semantic producer cleanup before RV64 consumer work. |
+| Other/unclassified compile or run failures | 97 | Re-bucket after the two dominant owners. |
+| `unsupported_stack_frame` | 84 | Prepared/global stack-frame infrastructure review. |
+| `unsupported_instruction_fragment` | 82 | Use the older instruction-fragment classification below as residual sub-plan. |
+| `unsupported_global_data` | 40 | Prepared/global-data infrastructure review. |
+| `unsupported_terminator_fragment` | 23 | RV64 terminator-lowering review after dominant buckets. |
+| `unsupported_local_memory_access` | 23 | Producer/prepared memory authority versus RV64 memory lowering review. |
+| `unsupported_param_home` | 4 | Prepared ABI/frame review. |
+| `unsupported_floating_cast` | 3 | Scalar FP residual; keep separate from F128. |
+| Variadic helper | 1 | Runtime/helper lowering review. |
+
+This fresh whole-scan summary supersedes the old instruction-fragment-only
+priority order for queue selection. The detailed instruction-fragment analysis
+below remains useful once the queue reaches that residual bucket.
+
 ## Evidence Source For `unsupported_instruction_fragment`
 
 Use `docs/rv64_gcc_torture_post_contract/current_scan_summary.md` as the

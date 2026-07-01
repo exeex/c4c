@@ -3,6 +3,39 @@
 Status: Step 4 follow-up ideas created from the regenerated Step 2 bucket
 evidence and Step 3 ranking.
 
+## 2026-07-01 Fresh Scan Priority Override
+
+A later supervisor scan on `main` recorded:
+
+- `1467` total cases
+- `314` pass
+- `1153` fail
+
+The first-owner bucket shape changed the next-idea priority:
+
+| Rank | Fresh owner bucket | Rows | Next action |
+| ---: | --- | ---: | --- |
+| 1 | `unsupported_move_bundle_target_shape` | 423 | Review prepared move-bundle authority/materialization and split producer gaps from coherent RV64 lowering. |
+| 2 | `semantic lir_to_bir` admission | 373 | Route to BIR semantic producer cleanup before any RV64 consumer work. |
+| 3 | `unsupported_stack_frame` | 84 | Keep prepared/global stack-frame infrastructure review queued after the two dominant buckets. |
+| 4 | `unsupported_instruction_fragment` | 82 | Keep the older instruction-fragment ranking as a sub-plan for this smaller residual bucket. |
+| 5 | `unsupported_global_data` | 40 | Keep prepared/global infrastructure review queued. |
+
+This override does not invalidate the older instruction-fragment analysis
+below; it only demotes it behind the two larger fresh buckets. RV64 gcc_torture
+remains external evidence and must not become a default CTest gate. Any
+BIR/prepared producer gap discovered by a MIR/RV64 idea must become a separate
+producer idea and close before returning to MIR/RV64 work.
+
+Created high-priority follow-ups:
+
+- `ideas/open/495_prepared_move_bundle_materialization_bucket_review.md`
+- `ideas/open/496_semantic_lir_to_bir_admission_high_impact_cleanup.md`
+
+Continue `ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md`
+only as a contract/fail-closed route. It should not publish available interval
+facts until a truthful prepared/BIR endpoint bridge exists.
+
 Evidence source:
 
 - `docs/rv64_gcc_torture_post_contract/current_scan_summary.md`

@@ -81,17 +81,21 @@ prepared producer gaps leak into MIR/RV64 fixups.
 Follow-up ideas must be ordered by expected broad RV64 gcc_torture impact and
 semantic importance:
 
-1. Generic RV64 `unsupported_instruction_fragment` bucket classification and
-   high-frequency non-F128 lowering.
+1. Prepared move-bundle materialization and authority gaps when fresh bucket
+   evidence shows `unsupported_move_bundle_target_shape` is the largest
+   ordinary-C failure owner. Split coherent prepared facts that RV64 can
+   lower from producer/authority gaps that require prepared/BIR follow-up.
 2. BIR semantic producer gaps, especially local-memory load/store/GEP,
    call-argument metadata, and memcpy/memset families.
-3. Runtime mismatches where the RV64 object route already emits and links code
+3. Generic RV64 `unsupported_instruction_fragment` bucket classification and
+   high-frequency non-F128 lowering.
+4. Runtime mismatches where the RV64 object route already emits and links code
    but produces aborts, segfaults, or wrong output.
-4. Prepared/global-data and stack-frame infrastructure.
-5. Selectively redo useful scalar/FPR work from `try_gcc_torture`, such as
+5. Prepared/global-data and stack-frame infrastructure.
+6. Selectively redo useful scalar/FPR work from `try_gcc_torture`, such as
    F32/F64 casts, scalar FPR binary ops, scalar floating select, and FPR
    local-store/reload, only after bucket evidence shows broad value.
-6. F128 quarantine or external soft-float ABI glue. F128 is lowest priority and
+7. F128 quarantine or external soft-float ABI glue. F128 is lowest priority and
    must not drive the umbrella.
 
 ## Required Follow-Up Ideas
@@ -99,6 +103,10 @@ semantic importance:
 This umbrella should produce, at minimum, these follow-up ideas unless fresh
 evidence proves a better split:
 
+- Prepared/RV64 move-bundle materialization bucket review when the fresh scan
+  shows it dominates ordinary-C failures.
+- BIR semantic producer admission cleanup for high-frequency `semantic
+  lir_to_bir` failures.
 - RV64 instruction-fragment bucket classification, excluding F128 as a primary
   route.
 - BIR semantic producer local-memory and call metadata cleanup.
