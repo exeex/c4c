@@ -1,0 +1,7 @@
+classification	count	disposition	representatives
+direct_local_object_gep_candidate	3	available candidate shape for the next producer contract; requires explicit local source object, derivation, element path, layout/range, and coordinate checks	src/pr80421.c, src/930614-2.c, src/pr24851.c
+global_or_static_object_gep_boundary	6	fail closed or route to a later global/static object GEP owner; not part of the local-memory contract	src/20000717-4.c, src/20031214-1.c, src/20051104-1.c, src/20080424-1.c, src/20120808-1.c, src/ieee/copysign2.c
+pointer_or_formal_provenance_boundary	24	fail closed until producer authority ties the GEP base back to a concrete source object and range	src/pr44468.c, src/pr65956.c, src/20010116-1.c, src/pr38048-2.c, src/pr58209.c
+runtime_or_string_intrinsic_boundary	17	fail closed or route to runtime/string intrinsic producer before semantic GEP admission	src/memcpy-2.c, src/memset-1.c, src/strcpy-1.c, src/strlen-1.c, src/builtin-prefetch-4.c
+aggregate_member_flexible_or_alias_boundary	11	fail closed until aggregate/member/flexible-layout or alias provenance is explicit	src/20001203-2.c, src/20051113-1.c, src/20100430-1.c, src/pr41395-1.c, src/pta-field-1.c
+variadic_boundary	1	fail closed; variadic/byval routing is first owner	src/va-arg-22.c

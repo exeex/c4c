@@ -1,0 +1,16 @@
+case	latest_function	classification	shape	first_owner
+src/pr80421.c	bar	direct_local_object_gep_candidate	local stack array `char c[]`, pointer `f = c + 390`, dynamic indexed loads through `f[g]`	BIR semantic GEP local-memory contract
+src/930614-2.c	main	direct_local_object_gep_candidate	local multidimensional array `x[i][k][j][l]` with loop-carried indices	BIR semantic GEP local-memory contract
+src/pr24851.c	main	direct_local_object_gep_candidate	local array negative subscript through `q = &a[1]` and `p = &q[-1]`	BIR semantic GEP local-memory contract with explicit in-object negative-offset proof
+src/20000717-4.c	x	global_or_static_object_gep_boundary	global aggregate `s.slot[0].field[!toggle]` with explicit nested field/index path	global/static object GEP owner
+src/20031214-1.c	main	global_or_static_object_gep_boundary	global struct array field `g.n[j]` with bounded loop index	global/static object GEP owner
+src/20080424-1.c	main	global_or_static_object_gep_boundary	global multidimensional array `g` passed into inline helper and indexed as `x[k]`	global/static object GEP owner
+src/pr44468.c	test1	pointer_or_formal_provenance_boundary	`void *q` cast through `char *` plus byte offset into struct member	formal/pointer provenance producer
+src/pr65956.c	bar	pointer_or_formal_provenance_boundary	parameter `struct A *y` consumed as `y[-2]` and `y[0]`	formal pointer provenance and range producer
+src/pr58209.c	main	pointer_or_formal_provenance_boundary	pointer/integer round trip through typedef cast and arithmetic	pointer-integer provenance producer
+src/memcpy-2.c	main	runtime_or_string_intrinsic_boundary	`memcpy (u1.buf + off1, u2.buf + off2, len)` over offset test harness	runtime/intrinsic producer
+src/strlen-1.c	main	runtime_or_string_intrinsic_boundary	`strlen` harness over dynamically offset static union buffer	runtime/string intrinsic producer
+src/20051113-1.c	Sum	aggregate_member_flexible_or_alias_boundary	malloc-sized struct plus trailing union list access	aggregate/flexible layout producer
+src/20100430-1.c	foo	aggregate_member_flexible_or_alias_boundary	packed nested struct and dynamic member array traversal	aggregate/member layout producer
+src/pta-field-1.c	bar	aggregate_member_flexible_or_alias_boundary	cast from field address back to containing struct	aggregate/member provenance producer
+src/va-arg-22.c	foo	variadic_boundary	variadic aggregate argument test	variadic producer
