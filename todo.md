@@ -1,44 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/511_static_local_object_data_contract_publication.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Publish Static-Local Data And Zero-Fill Ranges
+Current Step ID: 5
+Current Step Title: Add Ordinary-C Static-Local Backend Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 of `plan.md` made static-local data and zero-fill publication explicit
-through focused ordinary-C backend coverage.
+Step 5 of `plan.md` audited the ordinary-C static-local backend coverage
+matrix. No new tests were needed.
 
-No additional implementation change was needed beyond the existing Step 3
-producer identity fix. Once `Lowerer::lower_static_local_global` publishes a
-valid static-local `link_name_id`, the existing
-`populate_prepared_object_data_plans` path publishes coherent selected
-object-data records for supported function-scope static storage:
+Existing Step 3 and Step 4 coverage already satisfies the Step 5 intent:
 
-- zero/default-initialized mutable static locals flow to BSS with
-  `zero_fill_byte_count == object_size_bytes` and no emitted data
-- nonzero scalar static locals flow to `.data` with initialized bytes and no
-  zero-fill
-
-Added `riscv64_prepared_object_data_static_local_initialized_storage.c` and
-registered object, assembly-route, and object-runtime tests for it. The
-assembly route proves `.data`, `.balign 4`,
-`__static_local_rv64_step4_static_initialized_counter_0:`, and `.word 13`.
-The object test checks the initialized payload bytes in the ELF image, and the
-runtime test returns 24 to prove static retention across calls. The existing
-static-local zero-fill fixture is now also covered by an object-runtime test,
-returning 11, in addition to its object and `.bss`/`.zero 4` route coverage.
-
-The representative `tests/c/external/gcc_torture/src/930513-2.c` still passes
-`--codegen obj` after this packet.
+- initialized function-scope static object:
+  `riscv64_prepared_object_data_static_local_initialized_storage.c` has object,
+  assembly-route, and object-runtime coverage; the route proves `.data`,
+  `.balign 4`, the generated static-local label, and `.word 13`, while runtime
+  returns 24 to prove static retention across calls
+- zero/default-initialized function-scope static object:
+  `riscv64_prepared_object_data_static_local_storage.c` has object,
+  assembly-route, and object-runtime coverage; the route proves `.bss`,
+  `.balign 4`, the generated static-local label, and `.zero 4`, while runtime
+  returns 11
+- representative route:
+  `tests/c/external/gcc_torture/src/930513-2.c` now passes `--codegen obj`,
+  advancing past the old `missing_object_label` selected object-data rejection
+- missing-authority guard:
+  `backend_riscv_object_emission` still covers synthetic prepared object-data
+  missing-authority and fail-closed variants; no expected-failure contract was
+  weakened or moved
 
 ## Suggested Next
 
-Execute Step 5: add or consolidate ordinary-C static-local backend coverage for
-the repaired producer contract, or confirm that the Step 3 and Step 4 backend
-tests already satisfy the Step 5 coverage intent.
+Execute Step 6: validate the full idea 511 slice and prepare closure or a
+narrowed follow-up recommendation.
 
 ## Watchouts
 
@@ -47,7 +43,7 @@ tests already satisfy the Step 5 coverage intent.
   does not infer labels, extents, bytes, zero-fill, or relocations from direct
   global access facts.
 - Prepared object-data records are not currently printed in
-  `--dump-prepared-bir`; Step 4 therefore proves static-local data and
+  `--dump-prepared-bir`; Step 5 therefore proves static-local data and
   zero-fill through object bytes, assembly storage directives, runtime behavior,
   and the existing `backend_riscv_object_emission` contract checks.
 - BIR still does not carry internal/global binding for object-data publication,
@@ -64,12 +60,10 @@ tests already satisfy the Step 5 coverage intent.
 
 - `cmake --build build --target c4cll` passed.
 - `ctest --test-dir build -j --output-on-failure -R
-  'prepared_object_data|backend_riscv_object_emission' | tee test_after.log`
-  passed: 12/12 tests.
+  'prepared_object_data_static_local|backend_riscv_object_emission' | tee
+  test_after.log` passed: 7/7 tests.
 - `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu
   tests/c/external/gcc_torture/src/930513-2.c -o
-  build/agent_state/511_step4_static_local_object_data/930513-2/930513-2.o`
+  build/agent_state/511_step5_ordinary_c_static_local_backend_coverage/930513-2/930513-2.o`
   passed with `rc=0`.
-- `git diff --check -- tests/backend/CMakeLists.txt
-  tests/backend/case/riscv64_prepared_object_data_static_local_initialized_storage.c
-  todo.md` passed.
+- `git diff --check -- todo.md` passed.
