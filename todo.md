@@ -1,32 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Record/Status API Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Record/Status API
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 defined the selected proof-edge path record/status API contract for
-dynamic local-array `lir_producer_lookup_key` records.
+Step 3 implemented the bounded BIR local-array selected proof-edge path
+record/status API and repaired its acceptance checks before supervisor
+acceptance.
 
-| Area | Step 2 contract |
+| Area | Step 3 outcome |
 | --- | --- |
-| Preferred home | Add a sibling record family under `bir::Function` local-array metadata, keyed to `LocalArrayElementPathRecord` and exact `lir_producer_lookup_key`. |
-| Ownership boundary | Prealloc/control-flow helpers may compute selected-edge/path facts, but downstream authority begins only after explicit records/statuses are stored. |
-| Record fields | Include stable path/key fields, all `lir_producer_*`, proof branch/compare identity, selected outcome, edge tuple, path coverage, dominance/guard validity, same-block unavailable status, and optional bound contribution fields. |
-| Status vocabulary | Require visible statuses for available, missing key/path/proof source/edge/outcome, non-covering path, non-dominating proof, unsupported boundary, same-block ordering, coordinate confusion, raw-shape-only, and target/final-home-only. |
-| Visibility | Direct backend/BIR tests are sufficient for the first packet; printer exposure is optional display work. |
-| Step 3 rule | Implement unless targeted inspection finds a concrete BIR/prealloc ownership or API blocker. |
+| Record home | Added `Function::local_array_selected_proof_edge_paths` beside existing local-array metadata. |
+| API surface | Added selected proof-edge status/outcome/bound/predicate enums, inputs, record, stringifiers, and evaluator. |
+| Available case | Synthetic cross-block record requires exact path/key, proof source, selected outcome/edge tuple, path coverage, and dominance/guard validity. |
+| Acceptance repair | The evaluator now rejects proof function mismatch, non-available LIR producer coordinate status, and non-`address_derivation` LIR producer role before a record can become `available`. |
+| Fail-closed coverage | Tests cover missing path/key/coordinate, unsupported LIR producer role, proof function mismatch, missing proof source/outcome/edge, same-block ordering, non-covering path, non-guarding proof, coordinate confusion, and raw-shape-only evidence. |
+| Boundaries | No interval/no-clobber classification, downstream proof/checker population, packaging, scalar-load, or RV64/MIR behavior changed. |
 
-Artifact: `build/agent_state/492_step2_selected_proof_edge_record_status_contract/contract.md`.
+Artifact: `build/agent_state/492_step3_selected_proof_edge_record_api/summary.md`.
 
 ## Suggested Next
 
-Execute Step 3: implement the BIR local-array selected proof-edge path
-record/status API with focused backend/BIR tests, or route only if a concrete
-ownership/API blocker prevents adding the record home.
+Execute Step 4: record residual disposition for idea 492, including whether the
+selected proof-edge path certificate work can resume or whether a collector
+population/printer packet remains first.
 
 ## Watchouts
 
@@ -45,10 +46,10 @@ ownership/API blocker prevents adding the record home.
 
 ## Proof
 
-Step 2 validation:
+Step 3 validation:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
-Result: passed.
+Result: passed. Proof log: `test_after.log`.

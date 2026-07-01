@@ -889,6 +889,345 @@ struct LocalArrayElementPathRecord {
       LocalArrayLirProducerCoordinateStatus::MissingLirProducerCoordinate;
 };
 
+enum class LocalArraySelectedProofEdgeOutcome : unsigned char {
+  None,
+  True,
+  False,
+};
+
+[[nodiscard]] constexpr std::string_view local_array_selected_proof_edge_outcome_name(
+    LocalArraySelectedProofEdgeOutcome outcome) {
+  switch (outcome) {
+    case LocalArraySelectedProofEdgeOutcome::None:
+      return "none";
+    case LocalArraySelectedProofEdgeOutcome::True:
+      return "true";
+    case LocalArraySelectedProofEdgeOutcome::False:
+      return "false";
+  }
+  return "unknown";
+}
+
+enum class LocalArraySelectedProofEdgeBoundContribution : unsigned char {
+  None,
+  Lower,
+  Upper,
+  Unknown,
+};
+
+[[nodiscard]] constexpr std::string_view
+local_array_selected_proof_edge_bound_contribution_name(
+    LocalArraySelectedProofEdgeBoundContribution contribution) {
+  switch (contribution) {
+    case LocalArraySelectedProofEdgeBoundContribution::None:
+      return "none";
+    case LocalArraySelectedProofEdgeBoundContribution::Lower:
+      return "lower";
+    case LocalArraySelectedProofEdgeBoundContribution::Upper:
+      return "upper";
+    case LocalArraySelectedProofEdgeBoundContribution::Unknown:
+      return "unknown";
+  }
+  return "unknown";
+}
+
+enum class LocalArraySelectedProofEdgePredicate : unsigned char {
+  Unknown,
+  Slt,
+  Sle,
+  Sgt,
+  Sge,
+  Ult,
+  Ule,
+  Ugt,
+  Uge,
+  Eq,
+  Ne,
+};
+
+[[nodiscard]] constexpr std::string_view
+local_array_selected_proof_edge_predicate_name(
+    LocalArraySelectedProofEdgePredicate predicate) {
+  switch (predicate) {
+    case LocalArraySelectedProofEdgePredicate::Unknown:
+      return "unknown";
+    case LocalArraySelectedProofEdgePredicate::Slt:
+      return "slt";
+    case LocalArraySelectedProofEdgePredicate::Sle:
+      return "sle";
+    case LocalArraySelectedProofEdgePredicate::Sgt:
+      return "sgt";
+    case LocalArraySelectedProofEdgePredicate::Sge:
+      return "sge";
+    case LocalArraySelectedProofEdgePredicate::Ult:
+      return "ult";
+    case LocalArraySelectedProofEdgePredicate::Ule:
+      return "ule";
+    case LocalArraySelectedProofEdgePredicate::Ugt:
+      return "ugt";
+    case LocalArraySelectedProofEdgePredicate::Uge:
+      return "uge";
+    case LocalArraySelectedProofEdgePredicate::Eq:
+      return "eq";
+    case LocalArraySelectedProofEdgePredicate::Ne:
+      return "ne";
+  }
+  return "unknown";
+}
+
+enum class LocalArraySelectedProofEdgePathStatus : unsigned char {
+  Available,
+  MissingLocalArrayPath,
+  MissingLirProducerLookupKey,
+  MissingLirProducerCoordinate,
+  UnsupportedLirProducerRole,
+  MissingProofSource,
+  ProofFunctionMismatch,
+  MissingSelectedEdge,
+  MissingSelectedOutcome,
+  NonCoveringPath,
+  NonDominatingOrGuardingProof,
+  UnsupportedBoundary,
+  MissingSameBlockOrdering,
+  PreparedBirCoordinateConfusion,
+  RawShapeOnly,
+  TargetOrFinalHomeOnly,
+};
+
+[[nodiscard]] constexpr std::string_view local_array_selected_proof_edge_path_status_name(
+    LocalArraySelectedProofEdgePathStatus status) {
+  switch (status) {
+    case LocalArraySelectedProofEdgePathStatus::Available:
+      return "available";
+    case LocalArraySelectedProofEdgePathStatus::MissingLocalArrayPath:
+      return "missing_local_array_path";
+    case LocalArraySelectedProofEdgePathStatus::MissingLirProducerLookupKey:
+      return "missing_lir_producer_lookup_key";
+    case LocalArraySelectedProofEdgePathStatus::MissingLirProducerCoordinate:
+      return "missing_lir_producer_coordinate";
+    case LocalArraySelectedProofEdgePathStatus::UnsupportedLirProducerRole:
+      return "unsupported_lir_producer_role";
+    case LocalArraySelectedProofEdgePathStatus::MissingProofSource:
+      return "missing_proof_source";
+    case LocalArraySelectedProofEdgePathStatus::ProofFunctionMismatch:
+      return "proof_function_mismatch";
+    case LocalArraySelectedProofEdgePathStatus::MissingSelectedEdge:
+      return "missing_selected_edge";
+    case LocalArraySelectedProofEdgePathStatus::MissingSelectedOutcome:
+      return "missing_selected_outcome";
+    case LocalArraySelectedProofEdgePathStatus::NonCoveringPath:
+      return "non_covering_path";
+    case LocalArraySelectedProofEdgePathStatus::NonDominatingOrGuardingProof:
+      return "non_dominating_or_guarding_proof";
+    case LocalArraySelectedProofEdgePathStatus::UnsupportedBoundary:
+      return "unsupported_boundary";
+    case LocalArraySelectedProofEdgePathStatus::MissingSameBlockOrdering:
+      return "missing_same_block_ordering";
+    case LocalArraySelectedProofEdgePathStatus::PreparedBirCoordinateConfusion:
+      return "prepared_bir_coordinate_confusion";
+    case LocalArraySelectedProofEdgePathStatus::RawShapeOnly:
+      return "raw_shape_only";
+    case LocalArraySelectedProofEdgePathStatus::TargetOrFinalHomeOnly:
+      return "target_or_final_home_only";
+  }
+  return "unknown";
+}
+
+struct LocalArraySelectedProofEdgePathInputs {
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  std::string proof_function_name;
+  std::string proof_block_label;
+  Value proof_condition_value;
+  bool proof_source_available = false;
+  LocalArraySelectedProofEdgePredicate proof_predicate =
+      LocalArraySelectedProofEdgePredicate::Unknown;
+  TypeKind proof_compare_type = TypeKind::Void;
+  Value proof_lhs;
+  Value proof_rhs;
+  std::optional<std::size_t> proof_instruction_index;
+  LocalArraySelectedProofEdgeBoundContribution bound_contribution =
+      LocalArraySelectedProofEdgeBoundContribution::None;
+  std::optional<std::int64_t> normalized_bound;
+  bool bound_inclusive = true;
+  LocalArraySelectedProofEdgeOutcome selected_outcome =
+      LocalArraySelectedProofEdgeOutcome::None;
+  std::string selected_successor_label;
+  std::string non_selected_successor_label;
+  bool path_validity_known = false;
+  bool selected_edge_reaches_lir_producer = false;
+  bool selected_edge_covers_lir_producer = false;
+  bool proof_dominates_lir_producer = false;
+  bool proof_guards_lir_producer = false;
+  bool same_block_candidate = false;
+  bool same_block_ordering_known = false;
+  bool prepared_bir_coordinate_confusion = false;
+  bool raw_shape_only = false;
+  bool target_or_final_home_only = false;
+  bool unsupported_boundary = false;
+};
+
+struct LocalArraySelectedProofEdgePathRecord {
+  LocalArraySelectedProofEdgePathStatus status =
+      LocalArraySelectedProofEdgePathStatus::MissingLocalArrayPath;
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  std::string path_result_name;
+  std::string source_object_name;
+  std::string derivation_result_name;
+  std::string lir_producer_function_name;
+  std::string lir_producer_block_label;
+  std::optional<std::size_t> lir_producer_instruction_index;
+  LocalArrayLirProducerOperationRole lir_producer_operation_role =
+      LocalArrayLirProducerOperationRole::None;
+  std::string lir_producer_lookup_key;
+  LocalArrayLirProducerCoordinateStatus lir_producer_coordinate_status =
+      LocalArrayLirProducerCoordinateStatus::MissingLirProducerCoordinate;
+  std::string proof_function_name;
+  std::string proof_block_label;
+  Value proof_condition_value;
+  LocalArraySelectedProofEdgePredicate proof_predicate =
+      LocalArraySelectedProofEdgePredicate::Unknown;
+  TypeKind proof_compare_type = TypeKind::Void;
+  Value proof_lhs;
+  Value proof_rhs;
+  std::optional<std::size_t> proof_instruction_index;
+  LocalArraySelectedProofEdgeBoundContribution bound_contribution =
+      LocalArraySelectedProofEdgeBoundContribution::None;
+  std::optional<std::int64_t> normalized_bound;
+  bool bound_inclusive = true;
+  LocalArraySelectedProofEdgeOutcome selected_outcome =
+      LocalArraySelectedProofEdgeOutcome::None;
+  std::string selected_successor_label;
+  std::string non_selected_successor_label;
+  bool path_validity_known = false;
+  bool selected_edge_reaches_lir_producer = false;
+  bool selected_edge_covers_lir_producer = false;
+  bool proof_dominates_lir_producer = false;
+  bool proof_guards_lir_producer = false;
+};
+
+[[nodiscard]] inline LocalArraySelectedProofEdgePathRecord
+evaluate_local_array_selected_proof_edge_path(
+    const LocalArraySelectedProofEdgePathInputs& inputs) {
+  LocalArraySelectedProofEdgePathRecord record{
+      .element_path = inputs.element_path,
+      .proof_function_name = inputs.proof_function_name,
+      .proof_block_label = inputs.proof_block_label,
+      .proof_condition_value = inputs.proof_condition_value,
+      .proof_predicate = inputs.proof_predicate,
+      .proof_compare_type = inputs.proof_compare_type,
+      .proof_lhs = inputs.proof_lhs,
+      .proof_rhs = inputs.proof_rhs,
+      .proof_instruction_index = inputs.proof_instruction_index,
+      .bound_contribution = inputs.bound_contribution,
+      .normalized_bound = inputs.normalized_bound,
+      .bound_inclusive = inputs.bound_inclusive,
+      .selected_outcome = inputs.selected_outcome,
+      .selected_successor_label = inputs.selected_successor_label,
+      .non_selected_successor_label = inputs.non_selected_successor_label,
+      .path_validity_known = inputs.path_validity_known,
+      .selected_edge_reaches_lir_producer =
+          inputs.selected_edge_reaches_lir_producer,
+      .selected_edge_covers_lir_producer =
+          inputs.selected_edge_covers_lir_producer,
+      .proof_dominates_lir_producer = inputs.proof_dominates_lir_producer,
+      .proof_guards_lir_producer = inputs.proof_guards_lir_producer,
+  };
+
+  if (inputs.raw_shape_only) {
+    record.status = LocalArraySelectedProofEdgePathStatus::RawShapeOnly;
+    return record;
+  }
+  if (inputs.target_or_final_home_only) {
+    record.status =
+        LocalArraySelectedProofEdgePathStatus::TargetOrFinalHomeOnly;
+    return record;
+  }
+  if (inputs.unsupported_boundary) {
+    record.status = LocalArraySelectedProofEdgePathStatus::UnsupportedBoundary;
+    return record;
+  }
+  if (inputs.prepared_bir_coordinate_confusion) {
+    record.status =
+        LocalArraySelectedProofEdgePathStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+  if (inputs.element_path == nullptr) {
+    record.status = LocalArraySelectedProofEdgePathStatus::MissingLocalArrayPath;
+    return record;
+  }
+
+  record.path_result_name = inputs.element_path->result_name;
+  record.source_object_name = inputs.element_path->source_object_name;
+  record.derivation_result_name = inputs.element_path->derivation_result_name;
+  record.lir_producer_function_name =
+      inputs.element_path->lir_producer_function_name;
+  record.lir_producer_block_label =
+      inputs.element_path->lir_producer_block_label;
+  record.lir_producer_instruction_index =
+      inputs.element_path->lir_producer_instruction_index;
+  record.lir_producer_operation_role =
+      inputs.element_path->lir_producer_operation_role;
+  record.lir_producer_lookup_key = inputs.element_path->lir_producer_lookup_key;
+  record.lir_producer_coordinate_status =
+      inputs.element_path->lir_producer_coordinate_status;
+
+  if (record.lir_producer_lookup_key.empty()) {
+    record.status =
+        LocalArraySelectedProofEdgePathStatus::MissingLirProducerLookupKey;
+    return record;
+  }
+  if (record.lir_producer_coordinate_status !=
+      LocalArrayLirProducerCoordinateStatus::Available) {
+    record.status =
+        LocalArraySelectedProofEdgePathStatus::MissingLirProducerCoordinate;
+    return record;
+  }
+  if (record.lir_producer_operation_role !=
+      LocalArrayLirProducerOperationRole::AddressDerivation) {
+    record.status =
+        LocalArraySelectedProofEdgePathStatus::UnsupportedLirProducerRole;
+    return record;
+  }
+  if (!inputs.proof_source_available) {
+    record.status = LocalArraySelectedProofEdgePathStatus::MissingProofSource;
+    return record;
+  }
+  if (record.proof_function_name != record.lir_producer_function_name) {
+    record.status =
+        LocalArraySelectedProofEdgePathStatus::ProofFunctionMismatch;
+    return record;
+  }
+  if (inputs.selected_outcome == LocalArraySelectedProofEdgeOutcome::None) {
+    record.status = LocalArraySelectedProofEdgePathStatus::MissingSelectedOutcome;
+    return record;
+  }
+  if (inputs.selected_successor_label.empty() ||
+      inputs.non_selected_successor_label.empty()) {
+    record.status = LocalArraySelectedProofEdgePathStatus::MissingSelectedEdge;
+    return record;
+  }
+  if (inputs.same_block_candidate && !inputs.same_block_ordering_known) {
+    record.status =
+        LocalArraySelectedProofEdgePathStatus::MissingSameBlockOrdering;
+    return record;
+  }
+  if (!inputs.path_validity_known ||
+      !inputs.selected_edge_reaches_lir_producer ||
+      !inputs.selected_edge_covers_lir_producer) {
+    record.status = LocalArraySelectedProofEdgePathStatus::NonCoveringPath;
+    return record;
+  }
+  if (!inputs.proof_dominates_lir_producer &&
+      !inputs.proof_guards_lir_producer) {
+    record.status =
+        LocalArraySelectedProofEdgePathStatus::NonDominatingOrGuardingProof;
+    return record;
+  }
+
+  record.status = LocalArraySelectedProofEdgePathStatus::Available;
+  return record;
+}
+
 enum class LocalArrayRangeProofStatus : unsigned char {
   Available,
   MissingLocalArrayPath,
@@ -3383,6 +3722,8 @@ struct Function {
   std::vector<LocalArraySourceObjectRecord> local_array_source_objects;
   std::vector<LocalArrayAddressDerivationRecord> local_array_derivations;
   std::vector<LocalArrayElementPathRecord> local_array_element_paths;
+  std::vector<LocalArraySelectedProofEdgePathRecord>
+      local_array_selected_proof_edge_paths;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;

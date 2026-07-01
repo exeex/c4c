@@ -7052,6 +7052,200 @@ bir::LocalArrayIndexRangeProofInputs complete_local_array_range_proof_inputs(
   };
 }
 
+bir::LocalArrayElementPathRecord make_dynamic_local_array_selected_edge_path() {
+  auto path = make_dynamic_local_array_range_proof_path();
+  path.lir_producer_function_name = "selected_edge_fixture";
+  path.lir_producer_block_label = "body";
+  path.lir_producer_instruction_index = std::size_t{4};
+  path.lir_producer_operation_role =
+      bir::LocalArrayLirProducerOperationRole::AddressDerivation;
+  path.lir_producer_lookup_key =
+      "lir-producer:selected_edge_fixture:body:4:%elt.ptr:%lv.arr:%elt.ptr:%idx";
+  path.lir_producer_coordinate_status =
+      bir::LocalArrayLirProducerCoordinateStatus::Available;
+  return path;
+}
+
+bir::LocalArraySelectedProofEdgePathInputs complete_selected_proof_edge_inputs(
+    const bir::LocalArrayElementPathRecord* path) {
+  return bir::LocalArraySelectedProofEdgePathInputs{
+      .element_path = path,
+      .proof_function_name = "selected_edge_fixture",
+      .proof_block_label = "guard",
+      .proof_condition_value = bir::Value::named(TypeKind::I1, "%cmp"),
+      .proof_source_available = true,
+      .proof_predicate = bir::LocalArraySelectedProofEdgePredicate::Ult,
+      .proof_compare_type = TypeKind::I64,
+      .proof_lhs = bir::Value::named(TypeKind::I64, "%idx"),
+      .proof_rhs = bir::Value::immediate_i64(4),
+      .proof_instruction_index = std::size_t{0},
+      .bound_contribution =
+          bir::LocalArraySelectedProofEdgeBoundContribution::Upper,
+      .normalized_bound = std::int64_t{4},
+      .bound_inclusive = false,
+      .selected_outcome = bir::LocalArraySelectedProofEdgeOutcome::True,
+      .selected_successor_label = "body",
+      .non_selected_successor_label = "exit",
+      .path_validity_known = true,
+      .selected_edge_reaches_lir_producer = true,
+      .selected_edge_covers_lir_producer = true,
+      .proof_dominates_lir_producer = true,
+  };
+}
+
+int expect_local_array_selected_proof_edge_api_accepts_complete_synthetic_record() {
+  const auto path = make_dynamic_local_array_selected_edge_path();
+  const auto record = bir::evaluate_local_array_selected_proof_edge_path(
+      complete_selected_proof_edge_inputs(&path));
+  if (record.status != bir::LocalArraySelectedProofEdgePathStatus::Available ||
+      record.element_path != &path ||
+      record.path_result_name != "%elt.ptr" ||
+      record.source_object_name != "%lv.arr" ||
+      record.derivation_result_name != "%elt.ptr" ||
+      record.lir_producer_function_name != "selected_edge_fixture" ||
+      record.lir_producer_block_label != "body" ||
+      !record.lir_producer_instruction_index.has_value() ||
+      *record.lir_producer_instruction_index != 4 ||
+      record.lir_producer_operation_role !=
+          bir::LocalArrayLirProducerOperationRole::AddressDerivation ||
+      record.lir_producer_coordinate_status !=
+          bir::LocalArrayLirProducerCoordinateStatus::Available ||
+      record.lir_producer_lookup_key !=
+          "lir-producer:selected_edge_fixture:body:4:%elt.ptr:%lv.arr:%elt.ptr:%idx" ||
+      record.proof_function_name != "selected_edge_fixture" ||
+      record.proof_block_label != "guard" ||
+      record.proof_predicate != bir::LocalArraySelectedProofEdgePredicate::Ult ||
+      record.proof_compare_type != TypeKind::I64 ||
+      record.proof_lhs.name != "%idx" ||
+      record.proof_rhs.immediate != 4 ||
+      record.bound_contribution !=
+          bir::LocalArraySelectedProofEdgeBoundContribution::Upper ||
+      !record.normalized_bound.has_value() ||
+      *record.normalized_bound != 4 ||
+      record.bound_inclusive ||
+      record.selected_outcome != bir::LocalArraySelectedProofEdgeOutcome::True ||
+      record.selected_successor_label != "body" ||
+      record.non_selected_successor_label != "exit" ||
+      !record.path_validity_known ||
+      !record.selected_edge_reaches_lir_producer ||
+      !record.selected_edge_covers_lir_producer ||
+      !record.proof_dominates_lir_producer) {
+    return fail("selected proof-edge API should publish complete synthetic record");
+  }
+
+  bir::Function function;
+  function.local_array_element_paths.push_back(path);
+  function.local_array_selected_proof_edge_paths.push_back(record);
+  if (function.local_array_selected_proof_edge_paths.size() != 1 ||
+      function.local_array_selected_proof_edge_paths.front().status !=
+          bir::LocalArraySelectedProofEdgePathStatus::Available) {
+    return fail("selected proof-edge record should live in BIR local-array metadata");
+  }
+  return 0;
+}
+
+int expect_local_array_selected_proof_edge_api_fails_closed_for_missing_facts() {
+  const auto path = make_dynamic_local_array_selected_edge_path();
+  auto inputs = complete_selected_proof_edge_inputs(&path);
+  inputs.element_path = nullptr;
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::MissingLocalArrayPath) {
+    return fail("selected proof-edge API should reject missing local-array path");
+  }
+
+  auto missing_key_path = path;
+  missing_key_path.lir_producer_lookup_key.clear();
+  inputs = complete_selected_proof_edge_inputs(&missing_key_path);
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::MissingLirProducerLookupKey) {
+    return fail("selected proof-edge API should reject missing LIR producer key");
+  }
+
+  auto missing_coordinate_path = path;
+  missing_coordinate_path.lir_producer_coordinate_status =
+      bir::LocalArrayLirProducerCoordinateStatus::MissingLirProducerCoordinate;
+  inputs = complete_selected_proof_edge_inputs(&missing_coordinate_path);
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::MissingLirProducerCoordinate) {
+    return fail("selected proof-edge API should reject missing LIR producer coordinate");
+  }
+
+  auto unsupported_role_path = path;
+  unsupported_role_path.lir_producer_operation_role =
+      bir::LocalArrayLirProducerOperationRole::LoadConsumer;
+  inputs = complete_selected_proof_edge_inputs(&unsupported_role_path);
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::UnsupportedLirProducerRole) {
+    return fail("selected proof-edge API should reject non-address-derivation LIR producer role");
+  }
+
+  inputs = complete_selected_proof_edge_inputs(&path);
+  inputs.proof_source_available = false;
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::MissingProofSource) {
+    return fail("selected proof-edge API should reject missing proof source");
+  }
+
+  inputs = complete_selected_proof_edge_inputs(&path);
+  inputs.proof_function_name = "other_function";
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::ProofFunctionMismatch) {
+    return fail("selected proof-edge API should reject proof function mismatch");
+  }
+
+  inputs = complete_selected_proof_edge_inputs(&path);
+  inputs.selected_outcome = bir::LocalArraySelectedProofEdgeOutcome::None;
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::MissingSelectedOutcome) {
+    return fail("selected proof-edge API should reject missing selected outcome");
+  }
+
+  inputs = complete_selected_proof_edge_inputs(&path);
+  inputs.selected_successor_label.clear();
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::MissingSelectedEdge) {
+    return fail("selected proof-edge API should reject missing selected edge");
+  }
+
+  inputs = complete_selected_proof_edge_inputs(&path);
+  inputs.same_block_candidate = true;
+  inputs.same_block_ordering_known = false;
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::MissingSameBlockOrdering) {
+    return fail("selected proof-edge API should reject unbridged same-block ordering");
+  }
+
+  inputs = complete_selected_proof_edge_inputs(&path);
+  inputs.path_validity_known = false;
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::NonCoveringPath) {
+    return fail("selected proof-edge API should reject missing path coverage");
+  }
+
+  inputs = complete_selected_proof_edge_inputs(&path);
+  inputs.proof_dominates_lir_producer = false;
+  inputs.proof_guards_lir_producer = false;
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::NonDominatingOrGuardingProof) {
+    return fail("selected proof-edge API should reject non-guarding proof source");
+  }
+
+  inputs = complete_selected_proof_edge_inputs(&path);
+  inputs.prepared_bir_coordinate_confusion = true;
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::PreparedBirCoordinateConfusion) {
+    return fail("selected proof-edge API should reject coordinate confusion");
+  }
+
+  inputs = complete_selected_proof_edge_inputs(&path);
+  inputs.raw_shape_only = true;
+  if (bir::evaluate_local_array_selected_proof_edge_path(inputs).status !=
+      bir::LocalArraySelectedProofEdgePathStatus::RawShapeOnly) {
+    return fail("selected proof-edge API should reject raw-shape-only evidence");
+  }
+  return 0;
+}
+
 int expect_local_array_range_proof_checker_accepts_complete_synthetic_inputs() {
   const auto path = make_dynamic_local_array_range_proof_path();
   const auto proof = bir::evaluate_local_array_index_range_proof(
@@ -9304,6 +9498,16 @@ int main() {
           expect_local_array_carrier_lir_producer_coordinate_is_not_bir_inst_index();
       local_array_lir_coordinate_status != 0) {
     return local_array_lir_coordinate_status;
+  }
+  if (const int selected_proof_edge_status =
+          expect_local_array_selected_proof_edge_api_accepts_complete_synthetic_record();
+      selected_proof_edge_status != 0) {
+    return selected_proof_edge_status;
+  }
+  if (const int selected_proof_edge_fail_closed_status =
+          expect_local_array_selected_proof_edge_api_fails_closed_for_missing_facts();
+      selected_proof_edge_fail_closed_status != 0) {
+    return selected_proof_edge_fail_closed_status;
   }
   if (const int local_array_range_proof_status =
           expect_local_array_range_proof_checker_accepts_complete_synthetic_inputs();
