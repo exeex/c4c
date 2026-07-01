@@ -211,6 +211,25 @@ bir::LocalArrayEndpointBridgeRecord effect_stream_endpoint_bridge(
       });
 }
 
+bir::LoadLocalInst effect_stream_scalar_load(
+    std::size_t load_byte_offset = 0,
+    std::int64_t address_byte_offset = 0) {
+  return bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+      .slot_name = "%lv.arr",
+      .byte_offset = load_byte_offset,
+      .align_bytes = 4,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_name = "%elt.ptr",
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .byte_offset = address_byte_offset,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  };
+}
+
 prepare::PreparedBirModule make_effect_stream_prepared_module(
     std::vector<bir::Inst> body_insts) {
   prepare::PreparedBirModule prepared;
@@ -324,6 +343,7 @@ int production_publish_contract_plans_populates_local_array_interval_effects() {
           .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
           .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
       },
+      effect_stream_scalar_load(),
   });
   auto& function = prepared.module.functions.front();
   function.local_array_selected_proof_edge_paths.clear();
@@ -401,6 +421,7 @@ int populates_clean_local_array_ordered_effect_stream() {
           .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
           .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
       },
+      effect_stream_scalar_load(),
   });
 
   prepare::populate_local_array_ordered_effect_source_streams(prepared);
@@ -470,6 +491,140 @@ int populates_clean_local_array_ordered_effect_stream() {
       function.local_array_local_address_provenances.front()
               .source_object_name != "%lv.arr") {
     return fail("expected production checker input to publish available local-address provenance");
+  }
+  prepare::populate_local_array_scalar_local_loads(prepared);
+  if (function.local_array_scalar_local_loads.empty()) {
+    return fail("expected production scalar load scan to find pointer-addressed load");
+  }
+  if (function.local_array_scalar_local_loads.size() != 1) {
+    return fail("expected production local-address provenance to publish one scalar load fact");
+  }
+  if (function.local_array_scalar_local_loads.front().status !=
+      bir::LocalArrayScalarLocalLoadStatus::Available) {
+    return fail("expected production scalar load fact to be available");
+  }
+  if (function.local_array_scalar_local_loads.front().provenance !=
+      &function.local_array_local_address_provenances.front()) {
+    return fail("expected production scalar load fact to consume local-address provenance");
+  }
+  if (function.local_array_scalar_local_loads.front().load_result_name !=
+          "%loaded" ||
+      function.local_array_scalar_local_loads.front().dynamic_index !=
+          bir::Value::named(bir::TypeKind::I64, "%idx")) {
+    return fail("expected production scalar load fact to package load identity");
+  }
+  return 0;
+}
+
+int local_array_scalar_local_load_population_requires_matching_provenance() {
+  const auto expect_shifted_load_status =
+      [](bir::LoadLocalInst shifted_load,
+         const char* failure_message) -> int {
+    auto prepared = make_effect_stream_prepared_module({
+        bir::BinaryInst{
+            .opcode = bir::BinaryOpcode::Add,
+            .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+            .operand_type = bir::TypeKind::I64,
+            .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+            .rhs = bir::Value::immediate_i64(1),
+        },
+        bir::BinaryInst{
+            .opcode = bir::BinaryOpcode::Add,
+            .result = bir::Value::named(bir::TypeKind::I64, "%tmp2"),
+            .operand_type = bir::TypeKind::I64,
+            .lhs = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+            .rhs = bir::Value::immediate_i64(1),
+        },
+        bir::CastInst{
+            .opcode = bir::CastOpcode::Bitcast,
+            .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+            .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+        },
+        shifted_load,
+    });
+    auto& function = prepared.module.functions.front();
+    prepare::populate_local_array_ordered_effect_source_streams(prepared);
+    prepare::populate_local_array_interval_effects(prepared);
+    prepare::populate_local_array_index_range_proofs(prepared);
+    prepare::populate_local_array_proof_facts(prepared);
+    prepare::populate_local_array_index_range_checker_inputs(prepared);
+    prepare::populate_local_array_local_address_provenances(prepared);
+    prepare::populate_local_array_scalar_local_loads(prepared);
+    if (function.local_array_scalar_local_loads.size() != 1 ||
+        function.local_array_scalar_local_loads.front().status !=
+            bir::LocalArrayScalarLocalLoadStatus::PreparedBirCoordinateConfusion) {
+      return fail(failure_message);
+    }
+    return 0;
+  };
+
+  auto prepared = make_effect_stream_prepared_module({
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp2"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::CastInst{
+          .opcode = bir::CastOpcode::Bitcast,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+      },
+      effect_stream_scalar_load(),
+  });
+  auto& function = prepared.module.functions.front();
+  prepare::populate_local_array_scalar_local_loads(prepared);
+  if (function.local_array_scalar_local_loads.size() != 1 ||
+      function.local_array_scalar_local_loads.front().status !=
+          bir::LocalArrayScalarLocalLoadStatus::MissingProvenance) {
+    return fail("expected scalar local-load publication to reject missing provenance");
+  }
+
+  prepare::populate_local_array_ordered_effect_source_streams(prepared);
+  prepare::populate_local_array_interval_effects(prepared);
+  prepare::populate_local_array_index_range_proofs(prepared);
+  prepare::populate_local_array_proof_facts(prepared);
+  prepare::populate_local_array_index_range_checker_inputs(prepared);
+  prepare::populate_local_array_local_address_provenances(prepared);
+  function.local_array_local_address_provenances.front().status =
+      bir::LocalArrayCarrierStatus::IntegerPointerRoundTrip;
+  prepare::populate_local_array_scalar_local_loads(prepared);
+  if (function.local_array_scalar_local_loads.size() != 1 ||
+      function.local_array_scalar_local_loads.front().status !=
+          bir::LocalArrayScalarLocalLoadStatus::IntegerPointerRoundTrip ||
+      function.local_array_scalar_local_loads.front().provenance_status !=
+          bir::LocalArrayCarrierStatus::IntegerPointerRoundTrip) {
+    return fail("expected scalar local-load publication to preserve non-available provenance status");
+  }
+
+  prepare::populate_local_array_local_address_provenances(prepared);
+  auto duplicate = function.local_array_local_address_provenances.front();
+  function.local_array_local_address_provenances.push_back(duplicate);
+  prepare::populate_local_array_scalar_local_loads(prepared);
+  if (function.local_array_scalar_local_loads.size() != 1 ||
+      function.local_array_scalar_local_loads.front().status !=
+          bir::LocalArrayScalarLocalLoadStatus::PreparedBirCoordinateConfusion) {
+    return fail("expected scalar local-load publication to reject duplicate provenance");
+  }
+  if (const int rc = expect_shifted_load_status(
+          effect_stream_scalar_load(4, 0),
+          "expected scalar local-load publication to reject shifted load instruction offsets");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_shifted_load_status(
+          effect_stream_scalar_load(0, 4),
+          "expected scalar local-load publication to reject shifted address offsets");
+      rc != 0) {
+    return rc;
   }
   return 0;
 }
@@ -1155,6 +1310,11 @@ int main() {
   }
   if (int rc =
           local_array_local_address_provenance_requires_matching_checker_input();
+      rc != 0) {
+    return rc;
+  }
+  if (int rc =
+          local_array_scalar_local_load_population_requires_matching_provenance();
       rc != 0) {
     return rc;
   }

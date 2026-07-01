@@ -56,6 +56,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_local_array_proof_facts(prepared_);
   populate_local_array_index_range_checker_inputs(prepared_);
   populate_local_array_local_address_provenances(prepared_);
+  populate_local_array_scalar_local_loads(prepared_);
   populate_variadic_entry_plans(prepared_);
   populate_frame_plan(prepared_);
   populate_storage_plans(prepared_);

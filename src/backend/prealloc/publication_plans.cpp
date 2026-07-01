@@ -5736,6 +5736,71 @@ void populate_local_array_local_address_provenances(
   }
 }
 
+[[nodiscard]] bool local_array_load_has_pointer_value_address(
+    const bir::LoadLocalInst& load) {
+  return load.address.has_value() &&
+         load.address->base_kind == bir::MemoryAddress::BaseKind::PointerValue;
+}
+
+[[nodiscard]] const bir::LocalArrayLocalAddressProvenanceRecord*
+find_local_array_local_address_provenance_for_load(
+    const bir::Function& function,
+    const bir::LoadLocalInst& load,
+    bool* duplicate) {
+  const bir::LocalArrayLocalAddressProvenanceRecord* found = nullptr;
+  if (duplicate != nullptr) {
+    *duplicate = false;
+  }
+  for (const auto& provenance :
+       function.local_array_local_address_provenances) {
+    if (!bir::local_array_load_uses_provenance_address(load, provenance)) {
+      continue;
+    }
+    if (found != nullptr) {
+      if (duplicate != nullptr) {
+        *duplicate = true;
+      }
+      return found;
+    }
+    found = &provenance;
+  }
+  return found;
+}
+
+void populate_local_array_scalar_local_loads(PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.local_array_scalar_local_loads.clear();
+    for (const auto& block : function.blocks) {
+      for (std::size_t instruction_index = 0;
+           instruction_index < block.insts.size();
+           ++instruction_index) {
+        const auto* load =
+            std::get_if<bir::LoadLocalInst>(&block.insts[instruction_index]);
+        if (load == nullptr || !local_array_load_has_pointer_value_address(*load)) {
+          continue;
+        }
+        bool duplicate_provenance = false;
+        const auto* provenance =
+            find_local_array_local_address_provenance_for_load(
+                function, *load, &duplicate_provenance);
+        auto record = bir::evaluate_local_array_scalar_local_load(
+            bir::LocalArrayScalarLocalLoadInputs{
+                .provenance = duplicate_provenance ? nullptr : provenance,
+                .load = load,
+                .function_name = function.name,
+                .block_label = block.label,
+                .instruction_index = instruction_index,
+            });
+        if (duplicate_provenance) {
+          record.status = bir::LocalArrayScalarLocalLoadStatus::
+              PreparedBirCoordinateConfusion;
+        }
+        function.local_array_scalar_local_loads.push_back(std::move(record));
+      }
+    }
+  }
+}
+
 PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
     const PreparedBirModule& prepared) {

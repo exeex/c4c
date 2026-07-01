@@ -2276,6 +2276,85 @@ struct LocalArrayLocalAddressProvenanceRecord {
   bool scalar_in_bounds = false;
 };
 
+enum class LocalArrayScalarLocalLoadStatus : unsigned char {
+  Available,
+  MissingLoad,
+  MissingProvenance,
+  ProvenanceUnavailable,
+  AggregateOrMemberBoundary,
+  IntegerPointerRoundTrip,
+  GlobalSourceObject,
+  VariadicOrRuntimeBoundary,
+  UnsupportedType,
+  BootstrapBoundary,
+  RawShapeOnly,
+  TargetOnlyOrFinalHomeOnly,
+  PreparedBirCoordinateConfusion,
+};
+
+[[nodiscard]] constexpr std::string_view
+local_array_scalar_local_load_status_name(
+    LocalArrayScalarLocalLoadStatus status) {
+  switch (status) {
+    case LocalArrayScalarLocalLoadStatus::Available:
+      return "available";
+    case LocalArrayScalarLocalLoadStatus::MissingLoad:
+      return "missing_load";
+    case LocalArrayScalarLocalLoadStatus::MissingProvenance:
+      return "missing_provenance";
+    case LocalArrayScalarLocalLoadStatus::ProvenanceUnavailable:
+      return "provenance_unavailable";
+    case LocalArrayScalarLocalLoadStatus::AggregateOrMemberBoundary:
+      return "aggregate_or_member_boundary";
+    case LocalArrayScalarLocalLoadStatus::IntegerPointerRoundTrip:
+      return "integer_pointer_round_trip";
+    case LocalArrayScalarLocalLoadStatus::GlobalSourceObject:
+      return "global_source_object";
+    case LocalArrayScalarLocalLoadStatus::VariadicOrRuntimeBoundary:
+      return "variadic_or_runtime_boundary";
+    case LocalArrayScalarLocalLoadStatus::UnsupportedType:
+      return "unsupported_type";
+    case LocalArrayScalarLocalLoadStatus::BootstrapBoundary:
+      return "bootstrap_boundary";
+    case LocalArrayScalarLocalLoadStatus::RawShapeOnly:
+      return "raw_shape_only";
+    case LocalArrayScalarLocalLoadStatus::TargetOnlyOrFinalHomeOnly:
+      return "target_only_or_final_home_only";
+    case LocalArrayScalarLocalLoadStatus::PreparedBirCoordinateConfusion:
+      return "prepared_bir_coordinate_confusion";
+  }
+  return "unknown";
+}
+
+struct LoadLocalInst;
+
+struct LocalArrayScalarLocalLoadInputs {
+  const LocalArrayLocalAddressProvenanceRecord* provenance = nullptr;
+  const LoadLocalInst* load = nullptr;
+  std::string function_name;
+  std::string block_label;
+  std::optional<std::size_t> instruction_index;
+};
+
+struct LocalArrayScalarLocalLoadRecord {
+  LocalArrayScalarLocalLoadStatus status =
+      LocalArrayScalarLocalLoadStatus::MissingLoad;
+  LocalArrayCarrierStatus provenance_status =
+      LocalArrayCarrierStatus::MissingElementPath;
+  const LocalArrayLocalAddressProvenanceRecord* provenance = nullptr;
+  const LoadLocalInst* load = nullptr;
+  std::string function_name;
+  std::string block_label;
+  std::optional<std::size_t> instruction_index;
+  std::string source_object_name;
+  std::string element_result_name;
+  std::string load_result_name;
+  Value dynamic_index;
+  TypeKind element_type = TypeKind::Void;
+  std::size_t element_size_bytes = 0;
+  std::size_t byte_offset = 0;
+};
+
 [[nodiscard]] inline const LocalArrayIndexRecord* single_dynamic_local_array_index(
     const LocalArrayElementPathRecord& path,
     bool* saw_multiple = nullptr) {
@@ -3856,6 +3935,130 @@ using Inst = std::variant<BinaryInst,
                           StoreGlobalInst,
                           StoreLocalInst>;
 
+[[nodiscard]] constexpr LocalArrayScalarLocalLoadStatus
+local_array_scalar_load_status_from_provenance(
+    LocalArrayCarrierStatus status) {
+  switch (status) {
+    case LocalArrayCarrierStatus::Available:
+      return LocalArrayScalarLocalLoadStatus::Available;
+    case LocalArrayCarrierStatus::AggregateOrMemberBoundary:
+    case LocalArrayCarrierStatus::UnionOrObjectRepresentationBoundary:
+      return LocalArrayScalarLocalLoadStatus::AggregateOrMemberBoundary;
+    case LocalArrayCarrierStatus::IntegerPointerRoundTrip:
+      return LocalArrayScalarLocalLoadStatus::IntegerPointerRoundTrip;
+    case LocalArrayCarrierStatus::GlobalSourceObject:
+    case LocalArrayCarrierStatus::SourceObjectNotLocal:
+      return LocalArrayScalarLocalLoadStatus::GlobalSourceObject;
+    case LocalArrayCarrierStatus::VariadicOrVaArgBoundary:
+    case LocalArrayCarrierStatus::RuntimeOrCallBoundary:
+      return LocalArrayScalarLocalLoadStatus::VariadicOrRuntimeBoundary;
+    case LocalArrayCarrierStatus::ElementNotScalar:
+    case LocalArrayCarrierStatus::F128ComplexVectorOrVolatileAtomicBoundary:
+      return LocalArrayScalarLocalLoadStatus::UnsupportedType;
+    case LocalArrayCarrierStatus::BootstrapBoundary:
+      return LocalArrayScalarLocalLoadStatus::BootstrapBoundary;
+    case LocalArrayCarrierStatus::RawShapeOnly:
+      return LocalArrayScalarLocalLoadStatus::RawShapeOnly;
+    case LocalArrayCarrierStatus::TargetOnlyOrFinalHomeOnly:
+      return LocalArrayScalarLocalLoadStatus::TargetOnlyOrFinalHomeOnly;
+    case LocalArrayCarrierStatus::PreparedBirCoordinateConfusion:
+      return LocalArrayScalarLocalLoadStatus::PreparedBirCoordinateConfusion;
+    case LocalArrayCarrierStatus::MissingSourceObject:
+    case LocalArrayCarrierStatus::MissingSourceObjectLayout:
+    case LocalArrayCarrierStatus::MissingObjectToSlotRelation:
+    case LocalArrayCarrierStatus::MissingDerivation:
+    case LocalArrayCarrierStatus::DerivationNotProvenLocal:
+    case LocalArrayCarrierStatus::MissingDerivedPointerIdentity:
+    case LocalArrayCarrierStatus::MissingElementPath:
+    case LocalArrayCarrierStatus::MissingIndexIdentity:
+    case LocalArrayCarrierStatus::MissingIndexRangeProof:
+    case LocalArrayCarrierStatus::RangeProofNotDominatingConsumer:
+    case LocalArrayCarrierStatus::RangeProofPathNotCoveringConsumer:
+    case LocalArrayCarrierStatus::IndexValueClobberedBeforeConsumer:
+    case LocalArrayCarrierStatus::ElementOutOfBounds:
+    case LocalArrayCarrierStatus::LayoutRangeMismatch:
+    case LocalArrayCarrierStatus::UnknownProvenance:
+      return LocalArrayScalarLocalLoadStatus::ProvenanceUnavailable;
+  }
+  return LocalArrayScalarLocalLoadStatus::ProvenanceUnavailable;
+}
+
+[[nodiscard]] inline bool local_array_load_uses_provenance_address(
+    const LoadLocalInst& load,
+    const LocalArrayLocalAddressProvenanceRecord& provenance) {
+  if (!load.address.has_value()) {
+    return false;
+  }
+  const auto& address = *load.address;
+  if (address.base_kind != MemoryAddress::BaseKind::PointerValue) {
+    return false;
+  }
+  if (address.base_value.kind == Value::Kind::Named &&
+      address.base_value.name == provenance.element_result_name) {
+    return true;
+  }
+  return !address.base_name.empty() &&
+         address.base_name == provenance.element_result_name;
+}
+
+[[nodiscard]] inline LocalArrayScalarLocalLoadRecord
+evaluate_local_array_scalar_local_load(
+    const LocalArrayScalarLocalLoadInputs& inputs) {
+  LocalArrayScalarLocalLoadRecord record{
+      .provenance = inputs.provenance,
+      .load = inputs.load,
+      .function_name = inputs.function_name,
+      .block_label = inputs.block_label,
+      .instruction_index = inputs.instruction_index,
+  };
+  if (inputs.load == nullptr) {
+    record.status = LocalArrayScalarLocalLoadStatus::MissingLoad;
+    return record;
+  }
+  record.load_result_name = inputs.load->result.name;
+  record.element_type = inputs.load->result.type;
+  record.byte_offset = inputs.load->byte_offset;
+  if (inputs.provenance == nullptr) {
+    record.status = LocalArrayScalarLocalLoadStatus::MissingProvenance;
+    return record;
+  }
+  record.provenance_status = inputs.provenance->status;
+  record.source_object_name = inputs.provenance->source_object_name;
+  record.element_result_name = inputs.provenance->element_result_name;
+  record.dynamic_index = inputs.provenance->dynamic_index;
+  record.element_size_bytes = inputs.provenance->element_size_bytes;
+  if (inputs.provenance->status != LocalArrayCarrierStatus::Available) {
+    record.status =
+        local_array_scalar_load_status_from_provenance(
+            inputs.provenance->status);
+    return record;
+  }
+  if (!local_array_load_uses_provenance_address(*inputs.load,
+                                                *inputs.provenance)) {
+    record.status =
+        LocalArrayScalarLocalLoadStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+  if (inputs.load->byte_offset != 0 ||
+      (inputs.load->address.has_value() &&
+       inputs.load->address->byte_offset != 0)) {
+    record.status =
+        LocalArrayScalarLocalLoadStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+  if (inputs.load->result.type != inputs.provenance->element_type ||
+      inputs.provenance->element_size_bytes == 0 ||
+      (inputs.load->address.has_value() &&
+       inputs.load->address->size_bytes != 0 &&
+       inputs.load->address->size_bytes !=
+           inputs.provenance->element_size_bytes)) {
+    record.status = LocalArrayScalarLocalLoadStatus::UnsupportedType;
+    return record;
+  }
+  record.status = LocalArrayScalarLocalLoadStatus::Available;
+  return record;
+}
+
 struct Route1ProducerInstructionIdentity {
   const Inst* instruction = nullptr;
   std::size_t instruction_index = 0;
@@ -5321,6 +5524,8 @@ struct Function {
       local_array_index_range_checker_inputs;
   std::vector<LocalArrayLocalAddressProvenanceRecord>
       local_array_local_address_provenances;
+  std::vector<LocalArrayScalarLocalLoadRecord>
+      local_array_scalar_local_loads;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;

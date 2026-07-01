@@ -2284,6 +2284,8 @@ void populate_local_array_index_range_checker_inputs(PreparedBirModule& prepared
 
 void populate_local_array_local_address_provenances(PreparedBirModule& prepared);
 
+void populate_local_array_scalar_local_loads(PreparedBirModule& prepared);
+
 [[nodiscard]] PreparedStoreSourcePublicationPlan
 plan_prepared_store_source_publication(
     const PreparedStoreSourcePublicationInputs& inputs);

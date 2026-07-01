@@ -7091,6 +7091,23 @@ make_dynamic_local_array_derivation() {
   };
 }
 
+bir::LoadLocalInst make_dynamic_local_array_scalar_load() {
+  return bir::LoadLocalInst{
+      .result = bir::Value::named(TypeKind::I32, "%loaded"),
+      .slot_name = "%lv.arr",
+      .byte_offset = 0,
+      .align_bytes = 4,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_name = "%elt.ptr",
+          .base_value = bir::Value::named(TypeKind::Ptr, "%elt.ptr"),
+          .byte_offset = 0,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  };
+}
+
 bir::LocalArraySelectedProofEdgePathInputs complete_selected_proof_edge_inputs(
     const bir::LocalArrayElementPathRecord* path) {
   return bir::LocalArraySelectedProofEdgePathInputs{
@@ -8786,6 +8803,211 @@ int expect_local_array_local_address_provenance_consumes_checker_inputs() {
     }
   }
 
+  return 0;
+}
+
+int expect_local_array_scalar_local_loads_consume_provenance() {
+  auto path = make_dynamic_local_array_selected_edge_path();
+  path.scalar_in_bounds = true;
+  const auto source = make_dynamic_local_array_source_object();
+  const auto derivation = make_dynamic_local_array_derivation();
+  const auto selected_path = bir::evaluate_local_array_selected_proof_edge_path(
+      complete_selected_proof_edge_inputs(&path));
+  const auto interval_effect = bir::LocalArrayIntervalEffectRecord{
+      .status = bir::LocalArrayIntervalEffectStatus::Available,
+      .selected_path = &selected_path,
+      .lir_producer_lookup_key = selected_path.lir_producer_lookup_key,
+      .lir_producer_function_name = selected_path.lir_producer_function_name,
+      .lir_producer_block_label = selected_path.lir_producer_block_label,
+      .lir_producer_instruction_index =
+          selected_path.lir_producer_instruction_index,
+      .dynamic_index = bir::Value::named(TypeKind::I64, "%idx"),
+      .proof_function_name = selected_path.proof_function_name,
+      .proof_block_label = selected_path.proof_block_label,
+      .selected_successor_label = selected_path.selected_successor_label,
+  };
+  const auto range_proof =
+      bir::evaluate_local_array_index_range_proof_certificate(
+          bir::LocalArrayRangeProofCertificateInputs{
+              .element_path = &path,
+              .selected_path = &selected_path,
+              .interval_effect = &interval_effect,
+          });
+  const auto proof_fact = bir::evaluate_local_array_proof_fact(
+      bir::LocalArrayProofFactInputs{
+          .element_path = &path,
+          .range_proof = &range_proof,
+      });
+  const auto checker_input =
+      bir::evaluate_local_array_index_range_checker_input(
+          bir::LocalArrayIndexRangeCheckerInputInputs{
+              .element_path = &path,
+              .proof_fact = &proof_fact,
+          });
+  const auto provenance =
+      bir::evaluate_local_array_local_address_provenance(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object = &source,
+              .derivation = &derivation,
+              .element_path = &path,
+              .checker_input = &checker_input,
+          });
+  if (provenance.status != bir::LocalArrayCarrierStatus::Available) {
+    return fail("scalar local-load fixture should start from available provenance");
+  }
+  const auto load = make_dynamic_local_array_scalar_load();
+  const auto available = bir::evaluate_local_array_scalar_local_load(
+      bir::LocalArrayScalarLocalLoadInputs{
+          .provenance = &provenance,
+          .load = &load,
+          .function_name = "selected_edge_fixture",
+          .block_label = "body",
+          .instruction_index = std::size_t{5},
+      });
+  if (available.status != bir::LocalArrayScalarLocalLoadStatus::Available ||
+      available.provenance != &provenance ||
+      available.load != &load ||
+      available.provenance_status != bir::LocalArrayCarrierStatus::Available ||
+      available.source_object_name != "%lv.arr" ||
+      available.element_result_name != "%elt.ptr" ||
+      available.load_result_name != "%loaded" ||
+      available.dynamic_index != bir::Value::named(TypeKind::I64, "%idx") ||
+      available.element_type != TypeKind::I32 ||
+      available.element_size_bytes != 4 ||
+      available.byte_offset != 0 ||
+      available.function_name != "selected_edge_fixture" ||
+      available.block_label != "body" ||
+      !available.instruction_index.has_value() ||
+      *available.instruction_index != 5) {
+    return fail("scalar local-load fact should package available provenance");
+  }
+
+  const auto expect_status =
+      [&](bir::LocalArrayScalarLocalLoadInputs inputs,
+          bir::LocalArrayScalarLocalLoadStatus expected_status,
+          const char* failure_message) -> int {
+    const auto record = bir::evaluate_local_array_scalar_local_load(inputs);
+    if (record.status != expected_status) {
+      return fail(failure_message);
+    }
+    return 0;
+  };
+
+  if (bir::local_array_scalar_local_load_status_name(
+          bir::LocalArrayScalarLocalLoadStatus::MissingProvenance) !=
+      "missing_provenance") {
+    return fail("scalar local-load status spelling should remain stable");
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayScalarLocalLoadInputs{.load = &load},
+          bir::LocalArrayScalarLocalLoadStatus::MissingProvenance,
+          "scalar local-load fact should reject missing provenance");
+      rc != 0) {
+    return rc;
+  }
+
+  auto non_available = provenance;
+  non_available.status = bir::LocalArrayCarrierStatus::MissingIndexRangeProof;
+  if (const int rc = expect_status(
+          bir::LocalArrayScalarLocalLoadInputs{
+              .provenance = &non_available,
+              .load = &load,
+          },
+          bir::LocalArrayScalarLocalLoadStatus::ProvenanceUnavailable,
+          "scalar local-load fact should preserve non-available provenance");
+      rc != 0) {
+    return rc;
+  }
+
+  auto confused_load = load;
+  confused_load.address->base_value = bir::Value::named(TypeKind::Ptr, "%other");
+  confused_load.address->base_name = "%other";
+  if (const int rc = expect_status(
+          bir::LocalArrayScalarLocalLoadInputs{
+              .provenance = &provenance,
+              .load = &confused_load,
+          },
+          bir::LocalArrayScalarLocalLoadStatus::PreparedBirCoordinateConfusion,
+          "scalar local-load fact should reject coordinate-confused load addresses");
+      rc != 0) {
+    return rc;
+  }
+
+  auto shifted_instruction_load = load;
+  shifted_instruction_load.byte_offset = 4;
+  if (const int rc = expect_status(
+          bir::LocalArrayScalarLocalLoadInputs{
+              .provenance = &provenance,
+              .load = &shifted_instruction_load,
+          },
+          bir::LocalArrayScalarLocalLoadStatus::PreparedBirCoordinateConfusion,
+          "scalar local-load fact should reject shifted load instruction offsets");
+      rc != 0) {
+    return rc;
+  }
+
+  auto shifted_address_load = load;
+  shifted_address_load.address->byte_offset = 4;
+  if (const int rc = expect_status(
+          bir::LocalArrayScalarLocalLoadInputs{
+              .provenance = &provenance,
+              .load = &shifted_address_load,
+          },
+          bir::LocalArrayScalarLocalLoadStatus::PreparedBirCoordinateConfusion,
+          "scalar local-load fact should reject shifted address offsets");
+      rc != 0) {
+    return rc;
+  }
+
+  auto unsupported_load = load;
+  unsupported_load.result.type = TypeKind::I64;
+  if (const int rc = expect_status(
+          bir::LocalArrayScalarLocalLoadInputs{
+              .provenance = &provenance,
+              .load = &unsupported_load,
+          },
+          bir::LocalArrayScalarLocalLoadStatus::UnsupportedType,
+          "scalar local-load fact should reject type-confused loads");
+      rc != 0) {
+    return rc;
+  }
+
+  const std::pair<bir::LocalArrayCarrierStatus,
+                  bir::LocalArrayScalarLocalLoadStatus>
+      propagated_statuses[] = {
+          {bir::LocalArrayCarrierStatus::AggregateOrMemberBoundary,
+           bir::LocalArrayScalarLocalLoadStatus::AggregateOrMemberBoundary},
+          {bir::LocalArrayCarrierStatus::IntegerPointerRoundTrip,
+           bir::LocalArrayScalarLocalLoadStatus::IntegerPointerRoundTrip},
+          {bir::LocalArrayCarrierStatus::GlobalSourceObject,
+           bir::LocalArrayScalarLocalLoadStatus::GlobalSourceObject},
+          {bir::LocalArrayCarrierStatus::VariadicOrVaArgBoundary,
+           bir::LocalArrayScalarLocalLoadStatus::VariadicOrRuntimeBoundary},
+          {bir::LocalArrayCarrierStatus::RuntimeOrCallBoundary,
+           bir::LocalArrayScalarLocalLoadStatus::VariadicOrRuntimeBoundary},
+          {bir::LocalArrayCarrierStatus::F128ComplexVectorOrVolatileAtomicBoundary,
+           bir::LocalArrayScalarLocalLoadStatus::UnsupportedType},
+          {bir::LocalArrayCarrierStatus::BootstrapBoundary,
+           bir::LocalArrayScalarLocalLoadStatus::BootstrapBoundary},
+          {bir::LocalArrayCarrierStatus::RawShapeOnly,
+           bir::LocalArrayScalarLocalLoadStatus::RawShapeOnly},
+          {bir::LocalArrayCarrierStatus::TargetOnlyOrFinalHomeOnly,
+           bir::LocalArrayScalarLocalLoadStatus::TargetOnlyOrFinalHomeOnly},
+      };
+  for (const auto& [carrier_status, scalar_status] : propagated_statuses) {
+    auto failing_provenance = provenance;
+    failing_provenance.status = carrier_status;
+    if (const int rc = expect_status(
+            bir::LocalArrayScalarLocalLoadInputs{
+                .provenance = &failing_provenance,
+                .load = &load,
+            },
+            scalar_status,
+            "scalar local-load fact should preserve fail-closed provenance status");
+        rc != 0) {
+      return rc;
+    }
+  }
   return 0;
 }
 
@@ -10988,6 +11210,11 @@ int main() {
           expect_local_array_local_address_provenance_consumes_checker_inputs();
       local_array_local_address_provenance_status != 0) {
     return local_array_local_address_provenance_status;
+  }
+  if (const int local_array_scalar_local_load_status =
+          expect_local_array_scalar_local_loads_consume_provenance();
+      local_array_scalar_local_load_status != 0) {
+    return local_array_scalar_local_load_status;
   }
   if (const int real_dynamic_local_array_status =
           expect_real_dynamic_local_array_row_remains_unavailable_without_range_proof();
