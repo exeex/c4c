@@ -1,48 +1,49 @@
-# Dynamic Local-Array Selected Proof-Edge Path Record Collector/Population Plan
+# Dynamic Local-Array LIR Producer Interval Effect Classifier Plan
 
 Status: Active
-Source Idea: ideas/open/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md
-Activated From: ideas/closed/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
+Source Idea: ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
+Activated From: ideas/closed/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md
 
 ## Purpose
 
-Populate real selected proof-edge path records using the API surface completed
-by idea 492.
+Classify dynamic-index same-value/no-clobber interval effects now that selected
+proof-edge path records are populated.
 
 ## Goal
 
-Produce explicit available/unavailable
-`local_array_selected_proof_edge_paths` records from prepared branch/control
-flow facts and matching dynamic local-array `lir_producer_lookup_key` rows.
+Publish explicit available/unavailable interval effect facts keyed to populated
+selected proof-edge path records and dynamic local-array `lir_producer_lookup_key`
+rows.
 
 ## Core Rule
 
-Do not let downstream proof population consume helper-local reachability,
-dominance, or branch-shape facts directly. Collector output must publish
-explicit records or explicit unavailable statuses keyed to the exact
-`lir_producer_lookup_key`.
+Do not infer same-value/no-clobber from selected path availability alone,
+testcase shape, final homes, or target behavior. Interval facts must come from
+explicit producer/prepared evidence or fail closed with a precise status.
 
 ## Read First
 
-- ideas/open/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md
-- ideas/closed/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
-- build/agent_state/492_step3_selected_proof_edge_record_api/summary.md
-- build/agent_state/492_step4_residual_disposition/disposition.md
+- ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
+- ideas/closed/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md
+- build/agent_state/493_step3_collector_population/summary.md
+- build/agent_state/493_step4_residual_disposition/disposition.md
 
 ## Current Target
 
-- Collector inputs:
-  - `LocalArrayElementPathRecord` rows and `lir_producer_lookup_key`;
-  - prepared branch/compare facts and selected successor labels;
-  - reachability/path coverage helpers;
-  - dominance or guard validity helpers.
-- Collector outputs:
-  - available selected proof-edge path records;
-  - fail-closed unavailable records for missing/mismatched inputs.
+- Inputs:
+  - populated `local_array_selected_proof_edge_paths` records;
+  - local-array element path dynamic-index identity;
+  - proof branch/compare identity and selected outcome;
+  - `lir_producer_lookup_key` binding;
+  - prepared/BIR effect surfaces for assignments, phi/alias, calls/helpers,
+    inline asm, publications, move bundles, and parallel copies.
+- Outputs:
+  - available same-value/no-clobber interval facts;
+  - fail-closed unavailable records/statuses for unknown or clobbering effects.
 
 ## Non-Goals
 
-- Dynamic-index same-value/no-clobber interval effect classification.
+- Re-implementing selected proof-edge path record API or collector population.
 - Populating idea 489 proof facts or idea 486 checker inputs.
 - Idea 484 packaging.
 - Scalar local-load consumption.
@@ -58,17 +59,16 @@ explicit records or explicit unavailable statuses keyed to the exact
 
 ## Working Model
 
-Idea 492 supplied the storage, evaluator, and statuses. This runbook owns the
-producer that fills those records from prepared branch/control-flow facts and
-local-array path records. Display/printer exposure is optional and should not
-displace the collector if semantic population can proceed.
+Idea 493 provides the selected branch/edge/path and dominance/guard side of the
+proof. This runbook owns the separate interval classifier that proves the
+dynamic index remains same-value and unclobbered across that selected interval.
 
 ## Execution Rules
 
-- Step 1 is audit/classification unless the exact collector path is already
-  bounded.
-- Any implementation packet must publish records/statuses only; it must not
-  populate proof facts, checker inputs, packaging, scalar loads, or RV64
+- Step 1 is audit/classification unless the exact interval classifier path is
+  already bounded.
+- Any implementation packet must publish interval facts/statuses only; it must
+  not populate proof facts, checker inputs, packaging, scalar loads, or RV64
   lowering.
 - Classification-only proof:
 
@@ -86,27 +86,28 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Collector Inputs And Matching Keys
+### Step 1: Audit Interval Effect Inputs
 
-Inspect prepared branch/compare facts, successor labels,
-reachability/dominance helpers, local-array path records, and
-`lir_producer_lookup_key` matching. Completion means `todo.md` records whether
-the collector can be bounded or names the exact lower blocker.
+Inspect dynamic-index identity, selected proof-edge records, interval boundary
+surfaces, and effect/no-clobber inputs for assignments, phi/alias,
+calls/helpers, inline asm, publications, move bundles, and parallel copies.
+Completion means `todo.md` records whether a bounded classifier can be built or
+names the exact lower blocker.
 
-### Step 2: Define Collector Population Contract
+### Step 2: Define Interval Effect Classifier Contract
 
-Define source facts, matching rules, selected outcome, edge tuple, path
-coverage, dominance/guard validity, unavailable statuses, and same-block
-fail-closed behavior. Completion means the contract can drive focused tests.
+Define the interval key, start/end semantics, same-value criterion, effect
+classes, unavailable statuses, and same-block fail-closed policy. Completion
+means the contract can drive focused available/fail-closed tests.
 
-### Step 3: Implement Or Route Collector Population
+### Step 3: Implement Or Route Interval Effect Classifier
 
-Implement the bounded collector if Step 2 identifies one. If current inputs
-cannot truthfully populate records, record the exact lower owner and stop
-without changing interval effects or downstream consumers.
+Implement the bounded classifier if Step 2 identifies one. If current inputs
+cannot truthfully classify interval effects, record the exact lower owner and
+stop without changing proof population or downstream consumers.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe selected representatives and decide whether 493 is complete, blocked
-by another lower-level source, or ready to hand forward to selected path
-certification or interval effect/no-clobber classification.
+Re-probe selected representatives and decide whether 494 is complete, blocked
+by another lower-level source, or ready to hand forward to idea 490
+path/no-clobber certification.
