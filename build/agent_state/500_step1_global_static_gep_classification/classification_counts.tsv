@@ -1,0 +1,5 @@
+classification	count	disposition	representatives
+direct_global_static_object_gep_candidate	4	available candidate shape for the next global/static GEP contract; requires explicit global object identity, layout/range, derivation, coordinate, and dynamic-index authority	src/20000717-4.c, src/20031214-1.c, src/20080424-1.c, src/20120808-1.c
+global_pointer_field_string_literal_boundary	1	fail closed or route to string/global-pointer provenance first; the indexed base is the pointer value stored in a global field, not the global object field itself	src/20051104-1.c
+static_array_runtime_intrinsic_boundary	1	fail closed or route to runtime/string intrinsic provenance first; static arrays appear as memcmp/copysign operands and need intrinsic consumer authority	src/ieee/copysign2.c
+total	6	reproduced six global/static rows separated by 499 Step 1	src/20000717-4.c, src/20031214-1.c, src/20051104-1.c, src/20080424-1.c, src/20120808-1.c, src/ieee/copysign2.c
