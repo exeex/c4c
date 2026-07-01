@@ -1364,6 +1364,283 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         };
         return true;
       };
+  const auto value_identity = [](const bir::Value& value) {
+    switch (value.kind) {
+      case bir::Value::Kind::Named:
+        return value.name;
+      case bir::Value::Kind::Immediate:
+        if (value.type == bir::TypeKind::Void) {
+          return std::string{};
+        }
+        return std::to_string(value.immediate);
+    }
+    return std::string{};
+  };
+  const auto make_global_static_gep_lookup_key =
+      [&](std::string_view global_name,
+          std::string_view result_name,
+          std::size_t byte_offset,
+          const bir::Value& dynamic_index) {
+        std::string key(function_.name);
+        key += ":";
+        key += std::string(lir_producer_block_label);
+        key += ":";
+        key += lir_producer_instruction_index.has_value()
+                   ? std::to_string(*lir_producer_instruction_index)
+                   : "?";
+        key += ":";
+        key += std::string(global_name);
+        key += ":";
+        key += std::string(result_name);
+        key += ":";
+        key += std::to_string(byte_offset);
+        const std::string index_key = value_identity(dynamic_index);
+        if (!index_key.empty()) {
+          key += ":";
+          key += index_key;
+        }
+        return key;
+      };
+  const auto global_static_gep_coordinate_status =
+      [&](std::string_view lookup_key) {
+        if (lir_producer_block_label.empty() &&
+            !lir_producer_instruction_index.has_value()) {
+          return bir::GlobalStaticGepCoordinateStatus::MissingLirProducerCoordinate;
+        }
+        if (lir_producer_block_label.empty()) {
+          return bir::GlobalStaticGepCoordinateStatus::MissingLirProducerBlock;
+        }
+        if (!lir_producer_instruction_index.has_value()) {
+          return bir::GlobalStaticGepCoordinateStatus::MissingLirInstructionIndex;
+        }
+        if (lookup_key.empty()) {
+          return bir::GlobalStaticGepCoordinateStatus::MissingLirProducerLookupKey;
+        }
+        return bir::GlobalStaticGepCoordinateStatus::Available;
+      };
+  const auto publish_global_static_gep_authority =
+      [&](bir::GlobalStaticGepDerivationKind derivation_kind,
+          std::string_view global_name,
+          LinkNameId link_name_id,
+          std::string_view result_name,
+          std::string_view base_pointer_name,
+          std::string_view source_type_text,
+          std::string_view layout_path_type_text,
+          std::size_t source_size_bytes,
+          std::size_t byte_offset,
+          bir::TypeKind element_type,
+          std::string_view element_type_text,
+          std::size_t element_size_bytes,
+          std::size_t element_count,
+          std::size_t element_stride_bytes,
+          bool has_constant_range,
+          bool has_dynamic_range,
+          bir::Value dynamic_index) {
+        const auto lookup_key = make_global_static_gep_lookup_key(
+            global_name, result_name, byte_offset, dynamic_index);
+        const auto coordinate_status = global_static_gep_coordinate_status(lookup_key);
+        bir::MemoryAccessProvenance provenance;
+        provenance.base_identity.kind = bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol;
+        provenance.base_identity.spelling = std::string(global_name);
+        provenance.base_identity.link_name_id = link_name_id;
+        provenance.object_extent.completeness =
+            source_size_bytes == 0 ? bir::MemoryObjectExtentCompleteness::Unknown
+                                   : bir::MemoryObjectExtentCompleteness::Complete;
+        provenance.object_extent.size_bytes = source_size_bytes;
+        provenance.object_extent.size_known = source_size_bytes != 0;
+        provenance.requested_range =
+            bir::make_memory_byte_range(static_cast<std::int64_t>(byte_offset),
+                                        element_size_bytes);
+        provenance.layout_authority =
+            source_size_bytes == 0 ? bir::MemoryLayoutAuthorityKind::Unknown
+                                   : bir::MemoryLayoutAuthorityKind::StructuredLayout;
+        provenance.dynamic_array.available = has_dynamic_range;
+        provenance.dynamic_array.element_count = element_count;
+        provenance.dynamic_array.element_stride_bytes = element_stride_bytes;
+        provenance.dynamic_array.base_byte_offset = byte_offset;
+        provenance.dynamic_array.index = dynamic_index;
+        bir::prove_memory_access_requested_range(provenance);
+
+        bir::GlobalStaticGepAuthorityStatus status =
+            bir::GlobalStaticGepAuthorityStatus::Available;
+        if (global_name.empty()) {
+          status = bir::GlobalStaticGepAuthorityStatus::MissingGlobalSourceObject;
+        } else if (link_name_id == c4c::kInvalidLinkName) {
+          status = bir::GlobalStaticGepAuthorityStatus::MissingGlobalIdentity;
+        } else if (source_size_bytes == 0) {
+          status = bir::GlobalStaticGepAuthorityStatus::MissingGlobalLayout;
+        } else if (result_name.empty()) {
+          status = bir::GlobalStaticGepAuthorityStatus::MissingDerivedPointerIdentity;
+        } else if (layout_path_type_text.empty()) {
+          status = bir::GlobalStaticGepAuthorityStatus::MissingLayoutPath;
+        } else if (element_size_bytes == 0) {
+          status = bir::GlobalStaticGepAuthorityStatus::MissingElementByteRange;
+        } else if (!has_constant_range && value_identity(dynamic_index).empty()) {
+          status = bir::GlobalStaticGepAuthorityStatus::MissingDynamicIndexIdentity;
+        } else if (!has_constant_range && !has_dynamic_range) {
+          status = bir::GlobalStaticGepAuthorityStatus::MissingDynamicRangeAuthority;
+        } else if (provenance.range_verdict == bir::MemoryRangeVerdict::ProvenOutOfBounds) {
+          status = bir::GlobalStaticGepAuthorityStatus::ElementOutOfBounds;
+        } else if (element_type == bir::TypeKind::Ptr) {
+          status =
+              bir::GlobalStaticGepAuthorityStatus::StringOrGlobalPointerProvenanceBoundary;
+        } else if (coordinate_status != bir::GlobalStaticGepCoordinateStatus::Available) {
+          status = bir::GlobalStaticGepAuthorityStatus::PreparedBirCoordinateConfusion;
+        }
+
+        lowered_function_.global_static_gep_authorities.push_back(
+            bir::GlobalStaticGepAuthorityRecord{
+                .status = status,
+                .derivation_kind = derivation_kind,
+                .global_name = std::string(global_name),
+                .global_link_name_id = link_name_id,
+                .result_name = std::string(result_name),
+                .base_pointer_name = std::string(base_pointer_name),
+                .source_type_text = std::string(source_type_text),
+                .layout_path_type_text = std::string(layout_path_type_text),
+                .source_size_bytes = source_size_bytes,
+                .byte_offset = byte_offset,
+                .element_type = element_type,
+                .element_type_text = std::string(element_type_text),
+                .element_size_bytes = element_size_bytes,
+                .element_count = element_count,
+                .element_stride_bytes = element_stride_bytes,
+                .has_constant_range = has_constant_range,
+                .has_dynamic_range = has_dynamic_range,
+                .dynamic_index = std::move(dynamic_index),
+                .layout_authority = provenance.layout_authority,
+                .range_verdict = provenance.range_verdict,
+                .coordinate_status = coordinate_status,
+                .lir_producer_function_name = function_.name,
+                .lir_producer_block_label = std::string(lir_producer_block_label),
+                .lir_producer_instruction_index = lir_producer_instruction_index,
+                .lir_producer_lookup_key = lookup_key,
+            });
+      };
+  const auto publish_global_address_authority =
+      [&](bir::GlobalStaticGepDerivationKind derivation_kind,
+          const GlobalAddress& address,
+          std::string_view result_name,
+          std::string_view base_pointer_name,
+          std::string_view layout_path_type_text) {
+        const auto global_it = global_types.find(address.global_name);
+        const std::string source_type =
+            global_it == global_types.end() ? std::string{} : global_it->second.type_text;
+        const auto source_size =
+            global_it == global_types.end() ? 0 : global_it->second.storage_size_bytes;
+        publish_global_static_gep_authority(
+            derivation_kind,
+            address.global_name,
+            address.link_name_id,
+            result_name,
+            base_pointer_name,
+            source_type,
+            layout_path_type_text,
+            source_size,
+            address.byte_offset,
+            address.value_type,
+            address.value_type == bir::TypeKind::Void
+                ? std::string_view(layout_path_type_text)
+                : std::string_view(render_type(address.value_type)),
+            type_size_bytes(address.value_type),
+            1,
+            type_size_bytes(address.value_type),
+            true,
+            false,
+            bir::Value{});
+      };
+  const auto publish_global_pointer_array_authority =
+      [&](const DynamicGlobalPointerArrayAccess& access,
+          std::string_view result_name,
+          std::string_view base_pointer_name,
+          bir::GlobalStaticGepDerivationKind derivation_kind) {
+        const auto global_it = global_types.find(access.global_name);
+        const std::string source_type =
+            global_it == global_types.end() ? std::string{} : global_it->second.type_text;
+        const auto source_size =
+            global_it == global_types.end() ? 0 : global_it->second.storage_size_bytes;
+        const auto pointer_size = type_size_bytes(bir::TypeKind::Ptr);
+        publish_global_static_gep_authority(
+            derivation_kind,
+            access.global_name,
+            global_it == global_types.end() ? c4c::kInvalidLinkName
+                                            : global_it->second.link_name_id,
+            result_name,
+            base_pointer_name,
+            source_type,
+            "ptr",
+            source_size,
+            access.byte_offset,
+            bir::TypeKind::Ptr,
+            "ptr",
+            pointer_size,
+            access.element_count,
+            access.element_stride_bytes == 0 ? pointer_size
+                                             : access.element_stride_bytes,
+            false,
+            access.element_count != 0 &&
+                (access.element_stride_bytes != 0 || pointer_size != 0),
+            access.index);
+      };
+  const auto publish_global_aggregate_array_authority =
+      [&](const DynamicGlobalAggregateArrayAccess& access,
+          std::string_view result_name,
+          std::string_view base_pointer_name) {
+        const auto global_it = global_types.find(access.global_name);
+        const std::string source_type =
+            global_it == global_types.end() ? std::string{} : global_it->second.type_text;
+        const auto source_size =
+            global_it == global_types.end() ? 0 : global_it->second.storage_size_bytes;
+        publish_global_static_gep_authority(
+            bir::GlobalStaticGepDerivationKind::DynamicGlobalAggregateArray,
+            access.global_name,
+            access.link_name_id,
+            result_name,
+            base_pointer_name,
+            source_type,
+            access.element_type_text,
+            source_size,
+            access.byte_offset,
+            bir::TypeKind::Void,
+            access.element_type_text,
+            access.element_stride_bytes,
+            access.element_count,
+            access.element_stride_bytes,
+            false,
+            access.element_count != 0 && access.element_stride_bytes != 0,
+            access.index);
+      };
+  const auto publish_global_scalar_array_authority =
+      [&](const DynamicGlobalScalarArrayAccess& access,
+          std::string_view result_name,
+          std::string_view base_pointer_name) {
+        const auto global_it = global_types.find(access.global_name);
+        const std::string source_type =
+            global_it == global_types.end() ? std::string{} : global_it->second.type_text;
+        const auto source_size =
+            global_it == global_types.end() ? 0 : global_it->second.storage_size_bytes;
+        const auto element_size = type_size_bytes(access.element_type);
+        publish_global_static_gep_authority(
+            bir::GlobalStaticGepDerivationKind::DynamicGlobalScalarArray,
+            access.global_name,
+            access.link_name_id,
+            result_name,
+            base_pointer_name,
+            source_type,
+            render_type(access.element_type),
+            source_size,
+            access.byte_offset,
+            access.element_type,
+            render_type(access.element_type),
+            element_size,
+            access.element_count,
+            access.element_stride_bytes == 0 ? element_size
+                                             : access.element_stride_bytes,
+            false,
+            access.element_count != 0 &&
+                (access.element_stride_bytes != 0 || element_size != 0),
+            access.index);
+      };
   if (gep.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
       (gep.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue &&
        gep.ptr.kind() != c4c::codegen::lir::LirOperandKind::Global)) {
@@ -1392,6 +1669,12 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     if (resolved_address.has_value()) {
       auto linked_address = *resolved_address;
       linked_address.link_name_id = global_it->second.link_name_id;
+      publish_global_address_authority(
+          bir::GlobalStaticGepDerivationKind::DirectGlobal,
+          linked_address,
+          gep.result.str(),
+          gep.ptr.str(),
+          gep.element_type.str());
       if (linked_address.byte_offset == 0 &&
           linked_address.link_name_id != c4c::kInvalidLinkName) {
         value_aliases[gep.result.str()] =
@@ -1431,6 +1714,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           type_decls,
           structured_layouts_);
       if (dynamic_aggregate.has_value()) {
+        publish_global_aggregate_array_authority(
+            *dynamic_aggregate, gep.result.str(), gep.ptr.str());
         dynamic_global_aggregate_arrays[gep.result.str()] = std::move(*dynamic_aggregate);
         return true;
       }
@@ -1445,9 +1730,16 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
       if (!dynamic_scalar.has_value()) {
         return fail_gep();
       }
+      publish_global_scalar_array_authority(
+          *dynamic_scalar, gep.result.str(), gep.ptr.str());
       dynamic_global_scalar_arrays[gep.result.str()] = std::move(*dynamic_scalar);
       return true;
     }
+    publish_global_pointer_array_authority(
+        *dynamic_array,
+        gep.result.str(),
+        gep.ptr.str(),
+        bir::GlobalStaticGepDerivationKind::DynamicGlobalPointerArray);
     dynamic_global_pointer_arrays[gep.result.str()] = std::move(*dynamic_array);
     return true;
   }
@@ -1892,6 +2184,12 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         type_decls,
         structured_layouts_);
     if (resolved_address.has_value()) {
+      publish_global_address_authority(
+          bir::GlobalStaticGepDerivationKind::RelativeGlobalPointer,
+          *resolved_address,
+          gep.result.str(),
+          gep.ptr.str(),
+          gep.element_type.str());
       global_pointer_slots[gep.result.str()] = *resolved_address;
       if (resolved_address->byte_offset == 0 &&
           resolved_address->link_name_id != c4c::kInvalidLinkName) {
@@ -1926,6 +2224,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           type_decls,
           structured_layouts_);
       if (dynamic_aggregate.has_value()) {
+        publish_global_aggregate_array_authority(
+            *dynamic_aggregate, gep.result.str(), gep.ptr.str());
         dynamic_global_aggregate_arrays[gep.result.str()] = std::move(*dynamic_aggregate);
         return true;
       }
@@ -1952,14 +2252,25 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
       if (!array_length.has_value()) {
         return fail_gep();
       }
-      dynamic_global_pointer_arrays[gep.result.str()] = DynamicGlobalPointerArrayAccess{
+      auto access = DynamicGlobalPointerArrayAccess{
           .global_name = base_address.global_name,
           .byte_offset = base_address.byte_offset,
           .element_count = *array_length,
           .index = *index_value,
       };
+      publish_global_pointer_array_authority(
+          access,
+          gep.result.str(),
+          gep.ptr.str(),
+          bir::GlobalStaticGepDerivationKind::DynamicGlobalPointerArray);
+      dynamic_global_pointer_arrays[gep.result.str()] = std::move(access);
       return true;
     }
+    publish_global_pointer_array_authority(
+        *dynamic_array,
+        gep.result.str(),
+        gep.ptr.str(),
+        bir::GlobalStaticGepDerivationKind::DynamicGlobalPointerArray);
     dynamic_global_pointer_arrays[gep.result.str()] = std::move(*dynamic_array);
     return true;
   } else if (const auto global_aggregate_it = dynamic_global_aggregate_arrays.find(gep.ptr.str());
@@ -1994,7 +2305,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
               scalar_layout.kind == AggregateTypeLayout::Kind::Scalar &&
               scalar_layout.scalar_type != bir::TypeKind::Void &&
               scalar_layout.size_bytes != 0 && element_layout.array_count != 0) {
-            dynamic_global_scalar_arrays[gep.result.str()] = DynamicGlobalScalarArrayAccess{
+            auto access = DynamicGlobalScalarArrayAccess{
                 .global_name = global_aggregate_it->second.global_name,
                 .link_name_id = global_aggregate_it->second.link_name_id,
                 .element_type = scalar_layout.scalar_type,
@@ -2007,6 +2318,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                 .element_stride_bytes = scalar_layout.size_bytes,
                 .index = *index_value,
             };
+            publish_global_scalar_array_authority(access, gep.result.str(), gep.ptr.str());
+            dynamic_global_scalar_arrays[gep.result.str()] = std::move(access);
             return true;
           }
         }
@@ -2024,7 +2337,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           lookup_addressing_layout(aggregate_target->type_text, type_decls, &structured_layouts_);
       if (target_layout.kind == AggregateTypeLayout::Kind::Struct ||
           target_layout.kind == AggregateTypeLayout::Kind::Array) {
-        dynamic_global_aggregate_arrays[gep.result.str()] = DynamicGlobalAggregateArrayAccess{
+        auto access = DynamicGlobalAggregateArrayAccess{
             .global_name = global_aggregate_it->second.global_name,
             .link_name_id = global_aggregate_it->second.link_name_id,
             .element_type_text = std::move(aggregate_target->type_text),
@@ -2035,6 +2348,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
             .element_stride_bytes = global_aggregate_it->second.element_stride_bytes,
             .index = global_aggregate_it->second.index,
         };
+        publish_global_aggregate_array_authority(access, gep.result.str(), gep.ptr.str());
+        dynamic_global_aggregate_arrays[gep.result.str()] = std::move(access);
         return true;
       }
       if (target_layout.kind == AggregateTypeLayout::Kind::Scalar &&
@@ -2056,7 +2371,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         if (!zero_index.has_value()) {
           return fail_gep();
         }
-        dynamic_global_scalar_arrays[gep.result.str()] = DynamicGlobalScalarArrayAccess{
+        auto access = DynamicGlobalScalarArrayAccess{
             .global_name = global_aggregate_it->second.global_name,
             .link_name_id = global_aggregate_it->second.link_name_id,
             .element_type = target_layout.scalar_type,
@@ -2070,6 +2385,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
             .element_stride_bytes = element_stride_bytes,
             .index = *zero_index,
         };
+        publish_global_scalar_array_authority(access, gep.result.str(), gep.ptr.str());
+        dynamic_global_scalar_arrays[gep.result.str()] = std::move(access);
         return true;
       }
     }
@@ -2083,13 +2400,19 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     if (!element_leaf.has_value() || element_leaf->value_type != bir::TypeKind::Ptr) {
       return fail_gep();
     }
-    dynamic_global_pointer_arrays[gep.result.str()] = DynamicGlobalPointerArrayAccess{
+    auto access = DynamicGlobalPointerArrayAccess{
         .global_name = global_aggregate_it->second.global_name,
         .byte_offset = global_aggregate_it->second.byte_offset + element_leaf->byte_offset,
         .element_count = global_aggregate_it->second.element_count,
         .element_stride_bytes = global_aggregate_it->second.element_stride_bytes,
         .index = global_aggregate_it->second.index,
     };
+    publish_global_pointer_array_authority(
+        access,
+        gep.result.str(),
+        gep.ptr.str(),
+        bir::GlobalStaticGepDerivationKind::DynamicGlobalPointerArray);
+    dynamic_global_pointer_arrays[gep.result.str()] = std::move(access);
     return true;
   } else if (const auto global_scalar_it = dynamic_global_scalar_arrays.find(gep.ptr.str());
              global_scalar_it != dynamic_global_scalar_arrays.end()) {
@@ -2124,7 +2447,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           static_cast<std::size_t>(*index_imm) >= global_scalar_it->second.element_count) {
         return fail_gep();
       }
-      dynamic_global_scalar_arrays[gep.result.str()] = DynamicGlobalScalarArrayAccess{
+      auto access = DynamicGlobalScalarArrayAccess{
           .global_name = global_scalar_it->second.global_name,
           .link_name_id = global_scalar_it->second.link_name_id,
           .element_type = global_scalar_it->second.element_type,
@@ -2140,13 +2463,15 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           .element_stride_bytes = global_scalar_it->second.element_stride_bytes,
           .index = *zero_index,
       };
+      publish_global_scalar_array_authority(access, gep.result.str(), gep.ptr.str());
+      dynamic_global_scalar_arrays[gep.result.str()] = std::move(access);
       return true;
     }
     const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
     if (!index_value.has_value()) {
       return fail_gep();
     }
-    dynamic_global_scalar_arrays[gep.result.str()] = DynamicGlobalScalarArrayAccess{
+    auto access = DynamicGlobalScalarArrayAccess{
         .global_name = global_scalar_it->second.global_name,
         .link_name_id = global_scalar_it->second.link_name_id,
         .element_type = global_scalar_it->second.element_type,
@@ -2158,6 +2483,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         .element_stride_bytes = global_scalar_it->second.element_stride_bytes,
         .index = *index_value,
     };
+    publish_global_scalar_array_authority(access, gep.result.str(), gep.ptr.str());
+    dynamic_global_scalar_arrays[gep.result.str()] = std::move(access);
     return true;
   } else if (const auto handled_dynamic_local_aggregate_gep =
                  try_lower_dynamic_local_aggregate_gep_projection(gep,

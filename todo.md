@@ -8,52 +8,56 @@ Current Step Title: Implement Or Route The First Global/Static GEP Packet
 
 ## Just Finished
 
-Step 3 routed the prerequisite `global_static_gep_authority` certificate
-surface instead of implementing it in this packet. The exact blocker and route
-are recorded in
-`build/agent_state/500_step3_global_static_gep_authority/summary.md`: the
-producer inputs are visible in global GEP lowering (`memory/addressing.cpp`)
-and lowerer state/declarations (`lowering.hpp`), which were outside this
-packet's owned files.
+Step 3 implemented the prerequisite `global_static_gep_authority` certificate
+surface during global GEP lowering. `GlobalStaticGepAuthorityRecord` now carries
+global/static identity, derivation kind, layout path text, element byte range,
+constant or dynamic range facts, range verdict, and LIR producer coordinate
+identity. `lower_memory_gep_inst` publishes records from successful direct
+global, relative global-pointer, dynamic global pointer-array, dynamic global
+aggregate-array, and dynamic global scalar-array GEP branches. Pointer-valued
+global GEPs remain boundary records instead of available semantic admission.
+
+Focused coverage in `backend_lir_to_bir_notes` verifies an explicit constant
+global array element publishes one `Available` authority record with LinkNameId,
+byte range, range verdict, and LIR coordinate, verifies a default-constructed
+authority record fails closed instead of defaulting to `Available`, and verifies
+raw/no-id dynamic global GEP lowering publishes only fail-closed records rather
+than inventing available authority.
+
+Evidence summary:
+`build/agent_state/500_step3_global_static_gep_authority_implementation/summary.md`.
 
 ## Suggested Next
 
-Run a follow-up implementation packet that owns
-`src/backend/bir/lir_to_bir/lowering.hpp` and
-`src/backend/bir/lir_to_bir/memory/addressing.cpp` in addition to the BIR
-record, publication, and focused backend test files. That packet should publish
-production `global_static_gep_authority` records during global GEP lowering and
-still leave final semantic global/static GEP admission fail-closed for a later
-consumer packet.
+Ask the plan owner to decide residual lifecycle disposition for idea 500 now
+that Step 3 has published production `global_static_gep_authority` records. The
+decision should either close or extend the current 500 lifecycle, or activate a
+focused final semantic global/static GEP admission consumer idea/plan that
+consumes matching available authority records. Any follow-up consumer route
+should keep pointer/string, runtime/string intrinsic, aggregate/member,
+raw-shape-only, target-only, and coordinate-confusion rows fail-closed unless a
+matching available authority and consumer-specific prerequisite exists.
 
 ## Watchouts
 
-- This is a BIR semantic producer packet, not RV64/MIR lowering.
-- Do not infer global/static GEP authority from raw shape, names, labels, final
-  homes, object files, relocations, lowered target behavior, or route-local
-  slots.
-- Keep `src/20051104-1.c` fail-closed or route it to string/global-pointer
-  provenance first; direct global-object GEP authority does not prove the
-  pointed string-literal object behind `s.name[s.len]`.
-- Keep `src/ieee/copysign2.c` fail-closed or route it through runtime/string
-  intrinsic consumer authority before admitting its static-array GEP use.
-- Existing `bir::Global`, `LoadGlobalInst`/`StoreGlobalInst`, and lowerer
-  `GlobalAddress` helpers are useful lower surfaces, but there is not yet a
-  durable certificate tying global object, layout path, dynamic range, element
-  byte range, and LIR producer coordinate together.
-- Preserve final admission fail-closed for all rows until a matching available
-  `global_static_gep_authority` record exists.
-- Do not try to reconstruct the certificate later in `publication_plans.cpp`
-  from `bir::Global`, global loads/stores, prepared object data, final homes,
-  or target lowering; the LIR GEP path and coordinate must be captured while
-  global GEP lowering still has them.
+- This packet intentionally does not implement RV64/MIR lowering or final
+  semantic global/static GEP admission.
+- `src/20051104-1.c` remains a string/global-pointer provenance boundary:
+  a global pointer field GEP record is not sufficient to admit the pointed
+  string-literal subobject behind `s.name[s.len]`.
+- `src/ieee/copysign2.c` remains a runtime/string intrinsic consumer boundary
+  until a later packet proves the consumer-specific authority.
+- Do not reconstruct this certificate later from prepared object data, final
+  homes, relocations, raw testcase shape, or target behavior; the certificate is
+  captured while LIR global GEP lowering has producer coordinates.
 
 ## Proof
 
-Step 3 route proof:
+Step 3 implementation proof:
 
 ```sh
 cmake --build build -j2 > test_after.log 2>&1 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' >> test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
 ```
 
-Result: passed. Output preserved in `test_after.log`.
+Result: passed after fail-closed default repair. Output preserved in
+`test_after.log`.

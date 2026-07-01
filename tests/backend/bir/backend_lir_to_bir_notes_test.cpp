@@ -226,6 +226,8 @@ int expect_link_name_id_extern_identity_rejects_unresolved_id();
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_dynamic_global_scalar_array_loads_reject_missing_link_name_spelling();
 int expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
+int expect_global_static_gep_authority_publishes_available_constant_record();
+int expect_global_static_gep_authority_fails_closed_without_link_identity();
 int expect_dynamic_global_selected_call_argument_publishes_dependency();
 int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
 int expect_string_literal_pointer_store_publishes_string_address_value();
@@ -1007,6 +1009,111 @@ int expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility() {
   }
   if (dynamic_load_count == 0) {
     return fail("raw dynamic scalar-array fixture should materialize global loads");
+  }
+  return 0;
+}
+
+int expect_global_static_gep_authority_publishes_available_constant_record() {
+  const bir::GlobalStaticGepAuthorityRecord default_record;
+  if (default_record.status ==
+      bir::GlobalStaticGepAuthorityStatus::Available) {
+    return fail("default global/static GEP authority record must fail closed");
+  }
+
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId numbers_id = module.link_names.intern("numbers");
+
+  LirGlobal global;
+  global.name = "numbers";
+  global.link_name_id = numbers_id;
+  global.qualifier = "global ";
+  global.llvm_type = "[4 x i32]";
+  global.init_text = "[i32 3, i32 5, i32 7, i32 11]";
+  global.align_bytes = 4;
+  module.globals.push_back(std::move(global));
+
+  LirFunction function;
+  function.name = "constant_global_gep_authority";
+  function.signature_text = "define i32 @constant_global_gep_authority()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%elt"),
+      .element_type = "[4 x i32]",
+      .ptr = LirOperand("@numbers"),
+      .indices = {LirOperand("i64 0"), LirOperand("i64 2")},
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%value"),
+      .type_str = "i32",
+      .ptr = LirOperand("%elt"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%value"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("constant global GEP authority fixture should lower to BIR");
+  }
+  const auto& lowered_function = result.module->functions.back();
+  if (lowered_function.global_static_gep_authorities.size() != 1) {
+    return fail("constant global GEP should publish one authority record");
+  }
+  const auto& record = lowered_function.global_static_gep_authorities.front();
+  if (record.status != bir::GlobalStaticGepAuthorityStatus::Available ||
+      record.derivation_kind != bir::GlobalStaticGepDerivationKind::DirectGlobal ||
+      record.global_name != "numbers" ||
+      record.global_link_name_id != numbers_id ||
+      record.result_name != "%elt" ||
+      record.byte_offset != 8 ||
+      record.element_type != TypeKind::I32 ||
+      record.element_size_bytes != 4 ||
+      !record.has_constant_range ||
+      record.has_dynamic_range ||
+      record.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds ||
+      record.coordinate_status != bir::GlobalStaticGepCoordinateStatus::Available ||
+      record.lir_producer_block_label != "entry" ||
+      record.lir_producer_instruction_index != std::optional<std::size_t>{0} ||
+      record.lir_producer_lookup_key.empty()) {
+    return fail("constant global GEP authority lost identity, range, or coordinate facts");
+  }
+  return 0;
+}
+
+int expect_global_static_gep_authority_fails_closed_without_link_identity() {
+  LirModule module = make_dynamic_indexed_gep_global_member_array_module();
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("raw dynamic global GEP authority fixture should still lower to BIR");
+  }
+  const auto& lowered_function = result.module->functions.back();
+  if (lowered_function.global_static_gep_authorities.empty()) {
+    return fail("raw dynamic global GEP lowering should still publish fail-closed authority records");
+  }
+  bool saw_missing_identity = false;
+  for (const auto& record : lowered_function.global_static_gep_authorities) {
+    if (record.status == bir::GlobalStaticGepAuthorityStatus::Available) {
+      return fail("raw dynamic global GEP authority must not publish Available without LinkNameId");
+    }
+    if (record.status == bir::GlobalStaticGepAuthorityStatus::MissingGlobalIdentity &&
+        record.global_name == "cases") {
+      saw_missing_identity = true;
+    }
+  }
+  if (!saw_missing_identity) {
+    return fail("raw dynamic global GEP authority should fail closed as missing global identity");
   }
   return 0;
 }
@@ -12252,6 +12359,18 @@ int main() {
           expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
       dynamic_global_array_raw_identity_status != 0) {
     return dynamic_global_array_raw_identity_status;
+  }
+
+  if (const int global_static_gep_constant_authority_status =
+          expect_global_static_gep_authority_publishes_available_constant_record();
+      global_static_gep_constant_authority_status != 0) {
+    return global_static_gep_constant_authority_status;
+  }
+
+  if (const int global_static_gep_missing_identity_status =
+          expect_global_static_gep_authority_fails_closed_without_link_identity();
+      global_static_gep_missing_identity_status != 0) {
+    return global_static_gep_missing_identity_status;
   }
 
   if (const int string_pointer_carrier_load_status =

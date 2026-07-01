@@ -3654,6 +3654,151 @@ struct MemoryAddress {
   MemoryAccessProvenance provenance;
 };
 
+enum class GlobalStaticGepAuthorityStatus : unsigned char {
+  Available,
+  MissingGlobalSourceObject,
+  MissingGlobalIdentity,
+  MissingGlobalLayout,
+  MissingDerivedPointerIdentity,
+  MissingLayoutPath,
+  MissingElementByteRange,
+  MissingDynamicIndexIdentity,
+  MissingDynamicRangeAuthority,
+  ElementOutOfBounds,
+  PointerOrFormalProvenanceBoundary,
+  StringOrGlobalPointerProvenanceBoundary,
+  RuntimeOrStringIntrinsicBoundary,
+  AggregateOrMemberBoundary,
+  RawShapeOnly,
+  TargetOnlyOrFinalHomeOnly,
+  PreparedBirCoordinateConfusion,
+};
+
+[[nodiscard]] constexpr std::string_view global_static_gep_authority_status_name(
+    GlobalStaticGepAuthorityStatus status) {
+  switch (status) {
+    case GlobalStaticGepAuthorityStatus::Available:
+      return "available";
+    case GlobalStaticGepAuthorityStatus::MissingGlobalSourceObject:
+      return "missing_global_source_object";
+    case GlobalStaticGepAuthorityStatus::MissingGlobalIdentity:
+      return "missing_global_identity";
+    case GlobalStaticGepAuthorityStatus::MissingGlobalLayout:
+      return "missing_global_layout";
+    case GlobalStaticGepAuthorityStatus::MissingDerivedPointerIdentity:
+      return "missing_derived_pointer_identity";
+    case GlobalStaticGepAuthorityStatus::MissingLayoutPath:
+      return "missing_layout_path";
+    case GlobalStaticGepAuthorityStatus::MissingElementByteRange:
+      return "missing_element_byte_range";
+    case GlobalStaticGepAuthorityStatus::MissingDynamicIndexIdentity:
+      return "missing_dynamic_index_identity";
+    case GlobalStaticGepAuthorityStatus::MissingDynamicRangeAuthority:
+      return "missing_dynamic_range_authority";
+    case GlobalStaticGepAuthorityStatus::ElementOutOfBounds:
+      return "element_out_of_bounds";
+    case GlobalStaticGepAuthorityStatus::PointerOrFormalProvenanceBoundary:
+      return "pointer_or_formal_provenance_boundary";
+    case GlobalStaticGepAuthorityStatus::StringOrGlobalPointerProvenanceBoundary:
+      return "string_or_global_pointer_provenance_boundary";
+    case GlobalStaticGepAuthorityStatus::RuntimeOrStringIntrinsicBoundary:
+      return "runtime_or_string_intrinsic_boundary";
+    case GlobalStaticGepAuthorityStatus::AggregateOrMemberBoundary:
+      return "aggregate_or_member_boundary";
+    case GlobalStaticGepAuthorityStatus::RawShapeOnly:
+      return "raw_shape_only";
+    case GlobalStaticGepAuthorityStatus::TargetOnlyOrFinalHomeOnly:
+      return "target_only_or_final_home_only";
+    case GlobalStaticGepAuthorityStatus::PreparedBirCoordinateConfusion:
+      return "prepared_bir_coordinate_confusion";
+  }
+  return "unknown";
+}
+
+enum class GlobalStaticGepDerivationKind : unsigned char {
+  Unknown,
+  DirectGlobal,
+  RelativeGlobalPointer,
+  DynamicGlobalPointerArray,
+  DynamicGlobalAggregateArray,
+  DynamicGlobalScalarArray,
+};
+
+[[nodiscard]] constexpr std::string_view global_static_gep_derivation_kind_name(
+    GlobalStaticGepDerivationKind kind) {
+  switch (kind) {
+    case GlobalStaticGepDerivationKind::Unknown:
+      return "unknown";
+    case GlobalStaticGepDerivationKind::DirectGlobal:
+      return "direct_global";
+    case GlobalStaticGepDerivationKind::RelativeGlobalPointer:
+      return "relative_global_pointer";
+    case GlobalStaticGepDerivationKind::DynamicGlobalPointerArray:
+      return "dynamic_global_pointer_array";
+    case GlobalStaticGepDerivationKind::DynamicGlobalAggregateArray:
+      return "dynamic_global_aggregate_array";
+    case GlobalStaticGepDerivationKind::DynamicGlobalScalarArray:
+      return "dynamic_global_scalar_array";
+  }
+  return "unknown";
+}
+
+enum class GlobalStaticGepCoordinateStatus : unsigned char {
+  Available,
+  MissingLirProducerCoordinate,
+  MissingLirProducerBlock,
+  MissingLirInstructionIndex,
+  MissingLirProducerLookupKey,
+};
+
+[[nodiscard]] constexpr std::string_view global_static_gep_coordinate_status_name(
+    GlobalStaticGepCoordinateStatus status) {
+  switch (status) {
+    case GlobalStaticGepCoordinateStatus::Available:
+      return "available";
+    case GlobalStaticGepCoordinateStatus::MissingLirProducerCoordinate:
+      return "missing_lir_producer_coordinate";
+    case GlobalStaticGepCoordinateStatus::MissingLirProducerBlock:
+      return "missing_lir_producer_block";
+    case GlobalStaticGepCoordinateStatus::MissingLirInstructionIndex:
+      return "missing_lir_instruction_index";
+    case GlobalStaticGepCoordinateStatus::MissingLirProducerLookupKey:
+      return "missing_lir_producer_lookup_key";
+  }
+  return "unknown";
+}
+
+struct GlobalStaticGepAuthorityRecord {
+  GlobalStaticGepAuthorityStatus status =
+      GlobalStaticGepAuthorityStatus::MissingGlobalSourceObject;
+  GlobalStaticGepDerivationKind derivation_kind =
+      GlobalStaticGepDerivationKind::Unknown;
+  std::string global_name;
+  LinkNameId global_link_name_id = kInvalidLinkName;
+  std::string result_name;
+  std::string base_pointer_name;
+  std::string source_type_text;
+  std::string layout_path_type_text;
+  std::size_t source_size_bytes = 0;
+  std::size_t byte_offset = 0;
+  TypeKind element_type = TypeKind::Void;
+  std::string element_type_text;
+  std::size_t element_size_bytes = 0;
+  std::size_t element_count = 0;
+  std::size_t element_stride_bytes = 0;
+  bool has_constant_range = false;
+  bool has_dynamic_range = false;
+  Value dynamic_index;
+  MemoryLayoutAuthorityKind layout_authority = MemoryLayoutAuthorityKind::Unknown;
+  MemoryRangeVerdict range_verdict = MemoryRangeVerdict::UnknownCompatible;
+  GlobalStaticGepCoordinateStatus coordinate_status =
+      GlobalStaticGepCoordinateStatus::Available;
+  std::string lir_producer_function_name;
+  std::string lir_producer_block_label;
+  std::optional<std::size_t> lir_producer_instruction_index;
+  std::string lir_producer_lookup_key;
+};
+
 enum class BinaryOpcode : unsigned char {
   Add,
   Sub,
@@ -5670,6 +5815,8 @@ struct Function {
       local_array_semantic_geps;
   std::vector<LocalArrayScalarLocalLoadRecord>
       local_array_scalar_local_loads;
+  std::vector<GlobalStaticGepAuthorityRecord>
+      global_static_gep_authorities;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;
