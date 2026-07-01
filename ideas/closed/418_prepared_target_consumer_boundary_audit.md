@@ -3,8 +3,8 @@
 Status: Closed
 Type: Follow-up audit and cleanup idea
 Parent: `ideas/closed/412_prepared_fact_contract_normalization_analysis.md`
-Runs After: `ideas/open/413_prepared_contract_verifier_and_owner_taxonomy.md`
-Feeds: `ideas/open/414_typed_prepared_call_argument_contracts.md`, `ideas/open/415_prepared_value_materialization_contracts.md`, `ideas/open/416_prepared_helper_operand_home_contracts.md`, `ideas/open/417_prepared_storage_layout_and_initializer_contracts.md`
+Runs After: `ideas/closed/413_prepared_contract_verifier_and_owner_taxonomy.md`
+Feeds: `ideas/closed/414_typed_prepared_call_argument_contracts.md`, `ideas/closed/415_prepared_value_materialization_contracts.md`, `ideas/closed/416_prepared_helper_operand_home_contracts.md`, `ideas/closed/417_prepared_storage_layout_and_initializer_contracts.md`
 
 ## Goal
 

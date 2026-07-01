@@ -3,7 +3,7 @@
 Status: Closed
 Type: Follow-up contract refactor idea
 Parent: `ideas/closed/412_prepared_fact_contract_normalization_analysis.md`
-Depends On: initial taxonomy from `ideas/open/413_prepared_contract_verifier_and_owner_taxonomy.md` and target-consumer findings from `ideas/open/418_prepared_target_consumer_boundary_audit.md`
+Depends On: initial taxonomy from `ideas/closed/413_prepared_contract_verifier_and_owner_taxonomy.md` and target-consumer findings from `ideas/closed/418_prepared_target_consumer_boundary_audit.md`
 Handoff Inputs: `docs/prepared_fact_contracts/contract_taxonomy_and_fact_family_matrix.md`, `docs/prepared_fact_contracts/target_consumer_boundary_audit.md`
 
 ## Goal
