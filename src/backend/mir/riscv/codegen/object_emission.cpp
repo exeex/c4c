@@ -2002,11 +2002,51 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
   RiscvEncodedFragment fragment;
   for (const auto& move : move_bundle.moves) {
     if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-        move.destination_storage_kind !=
-            prepare::PreparedMoveStorageKind::Register ||
         move.uses_cycle_temp_source || move.destination_contiguous_width != 1 ||
         move.destination_occupied_register_names.size() > 1 ||
         move.destination_stack_offset_bytes.has_value()) {
+      return std::nullopt;
+    }
+
+    if (move.destination_storage_kind ==
+        prepare::PreparedMoveStorageKind::StackSlot) {
+      if (move_bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
+          move_bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+          move.reason != "consumer_register_to_stack" ||
+          move.source_immediate_i32.has_value()) {
+        return std::nullopt;
+      }
+
+      const auto* source_home =
+          prepared_value_home_for_id(lookups, move.from_value_id);
+      const auto* destination_home =
+          prepared_value_home_for_id(lookups, move.to_value_id);
+      if (source_home == nullptr || destination_home == nullptr) {
+        return std::nullopt;
+      }
+      const auto source = gpr_register_number_for_home(*source_home);
+      const auto type = prepared_bir_value_type_for_name(
+          names, function, destination_home->value_name);
+      if (!source.has_value() || !type.has_value()) {
+        return std::nullopt;
+      }
+      const auto size_bytes = rv64_scalar_memory_size_for_type(*type);
+      if (!size_bytes.has_value()) {
+        return std::nullopt;
+      }
+      const auto stack_offset = prepared_stack_slot_home_offset(
+          stack_layout, *destination_home, stack_frame_bytes, *size_bytes);
+      if (!stack_offset.has_value() ||
+          !append_rv64_store_register_to_stack(
+              fragment, *source, *stack_offset, *size_bytes)) {
+        return std::nullopt;
+      }
+      continue;
+    }
+
+    if (move.destination_storage_kind !=
+        prepare::PreparedMoveStorageKind::Register) {
       return std::nullopt;
     }
 
