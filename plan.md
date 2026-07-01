@@ -1,55 +1,52 @@
-# BIR Semantic Local-Address Provenance And Array-Element Access Authority Plan
+# BIR Local Array Address Derivation And Index-Range Authority Carrier Plan
 
 Status: Active
-Source Idea: ideas/open/484_bir_semantic_local_address_provenance_array_element_authority.md
-Activated From: ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md
+Source Idea: ideas/open/485_bir_local_array_address_derivation_index_range_authority_carrier.md
+Activated From: ideas/closed/484_bir_semantic_local_address_provenance_array_element_authority.md
 
 ## Purpose
 
-Provide the prerequisite local-address and array-element provenance authority
-that blocked the scalar local-load producer route.
+Create the lower-level authority carrier needed before local-address
+provenance packaging or scalar local-load production can resume.
 
 ## Goal
 
-Publish explicit BIR semantic authority for local object identity,
-array-decay/index/offset, element layout/range, and pointer-to-local-element
-provenance when the producer has durable source facts.
+Publish durable local-array address derivation and index-range authority facts
+from producer-owned data, not route-local lowering coincidences.
 
 ## Core Rule
 
-This is a producer-authority packet, not scalar load consumption. Do not infer
-local-address provenance from raw shape, value names, testcase names, final
-homes, or RV64 target fallback behavior.
+Do not infer authority from route-local `element_slots`, `base_index`, lowered
+index values, type text, testcase names, value names, dump order, final homes,
+or target fallback behavior without durable producer identity.
 
 ## Read First
 
-- ideas/open/484_bir_semantic_local_address_provenance_array_element_authority.md
-- ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md
-- build/agent_state/483_step1_corrected_local_load_search/audit.md
-- build/agent_state/483_step1_corrected_local_load_search/local_load_rows.tsv
-- review/483_step1_local_load_route_review.md
+- ideas/open/485_bir_local_array_address_derivation_index_range_authority_carrier.md
+- ideas/closed/484_bir_semantic_local_address_provenance_array_element_authority.md
+- build/agent_state/484_step3_local_address_authority_producer/blocker.md
+- build/agent_state/484_step4_residual_disposition/disposition.md
 
 ## Current Target
 
-- First blocked local-load representatives:
-  - `src/pr22098-1.c`: compound literal array element through pointer
-    `p#L1 = &<clit>#L3[(++a#L0)]`;
-  - `src/pr38048-1.c`: local pointer `a = mat` with
-    `det += a#L1[i#L3][0]`;
-  - `src/multi-ix.c`: direct local-array element samples that need precise
-    function/site separation from variadic/va_arg ownership.
+- First accepted blocked shape:
+  - `src/pr38048-1.c`
+  - `decl mat: int[2][1]`
+  - `decl a: int*[1] = mat#L0`
+  - `det#L2 += a#L1[i#L3][0]`
 - First packet:
-  - audit which local-address/array-element authority shape is bounded enough
-    for a producer contract.
+  - audit existing BIR/HIR local-memory lowering surfaces and determine whether
+    a durable source-object/derivation/index-range carrier can be produced.
 
 ## Non-Goals
 
-- Scalar local-memory load consumption.
+- Scalar local-load consumption.
+- Packaging into idea 484's higher-level provenance record.
+- Generic GEP/address lowering beyond local array-element carrier work.
 - Integer-pointer round-trip acceptance.
-- Generic GEP/address lowering beyond selected local array-element authority.
-- Local-memory store, direct-call metadata, memcpy/memset, alloca,
-  function-signature, call-return, scalar-binop, or bootstrap repairs.
-- RV64/MIR recovery or target lowering.
+- Local-memory stores, calls, memcpy/memset, alloca, bootstrap, aggregate
+  member, union/object-representation, F128, volatile/atomic, complex, vector,
+  or RV64/MIR lowering.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline/log
   churn.
@@ -58,17 +55,17 @@ homes, or RV64 target fallback behavior.
 
 ## Working Model
 
-Idea 483 proved the local-memory load bucket has no clean scalar local-object
-representative without local-address/provenance prerequisites. This runbook
-owns that prerequisite and must finish before returning to scalar local-load
-production.
+Idea 484 proved the higher-level local-address provenance record cannot be
+implemented until local-array address derivation, ordered element paths,
+dynamic index range proof, layout/range, and provenance statuses exist as
+durable producer facts.
 
 ## Execution Rules
 
-- Step 1 is audit/classification unless it identifies a bounded already-owned
-  producer surface.
-- Any implementation packet must publish durable authority or fail-closed
-  status that later local-load producers can consume.
+- Step 1 is audit/classification unless it identifies a bounded carrier surface
+  already supported by current producer data.
+- Any implementation packet must add durable authority or explicit unavailable
+  status coverage.
 - Classification-only proof:
 
 ```sh
@@ -85,30 +82,29 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Local-Address Array-Element Authority Evidence
+### Step 1: Audit Local Array Carrier Inputs
 
-Inspect the blocked representative rows and determine which local-address or
-array-element authority shape is bounded enough for a producer contract.
-Completion means `todo.md` records accepted/rejected candidates and the exact
-facts needed for source object, array decay, index/offset, layout/range, and
-provenance.
+Inspect local-memory lowering carriers and representative rows to identify
+which source-object, derivation, element-path, index/range, layout/range, and
+provenance facts are currently durable versus route-local. Completion means
+`todo.md` records accepted carrier inputs and missing lower-level facts.
 
-### Step 2: Define Local-Address Provenance Contract
+### Step 2: Define Address Derivation And Index-Range Carrier Contract
 
-Define the smallest sound contract for local object address and array-element
-provenance authority. Completion means the contract names accepted evidence,
-required record fields, and fail-closed statuses for integer-pointer
-round-trips, unknown provenance, global sources, aggregate/member ownership,
-variadic/va_arg, runtime/call, F128, bootstrap, and raw-shape inference.
+Define the durable carrier shape and unavailable statuses. Completion means the
+contract names fields for source object identity, derivation site, ordered
+element path, index identities, range proof, path/dominance validity,
+layout/range, scalar in-bounds status, and provenance status.
 
-### Step 3: Implement Or Route Authority Producer
+### Step 3: Implement Or Route Carrier Producer
 
-Implement the bounded producer packet if Step 2 identifies one. If current BIR
-or HIR surfaces cannot provide the required facts, record the exact lower-level
-owner and stop without changing scalar load consumption or RV64 lowering.
+Implement the bounded carrier packet if Step 2 identifies one. If current data
+cannot prove index ranges or derivation identity without raw-shape inference,
+record the exact lower owner and stop without changing idea 484 packaging,
+scalar loads, or RV64 lowering.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe the selected representatives. Completion means lifecycle state records
-whether local-load production can resume, another prerequisite remains first,
-or this source idea is complete as a negative/blocked producer result.
+Re-probe the selected representatives and decide whether idea 485 is complete,
+blocked by another lower-level source, or ready to hand off to idea 484
+packaging work.
