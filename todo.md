@@ -8,29 +8,35 @@ Current Step Title: Inspect Stack-Home Intent Construction
 
 ## Just Finished
 
-Idea 504 closed after Step 4 residual disposition. It completed the
-select-publication evidence/authority packet and did not implement RV64
-materialization.
+Step 1 inspected `EdgePublicationMoveIntent` construction for the two
+select-publication stack-home rows from idea 504 without implementation
+changes.
 
-Step 3 classification found no coherent final select-publication RV64 consumer
-ready from the three rows:
+`src/builtin-constant.c` has a concrete pointer stack source
+(`%t8`, slot `#1`, offset `8`, type `ptr`, size `8`) and a GPR destination
+(`%t10`, `t0`) on edge `tern.then.end.4 -> tern.end.7`, but the adapter only
+has same-width `i32` and concrete `i64` stack-source-to-register policies. It
+clears the concrete stack-source fields and returns
+`intent_status_unsupported_source_home`.
 
-- `src/builtin-constant.c` is real select-publication evidence but needs
-  stack-source intent support.
-- `src/pr58726.c` is real select-publication evidence but needs
-  stack-destination intent support.
-- `src/pr37924.c` is not select-publication after the new evidence; it is a
-  generic out-of-SSA `phi_join_immediate_materialization` row recorded in
-  idea 506.
+`src/pr58726.c` has a direct GPR source (`%p.p`, `a0`) and a concrete i16 stack
+destination (`%t11`, slot `#4`, offset `4`, size `2`) on edge
+`tern.then.end.5 -> tern.end.8`, but the adapter's destination stack-slot
+branch only accepts 4-byte destinations. It returns
+`intent_status_unsupported_destination_home` before populating destination
+stack fields.
 
-Lifecycle activated idea 505 for the select-publication stack-home intent
-support prerequisite.
+Durable evidence was written under
+`build/agent_state/505_step1_stack_home_intent_construction/`.
 
 ## Suggested Next
 
-Execute Step 1 by inspecting `EdgePublicationMoveIntent` construction for the
-two select-publication stack-home rows. Record helper surfaces, missing intent
-fields, representative rows, and whether implementation can proceed.
+Execute Step 2 by adding narrow select-publication stack-home intent support
+inside `EdgePublicationMoveIntent` construction: pointer/XLEN concrete
+stack-source to GPR destination for `src/builtin-constant.c`'s shape, and
+direct GPR source to 1/2/4-byte concrete stack destination for
+`src/pr58726.c`'s shape. Keep this to intent construction; do not implement a
+separate final RV64 select-publication materialization consumer.
 
 ## Watchouts
 
@@ -39,12 +45,16 @@ fields, representative rows, and whether implementation can proceed.
   select-publication intent work.
 - Do not infer homes or authority from testcase names, raw BIR shape, object
   output, final registers, target behavior, or absent diagnostic tokens.
+- Preserve fail-closed behavior for missing edge/destination identity, missing
+  concrete stack offset/size, non-GPR destination placement, stack-to-stack
+  select-publication without an explicit scratch policy, and large offsets
+  without an explicit address materialization policy.
 - Preserve existing untracked review artifacts and the rejected
   `test_baseline.new.log`.
 
 ## Proof
 
-Lifecycle close/switch proof:
+Delegated Step 1 proof:
 
 ```sh
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed > test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
