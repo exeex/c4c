@@ -1,6 +1,6 @@
 # Dynamic Local-Array LIR Producer Path/No-Clobber Certificate
 
-Status: Open
+Status: Closed
 Type: Routed certificate investigation
 Parent: `ideas/closed/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md`
 Previously Closed By: lifecycle split to `ideas/open/491_dynamic_local_array_selected_proof_edge_path_certificate.md`
@@ -13,8 +13,15 @@ Owning Layer: BIR/prepared path coverage and no-clobber certificate investigatio
 
 ## Closure Summary
 
-Idea 490 is complete as a routed certificate investigation, not as an
-implemented certificate producer.
+Idea 490 is complete.
+
+The reopened implementation scope is satisfied: production-backed dynamic
+local-array range proof certificates are now published through
+`local_array_index_range_proofs` by consuming matching lower selected-path and
+interval-effect authorities.
+
+Earlier in the route, idea 490 was complete only as a routed certificate
+investigation, not as an implemented certificate producer.
 
 The runbook established the required LIR producer path/no-clobber certificate
 shape and classified why current prepared/BIR surfaces cannot implement it
@@ -54,6 +61,26 @@ After that existed, later separate owners classified dynamic-index interval
 effects and no-clobber facts over the certified path. Those lower owners are
 now complete.
 
+## Final Reopened Completion
+
+Reopened 490 consumed the completed lower owner chain and published the
+certificate surface required by idea 489:
+
+- `bir::Function::local_array_index_range_proofs`;
+- a BIR certificate evaluator requiring matching
+  `local_array_selected_proof_edge_paths` and `local_array_interval_effects`;
+- `prepare::populate_local_array_index_range_proofs`, wired into
+  `BirPreAlloc::publish_contract_plans` after interval-effect publication;
+- fail-closed coverage for missing selected path, selected-path-only evidence,
+  missing interval effect, interval-only evidence, clobber, alias/phi,
+  unknown effect, missing coordinate, unsupported boundary, non-covering path,
+  non-dominating/non-guarding proof, and coordinate confusion.
+
+Final evidence:
+
+- `build/agent_state/490_step5_range_proof_from_lower_authorities/summary.md`
+- `build/agent_state/490_step6_residual_disposition_after_lower_authorities/disposition.md`
+
 ## Reopened Lifecycle Disposition
 
 Idea 490 is reopened after the lower owner chain completed:
@@ -79,6 +106,9 @@ dynamic local-array range proof status surface without inferring availability
 from selected paths alone, endpoint bridges alone, final homes, target
 behavior, raw testcase shape, or synthetic effect inputs.
 
+This resumed implementation is now complete. Idea 489 can resume proof
+population by consuming `local_array_index_range_proofs`.
+
 ## Preserved Boundaries
 
 - Do not populate idea 486 checker inputs directly from this routed result.
@@ -102,6 +132,8 @@ python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
 Result: pending in successor lifecycle patch.
 Final successor patch result: passed. Regression sanity used the unchanged
 canonical log as a lifecycle-only close gate (`328/328` before and after).
+Reopened close/switch gate result: passed with backend self-comparison at
+`328/328`.
 
 ## Reviewer Reject Signals
 

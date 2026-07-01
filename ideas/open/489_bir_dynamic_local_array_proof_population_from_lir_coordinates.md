@@ -1,17 +1,18 @@
 # BIR Dynamic Local-Array Proof Population From LIR Coordinates
 
-Status: Closed
+Status: Open
 Type: BIR semantic proof population producer idea
 Parent: `ideas/closed/488_bir_dynamic_local_array_consumer_coordinate_prepared_exposure.md`
 Source Evidence:
 - `build/agent_state/488_step3_consumer_coordinate_exposure/summary.md`
 - `build/agent_state/488_step4_residual_disposition/disposition.md`
 Owning Layer: BIR semantic proof-source/path/no-clobber population using LIR producer coordinates
-Closed By: lifecycle review after Step 4
+Previously Closed By: lifecycle review after Step 4
+Reopened After: ideas/closed/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md
 
 ## Completion Notes
 
-Idea 489 is closed as a routed proof-population investigation, not as an
+Idea 489 was closed as a routed proof-population investigation, not as an
 implemented real proof-population producer.
 
 The runbook established that the committed idea 488 `lir_producer_*` coordinate
@@ -28,9 +29,9 @@ Completed evidence:
 
 ## Handoff
 
-The exact follow-up is:
+The exact follow-up was:
 
-`ideas/open/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md`
+`ideas/closed/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md`
 
 Required follow-up scope:
 
@@ -46,7 +47,11 @@ Required follow-up scope:
 
 ## Residual Disposition
 
-Until the certificate exists:
+The lower certificate now exists. Reopened 489 should resume proof population
+by consuming `local_array_index_range_proofs` as the certificate surface for
+dynamic local-array proof facts.
+
+Remaining downstream boundaries:
 
 - idea 484 packaging remains blocked for dynamic rows;
 - scalar local-load production remains blocked;
@@ -54,6 +59,26 @@ Until the certificate exists:
 - idea 488 coordinate semantics remain unchanged:
   `lir_producer_instruction_index` is an LIR producer-site coordinate, not a
   prepared traversal/BIR instruction coordinate.
+
+## Reopened Lifecycle Disposition
+
+Idea 490 Step 6 says proof population can resume:
+
+- `local_array_index_range_proofs` publishes `Available` only from matching
+  lower selected-path and interval-effect authorities for the same dynamic
+  local-array producer;
+- fail-closed representatives are covered for missing selected path,
+  selected-path-only evidence, missing interval effect, interval-only evidence,
+  clobber, alias/phi ambiguity, unknown effect, missing coordinate,
+  unsupported boundary, non-covering path, non-dominating/non-guarding proof,
+  and coordinate confusion;
+- idea 489 should consume those certificate records instead of re-deriving
+  selected-path coverage, no-clobber, endpoint bridges, final homes, raw
+  testcase shape, or synthetic effect inputs.
+
+Reopened scope is limited to populating real dynamic local-array proof facts
+from `local_array_index_range_proofs`, then recording whether idea 486 checker
+input population can resume.
 
 ## Validation
 
@@ -64,8 +89,10 @@ git diff --check
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
 ```
 
-Both passed. `test_after.log` was absent at close time, and this lifecycle task
-forbade touching canonical logs, so no new after log was generated.
+Both passed in the original routed close. The later close/switch retry that
+reopened 489 regenerated `test_after.log` and ran the regression-guard
+self-comparison against the backend `test_before.log`; the guard stayed at
+`328/328` passed.
 
 ## Reviewer Reject Signals
 
