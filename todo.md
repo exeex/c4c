@@ -1,75 +1,79 @@
 Status: Active
 Source Idea Path: ideas/open/422_bir_semantic_producer_high_impact_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Current Semantic Producer Failure Evidence
+Current Step ID: 2
+Current Step Title: Bucket BIR Producer Families
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 for idea 422 by auditing current RV64 gcc_torture backend
-evidence for failures whose first owner is semantic `lir_to_bir` lowering.
+Completed Step 2 for idea 422 by bucketing the 373 current semantic
+`lir_to_bir` rows into BIR producer families and classifying implementation
+ownership.
 
-Evidence sources inspected:
+Bucket table:
 
-- `docs/rv64_gcc_torture_post_contract/current_scan_summary.md`
-- `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`
-- `docs/rv64_gcc_torture_post_contract/followup_idea_plan.md`
-- `build/agent_state/rv64_gcc_torture_backend_current_log_path.txt`
-- `build/agent_state/rv64_gcc_torture_backend_current_20260630T032216Z.log`
-- per-case logs under `build/rv64_gcc_c_torture_backend/*/case.log`
-- mutable summary files under `build/agent_state/rv64_gcc_c_torture_backend_*`
+| Bucket | Count | Owning layer | Implementation coherence/risk |
+| --- | ---: | --- | --- |
+| Local-memory load | 79 | BIR semantic local-memory load producer | Highest count and coherent owner; needs focused probes to split scalar slot, aggregate/member, pointer/provenance, and byval/va_arg-style loads. |
+| Local-memory GEP/address | 62 | BIR semantic GEP/address producer | Coherent if narrowed to explicit source object, index, element layout, and pointer provenance facts. |
+| Local-memory store | 58 | BIR semantic local-memory store producer | Coherent after probes split scalar stores from aggregate/object-representation writes. |
+| Direct-call argument metadata | 52 | BIR semantic direct-call argument/result metadata producer | Coherent call-family owner; needs producer scalar type/source metadata contract. |
+| Scalar/local-memory mixed | 49 | BIR scalar plus local-memory boundary | High count but mixed; split before implementation. |
+| Memcpy/memset byte/object-representation | 34 | BIR runtime/intrinsic byte/object-representation producer | Coherent family, but memcpy and memset policies and byte-range/object-layout semantics must be split/proven. |
+| Alloca-derived storage | 16 | BIR semantic alloca/local stack object producer | Coherent but lower count; depends on explicit alloca object identity, lifetime, layout, and use shape. |
+| Scalar-control-flow | 10 | BIR scalar control-flow producer | Separate lower-priority producer family; do not mix with RV64 branch/select consumers. |
+| Function-signature | 9 | BIR function signature/type producer | Producer-owned but adjacent to ABI/type admission; separate from ordinary local-memory work. |
+| Call-return | 3 | BIR semantic call-return producer | Small call subfamily; separate from direct-call argument metadata. |
+| Scalar-binop | 1 | BIR scalar operation producer | Single-row residual; not a first packet. |
+| Bootstrap adjacent | 44 | Bootstrap/pre-semantic global/type lowering | Adjacent and excluded from the 373 semantic row buckets. |
 
-Row/count summary from the coherent timestamped scan:
+Representative rows are captured in the artifact bucket table. Top examples:
 
-| Route | Count | Classification |
-| --- | ---: | --- |
-| `semantic lir_to_bir` | 373 | Main BIR semantic producer target for idea 422. |
-| `bootstrap` | 44 | Adjacent bootstrap/pre-semantic lowering rows; keep separate from Step 2 semantic family bucketing. |
-| Total object-route semantic-prerequisite failures | 417 | All rows gated by `backend object route requires semantic lir_to_bir lowering before the prepared object handoff`. |
+- local-memory load: `src/20041124-1.c`, `src/20071219-1.c`,
+  `src/991228-1.c`
+- local-memory GEP/address: `src/pr44468.c`, `src/pr48571-1.c`,
+  `src/pr65956.c`
+- local-memory store: `src/20010605-2.c`, `src/920501-5.c`,
+  `src/930526-1.c`
+- direct-call metadata: `src/pr40022.c`, `src/pr41239.c`, `src/pr49390.c`
+- memcpy/memset byte/object-representation: `src/20030408-1.c`,
+  `src/pr79354.c`, `src/pr30778.c`, `src/pr51877.c`
 
-Semantic family summary:
+Rejected adjacent shapes:
 
-| Family | Count | Representative rows |
-| --- | ---: | --- |
-| load local-memory | 79 | `src/20041124-1.c`, `src/20071219-1.c`, `src/991228-1.c`, `src/multi-ix.c`, `src/pr22098-1.c` |
-| GEP local-memory | 62 | `src/pr44468.c`, `src/pr48571-1.c`, `src/pr65956.c`, `src/pr80421.c`, `src/20000717-4.c` |
-| store local-memory | 58 | `src/20010605-2.c`, `src/920501-5.c`, `src/930526-1.c`, `src/pr35472.c`, `src/pr57344-1.c` |
-| direct-call semantic | 52 | `src/pr40022.c`, `src/pr41239.c`, `src/pr49390.c`, `src/20000412-2.c`, `src/20000419-1.c` |
-| scalar/local-memory | 49 | `src/20020411-1.c`, `src/20041201-1.c`, `src/20070614-1.c`, `src/complex-2.c`, `src/complex-5.c` |
-| memcpy runtime | 19 | `src/20030408-1.c`, `src/pr79354.c`, `src/pr86528.c`, `src/strlen-7.c`, `src/20000703-1.c` |
-| alloca local-memory | 16 | `src/20180921-1.c`, `src/pr38151.c`, `src/pr85169.c`, `src/20050604-1.c`, `src/20050607-1.c` |
-| memset runtime | 15 | `src/pr30778.c`, `src/pr51877.c`, `src/20041218-1.c`, `src/20050826-1.c`, `src/20071030-1.c` |
-| scalar-control-flow | 10 | `src/20000314-3.c`, `src/20080502-1.c`, `src/930614-1.c`, `src/980604-1.c`, `src/ieee/fp-cmp-8.c` |
-| function-signature | 9 | `src/20071029-1.c`, `src/ieee/pr72824-2.c`, `src/pr70903.c`, `src/20050316-3.c`, `src/pr60960.c` |
-| call-return semantic | 3 | `src/complex-1.c`, `src/20050121-1.c`, `src/pr38969.c` |
-| scalar-binop | 1 | `src/960513-1.c` |
+- RV64/MIR recovery from raw shape, value names, testcase names, or target
+  fallback inference.
+- Prepared/RV64 consumer work such as branch, pointer/address, stack-slot,
+  call, or return lowering.
+- `unsupported_instruction_fragment` rows from idea 421/420.
+- Bootstrap global/type lowering rows.
+- F128 helper/runtime rows unless a selected semantic producer bucket proves
+  ownership explicitly.
 
 Artifact:
 
-- `build/agent_state/422_step1_semantic_producer_evidence/audit.md`
-- `build/agent_state/422_step1_semantic_producer_evidence/semantic_lir_to_bir_rows.tsv`
-- `build/agent_state/422_step1_semantic_producer_evidence/route_counts.tsv`
-- `build/agent_state/422_step1_semantic_producer_evidence/semantic_family_counts.tsv`
-- `build/agent_state/422_step1_semantic_producer_evidence/semantic_family_representatives.tsv`
+- `build/agent_state/422_step2_bir_producer_buckets/bucket_table.tsv`
+- `build/agent_state/422_step2_bir_producer_buckets/rationale.md`
 
 ## Suggested Next
 
-Execute Step 2: bucket BIR producer families from the current evidence. Start
-from the Step 1 row TSV and group the 373 `semantic lir_to_bir` rows by
-producer family, owning layer, representative rows, rejected adjacent shapes,
-and whether an implementation packet is coherent.
+Execute Step 3: select the first producer-owned packet. The default
+highest-impact candidate is local-memory load, but Step 3 should either select
+that packet with a focused representative/contract or explicitly choose a
+better coherent packet from GEP, store, direct-call metadata, or memcpy/memset.
 
 ## Watchouts
 
-- Use the timestamped scan log and Step 1 TSV as the coherent source. The
-  mutable summary TSV/failed list are stale/truncated in the current checkout.
-- Keep the 44 `bootstrap` rows separate from the 373 semantic producer rows.
-- `failure_bucket_map.md` is useful context for `unsupported_instruction_fragment`
-  but is not the row-level semantic producer artifact for idea 422.
-- Step 2 can bucket from current evidence, but implementation selection should
-  still require focused BIR/prepared probes for selected representatives.
+- Current evidence is enough to choose a family, but not enough to implement
+  without focused BIR/prepared probes for selected representatives.
+- Do not select the mixed scalar/local-memory bucket as-is; split it into a
+  sharper local-memory or scalar producer packet first.
+- Keep byte/object-representation writes separate from generic scalar local
+  stores unless a focused contract explicitly connects them.
+- Keep bootstrap rows and `unsupported_instruction_fragment` rows outside this
+  semantic producer route.
 
 ## Proof
 
