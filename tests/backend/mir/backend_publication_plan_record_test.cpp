@@ -354,6 +354,33 @@ int local_array_interval_consumer_requires_populated_matching_stream() {
   }
 
   prepare::populate_local_array_ordered_effect_source_streams(prepared);
+  effect = bir::evaluate_local_array_interval_effect(
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front(),
+      true);
+  if (effect.status !=
+      bir::LocalArrayIntervalEffectStatus::PreparedBirCoordinateConfusion) {
+    return fail("expected coordinate confusion to fail closed before consuming stored streams");
+  }
+
+  auto missing_endpoint = prepared;
+  missing_endpoint.module.functions.front()
+      .local_array_endpoint_bridges.front()
+      .status =
+      bir::LocalArrayEndpointBridgeStatus::MissingPreparedBirEndpointBridge;
+  prepare::populate_local_array_ordered_effect_source_streams(missing_endpoint);
+  const auto& missing_endpoint_function =
+      missing_endpoint.module.functions.front();
+  effect = bir::evaluate_local_array_interval_effect(
+      missing_endpoint_function,
+      &missing_endpoint_function.local_array_selected_proof_edge_paths.front(),
+      &missing_endpoint_function.local_array_endpoint_bridges.front());
+  if (effect.status !=
+      bir::LocalArrayIntervalEffectStatus::MissingPreparedBirEndpointBridge) {
+    return fail("expected missing endpoint bridge to fail closed");
+  }
+
   function.local_array_ordered_effect_source_streams.push_back(
       function.local_array_ordered_effect_source_streams.front());
   effect = bir::evaluate_local_array_interval_effect(
@@ -361,7 +388,7 @@ int local_array_interval_consumer_requires_populated_matching_stream() {
       &function.local_array_selected_proof_edge_paths.front(),
       &function.local_array_endpoint_bridges.front());
   if (effect.status !=
-      bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) {
+      bir::LocalArrayIntervalEffectStatus::DuplicateOrderedEffectSourceStream) {
     return fail("expected duplicate matching stream records to fail closed");
   }
   return 0;
@@ -467,6 +494,13 @@ int ordered_effect_stream_records_unknown_and_clobber_sources() {
           .return_type = bir::TypeKind::Void,
           .inline_asm = asm_metadata,
       },
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
       bir::CastInst{
           .opcode = bir::CastOpcode::Bitcast,
           .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
@@ -500,6 +534,73 @@ int ordered_effect_stream_records_unknown_and_clobber_sources() {
   if (effect.status !=
       bir::LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown) {
     return fail("expected first in-interval unknown call source to fail closed");
+  }
+  return 0;
+}
+
+int ordered_effect_stream_records_clobber_sources() {
+  bir::InlineAsmMetadata asm_metadata;
+  asm_metadata.side_effects = true;
+  asm_metadata.clobbers = {"memory"};
+  auto prepared = make_effect_stream_prepared_module({
+      bir::CallInst{
+          .callee = "asm",
+          .return_type = bir::TypeKind::Void,
+          .inline_asm = asm_metadata,
+      },
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::CastInst{
+          .opcode = bir::CastOpcode::Bitcast,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+      },
+  });
+
+  prepare::populate_local_array_ordered_effect_source_streams(prepared);
+  const auto& function = prepared.module.functions.front();
+  const auto effect = bir::evaluate_local_array_interval_effect(
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front());
+  if (effect.status !=
+      bir::LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex) {
+    return fail("expected production clobber source to fail closed");
+  }
+  return 0;
+}
+
+int ordered_effect_stream_fails_closed_on_coordinate_confusion() {
+  auto prepared = make_effect_stream_prepared_module({
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::CastInst{
+          .opcode = bir::CastOpcode::Bitcast,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+      },
+  });
+
+  prepare::populate_local_array_ordered_effect_source_streams(prepared);
+  const auto& function = prepared.module.functions.front();
+  const auto effect = bir::evaluate_local_array_interval_effect(
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front(),
+      true);
+  if (effect.status !=
+      bir::LocalArrayIntervalEffectStatus::PreparedBirCoordinateConfusion) {
+    return fail("expected coordinate confusion to reject stored stream availability");
   }
   return 0;
 }
@@ -590,6 +691,13 @@ int main() {
     return rc;
   }
   if (int rc = ordered_effect_stream_records_unknown_and_clobber_sources();
+      rc != 0) {
+    return rc;
+  }
+  if (int rc = ordered_effect_stream_records_clobber_sources(); rc != 0) {
+    return rc;
+  }
+  if (int rc = ordered_effect_stream_fails_closed_on_coordinate_confusion();
       rc != 0) {
     return rc;
   }

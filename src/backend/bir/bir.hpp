@@ -1328,6 +1328,7 @@ enum class LocalArrayIntervalEffectStatus : unsigned char {
   MissingSameBlockOrdering,
   SelectedPathOnlyInference,
   MissingOrderedEffectSourceStream,
+  DuplicateOrderedEffectSourceStream,
   MissingEffectSourceCoordinate,
   UnorderedEffectSourceBoundary,
   IndexValueRedefined,
@@ -1377,6 +1378,8 @@ enum class LocalArrayIntervalEffectStatus : unsigned char {
       return "selected_path_only_inference";
     case LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream:
       return "missing_ordered_effect_source_stream";
+    case LocalArrayIntervalEffectStatus::DuplicateOrderedEffectSourceStream:
+      return "duplicate_ordered_effect_source_stream";
     case LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate:
       return "missing_effect_source_coordinate";
     case LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary:
@@ -1633,6 +1636,7 @@ struct LocalArrayIntervalEffectInputs {
   const LocalArraySelectedProofEdgePathRecord* selected_path = nullptr;
   const LocalArrayEndpointBridgeRecord* endpoint_bridge = nullptr;
   const LocalArrayOrderedEffectSourceStream* ordered_effect_sources = nullptr;
+  bool duplicate_ordered_effect_source_stream = false;
   bool prepared_bir_coordinate_confusion = false;
   bool raw_shape_only = false;
 };
@@ -1764,6 +1768,11 @@ evaluate_local_array_interval_effect(
       !endpoint_bridge.endpoint_instruction_index.has_value() ||
       endpoint_bridge.bir_block_label.empty()) {
     record.status = LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate;
+    return record;
+  }
+  if (inputs.duplicate_ordered_effect_source_stream) {
+    record.status =
+        LocalArrayIntervalEffectStatus::DuplicateOrderedEffectSourceStream;
     return record;
   }
   if (inputs.ordered_effect_sources == nullptr ||
@@ -4487,11 +4496,17 @@ struct Module {
   NameTables names;
 };
 
-[[nodiscard]] inline const LocalArrayOrderedEffectSourceStream*
+struct LocalArrayOrderedEffectSourceStreamLookup {
+  const LocalArrayOrderedEffectSourceStream* stream = nullptr;
+  bool duplicate = false;
+};
+
+[[nodiscard]] inline LocalArrayOrderedEffectSourceStreamLookup
 find_local_array_ordered_effect_source_stream(
     const Function& function,
     const LocalArraySelectedProofEdgePathRecord& selected_path,
     const LocalArrayEndpointBridgeRecord& endpoint_bridge) {
+  LocalArrayOrderedEffectSourceStreamLookup lookup;
   const LocalArrayOrderedEffectSourceStream* found = nullptr;
   for (const auto& stream :
        function.local_array_ordered_effect_source_streams) {
@@ -4502,11 +4517,13 @@ find_local_array_ordered_effect_source_stream(
       continue;
     }
     if (found != nullptr) {
-      return nullptr;
+      lookup.duplicate = true;
+      return lookup;
     }
     found = &stream;
   }
-  return found;
+  lookup.stream = found;
+  return lookup;
 }
 
 [[nodiscard]] inline LocalArrayIntervalEffectRecord
@@ -4516,15 +4533,16 @@ evaluate_local_array_interval_effect(
     const LocalArrayEndpointBridgeRecord* endpoint_bridge,
     bool prepared_bir_coordinate_confusion = false,
     bool raw_shape_only = false) {
-  const auto* stream =
+  const auto stream_lookup =
       selected_path == nullptr || endpoint_bridge == nullptr
-          ? nullptr
+          ? LocalArrayOrderedEffectSourceStreamLookup{}
           : find_local_array_ordered_effect_source_stream(
                 function, *selected_path, *endpoint_bridge);
   return evaluate_local_array_interval_effect(LocalArrayIntervalEffectInputs{
       .selected_path = selected_path,
       .endpoint_bridge = endpoint_bridge,
-      .ordered_effect_sources = stream,
+      .ordered_effect_sources = stream_lookup.stream,
+      .duplicate_ordered_effect_source_stream = stream_lookup.duplicate,
       .prepared_bir_coordinate_confusion = prepared_bir_coordinate_confusion,
       .raw_shape_only = raw_shape_only,
   });

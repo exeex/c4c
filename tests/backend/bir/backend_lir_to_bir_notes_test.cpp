@@ -7528,6 +7528,9 @@ int expect_local_array_interval_effect_status_surface_fails_closed() {
           bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) !=
           "missing_ordered_effect_source_stream" ||
       bir::local_array_interval_effect_status_name(
+          bir::LocalArrayIntervalEffectStatus::DuplicateOrderedEffectSourceStream) !=
+          "duplicate_ordered_effect_source_stream" ||
+      bir::local_array_interval_effect_status_name(
           bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate) !=
           "missing_effect_source_coordinate" ||
       bir::local_array_interval_effect_status_name(
