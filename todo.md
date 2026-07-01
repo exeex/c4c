@@ -1,26 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/500_semantic_global_static_gep_admission_producer.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Or Route The Global/Static GEP Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route The First Global/Static GEP Packet
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 audited the current global/static producer surfaces and recorded the
-contract route under `build/agent_state/500_step2_global_static_gep_contract/`.
-Current surfaces are not sufficient for final semantic admission because no
-durable lower certificate ties global object identity, layout path, dynamic
-range, element byte range, derivation/provenance, and LIR producer coordinate
-into one matched authority record.
+Step 3 routed the prerequisite `global_static_gep_authority` certificate
+surface instead of implementing it in this packet. The exact blocker and route
+are recorded in
+`build/agent_state/500_step3_global_static_gep_authority/summary.md`: the
+producer inputs are visible in global GEP lowering (`memory/addressing.cpp`)
+and lowerer state/declarations (`lowering.hpp`), which were outside this
+packet's owned files.
 
 ## Suggested Next
 
-Execute Step 3 as a prerequisite-route packet: publish production
-`global_static_gep_authority` certificates from existing LIR-to-BIR global
-address/layout/range/coordinate inputs. Do not implement final semantic
-global/static GEP admission until that lower certificate exists.
+Run a follow-up implementation packet that owns
+`src/backend/bir/lir_to_bir/lowering.hpp` and
+`src/backend/bir/lir_to_bir/memory/addressing.cpp` in addition to the BIR
+record, publication, and focused backend test files. That packet should publish
+production `global_static_gep_authority` records during global GEP lowering and
+still leave final semantic global/static GEP admission fail-closed for a later
+consumer packet.
 
 ## Watchouts
 
@@ -39,13 +43,17 @@ global/static GEP admission until that lower certificate exists.
   byte range, and LIR producer coordinate together.
 - Preserve final admission fail-closed for all rows until a matching available
   `global_static_gep_authority` record exists.
+- Do not try to reconstruct the certificate later in `publication_plans.cpp`
+  from `bir::Global`, global loads/stores, prepared object data, final homes,
+  or target lowering; the LIR GEP path and coordinate must be captured while
+  global GEP lowering still has them.
 
 ## Proof
 
-Step 2 contract/routing proof:
+Step 3 route proof:
 
 ```sh
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed > test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
+cmake --build build -j2 > test_after.log 2>&1 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' >> test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
 ```
 
 Result: passed. Output preserved in `test_after.log`.
