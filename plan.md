@@ -1,56 +1,56 @@
-# BIR Semantic Producer High-Impact Cleanup Plan
+# BIR Semantic Local-Memory Scalar Load Producer Plan
 
 Status: Active
-Source Idea: ideas/open/422_bir_semantic_producer_high_impact_cleanup.md
+Source Idea: ideas/open/483_bir_semantic_local_memory_scalar_load_producer.md
+Activated From: ideas/closed/422_bir_semantic_producer_high_impact_cleanup.md
 
 ## Purpose
 
-Turn the post-contract RV64 gcc_torture BIR semantic producer backlog into
-focused, producer-owned work without pushing missing facts into RV64 lowering.
+Implement the first selected BIR semantic producer follow-up from idea 422:
+ordinary scalar local-memory load facts.
 
 ## Goal
 
-Classify high-impact `semantic lir_to_bir lowering` failures by BIR producer
-family and select the first implementation-ready ordinary C producer packet.
+Publish explicit semantic producer facts for scalar local-memory loads only
+when the producer has durable source object, access range, layout, and result
+identity evidence.
 
 ## Core Rule
 
-BIR-owned semantic facts must be repaired in the BIR/semantic producer layer.
-Do not recover missing facts in MIR/RV64 from raw shape, value names, testcase
-names, or fallback target inference.
+Keep this a BIR semantic producer repair. Do not recover missing facts in
+prepared/RV64 lowering from raw shape, value names, testcase names, final homes,
+or target fallback inference.
 
 ## Read First
 
-- ideas/open/422_bir_semantic_producer_high_impact_cleanup.md
-- ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md
-- docs/rv64_gcc_torture_post_contract/current_scan_summary.md
-- docs/rv64_gcc_torture_post_contract/failure_bucket_map.md
-- docs/rv64_gcc_torture_post_contract/followup_idea_plan.md
-- build/agent_state/rv64_gcc_torture_backend_current_log_path.txt
-- build/agent_state/rv64_gcc_c_torture_backend_summary.tsv
-- build/agent_state/rv64_gcc_c_torture_backend_failed.txt
+- ideas/open/483_bir_semantic_local_memory_scalar_load_producer.md
+- ideas/closed/422_bir_semantic_producer_high_impact_cleanup.md
+- build/agent_state/422_step2_bir_producer_buckets/bucket_table.tsv
+- build/agent_state/422_step3_first_producer_packet/decision.md
+- build/agent_state/422_step4_residual_disposition/disposition.md
 
 ## Current Target
 
-- Failure diagnostic family:
-  - `backend object route requires semantic lir_to_bir lowering`
-- Candidate BIR producer families:
-  - local-memory load/store/GEP;
-  - alloca-derived storage;
-  - direct-call argument metadata;
-  - memcpy/memset and byte/object-representation writes.
+- Selected bucket: local-memory load, 79 rows.
+- Representative rows:
+  - `src/20041124-1.c`
+  - `src/20071219-1.c`
+  - `src/991228-1.c`
+  - `src/multi-ix.c`
+  - `src/pr22098-1.c`
 - First packet:
-  - establish current row evidence and bucket counts for BIR semantic producer
-    failures before selecting implementation.
+  - audit focused local-memory load probes and select the narrowest scalar
+    local-load shape for contract definition.
 
 ## Non-Goals
 
-- RV64/MIR recovery from raw BIR shape.
-- F128 helper, ABI, or conversion-driven work.
-- Runtime mismatch debugging.
-- Prepared global/stack-frame infrastructure triage unless it appears as a
-  true BIR semantic producer input.
-- Broad BIR rewrites without row ownership and fail-closed tests.
+- Local-memory GEP/address, store, direct-call metadata, memcpy/memset,
+  alloca-derived, scalar/local-memory mixed, function-signature, call-return,
+  scalar-binop, or bootstrap producer repair.
+- Aggregate/member, pointer/provenance, byval/va_arg, volatile/atomic, complex,
+  vector, or F128 load support unless a later lifecycle split selects them.
+- RV64 target lowering, prepared consumer inference, branch/select consumers,
+  stack-home materialization, call lowering, or return lowering.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline/log
   churn.
@@ -59,27 +59,26 @@ names, or fallback target inference.
 
 ## Working Model
 
-The umbrella already ranked ordinary non-F128 RV64 instruction-fragment work
-ahead of lower-priority F128 routes. Many RV64/prepared follow-up ideas have
-since been closed. This runbook now returns to the open BIR semantic producer
-cleanup source and starts by proving which semantic producer bucket is still
-current and broad enough for a focused repair.
+Idea 422 selected local-memory load as the largest coherent BIR semantic
+producer bucket. This runbook starts with focused probes because the row-level
+scan gives family labels and representatives, but not a complete implementation
+contract for every local-load shape.
 
 ## Execution Rules
 
-- Step 1 is classification-only unless it identifies stale or missing evidence
-  that can be regenerated without implementation changes.
-- Use existing scan artifacts first. If a fresh external scan is needed, record
-  it under `build/agent_state/` and keep default CTest/baseline files untouched.
-- Any implementation packet selected later must be backed by representative
-  rows and focused fail-closed tests.
+- Step 1 is probe/classification work; do not implement until a scalar
+  local-load shape is selected.
+- Any code-changing packet must include focused positive and fail-closed
+  backend/BIR coverage.
+- Keep proof local first, then use backend subset proof for code-changing
+  packets.
 - Classification-only proof:
 
 ```sh
 git diff --check
 ```
 
-- Code-changing proof, when a producer packet is selected:
+- Code-changing proof:
 
 ```sh
 cmake --build build -j2
@@ -89,30 +88,31 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Current Semantic Producer Failure Evidence
+### Step 1: Audit Focused Local-Load Representative Evidence
 
-Inspect the current RV64 gcc_torture backend artifacts and collect rows whose
-first owner is `semantic lir_to_bir lowering`. Completion means `todo.md`
-records the evidence source, row count, representative rows, and any stale or
-missing artifact concerns.
+Inspect the selected representative rows and collect focused BIR/prepared
+evidence for failing function, load instruction identity, source object or
+frame slot, access range, scalar result type, and adjacent contaminating
+features. Completion means `todo.md` records accepted and rejected first-packet
+load shapes.
 
-### Step 2: Bucket BIR Producer Families
+### Step 2: Define Scalar Local-Load Producer Contract
 
-Group the semantic producer rows by producer family: local memory load/store,
-GEP, alloca-derived storage, direct-call argument metadata, memcpy/memset, and
-byte/object-representation writes. Completion means each bucket has counts,
-representatives, owning layer, and rejected adjacent shapes.
+Define the smallest sound contract for admitting a scalar local-memory load
+semantic producer. Completion means the contract names required explicit facts,
+accepted ordinary C shape, and fail-closed statuses for GEP, store,
+aggregate/member, pointer/provenance, byval/va_arg, volatile/atomic, complex,
+vector, F128, bootstrap, and raw-shape inference.
 
-### Step 3: Select The First Producer-Owned Packet
+### Step 3: Implement Or Route Scalar Local-Load Producer
 
-Choose the highest-impact ordinary C bucket with coherent implementation
-ownership. Completion means `todo.md` records the selected packet, required
-contract, fail-closed boundaries, and whether the work should remain in this
-source idea or be split into a new implementation idea.
+Implement the bounded producer packet if Step 2 identifies one. If current BIR
+or prepared surfaces cannot expose the required facts, record the exact
+lower-level owner and stop without changing RV64 lowering or expectations.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Decide whether idea 422 is complete as high-impact producer cleanup planning,
-should stay active for implementation, or should close after creating precise
-follow-up ideas. Completion means lifecycle state records the remaining BIR
-producer owners and no active plan silently expands into RV64 lowering.
+Re-probe the selected local-load representatives. Completion means lifecycle
+state records whether the scalar local-load producer slice is complete, whether
+another local-load subfamily remains, or whether work should hand off to the
+next BIR producer bucket.
