@@ -1,72 +1,88 @@
 Status: Active
 Source Idea Path: ideas/open/443_rv64_prepared_value_operand_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Re-establish Prepared Value Evidence
+Current Step ID: 2
+Current Step Title: Trace RV64 Value Consumer Selection
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 evidence refresh for
-`tests/c/external/gcc_torture/src/pr81503.c`.
+Completed `plan.md` Step 2 trace for the RV64 store-value consumer path that
+loses the prepared `%t18` value while materializing global `@c`.
 
-Artifacts are under
-`build/agent_state/443_step1_prepared_value_evidence/`, with the key evidence
-in `pr81503.prepared-bir.txt`, `pr81503.bir.txt`, and
-`pr81503.c4c-objdump.txt`.
+Specific files and functions:
 
-Prepared value authority is present:
+- `src/backend/mir/riscv/codegen/prepared_global_memory_emit.cpp`
+  - `emit_riscv_simple_store_global` is the smallest direct store-global
+    implementation surface. It resolves the prepared `StoreGlobalInst`, checks
+    `simple_i32_global_access_for`, finds the prepared global, copies
+    `store.value`, materializes the global address, and emits the final `sw`.
+  - `emit_riscv_direct_global_address_materialization` is the shared direct
+    global-address materializer and writes the requested destination register
+    with `lla`.
+- `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp`
+  - `emit_move_to_register` is the prepared value consumer helper used by the
+    store path. For a named value such as `%t18`, it consults
+    `prepared_register_for_value`; prepared evidence maps `%t18`/`value_id=16`
+    to `t0`, so a safe store path must copy from `t0` to a distinct store-value
+    scratch before any `@c` address materialization writes `t0`.
+- `src/backend/mir/riscv/codegen/prepared_emit_context.cpp`
+  - `prepared_register_for_value` and `prepared_value_home_for` are the
+    prepared-home lookup boundary used by `emit_move_to_register`; the trace did
+    not find a missing producer/home fact for `%t18`.
+- `src/backend/mir/riscv/codegen/prepared_function_emit.cpp`
+  - the instruction loop dispatches `bir::StoreGlobalInst` directly to
+    `emit_riscv_simple_store_global` with the current instruction context.
 
-- `pr81503.prepared-bir.txt:37-38` keeps `%t18 = bir.add ...` as the stored
-  value for `bir.store_global @c`.
-- `pr81503.prepared-bir.txt:113` assigns `%t18` to `value_id=16` in register
-  `t0`.
-- `pr81503.prepared-bir.txt:190` publishes
-  `store_source function=foo block=block_1 inst=8 source=%t18 status=available`
-  with `source_producer=binary`, `source_producer_inst=7`, and
-  `source_binary=yes`.
-- `pr81503.prepared-bir.txt:205` records the select chain for `%t18` as a
-  binary producer rooted at `block_1` inst 7.
-- `pr81503.prepared-bir.txt:232` keeps storage for `%t18` as
-  `encoding=register ... reg=t0`.
-- `pr81503.prepared-bir.txt:249` records the prepared global access as
-  `stored=%t18 symbol=c`.
+Data-flow rule for Step 3:
 
-RV64 consumer edges that must change:
-
-- The `store_global @c` consumer must use the prepared stored value `%t18`
-  from `t0`, preserving it across address materialization; current objdump
-  clobbers `t0` for the global address at `pr81503.c4c-objdump.txt:78-83` and
-  stores `t1` at `pr81503.c4c-objdump.txt:84`.
-- Earlier binary and branch consumers show the expected operand-shuttle shape
-  with `xor`/`mul`/`bne` using `t3,t4` at
-  `pr81503.c4c-objdump.txt:29`, `:37`, `:44`, `:58`, `:66`, and `:116`;
-  the next implementation packet should make the RV64 store-value consumer use
-  the same prepared-value authority instead of stale/address registers.
+- Treat the prepared store source as authoritative: `StoreGlobalInst.value`
+  `%t18` has prepared home `register t0` and must be consumed into a register
+  that will not be overwritten by address materialization.
+- The bad object shows the opposite ordering at
+  `build/agent_state/443_step1_prepared_value_evidence/pr81503.c4c-objdump.txt:78-84`:
+  `lla`/PC-relative materialization writes `t0` with the address of `@c`,
+  then `mv t1,t0` copies the address, and `sw t1,0(t0)` stores the address
+  instead of the prepared `%t18` value. That is how `%t18`/`t0` is lost.
+- The smallest likely Step 3 surface is
+  `prepared_global_memory_emit.cpp::emit_riscv_simple_store_global`, with
+  `prepared_scalar_emit.cpp::emit_move_to_register` and
+  `prepared_emit_context.cpp::prepared_register_for_value` as support
+  boundaries. The implementation rule should force `store.value` consumption
+  before global-address materialization, or choose an address register that
+  cannot clobber the prepared source when the source is already in `t0`.
 
 ## Suggested Next
 
-Implement the RV64 lowering fix so the `store_global` value operand consumes
-the prepared stored value `%t18`/`t0` before global-address materialization
-clobbers the value register.
+Implement Step 3 in the store-global path first: preserve the prepared store
+source across address materialization for direct global stores, then regenerate
+focused `pr81503.c` object/objdump evidence to prove the emitted order stores
+`%t18` rather than the `@c` address.
 
 ## Watchouts
 
+- Current checked-out `emit_riscv_simple_store_global` source already appears
+  to append `emit_move_to_register(..., "t1", ..., store.value)` before
+  `lla t0, label`, but the preserved Step 1 object shows the bad post-`lla`
+  `mv t1,t0` order. Treat that as a source/object evidence mismatch that Step
+  3 should resolve with fresh generated assembly or object proof before
+  deciding whether the source needs a code change or the artifact came from a
+  stale/non-selected path.
+- `./build/c4cll --codegen asm --target riscv64-linux-gnu
+  tests/c/external/gcc_torture/src/pr81503.c` currently fails with
+  `riscv prepared module emitter does not support this prepared global storage
+  layout`; the focused object route from Step 1 remains the useful proof route.
 - Consume prepared value authority directly; do not infer producer facts from
   testcase names, raw source shape, register accidents, or qemu exit codes.
 - Do not change expectations, allowlists, unsupported markers, runtime
   comparison, or pass/fail accounting.
 - Keep frame-slot call-argument publication in the separate idea `444`.
-- Prepared producer authority is not missing for this case; the visible gap is
-  the RV64 store-value consumer edge.
 
 ## Proof
 
-Ran the delegated proof command exactly. It rebuilt `c4cll`, regenerated
-`build/agent_state/443_step1_prepared_value_evidence/`, produced BIR,
-prepared-BIR, object, objdump, linked clang/c4c binaries, ran both under qemu,
-and preserved `test_after.log`.
+Ran the delegated proof command exactly:
 
-Proof passed. `test_after.log` records `clang_rc=0` and `c4c_rc=255`; this
-packet uses those only as captured evidence, not as producer authority.
+`bash -lc 'git diff --check -- todo.md > test_after.log 2>&1'`
+
+Proof passed. `test_after.log` is preserved.
