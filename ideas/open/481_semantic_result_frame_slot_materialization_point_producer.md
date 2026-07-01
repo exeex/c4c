@@ -6,6 +6,15 @@ Parent: `ideas/closed/480_semantic_instruction_result_frame_slot_write_event_pro
 Source Evidence: `build/agent_state/480_step4_semantic_write_event_producer_residual/`
 Owning Layer: Prepared semantic result frame-slot materialization-point production
 
+## Lifecycle Note
+
+Parked by `ideas/open/482_semantic_frame_slot_materialization_probe_decomposition.md`.
+The 475 -> 481 route repeatedly moved the first missing producer lower inside
+the same `%t23` representative failure family without reducing the owned
+capability family. Idea 481 remains valid source intent, but implementation
+should resume only after focused decomposition probes identify a smaller
+generic seam.
+
 ## Goal
 
 Produce explicit prepared materialization-point facts proving that a semantic

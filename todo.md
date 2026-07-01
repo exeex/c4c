@@ -1,43 +1,40 @@
 Status: Active
-Source Idea Path: ideas/open/481_semantic_result_frame_slot_materialization_point_producer.md
+Source Idea Path: ideas/open/482_semantic_frame_slot_materialization_probe_decomposition.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Audit Materialization Point Inputs
+Current Step Title: Establish The Blocked Failure-Family Baseline
 
 # Current Packet
 
 ## Just Finished
 
-Closed idea 480 as a routed blocker. Semantic write-event production did not
-complete because current prepared/prealloc evidence lacks an explicit
-materialization point for `%t23 = bir.ne i32 %t22, 0` into slot `#21`.
+Applied c4c-divide-and-conquer route reset for the active 481 route. Idea 481
+remains open but parked behind this decomposition because the 475 -> 481 chain
+kept moving the first missing producer lower inside the same `%t23` failure
+family without reducing the owned capability family.
 
-The new active idea 481 owns that explicit semantic result frame-slot
-materialization-point producer. Write-event consumption, event-authority
-consumption, interval population, source-fact population, branch-stack-load
-authority, and RV64 branch-load consumption remain blocked.
+The new active idea 482 owns decomposition into focused probes and explicit
+backend seam ownership before any more materialization-point implementation
+work resumes.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: audit materialization-point inputs for `%t23`
-slot `#21` and adjacent protected boundary rows.
+Execute Step 1 from `plan.md`: establish the blocked failure-family baseline
+from existing 475 -> 481 artifacts.
 
 Suggested artifact directory:
-`build/agent_state/481_step1_materialization_point_audit/`.
+`build/agent_state/482_step1_blocked_family_baseline/`.
 
 ## Watchouts
 
-- Do not edit implementation files during Step 1.
-- Do not implement RV64 branch-load emission in this producer plan.
-- Do not directly populate write-event, event-authority, semantic interval,
-  source-fact, or branch-stack-load authority records.
-- Do not reuse `%t22 -> %t23` stack moves as semantic materialization evidence
-  when `authority=none`.
-- Do not infer materialization points from raw BIR, branch conditions, stack
-  homes, storage, offsets, object ids, value names, function names, testcase
-  names, or dump order.
-- Keep pointer-value/provenance, select-result stack-destination, and
-  unsupported-terminator boundaries separate.
+- Do not edit implementation files or tests during Step 1.
+- Do not continue another same-shape audit of `%t23` materialization-point
+  production.
+- Do not copy the monolithic `930930-1` shape into `tests/backend/case/`.
+- Add focused probes only after Step 1/2 proves they are non-duplicative and
+  capability-oriented.
+- Keep downstream interval/source-fact/branch authority and RV64 consumers as
+  non-goals.
 - Do not modify `test_baseline.new.log`, `test_baseline.log`,
   `test_before.log`, `test_after.log`, or `review/`.
 
