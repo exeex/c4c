@@ -1,48 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/486_bir_index_range_proof_path_dominance_carrier.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Proof Carrier
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 486 by implementing the independent dynamic
-local-array index range proof/path-dominance metadata and status surface.
+Completed Step 4 for idea 486 by recording residual disposition after the
+range-proof checker/status surface landed.
 
-Implemented surface:
+Close-readiness classification:
 
-| Surface | Purpose |
+| Scope | Disposition |
 | --- | --- |
-| `LocalArrayRangeProofStatus` | status vocabulary for available and fail-closed proof outcomes |
-| `LocalArrayRangeProofSourceKind` | explicit proof-source kind, currently `branch_condition` or `explicit_compare` |
-| `LocalArrayRangeProofPredicate` | normalized comparison predicate roles accepted by the checker |
-| `LocalArrayIndexRangeProofInputs` | explicit proof source, bounds, path/dominance, and no-clobber inputs |
-| `LocalArrayIndexRangeProofRecord` | checker output keyed to the idea 485 local-array element path |
-| `evaluate_local_array_index_range_proof` | planner/checker API for synthetic complete inputs and fail-closed statuses |
-
-Focused coverage:
-
-- synthetic complete proof inputs produce `available`;
-- missing local-array path, dynamic index, proof source, lower bound, upper
-  bound, path validity, dominance, consumer path coverage, and no-clobber facts
-  fail closed;
-- unsupported predicate roles, clobbered index values, and raw-shape-only
-  evidence fail closed;
-- real dynamic local-array rows remain `missing_index_range_proof` unless
-  explicit proof inputs are supplied.
+| Independent range-proof status vocabulary | Complete |
+| Proof-source kind and predicate role vocabulary | Complete |
+| Checker input/output API keyed to idea 485 local-array element paths | Complete |
+| Synthetic available and fail-closed coverage | Complete |
+| Real proof-source population from control-flow | Not implemented by idea 486 |
+| Proof-to-consumer path/dominance population | Not implemented by idea 486 |
+| Index no-clobber/same-value population | Not implemented by idea 486 |
+| Real dynamic row availability | Still blocked; rows remain `missing_index_range_proof` without explicit proof inputs |
+| Idea 484 packaging | May consume static/source-object/derivation/layout surfaces only; dynamic row packaging remains blocked |
+| Scalar local-load production | Still blocked for dynamic local-array loads until idea 484 has available dynamic provenance |
 
 Artifact:
 
-- `build/agent_state/486_step3_range_proof_path_dominance_carrier/summary.md`
+- `build/agent_state/486_step4_residual_disposition/disposition.md`
 
 ## Suggested Next
 
-Complete Step 4 residual disposition for idea 486: classify the status surface
-as implemented, identify the remaining producer-population owner for real proof
-source/path/no-clobber facts, and keep idea 484 packaging and scalar local-load
-production blocked for dynamic rows until those facts exist.
+Route the next owner to a dedicated real-population packet:
+`BIR dynamic local-array proof-source path/no-clobber population`. That packet
+should populate proof-source records from real control-flow/compare facts,
+prove path/dominance coverage to the dynamic GEP/access consumer, and prove
+index no-clobber/same-value before any dynamic row is marked available.
 
 ## Watchouts
 
@@ -63,6 +57,8 @@ production blocked for dynamic rows until those facts exist.
   fact.
 - Step 3 did not populate real proof records from control-flow; it only added
   the independent checker/status carrier.
+- Idea 486 is close-ready as the checker/status surface once the supervisor
+  accepts the Step 3 code and this Step 4 disposition.
 - Do not touch `review/`, canonical logs, baseline files, implementation files,
   or tests until an executor receives a bounded packet.
 
@@ -71,8 +67,7 @@ production blocked for dynamic rows until those facts exist.
 Delegated proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
-Result: passed; `test_after.log` contains the build and `^backend_` CTest
-output.
+Result: passed.
