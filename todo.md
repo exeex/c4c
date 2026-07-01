@@ -1,60 +1,49 @@
 Status: Active
-Source Idea Path: ideas/open/501_rv64_before_instruction_prepared_move_materialization.md
+Source Idea Path: ideas/open/502_rv64_out_of_ssa_parallel_copy_move_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Materialize Stack-To-Stack Consumer Moves
+Current Step ID: 1
+Current Step Title: Inspect Out-Of-SSA Parallel-Copy Surfaces
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 implemented RV64 materialization for coherent prepared
-before-instruction `consumer_stack_to_stack` move bundles only. Durable evidence
-is recorded under
-`build/agent_state/501_step3_stack_to_stack_moves/summary.md`.
+Idea 501 closed after Step 4 residual disposition. The two coherent
+before-instruction destination stack-slot families from idea 495 are now
+implemented:
 
-`fragment_for_prepared_move_bundle` now admits stack-to-stack only under the
-same prepared structural guards as Step 2 plus reason `consumer_stack_to_stack`.
-The source and destination are derived from `move.from_value_id`,
-`move.to_value_id`, prepared value homes, and stack layout. The destination must
-resolve to a scalar stack slot; the source must resolve to a stack slot with the
-same scalar size. RV64 uses an explicit load-then-store policy through an
-unoccupied temporary GPR chosen from `t1`, `t2`, and `t3`; if all candidates are
-published as prepared GPR homes, the shape remains fail-closed.
+- `consumer_register_to_stack` materialization landed in Step 2.
+- `consumer_stack_to_stack` materialization landed in Step 3.
 
-Focused RV64 object-emission coverage now proves an accepted stack-to-stack
-before-instruction bundle emits `lw t1, 8(sp); sw t1, 16(sp)` before the
-prepared instruction and keeps adjacent shapes fail-closed for missing source
-stack facts, scalar-size mismatch, no available scratch GPR, and reason
-confusion back into the register-to-stack path.
+Remaining move-bundle families stay outside idea 501 and remain queued under
+ideas 502, 503, and 504.
+
+Lifecycle activated idea 502 because it is the next largest coherent prepared
+move-bundle family: 91 out-of-SSA/pre-terminator parallel-copy rows.
 
 ## Suggested Next
 
-Execute Step 4 residual disposition for idea 501. Record that the two coherent
-before-instruction consumer move families from idea 495 are now implemented and
-route remaining move-bundle families to their separate follow-up ideas rather
-than extending idea 501.
+Execute Step 1 by inspecting the prepared out-of-SSA parallel-copy publication
+and RV64 consumption surfaces. Record the exact records/helpers to consume,
+representative proof rows, and whether the current prepared facts are complete
+enough for implementation.
 
 ## Watchouts
 
-- Do not implement out-of-SSA, before-return, or select-publication move
-  handling under idea 501.
-- Do not infer move authority, destination storage, source storage, or consumer
-  ordering from testcase names, raw BIR shape, case-log text, final homes, or
-  object output.
-- Stack-to-stack is admitted only with an unoccupied scratch GPR; if prepared
-  homes occupy `t1`, `t2`, and `t3`, it remains fail-closed.
-- Source and destination routes must continue to come from `move.from_value_id`,
-  `move.to_value_id`, prepared value homes, and stack layout.
+- Do not re-open before-instruction moves under idea 502.
+- Do not implement before-return or select-publication handling under idea 502.
+- Do not infer predecessor/successor, phi, edge, execution-site, destination
+  storage, or parallel-copy ordering from raw block order, source shape,
+  filenames, labels, final homes, or target output.
 - Preserve existing untracked review artifacts and the rejected
   `test_baseline.new.log`.
 
 ## Proof
 
-Step 3 implementation proof:
+Lifecycle close/switch proof:
 
 ```sh
-cmake --build build -j2 > test_after.log 2>&1 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' >> test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed > test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
 ```
 
 Result: passed. Output preserved in `test_after.log`.

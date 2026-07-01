@@ -1,6 +1,6 @@
 # RV64 Before-Instruction Prepared Move Materialization
 
-Status: Open
+Status: Closed
 Type: Focused RV64 materialization idea
 Parent: `ideas/open/495_prepared_move_bundle_materialization_bucket_review.md`
 Source Evidence:
@@ -72,3 +72,23 @@ Representative rows include `src/20010123-1.c` and `src/20040709-1.c`.
   evidence, F128, call ABI, or broad stack-frame rewrites.
 - Reject expectation, allowlist, unsupported-marker, pass/fail accounting, or
   runtime-comparison changes as proof of progress.
+
+## Completion
+
+Closed after Step 4 residual disposition. The focused before-instruction move
+materialization scope is complete:
+
+- Step 2 implemented coherent prepared `consumer_register_to_stack`
+  before-instruction move materialization.
+- Step 3 implemented coherent prepared `consumer_stack_to_stack`
+  before-instruction move materialization with an explicit scratch-GPR
+  load-then-store policy.
+- Both paths consume prepared move-bundle facts and keep adjacent incomplete or
+  confused shapes fail-closed.
+
+Remaining move-bundle families are not part of idea 501. They remain queued in
+separate open ideas:
+
+- `ideas/open/502_rv64_out_of_ssa_parallel_copy_move_materialization.md`
+- `ideas/open/503_rv64_before_return_prepared_move_materialization.md`
+- `ideas/open/504_select_publication_move_bundle_evidence_authority.md`
