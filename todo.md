@@ -1,43 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/424_prepared_global_stack_frame_infrastructure_review.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Producer Facts Versus RV64 Emission Gaps
+Current Step ID: 3
+Current Step Title: Write Row-Backed Infrastructure Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by generating fresh focused BIR, prepared-BIR, MIR,
-trace, and RV64 object-route artifacts for five representative infrastructure
-rows under
-`build/agent_state/424_step2_infrastructure_classification/`.
+Completed `plan.md` Step 3 by writing the durable row-backed infrastructure
+handoff:
 
-Classification:
+- `docs/rv64_gcc_torture_post_contract/global_stack_frame_infrastructure_review.md`
 
-| Row | Classification | Evidence |
-| --- | --- | --- |
-| `src/20000603-1.c` | Coherent RV64 emission gap | Prepared frame facts publish fixed frame sizes/alignments, explicit frame slots, and callee-saved `gpr:s1` save-slot facts (`slot#10+stack16` for `f`, `slot#10+stack8` for `main`); object route still rejects supported prepared callee-saved GPR save slots. |
-| `src/20030209-1.c` | Coherent RV64 emission gap | Prepared stack/frame facts publish `frame_size=80000`, `frame_alignment=8`, 10000 fixed slots, and no dynamic stack; object route still rejects generic prepared stack-frame support. |
-| `src/20000412-1.c` | Coherent RV64 emission gap | Prepared addressing for `i` is coherent, and the object route reports selected object data as `unsupported_but_coherent object_label_id=2 object_size_bytes=1656`; RV64 lacks emission for that coherent object-data contract. |
-| `src/930513-2.c` | Producer-contract gap | Prepared direct global accesses exist for `__static_local_eq_0`, but object route reports `missing_object_label object_size_bytes=0 emitted_byte_count=0 zero_fill_byte_count=0`; access facts are not enough object-data authority. |
-| `src/20001017-1.c` | Producer-contract gap | Prepared call plans expose a 13-argument call, but stack-passed callee params `%p.B`, `%p.fdB`, `%p.b`, `%p.C`, and `%p.fdC` have `none` homes and caller stack args 8-12 lack destination offsets. |
-
-The detailed packet summary is in
-`build/agent_state/424_step2_infrastructure_classification/classification_summary.md`.
-Concise classification notes were also added to
-`docs/rv64_gcc_torture_post_contract/infrastructure_bucket_evidence.md`.
+The document records bucket counts (`unsupported_stack_frame` 84,
+`unsupported_global_data` 40, `unsupported_param_home` 4), cites the Step 2
+representative artifact directories, separates coherent RV64 emission gaps
+from producer-contract gaps, records parked F128/FPR scope, and lists reject
+signals against RV64 reconstruction, expectation/unsupported-marker changes,
+and testcase-shaped shortcuts.
 
 ## Suggested Next
 
-Execute Step 3: write
-`docs/rv64_gcc_torture_post_contract/global_stack_frame_infrastructure_review.md`
-from the row-backed classifications, separating coherent RV64 emission work
-from producer-contract gaps.
+Execute Step 4: create separate follow-up ideas for the row-backed owners in
+the handoff doc:
+
+- RV64 callee-saved GPR save-slot emission.
+- RV64 general fixed prepared stack-frame emission.
+- RV64 coherent selected object-data emission.
+- Producer static-local object-data contract publication.
+- Producer stack-passed parameter-home publication.
 
 ## Watchouts
 
-- Step 3 should preserve the owner split: RV64 emission candidates are
+- Step 4 should preserve the owner split: RV64 emission candidates are
   callee-saved save slots, general fixed-frame emission, and coherent selected
   object-data emission; producer-contract candidates are static-local object
   labels/extents and stack-passed parameter-home publication.
@@ -52,17 +48,7 @@ from producer-contract gaps.
 
 ## Proof
 
-Classification proof was written to `test_after.log`:
+Step 3 docs proof was written to `test_after.log`:
 
-- `scripts/plan_review_state.py set-step --step-id 2 --step-title 'Classify Producer Facts Versus RV64 Emission Gaps'`
-- `cmake --build build --target c4cll`
-- For each representative row:
-  - `./build/c4cll --dump-bir --target riscv64-linux-gnu <case>`
-  - `./build/c4cll --dump-prepared-bir --target riscv64-linux-gnu <case>`
-  - `./build/c4cll --dump-mir --target riscv64-linux-gnu <case>`
-  - `./build/c4cll --trace-mir --target riscv64-linux-gnu <case>`
-  - `./build/c4cll --codegen obj --target riscv64-linux-gnu <case> -o <artifact>/c4c.o`
+- `scripts/plan_review_state.py set-step --step-id 3 --step-title 'Write Row-Backed Infrastructure Handoff'`
 - `git diff --check -- todo.md docs/rv64_gcc_torture_post_contract`
-
-All dump commands returned `0`; all object-route commands returned `2` with
-the expected fail-closed unsupported diagnostics used for classification.
