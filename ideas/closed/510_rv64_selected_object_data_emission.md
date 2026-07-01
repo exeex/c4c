@@ -1,8 +1,39 @@
 # RV64 Selected Object-Data Emission
 
+Status: Closed
 Source Parent: ideas/open/424_prepared_global_stack_frame_infrastructure_review.md
 Handoff: docs/rv64_gcc_torture_post_contract/global_stack_frame_infrastructure_review.md
 Owning Layer: RV64 object/global-data emission
+
+## Completion Notes
+
+Closed after completing the RV64 consumer slice for prepared-authoritative
+selected object-data records.
+
+The implemented route admits only prepared selected object-data records with
+explicit object label, extent, initialized-byte, zero-fill, section, alignment,
+and relocation authority. It emits initialized data, reserves zero-fill, defines
+object symbols, and records relocations from those prepared facts rather than
+reconstructing storage from source shape, raw globals, or testcase identity.
+
+Focused object-emission and ordinary-C backend coverage prove initialized data,
+zero-fill, relocation, and fail-closed missing-authority behavior. Backend
+regression guard passed for the canonical `^backend_` before/after logs:
+`test_before.log` had 331 passing tests and `test_after.log` had 339 passing
+tests, with no new failures.
+
+Remaining rows such as `tests/c/external/gcc_torture/src/20000412-1.c` and
+`tests/c/external/gcc_torture/src/930513-2.c` remain fail-closed because the
+prepared producer does not yet publish enough authority:
+
+- `20000412-1.c` is still marker-only `unsupported_but_coherent` with no
+  prepared initialized bytes, zero-fill, or relocation authority.
+- `930513-2.c` still reports `missing_object_label`.
+
+Those producer gaps are follow-up work, not incomplete RV64 consumer work under
+this idea. Follow-up initiatives should cover static-local object-label
+publication, byte/zero-fill fact publication, relocation-ready object-data
+records, and any broader TLS/GOT/F128/global-width/ABI scope separately.
 
 ## Goal
 
