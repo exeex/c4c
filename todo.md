@@ -1,72 +1,83 @@
 Status: Active
 Source Idea Path: ideas/open/480_semantic_instruction_result_frame_slot_write_event_producer.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Semantic Write Event Producer Inputs
+Current Step ID: 2
+Current Step Title: Define Semantic Write Event Producer Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 480 by classifying where `%t23 = bir.ne i32
-%t22, 0` becomes or fails to become a semantic instruction-result frame-slot
-write/materialization event for slot `#21`.
+Completed Step 2 contract for idea 480 by defining when a semantic
+instruction-result frame-slot write/materialization event may be produced.
 
-Producer input classification:
+Contract decision:
 
-| Stage / input | Evidence | Verdict |
-| --- | --- | --- |
-| Semantic result production | Raw BIR in `logic.end.14`: `%t23 = bir.ne i32 %t22, 0`. | Semantic identity exists; no frame-slot write event is attached. |
-| Branch consumer | `bir.cond_br i32 %t23, block_5, block_6`. | Consumer context only. |
-| Prepared condition | `branch_condition logic.end.14 kind=fused_compare condition=%t23 compare=ne i32 %t22, 0`. | Confirms compare identity; not write/materialization authority. |
-| Final value home | `home %t23 value_id=17 kind=stack_slot slot_id=21 offset=156`. | Final placement only; not an event. |
-| Storage plan | `storage %t23 frame_slot ... slot#21+stack156 offset=156`. | Destination encoding only; not producer authority. |
-| Stack object / frame slot | object `#21`, slot `#21`, offset `156`, size `4`, align `4`. | Destination facts only. |
-| Before-instruction move into `%t23` | `move_bundle phase=before_instruction authority=none block_index=11 instruction_index=3`; `move from_value_id=16 to_value_id=17 destination_storage=stack_slot`. | Rejected `storage_only_move`; source is `%t22`, not semantic `%t23`. |
-| `%t22` select materialization / publications | join transfer and parallel copies target `%t22`; publications are `unsupported_destination_storage`. | Separate `%t22` stack-destination boundary. |
-| Branch-stack-load row | `%t23` row remains `status=missing_policy slot=#21 object=#21`. | Downstream consumer authority, still blocked. |
+- No bounded implementation packet is justified from current prepared/prealloc
+  evidence.
+- Current rows provide semantic identity and final destination facts for
+  `%t23`, but no explicit materialization point where `%t23` is written into
+  slot `#21`.
+- A producer that derives an event from raw BIR, branch conditions, final
+  homes, storage plans, object/slot layout, or `authority=none` moves would be
+  unsound for this source idea.
 
-Protected boundaries:
+Positive event contract:
 
-| Boundary | Disposition |
+| Fact group | Required for `available` semantic write event |
 | --- | --- |
-| `%t22` select-result stack destination | Separate select-result/stack-destination owner. |
-| `%t1` / `%t7` pointer/provenance rows | Separate pointer/provenance owner. |
-| `%t2` / `%t8` unsupported-terminator rows | Separate branch-site/terminator owner. |
-| Path/no-clobber interval facts | Later owner after a real event exists. |
-| Event-authority consumption, source facts, branch-stack-load authority, RV64 | Downstream non-goals and blocked. |
+| Semantic result identity | Function, producer block/instruction, result value id/name/type, opcode/kind, operands/immediates. |
+| Materialization event site | Stable event phase/site and block/instruction coordinate or equivalent prepared event identity. |
+| Event source/result | Must match the semantic result `%t23`, not `%t22` or another carrier. |
+| Destination identity | Destination value id/name/type, frame slot id, stack object id, stack offset, size, and alignment. |
+| Destination coherence | Frame slot/object match by function/object id and layout. |
+| Authority | Producer explicitly owns semantic result materialization into the destination frame slot. |
 
-First Step 2 contract target:
+Required statuses / fail-closed cases:
 
-- Define when a semantic instruction-result frame-slot write/materialization
-  event may be produced.
-- Required candidate fields: function, semantic producer block/instruction,
-  result value id/name/type/opcode, event source/result, destination
-  slot/object/offset/size/alignment, stable event site, and explicit authority.
-- Required fail-closed cases: raw-shape-only, branch-condition-only,
-  final-home/storage/object-only, `%t22 -> %t23` `authority=none`
-  storage-only movement, source/result mismatch, destination mismatch,
-  unsupported authority, and protected boundaries.
+| Case | Disposition |
+| --- | --- |
+| Missing semantic result identity | `missing_semantic_result_identity`. |
+| Raw BIR or branch-condition-only evidence | `missing_materialization_point`. |
+| Final home, storage plan, stack object, or frame slot only | `missing_materialization_point`. |
+| `%t22 -> %t23` `authority=none` before-instruction move | `storage_only_move`. |
+| Event source/result differs from `%t23` | `source_result_mismatch`. |
+| Destination differs from slot `#21` / object `#21` / offset `156` / size `4` / align `4` | `destination_mismatch`. |
+| Unknown or unsupported authority | `unsupported_authority`. |
+| `%t22` select-result stack destination | `unsupported_boundary`; separate owner. |
+| `%t1` / `%t7` pointer/provenance rows | `unsupported_boundary`; separate owner. |
+| `%t2` / `%t8` unsupported-terminator rows | `unsupported_boundary`; separate owner. |
+| Event-authority consumption, interval/source facts, branch-stack-load authority, RV64 | Downstream non-goals. |
+
+Exact blocker:
+
+- Missing explicit semantic instruction-result frame-slot materialization
+  point for `%t23 = bir.ne i32 %t22, 0` into slot `#21`.
+- The missing producer must record function/site, semantic producer identity,
+  result value id/name/type, event source/result `%t23`, destination
+  slot/object/offset/size/alignment, and authority before any downstream
+  carrier or interval population can be sound.
 
 Artifacts:
 
-- `build/agent_state/480_step1_semantic_write_event_producer_audit/audit.md`
+- `build/agent_state/480_step2_semantic_write_event_producer_contract/contract.md`
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: Define Semantic Write Event Producer Contract.
-Decide whether the current producer/prealloc layers can emit a bounded
-semantic write/materialization event surface, or whether the route remains
-blocked by absence of an explicit materialization point.
+Execute Step 3 from `plan.md` as a routing/blocker packet:
+`Route Semantic Write Event Producer Blocker`.
+
+Step 3 should record that no implementation is selected from current evidence
+and name the missing explicit materialization-point producer surface.
 
 ## Watchouts
 
-- Do not treat final homes, storage plans, stack objects, frame slots, value
-  names, raw BIR adjacency, or dump order as event authority.
+- Do not implement a collector over final homes/storage/object layout and call
+  it a semantic write event.
 - Do not reuse `%t22 -> %t23` `authority=none` movement as semantic
-  materialization evidence.
-- Do not consume events through event-authority, interval, source-fact,
-  branch-stack-load, or RV64 paths in this plan step.
+  materialization.
+- Keep event-authority consumption, interval facts, source facts,
+  branch-stack-load authority, and RV64 out of scope.
 
 ## Proof
 
