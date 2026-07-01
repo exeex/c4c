@@ -6260,22 +6260,27 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_store_global(
   }
   const std::string_view symbol =
       prepare::prepared_link_name(prepared.names, *access->address.symbol_name);
-  RiscvEncodedFragment fragment = make_rv64_pcrel_address_fragment(
-      5,
-      std::string{symbol},
-      ".Lpcrel_hi_global_store_" + std::to_string(access->function_name) + "_" +
-          std::to_string(access->block_label) + "_" +
-          std::to_string(access->inst_index),
-      RiscvObjectFixupTargetKind::Object,
-      0);
+  RiscvEncodedFragment fragment;
   if (!append_rv64_move_value_to_register(fragment,
                                           6,
                                           stack_layout,
                                           names,
                                           lookups,
                                           store.value,
-                                          stack_frame_bytes) ||
-      !append_rv64_store_register_to_global_base(
+                                          stack_frame_bytes)) {
+    return std::nullopt;
+  }
+  append_fragment(
+      fragment,
+      make_rv64_pcrel_address_fragment(
+          5,
+          std::string{symbol},
+          ".Lpcrel_hi_global_store_" + std::to_string(access->function_name) +
+              "_" + std::to_string(access->block_label) + "_" +
+              std::to_string(access->inst_index),
+          RiscvObjectFixupTargetKind::Object,
+          0));
+  if (!append_rv64_store_register_to_global_base(
           fragment,
           6,
           5,
