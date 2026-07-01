@@ -1,6 +1,6 @@
 # RV64 Prepared Value Operand Materialization
 
-Status: Open
+Status: Closed
 Type: Runtime correctness implementation idea
 Parent: `ideas/open/423_rv64_runtime_mismatch_triage.md`
 Owning Layer: RV64 lowering consumption of prepared BIR value graph
@@ -65,6 +65,17 @@ accounting, or unsupported-diagnostic problem.
   weaken unsupported or expected-output contracts.
 - Fresh build proof, focused representative proof, and supervisor-selected
   regression proof are available before closure.
+
+## Closure Note
+
+Closed after repairing RV64 object emission for prepared global stores so the
+stored value is materialized before the PC-relative global address scratch
+clobbers the prior value home. Focused `src/pr81503.c` object-route proof
+matched clang with `clang_rc=0`, `c4c_rc=0`, and
+`representative_match=yes`. Nearby ordinary-C coverage was added for the
+prepared global-store source preservation route in both normal RV64 runtime
+and object-runtime tests. The text assembly route for `src/pr81503.c` remains
+outside this idea's acceptance route.
 
 ## Reviewer Reject Signals
 
