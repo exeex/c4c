@@ -8,30 +8,47 @@ Current Step Title: Audit Index Range Proof Inputs
 
 ## Just Finished
 
-Closed idea 485 as complete for source-object, derivation, and layout carrier
-records and activated prerequisite idea 486, `BIR Index Range Proof And
-Path-Dominance Carrier`.
+Completed Step 1 for idea 486 by auditing current index range proof,
+path/dominance, and no-clobber inputs for dynamic local-array indices.
 
-Reason:
+Representative audit:
 
-- idea 485 Step 3 added durable local-array source-object, derivation, and
-  element-path/layout records;
-- dynamic local-array GEP rows remain unavailable as
-  `missing_index_range_proof`;
-- range proof, path/dominance validity, and index no-clobber are separate
-  proof-carrier responsibilities.
+| Field | Current input | Classification |
+| --- | --- | --- |
+| Source object | `local_array_source_objects` from static local array `alloca` | available from idea 485 |
+| Derivation | `local_array_derivations` from explicit local array/view GEP | available from idea 485 |
+| Element path/layout | `local_array_element_paths` with element count/size and byte layout | available from idea 485 |
+| Dynamic index identity | `LocalArrayIndexRecord::value` carries the BIR index value, e.g. `%idx` | available |
+| Current dynamic status | `LocalArrayCarrierStatus::MissingIndexRangeProof` | intentionally unavailable |
+| Proof source identity | no durable compare/branch proof source record tied to the local-array index | missing |
+| Lower/upper bound facts | no durable normalized `0 <= index < element_count` proof | missing |
+| Predicate/operand mapping | branch conditions expose compare fields, but no carrier maps them to local-array index bounds | missing |
+| Path/dominance validity | prepared CFG has block/branch facts and some reachability-style helpers, but no proof-to-GEP consumer certificate | missing |
+| Index no-clobber/same-value | no record proving the index value is unchanged between proof source and GEP consumer | missing |
 
-Key evidence:
+Existing usable surfaces:
 
-- `build/agent_state/485_step3_local_array_carrier_producer/summary.md`
-- `build/agent_state/485_step4_residual_disposition/disposition.md`
+- `bir::MemoryDynamicArrayFacts` can compute passive byte-range envelope
+  verdicts after requested ranges are known, but it is not proof-source or
+  path authority.
+- `PreparedControlFlowFunction` exposes structured blocks and branch
+  conditions.
+- Prepared lookup helpers show reachability/dominance-style filtering exists
+  for other domains, but there is no index-range proof carrier today.
+- Existing path/clobber status vocabularies in frame-slot and semantic
+  materialization records are useful precedent, not direct authority for
+  dynamic local-array indices.
+
+Artifact:
+
+- `build/agent_state/486_step1_index_range_proof_inputs/audit.md`
 
 ## Suggested Next
 
-Execute Step 1: audit index range proof inputs for dynamic local-array indices.
-Determine whether current control-flow/proof surfaces can provide explicit
-proof source, bounds, path/dominance coverage, and no-clobber facts for a
-representative dynamic local-array access.
+Execute Step 2: define the dynamic local-array index range proof carrier
+contract. Require explicit proof source identity, bound facts, predicate/operand
+role mapping, path/dominance validity, and index no-clobber/same-value evidence;
+preserve dynamic rows as unavailable when any fact is missing.
 
 ## Watchouts
 
@@ -41,17 +58,18 @@ representative dynamic local-array access.
   path/dominance, and no-clobber facts.
 - Do not change idea 485 carrier records, idea 484 packaging, scalar local-load
   consumption, or RV64/MIR lowering in this proof-carrier packet.
+- `MemoryDynamicArrayRangeVerdict::BoundedByElementCount` is not enough by
+  itself for idea 486; it lacks proof-source, dominance/path, and no-clobber
+  authority.
 - Do not touch `review/`, canonical logs, baseline files, implementation files,
   or tests until an executor receives a bounded packet.
 
 ## Proof
 
-Lifecycle validation:
+Delegated proof:
 
 ```sh
 git diff --check
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
-python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
