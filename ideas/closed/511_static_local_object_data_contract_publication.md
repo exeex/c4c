@@ -1,8 +1,35 @@
 # Static-Local Object-Data Contract Publication
 
+Status: Closed
 Source Parent: ideas/open/424_prepared_global_stack_frame_infrastructure_review.md
 Handoff: docs/rv64_gcc_torture_post_contract/global_stack_frame_infrastructure_review.md
 Owning Layer: producer object-data contract
+
+## Completion Notes
+
+Closed after Step 6 validation completed the producer-side static-local
+object-data publication scope.
+
+Function-scope static storage now publishes stable prepared object-data
+authority through the producer contract: object identity, size, alignment,
+initialized data, and zero-fill facts are available for RV64 consumers without
+target-side reconstruction from access facts, symbol spelling, source shape, or
+the representative torture row.
+
+Focused static-local/prepared object-data coverage passed for initialized and
+zero/default function-scope static objects. The representative
+`tests/c/external/gcc_torture/src/930513-2.c` now passes asm and object codegen,
+with asm showing `__static_local_eq_0:`, `.zero 4`, and loads/stores through
+that prepared label.
+
+Backend regression guard passed for the canonical `^backend_` before/after
+logs: `test_before.log` had 331 passing tests and `test_after.log` had 344
+passing tests, with no new failures.
+
+Remaining non-goals are follow-up scope, not incomplete work for this idea:
+static-local symbol visibility/local binding if required later, GOT-required
+globals, thread-local storage, dynamic initialization, stack-passed parameter
+homes, broad global access widths, and unrelated RV64 consumer gaps.
 
 ## Goal
 
