@@ -1,0 +1,13 @@
+semantic_family	count	step1_disposition
+alloca local-memory semantic family	16	producer gap; not scalar-load-fact-consuming
+function-signature semantic family	9	producer gap; not scalar-load-fact-consuming
+gep local-memory semantic family	62	producer gap; address/provenance producer before consumers
+load local-memory semantic family	79	mixed; local-array scalar-load consumers may now use local_array_scalar_local_loads, residual rows remain producer/boundary owned
+runtime/intrinsic family 'memcpy runtime family'	19	runtime/intrinsic producer gap; not scalar-load-fact-consuming
+runtime/intrinsic family 'memset runtime family'	15	runtime/intrinsic producer gap; not scalar-load-fact-consuming
+scalar-binop semantic family	1	producer gap; not scalar-load-fact-consuming
+scalar-control-flow semantic family	10	producer gap; not scalar-load-fact-consuming
+scalar/local-memory semantic family	49	producer gap; inspect separately before scalar-load consumer routing
+semantic call family 'call-return semantic family'	3	call producer gap; not scalar-load-fact-consuming
+semantic call family 'direct-call semantic family'	52	call producer gap; not scalar-load-fact-consuming
+store local-memory semantic family	58	producer gap; write/store authority before consumers

@@ -1,0 +1,8 @@
+row_group	count	representatives	disposition_after_483
+full load local-memory semantic family overlap	79	src/20041124-1.c, src/20071219-1.c, src/991228-1.c, src/multi-ix.c, src/pr22098-1.c	Still in the fresh semantic bucket; classify by first missing owner rather than treating the whole family as a scalar-load producer gap.
+now fact-consuming local-array scalar-load coverage	4	src/pr38048-1.c, src/pr22098-1.c, src/pr22098-2.c, src/pr22098-3.c	483 published local_array_scalar_local_loads for clean available element-load consumers; downstream admission/lowering may consume those facts and must not reconstruct provenance or exact-address checks.
+direct local-array evidence but variadic contaminated latest failure	1	src/multi-ix.c	Do not route as clean scalar-load consumer until the variadic/va_arg owner is separated.
+aggregate/member/union/object-representation boundary	9	src/20041124-1.c, src/20050826-2.c, src/pr15296.c, src/991228-1.c, src/cbrt.c	Producer-owned aggregate/member/union/object-representation work; not solved by scalar-load facts.
+integer-pointer-round-trip or pointer-derived boundary	6	src/pr22098-1.c, src/pr22098-2.c, src/pr22098-3.c, src/pr15262.c, src/pr33870-1.c	Pointer/provenance boundary remains first owner when available scalar-load facts are absent or the row depends on integer-pointer round-trip semantics.
+global/pointer/string contaminated latest failure	1	src/pr20601-1.c	Global/pointer/string producer work remains first owner.
+variadic/byval/va_arg boundary	24	src/va-arg-1.c, src/va-arg-10.c, src/va-arg-11.c, src/920501-8.c, src/strct-varg-1.c	Variadic/runtime boundary remains first owner; not scalar-load-fact-consuming.

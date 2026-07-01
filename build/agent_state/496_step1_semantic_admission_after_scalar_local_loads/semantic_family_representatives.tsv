@@ -1,0 +1,13 @@
+semantic_family	count	representatives	first_owner_after_483
+gep local-memory semantic family	62	src/pr44468.c, src/pr48571-1.c, src/pr65956.c, src/pr80421.c, src/20000717-4.c	address/provenance producer
+load local-memory semantic family	79	src/20041124-1.c, src/20071219-1.c, src/991228-1.c, src/multi-ix.c, src/pr22098-1.c	mixed; consume local_array_scalar_local_loads only where an available fact exists
+store local-memory semantic family	58	src/20010605-2.c, src/920501-5.c, src/930526-1.c, src/pr35472.c, src/pr57344-1.c	write/store producer
+semantic call family 'direct-call semantic family'	52	src/pr40022.c, src/pr41239.c, src/pr49390.c, src/20000412-2.c, src/20000419-1.c	call producer
+scalar/local-memory semantic family	49	src/20020411-1.c, src/20041201-1.c, src/20070614-1.c, src/complex-2.c, src/complex-5.c	local-memory producer; split before consumer work
+runtime/intrinsic family 'memcpy runtime family'	19	src/20030408-1.c, src/pr79354.c, src/pr86528.c, src/strlen-7.c, src/20000703-1.c	runtime/intrinsic producer
+alloca local-memory semantic family	16	src/20180921-1.c, src/pr38151.c, src/pr85169.c, src/20050604-1.c, src/20050607-1.c	local allocation producer
+runtime/intrinsic family 'memset runtime family'	15	src/pr30778.c, src/pr51877.c, src/20041218-1.c, src/20050826-1.c, src/20071030-1.c	runtime/intrinsic producer
+scalar-control-flow semantic family	10	src/20000314-3.c, src/20080502-1.c, src/930614-1.c, src/980604-1.c, src/ieee/fp-cmp-8.c	control-flow producer
+function-signature semantic family	9	src/20071029-1.c, src/ieee/pr72824-2.c, src/pr70903.c, src/20050316-3.c, src/pr60960.c	signature producer
+semantic call family 'call-return semantic family'	3	src/complex-1.c, src/20050121-1.c, src/pr38969.c	call-return producer
+scalar-binop semantic family	1	src/960513-1.c	scalar operator producer
