@@ -8,45 +8,28 @@ Current Step Title: Validate And Handoff
 
 ## Just Finished
 
-Step 7 of `plan.md` probed the three remaining `unsupported_param_home` bucket
-rows and reclassified them using fresh prepared dumps plus RV64 object probes.
+Step 8 of `plan.md` completed validation and handoff for the stack-passed
+parameter-home publication plan.
 
-Artifacts:
+Validated outcome:
 
-- `build/agent_state/512_step7_remaining_rows/20010518-1/`
-- `build/agent_state/512_step7_remaining_rows/pr27073/`
-- `build/agent_state/512_step7_remaining_rows/pr69447/`
-
-Row classification:
-
-- `tests/c/external/gcc_torture/src/20010518-1.c` now consumes the stack-passed
-  parameter contract. The prepared dump publishes caller ABI bindings for
-  indexes 8-12 with stack offsets `0`, `8`, `16`, `24`, and `32`; callee
-  homes `%p.i`, `%p.j`, `%p.k`, `%p.l`, and `%p.m` are stack-slot homes. The
-  object probe no longer reaches `unsupported_param_home`; it fails at
-  `unsupported_move_bundle_target_shape` in `add` before instruction 0 because
-  generic stack-to-stack move bundles are still not materialized by RV64.
-- `tests/c/external/gcc_torture/src/pr27073.c` now consumes the same contract.
-  The prepared dump publishes caller ABI bindings for indexes 8-9 with stack
-  offsets `0` and `8`; callee homes `%p.s4` and `%p.s5` are stack-slot homes.
-  The object probe fails after the parameter-home gate at
-  `unsupported_move_bundle_target_shape` in `foo` before instruction 1.
-- `tests/c/external/gcc_torture/src/pr69447.c` now consumes the same contract.
-  The prepared dump publishes caller ABI binding index 8 with stack offset `0`;
-  callee home `%p.u64_3` is a stack-slot home. The object probe fails after the
-  parameter-home gate at `unsupported_move_bundle_target_shape` in `foo` before
-  instruction 14.
-
-No focused backend coverage was added in this packet because the probed rows do
-not expose a new same-contract producer gap. They all show the stack-parameter
-contract is now present and consumed; the remaining failures belong to the
-existing RV64 generic move-bundle/materialization family.
+- Producer/lowering now publishes ordinary-C stack call/formal ABI metadata
+  for fixed scalar values beyond the current RV64 argument register budget.
+- Prealloc now publishes prepared stack homes for authorized stack-passed
+  formals that lacked a unique prior spill-slot home.
+- RV64 object admission now consumes prepared stack-passed scalar formal homes
+  directly from explicit `param.abi->passed_on_stack` and frame-slot facts.
+- Focused coverage proves accepted I64 and F64 stack-passed formal homes and
+  fail-closed malformed offsets, frame slots, source kinds, missing
+  `passed_on_stack`, memory class, and F128.
+- `20001017-1.c` and the three remaining rows no longer expose the old
+  `unsupported_param_home` gap when prepared homes are coherent.
 
 ## Suggested Next
 
-Step 8 should run the requested validation and handoff checks for idea 512,
-including the focused stack-parameter subset and the broader backend subset the
-supervisor selects.
+Plan owner should close idea 512 as complete for the stack-passed
+parameter-home contract and, if desired, create a separate follow-up idea for
+RV64 generic stack-to-stack prepared move-bundle materialization.
 
 ## Watchouts
 
@@ -64,12 +47,10 @@ supervisor selects.
 
 ## Proof
 
-- `cmake --build build --target c4cll` passed.
-- For each row, prepared dumps and object probes were captured with:
-  `build/c4cll --dump-prepared-bir --target riscv64-linux-gnu <source>` and
-  `build/c4cll --codegen obj --target riscv64-linux-gnu <source> -o <row>.o`.
-- Prepared dumps return rc 0 for all three rows.
-- Object probes return rc 2 for all three rows at
-  `unsupported_move_bundle_target_shape`, not `unsupported_param_home`.
-- This was a probe and `todo.md`-only packet, so no CTest subset was run and
-  `test_after.log` was not overwritten.
+- `ctest --test-dir build -j --output-on-failure -R 'stack_passed_parameter_home|prepare_frame_stack_call_contract|prealloc_formal_publications|backend_riscv_object_emission|riscv64_byval|rv64_runtime_riscv64_byval|riscv64_aggregate'`
+  passed, 22/22.
+- `ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
+  passed, 345/345. `test_after.log` is the canonical after log for this
+  validation packet.
+- `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+  passed: before 331/331, after 345/345, no new failures or slow tests.
