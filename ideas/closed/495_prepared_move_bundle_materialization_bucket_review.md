@@ -1,6 +1,6 @@
 # Prepared Move-Bundle Materialization Bucket Review
 
-Status: Open
+Status: Closed
 Type: Fresh RV64 gcc_torture high-impact bucket review and follow-up splitter
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Handoff Directory: `docs/rv64_gcc_torture_post_contract/`
@@ -67,3 +67,22 @@ bundle facts are coherent enough for target lowering.
 - Reject testcase-named move handling or one-file move recipes.
 - Reject progress claims based primarily on expectation, allowlist, or
   unsupported-marker changes.
+
+## Completion
+
+Closed after Step 4 residual disposition. The review/splitter scope is
+complete:
+
+- Step 1 reproduced the `unsupported_move_bundle_target_shape` bucket from
+  `build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv`.
+- Step 2 classified 423 rows by prepared event kind, authority, parallel-copy
+  status, execution site, destination storage, source storage where reported,
+  move reason, coherence family, and first owner.
+- Step 3 split the owner families into focused open follow-up ideas:
+  `ideas/open/501_rv64_before_instruction_prepared_move_materialization.md`,
+  `ideas/open/502_rv64_out_of_ssa_parallel_copy_move_materialization.md`,
+  `ideas/open/503_rv64_before_return_prepared_move_materialization.md`, and
+  `ideas/open/504_select_publication_move_bundle_evidence_authority.md`.
+
+The supervisor selected idea 501 first because it owns the largest coherent
+prepared-authority family: 328 before-instruction rows.

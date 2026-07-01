@@ -1,75 +1,82 @@
-# Prepared Move-Bundle Materialization Bucket Review Plan
+# RV64 Before-Instruction Prepared Move Materialization Plan
 
 Status: Active
-Source Idea: ideas/open/495_prepared_move_bundle_materialization_bucket_review.md
-Activated From: ideas/closed/500_semantic_global_static_gep_admission_producer.md
+Source Idea: ideas/open/501_rv64_before_instruction_prepared_move_materialization.md
+Activated From: ideas/closed/495_prepared_move_bundle_materialization_bucket_review.md
 
 ## Purpose
 
-Resume the highest-priority open RV64 gcc_torture follow-up after the completed
-BIR semantic GEP producer chain by reviewing the dominant
-`unsupported_move_bundle_target_shape` bucket.
+Implement the highest-priority coherent move-bundle follow-up split out by idea
+495: RV64 materialization for prepared before-instruction consumer moves.
 
 ## Goal
 
-Classify current move-bundle failures and split them into prepared/BIR
-producer-authority gaps versus coherent RV64 materialization follow-ups.
+Materialize coherent prepared before-instruction move bundles in RV64 from the
+prepared record stream, without reconstructing authority, storage identity, or
+consumer ordering from raw BIR shape.
 
 ## Core Rule
 
-Move-bundle lowering may proceed only for coherent prepared bundle facts. Do
-not reconstruct predecessor/successor identity, execution site, storage class,
-value identity, or phi/join semantics in RV64 from raw BIR shape, testcase
-names, or object output.
+RV64 may lower a before-instruction move only when explicit prepared
+move-bundle facts provide the phase, destination storage, move reason, and
+consumer ordering. Testcase names, source shape, raw instruction order, case-log
+text, final homes, and object output are not authority.
 
 ## Read First
 
-- ideas/open/495_prepared_move_bundle_materialization_bucket_review.md
-- ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md
-- docs/rv64_gcc_torture_post_contract/current_scan_summary.md
-- docs/rv64_gcc_torture_post_contract/failure_bucket_map.md
-- docs/rv64_gcc_torture_post_contract/followup_idea_plan.md
-- build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv
+- ideas/open/501_rv64_before_instruction_prepared_move_materialization.md
+- ideas/closed/495_prepared_move_bundle_materialization_bucket_review.md
+- build/agent_state/495_step2_move_bundle_coherence/summary.md
+- build/agent_state/495_step2_move_bundle_coherence/classification.tsv
+- build/agent_state/495_step2_move_bundle_coherence/owner_matrix.tsv
+- build/agent_state/495_step2_move_bundle_coherence/representative_classification.tsv
 
 ## Current Targets
 
 - Inputs:
-  - current `unsupported_move_bundle_target_shape` rows from
-    `build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv`;
-  - prepared move-bundle, edge, phi, preservation, storage, and copy records
-    available in the BIR/prealloc/RV64 publication surfaces.
+  - 328 coherent prepared before-instruction rows from idea 495 Step 2;
+  - existing prepared move-bundle facts with `phase=before_instruction`,
+    `authority=none`, `parallel_copy=no`, destination `stack_slot`, and move
+    reasons `consumer_register_to_stack` or `consumer_stack_to_stack`.
 - Outputs:
-  - durable row counts, representative rows, and first-owner classifications;
-  - one or more focused follow-up ideas for prepared/BIR producer-authority
-    gaps;
-  - one or more focused follow-up ideas for coherent RV64 move-bundle
-    materialization families.
+  - RV64 materialization for prepared register-to-stack consumer moves;
+  - RV64 materialization for prepared stack-to-stack consumer moves;
+  - focused backend coverage for representative rows and fail-closed
+    incomplete-authority boundaries.
 
 ## Non-Goals
 
-- Implementing move-bundle lowering inside this review idea.
-- Reconstructing missing move authority, predecessor/successor identity,
-  storage class, edge execution site, or value identity in RV64.
-- F128-specific move bundles unless explicitly quarantined outside the priority
-  route.
-- Expectation rewrites, unsupported-marker downgrades, allowlists,
-  pass/fail accounting changes, runtime-comparison changes, or baseline churn.
+- Out-of-SSA/pre-terminator parallel-copy materialization.
+- Before-return move materialization.
+- Select-publication evidence or authority repair.
+- Producer/prepared fact changes unless implementation proves a separate
+  producer gap and routes it to a new idea.
+- F128, call ABI, broad stack-frame rewrites, expectation rewrites,
+  unsupported-marker downgrades, allowlists, pass/fail accounting changes,
+  runtime-comparison changes, or baseline churn.
 
 ## Working Model
 
-The fresh RV64 gcc_torture scan ranked `unsupported_move_bundle_target_shape`
-as the largest ordinary-C first-owner bucket. This idea should not implement
-the bucket directly; it should determine which rows already have coherent
-prepared move-bundle facts and which rows require producer/authority repair
-before target lowering can consume them.
+Idea 495 Step 2 found that this family has coherent prepared authority and is
+blocked at RV64 materialization. The first implementation should consume the
+prepared move-bundle surface as the authority source and prove both
+register-to-stack and stack-to-stack before-instruction copies.
 
 ## Execution Rules
 
-- Preserve RV64 gcc_torture as external evidence, not default CTest coverage.
-- Prefer row-level evidence and representative shapes over aggregate counts
-  alone.
-- Split producer/prepared gaps before any RV64 lowering idea can claim those
-  rows.
+- Consume prepared move records, not case-log text.
+- Preserve prepared ordering relative to the consuming instruction.
+- Keep incomplete, ambiguous, or contradictory prepared facts fail-closed.
+- If implementation discovers missing producer facts, stop and route that
+  producer gap instead of inferring in RV64.
+- Code-changing proof:
+
+```sh
+cmake --build build -j2
+ctest --test-dir build -j2 --output-on-failure -R '^backend_'
+git diff --check
+```
+
 - Lifecycle-only proof:
 
 ```sh
@@ -79,35 +86,38 @@ git diff --check
 
 ## Steps
 
-### Step 1: Reproduce The Move-Bundle Bucket
+### Step 1: Inspect Before-Instruction Prepared Move Surfaces
 
-Read the current RV64 gcc_torture summary and extract the
-`unsupported_move_bundle_target_shape` row set.
+Locate the prepared move-bundle publication and RV64 consumption surfaces for
+`before_instruction_copies` with destination `stack_slot`.
 
-Completion means a durable artifact records the row count, source cases,
-functions when available, and enough representative rows for later owner
-classification.
+Completion means `todo.md` records the exact records/helpers to consume, the
+representative proof rows, and whether the current prepared facts are complete
+enough for implementation.
 
-### Step 2: Classify Prepared Bundle Coherence
+### Step 2: Materialize Register-To-Stack Consumer Moves
 
-Classify representatives by event kind, authority, parallel-copy status,
-execution site, destination storage, source storage, and move reason.
+Implement RV64 lowering for coherent prepared before-instruction
+`consumer_register_to_stack` moves.
 
-Completion means rows are separated into coherent RV64-lowerable bundles versus
-missing, ambiguous, or contradictory prepared authority.
+Completion means focused backend coverage proves a representative
+register-to-stack row and preserves fail-closed behavior for missing or
+ambiguous prepared facts.
 
-### Step 3: Split Producer And RV64 Follow-Ups
+### Step 3: Materialize Stack-To-Stack Consumer Moves
 
-Create focused open ideas for producer/authority gaps and coherent RV64
-materialization families.
+Implement RV64 lowering for coherent prepared before-instruction
+`consumer_stack_to_stack` moves.
 
-Completion means each follow-up idea names its owning layer, evidence rows,
-acceptance criteria, and concrete reviewer reject signals.
+Completion means focused backend coverage proves a representative
+stack-to-stack row and keeps this path scoped to prepared before-instruction
+facts.
 
-### Step 4: Residual Lifecycle Disposition
+### Step 4: Residual Disposition For Before-Instruction Moves
 
-Decide whether idea 495 is complete after follow-up creation or whether another
-review pass is needed for unresolved move-bundle subfamilies.
+Decide whether idea 501 can close after both before-instruction move families
+are materialized or whether a new focused producer/consumer idea is needed.
 
-Completion means the active lifecycle state is closed, switched, or extended
-with no more than one active plan.
+Completion means `todo.md` records the residual disposition and the active
+lifecycle state is closed, switched, or extended with no more than one active
+plan.
