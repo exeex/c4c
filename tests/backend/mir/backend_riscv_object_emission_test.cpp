@@ -2520,6 +2520,41 @@ prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_large_fixed_stack_frame_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::immediate_i32(0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 4096;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 4096,
+      .frame_alignment_bytes = 16,
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule
 make_prepared_frame_slot_address_local_store_module() {
   prepare::PreparedBirModule prepared;
@@ -9347,7 +9382,10 @@ int rejects_prepared_same_module_sret_call_fail_closed_shapes() {
 
   prepared = make_prepared_same_module_sret_call_module();
   prepared.frame_plan.functions[1].has_dynamic_stack = true;
-  if (expect_same_module_sret_call_rejection(prepared) != 0) {
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame") !=
+      0) {
     return 1;
   }
 
@@ -10354,6 +10392,37 @@ int builds_prepared_scalar_local_frame_object() {
   }
   if (!module->relocations.empty()) {
     return fail("expected scalar local object to need no relocations");
+  }
+  return 0;
+}
+
+int builds_prepared_large_fixed_stack_frame_adjustment_object() {
+  const auto prepared = make_prepared_large_fixed_stack_frame_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared large fixed stack-frame RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected large fixed stack-frame object to publish text/main");
+  }
+  if (text->bytes.size() != 32 || text->size_bytes != 32 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 32) {
+    return fail("expected large fixed stack-frame object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xfff00293 ||
+      read_u32(text->bytes, 4) != 0x00c29293 ||
+      read_u32(text->bytes, 8) != 0x00510133 ||
+      read_u32(text->bytes, 12) != 0x00000513 ||
+      read_u32(text->bytes, 16) != 0x00100293 ||
+      read_u32(text->bytes, 20) != 0x00c29293 ||
+      read_u32(text->bytes, 24) != 0x00510133 ||
+      read_u32(text->bytes, 28) != 0x00008067) {
+    return fail("expected materialized large stack-pointer adjustment sequence");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected large fixed stack-frame object to need no relocations");
   }
   return 0;
 }
@@ -13446,7 +13515,10 @@ int rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes() {
   prepared.call_plans.functions[0].calls[0].arguments[0].source_stack_offset_bytes =
       32;
   prepared.stack_layout.frame_slots[0].offset_bytes = 32;
-  if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame") !=
+      0) {
     return 1;
   }
 
@@ -13456,10 +13528,7 @@ int rejects_prepared_frame_slot_value_arg_call_fail_closed_shapes() {
       2048;
   prepared.stack_layout.frame_slots[0].offset_bytes = 2048;
   prepared.frame_plan.functions[1].frame_size_bytes = 2056;
-  if (expect_prepared_rejection_diagnostic(
-          prepared,
-          "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame") !=
-      0) {
+  if (expect_frame_slot_value_arg_call_rejection(prepared) != 0) {
     return 1;
   }
 
@@ -13887,13 +13956,19 @@ int rejects_prepared_frame_slot_address_arg_call_fail_closed_shapes() {
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
   prepared.frame_plan.functions[1].has_dynamic_stack = true;
-  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame") !=
+      0) {
     return 1;
   }
 
   prepared = make_prepared_frame_slot_address_arg_call_module();
   prepared.frame_plan.functions[1].uses_frame_pointer_for_fixed_slots = true;
-  if (expect_frame_slot_address_arg_call_rejection(prepared) != 0) {
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame") !=
+      0) {
     return 1;
   }
 
@@ -16500,6 +16575,7 @@ int main() {
   status |= builds_prepared_fpr_formal_param_home_with_target_identity_object();
   status |= rejects_raw_fpr_formal_param_home_without_target_identity();
   status |= builds_prepared_scalar_local_frame_object();
+  status |= builds_prepared_large_fixed_stack_frame_adjustment_object();
   status |= builds_prepared_frame_slot_address_local_store_object();
   status |= builds_prepared_f64_local_frame_object();
   status |= builds_prepared_f32_local_frame_object();
