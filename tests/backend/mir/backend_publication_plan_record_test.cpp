@@ -1,6 +1,7 @@
 #include "src/backend/prealloc/publication_plans.hpp"
 #include "src/backend/prealloc/module.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -503,6 +504,58 @@ int ordered_effect_stream_records_unknown_and_clobber_sources() {
   return 0;
 }
 
+int ordered_effect_stream_records_phi_alias_sources() {
+  auto prepared = make_effect_stream_prepared_module({
+      bir::PhiInst{
+          .result = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .incomings = {
+              bir::PhiIncoming{
+                  .label = "guard",
+                  .value = bir::Value::named(bir::TypeKind::I64, "%idx.in"),
+              },
+          },
+      },
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::CastInst{
+          .opcode = bir::CastOpcode::Bitcast,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+      },
+  });
+
+  prepare::populate_local_array_ordered_effect_source_streams(prepared);
+  const auto& stream =
+      prepared.module.functions.front().local_array_ordered_effect_source_streams.front();
+  const bool saw_phi_alias = std::any_of(
+      stream.sources.begin(),
+      stream.sources.end(),
+      [](const bir::LocalArrayOrderedEffectSourceRecord& source) {
+        return source.family ==
+                   bir::LocalArrayEffectSourceFamily::PhiOrAliasTransfer &&
+               source.status ==
+                   bir::LocalArrayEffectSourceStatus::PhiOrAliasUnresolved;
+      });
+  if (!saw_phi_alias) {
+    return fail("expected production stream to record phi/alias index sources");
+  }
+  const auto& function = prepared.module.functions.front();
+  const auto effect = bir::evaluate_local_array_interval_effect(
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front());
+  if (effect.status !=
+      bir::LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved) {
+    return fail("expected production phi/alias source to fail closed");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -536,5 +589,9 @@ int main() {
       rc != 0) {
     return rc;
   }
-  return ordered_effect_stream_records_unknown_and_clobber_sources();
+  if (int rc = ordered_effect_stream_records_unknown_and_clobber_sources();
+      rc != 0) {
+    return rc;
+  }
+  return ordered_effect_stream_records_phi_alias_sources();
 }
