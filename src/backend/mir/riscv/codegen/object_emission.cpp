@@ -1989,7 +1989,7 @@ bool prepared_move_bundle_is_authorized_select_edge_source_producer_suppression(
 bool prepared_before_instruction_move_bundle_requires_suppression_authority(
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle);
 
-bool prepared_move_bundle_is_out_of_ssa_phi_join_register_packet_family(
+bool prepared_move_bundle_is_out_of_ssa_move_packet_family(
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
   namespace prepare = c4c::backend::prepare;
 
@@ -2012,8 +2012,12 @@ bool prepared_move_bundle_is_out_of_ssa_phi_join_register_packet_family(
 }
 
 std::optional<RiscvEncodedFragment>
-fragment_for_prepared_out_of_ssa_register_moves(
+fragment_for_prepared_out_of_ssa_moves(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::size_t stack_frame_bytes,
     prepare::PreparedObjectTraversalEventKind event_kind,
     const c4c::backend::prepare::PreparedParallelCopyBundle& parallel_copy_bundle,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
@@ -2036,16 +2040,15 @@ fragment_for_prepared_out_of_ssa_register_moves(
         move.reason == "phi_join_register_to_register";
     const bool preservation_move =
         move.reason == "edge_consumer_preservation_register_to_register";
-    if (!phi_join_move && !preservation_move) {
+    const bool stack_preservation_move =
+        move.reason == "edge_consumer_preservation_register_to_stack";
+    if (!phi_join_move && !preservation_move && !stack_preservation_move) {
       return std::nullopt;
     }
     if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
         move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-        move.destination_storage_kind !=
-            prepare::PreparedMoveStorageKind::Register ||
         move.destination_contiguous_width != 1 ||
         move.destination_occupied_register_names.size() > 1 ||
-        move.destination_stack_offset_bytes.has_value() ||
         move.source_immediate_i32.has_value() ||
         move.uses_cycle_temp_source ||
         move.authority_kind !=
@@ -2081,8 +2084,44 @@ fragment_for_prepared_out_of_ssa_register_moves(
       return std::nullopt;
     }
     const auto source = gpr_register_number_for_home(*source_home);
+    if (!source.has_value()) {
+      return std::nullopt;
+    }
+    if (stack_preservation_move) {
+      if (move.destination_storage_kind !=
+              prepare::PreparedMoveStorageKind::StackSlot ||
+          move.destination_stack_offset_bytes.has_value()) {
+        return std::nullopt;
+      }
+      const auto destination_type = prepared_bir_value_type_for_name(
+          names, function, destination_home->value_name);
+      const auto destination_size_bytes =
+          destination_type.has_value()
+              ? rv64_scalar_memory_size_for_type(*destination_type)
+              : destination_home->size_bytes;
+      if (!destination_size_bytes.has_value()) {
+        return std::nullopt;
+      }
+      const auto stack_offset = prepared_stack_slot_home_offset(
+          stack_layout, *destination_home, stack_frame_bytes,
+          *destination_size_bytes);
+      if (!stack_offset.has_value() ||
+          !append_rv64_store_register_to_stack(fragment,
+                                              *source,
+                                              *stack_offset,
+                                              *destination_size_bytes)) {
+        return std::nullopt;
+      }
+      continue;
+    }
+
+    if (move.destination_storage_kind !=
+            prepare::PreparedMoveStorageKind::Register ||
+        move.destination_stack_offset_bytes.has_value()) {
+      return std::nullopt;
+    }
     const auto destination = gpr_register_number_for_home(*destination_home);
-    if (!source.has_value() || !destination.has_value()) {
+    if (!destination.has_value()) {
       return std::nullopt;
     }
     append_rv64_move(fragment, *destination, *source);
@@ -2131,10 +2170,17 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     return std::nullopt;
   }
   if (parallel_copy_bundle != nullptr) {
-    if (prepared_move_bundle_is_out_of_ssa_phi_join_register_packet_family(
+    if (prepared_move_bundle_is_out_of_ssa_move_packet_family(
             move_bundle)) {
-      return fragment_for_prepared_out_of_ssa_register_moves(
-          lookups, event_kind, *parallel_copy_bundle, move_bundle);
+      return fragment_for_prepared_out_of_ssa_moves(
+          stack_layout,
+          names,
+          function,
+          lookups,
+          stack_frame_bytes,
+          event_kind,
+          *parallel_copy_bundle,
+          move_bundle);
     }
   }
 

@@ -5284,6 +5284,36 @@ make_prepared_out_of_ssa_edge_preservation_register_move_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_out_of_ssa_edge_preservation_stack_move_module() {
+  auto prepared = make_prepared_out_of_ssa_edge_preservation_register_move_module();
+  const auto function_name = prepared.names.function_names.find("phi_join");
+  const auto preservation_destination_name =
+      prepared.names.value_names.find("%keep.dst");
+
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{21},
+      .function_name = function_name,
+      .offset_bytes = 8,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  auto& locations = prepared.value_locations.functions.front();
+  locations.value_homes[3] =
+      rv64_stack_slot_home(4,
+                           function_name,
+                           preservation_destination_name,
+                           prepare::PreparedFrameSlotId{21},
+                           8);
+  auto& move = locations.move_bundles.front().moves.front();
+  move.destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  move.reason = "edge_consumer_preservation_register_to_stack";
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_small_integer_ordinary_select_module(
     bir::TypeKind result_type) {
   prepare::PreparedBirModule prepared;
@@ -11022,6 +11052,87 @@ int builds_prepared_out_of_ssa_edge_preservation_register_move_object() {
   return 0;
 }
 
+int builds_prepared_out_of_ssa_edge_preservation_stack_move_object() {
+  const auto prepared =
+      make_prepared_out_of_ssa_edge_preservation_stack_move_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    return fail("expected prepared out-of-SSA edge-preservation stack move RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "phi_join");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared edge-preservation stack object to publish text/function");
+  }
+  if (text->bytes.size() < 12 || text->size_bytes != text->bytes.size() ||
+      function->value != 0 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared edge-preservation stack object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00612423 ||
+      read_u32(text->bytes, 8) != 0x00028493) {
+    return fail("expected stack frame, prepared store sw t1, 8(sp), then mv s1, t0");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared edge-preservation stack object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_out_of_ssa_edge_preservation_stack_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  auto prepared =
+      make_prepared_out_of_ssa_edge_preservation_stack_move_module();
+  prepared.stack_layout.frame_slots.clear();
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_edge_preservation_stack_move_module();
+  prepared.value_locations.functions[0].value_homes[2] =
+      rv64_stack_slot_home(3,
+                           prepared.names.function_names.find("phi_join"),
+                           prepared.names.value_names.find("%keep.src"),
+                           prepare::PreparedFrameSlotId{22},
+                           12);
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{22},
+      .function_name = prepared.names.function_names.find("phi_join"),
+      .offset_bytes = 12,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_edge_preservation_stack_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .source_parallel_copy_step_index = std::size_t{0};
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_edge_preservation_stack_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int rejects_prepared_out_of_ssa_edge_preservation_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
@@ -15456,6 +15567,8 @@ int main() {
   status |= builds_prepared_out_of_ssa_phi_join_register_move_object();
   status |= builds_prepared_out_of_ssa_edge_preservation_register_move_object();
   status |= rejects_prepared_out_of_ssa_edge_preservation_fail_closed_shapes();
+  status |= builds_prepared_out_of_ssa_edge_preservation_stack_move_object();
+  status |= rejects_prepared_out_of_ssa_edge_preservation_stack_fail_closed_shapes();
   status |= rejects_prepared_out_of_ssa_phi_join_register_move_fail_closed_shapes();
   status |= reports_prepared_move_bundle_coordinate_diagnostic();
   status |= builds_prepared_scalar_compare_trunc_object();
