@@ -1,6 +1,6 @@
 # Select-Publication Stack-Home Intent Support
 
-Status: Open
+Status: Closed
 Type: Focused prepared/RV64 intent-support idea
 Parent: `ideas/closed/504_select_publication_move_bundle_evidence_authority.md`
 Source Evidence:
@@ -73,3 +73,23 @@ stack destination intent for these select-publication shapes.
   select-publication intent idea.
 - Reject expectation, allowlist, unsupported-marker, pass/fail accounting, or
   runtime-comparison changes as proof of progress.
+
+## Completion
+
+Closed after residual disposition. The focused stack-home intent-support scope
+is complete:
+
+- Step 1 inspected `EdgePublicationMoveIntent` construction for the two
+  select-publication stack-home rows.
+- Step 2 published supported intent fields for pointer/XLEN stack-source to
+  GPR destination and direct GPR source to 1/2/4-byte stack destination
+  select-publication shapes.
+- Final RV64 select-publication admission remains fail-closed by design.
+
+The final RV64 select-publication consumer is split into
+`ideas/open/507_rv64_select_publication_stack_home_materialization.md`.
+Generic out-of-SSA `phi_join_immediate_materialization` remains separate in
+`ideas/open/506_rv64_out_of_ssa_phi_join_immediate_materialization.md`.
+
+The rejected `test_baseline.new.log` remains preserved for
+`string_authority_guard` diagnosis and is not part of this lifecycle closure.
