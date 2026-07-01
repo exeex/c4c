@@ -1084,7 +1084,9 @@ BirFunctionLowerer::resolve_global_dynamic_aggregate_array_access(
 
 bool BirFunctionLowerer::lower_memory_gep_inst(
     const c4c::codegen::lir::LirGepOp& gep,
-    std::vector<bir::Inst>* lowered_insts) {
+    std::vector<bir::Inst>* lowered_insts,
+    std::string_view lir_producer_block_label,
+    std::optional<std::size_t> lir_producer_instruction_index) {
   auto& value_aliases = value_aliases_;
   auto& local_slot_types = local_slot_types_;
   auto& local_pointer_slots = local_pointer_slots_;
@@ -1807,7 +1809,9 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                                                           &local_pointer_array_bases,
                                                           &dynamic_local_pointer_arrays,
                                                           &dynamic_local_aggregate_arrays,
-                                                          &lowered_function_);
+                                                          &lowered_function_,
+                                                          lir_producer_block_label,
+                                                          lir_producer_instruction_index);
       handled.has_value()) {
     if (!*handled) {
       return fail_gep();
@@ -1844,7 +1848,9 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                                                                          &dynamic_local_pointer_arrays,
                                                                          &dynamic_local_aggregate_arrays,
                                                                          &local_slot_pointer_values,
-                                                                         &lowered_function_);
+                                                                         &lowered_function_,
+                                                                         lir_producer_block_label,
+                                                                         lir_producer_instruction_index);
              handled.has_value()) {
     if (!*handled) {
       return fail_gep();

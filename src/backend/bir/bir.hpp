@@ -755,6 +755,92 @@ enum class LocalArrayIndexKind : unsigned char {
   Dynamic,
 };
 
+enum class LocalArrayLirProducerOperationRole : unsigned char {
+  None,
+  AddressDerivation,
+  LoadConsumer,
+  StoreConsumer,
+  UnknownConsumer,
+};
+
+[[nodiscard]] constexpr std::string_view local_array_lir_producer_operation_role_name(
+    LocalArrayLirProducerOperationRole role) {
+  switch (role) {
+    case LocalArrayLirProducerOperationRole::None:
+      return "none";
+    case LocalArrayLirProducerOperationRole::AddressDerivation:
+      return "address_derivation";
+    case LocalArrayLirProducerOperationRole::LoadConsumer:
+      return "load_consumer";
+    case LocalArrayLirProducerOperationRole::StoreConsumer:
+      return "store_consumer";
+    case LocalArrayLirProducerOperationRole::UnknownConsumer:
+      return "unknown_consumer";
+  }
+  return "unknown";
+}
+
+enum class LocalArrayLirProducerCoordinateStatus : unsigned char {
+  Available,
+  MissingLirProducerCoordinate,
+  MissingBlockLabel,
+  MissingLirInstructionIndex,
+  MissingLirProducerLookupKey,
+  DuplicateCoordinateCandidate,
+  DuplicatePathRecord,
+  MismatchedFunction,
+  MismatchedBlock,
+  MismatchedInstructionResult,
+  MismatchedSourceObject,
+  MismatchedDerivationResult,
+  MismatchedDynamicIndex,
+  UnsupportedOperationRole,
+  UnsupportedBoundary,
+  RawShapeOnly,
+  TargetOnlyOrFinalHomeOnly,
+};
+
+[[nodiscard]] constexpr std::string_view local_array_lir_producer_coordinate_status_name(
+    LocalArrayLirProducerCoordinateStatus status) {
+  switch (status) {
+    case LocalArrayLirProducerCoordinateStatus::Available:
+      return "available";
+    case LocalArrayLirProducerCoordinateStatus::MissingLirProducerCoordinate:
+      return "missing_lir_producer_coordinate";
+    case LocalArrayLirProducerCoordinateStatus::MissingBlockLabel:
+      return "missing_block_label";
+    case LocalArrayLirProducerCoordinateStatus::MissingLirInstructionIndex:
+      return "missing_lir_instruction_index";
+    case LocalArrayLirProducerCoordinateStatus::MissingLirProducerLookupKey:
+      return "missing_lir_producer_lookup_key";
+    case LocalArrayLirProducerCoordinateStatus::DuplicateCoordinateCandidate:
+      return "duplicate_coordinate_candidate";
+    case LocalArrayLirProducerCoordinateStatus::DuplicatePathRecord:
+      return "duplicate_path_record";
+    case LocalArrayLirProducerCoordinateStatus::MismatchedFunction:
+      return "mismatched_function";
+    case LocalArrayLirProducerCoordinateStatus::MismatchedBlock:
+      return "mismatched_block";
+    case LocalArrayLirProducerCoordinateStatus::MismatchedInstructionResult:
+      return "mismatched_instruction_result";
+    case LocalArrayLirProducerCoordinateStatus::MismatchedSourceObject:
+      return "mismatched_source_object";
+    case LocalArrayLirProducerCoordinateStatus::MismatchedDerivationResult:
+      return "mismatched_derivation_result";
+    case LocalArrayLirProducerCoordinateStatus::MismatchedDynamicIndex:
+      return "mismatched_dynamic_index";
+    case LocalArrayLirProducerCoordinateStatus::UnsupportedOperationRole:
+      return "unsupported_operation_role";
+    case LocalArrayLirProducerCoordinateStatus::UnsupportedBoundary:
+      return "unsupported_boundary";
+    case LocalArrayLirProducerCoordinateStatus::RawShapeOnly:
+      return "raw_shape_only";
+    case LocalArrayLirProducerCoordinateStatus::TargetOnlyOrFinalHomeOnly:
+      return "target_only_or_final_home_only";
+  }
+  return "unknown";
+}
+
 struct LocalArrayIndexRecord {
   LocalArrayIndexKind kind = LocalArrayIndexKind::Constant;
   std::int64_t constant = 0;
@@ -793,6 +879,14 @@ struct LocalArrayElementPathRecord {
   std::size_t element_count = 0;
   bool scalar_in_bounds = false;
   LocalArrayCarrierStatus status = LocalArrayCarrierStatus::Available;
+  std::string lir_producer_function_name;
+  std::string lir_producer_block_label;
+  std::optional<std::size_t> lir_producer_instruction_index;
+  LocalArrayLirProducerOperationRole lir_producer_operation_role =
+      LocalArrayLirProducerOperationRole::None;
+  std::string lir_producer_lookup_key;
+  LocalArrayLirProducerCoordinateStatus lir_producer_coordinate_status =
+      LocalArrayLirProducerCoordinateStatus::MissingLirProducerCoordinate;
 };
 
 enum class LocalArrayRangeProofStatus : unsigned char {

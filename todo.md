@@ -1,69 +1,65 @@
 Status: Active
 Source Idea Path: ideas/open/488_bir_dynamic_local_array_consumer_coordinate_prepared_exposure.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Consumer Coordinate Exposure Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Prepared Exposure
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 contract definition for idea 488.
+Completed Step 3 repair for idea 488 by making the bounded
+dynamic-local-array coordinate exposure explicitly represent a LIR
+producer-site coordinate for the `address_derivation` role. The field/key/status
+names no longer imply a prepared traversal or BIR `Block::insts` instruction
+coordinate.
 
-Contract:
+Implementation summary:
 
-| Contract field | Step 2 decision |
+| Surface | Result |
 | --- | --- |
-| Preferred implementation shape | Producer-site coordinate capture: thread BIR block label and instruction index into local-memory/GEP lowering and publish coordinate-bearing dynamic local-array path records. |
-| Required coordinate fields | Function identity, path result, source object, derivation result, dynamic index value, element type, element size, element count, byte offset, source path status, consumer block label, consumer instruction index, consumer operation role, and stable prepared lookup key. |
-| Supported first operation role | `address_derivation`, meaning the local-array GEP/path-producing instruction itself. |
-| Deferred/rejected roles | Load consumers, store consumers, unknown consumers, and target/final-home-only consumers stay fail-closed until separate use-linking packets exist. |
-| Prepared lookup key | Function + block + instruction + path result + source object + derivation result + dynamic index. |
-| Fallback unique-match policy | A post-lowering collector is allowed only if it proves exactly one matching BIR instruction/result and one path record, with matching function/source/derivation/index where available; otherwise it fails closed. |
-| Fail-closed statuses | Missing block/instruction/key, duplicate coordinate candidates, duplicate path records, mismatched function/block/result/source/derivation/index, unsupported role, protected boundaries, raw-shape-only, and target/final-home-only inference. |
-| Step 3 readiness | A bounded implementation packet exists for metadata/exposure only; no proof-source/path/no-clobber population or downstream consumers. |
+| Coordinate carrier | `LocalArrayElementPathRecord` now carries `lir_producer_function_name`, `lir_producer_block_label`, `lir_producer_instruction_index`, `lir_producer_operation_role`, `lir_producer_lookup_key`, and `lir_producer_coordinate_status`. |
+| Role vocabulary | Added explicit LIR producer-site `address_derivation` plus reserved fail-closed adjacent roles for load/store/unknown producers. |
+| Status vocabulary | Added explicit LIR producer coordinate statuses for available, missing LIR coordinate/key pieces, duplicate/mismatch classes, unsupported role, protected boundary, raw-shape-only, and target/final-home-only cases. |
+| Producer threading | Local-memory GEP lowering threads LIR block/instruction coordinates into local-array path publication. |
+| Stable lookup key | Published with a `lir-producer:` prefix as `lir-producer:function:block:instruction:path_result:source_object:derivation_result:index...`. |
+| Focused coverage | Local-array carrier tests assert LIR producer coordinate fields, `address_derivation`, `available`, and stable lookup keys for constant and dynamic element paths. A PHI-before-GEP fixture proves the index is the LIR producer-site index, not a prepared/BIR instruction index. |
+| Boundaries preserved | No proof-source/path/no-clobber population, idea 486 checker vocabulary changes, idea 484 packaging, scalar local-load consumption, or RV64/MIR behavior changes. |
 
-Step 3 should implement the smallest metadata/exposure surface for the
-`address_derivation` role or route the exact API blocker if producer-site
-coordinate threading conflicts with the current lowerer signatures.
+Supporting artifact:
 
-Supporting artifacts:
-
-- `build/agent_state/488_step1_consumer_coordinate_exposure_inputs/audit.md`
-- `build/agent_state/488_step2_consumer_coordinate_exposure_contract/contract.md`
+- `build/agent_state/488_step3_consumer_coordinate_exposure/summary.md`
 
 ## Suggested Next
 
-Execute Step 3: implement or route the bounded dynamic local-array
-consumer-coordinate/prepared-exposure metadata packet for the
-`address_derivation` role, with focused positive and fail-closed coverage.
+Execute Step 4 residual disposition for idea 488: classify the coordinate
+exposure slice as complete or identify the next first owner for real
+proof-source/path/no-clobber population after the prepared coordinate surface.
 
 ## Watchouts
 
-- Do not populate proof-source, path/dominance, or no-clobber facts in this
-  coordinate exposure packet.
-- Do not infer coordinates from dump order, testcase names, value names, branch
-  proximity, loop shape, final homes, or RV64 target behavior.
-- Do not mark dynamic range proofs available, change idea 486 checker
-  vocabulary, package idea 484 records, consume scalar local loads, or change
-  RV64/MIR lowering.
-- Do not touch `review/`, canonical logs, baseline files, implementation files,
-  or tests until an executor receives a bounded packet.
-- Prefer explicit coordinate capture at the local-array path producer over
-  post-hoc matching; if post-hoc matching is selected, require unique exact
-  instruction/result evidence and fail closed otherwise.
-- Do not treat prepared traversal coordinates alone as proof that a traversal
-  event is the local-array consumer; the path record must be explicitly linked.
-- Keep load/store use-linking, proof-source/path/no-clobber population, idea
-  484 packaging, scalar local-load consumption, and RV64/MIR lowering out of
-  Step 3.
+- The new coordinate surface is address-derivation metadata only; load/store
+  use-linking and proof-source/path/no-clobber population remain separate
+  families.
+- The coordinate is intentionally a LIR producer-site coordinate. Later
+  prepared traversal/BIR instruction consumers need an explicit conversion or
+  matching packet before treating it as a `bir_block->insts` coordinate.
+- Dynamic local-array range proof status remains unchanged; dynamic rows still
+  fail closed until explicit range/path/no-clobber facts are populated.
+- Do not use this packet as authority for idea 484 packaging, scalar local-load
+  consumption, or RV64/MIR lowering.
+- Existing untracked `review/*.md` files were not touched.
 
 ## Proof
 
-Step 2 validation:
+Step 3 validation:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
 Result: passed.
+
+Proof log:
+
+- `test_after.log`

@@ -24,7 +24,9 @@ using lir_to_bir_detail::type_size_bytes;
 
 bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     const c4c::codegen::lir::LirInst& inst,
-    std::vector<bir::Inst>* lowered_insts) {
+    std::vector<bir::Inst>* lowered_insts,
+    std::string_view lir_producer_block_label,
+    std::optional<std::size_t> lir_producer_instruction_index) {
   auto& value_aliases = value_aliases_;
   auto& compare_exprs = compare_exprs_;
   auto& local_slot_types = local_slot_types_;
@@ -291,7 +293,12 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   }
 
   if (const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst)) {
-    return lower_memory_gep_inst(*gep, lowered_insts) ? true : fail_gep();
+    return lower_memory_gep_inst(*gep,
+                                 lowered_insts,
+                                 lir_producer_block_label,
+                                 lir_producer_instruction_index)
+               ? true
+               : fail_gep();
   }
 
   if (const auto* store = std::get_if<c4c::codegen::lir::LirStoreOp>(&inst)) {

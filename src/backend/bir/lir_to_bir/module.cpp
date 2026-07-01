@@ -1191,11 +1191,16 @@ bool BirFunctionLowerer::apply_pending_aggregate_phi_copies(std::string_view pre
 
 bool BirFunctionLowerer::lower_block_insts(const c4c::codegen::lir::LirBlock& block,
                                            bir::Block* lowered_block) {
-  for (const auto& inst : block.insts) {
+  for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+       ++instruction_index) {
+    const auto& inst = block.insts[instruction_index];
     if (std::holds_alternative<c4c::codegen::lir::LirPhiOp>(inst)) {
       continue;
     }
-    if (!lower_scalar_or_local_memory_inst(inst, &lowered_block->insts)) {
+    if (!lower_scalar_or_local_memory_inst(inst,
+                                           &lowered_block->insts,
+                                           block.label,
+                                           instruction_index)) {
       note_function_lowering_family_failure("scalar/local-memory semantic family");
       return false;
     }

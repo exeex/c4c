@@ -694,7 +694,10 @@ class BirFunctionLowerer {
   bool lower_local_memory_alloca_inst(const c4c::codegen::lir::LirAllocaOp& alloca,
                                       std::vector<bir::Inst>* lowered_insts);
   bool lower_memory_gep_inst(const c4c::codegen::lir::LirGepOp& gep,
-                             std::vector<bir::Inst>* lowered_insts);
+                             std::vector<bir::Inst>* lowered_insts,
+                             std::string_view lir_producer_block_label = {},
+                             std::optional<std::size_t> lir_producer_instruction_index =
+                                 std::nullopt);
   bool lower_memory_store_inst(const c4c::codegen::lir::LirStoreOp& store,
                                std::vector<bir::Inst>* lowered_insts);
   bool lower_memory_load_inst(const c4c::codegen::lir::LirLoadOp& load,
@@ -1004,7 +1007,9 @@ class BirFunctionLowerer {
       LocalPointerArrayBaseMap* local_pointer_array_bases,
       DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
       DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
-      bir::Function* carrier_function = nullptr);
+      bir::Function* carrier_function = nullptr,
+      std::string_view lir_producer_block_label = {},
+      std::optional<std::size_t> lir_producer_instruction_index = std::nullopt);
   static std::optional<bool> try_lower_local_pointer_array_base_gep(
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
@@ -1014,7 +1019,9 @@ class BirFunctionLowerer {
       DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
       DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
       LocalSlotPointerValues* local_slot_pointer_values,
-      bir::Function* carrier_function = nullptr);
+      bir::Function* carrier_function = nullptr,
+      std::string_view lir_producer_block_label = {},
+      std::optional<std::size_t> lir_producer_instruction_index = std::nullopt);
   static std::optional<bool> try_lower_local_pointer_array_base_gep(
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
@@ -1026,7 +1033,9 @@ class BirFunctionLowerer {
       DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
       DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
       LocalSlotPointerValues* local_slot_pointer_values,
-      bir::Function* carrier_function = nullptr);
+      bir::Function* carrier_function = nullptr,
+      std::string_view lir_producer_block_label = {},
+      std::optional<std::size_t> lir_producer_instruction_index = std::nullopt);
   static std::optional<bool> try_lower_local_pointer_slot_base_gep(
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
@@ -1430,7 +1439,10 @@ class BirFunctionLowerer {
 
   // Function assembly flow.
   bool lower_scalar_or_local_memory_inst(const c4c::codegen::lir::LirInst& inst,
-                                         std::vector<bir::Inst>* lowered_insts);
+                                         std::vector<bir::Inst>* lowered_insts,
+                                         std::string_view lir_producer_block_label = {},
+                                         std::optional<std::size_t> lir_producer_instruction_index =
+                                             std::nullopt);
 
   std::optional<bir::Function> try_lower_canonical_select_function();
   std::optional<bir::Value> lower_select_chain_value(const BlockLookup& blocks,

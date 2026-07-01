@@ -6856,7 +6856,17 @@ int expect_local_array_carrier_constant_gep_publishes_source_derivation_and_layo
       path.status != bir::LocalArrayCarrierStatus::Available ||
       path.indices.size() != 1 ||
       path.indices.front().kind != bir::LocalArrayIndexKind::Constant ||
-      path.indices.front().constant != 2) {
+      path.indices.front().constant != 2 ||
+      path.lir_producer_function_name != "local_array_carrier_constant_gep" ||
+      path.lir_producer_block_label != "entry" ||
+      !path.lir_producer_instruction_index.has_value() ||
+      *path.lir_producer_instruction_index != 0 ||
+      path.lir_producer_operation_role !=
+          bir::LocalArrayLirProducerOperationRole::AddressDerivation ||
+      path.lir_producer_coordinate_status !=
+          bir::LocalArrayLirProducerCoordinateStatus::Available ||
+      path.lir_producer_lookup_key !=
+          "lir-producer:local_array_carrier_constant_gep:entry:0:%elt.ptr:%lv.arr:%elt.ptr:2") {
     return fail("local array element path carrier fields were not populated");
   }
   return 0;
@@ -6917,8 +6927,81 @@ int expect_local_array_carrier_dynamic_gep_preserves_missing_index_range_proof()
       path.indices.size() != 1 ||
       path.indices.front().kind != bir::LocalArrayIndexKind::Dynamic ||
       path.indices.front().value.name != "%idx" ||
-      path.indices.front().value.type != TypeKind::I64) {
+      path.indices.front().value.type != TypeKind::I64 ||
+      path.lir_producer_function_name != "local_array_carrier_dynamic_gep" ||
+      path.lir_producer_block_label != "entry" ||
+      !path.lir_producer_instruction_index.has_value() ||
+      *path.lir_producer_instruction_index != 0 ||
+      path.lir_producer_operation_role !=
+          bir::LocalArrayLirProducerOperationRole::AddressDerivation ||
+      path.lir_producer_coordinate_status !=
+          bir::LocalArrayLirProducerCoordinateStatus::Available ||
+      path.lir_producer_lookup_key !=
+          "lir-producer:local_array_carrier_dynamic_gep:entry:0:%elt.ptr:%lv.arr:%elt.ptr:%idx") {
     return fail("local array dynamic carrier should fail closed on missing index range proof");
+  }
+  return 0;
+}
+
+LirModule make_local_array_carrier_phi_before_gep_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "local_array_carrier_phi_before_gep";
+  function.signature_text = "define void @local_array_carrier_phi_before_gep(i64 %idx)";
+  function.params.emplace_back("%idx", c4c::TypeSpec{.base = c4c::TB_LONG});
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.arr"),
+      .type_str = "[4 x i32]",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirPhiOp{
+      .result = LirOperand("%phi.before.gep"),
+      .type_str = "i64",
+      .incoming = {{"0", "entry"}},
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%elt.ptr"),
+      .element_type = "i32",
+      .ptr = LirOperand("%lv.arr"),
+      .indices = {LirOperand("i64 %idx")},
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_array_carrier_lir_producer_coordinate_is_not_bir_inst_index() {
+  auto result =
+      try_lower_to_bir_with_options(make_local_array_carrier_phi_before_gep_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("local array phi-before-GEP fixture should lower semantically");
+  }
+
+  const auto& function = result.module->functions.front();
+  if (function.local_array_element_paths.size() != 1) {
+    return fail("phi-before-GEP fixture should publish one element path");
+  }
+  const auto& path = function.local_array_element_paths.front();
+  if (path.lir_producer_block_label != "entry" ||
+      !path.lir_producer_instruction_index.has_value() ||
+      *path.lir_producer_instruction_index != 1 ||
+      path.lir_producer_coordinate_status !=
+          bir::LocalArrayLirProducerCoordinateStatus::Available ||
+      path.lir_producer_lookup_key !=
+          "lir-producer:local_array_carrier_phi_before_gep:entry:1:%elt.ptr:%lv.arr:%elt.ptr:%idx") {
+    return fail("local array path should publish explicit LIR producer-site coordinate");
   }
   return 0;
 }
@@ -9216,6 +9299,11 @@ int main() {
           expect_local_array_carrier_dynamic_gep_preserves_missing_index_range_proof();
       local_array_dynamic_carrier_status != 0) {
     return local_array_dynamic_carrier_status;
+  }
+  if (const int local_array_lir_coordinate_status =
+          expect_local_array_carrier_lir_producer_coordinate_is_not_bir_inst_index();
+      local_array_lir_coordinate_status != 0) {
+    return local_array_lir_coordinate_status;
   }
   if (const int local_array_range_proof_status =
           expect_local_array_range_proof_checker_accepts_complete_synthetic_inputs();

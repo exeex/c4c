@@ -2,6 +2,7 @@
 #include "memory_helpers.hpp"
 
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -76,6 +77,63 @@ bir::LocalArrayIndexRecord dynamic_local_array_index(bir::Value value) {
   };
 }
 
+std::string local_array_index_key(const bir::LocalArrayIndexRecord& index) {
+  if (index.kind == bir::LocalArrayIndexKind::Constant) {
+    return std::to_string(index.constant);
+  }
+  if (index.value.kind == bir::Value::Kind::Named) {
+    return index.value.name;
+  }
+  return std::to_string(index.value.immediate);
+}
+
+std::string make_local_array_lir_producer_lookup_key(
+    const bir::Function* function,
+    std::string_view block_label,
+    std::optional<std::size_t> instruction_index,
+    std::string_view result_name,
+    std::string_view source_object_name,
+    std::string_view derivation_result_name,
+    const std::vector<bir::LocalArrayIndexRecord>& indices) {
+  if (function == nullptr || function->name.empty() || block_label.empty() ||
+      !instruction_index.has_value() || result_name.empty() ||
+      source_object_name.empty() || derivation_result_name.empty()) {
+    return {};
+  }
+  std::ostringstream out;
+  out << "lir-producer:" << function->name << ":" << block_label << ":"
+      << *instruction_index << ":" << result_name << ":" << source_object_name << ":"
+      << derivation_result_name;
+  for (const auto& index : indices) {
+    out << ":" << local_array_index_key(index);
+  }
+  return out.str();
+}
+
+bir::LocalArrayLirProducerCoordinateStatus local_array_lir_producer_coordinate_status(
+    const bir::Function* function,
+    std::string_view block_label,
+    std::optional<std::size_t> instruction_index,
+    bir::LocalArrayLirProducerOperationRole role,
+    std::string_view lookup_key) {
+  if (function == nullptr) {
+    return bir::LocalArrayLirProducerCoordinateStatus::MissingLirProducerCoordinate;
+  }
+  if (block_label.empty()) {
+    return bir::LocalArrayLirProducerCoordinateStatus::MissingBlockLabel;
+  }
+  if (!instruction_index.has_value()) {
+    return bir::LocalArrayLirProducerCoordinateStatus::MissingLirInstructionIndex;
+  }
+  if (role != bir::LocalArrayLirProducerOperationRole::AddressDerivation) {
+    return bir::LocalArrayLirProducerCoordinateStatus::UnsupportedOperationRole;
+  }
+  if (lookup_key.empty()) {
+    return bir::LocalArrayLirProducerCoordinateStatus::MissingLirProducerLookupKey;
+  }
+  return bir::LocalArrayLirProducerCoordinateStatus::Available;
+}
+
 void publish_local_array_path_record(
     bir::Function* function,
     std::string result_name,
@@ -88,7 +146,10 @@ void publish_local_array_path_record(
     std::size_t element_size_bytes,
     std::size_t element_count,
     std::size_t byte_offset,
-    bir::LocalArrayCarrierStatus status) {
+    bir::LocalArrayCarrierStatus status,
+    std::string_view lir_producer_block_label,
+    std::optional<std::size_t> lir_producer_instruction_index,
+    bir::LocalArrayLirProducerOperationRole lir_producer_operation_role) {
   if (function == nullptr) {
     return;
   }
@@ -97,6 +158,20 @@ void publish_local_array_path_record(
                                  : bir::LocalArrayCarrierStatus::Available;
   const auto derivation_status =
       source_status == bir::LocalArrayCarrierStatus::Available ? status : source_status;
+  const auto lookup_key =
+      make_local_array_lir_producer_lookup_key(function,
+                                               lir_producer_block_label,
+                                               lir_producer_instruction_index,
+                                               result_name,
+                                               source_object_name,
+                                               result_name,
+                                               indices);
+  const auto coordinate_status = local_array_lir_producer_coordinate_status(
+      function,
+      lir_producer_block_label,
+      lir_producer_instruction_index,
+      lir_producer_operation_role,
+      lookup_key);
   function->local_array_derivations.push_back(bir::LocalArrayAddressDerivationRecord{
       .result_name = result_name,
       .source_object_name = source_object_name,
@@ -116,6 +191,12 @@ void publish_local_array_path_record(
       .element_count = element_count,
       .scalar_in_bounds = derivation_status == bir::LocalArrayCarrierStatus::Available,
       .status = derivation_status,
+      .lir_producer_function_name = function->name,
+      .lir_producer_block_label = std::string(lir_producer_block_label),
+      .lir_producer_instruction_index = lir_producer_instruction_index,
+      .lir_producer_operation_role = lir_producer_operation_role,
+      .lir_producer_lookup_key = lookup_key,
+      .lir_producer_coordinate_status = coordinate_status,
   });
 }
 
@@ -1021,7 +1102,9 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
     DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
-    bir::Function* carrier_function) {
+    bir::Function* carrier_function,
+    std::string_view lir_producer_block_label,
+    std::optional<std::size_t> lir_producer_instruction_index) {
   const auto array_it = local_array_slots.find(std::string(gep.ptr.str()));
   if (array_it == local_array_slots.end()) {
     return std::nullopt;
@@ -1077,7 +1160,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
                                     element_size,
                                     array_it->second.element_slots.size(),
                                     static_cast<std::size_t>(*elem_imm) * element_size,
-                                    bir::LocalArrayCarrierStatus::Available);
+                                    bir::LocalArrayCarrierStatus::Available,
+                                    lir_producer_block_label,
+                                    lir_producer_instruction_index,
+                                    bir::LocalArrayLirProducerOperationRole::AddressDerivation);
     return true;
   }
 
@@ -1102,7 +1188,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
                                     element_size,
                                     array_it->second.element_slots.size(),
                                     0,
-                                    bir::LocalArrayCarrierStatus::MissingIndexRangeProof);
+                                    bir::LocalArrayCarrierStatus::MissingIndexRangeProof,
+                                    lir_producer_block_label,
+                                    lir_producer_instruction_index,
+                                    bir::LocalArrayLirProducerOperationRole::AddressDerivation);
     return true;
   }
 
@@ -1135,7 +1224,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
                                   element_size,
                                   array_it->second.element_slots.size(),
                                   0,
-                                  bir::LocalArrayCarrierStatus::MissingIndexRangeProof);
+                                  bir::LocalArrayCarrierStatus::MissingIndexRangeProof,
+                                  lir_producer_block_label,
+                                  lir_producer_instruction_index,
+                                  bir::LocalArrayLirProducerOperationRole::AddressDerivation);
   return true;
 }
 
@@ -1148,7 +1240,9 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
     DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
     LocalSlotPointerValues* local_slot_pointer_values,
-    bir::Function* carrier_function) {
+    bir::Function* carrier_function,
+    std::string_view lir_producer_block_label,
+    std::optional<std::size_t> lir_producer_instruction_index) {
   return try_lower_local_pointer_array_base_gep(gep,
                                                value_aliases,
                                                TypeDeclMap{},
@@ -1159,7 +1253,9 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
                                                dynamic_local_pointer_arrays,
                                                dynamic_local_aggregate_arrays,
                                                local_slot_pointer_values,
-                                               carrier_function);
+                                               carrier_function,
+                                               lir_producer_block_label,
+                                               lir_producer_instruction_index);
 }
 
 std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
@@ -1173,7 +1269,9 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
     DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
     LocalSlotPointerValues* local_slot_pointer_values,
-    bir::Function* carrier_function) {
+    bir::Function* carrier_function,
+    std::string_view lir_producer_block_label,
+    std::optional<std::size_t> lir_producer_instruction_index) {
   const auto array_base_it = local_pointer_array_bases->find(std::string(gep.ptr.str()));
   if (array_base_it == local_pointer_array_bases->end()) {
     return std::nullopt;
@@ -1308,7 +1406,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
                                     element_size,
                                     array_base_it->second.element_slots.size(),
                                     static_cast<std::size_t>(final_index) * element_size,
-                                    bir::LocalArrayCarrierStatus::Available);
+                                    bir::LocalArrayCarrierStatus::Available,
+                                    lir_producer_block_label,
+                                    lir_producer_instruction_index,
+                                    bir::LocalArrayLirProducerOperationRole::AddressDerivation);
     return true;
   }
 
@@ -1341,7 +1442,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
                                     type_size_bytes(slot_type_it->second),
                                     array_base_it->second.element_slots.size(),
                                     0,
-                                    bir::LocalArrayCarrierStatus::MissingIndexRangeProof);
+                                    bir::LocalArrayCarrierStatus::MissingIndexRangeProof,
+                                    lir_producer_block_label,
+                                    lir_producer_instruction_index,
+                                    bir::LocalArrayLirProducerOperationRole::AddressDerivation);
     return true;
   }
 
@@ -1398,7 +1502,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
                                   element_size,
                                   array_base_it->second.element_slots.size(),
                                   0,
-                                  bir::LocalArrayCarrierStatus::MissingIndexRangeProof);
+                                  bir::LocalArrayCarrierStatus::MissingIndexRangeProof,
+                                  lir_producer_block_label,
+                                  lir_producer_instruction_index,
+                                  bir::LocalArrayLirProducerOperationRole::AddressDerivation);
   return true;
 }
 
