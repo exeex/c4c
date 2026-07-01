@@ -1,6 +1,6 @@
 # RV64 Select-Publication Stack-Home Materialization
 
-Status: Open
+Status: Closed
 Type: Focused RV64 materialization idea
 Parent: `ideas/closed/505_select_publication_stack_home_intent_support.md`
 Source Evidence:
@@ -8,6 +8,21 @@ Source Evidence:
 - `build/agent_state/505_step1_stack_home_intent_construction/rows.tsv`
 - `build/agent_state/504_step3_select_publication_consumer_classification/rows.tsv`
 Owning Layer: RV64 object lowering for supported select-publication stack-home intent
+
+## Completion Summary
+
+Closed after the supported RV64 select-publication stack-home consumer paths
+landed in commits `1d57dc946` and `f558955d6`.
+
+- Pointer/XLEN concrete stack-source to GPR destination intent now materializes
+  through structured `EdgePublicationMoveIntent` authority.
+- Direct GPR source to concrete 1/2/4-byte stack-destination intent now
+  materializes through structured `EdgePublicationMoveIntent` authority.
+- Unsupported widths, large offsets, stack-to-stack select-publication without
+  scratch/interleaving policy, missing concrete stack fields, coordinate
+  confusion, and generic immediate materialization remain outside this idea.
+- Close gate used the lifecycle-only regression guard against the existing
+  backend `test_before.log` baseline and passed 328/328 with no regressions.
 
 ## Goal
 
