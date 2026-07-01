@@ -634,6 +634,167 @@ struct LocalSlot {
   std::optional<PhiObservation> phi_observation;
 };
 
+enum class LocalArrayCarrierStatus : unsigned char {
+  Available,
+  MissingSourceObject,
+  SourceObjectNotLocal,
+  MissingSourceObjectLayout,
+  MissingObjectToSlotRelation,
+  MissingDerivation,
+  DerivationNotProvenLocal,
+  MissingDerivedPointerIdentity,
+  MissingElementPath,
+  MissingIndexIdentity,
+  MissingIndexRangeProof,
+  RangeProofNotDominatingConsumer,
+  RangeProofPathNotCoveringConsumer,
+  IndexValueClobberedBeforeConsumer,
+  ElementOutOfBounds,
+  ElementNotScalar,
+  LayoutRangeMismatch,
+  UnknownProvenance,
+  IntegerPointerRoundTrip,
+  GlobalSourceObject,
+  AggregateOrMemberBoundary,
+  UnionOrObjectRepresentationBoundary,
+  VariadicOrVaArgBoundary,
+  RuntimeOrCallBoundary,
+  F128ComplexVectorOrVolatileAtomicBoundary,
+  BootstrapBoundary,
+  RawShapeOnly,
+  TargetOnlyOrFinalHomeOnly,
+};
+
+[[nodiscard]] constexpr std::string_view local_array_carrier_status_name(
+    LocalArrayCarrierStatus status) {
+  switch (status) {
+    case LocalArrayCarrierStatus::Available:
+      return "available";
+    case LocalArrayCarrierStatus::MissingSourceObject:
+      return "missing_source_object";
+    case LocalArrayCarrierStatus::SourceObjectNotLocal:
+      return "source_object_not_local";
+    case LocalArrayCarrierStatus::MissingSourceObjectLayout:
+      return "missing_source_object_layout";
+    case LocalArrayCarrierStatus::MissingObjectToSlotRelation:
+      return "missing_object_to_slot_relation";
+    case LocalArrayCarrierStatus::MissingDerivation:
+      return "missing_derivation";
+    case LocalArrayCarrierStatus::DerivationNotProvenLocal:
+      return "derivation_not_proven_local";
+    case LocalArrayCarrierStatus::MissingDerivedPointerIdentity:
+      return "missing_derived_pointer_identity";
+    case LocalArrayCarrierStatus::MissingElementPath:
+      return "missing_element_path";
+    case LocalArrayCarrierStatus::MissingIndexIdentity:
+      return "missing_index_identity";
+    case LocalArrayCarrierStatus::MissingIndexRangeProof:
+      return "missing_index_range_proof";
+    case LocalArrayCarrierStatus::RangeProofNotDominatingConsumer:
+      return "range_proof_not_dominating_consumer";
+    case LocalArrayCarrierStatus::RangeProofPathNotCoveringConsumer:
+      return "range_proof_path_not_covering_consumer";
+    case LocalArrayCarrierStatus::IndexValueClobberedBeforeConsumer:
+      return "index_value_clobbered_before_consumer";
+    case LocalArrayCarrierStatus::ElementOutOfBounds:
+      return "element_out_of_bounds";
+    case LocalArrayCarrierStatus::ElementNotScalar:
+      return "element_not_scalar";
+    case LocalArrayCarrierStatus::LayoutRangeMismatch:
+      return "layout_range_mismatch";
+    case LocalArrayCarrierStatus::UnknownProvenance:
+      return "unknown_provenance";
+    case LocalArrayCarrierStatus::IntegerPointerRoundTrip:
+      return "integer_pointer_round_trip";
+    case LocalArrayCarrierStatus::GlobalSourceObject:
+      return "global_source_object";
+    case LocalArrayCarrierStatus::AggregateOrMemberBoundary:
+      return "aggregate_or_member_boundary";
+    case LocalArrayCarrierStatus::UnionOrObjectRepresentationBoundary:
+      return "union_or_object_representation_boundary";
+    case LocalArrayCarrierStatus::VariadicOrVaArgBoundary:
+      return "variadic_or_va_arg_boundary";
+    case LocalArrayCarrierStatus::RuntimeOrCallBoundary:
+      return "runtime_or_call_boundary";
+    case LocalArrayCarrierStatus::F128ComplexVectorOrVolatileAtomicBoundary:
+      return "f128_complex_vector_or_volatile_atomic_boundary";
+    case LocalArrayCarrierStatus::BootstrapBoundary:
+      return "bootstrap_boundary";
+    case LocalArrayCarrierStatus::RawShapeOnly:
+      return "raw_shape_only";
+    case LocalArrayCarrierStatus::TargetOnlyOrFinalHomeOnly:
+      return "target_only_or_final_home_only";
+  }
+  return "unknown";
+}
+
+enum class LocalArrayDerivationKind : unsigned char {
+  Unknown,
+  ArrayDecay,
+  LocalAddressOfElement,
+  DirectLocalArrayElement,
+};
+
+[[nodiscard]] constexpr std::string_view local_array_derivation_kind_name(
+    LocalArrayDerivationKind kind) {
+  switch (kind) {
+    case LocalArrayDerivationKind::Unknown:
+      return "unknown";
+    case LocalArrayDerivationKind::ArrayDecay:
+      return "array_decay";
+    case LocalArrayDerivationKind::LocalAddressOfElement:
+      return "local_address_of_element";
+    case LocalArrayDerivationKind::DirectLocalArrayElement:
+      return "direct_local_array_element";
+  }
+  return "unknown";
+}
+
+enum class LocalArrayIndexKind : unsigned char {
+  Constant,
+  Dynamic,
+};
+
+struct LocalArrayIndexRecord {
+  LocalArrayIndexKind kind = LocalArrayIndexKind::Constant;
+  std::int64_t constant = 0;
+  Value value;
+};
+
+struct LocalArraySourceObjectRecord {
+  std::string object_name;
+  TypeKind element_type = TypeKind::Void;
+  std::string type_text;
+  std::size_t element_count = 0;
+  std::size_t element_size_bytes = 0;
+  std::size_t total_size_bytes = 0;
+  std::size_t align_bytes = 0;
+  std::vector<std::string> element_slots;
+  LocalArrayCarrierStatus status = LocalArrayCarrierStatus::Available;
+};
+
+struct LocalArrayAddressDerivationRecord {
+  std::string result_name;
+  std::string source_object_name;
+  std::string base_view_name;
+  LocalArrayDerivationKind kind = LocalArrayDerivationKind::Unknown;
+  std::size_t base_index = 0;
+  LocalArrayCarrierStatus status = LocalArrayCarrierStatus::Available;
+};
+
+struct LocalArrayElementPathRecord {
+  std::string result_name;
+  std::string source_object_name;
+  std::string derivation_result_name;
+  std::vector<LocalArrayIndexRecord> indices;
+  TypeKind element_type = TypeKind::Void;
+  std::size_t element_size_bytes = 0;
+  std::size_t byte_offset = 0;
+  std::size_t element_count = 0;
+  bool scalar_in_bounds = false;
+  LocalArrayCarrierStatus status = LocalArrayCarrierStatus::Available;
+};
+
 enum class GlobalAddressMaterializationPolicy {
   Unspecified,
   Direct,
@@ -2770,6 +2931,9 @@ struct Function {
   bool is_variadic = false;
   std::vector<Param> params;
   std::vector<LocalSlot> local_slots;
+  std::vector<LocalArraySourceObjectRecord> local_array_source_objects;
+  std::vector<LocalArrayAddressDerivationRecord> local_array_derivations;
+  std::vector<LocalArrayElementPathRecord> local_array_element_paths;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;

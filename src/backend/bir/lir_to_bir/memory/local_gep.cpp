@@ -61,6 +61,64 @@ BirFunctionLowerer::AggregateTypeLayout lookup_local_gep_layout(
   return lookup_local_gep_layout_result(type_text, type_decls, structured_layouts).layout;
 }
 
+bir::LocalArrayIndexRecord constant_local_array_index(std::int64_t value) {
+  return bir::LocalArrayIndexRecord{
+      .kind = bir::LocalArrayIndexKind::Constant,
+      .constant = value,
+  };
+}
+
+bir::LocalArrayIndexRecord dynamic_local_array_index(bir::Value value) {
+  return bir::LocalArrayIndexRecord{
+      .kind = bir::LocalArrayIndexKind::Dynamic,
+      .constant = 0,
+      .value = std::move(value),
+  };
+}
+
+void publish_local_array_path_record(
+    bir::Function* function,
+    std::string result_name,
+    std::string source_object_name,
+    std::string base_view_name,
+    bir::LocalArrayDerivationKind kind,
+    std::size_t base_index,
+    std::vector<bir::LocalArrayIndexRecord> indices,
+    bir::TypeKind element_type,
+    std::size_t element_size_bytes,
+    std::size_t element_count,
+    std::size_t byte_offset,
+    bir::LocalArrayCarrierStatus status) {
+  if (function == nullptr) {
+    return;
+  }
+  const auto source_status = source_object_name.empty()
+                                 ? bir::LocalArrayCarrierStatus::MissingSourceObject
+                                 : bir::LocalArrayCarrierStatus::Available;
+  const auto derivation_status =
+      source_status == bir::LocalArrayCarrierStatus::Available ? status : source_status;
+  function->local_array_derivations.push_back(bir::LocalArrayAddressDerivationRecord{
+      .result_name = result_name,
+      .source_object_name = source_object_name,
+      .base_view_name = base_view_name,
+      .kind = kind,
+      .base_index = base_index,
+      .status = source_status,
+  });
+  function->local_array_element_paths.push_back(bir::LocalArrayElementPathRecord{
+      .result_name = result_name,
+      .source_object_name = std::move(source_object_name),
+      .derivation_result_name = std::move(result_name),
+      .indices = std::move(indices),
+      .element_type = element_type,
+      .element_size_bytes = element_size_bytes,
+      .byte_offset = byte_offset,
+      .element_count = element_count,
+      .scalar_in_bounds = derivation_status == bir::LocalArrayCarrierStatus::Available,
+      .status = derivation_status,
+  });
+}
+
 std::optional<AggregateByteOffsetProjection> resolve_local_gep_child_index_projection(
     std::string_view type_text,
     std::size_t child_index,
@@ -920,6 +978,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_slot_pointer_gep(
       .storage_type_text = local_slot_ptr_it->second.storage_type_text,
       .type_text = std::move(resolved_target->type_text),
   };
+  resolved_address.source_object_name = local_slot_ptr_it->second.source_object_name;
+  resolved_address.derivation_result_name = local_slot_ptr_it->second.derivation_result_name;
   if (!local_slot_ptr_it->second.array_element_slots.empty()) {
     const auto& base_slot = local_slot_ptr_it->second.array_element_slots.front();
     const auto slot_type_it = local_slot_types.find(base_slot);
@@ -934,6 +994,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_slot_pointer_gep(
         resolved_address.storage_type_text = render_type(slot_type_it->second);
         resolved_address.type_text = render_type(slot_type_it->second);
         resolved_address.array_element_slots = local_slot_ptr_it->second.array_element_slots;
+        resolved_address.source_object_name = local_slot_ptr_it->second.source_object_name;
+        resolved_address.derivation_result_name = local_slot_ptr_it->second.derivation_result_name;
         resolved_address.array_base_index =
             static_cast<std::size_t>(resolved_address.byte_offset / slot_size);
       } else {
@@ -941,6 +1003,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_slot_pointer_gep(
         resolved_address.storage_type_text = render_type(slot_type_it->second);
         resolved_address.type_text = render_type(slot_type_it->second);
         resolved_address.array_element_slots = local_slot_ptr_it->second.array_element_slots;
+        resolved_address.source_object_name = local_slot_ptr_it->second.source_object_name;
+        resolved_address.derivation_result_name = local_slot_ptr_it->second.derivation_result_name;
       }
     }
   }
@@ -956,7 +1020,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
     LocalPointerSlots* local_pointer_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
-    DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays) {
+    DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
+    bir::Function* carrier_function) {
   const auto array_it = local_array_slots.find(std::string(gep.ptr.str()));
   if (array_it == local_array_slots.end()) {
     return std::nullopt;
@@ -985,6 +1050,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
   }
 
   const std::string result_name(gep.result.str());
+  const auto source_object_name = std::string(gep.ptr.str());
+  const auto element_size = type_size_bytes(array_it->second.element_type);
   const auto elem_imm = resolve_index_operand(elem_index->operand, value_aliases);
   if (elem_imm.has_value()) {
     if (*elem_imm < 0 ||
@@ -996,7 +1063,21 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
     (*local_pointer_array_bases)[result_name] = LocalPointerArrayBase{
         .element_slots = array_it->second.element_slots,
         .base_index = static_cast<std::size_t>(*elem_imm),
+        .source_object_name = source_object_name,
+        .derivation_result_name = result_name,
     };
+    publish_local_array_path_record(carrier_function,
+                                    result_name,
+                                    source_object_name,
+                                    result_name,
+                                    bir::LocalArrayDerivationKind::LocalAddressOfElement,
+                                    static_cast<std::size_t>(*elem_imm),
+                                    {constant_local_array_index(*elem_imm)},
+                                    array_it->second.element_type,
+                                    element_size,
+                                    array_it->second.element_slots.size(),
+                                    static_cast<std::size_t>(*elem_imm) * element_size,
+                                    bir::LocalArrayCarrierStatus::Available);
     return true;
   }
 
@@ -1010,10 +1091,21 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
         .element_slots = array_it->second.element_slots,
         .index = *elem_value,
     };
+    publish_local_array_path_record(carrier_function,
+                                    result_name,
+                                    source_object_name,
+                                    result_name,
+                                    bir::LocalArrayDerivationKind::LocalAddressOfElement,
+                                    0,
+                                    {dynamic_local_array_index(*elem_value)},
+                                    array_it->second.element_type,
+                                    element_size,
+                                    array_it->second.element_slots.size(),
+                                    0,
+                                    bir::LocalArrayCarrierStatus::MissingIndexRangeProof);
     return true;
   }
 
-  const auto element_size = type_size_bytes(array_it->second.element_type);
   if (element_size == 0 || array_it->second.element_slots.empty()) {
     return false;
   }
@@ -1032,6 +1124,18 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
   }
 
   (*dynamic_local_aggregate_arrays)[result_name] = std::move(access);
+  publish_local_array_path_record(carrier_function,
+                                  result_name,
+                                  source_object_name,
+                                  result_name,
+                                  bir::LocalArrayDerivationKind::LocalAddressOfElement,
+                                  0,
+                                  {dynamic_local_array_index(*elem_value)},
+                                  array_it->second.element_type,
+                                  element_size,
+                                  array_it->second.element_slots.size(),
+                                  0,
+                                  bir::LocalArrayCarrierStatus::MissingIndexRangeProof);
   return true;
 }
 
@@ -1043,7 +1147,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
     DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
-    LocalSlotPointerValues* local_slot_pointer_values) {
+    LocalSlotPointerValues* local_slot_pointer_values,
+    bir::Function* carrier_function) {
   return try_lower_local_pointer_array_base_gep(gep,
                                                value_aliases,
                                                TypeDeclMap{},
@@ -1053,7 +1158,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
                                                local_pointer_array_bases,
                                                dynamic_local_pointer_arrays,
                                                dynamic_local_aggregate_arrays,
-                                               local_slot_pointer_values);
+                                               local_slot_pointer_values,
+                                               carrier_function);
 }
 
 std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
@@ -1066,7 +1172,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
     LocalPointerArrayBaseMap* local_pointer_array_bases,
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
     DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
-    LocalSlotPointerValues* local_slot_pointer_values) {
+    LocalSlotPointerValues* local_slot_pointer_values,
+    bir::Function* carrier_function) {
   const auto array_base_it = local_pointer_array_bases->find(std::string(gep.ptr.str()));
   if (array_base_it == local_pointer_array_bases->end()) {
     return std::nullopt;
@@ -1132,6 +1239,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
           .storage_type_text = render_type(slot_type_it->second),
           .type_text = render_type(slot_type_it->second),
           .array_element_slots = array_base_it->second.element_slots,
+          .source_object_name = array_base_it->second.source_object_name,
+          .derivation_result_name = array_base_it->second.derivation_result_name,
       };
       return true;
     }
@@ -1161,20 +1270,45 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
           .type_text = render_type(slot_type_it->second),
           .array_element_slots = array_base_it->second.element_slots,
           .array_base_index = static_cast<std::size_t>(final_index),
+          .source_object_name = array_base_it->second.source_object_name,
+          .derivation_result_name = array_base_it->second.derivation_result_name,
       };
       (*local_pointer_array_bases)[std::string(gep.result.str())] = LocalPointerArrayBase{
           .element_slots = array_base_it->second.element_slots,
           .base_index = static_cast<std::size_t>(final_index),
+          .source_object_name = array_base_it->second.source_object_name,
+          .derivation_result_name = std::string(gep.result.str()),
       };
       return true;
     }
 
-    (*local_pointer_slots)[std::string(gep.result.str())] =
+    const std::string result_name(gep.result.str());
+    const auto slot_type_it =
+        local_slot_types.find(array_base_it->second.element_slots[static_cast<std::size_t>(final_index)]);
+    if (slot_type_it == local_slot_types.end()) {
+      return false;
+    }
+    (*local_pointer_slots)[result_name] =
         array_base_it->second.element_slots[static_cast<std::size_t>(final_index)];
-    (*local_pointer_array_bases)[std::string(gep.result.str())] = LocalPointerArrayBase{
+    (*local_pointer_array_bases)[result_name] = LocalPointerArrayBase{
         .element_slots = array_base_it->second.element_slots,
         .base_index = static_cast<std::size_t>(final_index),
+        .source_object_name = array_base_it->second.source_object_name,
+        .derivation_result_name = result_name,
     };
+    const auto element_size = type_size_bytes(slot_type_it->second);
+    publish_local_array_path_record(carrier_function,
+                                    result_name,
+                                    array_base_it->second.source_object_name,
+                                    result_name,
+                                    bir::LocalArrayDerivationKind::LocalAddressOfElement,
+                                    static_cast<std::size_t>(final_index),
+                                    {constant_local_array_index(final_index)},
+                                    slot_type_it->second,
+                                    element_size,
+                                    array_base_it->second.element_slots.size(),
+                                    static_cast<std::size_t>(final_index) * element_size,
+                                    bir::LocalArrayCarrierStatus::Available);
     return true;
   }
 
@@ -1196,6 +1330,18 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
         .element_slots = array_base_it->second.element_slots,
         .index = *index_value,
     };
+    publish_local_array_path_record(carrier_function,
+                                    std::string(gep.result.str()),
+                                    array_base_it->second.source_object_name,
+                                    std::string(gep.result.str()),
+                                    bir::LocalArrayDerivationKind::LocalAddressOfElement,
+                                    0,
+                                    {dynamic_local_array_index(*index_value)},
+                                    slot_type_it->second,
+                                    type_size_bytes(slot_type_it->second),
+                                    array_base_it->second.element_slots.size(),
+                                    0,
+                                    bir::LocalArrayCarrierStatus::MissingIndexRangeProof);
     return true;
   }
 
@@ -1241,6 +1387,18 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
   }
 
   (*dynamic_local_aggregate_arrays)[std::string(gep.result.str())] = std::move(access);
+  publish_local_array_path_record(carrier_function,
+                                  std::string(gep.result.str()),
+                                  array_base_it->second.source_object_name,
+                                  std::string(gep.result.str()),
+                                  bir::LocalArrayDerivationKind::LocalAddressOfElement,
+                                  0,
+                                  {dynamic_local_array_index(*index_value)},
+                                  slot_type_it->second,
+                                  element_size,
+                                  array_base_it->second.element_slots.size(),
+                                  0,
+                                  bir::LocalArrayCarrierStatus::MissingIndexRangeProof);
   return true;
 }
 
@@ -1325,6 +1483,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_slot_base_gep(
         resolved_array_base = LocalPointerArrayBase{
             .element_slots = base_array_it->second.element_slots,
             .base_index = static_cast<std::size_t>(final_index),
+            .source_object_name = base_name,
+            .derivation_result_name = std::string(gep.result.str()),
         };
       } else {
         const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);

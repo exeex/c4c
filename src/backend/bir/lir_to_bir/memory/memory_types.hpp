@@ -50,6 +50,8 @@ struct LocalSlotAddress {
   std::string type_text;
   std::vector<std::string> array_element_slots;
   std::size_t array_base_index = 0;
+  std::string source_object_name;
+  std::string derivation_result_name;
 };
 
 struct LocalArraySlots {
@@ -87,6 +89,8 @@ struct DynamicPointerValueArrayAccess {
 struct LocalPointerArrayBase {
   std::vector<std::string> element_slots;
   std::size_t base_index = 0;
+  std::string source_object_name;
+  std::string derivation_result_name;
 };
 
 struct DynamicGlobalPointerArrayAccess {

@@ -1003,7 +1003,8 @@ class BirFunctionLowerer {
       LocalPointerSlots* local_pointer_slots,
       LocalPointerArrayBaseMap* local_pointer_array_bases,
       DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
-      DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays);
+      DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
+      bir::Function* carrier_function = nullptr);
   static std::optional<bool> try_lower_local_pointer_array_base_gep(
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
@@ -1012,7 +1013,8 @@ class BirFunctionLowerer {
       LocalPointerArrayBaseMap* local_pointer_array_bases,
       DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
       DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
-      LocalSlotPointerValues* local_slot_pointer_values);
+      LocalSlotPointerValues* local_slot_pointer_values,
+      bir::Function* carrier_function = nullptr);
   static std::optional<bool> try_lower_local_pointer_array_base_gep(
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
@@ -1023,7 +1025,8 @@ class BirFunctionLowerer {
       LocalPointerArrayBaseMap* local_pointer_array_bases,
       DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
       DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
-      LocalSlotPointerValues* local_slot_pointer_values);
+      LocalSlotPointerValues* local_slot_pointer_values,
+      bir::Function* carrier_function = nullptr);
   static std::optional<bool> try_lower_local_pointer_slot_base_gep(
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,

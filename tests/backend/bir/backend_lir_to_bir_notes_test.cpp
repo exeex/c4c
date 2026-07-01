@@ -14,6 +14,7 @@
 
 namespace {
 
+namespace bir = c4c::backend::bir;
 namespace lir = c4c::codegen::lir;
 
 using c4c::backend::BirLoweringNote;
@@ -6775,6 +6776,202 @@ int expect_signature_return_with_mismatched_struct_id_fails_closed() {
   return 0;
 }
 
+LirModule make_local_array_carrier_constant_gep_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "local_array_carrier_constant_gep";
+  function.signature_text = "define void @local_array_carrier_constant_gep()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.arr"),
+      .type_str = "[4 x i32]",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%elt.ptr"),
+      .element_type = "i32",
+      .ptr = LirOperand("%lv.arr"),
+      .indices = {LirOperand("i64 2")},
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_array_carrier_constant_gep_publishes_source_derivation_and_layout() {
+  auto result =
+      try_lower_to_bir_with_options(make_local_array_carrier_constant_gep_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("local array constant GEP carrier fixture should lower semantically");
+  }
+
+  const auto& function = result.module->functions.front();
+  if (function.local_array_source_objects.size() != 1) {
+    return fail("local array carrier should publish one source object record");
+  }
+  const auto& source = function.local_array_source_objects.front();
+  if (source.object_name != "%lv.arr" ||
+      source.element_type != TypeKind::I32 ||
+      source.element_count != 4 ||
+      source.element_size_bytes != 4 ||
+      source.total_size_bytes != 16 ||
+      source.element_slots.size() != 4 ||
+      source.element_slots[2] != "%lv.arr.2" ||
+      source.status != bir::LocalArrayCarrierStatus::Available) {
+    return fail("local array source object carrier fields were not populated");
+  }
+
+  if (function.local_array_derivations.size() != 1 ||
+      function.local_array_element_paths.size() != 1) {
+    return fail("local array carrier should publish one derivation and element path");
+  }
+  const auto& derivation = function.local_array_derivations.front();
+  if (derivation.result_name != "%elt.ptr" ||
+      derivation.source_object_name != "%lv.arr" ||
+      derivation.kind != bir::LocalArrayDerivationKind::LocalAddressOfElement ||
+      derivation.base_index != 2 ||
+      derivation.status != bir::LocalArrayCarrierStatus::Available) {
+    return fail("local array derivation carrier fields were not populated");
+  }
+
+  const auto& path = function.local_array_element_paths.front();
+  if (path.result_name != "%elt.ptr" ||
+      path.source_object_name != "%lv.arr" ||
+      path.element_type != TypeKind::I32 ||
+      path.element_size_bytes != 4 ||
+      path.byte_offset != 8 ||
+      path.element_count != 4 ||
+      !path.scalar_in_bounds ||
+      path.status != bir::LocalArrayCarrierStatus::Available ||
+      path.indices.size() != 1 ||
+      path.indices.front().kind != bir::LocalArrayIndexKind::Constant ||
+      path.indices.front().constant != 2) {
+    return fail("local array element path carrier fields were not populated");
+  }
+  return 0;
+}
+
+LirModule make_local_array_carrier_dynamic_gep_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "local_array_carrier_dynamic_gep";
+  function.signature_text = "define void @local_array_carrier_dynamic_gep(i64 %idx)";
+  function.params.emplace_back("%idx", c4c::TypeSpec{.base = c4c::TB_LONG});
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.arr"),
+      .type_str = "[4 x i32]",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%elt.ptr"),
+      .element_type = "i32",
+      .ptr = LirOperand("%lv.arr"),
+      .indices = {LirOperand("i64 %idx")},
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_array_carrier_dynamic_gep_preserves_missing_index_range_proof() {
+  auto result =
+      try_lower_to_bir_with_options(make_local_array_carrier_dynamic_gep_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("local array dynamic GEP carrier fixture should lower semantically");
+  }
+
+  const auto& function = result.module->functions.front();
+  if (function.local_array_source_objects.size() != 1 ||
+      function.local_array_derivations.size() != 1 ||
+      function.local_array_element_paths.size() != 1) {
+    return fail("local array dynamic carrier should retain source/derivation/path records");
+  }
+  const auto& path = function.local_array_element_paths.front();
+  if (path.result_name != "%elt.ptr" ||
+      path.source_object_name != "%lv.arr" ||
+      path.status != bir::LocalArrayCarrierStatus::MissingIndexRangeProof ||
+      path.scalar_in_bounds ||
+      path.indices.size() != 1 ||
+      path.indices.front().kind != bir::LocalArrayIndexKind::Dynamic ||
+      path.indices.front().value.name != "%idx" ||
+      path.indices.front().value.type != TypeKind::I64) {
+    return fail("local array dynamic carrier should fail closed on missing index range proof");
+  }
+  return 0;
+}
+
+LirModule make_local_array_carrier_aggregate_member_boundary_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.Pair = type { i32, i32 }");
+
+  LirFunction function;
+  function.name = "local_array_carrier_aggregate_member_boundary";
+  function.signature_text = "define void @local_array_carrier_aggregate_member_boundary()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.pair"),
+      .type_str = "%struct.Pair",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%field.ptr"),
+      .element_type = "%struct.Pair",
+      .ptr = LirOperand("%lv.pair"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 1")},
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_array_carrier_rejects_aggregate_member_boundary() {
+  auto result =
+      try_lower_to_bir_with_options(make_local_array_carrier_aggregate_member_boundary_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("aggregate member boundary fixture should still lower semantically");
+  }
+  const auto& function = result.module->functions.front();
+  if (!function.local_array_source_objects.empty() ||
+      !function.local_array_derivations.empty() ||
+      !function.local_array_element_paths.empty()) {
+    return fail("aggregate member GEP must not publish local array carrier authority");
+  }
+  return 0;
+}
+
 LirModule make_bad_indirect_call_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -8834,6 +9031,21 @@ int main() {
           expect_memory_access_dynamic_array_verdicts_use_existing_facts();
       dynamic_array_status != 0) {
     return dynamic_array_status;
+  }
+  if (const int local_array_carrier_status =
+          expect_local_array_carrier_constant_gep_publishes_source_derivation_and_layout();
+      local_array_carrier_status != 0) {
+    return local_array_carrier_status;
+  }
+  if (const int local_array_dynamic_carrier_status =
+          expect_local_array_carrier_dynamic_gep_preserves_missing_index_range_proof();
+      local_array_dynamic_carrier_status != 0) {
+    return local_array_dynamic_carrier_status;
+  }
+  if (const int local_array_boundary_status =
+          expect_local_array_carrier_rejects_aggregate_member_boundary();
+      local_array_boundary_status != 0) {
+    return local_array_boundary_status;
   }
   if (const int byte_storage_overlay_status =
           expect_local_byte_storage_overlay_publishes_covering_slot_extent();

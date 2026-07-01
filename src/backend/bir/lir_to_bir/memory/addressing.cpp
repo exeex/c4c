@@ -1806,7 +1806,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                                                           &local_pointer_slots,
                                                           &local_pointer_array_bases,
                                                           &dynamic_local_pointer_arrays,
-                                                          &dynamic_local_aggregate_arrays);
+                                                          &dynamic_local_aggregate_arrays,
+                                                          &lowered_function_);
       handled.has_value()) {
     if (!*handled) {
       return fail_gep();
@@ -1842,7 +1843,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                                                                          &local_pointer_array_bases,
                                                                          &dynamic_local_pointer_arrays,
                                                                          &dynamic_local_aggregate_arrays,
-                                                                         &local_slot_pointer_values);
+                                                                         &local_slot_pointer_values,
+                                                                         &lowered_function_);
              handled.has_value()) {
     if (!*handled) {
       return fail_gep();

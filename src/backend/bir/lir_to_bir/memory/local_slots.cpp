@@ -665,6 +665,7 @@ bool BirFunctionLowerer::lower_local_memory_alloca_inst(
   if (array_type.has_value()) {
     LocalArraySlots array_slots{.element_type = array_type->second};
     array_slots.element_slots.reserve(array_type->first);
+    const auto element_size = type_size_bytes(array_type->second);
     for (std::size_t index = 0; index < array_type->first; ++index) {
       const std::string element_slot = slot_name + "." + std::to_string(index);
       local_slot_types_.emplace(element_slot, array_type->second);
@@ -673,10 +674,21 @@ bool BirFunctionLowerer::lower_local_memory_alloca_inst(
       lowered_function_.local_slots.push_back(bir::LocalSlot{
           .name = element_slot,
           .type = array_type->second,
-          .size_bytes = type_size_bytes(array_type->second),
+          .size_bytes = element_size,
           .align_bytes = align_bytes,
       });
     }
+    lowered_function_.local_array_source_objects.push_back(bir::LocalArraySourceObjectRecord{
+        .object_name = slot_name,
+        .element_type = array_type->second,
+        .type_text = std::string(alloca.type_str.str()),
+        .element_count = array_type->first,
+        .element_size_bytes = element_size,
+        .total_size_bytes = element_size * array_type->first,
+        .align_bytes = align_bytes,
+        .element_slots = array_slots.element_slots,
+        .status = bir::LocalArrayCarrierStatus::Available,
+    });
     local_array_slots_.emplace(slot_name, std::move(array_slots));
     return true;
   }
@@ -2256,6 +2268,8 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
     (*local_pointer_array_bases)[result] = LocalPointerArrayBase{
         .element_slots = local_slot_it->second.array_element_slots,
         .base_index = local_slot_it->second.array_base_index,
+        .source_object_name = local_slot_it->second.source_object_name,
+        .derivation_result_name = local_slot_it->second.derivation_result_name,
     };
   }
 }
