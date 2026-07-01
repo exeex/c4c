@@ -7486,6 +7486,8 @@ int expect_local_array_interval_effect_status_surface_fails_closed() {
                 .proof_source = proof_coordinate,
                 .endpoint = endpoint_coordinate,
             },
+            .selected_path = &selected_path,
+            .endpoint_bridge = &endpoint_bridge,
             .sources = std::move(sources),
         };
       };

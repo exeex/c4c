@@ -282,18 +282,86 @@ int populates_clean_local_array_ordered_effect_stream() {
           bir::LocalArrayOrderedEffectSourceStreamStatus::Available) {
     return fail("expected one available local-array ordered effect stream");
   }
+  const auto& function = prepared.module.functions.front();
   const auto effect = bir::evaluate_local_array_interval_effect(
-      bir::LocalArrayIntervalEffectInputs{
-          .selected_path =
-              &prepared.module.functions.front()
-                   .local_array_selected_proof_edge_paths.front(),
-          .endpoint_bridge =
-              &prepared.module.functions.front()
-                   .local_array_endpoint_bridges.front(),
-          .ordered_effect_sources = &streams.front(),
-      });
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front());
   if (effect.status != bir::LocalArrayIntervalEffectStatus::Available) {
     return fail("expected clean production stream to classify as available");
+  }
+  return 0;
+}
+
+int local_array_interval_consumer_requires_populated_matching_stream() {
+  auto prepared = make_effect_stream_prepared_module({
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp2"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::CastInst{
+          .opcode = bir::CastOpcode::Bitcast,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+      },
+  });
+  auto& function = prepared.module.functions.front();
+  auto effect = bir::evaluate_local_array_interval_effect(
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front());
+  if (effect.status !=
+      bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) {
+    return fail("expected empty production stream records to fail closed");
+  }
+
+  function.local_array_ordered_effect_source_streams.push_back(
+      bir::LocalArrayOrderedEffectSourceStream{
+          .status = bir::LocalArrayOrderedEffectSourceStreamStatus::Available,
+          .interval = {
+              .proof_source =
+                  bir::LocalArrayEffectSourceCoordinate{
+                      .prepared_block_index = std::size_t{0},
+                      .bir_block_label = "guard",
+                      .instruction_index = std::size_t{0},
+                  },
+              .endpoint =
+                  bir::LocalArrayEffectSourceCoordinate{
+                      .prepared_block_index = std::size_t{1},
+                      .bir_block_label = "body",
+                      .instruction_index = std::size_t{2},
+                  },
+          },
+      });
+  effect = bir::evaluate_local_array_interval_effect(
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front());
+  if (effect.status !=
+      bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) {
+    return fail("expected synthetic path-only stream evidence to fail closed");
+  }
+
+  prepare::populate_local_array_ordered_effect_source_streams(prepared);
+  function.local_array_ordered_effect_source_streams.push_back(
+      function.local_array_ordered_effect_source_streams.front());
+  effect = bir::evaluate_local_array_interval_effect(
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front());
+  if (effect.status !=
+      bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) {
+    return fail("expected duplicate matching stream records to fail closed");
   }
   return 0;
 }
@@ -331,16 +399,11 @@ int ordered_effect_stream_fails_closed_on_missing_proof_coordinate() {
       bir::LocalArrayOrderedEffectSourceStreamStatus::MissingLowerBoundaryCoordinate) {
     return fail("expected missing proof coordinate to fail closed");
   }
+  const auto& function = prepared.module.functions.front();
   const auto effect = bir::evaluate_local_array_interval_effect(
-      bir::LocalArrayIntervalEffectInputs{
-          .selected_path =
-              &prepared.module.functions.front()
-                   .local_array_selected_proof_edge_paths.front(),
-          .endpoint_bridge =
-              &prepared.module.functions.front()
-                   .local_array_endpoint_bridges.front(),
-          .ordered_effect_sources = &stream,
-      });
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front());
   if (effect.status !=
       bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate) {
     return fail("expected missing proof coordinate to reach interval classifier");
@@ -377,16 +440,11 @@ int ordered_effect_stream_fails_closed_on_unordered_boundary() {
       bir::LocalArrayOrderedEffectSourceStreamStatus::UnorderedBoundaryCoordinate) {
     return fail("expected unordered proof-to-endpoint boundary to fail closed");
   }
+  const auto& function = prepared.module.functions.front();
   const auto effect = bir::evaluate_local_array_interval_effect(
-      bir::LocalArrayIntervalEffectInputs{
-          .selected_path =
-              &prepared.module.functions.front()
-                   .local_array_selected_proof_edge_paths.front(),
-          .endpoint_bridge =
-              &prepared.module.functions.front()
-                   .local_array_endpoint_bridges.front(),
-          .ordered_effect_sources = &stream,
-      });
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front());
   if (effect.status !=
       bir::LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary) {
     return fail("expected unordered boundary to reach interval classifier");
@@ -433,16 +491,11 @@ int ordered_effect_stream_records_unknown_and_clobber_sources() {
   if (!saw_unknown_call || !saw_inline_asm_clobber) {
     return fail("expected production stream to record unknown call and inline asm clobber sources");
   }
+  const auto& function = prepared.module.functions.front();
   const auto effect = bir::evaluate_local_array_interval_effect(
-      bir::LocalArrayIntervalEffectInputs{
-          .selected_path =
-              &prepared.module.functions.front()
-                   .local_array_selected_proof_edge_paths.front(),
-          .endpoint_bridge =
-              &prepared.module.functions.front()
-                   .local_array_endpoint_bridges.front(),
-          .ordered_effect_sources = &stream,
-      });
+      function,
+      &function.local_array_selected_proof_edge_paths.front(),
+      &function.local_array_endpoint_bridges.front());
   if (effect.status !=
       bir::LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown) {
     return fail("expected first in-interval unknown call source to fail closed");
@@ -469,6 +522,10 @@ int main() {
     return rc;
   }
   if (int rc = populates_clean_local_array_ordered_effect_stream(); rc != 0) {
+    return rc;
+  }
+  if (int rc = local_array_interval_consumer_requires_populated_matching_stream();
+      rc != 0) {
     return rc;
   }
   if (int rc = ordered_effect_stream_fails_closed_on_missing_proof_coordinate();

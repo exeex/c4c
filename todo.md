@@ -1,63 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/498_dynamic_local_array_ordered_effect_source_stream_builder.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Ordered Effect-Source Population
+Current Step ID: 4
+Current Step Title: Wire Bounded Scan Consumption
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 repaired production ordered effect-source population for dynamic
-local-array bounded scans by closing the unordered-boundary gap identified in
-review/498_step3_ordered_effect_source_population_review.md.
+Step 4 wired bounded local-array interval consumption to the populated ordered
+effect-source stream records.
 
 Production result:
 
-- `populate_local_array_ordered_effect_source_streams` now creates one
-  `LocalArrayOrderedEffectSourceStream` per selected proof-edge path after
-  endpoint bridges are populated.
-- Streams carry their selected path and endpoint bridge, build the
-  `(proof_source, endpoint]` boundary from prepared/BIR coordinates, sort
-  sources by the ordered coordinate contract, and fail closed on missing proof,
-  endpoint, source, or unordered boundary coordinates.
-- `compare(proof_source, endpoint) >= 0` now produces
-  `UnorderedBoundaryCoordinate` in the production stream builder before source
-  collection can classify a stream as available, and the interval classifier
-  maps that to `UnorderedEffectSourceBoundary`.
-- The production collector records concrete BIR instruction families for index
-  redefinitions, phi/alias uncertainty, calls/helpers, inline asm, and
-  publications, and records prepared move-bundle/parallel-copy events when
-  prepared value-location metadata exposes them.
-- `evaluate_local_array_interval_effect` no longer accepts a caller-supplied
-  path-only coverage boolean; a clean builder-backed stream now returns
-  `available`.
-- Focused coverage proves clean, missing-coordinate, reversed/unordered
-  boundary, and unknown/clobber behavior through the production population
-  path.
+- `evaluate_local_array_interval_effect` now rejects stream evidence that is
+  not tied to the selected proof-edge path and endpoint bridge.
+- `find_local_array_ordered_effect_source_stream` provides a function-level
+  lookup over `local_array_ordered_effect_source_streams` and fails closed on
+  missing or duplicate matching records.
+- The function-level `evaluate_local_array_interval_effect` overload consumes
+  only the matching stored stream record; downstream callers no longer need to
+  pass a hand-selected stream pointer as separate availability evidence.
+- Production tests now prove clean populated-stream availability through the
+  lookup, while empty stream records, synthetic path-only stream evidence, and
+  duplicate matching stream records cannot produce `Available`.
 
 Detailed notes are recorded in
-`build/agent_state/498_step3_ordered_effect_source_population/summary.md`.
+`build/agent_state/498_step4_bounded_scan_consumption/summary.md`.
 
 ## Suggested Next
 
-Execute the next packet by connecting downstream bounded local-array consumers
-to the populated `local_array_ordered_effect_source_streams` records and
-removing any remaining raw/path-only no-clobber inference from the acceptance
-path.
+Run reviewer scrutiny for Step 4 or proceed to the next plan packet that
+threads this interval-effect record into any broader range-proof or backend
+acceptance surface selected by the supervisor.
 
 ## Watchouts
 
-- The stream population is attached to prealloc publication-plan publication,
-  but existing downstream bounded-scan consumers may still need to query the
-  stored stream records explicitly.
-- The boundary-ordering repair intentionally uses a precise unavailable status
-  instead of treating existing-but-reversed coordinates as missing coordinates.
-- Move-bundle and parallel-copy records are currently conservative
-  `unknown_modeled_effect` sources because prepared move records do not carry a
-  direct BIR value identity for the local-array dynamic index in this packet.
-- Store/publication sources are conservative and may be refined later if a
-  narrower publication authority proves the dynamic index is preserved.
+- The low-level `LocalArrayIntervalEffectInputs` classifier remains available
+  for focused status tests, but its stream now must carry matching selected-path
+  and endpoint-bridge ownership.
+- The new function-level lookup treats duplicate matching stream records as
+  unavailable because ambiguity should not become acceptance evidence.
+- The older `LocalArrayIndexRangeProofInputs::no_clobber_known` surface still
+  exists outside this packet; this slice wires the bounded interval-effect
+  consumer to stored stream records without rewriting that separate range-proof
+  API.
 
 ## Proof
 

@@ -1570,6 +1570,65 @@ local_array_interval_effect_status_for_source(
   return LocalArrayIntervalEffectStatus::UnknownEffect;
 }
 
+[[nodiscard]] inline bool local_array_ordered_effect_source_stream_matches_path(
+    const LocalArrayOrderedEffectSourceStream& stream,
+    const LocalArraySelectedProofEdgePathRecord& selected_path) {
+  if (stream.selected_path == nullptr) {
+    return false;
+  }
+  if (stream.selected_path == &selected_path) {
+    return true;
+  }
+  const auto& stream_path = *stream.selected_path;
+  return !stream_path.path_result_name.empty() &&
+         stream_path.path_result_name == selected_path.path_result_name &&
+         stream_path.source_object_name == selected_path.source_object_name &&
+         stream_path.derivation_result_name ==
+             selected_path.derivation_result_name &&
+         stream_path.lir_producer_lookup_key ==
+             selected_path.lir_producer_lookup_key &&
+         stream_path.lir_producer_function_name ==
+             selected_path.lir_producer_function_name &&
+         stream_path.lir_producer_block_label ==
+             selected_path.lir_producer_block_label &&
+         stream_path.lir_producer_instruction_index ==
+             selected_path.lir_producer_instruction_index &&
+         stream_path.proof_function_name == selected_path.proof_function_name &&
+         stream_path.proof_block_label == selected_path.proof_block_label &&
+         stream_path.proof_instruction_index ==
+             selected_path.proof_instruction_index &&
+         stream_path.selected_successor_label ==
+             selected_path.selected_successor_label;
+}
+
+[[nodiscard]] inline bool
+local_array_ordered_effect_source_stream_matches_endpoint_bridge(
+    const LocalArrayOrderedEffectSourceStream& stream,
+    const LocalArrayEndpointBridgeRecord& endpoint_bridge) {
+  if (stream.endpoint_bridge == nullptr) {
+    return false;
+  }
+  if (stream.endpoint_bridge == &endpoint_bridge) {
+    return true;
+  }
+  const auto& stream_bridge = *stream.endpoint_bridge;
+  return !stream_bridge.path_result_name.empty() &&
+         stream_bridge.path_result_name == endpoint_bridge.path_result_name &&
+         stream_bridge.source_object_name == endpoint_bridge.source_object_name &&
+         stream_bridge.derivation_result_name ==
+             endpoint_bridge.derivation_result_name &&
+         stream_bridge.lir_producer_lookup_key ==
+             endpoint_bridge.lir_producer_lookup_key &&
+         stream_bridge.prepared_function_name ==
+             endpoint_bridge.prepared_function_name &&
+         stream_bridge.bir_block_label == endpoint_bridge.bir_block_label &&
+         stream_bridge.prepared_block_index ==
+             endpoint_bridge.prepared_block_index &&
+         stream_bridge.endpoint_instruction_index ==
+             endpoint_bridge.endpoint_instruction_index &&
+         stream_bridge.result_value_name == endpoint_bridge.result_value_name;
+}
+
 struct LocalArrayIntervalEffectInputs {
   const LocalArraySelectedProofEdgePathRecord* selected_path = nullptr;
   const LocalArrayEndpointBridgeRecord* endpoint_bridge = nullptr;
@@ -1732,6 +1791,14 @@ evaluate_local_array_interval_effect(
     return record;
   }
   if (stream.status != LocalArrayOrderedEffectSourceStreamStatus::Available) {
+    record.status =
+        LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream;
+    return record;
+  }
+  if (!local_array_ordered_effect_source_stream_matches_path(
+          stream, selected_path) ||
+      !local_array_ordered_effect_source_stream_matches_endpoint_bridge(
+          stream, endpoint_bridge)) {
     record.status =
         LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream;
     return record;
@@ -4419,6 +4486,49 @@ struct Module {
   std::vector<Function> functions;
   NameTables names;
 };
+
+[[nodiscard]] inline const LocalArrayOrderedEffectSourceStream*
+find_local_array_ordered_effect_source_stream(
+    const Function& function,
+    const LocalArraySelectedProofEdgePathRecord& selected_path,
+    const LocalArrayEndpointBridgeRecord& endpoint_bridge) {
+  const LocalArrayOrderedEffectSourceStream* found = nullptr;
+  for (const auto& stream :
+       function.local_array_ordered_effect_source_streams) {
+    if (!local_array_ordered_effect_source_stream_matches_path(
+            stream, selected_path) ||
+        !local_array_ordered_effect_source_stream_matches_endpoint_bridge(
+            stream, endpoint_bridge)) {
+      continue;
+    }
+    if (found != nullptr) {
+      return nullptr;
+    }
+    found = &stream;
+  }
+  return found;
+}
+
+[[nodiscard]] inline LocalArrayIntervalEffectRecord
+evaluate_local_array_interval_effect(
+    const Function& function,
+    const LocalArraySelectedProofEdgePathRecord* selected_path,
+    const LocalArrayEndpointBridgeRecord* endpoint_bridge,
+    bool prepared_bir_coordinate_confusion = false,
+    bool raw_shape_only = false) {
+  const auto* stream =
+      selected_path == nullptr || endpoint_bridge == nullptr
+          ? nullptr
+          : find_local_array_ordered_effect_source_stream(
+                function, *selected_path, *endpoint_bridge);
+  return evaluate_local_array_interval_effect(LocalArrayIntervalEffectInputs{
+      .selected_path = selected_path,
+      .endpoint_bridge = endpoint_bridge,
+      .ordered_effect_sources = stream,
+      .prepared_bir_coordinate_confusion = prepared_bir_coordinate_confusion,
+      .raw_shape_only = raw_shape_only,
+  });
+}
 
 inline bool is_compare_opcode(BinaryOpcode opcode) {
   switch (opcode) {
