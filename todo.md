@@ -8,39 +8,46 @@ Current Step Title: Audit Collector Inputs And Matching Keys
 
 ## Just Finished
 
-Lifecycle split closed idea 492 as complete for the selected proof-edge path
-record/status API and activated idea 493 for the next first owner: real
-collector/population of `local_array_selected_proof_edge_paths` records.
+Step 1 audited collector inputs and exact matching keys for real
+`local_array_selected_proof_edge_paths` population.
+
+| Area | Step 1 audit result |
+| --- | --- |
+| Local-array path keys | `LocalArrayElementPathRecord` already carries exact `lir_producer_*` fields, `lir_producer_lookup_key`, coordinate status, role, dynamic indices, and layout facts. |
+| Proof source facts | `PreparedBranchCondition` carries function id, block id, fused compare predicate/type/operands, condition value, and true/false successor labels. |
+| Path/guard facts | Prepared reachability and dominance helpers exist in `prepared_lookups.cpp`, but are currently helper-local; Step 2 should require publishing their results as records/statuses before downstream consumption. |
+| Exact matching | A bounded collector can match by prepared function spelling plus exact `lir_producer_lookup_key`; no fuzzy branch-shape matching is needed. |
+| Smallest representative | Cross-block guard-to-body dynamic local-array GEP: branch compare on `%idx`, selected successor reaches producer block, proof dominates/guards producer, and same-block ordering is avoided. |
+| Step 2 readiness | Step 2 can define a bounded collector population contract now; no lower semantic owner is needed before contract definition. |
+
+Artifact: `build/agent_state/493_step1_collector_inputs_matching_audit/audit.md`.
 
 ## Suggested Next
 
-Execute Step 1: audit prepared branch/compare facts, successor labels,
-reachability/dominance helpers, local-array path records, and exact
-`lir_producer_lookup_key` matching. Record whether collector population is
-bounded or identify the exact lower blocker.
+Execute Step 2: define the collector population contract for cross-block
+selected proof-edge path records, including accepted facts, fail-closed
+statuses, helper/publication seams, and the exact Step 3 target files/tests.
 
 ## Watchouts
 
 - Keep dynamic-index interval effect/no-clobber classification out of this
   runbook; it remains a later owner.
 - Do not populate idea 489 proof facts or idea 486 checker inputs directly.
-- Do not treat helper-local reachability/dominance queries as durable proof
-  facts unless this runbook publishes explicit records/statuses.
+- Step 3 must publish helper-derived reachability/dominance facts as
+  `local_array_selected_proof_edge_paths` records/statuses before downstream
+  proof population can consume them.
 - Keep `lir_producer_instruction_index` as a LIR producer-site coordinate.
+- Same-block proof/producer cases remain fail-closed unless a later truthful
+  ordering bridge exists.
 - Existing untracked `review/*.md` files are transient and must remain
   untouched.
 
 ## Proof
 
-Lifecycle activation validation:
+Step 1 validation:
 
 ```sh
 git diff --check
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
-python3 scripts/plan_review_state.py show
 ```
 
-Result: passed. `test_after.log` was absent and logs were out of scope for this
-lifecycle-only delegation, so regression sanity used the unchanged canonical
-`test_before.log` as both inputs (`328/328`). Hook-backed state now reports
-Step 1, `Audit Collector Inputs And Matching Keys`.
+Result: passed.
