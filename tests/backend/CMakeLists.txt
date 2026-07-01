@@ -687,6 +687,17 @@ c4c_add_backend_dump_flag_test(
   LABELS riscv64 prepared_control_flow fused_compare loop local_load
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_scalar_compare_frame_slot_destination
+  SRC "${BACKEND_CASE_ROOT}/riscv64_scalar_compare_frame_slot_destination.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t2 = bir.ne i32 %t0, %t1|bir.store_local %lv.comparison, i32 %t2|storage %t2 frame_slot bank=gpr spill_slot=slot#5+stack24 offset=24|home %t2 value_id=2 kind=stack_slot slot_id=5 offset=24|object #2 func=main name=%lv.comparison source_kind=local_slot type=i32 size=4 align=4 address_exposed=yes requires_home_slot=yes permanent_home_slot=yes|slot #0 object_id=2 func=main offset=0 size=4 align=4 fixed_location=yes|store_source function=main block=entry inst=5 source=%t2 status=available intent=store_local_publication source_producer=binary|access block=entry inst_index=5 base=frame_slot stored=%t2 frame_slot=#0 offset=0 size=4 align=4"
+  FORBIDDEN_SNIPPETS "semantic_write_event function=main status=available|semantic_materialization_interval function=main status=available|frame_slot_source_fact function=main status=available|branch_stack_load_authority function=main status=available"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 scalar_compare frame_slot_destination prepared_destination dump
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_prepared_fused_compare_loop_predicate
   SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_fused_compare_loop_predicate.c"

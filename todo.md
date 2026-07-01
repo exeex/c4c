@@ -1,71 +1,77 @@
 Status: Active
 Source Idea Path: ideas/open/482_semantic_frame_slot_materialization_probe_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Bind Each Focused Case To One Owned Backend Seam
+Current Step ID: 4
+Current Step Title: Resume Implementation On The Narrowest Generic Seam
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 482 by binding each accepted focused probe candidate
-to exactly one backend seam, one owner, and one fail-closed boundary. No tests
-or implementation files were added.
+Completed Step 4 for idea 482 by adding the narrow scalar compare result
+forced to frame-slot destination probe.
 
-Binding matrix:
+Added focused probe:
 
-| Candidate | Proposed future path | Backend seam | Owner | Fail-closed boundary |
-| --- | --- | --- | --- | --- |
-| Scalar compare result forced to frame-slot destination | `tests/backend/case/riscv64_scalar_compare_frame_slot_destination.c` | Semantic instruction-result identity plus frame-slot destination/layout facts. | Prepared semantic identity/destination fact producer and prepared dump/fixture coverage. | Must not claim materialization authority, source facts, branch-stack-load availability, or RV64 consumption from final home/layout alone. |
-| Storage-only move rejection | `tests/backend/case/riscv64_storage_only_move_not_semantic_materialization.c` | Materialization-authority rejection for `authority=none` value/storage movement. | Prepared semantic materialization authority checker/rejection status. | Must reject raw value-to-value or value-to-slot copies unless an explicit semantic result materialization event authority exists. |
-| Select-result stack-destination boundary | `tests/backend/case/riscv64_select_result_stack_destination_boundary.c` | Select-result publication boundary. | Prepared select-result/source-producer publication layer. | Must not treat select-result stack destination as scalar compare-result materialization for a different value. |
-| Explicit synthetic materialization-point positive | `tests/backend/case/riscv64_explicit_compare_frame_slot_materialization_point.c` | Materialization-authority positive path from explicit event inputs. | Prepared semantic result frame-slot materialization-point producer/checker. | Must fail closed when event source/result, destination slot/object/layout, or authority is missing or inferred from raw shape. |
+- Fixture: `tests/backend/case/riscv64_scalar_compare_frame_slot_destination.c`
+- CTest: `backend_dump_riscv64_scalar_compare_frame_slot_destination`
+- Route: `--dump-prepared-bir --target riscv64-linux-gnu`
+- Owner: BIR/prepared dump coverage for semantic identity plus
+  destination/layout facts.
 
-Proposed future proof command for any test/probe packet:
+Accepted facts asserted by the probe:
 
-```sh
-cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' && git diff --check
-```
+| Fact | Evidence |
+| --- | --- |
+| Scalar compare result identity | `%t2 = bir.ne i32 %t0, %t1` |
+| Local destination store | `bir.store_local %lv.comparison, i32 %t2` |
+| Compare result stack home | `home %t2 value_id=2 kind=stack_slot slot_id=5 offset=24` |
+| Destination local object | `%lv.comparison` is an address-exposed i32 local slot. |
+| Destination frame-slot layout | `slot #0 object_id=2 ... offset=0 size=4 align=4` |
+| Store-site frame-slot access | `access block=entry inst_index=5 base=frame_slot stored=%t2 frame_slot=#0 offset=0 size=4 align=4` |
+| Store source producer class | `store_source ... source=%t2 ... source_producer=binary` |
 
-First narrowest generic seam for Step 4:
+Fail-closed boundary asserted by the probe:
 
-- Target: `tests/backend/case/riscv64_scalar_compare_frame_slot_destination.c`
-  as a proposed focused test/probe addition.
-- Seam: semantic scalar result identity plus frame-slot destination/layout.
-- Reason: it is the smallest non-duplicative seam that can establish the
-  destination baseline while explicitly failing closed on materialization
-  authority and all downstream consumers.
+- no available semantic write-event authority;
+- no available semantic materialization interval;
+- no available frame-slot source fact;
+- no available branch-stack-load authority.
 
-Artifact:
+This is a focused capability probe, not a materialization-authority
+implementation. It establishes that semantic identity plus destination/layout
+facts can be isolated without copying the `930930-1` monolith and without
+claiming downstream authority or RV64 consumption.
 
-- `build/agent_state/482_step3_probe_seam_bindings/bindings.md`
+Artifacts:
+
+- `build/agent_state/482_step4_scalar_compare_destination_probe/decision.md`
+- `build/agent_state/482_step4_scalar_compare_destination_probe/scalar_compare.prepared.out`
+- `build/agent_state/482_step4_scalar_compare_destination_probe/scalar_compare.prepared.err`
+- `build/agent_state/482_step4_scalar_compare_destination_probe/scalar_compare.prepared.status`
 
 ## Suggested Next
 
-Execute Step 4 by selecting the scalar compare result forced to frame-slot
-destination as the first focused implementation/probe packet, or record why
-even that probe cannot be represented without duplicating the monolithic
-`930930-1` route. The packet should remain bounded to semantic identity plus
-destination/layout facts and should not implement materialization authority.
+Plan-owner should decide whether idea 482 is complete enough to close/split
+back to an implementation idea. The next coherent technical packet is the
+storage-only move rejection probe from Step 3 only if supervisor wants another
+focused negative baseline before resuming materialization-point producer work.
 
 ## Watchouts
 
-- Do not add a test that passes by using raw BIR adjacency, final home, stack
-  object, offset, value name, function name, testcase shape, or dump order as
-  materialization authority.
-- Do not let the scalar destination probe publish source facts,
-  `PreparedBranchStackLoadAuthority`, or RV64 branch-load behavior.
-- Keep storage-only move rejection, select-result stack destination, and
-  explicit synthetic materialization-point positive probes as separate later
-  packets unless Step 4 deliberately records no executable scalar destination
-  seam.
+- Do not treat this probe as proof of materialization authority. It only proves
+  semantic identity plus destination/layout facts are isolatable.
+- Do not enable source-fact, branch-stack-load authority, or RV64 branch-load
+  consumption from this probe.
+- Do not merge this probe with select-result stack-destination or explicit
+  materialization positive coverage; those remain separate candidate families.
 
 ## Proof
 
 Delegated proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
 Result: passed.
