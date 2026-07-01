@@ -1,49 +1,52 @@
-# BIR Dynamic Local-Array Consumer Coordinate Prepared Exposure Plan
+# BIR Dynamic Local-Array Proof Population From LIR Coordinates Plan
 
 Status: Active
-Source Idea: ideas/open/488_bir_dynamic_local_array_consumer_coordinate_prepared_exposure.md
-Activated From: ideas/closed/487_bir_dynamic_local_array_proof_source_path_no_clobber_population.md
+Source Idea: ideas/open/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
+Activated From: ideas/closed/488_bir_dynamic_local_array_consumer_coordinate_prepared_exposure.md
 
 ## Purpose
 
-Expose dynamic local-array consumer coordinates so proof-source/path/no-clobber
-population can later bind branch facts to the exact consumer interval.
+Resume dynamic local-array proof population now that the LIR producer-coordinate
+surface exists.
 
 ## Goal
 
-Publish durable consumer-coordinate records and prepared lookup keys for
-supported dynamic local-array element paths.
+Populate real proof-source, path/dominance, and no-clobber facts using
+`lir_producer_*` coordinates and feed them into the idea 486 checker.
 
 ## Core Rule
 
-This is coordinate/prepared-exposure metadata only. Do not infer coordinates
-from dump order, names, branch proximity, loop shape, final homes, or target
-behavior, and do not populate proof-source/path/no-clobber facts here.
+Bind proof facts through the committed LIR producer-site coordinate and
+`lir-producer:` key. Do not infer from loop shape, names, branch proximity,
+dump order, final homes, or target behavior, and do not treat LIR instruction
+indices as prepared traversal/BIR instruction indices.
 
 ## Read First
 
-- ideas/open/488_bir_dynamic_local_array_consumer_coordinate_prepared_exposure.md
-- ideas/closed/487_bir_dynamic_local_array_proof_source_path_no_clobber_population.md
-- build/agent_state/487_step3_route_consumer_coordinate_prerequisite/route.md
-- build/agent_state/487_step4_residual_disposition/disposition.md
+- ideas/open/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
+- ideas/closed/488_bir_dynamic_local_array_consumer_coordinate_prepared_exposure.md
+- build/agent_state/488_step3_consumer_coordinate_exposure/summary.md
+- build/agent_state/488_step4_residual_disposition/disposition.md
+- ideas/closed/486_bir_index_range_proof_path_dominance_carrier.md
 
 ## Current Target
 
-- Missing prerequisite:
-  - dynamic local-array element-path consumer coordinates
-  - prepared lookup key shared with prepared control-flow branch-condition
-    records
+- Available prerequisite:
+  - `LocalArrayElementPathRecord::lir_producer_*`
+  - `lir-producer:` stable lookup keys
+- Still missing:
+  - proof-source records for lower/upper bound branch or compare facts
+  - path/dominance coverage from proof source to LIR producer site
+  - index no-clobber/same-value interval facts
 - First packet:
-  - audit BIR/prepared surfaces that can carry function, block, instruction,
-    path result, source object, derivation result, dynamic index, and consumer
-    role fields.
+  - audit whether existing prepared branch/compare and control-flow surfaces can
+    bind to the LIR producer coordinate without raw-shape inference.
 
 ## Non-Goals
 
-- Proof-source population.
-- Path/dominance or no-clobber facts.
-- Marking dynamic range proofs available.
-- Idea 486 checker vocabulary changes.
+- Redefining idea 486 checker/status vocabulary.
+- Extending idea 488 coordinate exposure.
+- Prepared traversal/BIR instruction coordinate conversion.
 - Idea 484 packaging.
 - Scalar local-load consumption.
 - RV64/MIR lowering.
@@ -56,16 +59,16 @@ behavior, and do not populate proof-source/path/no-clobber facts here.
 
 ## Working Model
 
-Idea 487 proved proof population cannot proceed until dynamic local-array
-element paths are exposed with stable consumer coordinates and lookup keys. This
-plan owns that exposure only.
+Idea 488 provides truthful LIR producer-site coordinates for address-derivation
+paths. This runbook owns only the next proof-population packet using those
+coordinates.
 
 ## Execution Rules
 
-- Step 1 is audit/classification unless a bounded coordinate surface already
-  exists.
-- Any implementation packet must publish durable coordinates or fail-closed
-  statuses without changing proof availability.
+- Step 1 is audit/classification unless a bounded proof population packet is
+  already evident.
+- Any implementation packet must feed explicit facts into the existing idea 486
+  checker and preserve fail-closed statuses.
 - Classification-only proof:
 
 ```sh
@@ -82,28 +85,29 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Consumer Coordinate Exposure Inputs
+### Step 1: Audit LIR Coordinate Proof Population Inputs
 
-Inspect BIR local-array element-path records, prepared traversal, and prepared
-control-flow lookup surfaces for durable consumer coordinate fields. Completion
-means `todo.md` records available fields, missing coordinates, and whether a
-bounded exposure contract exists.
+Inspect prepared branch/compare facts, control-flow/path surfaces, no-clobber
+evidence, and dynamic local-array path `lir_producer_*` fields. Completion
+means `todo.md` records whether proof population can bind through LIR producer
+coordinates or names the exact missing lower owner.
 
-### Step 2: Define Consumer Coordinate Exposure Contract
+### Step 2: Define LIR Coordinate Proof Population Contract
 
-Define required coordinate fields, lookup key, operation roles, and fail-closed
-statuses. Completion means the contract excludes proof-source/path/no-clobber
-population and raw-shape/name/proximity inference.
+Define accepted proof-source, path/dominance, and no-clobber facts keyed by
+LIR producer coordinates. Completion means fail-closed statuses reject
+raw-shape/name/proximity inference, prepared/BIR coordinate confusion, and
+missing proof facts.
 
-### Step 3: Implement Or Route Prepared Exposure
+### Step 3: Implement Or Route Proof Population
 
-Implement the bounded coordinate/prepared-exposure packet if Step 2 identifies
-one. If current traversal data cannot provide durable coordinates without
-inference, record the exact lower owner and stop without changing proof
-population, packaging, scalar loads, or RV64 lowering.
+Implement the bounded proof population packet if Step 2 identifies one. If
+current surfaces cannot prove path/dominance or no-clobber from LIR coordinates
+without inference, record the exact lower owner and stop without changing idea
+484, scalar loads, or RV64 lowering.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe selected dynamic local-array paths and decide whether 488 is complete,
-blocked by another lower-level source, or ready to hand back to proof
-population.
+Re-probe selected dynamic representatives and decide whether 489 is complete,
+blocked by another lower-level source, or ready to hand back to idea 484
+packaging work.

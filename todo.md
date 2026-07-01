@@ -1,56 +1,51 @@
 Status: Active
-Source Idea Path: ideas/open/488_bir_dynamic_local_array_consumer_coordinate_prepared_exposure.md
+Source Idea Path: ideas/open/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit LIR Coordinate Proof Population Inputs
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 residual disposition for idea 488 after the committed Step 3
-LIR producer-coordinate exposure slice `5f0804548`.
+Closed idea 488 as the prerequisite LIR producer-coordinate exposure slice and
+activated idea 489, `BIR Dynamic Local-Array Proof Population From LIR
+Coordinates`.
 
-Disposition:
+Reason:
 
-| Question | Classification |
-| --- | --- |
-| What Step 3 provides | Dynamic local-array `LocalArrayElementPathRecord` rows now carry durable `lir_producer_*` address-derivation metadata and `lir-producer:` lookup keys. |
-| Coordinate truthfulness | The coordinate is explicitly a LIR producer-site coordinate, not a prepared traversal or BIR `Block::insts` instruction index. |
-| Representative dynamic row | The focused dynamic GEP path has `lir_producer_coordinate_status=available` and still has path/range status `missing_index_range_proof`. |
-| PHI placement risk | Covered by the PHI-before-GEP probe: the GEP reports LIR producer instruction index `1`, proving the coordinate system is not conflated with prepared/BIR instruction indexing. |
-| Out of scope residuals | Proof-source records, path/dominance coverage, no-clobber/same-value interval facts, idea 484 packaging, scalar local-load consumption, and RV64/MIR lowering remain out of scope. |
-| Close-readiness | Idea 488 is close-ready as the prerequisite LIR producer-coordinate exposure slice for address-derivation paths. |
-| Next first owner | Resume proof-source/path/no-clobber population in a separate packet/idea, using the `lir_producer_*` coordinate and `lir-producer:` key as the binding surface; do not require idea 488 to produce prepared traversal/BIR instruction coordinates. |
-
-Supporting artifact:
-
-- `build/agent_state/488_step4_residual_disposition/disposition.md`
+- Step 3 exposed truthful `LocalArrayElementPathRecord::lir_producer_*` fields
+  and `lir-producer:` lookup keys for address-derivation paths.
+- Step 4 says proof-source/path/no-clobber population should resume separately
+  by consuming that LIR producer-coordinate surface.
+- Dynamic rows remain fail-closed as `missing_index_range_proof` until those
+  proof facts are populated and accepted by the idea 486 checker.
 
 ## Suggested Next
 
-Hand lifecycle back to the plan owner/supervisor to close idea 488 or split the
-next proof-population owner. The next implementation packet should populate
-proof-source/path/no-clobber facts against the committed `lir_producer_*`
-address-derivation surface, not extend idea 488 into range-proof production.
+Execute Step 1: audit whether existing prepared branch/compare facts,
+control-flow/path surfaces, no-clobber evidence, and dynamic local-array
+`lir_producer_*` coordinates can support a bounded proof-population packet.
 
 ## Watchouts
 
-- Do not treat `lir_producer_instruction_index` as a prepared object traversal
-  coordinate or BIR `Block::insts` index.
-- Dynamic rows remain fail-closed on range/path/no-clobber availability until
-  separate proof population proves those facts.
-- Load/store consumer use-linking, prepared traversal coordinate conversion,
-  idea 484 packaging, scalar local-load consumption, and RV64/MIR lowering are
-  separate owners if needed.
-- Existing untracked `review/*.md` files were not touched.
+- Do not treat `lir_producer_instruction_index` as a prepared traversal or BIR
+  `Block::insts` instruction index.
+- Do not infer proof facts from loop shape, branch proximity, value names,
+  testcase names, dump order, final homes, or RV64 target behavior.
+- Do not change idea 488 coordinate exposure, idea 486 checker vocabulary, idea
+  484 packaging, scalar local-load consumption, or RV64/MIR lowering.
+- Do not touch `review/`, canonical logs, baseline files, implementation files,
+  or tests until an executor receives a bounded packet.
 
 ## Proof
 
-Step 4 validation:
+Lifecycle validation:
 
 ```sh
 git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
