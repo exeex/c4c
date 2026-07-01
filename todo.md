@@ -1,83 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/484_bir_semantic_local_address_provenance_array_element_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Local-Address Provenance Contract
+Current Step ID: 3
+Current Step Title: Implement Or Route Authority Producer
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for idea 484 by defining the bounded local-address and
-array-element provenance contract around the `pr38048-1.c`
-`a#L1[i#L3][0]` shape.
+Completed Step 3 for idea 484 as a routed blocker, not an implementation.
+Targeted inspection found that the current BIR/HIR producer data is
+route-local lowering state and cannot publish the Step 2 authority record
+without raw-shape inference.
 
-Accepted evidence:
+Step 3 decision:
 
-| Case | Accepted shape | Contract boundary |
+| Decision | Evidence | First missing authority |
 | --- | --- | --- |
-| `src/pr38048-1.c` | `decl mat: int[2][1]`; `decl a: int*[1] = mat#L0`; `det#L2 += a#L1[i#L3][0]` | Producer-authority only: prove local object identity, array decay/local-address derivation, index/range, element layout/range, and pointer-to-local-element provenance. |
+| Route, no implementation | `LocalArraySlots`, `LocalPointerArrayBase`, `DynamicLocalPointerArrayAccess`, `DynamicLocalAggregateArrayAccess`, and `PointerAddress` carry route-local slots, lowered index values, offsets, and type text only. | Lower-level semantic local-array address derivation and index-range authority carrier. |
 
-Required record fields:
+Missing facts for an accepted producer:
 
-- function identity, source derivation identity, consumer access identity,
-  local object value id, derived pointer/view value id, and element access
-  identity;
-- source object type/rank, element type, size, alignment, total byte range,
-  storage kind, and lifetime/scope identity where available;
-- derivation kind (`array_decay`, `address_of_element`, or
-  `direct_local_array_element`), source object id, derived pointer/view id,
-  derivation site, and provenance-preserving status;
-- ordered element path, index value ids/constants, index width/signedness,
-  dynamic range proof source, and status for missing range;
-- final element type, size, alignment, byte offset/range, in-bounds status, and
-  scalar-vs-aggregate classification;
-- provenance status tying the consumer address back to the local object and
-  element path.
+- stable local object identity tied to declaration/storage, object rank,
+  layout, range, and lifetime;
+- explicit array-decay/local-address derivation identity and source site;
+- ordered element path from the source object to the consumer address;
+- dynamic index range proof with proof source and path/dominance validity;
+- element layout/range and scalar in-bounds proof;
+- pointer-to-local-element provenance status tied to source object, derived
+  pointer/view, element path, and consumer use;
+- durable unavailable statuses from the Step 2 contract.
 
-Fail-closed statuses required for Step 3:
+Rejected Step 3 implementation approach:
 
-- `missing_source_object`
-- `source_object_not_local`
-- `missing_array_decay_or_address_derivation`
-- `missing_derived_pointer_home`
-- `missing_index_identity`
-- `missing_index_range`
-- `element_out_of_bounds`
-- `element_not_scalar`
-- `unknown_or_mismatched_layout`
-- `unknown_provenance`
-- `integer_pointer_round_trip`
-- `global_source_object`
-- `aggregate_or_member_boundary`
-- `union_or_object_representation_boundary`
-- `variadic_or_va_arg_boundary`
-- `runtime_or_call_boundary`
-- `f128_complex_vector_or_volatile_atomic_boundary`
-- `bootstrap_boundary`
-- `raw_shape_only`
-- `rv64_or_final_home_only`
-
-Step 3 readiness:
-
-- a bounded producer packet exists only if the current BIR/HIR semantic
-  producer surface can carry local object identity, array-decay/local-address
-  derivation identity, element path, index identities/ranges, element
-  layout/range, provenance-preserving status, and unavailable statuses;
-- if dynamic index range proof or derivation identity cannot be exposed without
-  raw-shape inference, Step 3 must route to that lower-level producer surface
-  instead of implementing partial authority.
+- do not infer authority from route-local `element_slots`, `base_index`,
+  lowered index values, type text, raw `pr38048-1.c` expression shape, value
+  spellings, dump order, final homes, or RV64 fallback behavior.
 
 Artifact:
 
-- `build/agent_state/484_step2_local_address_provenance_contract/contract.md`
+- `build/agent_state/484_step3_local_address_authority_producer/blocker.md`
 
 ## Suggested Next
 
-Execute Step 3: implement or route the bounded authority producer. Implement
-only if the semantic producer data can explicitly carry the required
-derivation, index/range, layout/range, and provenance facts; otherwise record
-the exact lower-level blocker.
+Execute Step 4 residual disposition for idea 484. Recommended lifecycle route:
+split or activate the lower-level producer packet named `local array address
+derivation and index-range authority carrier`; resume idea 484 only after that
+surface can publish explicit object, derivation, element-path, index-range,
+layout/range, provenance, and unavailable-status records.
 
 ## Watchouts
 
@@ -91,15 +61,15 @@ the exact lower-level blocker.
 - Keep global, aggregate/member, union/object-representation, variadic/va_arg,
   runtime/call, F128, complex, vector, volatile/atomic, bootstrap, and raw
   inference shapes fail-closed.
-- Do not touch `review/`, canonical logs, baseline files, implementation files,
-  or tests.
+- Do not touch `review/`, baseline files, implementation files, tests, scalar
+  load consumption, RV64/MIR lowering, expectation files, or allowlists.
 
 ## Proof
 
 Delegated proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
 Result: passed.
