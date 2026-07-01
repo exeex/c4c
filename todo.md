@@ -8,28 +8,35 @@ Current Step Title: Audit Consumer Coordinate Exposure Inputs
 
 ## Just Finished
 
-Closed idea 487 as a routed blocker and activated prerequisite idea 488, `BIR
-Dynamic Local-Array Consumer Coordinate Prepared Exposure`.
+Completed Step 1 audit for idea 488.
 
-Reason:
+Audit result:
 
-- idea 487 proved real proof-source/path/no-clobber population cannot proceed
-  without a durable consumer coordinate/prepared-exposure carrier;
-- current facts can identify dynamic local-array element paths and prepared
-  branch/compare facts separately, but cannot bind one proof source to one
-  consumer interval without raw-shape/name/proximity inference.
+| Surface | Available fields | Missing coordinate/exposure | Classification |
+| --- | --- | --- | --- |
+| BIR local-array path records | Path result, source object, derivation result, dynamic index, element type/size/count, byte offset, and status. | Consumer block label, consumer instruction index, operation role, and stable prepared lookup key. | Good payload, missing coordinate. |
+| Local GEP publisher | Recognizes supported dynamic local-array pointer/aggregate paths and publishes `missing_index_range_proof` records. | Caller does not pass block/instruction coordinate into `publish_local_array_path_record`. | First producer seam for coordinate capture. |
+| BIR lowered instruction stream | Blocks and instructions have labels/positions after lowering. | No back-reference from function-level `local_array_element_paths` to the instruction site. | Possible unique-match exposure only if fail-closed. |
+| Prepared object traversal | `PreparedObjectTraversalEvent` exposes block index, instruction index, prepared block, BIR block, and instruction pointer. | No local-array path classification or lookup attached to traversal events. | Good prepared exposure surface after BIR coordinate exists. |
+| Prepared control-flow lookup | Prepared block/branch facts share function and block identity. | No local-array consumer lookup table keyed to prepared control-flow coordinates. | Later lookup consumer. |
 
-Key evidence:
+Conclusion: a bounded exposure contract exists, but it must begin with durable
+consumer-coordinate capture/exposure. The clean first implementation shape is
+to thread block label and instruction index into local-memory/GEP lowering and
+publish coordinate-bearing local-array path records. A post-lowering prepared
+collector could be acceptable only if it matches path result values to exact BIR
+instruction events uniquely and fails closed for missing, duplicate, or
+mismatched candidates.
 
-- `build/agent_state/487_step3_route_consumer_coordinate_prerequisite/route.md`
-- `build/agent_state/487_step4_residual_disposition/disposition.md`
+Supporting artifact:
+
+- `build/agent_state/488_step1_consumer_coordinate_exposure_inputs/audit.md`
 
 ## Suggested Next
 
-Execute Step 1: audit consumer coordinate exposure inputs. Determine whether
-current BIR local-array element-path records, prepared traversal, and prepared
-control-flow lookup surfaces can expose stable consumer coordinates and lookup
-keys for dynamic local-array consumers.
+Execute Step 2: define the consumer-coordinate/prepared-exposure contract,
+including required fields, supported operation roles, lookup keys, and
+fail-closed cases for missing/duplicate/mismatched coordinate matches.
 
 ## Watchouts
 
@@ -42,15 +49,18 @@ keys for dynamic local-array consumers.
   RV64/MIR lowering.
 - Do not touch `review/`, canonical logs, baseline files, implementation files,
   or tests until an executor receives a bounded packet.
+- Prefer explicit coordinate capture at the local-array path producer over
+  post-hoc matching; if post-hoc matching is selected, require unique exact
+  instruction/result evidence and fail closed otherwise.
+- Do not treat prepared traversal coordinates alone as proof that a traversal
+  event is the local-array consumer; the path record must be explicitly linked.
 
 ## Proof
 
-Lifecycle validation:
+Step 1 validation:
 
 ```sh
 git diff --check
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
-python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
