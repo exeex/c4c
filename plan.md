@@ -1,47 +1,45 @@
-# Semantic Instruction Result Frame-Slot Materialization Facts Plan
+# Real Semantic Materialization Interval Fact Population Plan
 
 Status: Active
-Source Idea: ideas/open/476_semantic_instruction_result_frame_slot_materialization_facts.md
-Activated From: ideas/closed/475_prepared_frame_slot_source_fact_population.md
+Source Idea: ideas/open/477_real_semantic_materialization_interval_fact_population.md
+Activated From: ideas/closed/476_semantic_instruction_result_frame_slot_materialization_facts.md
 
 ## Purpose
 
-Produce lower-level semantic instruction-result materialization/write and
-path/no-clobber interval facts for later prepared source-fact population.
+Populate real prepared semantic materialization/write and no-clobber interval
+facts using the status surface completed by idea 476.
 
 ## Goal
 
-Enable idea 475-style source-fact population only after explicit semantic
-instruction-result identity, frame-slot materialization/write, path validity,
-same-slot exclusion, effect safety, and publication/move/copy non-clobber facts
-exist.
+Enable later source-fact population only after real semantic instruction-result
+materialization/write records and path/no-clobber interval facts exist.
 
 ## Core Rule
 
-Do not populate downstream source-fact or branch-stack-load authority records
-from this plan. This plan owns only semantic materialization/write and interval
-facts that later packets may consume.
+Do not populate downstream `PreparedFrameSlotSourceFact` or
+`PreparedBranchStackLoadAuthority` records from this plan. This plan owns only
+real semantic materialization/write and interval fact population.
 
 ## Read First
 
-- ideas/open/476_semantic_instruction_result_frame_slot_materialization_facts.md
+- ideas/open/477_real_semantic_materialization_interval_fact_population.md
+- ideas/closed/476_semantic_instruction_result_frame_slot_materialization_facts.md
+- build/agent_state/476_step4_semantic_materialization_interval_residual/disposition.md
+- build/agent_state/476_step3_semantic_materialization_interval_surface/summary.md
+- build/agent_state/476_step2_semantic_materialization_interval_contract/contract.md
 - ideas/closed/475_prepared_frame_slot_source_fact_population.md
-- build/agent_state/475_step4_source_fact_population_residual/disposition.md
-- build/agent_state/475_step3_source_fact_population_blocker/blocker.md
-- build/agent_state/475_step2_source_fact_population_contract/contract.md
-- ideas/closed/474_prepared_frame_slot_materialization_no_clobber_facts.md
 - src/backend/prealloc/publication_plans.hpp
 - src/backend/prealloc/publication_plans.cpp
 
 ## Current Target
 
 - Primary scalar candidate:
-  - `f.logic.end.14` condition `%t23`, slot `#21`: target identity is known,
-    but no semantic materialization/write fact exists for `%t23 = ne i32 %t22,
-    0`, and no path/no-clobber interval facts exist.
+  - Real `930930-1` `%t23 = ne i32 %t22, 0` into slot `#21`: semantic identity
+    and destination evidence are visible, but no producer-populated
+    materialization/write event or path/no-clobber interval facts exist.
 - Rejected evidence:
-  - `%t22 -> %t23` stack move has `authority=none` and is storage movement, not
-    semantic compare-result materialization.
+  - `%t22 -> %t23` storage move has `authority=none` and is not semantic
+    compare-result materialization.
 - Boundary rows:
   - `%t22` remains a select-result stack-destination boundary.
   - `%t1` and `%t7` remain pointer-status/provenance boundaries.
@@ -49,9 +47,9 @@ facts that later packets may consume.
 
 ## Non-Goals
 
-- Directly populating `PreparedFrameSlotSourceFact` rows unless Step 1/2 prove
-  this same source idea must expose a minimal bridge after lower-level facts
-  exist.
+- Defining another independent status surface unless Step 1 proves the idea
+  476 surface is structurally insufficient.
+- Directly populating `PreparedFrameSlotSourceFact` rows.
 - Directly marking branch-stack-load records available.
 - RV64 branch-load emission or target lowering.
 - Reusing storage-only moves as semantic materialization evidence when
@@ -69,15 +67,15 @@ facts that later packets may consume.
 
 ## Working Model
 
-Idea 475 could not populate source facts because the semantic producer layer is
-missing. This plan owns that missing layer: semantic instruction-result
-materialization/write records and interval no-clobber facts.
+Idea 476 completed the semantic materialization / interval planner and status
+surface. This plan owns real producer population for the representative row and
+must preserve all downstream boundaries.
 
 ## Execution Rules
 
 - Step 1 is audit/classification only; do not edit implementation there.
 - Keep downstream source-fact and branch-stack-load authority unavailable until
-  later packets consume explicit semantic facts.
+  later packets consume explicit real semantic facts.
 - Preserve select-result, pointer/provenance, and unsupported-terminator rows
   as separate owners.
 - Classification-only proof:
@@ -96,28 +94,27 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Semantic Materialization Interval Inputs
+### Step 1: Audit Real Semantic Fact Population Inputs
 
-Inspect prepared evidence for semantic instruction-result identity,
-frame-slot writes/materialization, path or edge validity, same-slot writes,
+Inspect real prepared evidence for semantic instruction-result identity,
+materialization/write producers, path or edge validity, same-slot writes,
 calls/helpers/inline asm, publications, move bundles, and parallel copies for
-`%t23` slot `#21`. Completion means `todo.md` records whether a semantic
-materialization/interval producer packet is justified and which rows remain
-out of scope.
+`%t23` slot `#21`. Completion means `todo.md` records whether a real fact
+population packet is justified and which rows remain out of scope.
 
-### Step 2: Define Semantic Materialization Interval Contract
+### Step 2: Define Real Population Contract
 
-Specify records/statuses for semantic instruction-result materialization/write
-events and no-clobber intervals. Completion means `todo.md` records positive
-and negative cases and names implementation/test surfaces if a bounded
-producer packet is justified.
+Specify how real prepared evidence populates existing semantic
+materialization/interval records and which statuses remain fail-closed.
+Completion means `todo.md` records positive and negative cases and names
+implementation/test surfaces if a bounded producer packet is justified.
 
-### Step 3: Implement Or Route Semantic Materialization Producer
+### Step 3: Implement Or Route Real Semantic Fact Population
 
-If Step 2 finds a bounded producer packet, implement only that semantic
-materialization/interval surface with focused coverage. If no implementation is
-justified, record the precise blocker and route it. Completion means proof
-passes or lifecycle state records the split/blocker.
+If Step 2 finds a bounded producer packet, implement only that population
+surface with focused coverage. If no implementation is justified, record the
+precise blocker and route it. Completion means proof passes or lifecycle state
+records the split/blocker.
 
 ### Step 4: Residual Disposition And Close Readiness
 

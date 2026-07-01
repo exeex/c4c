@@ -1,67 +1,53 @@
 Status: Active
-Source Idea Path: ideas/open/476_semantic_instruction_result_frame_slot_materialization_facts.md
+Source Idea Path: ideas/open/477_real_semantic_materialization_interval_fact_population.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Real Semantic Fact Population Inputs
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 residual disposition for idea 476 after the Step 3 semantic
-materialization / interval status surface.
+Closed idea 476 as complete for the independent semantic materialization /
+interval status surface. Real `%t23 = ne i32 %t22, 0` into slot `#21` still
+lacks producer-populated materialization/write and path/no-clobber interval
+facts.
 
-Residual classification:
-
-| Row / family | Current evidence | Disposition |
-| --- | --- | --- |
-| Synthetic explicit semantic materialization interval | Step 3 planner/checker accepts explicit result identity, explicit write event, matching slot/object, path coverage, no same-slot write, and non-clobber effect classifications. | Covered by idea 476 status surface. |
-| Real `930930-1` `%t23 = ne i32 %t22, 0` into slot `#21` | Semantic result identity and destination slot/object are visible, but no producer-populated materialization/write event or path/no-clobber interval fact exists. | Still unavailable; first remaining owner is real semantic materialization/write event plus interval fact production. |
-| `%t22 -> %t23` storage-only move with `authority=none` | Existing prepared evidence shows storage movement, not a semantic compare-result write. | Rejected; cannot populate semantic materialization facts. |
-| Idea 475 source-fact population | The carrier exists, but real semantic materialization/interval facts are unavailable. | Cannot resume for `%t23` until real lower-level records are populated. |
-| Branch-stack-load authority and RV64 lowering | Downstream consumers require available source facts / authority. | Remain blocked and out of scope. |
-| `%t22` select-result stack destination | Protected select-result / block-entry stack-destination family. | Separate owner; not idea 476. |
-| `%t1` / `%t7` pointer/provenance rows | Protected pointer/provenance family. | Separate owner; not idea 476. |
-| `%t2` / `%t8` unsupported-terminator relationship rows | Protected branch-site relationship family. | Separate owner; not idea 476. |
-
-Close-readiness decision:
-
-- Idea 476 is close-ready only as an independent prepared status-surface slice.
-- The broader source intent of real `%t23` materialization/write and interval
-  fact production is not complete.
-- Recommended lifecycle route: split or activate a follow-up producer idea for
-  real semantic instruction-result frame-slot materialization/write records and
-  path/no-clobber interval population, then route idea 475-style source-fact
-  population only after those records become available.
-
-Artifacts:
-
-- `build/agent_state/476_step4_semantic_materialization_interval_residual/disposition.md`
+The new active idea 477 owns real semantic materialization/interval fact
+population. Source-fact population, branch-stack-load authority, and RV64
+branch-load consumption remain blocked.
 
 ## Suggested Next
 
-Plan-owner should decide lifecycle: close 476 as the completed independent
-status-surface slice only with a durable follow-up for real semantic
-materialization/write and interval fact population, or keep 476 active only if
-that exact real producer packet remains in this source idea.
+Execute Step 1 from `plan.md`: audit real semantic fact population inputs for
+`%t23` slot `#21` and adjacent protected boundary rows.
+
+Suggested artifact directory:
+`build/agent_state/477_step1_real_semantic_fact_population_audit/`.
 
 ## Watchouts
 
-- Do not resume `PreparedFrameSlotSourceFact` population for `%t23` from the
-  Step 3 synthetic status surface alone.
-- Do not treat `%t22 -> %t23` storage movement with `authority=none` as a
-  semantic compare-result materialization.
-- Preserve select-result stack-destination, pointer/provenance, and
-  unsupported-terminator rows as separate owner families.
-- Branch-stack-load authority and RV64 lowering remain downstream non-goals
-  until available lower-level records exist.
+- Do not edit implementation files during Step 1.
+- Do not implement RV64 branch-load emission in this producer plan.
+- Do not directly populate source-fact or branch-stack-load authority records.
+- Do not reuse `%t22 -> %t23` stack moves as semantic materialization evidence
+  when `authority=none`.
+- Do not infer materialization/no-clobber facts from raw BIR, stack homes,
+  storage, offsets, object ids, value names, function names, testcase names, or
+  dump order.
+- Keep pointer-value/provenance, select-result stack-destination, and
+  unsupported-terminator boundaries separate.
+- Do not modify `test_baseline.new.log`, `test_baseline.log`,
+  `test_before.log`, `test_after.log`, or `review/`.
 
 ## Proof
 
-Delegated proof:
+Lifecycle transition proof:
 
 ```sh
 git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
