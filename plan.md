@@ -1,64 +1,62 @@
-# Semantic Frame-Slot Materialization Probe Decomposition Plan
+# Semantic Result Frame-Slot Materialization Point Producer Plan
 
 Status: Active
-Source Idea: ideas/open/482_semantic_frame_slot_materialization_probe_decomposition.md
-Deactivates Runbook: ideas/open/481_semantic_result_frame_slot_materialization_point_producer.md
+Source Idea: ideas/open/481_semantic_result_frame_slot_materialization_point_producer.md
+Resumed After: ideas/closed/482_semantic_frame_slot_materialization_probe_decomposition.md
 
 ## Purpose
 
-Reset the stuck semantic frame-slot materialization route into focused probes
-and explicit backend seam ownership before more implementation work resumes.
+Resume semantic result frame-slot materialization-point producer work from the
+focused decomposition seam instead of auditing the monolithic `%t23` route
+again.
 
 ## Goal
 
-Replace the monolithic `%t23` route with non-duplicative focused probes that
-separate semantic identity, frame-slot destination, materialization authority,
-storage-only move rejection, and select-result boundaries.
+Produce explicit prepared materialization-point facts only when a semantic
+instruction result has durable producer evidence that it was materialized into
+a specific frame slot.
 
 ## Core Rule
 
-Do not continue by auditing the same `%t23` materialization-point gap again.
-First establish the blocked family, split it into focused probes, and bind each
-probe to one owned backend seam.
+Use the focused scalar compare frame-slot destination probe as the first input
+seam. Semantic identity plus destination/layout is necessary evidence, but it
+is not materialization authority by itself.
 
 ## Read First
 
-- ideas/open/482_semantic_frame_slot_materialization_probe_decomposition.md
 - ideas/open/481_semantic_result_frame_slot_materialization_point_producer.md
-- build/agent_state/475_step4_source_fact_population_residual/disposition.md
-- build/agent_state/476_step4_semantic_materialization_interval_residual/disposition.md
-- build/agent_state/477_step4_real_semantic_fact_population_residual/disposition.md
-- build/agent_state/478_step4_semantic_write_event_carrier_residual/disposition.md
-- build/agent_state/479_step4_real_event_authority_residual/disposition.md
-- build/agent_state/480_step4_semantic_write_event_producer_residual/disposition.md
-- tests/backend/case/
+- ideas/closed/482_semantic_frame_slot_materialization_probe_decomposition.md
+- build/agent_state/482_step4_scalar_compare_destination_probe/decision.md
+- build/agent_state/482_step3_probe_seam_bindings/bindings.md
+- tests/backend/case/riscv64_scalar_compare_frame_slot_destination.c
 
 ## Current Target
 
-- Blocked representative family:
-  - semantic compare result `%t23 = bir.ne i32 %t22, 0`;
-  - final frame-slot destination `slot #21`;
-  - rejected `%t22 -> %t23` `authority=none` storage movement;
-  - `%t22` select-result stack-destination boundary.
-- Candidate focused probe families:
-  - scalar compare result forced to frame slot;
-  - storage-only move rejection;
-  - select-result stack-destination boundary;
-  - synthetic explicit materialization-point positive probe if representable.
+- Focused positive input seam:
+  - `%t2 = bir.ne i32 %t0, %t1`
+  - `bir.store_local %lv.comparison, i32 %t2`
+  - stack home for `%t2`
+  - destination frame-slot layout for `%lv.comparison`
+  - store-site frame-slot access row
+  - `store_source ... source_producer=binary`
+- Required next decision:
+  - prove a sound materialization-point producer packet from explicit evidence;
+  - or route the exact missing lower-level producer without returning to the
+    monolithic `930930-1` route.
 
 ## Non-Goals
 
-- Implementing idea 481 materialization-point production before focused probes
-  and seam ownership are established.
-- Copying the monolithic `930930-1` shape into `tests/backend/case/`.
 - RV64 branch-load emission or target lowering.
-- Populating downstream semantic interval, source-fact, or
+- Populating downstream semantic intervals, frame-slot source facts, or
   `PreparedBranchStackLoadAuthority` rows.
-- Pointer-value/provenance repair, select-result stack-destination repair, or
-  unsupported-terminator repair except as classified boundaries.
-- Inferring materialization authority from raw BIR adjacency, final homes,
-  storage, offsets, object ids, value names, function names, testcase names, or
-  dump order.
+- Treating storage-only movement such as `%t22 -> %t23` as semantic
+  materialization when authority is absent.
+- Solving select-result stack-destination publication, pointer-value
+  provenance, or unsupported terminator relationships.
+- Inferring materialization points from raw BIR adjacency, final homes, storage,
+  offsets, object ids, value names, function names, testcase names, or dump
+  order.
+- Copying or trimming the monolithic `930930-1` shape as proof.
 - Expectation rewrites, unsupported-marker downgrades, allowlists, pass/fail
   accounting changes, runtime-comparison changes, or baseline/log churn.
 - Touching `review/`, `test_before.log`, `test_after.log`,
@@ -66,24 +64,26 @@ probe to one owned backend seam.
 
 ## Working Model
 
-Ideas 475 through 481 kept lowering the missing producer without shrinking the
-owned failure family. This plan is a route-quality correction. It should first
-produce focused, capability-oriented probes or explicitly record why a probe
-cannot yet be represented.
+Idea 482 proved the focused destination probe can isolate semantic identity and
+frame-slot destination/layout facts while keeping materialization authority and
+downstream consumers fail-closed. This plan resumes the original 481 source
+intent at the next producer seam.
 
 ## Execution Rules
 
-- Step 1 is classification-only; do not edit implementation or tests.
-- Add focused backend probes under `tests/backend/case/` only after Step 1/2
-  identifies non-duplicative cases.
-- Each probe must have one primary contract and one backend owner.
+- Step 1 is classification-only unless it identifies an already bounded,
+  source-owned producer edit.
+- Do not continue from the `%t23` monolith without showing why the focused
+  scalar probe is insufficient.
+- Any implementation packet must add or consume explicit materialization-point
+  authority, not raw placement or naming inference.
 - Classification-only proof:
 
 ```sh
 git diff --check
 ```
 
-- Probe/test proof, if Step 2/3 selects test additions:
+- Code-changing proof, when a producer packet is selected:
 
 ```sh
 cmake --build build -j2
@@ -93,28 +93,31 @@ git diff --check
 
 ## Steps
 
-### Step 1: Establish The Blocked Failure-Family Baseline
+### Step 1: Audit Focused Materialization Point Inputs
 
-Summarize the 475 -> 481 chain and the current `%t23` family using existing
-artifacts. Completion means `todo.md` records the concrete repeated symptoms,
-the monolithic owner family, and the seams that must not be conflated.
+Inspect the focused scalar compare destination probe and current prepared
+surfaces. Completion means `todo.md` records which facts are already explicit,
+which materialization-point authority is still missing, and whether Step 2 can
+define a bounded producer contract from those inputs.
 
-### Step 2: Split The Monolithic Probe Into Focused Cases
+### Step 2: Define Focused Materialization Point Contract
 
-Identify focused backend probe candidates under `tests/backend/case/` without
-copying the monolith. Completion means `todo.md` lists accepted/rejected probe
-candidates and why each accepted probe is non-duplicative.
+Define the smallest sound contract for accepting a semantic instruction-result
+frame-slot materialization point from explicit producer evidence. Completion
+means the contract names accepted authority, required identity and destination
+fields, and fail-closed rejection statuses for missing authority, storage-only
+movement, source/result mismatch, destination mismatch, protected select-result
+boundaries, and raw-shape inference.
 
-### Step 3: Bind Each Focused Case To One Owned Backend Seam
+### Step 3: Implement Or Route Focused Materialization Point Producer
 
-Map each focused case to exactly one seam and backend owner: semantic identity,
-destination facts, materialization authority, storage-only move rejection,
-select-result boundary, or downstream non-goal. Completion means each probe has
-one expected first owner and one fail-closed boundary.
+Implement the bounded producer packet if Step 2 identifies one. If current
+prepared/prealloc surfaces still cannot provide explicit authority, record the
+exact lower-level owner and stop without changing target lowering or downstream
+consumers.
 
-### Step 4: Resume Implementation On The Narrowest Generic Seam
+### Step 4: Residual Disposition And Close Readiness
 
-Choose the narrowest generic seam that is ready for implementation, or record
-why no seam is currently executable. Completion means lifecycle state either
-hands a focused implementation packet to the executor or routes a precise
-follow-up idea without returning to monolithic `%t23` chasing.
+Re-probe the focused case and any affected representative evidence. Completion
+means lifecycle state says whether 481 is complete, blocked by a precise lower
+producer, or ready to resume downstream write-event/source-fact work.

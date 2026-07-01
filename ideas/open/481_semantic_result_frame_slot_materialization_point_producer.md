@@ -8,12 +8,19 @@ Owning Layer: Prepared semantic result frame-slot materialization-point producti
 
 ## Lifecycle Note
 
-Parked by `ideas/open/482_semantic_frame_slot_materialization_probe_decomposition.md`.
-The 475 -> 481 route repeatedly moved the first missing producer lower inside
-the same `%t23` representative failure family without reducing the owned
-capability family. Idea 481 remains valid source intent, but implementation
-should resume only after focused decomposition probes identify a smaller
-generic seam.
+Resumed after
+`ideas/closed/482_semantic_frame_slot_materialization_probe_decomposition.md`.
+That decomposition confirmed the 475 -> 481 route had been moving the first
+missing producer lower inside the same `%t23` representative failure family,
+then added a focused scalar-compare frame-slot destination probe. Implementation
+must resume from that focused seam, not from another monolithic `930930-1`
+audit.
+
+Focused resume evidence:
+
+- `build/agent_state/482_step4_scalar_compare_destination_probe/decision.md`
+- `tests/backend/case/riscv64_scalar_compare_frame_slot_destination.c`
+- `backend_dump_riscv64_scalar_compare_frame_slot_destination`
 
 ## Goal
 
