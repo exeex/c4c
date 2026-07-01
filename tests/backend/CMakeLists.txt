@@ -615,6 +615,17 @@ c4c_add_backend_codegen_object_test(
   LABELS riscv64 object global static_local prepared_object_data cli
 )
 
+c4c_add_backend_codegen_object_test(
+  backend_cli_riscv64_prepared_object_data_static_local_initialized_storage_obj
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_object_data_static_local_initialized_storage.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_object_data_static_local_initialized_storage.o"
+  EXPECTED_MACHINE_LE f300
+  EXPECTED_HEX_CONTAINS "0d000000"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 object global static_local initialized prepared_object_data cli
+)
+
 c4c_add_backend_dump_flag_test(
   backend_dump_riscv64_variadic_aggregate_overflow_helper_contract
   SRC "${BACKEND_CASE_ROOT}/riscv64_variadic_aggregate_overflow_helper_contract.c"
@@ -725,6 +736,16 @@ c4c_add_backend_codegen_route_test(
   REQUIRED_SNIPPETS ".bss|.balign 4|__static_local_rv64_step3_static_counter_0:|.zero 4|.text|.globl rv64_step3_static_counter|lla s1, __static_local_rv64_step3_static_counter_0|lla t0, __static_local_rv64_step3_static_counter_0"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 global bss static_local prepared_object_data output_contract
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_prepared_object_data_static_local_initialized_storage
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_object_data_static_local_initialized_storage.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_object_data_static_local_initialized_storage.s"
+  REQUIRED_SNIPPETS ".data|.balign 4|__static_local_rv64_step4_static_initialized_counter_0:|.word 13|.text|.globl rv64_step4_static_initialized_counter|lla s1, __static_local_rv64_step4_static_initialized_counter_0|lla t0, __static_local_rv64_step4_static_initialized_counter_0"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 global initialized static_local prepared_object_data output_contract
 )
 
 c4c_add_backend_dump_flag_test(
@@ -1502,6 +1523,22 @@ c4c_add_backend_rv64_object_runtime_case(
   CASE_TIMEOUT_SEC 10
   EXPECTED_RUN_CODE 11
   LABELS global bss prepared_object_data
+)
+
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_prepared_object_data_static_local_storage
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_object_data_static_local_storage.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 11
+  LABELS global bss static_local prepared_object_data
+)
+
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_prepared_object_data_static_local_initialized_storage
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_object_data_static_local_initialized_storage.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 24
+  LABELS global initialized static_local prepared_object_data
 )
 
 c4c_add_backend_rv64_runtime_case(
