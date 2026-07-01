@@ -1,7 +1,15 @@
 # Closed Idea Metadata Cleanup After Prepared Contracts
 
-Status: Open
+Status: Closed
 Type: Lifecycle metadata cleanup idea
+
+## Closure Note
+
+Closed after the prepared-contract archive metadata audit and cleanup. The
+closed idea files 413 through 418 were checked for stale open-state metadata,
+the required metadata-only corrections were applied, and `git diff --check`
+passed for the cleanup slice. No CTest run was required because this was a
+docs/lifecycle-only cleanup.
 
 ## Goal
 
