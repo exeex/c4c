@@ -1,51 +1,46 @@
 Status: Active
-Source Idea Path: ideas/open/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
+Source Idea Path: ideas/open/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Residual Disposition And Close Readiness
+Current Step ID: 1
+Current Step Title: Audit Collector Inputs And Matching Keys
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 recorded residual disposition for the BIR local-array selected
-proof-edge path record/status API.
-
-| Area | Step 4 disposition |
-| --- | --- |
-| Implemented surface | Step 3 added `Function::local_array_selected_proof_edge_paths`, selected proof-edge record fields, API-specific statuses/stringifiers, evaluator, and focused available/fail-closed coverage. |
-| Close readiness | Idea 492 is close-ready as the independent selected proof-edge path record/status API surface. |
-| Remaining first owner | Real collector/population work must produce records from prepared branch/compare facts, selected edge tuples, path coverage, dominance/guard facts, and matching `lir_producer_lookup_key` rows. |
-| Printer/display | Optional display-only exposure can follow if needed for probes, but it is not the first semantic blocker. |
-| Downstream boundaries | Interval/no-clobber classification, idea 489 proof facts, idea 486 checker input population, idea 484 packaging, scalar-load consumption, and RV64/MIR remain out of scope. |
-
-Artifact: `build/agent_state/492_step4_residual_disposition/disposition.md`.
+Lifecycle split closed idea 492 as complete for the selected proof-edge path
+record/status API and activated idea 493 for the next first owner: real
+collector/population of `local_array_selected_proof_edge_paths` records.
 
 ## Suggested Next
 
-Hand off to lifecycle review/close for idea 492, or activate the next precise
-owner: `dynamic local-array selected proof-edge path record collector/population`.
+Execute Step 1: audit prepared branch/compare facts, successor labels,
+reachability/dominance helpers, local-array path records, and exact
+`lir_producer_lookup_key` matching. Record whether collector population is
+bounded or identify the exact lower blocker.
 
 ## Watchouts
 
-- The next collector/population owner must publish helper-derived selected
-  edge/path/dominance facts as explicit records/statuses before downstream
-  proof population consumes them.
-- Keep `lir_producer_instruction_index` as a LIR producer-site coordinate; do
-  not reinterpret it as a prepared traversal or BIR instruction index.
-- Same-block ordering remains unavailable unless a later bridge truthfully
-  relates LIR producer coordinates to the relevant execution coordinate.
-- Do not populate idea 489 proof facts or idea 486 checker inputs from this
-  API/disposition packet; those are later consumers.
+- Keep dynamic-index interval effect/no-clobber classification out of this
+  runbook; it remains a later owner.
+- Do not populate idea 489 proof facts or idea 486 checker inputs directly.
+- Do not treat helper-local reachability/dominance queries as durable proof
+  facts unless this runbook publishes explicit records/statuses.
+- Keep `lir_producer_instruction_index` as a LIR producer-site coordinate.
 - Existing untracked `review/*.md` files are transient and must remain
   untouched.
 
 ## Proof
 
-Step 4 validation:
+Lifecycle activation validation:
 
 ```sh
 git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
+python3 scripts/plan_review_state.py show
 ```
 
-Result: passed.
+Result: passed. `test_after.log` was absent and logs were out of scope for this
+lifecycle-only delegation, so regression sanity used the unchanged canonical
+`test_before.log` as both inputs (`328/328`). Hook-backed state now reports
+Step 1, `Audit Collector Inputs And Matching Keys`.

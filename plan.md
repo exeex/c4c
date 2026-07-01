@@ -1,49 +1,44 @@
-# Dynamic Local-Array Selected Proof-Edge Path Record/Status API Plan
+# Dynamic Local-Array Selected Proof-Edge Path Record Collector/Population Plan
 
 Status: Active
-Source Idea: ideas/open/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
-Activated From: ideas/closed/491_dynamic_local_array_selected_proof_edge_path_certificate.md
+Source Idea: ideas/open/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md
+Activated From: ideas/closed/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
 
 ## Purpose
 
-Create the prepared record/status API needed before selected proof-edge path
-certification can publish durable path facts.
+Populate real selected proof-edge path records using the API surface completed
+by idea 492.
 
 ## Goal
 
-Publish explicit selected proof-edge path records keyed to
-`lir_producer_lookup_key`, or route to the next lower API blocker without
-inferring from raw branch shape.
+Produce explicit available/unavailable
+`local_array_selected_proof_edge_paths` records from prepared branch/control
+flow facts and matching dynamic local-array `lir_producer_lookup_key` rows.
 
 ## Core Rule
 
-Do not let downstream proof population, checker inputs, or target behavior
-consume helper-local reachability/dominance calculations directly. Selected
-proof-edge path facts must be represented as explicit prepared records or
-explicit unavailable statuses.
+Do not let downstream proof population consume helper-local reachability,
+dominance, or branch-shape facts directly. Collector output must publish
+explicit records or explicit unavailable statuses keyed to the exact
+`lir_producer_lookup_key`.
 
 ## Read First
 
-- ideas/open/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
-- ideas/closed/491_dynamic_local_array_selected_proof_edge_path_certificate.md
-- build/agent_state/491_step3_selected_edge_path_route/route.md
-- build/agent_state/491_step4_residual_disposition/disposition.md
+- ideas/open/493_dynamic_local_array_selected_proof_edge_path_record_collector_population.md
+- ideas/closed/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
+- build/agent_state/492_step3_selected_proof_edge_record_api/summary.md
+- build/agent_state/492_step4_residual_disposition/disposition.md
 
 ## Current Target
 
-- Missing surface:
-  - selected proof-edge path record/status API keyed to
-    `lir_producer_lookup_key`.
-- Required record fields:
-  - all `lir_producer_*` fields;
-  - proof branch/compare identity;
-  - dynamic-index operand role and bound contribution when available;
-  - selected outcome and edge tuple;
-  - path coverage and dominance/guard validity;
-  - fail-closed status vocabulary.
-- First packet:
-  - audit current prepared record homes and helper inputs for a bounded API
-    packet.
+- Collector inputs:
+  - `LocalArrayElementPathRecord` rows and `lir_producer_lookup_key`;
+  - prepared branch/compare facts and selected successor labels;
+  - reachability/path coverage helpers;
+  - dominance or guard validity helpers.
+- Collector outputs:
+  - available selected proof-edge path records;
+  - fail-closed unavailable records for missing/mismatched inputs.
 
 ## Non-Goals
 
@@ -63,15 +58,15 @@ explicit unavailable statuses.
 
 ## Working Model
 
-Idea 491 found that raw `PreparedBranchCondition` labels and helper-level
-reachability/dominance logic are not durable proof facts. This runbook owns the
-record/status API that can publish those facts explicitly for each dynamic
-local-array LIR producer key.
+Idea 492 supplied the storage, evaluator, and statuses. This runbook owns the
+producer that fills those records from prepared branch/control-flow facts and
+local-array path records. Display/printer exposure is optional and should not
+displace the collector if semantic population can proceed.
 
 ## Execution Rules
 
-- Step 1 is audit/classification unless the exact record/status home is already
-  obvious and bounded.
+- Step 1 is audit/classification unless the exact collector path is already
+  bounded.
 - Any implementation packet must publish records/statuses only; it must not
   populate proof facts, checker inputs, packaging, scalar loads, or RV64
   lowering.
@@ -91,27 +86,27 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Selected Proof-Edge Record Homes
+### Step 1: Audit Collector Inputs And Matching Keys
 
-Inspect prepared record/status surfaces, selected local-array path records,
-prepared branch/compare facts, and helper inputs for the narrow record/status
-API. Completion means `todo.md` records the exact candidate home or the next
-lower blocker.
+Inspect prepared branch/compare facts, successor labels,
+reachability/dominance helpers, local-array path records, and
+`lir_producer_lookup_key` matching. Completion means `todo.md` records whether
+the collector can be bounded or names the exact lower blocker.
 
-### Step 2: Define Record/Status API Contract
+### Step 2: Define Collector Population Contract
 
-Define the record fields, status enum/vocabulary, dump keys, and fail-closed
-behavior. Completion means the contract names every field from the 491 route
-disposition and the boundaries for same-block ordering.
+Define source facts, matching rules, selected outcome, edge tuple, path
+coverage, dominance/guard validity, unavailable statuses, and same-block
+fail-closed behavior. Completion means the contract can drive focused tests.
 
-### Step 3: Implement Or Route Record/Status API
+### Step 3: Implement Or Route Collector Population
 
-Implement the bounded prepared record/status API if Step 2 identifies one. If
-current ownership cannot publish it without another lower surface, record the
-exact owner and stop without changing interval effects or downstream consumers.
+Implement the bounded collector if Step 2 identifies one. If current inputs
+cannot truthfully populate records, record the exact lower owner and stop
+without changing interval effects or downstream consumers.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe selected representatives and decide whether 492 is complete, blocked
-by another lower-level source, or ready to hand forward to selected proof-edge
-path certification.
+Re-probe selected representatives and decide whether 493 is complete, blocked
+by another lower-level source, or ready to hand forward to selected path
+certification or interval effect/no-clobber classification.
