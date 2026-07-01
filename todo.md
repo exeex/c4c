@@ -1,57 +1,87 @@
 Status: Active
 Source Idea Path: ideas/open/484_bir_semantic_local_address_provenance_array_element_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Local-Address Array-Element Authority Evidence
+Current Step ID: 2
+Current Step Title: Define Local-Address Provenance Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 for idea 484 by auditing local-address/array-element
-authority evidence from `pr22098-1.c`, `pr38048-1.c`, and `multi-ix.c`.
+Completed Step 2 for idea 484 by defining the bounded local-address and
+array-element provenance contract around the `pr38048-1.c`
+`a#L1[i#L3][0]` shape.
 
-Selected Step 2 contract driver:
+Accepted evidence:
 
-| Case | Accepted shape | Required authority |
+| Case | Accepted shape | Contract boundary |
 | --- | --- | --- |
-| `src/pr38048-1.c` | `decl a: int*[1] = mat#L0`; `det#L2 += a#L1[i#L3][0]` | local object `mat#L0: int[2][1]`, array decay/local-address derivation into `a#L1`, dynamic outer index `i#L3` with range `i < 2`, constant inner index `0`, scalar `int` element layout/range, and pointer-to-local-element provenance. |
+| `src/pr38048-1.c` | `decl mat: int[2][1]`; `decl a: int*[1] = mat#L0`; `det#L2 += a#L1[i#L3][0]` | Producer-authority only: prove local object identity, array decay/local-address derivation, index/range, element layout/range, and pointer-to-local-element provenance. |
 
-Secondary/blocked evidence:
+Required record fields:
 
-| Case | Shape | Disposition |
-| --- | --- | --- |
-| `src/pr22098-1.c` | `p#L1 = &<clit>#L3[(++a#L0)]`; `(*p#L1) != 1` | Accept only as secondary local element-address evidence once Step 2 requires explicit index/range and pointer-to-local-element provenance. |
-| `src/pr22098-1.c` | `b#L2 = (ulong)p#L1`; `(*((int*)b#L2)) != 1` | Reject integer-pointer round-trip provenance from the first packet. |
-| `src/multi-ix.c` | `i0#L41 = a0#L1[0]` through `i39#L80 = a39#L40[0]` | Reject as first driver because the row's latest failure is variadic `s`, and the case has variadic/va_arg/memset contamination. |
+- function identity, source derivation identity, consumer access identity,
+  local object value id, derived pointer/view value id, and element access
+  identity;
+- source object type/rank, element type, size, alignment, total byte range,
+  storage kind, and lifetime/scope identity where available;
+- derivation kind (`array_decay`, `address_of_element`, or
+  `direct_local_array_element`), source object id, derived pointer/view id,
+  derivation site, and provenance-preserving status;
+- ordered element path, index value ids/constants, index width/signedness,
+  dynamic range proof source, and status for missing range;
+- final element type, size, alignment, byte offset/range, in-bounds status, and
+  scalar-vs-aggregate classification;
+- provenance status tying the consumer address back to the local object and
+  element path.
 
-Required facts for Step 2:
+Fail-closed statuses required for Step 3:
 
-- source local object identity and type/rank;
-- array decay or local-address derivation from local object to pointer/view
-  value;
-- dynamic index value identity and explicit range proof;
-- constant index identity where present;
-- element type, size, alignment, offset, and range within the source object;
-- pointer-to-local-element provenance tying the load address to the same local
-  object and element path;
-- unavailable/mismatch statuses for missing object, missing range,
-  unsupported integer round-trip, aggregate/member contamination, variadic
-  contamination, runtime/global/bootstrap/F128 boundaries, and raw inference.
+- `missing_source_object`
+- `source_object_not_local`
+- `missing_array_decay_or_address_derivation`
+- `missing_derived_pointer_home`
+- `missing_index_identity`
+- `missing_index_range`
+- `element_out_of_bounds`
+- `element_not_scalar`
+- `unknown_or_mismatched_layout`
+- `unknown_provenance`
+- `integer_pointer_round_trip`
+- `global_source_object`
+- `aggregate_or_member_boundary`
+- `union_or_object_representation_boundary`
+- `variadic_or_va_arg_boundary`
+- `runtime_or_call_boundary`
+- `f128_complex_vector_or_volatile_atomic_boundary`
+- `bootstrap_boundary`
+- `raw_shape_only`
+- `rv64_or_final_home_only`
+
+Step 3 readiness:
+
+- a bounded producer packet exists only if the current BIR/HIR semantic
+  producer surface can carry local object identity, array-decay/local-address
+  derivation identity, element path, index identities/ranges, element
+  layout/range, provenance-preserving status, and unavailable statuses;
+- if dynamic index range proof or derivation identity cannot be exposed without
+  raw-shape inference, Step 3 must route to that lower-level producer surface
+  instead of implementing partial authority.
 
 Artifact:
 
-- `build/agent_state/484_step1_local_address_array_element_authority/audit.md`
+- `build/agent_state/484_step2_local_address_provenance_contract/contract.md`
 
 ## Suggested Next
 
-Execute Step 2: define the bounded local-address/array-element provenance
-contract around the `pr38048-1.c` `a#L1[i#L3][0]` shape. Keep this as
-producer-authority metadata only; do not consume scalar loads or implement RV64
-lowering.
+Execute Step 3: implement or route the bounded authority producer. Implement
+only if the semantic producer data can explicitly carry the required
+derivation, index/range, layout/range, and provenance facts; otherwise record
+the exact lower-level blocker.
 
 ## Watchouts
 
+- Do not consume scalar local loads or repair RV64 lowering in idea 484.
 - Do not accept integer-pointer round-trip provenance, including the
   `pr22098-1.c` `uintptr_t` path.
 - Do not use `multi-ix.c` as the first driver; it is useful boundary evidence
