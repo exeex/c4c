@@ -5,6 +5,7 @@ Type: BIR semantic producer admission cleanup idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Handoff Directory: `docs/rv64_gcc_torture_post_contract/`
 Owning Layer: BIR semantic producer, before RV64 prepared-object consumption
+Resumed After: ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md
 
 ## Goal
 
@@ -21,6 +22,11 @@ admission limits, and runtime/intrinsic families such as `memcpy`/`memset`.
 
 These are producer gaps. RV64 should consume prepared semantic facts only after
 the BIR producer admits and publishes them truthfully.
+
+Idea 483 now publishes `local_array_scalar_local_loads` for clean local-array
+scalar local loads. This cleanup should reclassify the semantic-admission
+bucket using that surface and route only remaining producer gaps; RV64 lowering
+must consume the fact surface rather than reconstructing local-load authority.
 
 ## In Scope
 

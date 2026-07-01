@@ -1,6 +1,6 @@
 # BIR Semantic Local-Memory Scalar Load Producer
 
-Status: Open
+Status: Closed
 Type: Focused BIR semantic producer implementation idea
 Parent: `ideas/closed/422_bir_semantic_producer_high_impact_cleanup.md`
 Source Evidence:
@@ -10,17 +10,20 @@ Source Evidence:
 Owning Layer: BIR semantic local-memory load producer
 Closed By: lifecycle review after corrected Step 1 search
 Reopened After: ideas/closed/484_bir_semantic_local_address_provenance_array_element_authority.md
+Closed After Reopen: lifecycle review after Step 3
 
 ## Completion Notes
 
-Idea 483 is closed as a routed blocker, not as an implemented scalar local-load
-producer.
+Idea 483 is complete for the scalar local-memory load producer slice.
 
 The source goal was to find and implement an ordinary scalar local-memory load
 producer packet that did not depend on GEP, pointer/provenance, aggregate/member,
 byval/va_arg, volatile/atomic, complex, vector, F128, bootstrap, or target
 fallback inference. Corrected Step 1 searched the full 79-row local-memory load
-bucket and found no such representative.
+bucket and found no such representative. After the local-address provenance
+prerequisite closed, reopened Step 2 published production
+`local_array_scalar_local_loads` from matching available
+`local_array_local_address_provenances`.
 
 Primary evidence:
 
@@ -29,6 +32,8 @@ Primary evidence:
 - `build/agent_state/483_step1_corrected_local_load_search/hir_direct_local_array_candidates.tsv`
 - `build/agent_state/483_step1_corrected_local_load_search/hir_plain_local_rhs_candidates.tsv`
 - `review/483_step1_local_load_route_review.md`
+- `build/agent_state/483_step2_scalar_local_loads_from_provenance/summary.md`
+- `build/agent_state/483_step3_residual_disposition_after_scalar_local_loads/disposition.md`
 
 ## Route Decision
 
@@ -41,7 +46,20 @@ layout, and pointer-to-local-element provenance facts before a scalar
 local-load producer can safely consume rows such as `pr38048-1.c` or the
 non-round-trip part of `pr22098-1.c`.
 
-## Residual Disposition
+## Final Residual Disposition
+
+No idea-483 blocker remains for clean scalar local-array element loads backed by
+available local-address provenance. Reopened Step 2 publishes
+`local_array_scalar_local_loads` only from matching available provenance and a
+consuming pointer-addressed `LoadLocalInst` that uses the exact provenance
+element address with matching scalar type/size and no extra load or address byte
+offset.
+
+Downstream scalar-load consumers or lowering work can resume by consuming
+`local_array_scalar_local_loads`. They should not re-derive local object,
+element offset, layout, range, provenance, or exact-address checks from
+provenance records, checker inputs, lower proof surfaces, final homes, raw
+testcase shape, names, or target behavior.
 
 The following representative classes previously remained fail-closed for 483:
 
@@ -108,7 +126,9 @@ python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
 
 Both passed in the original routed close. The lifecycle retry that reopened 483
 generated `test_after.log` with the regression-guard self-comparison against
-the backend `test_before.log`; the guard stayed at `328/328` passed.
+the backend `test_before.log`; the guard stayed at `328/328` passed. The final
+close/switch to idea 496 repeated the self-comparison and preserved the same
+`328/328` result.
 
 ## Reviewer Reject Signals
 

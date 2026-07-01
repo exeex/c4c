@@ -1,97 +1,81 @@
-# BIR Semantic Local-Memory Scalar Load Producer Plan
+# Semantic LIR-To-BIR Admission High-Impact Cleanup Plan
 
 Status: Active
-Source Idea: ideas/open/483_bir_semantic_local_memory_scalar_load_producer.md
-Reopened After: ideas/closed/484_bir_semantic_local_address_provenance_array_element_authority.md
+Source Idea: ideas/open/496_semantic_lir_to_bir_admission_high_impact_cleanup.md
+Resumed After: ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md
 
 ## Purpose
 
-Resume idea 483 after the local-address provenance prerequisite closed. The
-original search found no ordinary scalar local-load representative that was
-safe without provenance authority; the active work is now to implement the
-scalar local-load producer by consuming `local_array_local_address_provenances`.
+Resume the semantic admission cleanup after the scalar local-load producer
+closed. The first task is to reclassify high-frequency semantic `lir_to_bir`
+failures with `local_array_scalar_local_loads` available, then route remaining
+producer gaps without moving semantic responsibility into RV64 lowering.
 
 ## Goal
 
-Publish semantic scalar local-memory load facts for clean local-array element
-loads backed by available local-address provenance records.
+Classify and repair high-impact semantic LIR-to-BIR admission failures while
+requiring downstream local-load consumers to use published semantic facts.
 
 ## Core Rule
 
-Scalar local-load facts may be marked available only from matching available
-`local_array_local_address_provenances`. Do not infer local object, element
-offset, layout, range, or provenance from checker inputs, proof facts, range
-certificates, selected paths, interval effects, endpoint bridges, final homes,
-testcase shape, names, or target behavior.
+Semantic admission or downstream lowering may consume `local_array_scalar_local_loads`;
+it must not reconstruct local object, element offset, layout, range,
+provenance, exact-address checks, or scalar load identity from provenance
+records, lower proof surfaces, final homes, raw testcase shape, names, or target
+behavior.
 
 ## Read First
 
-- ideas/open/483_bir_semantic_local_memory_scalar_load_producer.md
-- ideas/closed/484_bir_semantic_local_address_provenance_array_element_authority.md
-- build/agent_state/483_step1_corrected_local_load_search/audit.md
-- build/agent_state/483_step1_corrected_local_load_search/local_load_rows.tsv
-- build/agent_state/484_step5_local_address_provenance_from_checker_inputs/summary.md
-- build/agent_state/484_step6_residual_disposition_after_local_address_provenance/disposition.md
-
-## Resumed State
-
-- Idea 483 owns semantic scalar local-memory load production.
-- The first run routed because candidate rows such as `pr38048-1.c` required
-  local-address provenance and array-element authority.
-- Idea 484 now publishes `local_array_local_address_provenances` from matching
-  production checker inputs.
-- Reopened 483 should consume provenance records and leave RV64/MIR lowering
-  and unrelated local-memory families out of scope.
+- ideas/open/496_semantic_lir_to_bir_admission_high_impact_cleanup.md
+- ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md
+- build/agent_state/483_step2_scalar_local_loads_from_provenance/summary.md
+- build/agent_state/483_step3_residual_disposition_after_scalar_local_loads/disposition.md
+- build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv
+- docs/rv64_gcc_torture_post_contract/failure_bucket_map.md
+- docs/rv64_gcc_torture_post_contract/followup_idea_plan.md
 
 ## Current Targets
 
 - Inputs:
-  - local-memory load rows from the semantic producer family;
-  - `local_array_local_address_provenances` records from idea 484;
-  - existing scalar local-load semantic fact surfaces, or a narrowly added
-    equivalent if the surface was only specified.
+  - current semantic `lir_to_bir` failure bucket evidence;
+  - `local_array_scalar_local_loads` as the completed scalar local-load fact
+    surface;
+  - open producer/lowering idea inventory.
 - Outputs:
-  - available scalar local-load facts for clean provenance-backed scalar
-    local-array element loads;
-  - fail-closed facts for missing provenance, unavailable provenance,
-    aggregate/member, integer-pointer round-trip, global, variadic/runtime,
-    unsupported type, bootstrap, raw-shape-only, target-only, and coordinate
-    confusion cases;
-  - residual disposition for whether downstream scalar-load consumers or
-    lowering work can resume.
+  - refreshed semantic-admission classification after the scalar local-load
+    producer closed;
+  - producer-owned follow-up packets for remaining semantic families;
+  - explicit sequencing for any RV64/MIR consumer that can now consume scalar
+    local-load facts.
 
 ## Non-Goals
 
-- Recomputing local-address provenance, checker inputs, proof facts, range
-  certificates, selected-path coverage, or interval no-clobber evidence.
-- Consuming `local_array_index_range_checker_inputs`,
-  `local_array_proof_facts`, or `local_array_index_range_proofs` directly as
-  scalar-load evidence.
-- RV64/MIR lowering, object emission, store/call/memcpy/memset producers,
-  aggregate/member producer work, variadic/byval/va_arg work, volatile/atomic
-  work, complex/vector/F128 work, or broad generic load analysis.
+- Reopening local-array provenance, checker-input, proof-fact, range-proof, or
+  selected-path producers without concrete regression evidence.
+- Reconstructing scalar local-load facts inside RV64/MIR lowering.
+- Move-bundle materialization, F128/long-double soft-float implementation,
+  runtime mismatch triage, or global/stack-frame infrastructure unless the
+  refreshed classification proves they are the next owner.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
-  pass/fail accounting changes, runtime-comparison changes, or baseline/log
-  churn.
+  pass/fail accounting changes, runtime-comparison changes, or baseline churn.
 
 ## Working Model
 
-Idea 483 is the scalar local-load producer above the local-address provenance
-surface. It should translate matching available provenance records plus scalar
-load use identity into semantic local-load facts, while carrying unavailable
-provenance statuses forward instead of flattening them into target-only or
-raw-shape fallbacks.
+Idea 496 is a producer-side cleanup and routing plan. It should use the newly
+closed 483 fact surface to separate resolved local-array scalar-load admission
+from remaining semantic producer failures. It can then either define the next
+producer packet or hand a fact-consuming RV64/MIR idea forward when producer
+authority already exists.
 
 ## Execution Rules
 
-- Match scalar-load facts to provenance records by function, source object,
-  derivation identity, element path, dynamic index, consumer load identity, and
-  producer coordinate identity where those fields exist.
-- Preserve `lir_producer_instruction_index` as an LIR producer-site coordinate.
-- Do not use testcase names, value names, dump order, final homes, lowered
-  target homes, or RV64 target behavior as availability evidence.
-- Keep scalar-load production separate from RV64/MIR lowering and object
-  emission.
+- Treat `local_array_scalar_local_loads` as the only scalar local-array
+  local-load authority for downstream consumers.
+- Preserve fail-closed statuses for missing/non-available scalar-load facts and
+  for unrelated aggregate/member, variadic, global, runtime, unsupported type,
+  bootstrap, raw-shape-only, target-only, and coordinate-confusion families.
+- If a remaining failure lacks producer authority, create or select a producer
+  idea before any RV64 lowering work.
 - Code-changing proof:
 
 ```sh
@@ -103,29 +87,26 @@ git diff --check
 - Lifecycle-only proof:
 
 ```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
 git diff --check
 ```
 
 ## Steps
 
-### Step 2: Produce Scalar Local Loads From Provenance
+### Step 1: Reclassify Semantic Admission After Scalar Local Loads
 
-Publish semantic scalar local-memory load facts by consuming matching
-`local_array_local_address_provenances`.
+Refresh the semantic `lir_to_bir` admission bucket with
+`local_array_scalar_local_loads` available and identify which failures are now
+fact-consuming downstream work versus still-missing producer authority.
 
-Completion means focused backend coverage proves one clean production-backed
-available scalar local-load fact and preserves fail-closed behavior for missing
-provenance, non-available provenance, aggregate/member, integer-pointer
-round-trip, global source object, variadic/runtime boundary, unsupported type,
-bootstrap boundary, raw-shape-only evidence, target-only evidence, and
-coordinate confusion representatives.
+Completion means the handoff directory records refreshed counts,
+representative rows, resolved local-array scalar-load coverage, and remaining
+first-owner families without RV64 reconstructing semantic facts.
 
-### Step 3: Residual Disposition For Downstream Consumers
+### Step 2: Select The Next Producer Or Consumer Packet
 
-Re-probe available and fail-closed representatives after Step 2 and decide
-whether downstream scalar-load consumers or lowering work can resume, or
-whether another producer owner remains first.
+Use Step 1 classification to choose the next implementation packet.
 
-Completion means `todo.md` records the residual disposition, names the next
-idea that should resume, and identifies any remaining blocker if downstream
-work cannot resume.
+Completion means `todo.md` names the selected next owner, distinguishes
+producer gaps from valid consumers of `local_array_scalar_local_loads`, and
+records whether lifecycle should switch to a more specific open idea.
