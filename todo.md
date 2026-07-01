@@ -1,36 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/491_dynamic_local_array_selected_proof_edge_path_certificate.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Selected Proof-Edge Path Certificate Inputs
+Current Step ID: 2
+Current Step Title: Define Selected Proof-Edge Path Certificate Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 audited the current prepared/BIR surfaces for a bounded selected
-proof-edge path certificate keyed to dynamic local-array `lir_producer_*`
-records.
+Step 2 defined the selected proof-edge path certificate contract for dynamic
+local-array `lir_producer_*` records.
 
-| Area | Step 1 classification |
+| Area | Step 2 contract |
 | --- | --- |
-| Prepared branch/compare proof source | Structured identity exists through `PreparedBranchCondition` and fused compare operand producer facts. |
-| Selected edge/outcome | True/false successor labels exist, but no durable record selects one edge/outcome as the proof edge for a `lir_producer_lookup_key`. |
-| Path helpers | Prepared dominance/reachability helper logic exists, but it is helper-local evidence, not a durable certificate surface. |
-| `lir_producer_*` matching | Local-array path records provide stable LIR producer function/block/index/role/key fields suitable for matching. |
-| Same-block ordering | Fail closed unless a separate truthful bridge exists; the LIR producer instruction index is not a prepared/BIR instruction index. |
-| Step 2 readiness | A bounded contract can be defined now for cross-block selected proof-edge path certification. |
+| Certificate key | Requires exact `lir_producer_*` fields, `lir_producer_lookup_key`, proof branch/compare identity, selected outcome, and proof-block -> selected-successor edge tuple. |
+| Accepted representative | Cross-block dynamic local-array address derivation guarded by an explicit prepared fused branch/compare selected true/false edge. |
+| Path coverage | Selected successor must reach and cover the LIR producer block through durable certificate facts, not route-local helper inference. |
+| Dominance/guard validity | Proof source must dominate or guard the producer site under the selected outcome. |
+| Same-block policy | Explicitly fail closed without a truthful ordering bridge; never compare LIR producer index to prepared/BIR instruction index. |
+| Rejected shapes | Missing proof source/edge/outcome, non-covering path, non-dominating proof, unsupported boundary, coordinate confusion, raw-shape-only, target/final-home-only. |
 
-Artifact: `build/agent_state/491_step1_selected_proof_edge_path_audit/audit.md`.
+Artifact: `build/agent_state/491_step2_selected_proof_edge_path_contract/contract.md`.
 
 ## Suggested Next
 
-Execute Step 2: define the selected proof-edge path certificate contract. The
-contract should require a dynamic local-array `lir_producer_lookup_key`, explicit
-prepared branch/compare proof-source identity, selected true/false outcome,
-edge tuple, path coverage, dominance/guard validity, and producer-specific
-unavailable statuses. Same-block ordering should remain unavailable unless a
-truthful coordinate bridge is provided.
+Execute Step 3: inspect whether existing prepared path helpers and
+branch/compare records can publish a truthful durable selected proof-edge path
+record/status surface keyed to `lir_producer_lookup_key`. Implement only if the
+surface can expose selected outcome, edge tuple, path coverage, and
+dominance/guard validity without inference; otherwise route to the exact
+path-certificate API blocker.
 
 ## Watchouts
 
@@ -38,6 +37,8 @@ truthful coordinate bridge is provided.
   runbook; it is a later owner after selected path certification.
 - Do not populate idea 489 proof facts or idea 486 checker inputs directly.
 - Keep `lir_producer_instruction_index` as a LIR producer-site coordinate.
+- Same-block proof-source-to-producer candidates remain unavailable unless a
+  future packet supplies a truthful ordering bridge.
 - Do not treat helper-level reachability/dominance queries as durable
   certificate records until a Step 3 packet publishes that surface explicitly.
 - Do not infer proof edges or path coverage from branch proximity, loop shape,
@@ -47,7 +48,7 @@ truthful coordinate bridge is provided.
 
 ## Proof
 
-Step 1 validation:
+Step 2 validation:
 
 ```sh
 git diff --check
