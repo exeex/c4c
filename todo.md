@@ -1,69 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/481_semantic_result_frame_slot_materialization_point_producer.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Focused Materialization Point Producer
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 481 by implementing the focused prepared
-materialization-point authority producer surface for scalar binary results
-stored to frame-slot destinations.
+Completed Step 4 for idea 481 by classifying residuals after the focused
+materialization-point authority producer landed.
 
-Implemented:
+Disposition:
 
-- Added `PreparedMaterializationPointAuthority` records/statuses and stable
-  source/status spellings in `publication_plans.hpp`.
-- Added `plan_prepared_materialization_point_authority` and
-  `collect_prepared_materialization_point_authorities` in
-  `publication_plans.cpp`.
-- Accepted only available local `store_source` records with binary
-  `source_producer`, a matching producer result, matching store-site
-  frame-slot access, and matching destination frame slot/object/layout.
-- Kept the surface prepared-only; no semantic interval, frame-slot source fact,
-  branch-stack-load authority, or RV64 consumer was populated from this packet.
+- Step 3 satisfied the focused materialization-point producer objective for
+  binary semantic results stored to frame-slot destinations.
+- The accepted authority is intentionally bounded to available local
+  `store_source` records with a binary source producer, matching producer
+  result, matching store-site frame-slot access, and matching destination
+  frame slot/object/layout.
+- No downstream semantic interval, `PreparedFrameSlotSourceFact`,
+  `PreparedBranchStackLoadAuthority`, or RV64 consumer authority was claimed.
+- No exact remaining in-scope 481 producer repair is identified.
 
-Focused coverage:
+Residual classification:
 
-- Positive scalar compare publication through an explicit binary store-source
-  frame-slot destination.
-- Collector publication from prepared store-source records.
-- Fail-closed boundaries for missing store-source authority,
-  source/access mismatch, missing frame-slot access, storage-only movement,
-  final-home/raw-shape-only evidence, select-result boundary,
-  pointer/terminator boundary, and non-binary source producers.
+| Residual | First owner |
+| --- | --- |
+| Path/no-clobber proof for semantic materialization intervals | Downstream interval/source-fact producer work, not 481 Step 3. |
+| `PreparedFrameSlotSourceFact` availability | Downstream source-fact population after materialization-point authority. |
+| Branch-stack-load availability | Downstream branch authority population/consumer work. |
+| RV64 stack-slot load/materialization | Target lowering consumer work. |
+| Durable dump/printer visibility for materialization-point records | Optional printer exposure packet only if required; not needed to close the producer surface. |
+
+Lifecycle recommendation:
+
+- Close idea 481 as complete for the focused materialization-point producer
+  slice.
+- Resume or split downstream source-fact/interval population only as a separate
+  first-owner packet if the plan owner selects it.
 
 Artifact:
 
-- `build/agent_state/481_step3_focused_materialization_point_producer/summary.md`
+- `build/agent_state/481_step4_residual_disposition/disposition.md`
 
 ## Suggested Next
 
-Execute Step 4 residual disposition and close-readiness review for idea 481.
-Re-probe or classify the focused materialization-point producer residuals,
-confirm no downstream interval/source-fact/branch authority/RV64 consumers were
-claimed by Step 3, and decide whether source-fact population can resume or
-whether one exact producer/printer follow-up remains.
-
-Suggested Step 4 proof:
-
-```sh
-git diff --check
-```
+Route to the plan owner for lifecycle closure of idea 481, or activate the next
+downstream source-fact/interval population idea if the supervisor wants to
+continue from the new materialization-point authority surface.
 
 ## Watchouts
 
-- `PreparedMaterializationPointAuthority` is a materialization-point authority
-  surface only. It deliberately does not prove path/no-clobber interval safety
-  and does not directly mark `PreparedFrameSlotSourceFact` or
-  `PreparedBranchStackLoadAuthority` available.
-- Printer exposure was not added in this packet because the implementation and
-  tests produce/query records through the prepared publication API. Route a
-  separate printer packet only if durable dump visibility becomes necessary.
+- Keep materialization-point authority distinct from interval/source-fact
+  freshness and no-clobber proof. Step 3 did not make downstream records
+  available.
+- Do not route optional printer exposure as required closure unless durable dump
+  visibility is explicitly needed.
 - Storage-only `authority=none`, final-home-only evidence, select-result
-  stack-destination, pointer/provenance, unsupported-terminator, and downstream
+  stack-destination, pointer/provenance, unsupported-terminator, and RV64
   consumer rows remain fail-closed.
 
 ## Proof
@@ -71,9 +66,7 @@ git diff --check
 Delegated proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 Result: passed.
-
-Proof log: `test_after.log`.
