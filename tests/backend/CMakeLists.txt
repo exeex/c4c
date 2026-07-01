@@ -1739,6 +1739,20 @@ c4c_add_backend_rv64_runtime_case(
   LABELS global memory store
 )
 c4c_add_backend_rv64_runtime_case(
+  backend_rv64_runtime_riscv64_global_store_prepared_value_preserves_source
+  SRC "${BACKEND_CASE_ROOT}/riscv64_global_store_prepared_value_preserves_source.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 0
+  LABELS global memory store prepared_value
+)
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_global_store_prepared_value_preserves_source
+  SRC "${BACKEND_CASE_ROOT}/riscv64_global_store_prepared_value_preserves_source.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 0
+  LABELS global memory store prepared_value scan
+)
+c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_packed_local_member_offsets
   SRC "${BACKEND_CASE_ROOT}/packed_local_member_offsets.c"
   CASE_TIMEOUT_SEC 10
