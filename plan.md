@@ -1,78 +1,83 @@
-# Dynamic Local-Array LIR Producer Endpoint Bridge Effect Scan Plan
+# Dynamic Local-Array Ordered Effect-Source Stream Builder Plan
 
 Status: Active
-Source Idea: ideas/open/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md
-Activated From: ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
+Source Idea: ideas/open/498_dynamic_local_array_ordered_effect_source_stream_builder.md
+Activated From: ideas/open/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md
 
 ## Purpose
 
-Provide the lower endpoint/effect prerequisite that blocked plan 494 after its
-fail-closed interval status surface landed.
+Provide the lower ordered effect-source stream builder that blocked idea 497
+and keeps idea 494 in fail-closed interval status mode.
 
 ## Goal
 
-Bridge dynamic local-array LIR producer rows to ordered prepared/BIR
-address-derivation endpoints and scan the selected proof-source-to-endpoint
-interval for real effects.
+Populate production prepared/BIR effect-source records for the selected
+dynamic local-array proof-source-to-endpoint interval so a bounded scan can
+prove availability from real ordered evidence.
 
 ## Core Rule
 
-Do not infer endpoint order or same-value/no-clobber from selected path
-availability, testcase shape, final homes, target behavior, synthetic bridge
-flags, or `lir_producer_instruction_index` alone. Endpoint and effect facts
-must come from an authoritative prepared/BIR bridge plus a bounded effect scan,
-or fail closed with a precise status.
+Do not infer no-clobber, effect coverage, or endpoint ordering from synthetic
+coverage booleans, caller-supplied effect vectors, selected-path availability,
+legacy bridge flags, final homes, target behavior, testcase shape, or
+`lir_producer_instruction_index` alone. Availability must come from a
+production builder over prepared/BIR effect sources, or fail closed with a
+precise status.
 
 ## Read First
 
+- ideas/open/498_dynamic_local_array_ordered_effect_source_stream_builder.md
 - ideas/open/497_dynamic_local_array_lir_producer_endpoint_bridge_effect_scan.md
-- ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md
-- build/agent_state/494_step3_interval_effect_status_surface/summary.md
-- build/agent_state/494_step4_residual_disposition/disposition.md
+- build/agent_state/497_step4_lower_blocker/blocker.md
+- build/agent_state/497_step5_residual_disposition/disposition.md
+- review/497_step4_bounded_effect_scan_review.md
 
 ## Current Target
 
 - Inputs:
-  - dynamic local-array `lir_producer_lookup_key` rows;
-  - `lir_producer_instruction_index` as a LIR producer-site coordinate;
-  - selected proof-source/path records from the existing 493/494 surfaces;
-  - prepared/BIR address derivation and effect-stream surfaces.
+  - `bir::LocalArrayEndpointBridgeRecord` rows from the Step 3 endpoint bridge;
+  - selected proof-edge path records carrying proof-source coordinates;
+  - prepared/BIR records that can expose assignments/redefinitions, memory
+    accesses, phi/alias transfers, calls/helpers, inline asm, publications,
+    move bundles, parallel copies, and unknown modeled effects.
 - Outputs:
-  - authoritative prepared/BIR address-derivation endpoint binding for the
-    same local-array producer;
-  - bounded proof-source-to-endpoint effect scan results;
-  - precise unavailable statuses for missing endpoint, clobber, alias, unknown
-    effect, and coordinate confusion.
+  - comparable ordered effect-source records for the selected
+    proof-source-to-endpoint interval;
+  - fail-closed statuses for missing coordinates, unsupported ordering,
+    unmodeled effect families, clobber, alias, and unknown effect;
+  - bounded scan records that idea 497 can consume without synthetic
+    availability inputs.
 
 ## Non-Goals
 
-- Populating idea 489 proof facts directly.
-- Populating idea 486 checker inputs directly.
-- Idea 490 path/no-clobber certification beyond this lower prerequisite.
-- Idea 484 packaging.
-- Scalar local-load consumption.
-- RV64/MIR lowering.
+- Rebuilding the Step 3 endpoint bridge.
+- Publishing idea 494 available interval facts before the builder-backed scan
+  exists.
+- Populating idea 489 proof facts, idea 486 checker inputs, idea 490
+  certification, idea 484 packaging, scalar local-load consumption, or RV64/MIR
+  lowering.
 - Rewriting selected proof-edge path collection from idea 493.
-- Treating selected-path availability, final homes, target behavior, testcase
-  names, or synthetic bridge flags as proof.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline/log
   churn.
 
 ## Working Model
 
-Plan 494 now owns only a fail-closed interval status surface. This runbook owns
-the lower bridge from LIR producer coordinates into ordered prepared/BIR
-endpoint/effect evidence. If the bridge cannot be built truthfully, stop with
-the exact lower blocker rather than publishing available no-clobber facts.
+Idea 497 is parked because endpoint records and proof-source coordinates exist,
+but no production ordered effect-source stream builder exists. This runbook
+owns that lower builder. The builder must derive effect-source coverage from
+prepared/BIR sources and make every effect source comparable against the same
+proof-source-to-endpoint interval.
 
 ## Execution Rules
 
-- Step 1 is audit/classification unless the exact endpoint bridge is already
-  bounded.
-- Implementation packets must publish endpoint/effect evidence or precise
-  unavailable statuses only; they must not populate downstream proof facts,
-  checker inputs, packaging, scalar loads, or RV64 lowering.
+- Step 1 is audit/classification unless the exact prepared/BIR effect-source
+  surfaces are already bounded.
+- Implementation packets must build or route production ordered effect-source
+  population; do not accept externally supplied coverage as progress.
+- The classifier handoff must consume a valid builder-backed bounded scan
+  record without separately requiring the legacy `endpoint_bridge_available`
+  compatibility boolean.
 - Classification-only proof:
 
 ```sh
@@ -89,50 +94,38 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Producer-To-Endpoint Surfaces
+### Step 1: Audit Prepared/BIR Effect-Source Surfaces
 
-Inspect local-array producer rows, prepared/BIR address-derivation records,
-effect-stream ordering, and selected proof-source/path inputs. Completion
-means `todo.md` records whether a bounded endpoint bridge can be built or names
-the exact lower blocker.
-
-### Step 2: Define Endpoint Bridge And Effect Scan Contract
-
-Define the producer key, endpoint identity, interval boundary semantics,
-effect classes, no-clobber criterion, and fail-closed statuses. Completion
-means the contract can drive focused bridge and effect-scan tests without
-coordinate confusion.
-
-### Step 3: Implement Or Route Endpoint Bridge
-
-Implement the bounded producer-key-to-prepared/BIR endpoint bridge if Step 2
-identifies one. If current inputs cannot truthfully bind the endpoint, record
-the exact lower owner and stop without publishing available interval facts.
-
-### Step 4: Implement Real Bounded Effect Scan Or Classify Lower Blocker
-
-Consume the Step 3 `LocalArrayEndpointBridgeRecord` and build the real
-prepared/BIR proof-source-to-endpoint effect-source population before any
-available no-clobber result can be published. The scan builder must own the
-ordered interval inputs and effect-source records; caller-supplied coverage
-booleans, synthetic effect vectors, selected-path availability, or legacy
-bridge flags are not acceptable sources of availability.
-
-Cover assignments/redefinitions, memory accesses, phi/alias transfers,
+Inspect where assignments/redefinitions, memory accesses, phi/alias transfers,
 calls/helpers, inline asm, publications, move bundles, parallel copies, and
-unknown modeled effects in the selected interval. The interval classifier must
-consume a valid bounded scan record through the Step 3 bridge without also
-requiring the legacy `endpoint_bridge_available` compatibility boolean.
+unknown modeled effects are represented with comparable ordering. Completion
+means `todo.md` records the exact builder inputs or the precise lower blocker.
 
-If the prepared/BIR effect-source population cannot yet be built truthfully,
-do not publish available no-clobber facts. Record the exact lower blocker or
-owner, such as missing proof-source coordinates, missing ordered effect-source
-stream population, unsupported boundary ordering, or an unmodeled effect
-family. Completion means either a real builder-backed scan proves available
-or distinguishable fail-closed statuses for the lower blocker are recorded.
+### Step 2: Define Ordered Effect-Source Contract
 
-### Step 5: Residual Disposition And Handback Readiness
+Define effect-source identity, coordinate ordering, interval boundary
+semantics, required effect families, clobber/alias/unknown classifications, and
+fail-closed statuses. Completion means focused tests can distinguish real
+builder-backed availability from missing or unmodeled effect-source coverage.
 
-Re-probe bridged and fail-closed representatives and decide whether idea 494
-can resume available interval fact publication, or whether another lower
-endpoint/effect owner remains first.
+### Step 3: Implement Ordered Effect-Source Population
+
+Add the production builder that consumes endpoint bridge records, selected
+proof-edge records, and prepared/BIR effect sources to populate one comparable
+ordered stream for the selected interval. Completion means the builder records
+all in-scope effect families or fails closed with precise unavailable statuses.
+
+### Step 4: Wire Bounded Scan Consumption
+
+Route builder-backed ordered effect-source records into the bounded scan record
+and interval classifier. Remove any requirement that a valid builder-backed
+bounded scan also needs the legacy `endpoint_bridge_available` compatibility
+boolean to publish its result. Completion means synthetic coverage alone cannot
+produce availability, while a real clean builder-backed interval can.
+
+### Step 5: Residual Disposition And 497 Handback
+
+Re-probe clean, clobber, alias, unknown effect, missing-coordinate, and
+boundary-ordering representatives. Decide whether idea 497 can resume and
+consume the builder-backed bounded scan, or whether another lower owner remains
+first.
