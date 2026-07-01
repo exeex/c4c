@@ -1,6 +1,8 @@
 # RV64 Prepared Callee-Saved GPR Save-Slot Emission
 
-Source Parent: ideas/open/424_prepared_global_stack_frame_infrastructure_review.md
+Status: Closed
+Type: Implementation idea
+Source Parent: ideas/closed/424_prepared_global_stack_frame_infrastructure_review.md
 Handoff: docs/rv64_gcc_torture_post_contract/global_stack_frame_infrastructure_review.md
 Owning Layer: RV64 object emission
 
@@ -67,6 +69,43 @@ Known prepared facts from the handoff:
   FPR/F128, or otherwise unsupported save-slot facts.
 - Backend proof includes the focused coverage and an appropriate `^backend_`
   subset.
+
+## Completion Notes
+
+Closed on 2026-07-01 after Step 5 validation completed the prepared
+callee-saved GPR save-slot emission milestone.
+
+Completed coverage:
+
+- RV64 object emission validates explicit prepared callee-saved GPR save-slot
+  facts and emits prologue stores plus epilogue restores from prepared slot
+  authority.
+- Focused object-emission coverage proves coherent GPR save-slot instruction
+  emission and keeps unsupported non-GPR/FPR save slots fail-closed.
+- Ordinary-C runtime coverage proves a nontrivial callee-saved GPR live across
+  a call is preserved by the object route.
+- `src/20000603-1.c` advances past the old
+  `requires supported prepared callee-saved GPR save slots` diagnostic and now
+  fails closed on the out-of-scope `fpr:fs1` save-slot fact.
+
+Out-of-scope leftovers:
+
+- FPR, F128, vector, dynamic-stack, and broad fixed-frame work remain outside
+  this GPR save-slot idea and should be tracked as separate follow-up work if
+  selected.
+- The representative `src/20000603-1.c` row remains unsupported only because
+  it has an out-of-scope FPR save-slot requirement after the GPR failure was
+  repaired.
+
+Close proof:
+
+- Focused object-emission coverage passed with
+  `ctest --test-dir build --output-on-failure -R '^backend_riscv_object_emission$'`.
+- Focused runtime coverage passed with
+  `ctest --test-dir build --output-on-failure -R '^backend_obj_runtime_rv64_callee_saved_gpr_live_across_call$'`.
+- Existing canonical backend guard logs passed regression guard:
+  `test_before.log` had `331 passed, 0 failed`, and `test_after.log` had
+  `332 passed, 0 failed`.
 
 ## Reviewer Reject Signals
 
