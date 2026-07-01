@@ -1,6 +1,6 @@
 # RV64 Runtime Mismatch Triage
 
-Status: Open
+Status: Closed
 Type: Runtime correctness triage idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Owning Layer: RV64/MIR runtime behavior
@@ -42,6 +42,34 @@ be triaged before niche F128 feature work.
 - Rows with unclear ownership remain fail-closed for further triage rather than
   receiving speculative patches.
 - Default CTest remains stable.
+
+## Completion Notes
+
+Closed after the Step 1-5 triage runbook produced durable handoff artifacts:
+
+- `docs/rv64_gcc_torture_post_contract/runtime_mismatch_inventory.md`
+- `docs/rv64_gcc_torture_post_contract/runtime_mismatch_representatives.md`
+- `docs/rv64_gcc_torture_post_contract/runtime_first_wrong_edge.md`
+- `docs/rv64_gcc_torture_post_contract/runtime_mismatch_groups.md`
+
+The triage found 40 runtime mismatch rows in the freshest full-scan artifacts,
+reproduced representative rows, and recorded first-wrong-edge evidence for
+three live representatives. Two ordinary-C implementation routes were split
+into separate open follow-up ideas:
+
+- `ideas/open/443_rv64_prepared_value_operand_materialization.md`
+- `ideas/open/444_frame_slot_call_argument_publication.md`
+
+Unclear runtime rows remain parked rather than speculatively assigned: abort
+rows outside `src/pr38533.c`, segfault rows outside `src/20080506-2.c`, and
+the stale or nondeterministic `src/20000314-2.c` row. The inline-asm
+tied-output/result materialization group from `src/pr38533.c` is documented as
+implementation-ready but deferred as lower ordinary-C priority unless a later
+supervisor packet activates that route.
+
+Close-time default CTest stability was checked with c4c regression guard using
+matching default CTest before/after logs and non-decreasing pass count policy
+for this lifecycle/docs-only close.
 
 ## Reviewer Reject Signals
 
