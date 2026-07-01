@@ -5248,6 +5248,42 @@ prepare::PreparedBirModule make_prepared_out_of_ssa_phi_join_register_move_modul
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_out_of_ssa_edge_preservation_register_move_module() {
+  auto prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
+  const auto function_name = prepared.names.function_names.find("phi_join");
+  const auto predecessor_label = prepared.names.block_labels.find("pred");
+  const auto successor_label = prepared.names.block_labels.find("join");
+  const auto preservation_source_name = prepared.names.value_names.intern("%keep.src");
+  const auto preservation_destination_name =
+      prepared.names.value_names.intern("%keep.dst");
+
+  auto& locations = prepared.value_locations.functions.front();
+  locations.value_homes.push_back(
+      rv64_gpr_home(3, function_name, preservation_source_name, "t1", 6));
+  locations.value_homes.push_back(rv64_gpr_home(
+      4, function_name, preservation_destination_name, "s2", 18));
+  auto& moves = locations.move_bundles.front().moves;
+  moves.insert(moves.begin(),
+               prepare::PreparedMoveResolution{
+                   .from_value_id = 3,
+                   .to_value_id = 4,
+                   .destination_kind =
+                       prepare::PreparedMoveDestinationKind::Value,
+                   .destination_storage_kind =
+                       prepare::PreparedMoveStorageKind::Register,
+                   .destination_contiguous_width = 1,
+                   .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                   .authority_kind =
+                       prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                   .source_parallel_copy_predecessor_label = predecessor_label,
+                   .source_parallel_copy_successor_label = successor_label,
+                   .reason =
+                       "edge_consumer_preservation_register_to_register",
+               });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_small_integer_ordinary_select_module(
     bir::TypeKind result_type) {
   prepare::PreparedBirModule prepared;
@@ -10956,6 +10992,79 @@ int builds_prepared_out_of_ssa_phi_join_register_move_object() {
   return 0;
 }
 
+int builds_prepared_out_of_ssa_edge_preservation_register_move_object() {
+  const auto prepared =
+      make_prepared_out_of_ssa_edge_preservation_register_move_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    return fail("expected prepared out-of-SSA edge-preservation register move RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "phi_join");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared edge-preservation object to publish text/function");
+  }
+  if (text->bytes.size() < 12 || text->size_bytes != text->bytes.size() ||
+      function->value != 0 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared edge-preservation object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00030913 ||
+      read_u32(text->bytes, 4) != 0x00028493) {
+    return fail("expected prepared move order mv s2, t1 then mv s1, t0");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared edge-preservation register object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_out_of_ssa_edge_preservation_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  auto prepared =
+      make_prepared_out_of_ssa_edge_preservation_register_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .source_parallel_copy_step_index = std::size_t{0};
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_edge_preservation_register_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_edge_preservation_register_move_module();
+  prepared.value_locations.functions[0].move_bundles[0].moves[0].reason =
+      "edge_consumer_preservation_register_to_stack";
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_edge_preservation_register_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .source_parallel_copy_predecessor_label =
+      prepared.names.block_labels.intern("wrong.pred");
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int rejects_prepared_out_of_ssa_phi_join_register_move_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
@@ -15345,6 +15454,8 @@ int main() {
   status |= rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes();
   status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
   status |= builds_prepared_out_of_ssa_phi_join_register_move_object();
+  status |= builds_prepared_out_of_ssa_edge_preservation_register_move_object();
+  status |= rejects_prepared_out_of_ssa_edge_preservation_fail_closed_shapes();
   status |= rejects_prepared_out_of_ssa_phi_join_register_move_fail_closed_shapes();
   status |= reports_prepared_move_bundle_coordinate_diagnostic();
   status |= builds_prepared_scalar_compare_trunc_object();

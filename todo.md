@@ -1,56 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/502_rv64_out_of_ssa_parallel_copy_move_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Materialize Phi Join Register Moves
+Current Step ID: 3
+Current Step Title: Materialize Edge Consumer Preservation Moves
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 implemented RV64 materialization for the first coherent out-of-SSA
-predecessor-terminator packet: step-indexed
-`phi_join_register_to_register` register moves.
+Step 3 implemented the bounded RV64 materialization slice for coherent
+predecessor-terminator
+`edge_consumer_preservation_register_to_register` moves.
 
 Implementation and evidence:
 
-- `src/backend/mir/riscv/codegen/object_emission.cpp` now threads the matched
-  `PreparedParallelCopyBundle` from prepared-object classification into move
-  bundle fragment construction.
-- A dedicated out-of-SSA branch emits only matched `PreTerminatorCopies` with
-  phase `BlockEntry`, authority `OutOfSsaParallelCopy`, execution site
-  `PredecessorTerminator`, reason `phi_join_register_to_register`,
-  destination storage `Register`, op kind `Move`, present matching
-  `source_parallel_copy_step_index`, and a plain non-cycle
-  `PreparedParallelCopyStepKind::Move`.
-- The branch resolves source and destination through prepared value homes and
-  emits in `PreparedParallelCopyBundle::steps` order.
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp` covers the
-  accepted `mv s1, t0` case and fail-closed adjacent shapes for
-  edge-consumer preservation, stack destination, missing step index,
-  save-destination-temp, cycle-temp source, and successor-entry execution.
-- `build/agent_state/502_step2_phi_join_register_moves/summary.md` records the
-  implemented contract and proof.
-
-Select-publication parallel-copy routes were preserved: the new branch claims
-only the step-indexed phi/edge-preservation family and lets existing
-select-publication handling keep its prior specialized path.
+- `src/backend/mir/riscv/codegen/object_emission.cpp` now accepts unindexed
+  register-to-register edge-consumer preservation moves in the matched
+  out-of-SSA parallel-copy branch.
+- The ordering policy is explicit: traverse `PreparedMoveBundle::moves` in
+  producer-published order, emit unindexed preservation moves where they
+  appear, and require each step-indexed `phi_join_register_to_register` move to
+  consume the next `PreparedParallelCopyBundle::steps` entry. Every
+  parallel-copy step must be consumed by the end of the move bundle.
+- Accepted preservation moves require event kind `PreTerminatorCopies`, phase
+  `BlockEntry`, authority `OutOfSsaParallelCopy`, matched
+  `PredecessorTerminator` bundle, move reason
+  `edge_consumer_preservation_register_to_register`, destination storage
+  `Register`, op kind `Move`, no step index, matching prepared edge labels,
+  and GPR source/destination homes.
+- Step 2 phi materialization remains covered and unchanged.
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp` covers a
+  preservation-before-phi sequence plus fail-closed preservation cases for
+  unexpected step index, stack destination, stack-preservation reason, and edge
+  coordinate confusion.
+- `build/agent_state/502_step3_edge_preservation_register_moves/summary.md`
+  records the implemented contract, ordering policy, and proof.
 
 ## Suggested Next
 
-Execute Step 3 as a separate packet for edge-consumer preservation register
-moves only. That packet should define and implement the ordering/interleaving
-policy for `edge_consumer_preservation_register_to_register` moves, which carry
-out-of-SSA authority and edge labels but intentionally do not carry
-`source_parallel_copy_step_index`.
+Execute the remaining idea 502 implementation packet for
+`edge_consumer_preservation_register_to_stack` only. That packet should define
+a stack-destination preservation policy using prepared homes/stack layout and
+must keep the existing Step 2/Step 3 register behavior intact.
 
 ## Watchouts
 
-- Do not widen Step 3 into stack-destination preservation; the 3
-  `edge_consumer_preservation_register_to_stack` rows still need a separate
-  stack policy.
-- Do not infer ordering from raw block order, source shape, filenames, labels,
-  target output, or final homes. Consume prepared bundle/move authority.
+- Do not infer preservation ordering from raw block order, source shape,
+  filenames, labels, final homes, or target output; consume prepared
+  move-bundle order plus parallel-copy steps.
 - Keep critical-edge, successor-entry, save-destination-temp, cycle-temp,
   before-instruction, before-return, select-publication, producer repairs,
   expectation rewrites, unsupported marker changes, pass/fail accounting, and
@@ -60,7 +57,7 @@ out-of-SSA authority and edge labels but intentionally do not carry
 
 ## Proof
 
-Step 2 proof:
+Step 3 proof:
 
 ```sh
 cmake --build build -j2 > test_after.log 2>&1 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' >> test_after.log 2>&1 && git diff --check >> test_after.log 2>&1

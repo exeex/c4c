@@ -2012,7 +2012,7 @@ bool prepared_move_bundle_is_out_of_ssa_phi_join_register_packet_family(
 }
 
 std::optional<RiscvEncodedFragment>
-fragment_for_prepared_out_of_ssa_phi_join_register_moves(
+fragment_for_prepared_out_of_ssa_register_moves(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     prepare::PreparedObjectTraversalEventKind event_kind,
     const c4c::backend::prepare::PreparedParallelCopyBundle& parallel_copy_bundle,
@@ -2030,35 +2030,53 @@ fragment_for_prepared_out_of_ssa_phi_join_register_moves(
   }
 
   RiscvEncodedFragment fragment;
-  for (std::size_t step_index = 0;
-       step_index < parallel_copy_bundle.steps.size();
-       ++step_index) {
-    const auto& step = parallel_copy_bundle.steps[step_index];
-    if (step.kind != prepare::PreparedParallelCopyStepKind::Move ||
-        step.uses_cycle_temp_source) {
+  std::size_t next_step_index = 0;
+  for (const auto& move : move_bundle.moves) {
+    const bool phi_join_move =
+        move.reason == "phi_join_register_to_register";
+    const bool preservation_move =
+        move.reason == "edge_consumer_preservation_register_to_register";
+    if (!phi_join_move && !preservation_move) {
       return std::nullopt;
     }
-
-    const auto* move = prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(
-        move_bundle, step_index);
-    if (move == nullptr ||
-        move->op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-        move->reason != "phi_join_register_to_register" ||
-        move->destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-        move->destination_storage_kind !=
+    if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+        move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+        move.destination_storage_kind !=
             prepare::PreparedMoveStorageKind::Register ||
-        move->destination_contiguous_width != 1 ||
-        move->destination_occupied_register_names.size() > 1 ||
-        move->destination_stack_offset_bytes.has_value() ||
-        move->source_immediate_i32.has_value() ||
-        move->uses_cycle_temp_source ||
-        move->source_parallel_copy_step_index != step_index) {
+        move.destination_contiguous_width != 1 ||
+        move.destination_occupied_register_names.size() > 1 ||
+        move.destination_stack_offset_bytes.has_value() ||
+        move.source_immediate_i32.has_value() ||
+        move.uses_cycle_temp_source ||
+        move.authority_kind !=
+            prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+        move.source_parallel_copy_predecessor_label !=
+            parallel_copy_bundle.predecessor_label ||
+        move.source_parallel_copy_successor_label !=
+            parallel_copy_bundle.successor_label) {
       return std::nullopt;
     }
 
-    const auto* source_home = prepared_value_home_for_id(lookups, move->from_value_id);
+    if (phi_join_move) {
+      if (!move.source_parallel_copy_step_index.has_value() ||
+          *move.source_parallel_copy_step_index != next_step_index ||
+          next_step_index >= parallel_copy_bundle.steps.size()) {
+        return std::nullopt;
+      }
+      const auto& step = parallel_copy_bundle.steps[next_step_index];
+      if (step.kind != prepare::PreparedParallelCopyStepKind::Move ||
+          step.uses_cycle_temp_source) {
+        return std::nullopt;
+      }
+      ++next_step_index;
+    } else if (move.source_parallel_copy_step_index.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto* source_home =
+        prepared_value_home_for_id(lookups, move.from_value_id);
     const auto* destination_home =
-        prepared_value_home_for_id(lookups, move->to_value_id);
+        prepared_value_home_for_id(lookups, move.to_value_id);
     if (source_home == nullptr || destination_home == nullptr) {
       return std::nullopt;
     }
@@ -2068,6 +2086,9 @@ fragment_for_prepared_out_of_ssa_phi_join_register_moves(
       return std::nullopt;
     }
     append_rv64_move(fragment, *destination, *source);
+  }
+  if (next_step_index != parallel_copy_bundle.steps.size()) {
+    return std::nullopt;
   }
   return fragment;
 }
@@ -2112,7 +2133,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
   if (parallel_copy_bundle != nullptr) {
     if (prepared_move_bundle_is_out_of_ssa_phi_join_register_packet_family(
             move_bundle)) {
-      return fragment_for_prepared_out_of_ssa_phi_join_register_moves(
+      return fragment_for_prepared_out_of_ssa_register_moves(
           lookups, event_kind, *parallel_copy_bundle, move_bundle);
     }
   }
