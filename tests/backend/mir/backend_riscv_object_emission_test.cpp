@@ -4946,6 +4946,26 @@ make_prepared_before_instruction_register_to_stack_move_bundle_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule
+make_prepared_before_instruction_stack_to_stack_move_bundle_module() {
+  auto prepared = make_prepared_before_instruction_register_to_stack_move_bundle_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto lhs_name = prepared.names.value_names.find("%lhs");
+
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{13},
+      .function_name = function_name,
+      .offset_bytes = 8,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  auto& locations = prepared.value_locations.functions.front();
+  locations.value_homes[0] = rv64_stack_slot_home(
+      1, function_name, lhs_name, prepare::PreparedFrameSlotId{13}, 8);
+  locations.move_bundles[0].moves[0].reason = "consumer_stack_to_stack";
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_scalar_ashr_module(
     bir::TypeKind type,
     bool immediate_shift) {
@@ -10679,6 +10699,82 @@ int rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes() {
   return 0;
 }
 
+int builds_prepared_stack_to_stack_before_instruction_move_bundle_object() {
+  const auto prepared =
+      make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    return fail("expected prepared stack-to-stack move-bundle RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "main");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared stack-to-stack move object to publish text/main");
+  }
+  if (text->bytes.size() < 12 || text->size_bytes != text->bytes.size() ||
+      function->value != 0 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared stack-to-stack move object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xfe010113 ||
+      read_u32(text->bytes, 4) != 0x00812303 ||
+      read_u32(text->bytes, 8) != 0x00612823) {
+    return fail("expected lw t1, 8(sp); sw t1, 16(sp) before prepared compare instruction");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared stack-to-stack move object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  auto prepared =
+      make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  prepared.value_locations.functions[0].value_homes[0].slot_id = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  prepared.value_locations.functions[0].value_homes[0].size_bytes =
+      std::size_t{2};
+  prepared.stack_layout.frame_slots.back().size_bytes = 2;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto t1_name = prepared.names.value_names.intern("%scratch.t1");
+  const auto t2_name = prepared.names.value_names.intern("%scratch.t2");
+  const auto t3_name = prepared.names.value_names.intern("%scratch.t3");
+  auto& homes = prepared.value_locations.functions[0].value_homes;
+  homes.push_back(rv64_gpr_home(4, function_name, t1_name, "t1", 6));
+  homes.push_back(rv64_gpr_home(5, function_name, t2_name, "t2", 7));
+  homes.push_back(rv64_gpr_home(6, function_name, t3_name, "t3", 28));
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared =
+      make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  prepared.value_locations.functions[0].move_bundles[0].moves[0].reason =
+      "consumer_register_to_stack";
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
@@ -15076,6 +15172,8 @@ int main() {
   status |= builds_prepared_stack_slot_to_gpr_move_bundle_object();
   status |= builds_prepared_register_to_stack_before_instruction_move_bundle_object();
   status |= rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes();
+  status |= builds_prepared_stack_to_stack_before_instruction_move_bundle_object();
+  status |= rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes();
   status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
   status |= reports_prepared_move_bundle_coordinate_diagnostic();
   status |= builds_prepared_scalar_compare_trunc_object();

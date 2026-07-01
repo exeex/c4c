@@ -1180,6 +1180,32 @@ std::uint32_t rv64_temporary_gpr_avoiding(std::uint32_t reserved_register) {
   return reserved_register == t1 ? t2 : t1;
 }
 
+std::optional<std::uint32_t> rv64_unoccupied_temporary_gpr(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  if (lookups == nullptr) {
+    return std::nullopt;
+  }
+  constexpr std::array<std::uint32_t, 3> candidates = {6, 7, 28};  // t1, t2, t3
+  for (const auto candidate : candidates) {
+    bool occupied = false;
+    for (const auto& home_entry : lookups->value_homes.homes_by_id) {
+      const auto* home = home_entry.second;
+      if (home == nullptr) {
+        continue;
+      }
+      const auto home_register = gpr_register_number_for_home(*home);
+      if (home_register.has_value() && *home_register == candidate) {
+        occupied = true;
+        break;
+      }
+    }
+    if (!occupied) {
+      return candidate;
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type);
 
@@ -2013,7 +2039,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
       if (move_bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
           move_bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
           move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-          move.reason != "consumer_register_to_stack" ||
+          (move.reason != "consumer_register_to_stack" &&
+           move.reason != "consumer_stack_to_stack") ||
           move.source_immediate_i32.has_value()) {
         return std::nullopt;
       }
@@ -2025,21 +2052,51 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
       if (source_home == nullptr || destination_home == nullptr) {
         return std::nullopt;
       }
-      const auto source = gpr_register_number_for_home(*source_home);
-      const auto type = prepared_bir_value_type_for_name(
+      const auto destination_type = prepared_bir_value_type_for_name(
           names, function, destination_home->value_name);
-      if (!source.has_value() || !type.has_value()) {
+      if (!destination_type.has_value()) {
         return std::nullopt;
       }
-      const auto size_bytes = rv64_scalar_memory_size_for_type(*type);
-      if (!size_bytes.has_value()) {
+      const auto destination_size_bytes =
+          rv64_scalar_memory_size_for_type(*destination_type);
+      if (!destination_size_bytes.has_value()) {
         return std::nullopt;
       }
       const auto stack_offset = prepared_stack_slot_home_offset(
-          stack_layout, *destination_home, stack_frame_bytes, *size_bytes);
-      if (!stack_offset.has_value() ||
-          !append_rv64_store_register_to_stack(
-              fragment, *source, *stack_offset, *size_bytes)) {
+          stack_layout,
+          *destination_home,
+          stack_frame_bytes,
+          *destination_size_bytes);
+      if (!stack_offset.has_value()) {
+        return std::nullopt;
+      }
+      if (move.reason == "consumer_register_to_stack") {
+        const auto source = gpr_register_number_for_home(*source_home);
+        if (!source.has_value() ||
+            !append_rv64_store_register_to_stack(fragment,
+                                                *source,
+                                                *stack_offset,
+                                                *destination_size_bytes)) {
+          return std::nullopt;
+        }
+        continue;
+      }
+
+      const auto source_stack_offset = prepared_stack_slot_home_offset(
+          stack_layout,
+          *source_home,
+          stack_frame_bytes,
+          *destination_size_bytes);
+      const auto scratch = rv64_unoccupied_temporary_gpr(lookups);
+      if (!source_stack_offset.has_value() || !scratch.has_value() ||
+          !append_rv64_load_stack_to_register(fragment,
+                                             *scratch,
+                                             *source_stack_offset,
+                                             *destination_size_bytes) ||
+          !append_rv64_store_register_to_stack(fragment,
+                                              *scratch,
+                                              *stack_offset,
+                                              *destination_size_bytes)) {
         return std::nullopt;
       }
       continue;
