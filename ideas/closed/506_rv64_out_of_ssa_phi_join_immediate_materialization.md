@@ -1,6 +1,6 @@
 # RV64 Out-Of-SSA Phi Join Immediate Materialization
 
-Status: Open
+Status: Closed
 Type: Focused RV64 materialization idea
 Parent: `ideas/closed/504_select_publication_move_bundle_evidence_authority.md`
 Source Evidence:
@@ -8,6 +8,16 @@ Source Evidence:
 - `build/agent_state/504_step3_select_publication_consumer_classification/rows.tsv`
 - `build/agent_state/504_step3_select_publication_consumer_classification/classification_counts.tsv`
 Owning Layer: RV64 object lowering for coherent generic out-of-SSA immediate moves
+
+## Closure Note
+
+Closed after the active runbook classified the only matching generic row,
+implemented semantic RV64 materialization for explicit out-of-SSA
+parallel-copy immediate-to-register joins, added focused source-authority
+coverage, and preserved fail-closed behavior for unsupported or ambiguous
+families. Close-time backend regression guard passed with 328/328 tests; the
+broader supervisor validation had only the known unrelated
+`string_authority_guard` baseline failure.
 
 ## Goal
 
