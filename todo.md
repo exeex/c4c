@@ -1,52 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/509_rv64_fixed_prepared_stack_frame_emission.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Implement Fixed-Slot Addressing
+Current Step ID: 5
+Current Step Title: Add Ordinary-C Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 of `plan.md` implemented prepared fixed-slot addressing for RV64 object
-emission.
+Step 5 of `plan.md` added focused ordinary-C backend coverage for the repaired
+RV64 large fixed-frame and fixed-slot addressing route.
 
 Changed files:
-- `src/backend/mir/riscv/codegen/object_emission.cpp`
-- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `tests/backend/case/riscv64_large_fixed_frame_slot_access.c`
+- `tests/backend/CMakeLists.txt`
 - `todo.md`
 
-Implementation boundary:
-- Prepared stack-slot value homes now have a fact-returning `size_t` offset
-  path alongside the existing signed-12-bit helper. Code-emitting consumers
-  that can use large prepared fixed-slot offsets call the fact path and then
-  materialize above the low-level encoders.
-- Prepared direct frame-slot memory accesses now validate slot offset, width,
-  alignment, extent, frame bounds, and published function membership when both
-  sides publish valid function names. Legacy slots with invalid function names
-  keep their prior compatibility.
-- Large fixed-slot GPR loads, GPR stores, FPR local loads/stores, scalar value
-  homes, selected stack-result homes, binary/cast/select stack publications,
-  global-load stack publications, and formal/home move paths now use
-  materialized stack-offset address helpers when the prepared offset exceeds
-  signed 12-bit range.
-- Frame-slot address materialization now uses the prepared materialization fact
-  and emits `addi rd, sp, off` for small offsets or materializes the absolute
-  stack offset and adds `sp` for large offsets.
-- Low-level stack load/store/FPR encoders still require signed 12-bit
-  immediates; no impossible immediate encoding was admitted.
-- Dynamic stack, frame-pointer fixed slots, missing/incoherent facts,
-  unsupported widths/alignments, F128/vector, and broad non-goal saved-register
-  support remain fail-closed.
-
-Covered slot/addressing shapes:
-- Added `builds_prepared_large_fixed_slot_addressing_object`, a generic
-  8192-byte fixed-frame fixture that covers a large-offset frame-slot address
-  materialization, a large-offset pointer store, a large-offset scalar store,
-  and a large-offset scalar load without using the gcc torture row or its
-  constants.
-- Existing small fixed-slot local, FPR local, subobject, call, move-bundle, and
-  publication tests remain green under the new helper boundary.
+Coverage rationale:
+- Added `backend_obj_runtime_rv64_large_fixed_frame_slot_access`, an ordinary-C
+  RV64 object-route runtime test over a 1501-element fixed local array.
+- The case writes and reads near, far, and tail fixed slots, forcing a fixed
+  frame larger than signed-12-bit stack offsets and requiring prepared fixed
+  slot facts for large-offset accesses.
+- The case is independent from `src/20030209-1.c`; it does not use the
+  representative's `80000` frame, `10000` slots, raw slot numbers, function
+  names, or source shape as the proof.
+- No expectations, unsupported markers, allowlists, runtime accounting, scan
+  accounting, or compiler code were changed.
 
 Representative status:
 - `tests/c/external/gcc_torture/src/20030209-1.c` advances past the old
@@ -55,13 +35,13 @@ Representative status:
   `unsupported_stack_frame: RV64 object route does not support non-GPR prepared
   callee-saved register save slots (fpr:fs1)`.
 - Representative artifact:
-  `build/agent_state/509_step4_fixed_slot_addressing/representative_20030209-1.log`.
+  `build/agent_state/509_step5_ordinary_c_coverage/representative_20030209-1.log`.
 
 ## Suggested Next
 
-Execute Step 5: add ordinary-C coverage for the repaired large fixed-frame and
-fixed-slot addressing route. Keep it independent from `src/20030209-1.c` and
-avoid encoding the representative constants or source shape as the proof.
+Execute Step 6: validate the completed slice, confirm no route drift or
+expectation downgrade was used, and prepare closure or a follow-up split for the
+remaining non-goal saved-register/FPR boundary.
 
 ## Watchouts
 
@@ -78,6 +58,9 @@ avoid encoding the representative constants or source shape as the proof.
 - Do not infer frame size, stack offsets, slot widths, slot alignments, or
   ordinary-C coverage shape from `src/20030209-1.c`, `80000`, `10000`, source
   layout, or raw slot counts.
+- A pointer-local variant of the new ordinary-C case reached the existing
+  prepared callee-saved GPR save-slot boundary before fixed-slot proof; it was
+  not kept because Step 5 must not expand saved-register support.
 - Low-level load/store immediate encoders remain signed-12-bit only; future
   large-offset support should continue to materialize addresses above them.
 - Call-frame RA save/restore now has large-offset materialization for the
@@ -86,15 +69,18 @@ avoid encoding the representative constants or source shape as the proof.
 
 ## Proof
 
-- `scripts/plan_review_state.py set-step --step-id 4 --step-title 'Implement Fixed-Slot Addressing'`
+- `scripts/plan_review_state.py set-step --step-id 5 --step-title 'Add Ordinary-C Coverage'`
 - `cmake --build build --target c4cll`
-- `cmake --build build --target backend_riscv_object_emission_test`
-- `ctest --test-dir build --output-on-failure -R '^backend_riscv_object_emission$'`
+- `ctest --test-dir build --output-on-failure -R '^backend_obj_runtime_rv64_large_fixed_frame_slot_access$'`
+  passed.
 - Focused representative probe through
   `tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake` for
   `tests/c/external/gcc_torture/src/20030209-1.c`; expected non-goal
   `fpr:fs1` diagnostic recorded at
-  `build/agent_state/509_step4_fixed_slot_addressing/representative_20030209-1.log`.
+  `build/agent_state/509_step5_ordinary_c_coverage/representative_20030209-1.log`.
 - `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
-  passed: 332/332 tests.
-- `git diff --check -- src/backend/mir/riscv/codegen/object_emission.cpp tests/backend/mir/backend_riscv_object_emission_test.cpp todo.md`
+  passed: 333/333 tests.
+- `git diff --check -- tests/backend/CMakeLists.txt todo.md`
+- `git diff --check --no-index /dev/null tests/backend/case/riscv64_large_fixed_frame_slot_access.c`
+  returned only the expected no-index difference status with no whitespace
+  diagnostics.

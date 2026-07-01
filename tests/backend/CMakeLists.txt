@@ -1600,6 +1600,13 @@ c4c_add_backend_rv64_object_runtime_case(
   EXPECTED_RUN_CODE 7
   LABELS prepared_call_boundary frame_slot pointer call scan
 )
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_large_fixed_frame_slot_access
+  SRC "${BACKEND_CASE_ROOT}/riscv64_large_fixed_frame_slot_access.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 0
+  LABELS prepared_fixed_frame frame_slot large_stack object scan
+)
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_external_strlen_runtime_link_policy
   SRC "${BACKEND_CASE_ROOT}/riscv64_external_strlen_runtime_link.c"
