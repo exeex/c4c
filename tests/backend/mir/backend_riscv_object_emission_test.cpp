@@ -3895,6 +3895,7 @@ prepare::PreparedBirModule make_prepared_direct_global_return_authority_module()
                   .destination_register_name = std::string{"a0"},
                   .destination_contiguous_width = 1,
                   .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .reason = "return_stack_to_register",
                   .destination_register_placement =
                       prepare::PreparedRegisterPlacement{
                           .bank = prepare::PreparedRegisterBank::Gpr,
@@ -5155,6 +5156,92 @@ prepare::PreparedBirModule make_prepared_stack_slot_to_gpr_move_bundle_module() 
                       prepare::PreparedMoveStorageKind::Register,
                   .destination_contiguous_width = 1,
                   .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              }},
+          }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule
+make_prepared_before_return_stack_to_register_abi_move_module(
+    bir::TypeKind return_type = bir::TypeKind::I16,
+    std::size_t return_size = 2) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("stack_return_move");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto source_name = prepared.names.value_names.intern("%ret");
+
+  bir::Block entry{
+      .label = "entry",
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+  entry.terminator.value = bir::Value::named(return_type, "%ret");
+  prepared.module.functions.push_back(bir::Function{
+      .name = "stack_return_move",
+      .return_type = return_type,
+      .return_size_bytes = return_size,
+      .return_align_bytes = return_size,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout.frame_size_bytes = 16;
+  prepared.stack_layout.frame_alignment_bytes = 8;
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{6},
+          .function_name = function_name,
+          .offset_bytes = 8,
+          .size_bytes = return_size,
+          .align_bytes = return_size,
+      },
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_sized_stack_slot_home(1,
+                                         function_name,
+                                         source_name,
+                                         prepare::PreparedFrameSlotId{6},
+                                         8,
+                                         return_size),
+          },
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeReturn,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+              .block_index = 0,
+              .instruction_index = 0,
+              .moves = {prepare::PreparedMoveResolution{
+                  .from_value_id = 1,
+                  .to_value_id = 1,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"a0"},
+                  .destination_contiguous_width = 1,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .reason = "return_stack_to_register",
+                  .destination_register_placement =
+                      prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                          .slot_index = 0,
+                          .contiguous_width = 1,
+                      },
               }},
           }},
   });
@@ -10773,6 +10860,186 @@ int builds_prepared_stack_slot_to_gpr_move_bundle_object() {
   return 0;
 }
 
+int builds_prepared_before_return_stack_to_register_abi_move_object() {
+  const auto prepared =
+      make_prepared_before_return_stack_to_register_abi_move_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared before-return stack-to-GPR ABI move object to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "stack_return_move");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared stack-to-return-register object to publish text/function");
+  }
+  if (text->bytes.size() != 16 || text->size_bytes != 16 ||
+      function->value != 0 || function->size_bytes != 16 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared stack-to-return-register text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00811503 ||
+      read_u32(text->bytes, 8) != 0x01010113 ||
+      read_u32(text->bytes, 12) != 0x00008067) {
+    return fail("expected lh a0, 8(sp) before stack-frame epilogue and ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared stack-to-return-register object to need no relocations");
+  }
+  return 0;
+}
+
+int keeps_generic_return_load_for_mismatched_before_return_stack_move() {
+  auto prepared = make_prepared_before_return_stack_to_register_abi_move_module(
+      bir::TypeKind::I32, 4);
+  const auto function_name =
+      prepared.names.function_names.intern("stack_return_move");
+  const auto other_name = prepared.names.value_names.intern("%other");
+  const auto base_name = prepared.names.value_names.intern("%base");
+
+  prepared.module.functions[0].blocks[0].insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%ret"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%base"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  prepared.module.functions[0].blocks[0].terminator.value =
+      bir::Value::named(bir::TypeKind::I32, "%other");
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{7},
+      .function_name = function_name,
+      .offset_bytes = 12,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.value_locations.functions[0].value_homes.push_back(
+      rv64_sized_stack_slot_home(2,
+                                 function_name,
+                                 other_name,
+                                 prepare::PreparedFrameSlotId{7},
+                                 12,
+                                 4));
+  prepared.value_locations.functions[0].value_homes.push_back(
+      rv64_gpr_home(3, function_name, base_name, "t0", 5));
+
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected mismatched before-return stack move to build safely, got `" +
+                result.diagnostic + "`");
+  }
+  const auto& module = *result.module;
+  const auto* text = object::find_section(module, ".text");
+  const auto* function = object::find_symbol(module, "stack_return_move");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected mismatched stack return object to publish text/function");
+  }
+  if (text->bytes.size() != 28 || text->size_bytes != 28 ||
+      function->value != 0 || function->size_bytes != 28 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected mismatched stack return to keep generic return load");
+  }
+  if (read_u32(text->bytes, 0) != 0xff010113 ||
+      read_u32(text->bytes, 4) != 0x00028f13 ||
+      read_u32(text->bytes, 8) != 0x01e12423 ||
+      read_u32(text->bytes, 12) != 0x00812503 ||
+      read_u32(text->bytes, 16) != 0x00c12503 ||
+      read_u32(text->bytes, 20) != 0x01010113 ||
+      read_u32(text->bytes, 24) != 0x00008067) {
+    return fail("expected prepared move load followed by generic %other return load");
+  }
+  if (!module.relocations.empty()) {
+    return fail("expected mismatched stack return object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_before_return_stack_to_register_abi_move_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  auto prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].value_homes.clear();
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("missing source home shape should reject");
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  const auto function_name = prepared.names.function_names.intern("stack_return_move");
+  const auto source_name = prepared.names.value_names.intern("%ret");
+  prepared.value_locations.functions[0].value_homes[0] =
+      rv64_gpr_home(1, function_name, source_name, "t0", 5);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("non-stack source shape should reject");
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_register_name = std::string{"fa0"};
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_register_placement->bank = prepare::PreparedRegisterBank::Fpr;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("non-GPR destination bank shape should reject");
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_register_name = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("missing destination register shape should reject");
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module(
+      bir::TypeKind::F128, 16);
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("unsupported source size shape should reject");
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .destination_kind = prepare::PreparedMoveDestinationKind::Value;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("destination kind confusion shape should reject");
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0].phase =
+      prepare::PreparedMovePhase::BeforeInstruction;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("before-instruction phase shape should reject");
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0].authority_kind =
+      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("out-of-SSA authority shape should reject");
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .source_immediate_i32 = 1;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("immediate source shape should reject");
+  }
+
+  prepared = make_prepared_before_return_stack_to_register_abi_move_module();
+  prepared.value_locations.functions[0].move_bundles[0]
+      .moves[0]
+      .source_parallel_copy_step_index = 0;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("parallel-copy step source shape should reject");
+  }
+
+  return 0;
+}
+
 int builds_prepared_register_to_stack_before_instruction_move_bundle_object() {
   const auto prepared =
       make_prepared_before_instruction_register_to_stack_move_bundle_module();
@@ -15559,6 +15826,9 @@ int main() {
   status |= rejects_prepared_pointer_value_scalar_local_fail_closed_shapes();
   status |= builds_prepared_stack_slot_scalar_flow_object();
   status |= builds_prepared_stack_slot_to_gpr_move_bundle_object();
+  status |= builds_prepared_before_return_stack_to_register_abi_move_object();
+  status |= keeps_generic_return_load_for_mismatched_before_return_stack_move();
+  status |= rejects_prepared_before_return_stack_to_register_abi_move_fail_closed_shapes();
   status |= builds_prepared_register_to_stack_before_instruction_move_bundle_object();
   status |= rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes();
   status |= builds_prepared_stack_to_stack_before_instruction_move_bundle_object();

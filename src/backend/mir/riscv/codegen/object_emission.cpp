@@ -2132,6 +2132,99 @@ fragment_for_prepared_out_of_ssa_moves(
   return fragment;
 }
 
+struct PreparedBeforeReturnStackToRegisterKey {
+  std::size_t block_index = 0;
+  prepare::PreparedValueId value_id = 0;
+
+  bool operator==(const PreparedBeforeReturnStackToRegisterKey& other) const {
+    return block_index == other.block_index && value_id == other.value_id;
+  }
+};
+
+struct PreparedBeforeReturnStackToRegisterKeyHash {
+  std::size_t operator()(
+      const PreparedBeforeReturnStackToRegisterKey& key) const {
+    return (std::hash<std::size_t>{}(key.block_index) << 1) ^
+           std::hash<prepare::PreparedValueId>{}(key.value_id);
+  }
+};
+
+bool prepared_move_is_before_return_stack_to_register_abi_move(
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move) {
+  return move_bundle.phase == prepare::PreparedMovePhase::BeforeReturn &&
+         move_bundle.authority_kind == prepare::PreparedMoveAuthorityKind::None &&
+         move.destination_kind ==
+             prepare::PreparedMoveDestinationKind::FunctionReturnAbi &&
+         move.destination_storage_kind ==
+             prepare::PreparedMoveStorageKind::Register &&
+         move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+         move.reason == "return_stack_to_register" &&
+         !move.source_parallel_copy_step_index.has_value() &&
+         !move.source_immediate_i32.has_value() &&
+         !move.uses_cycle_temp_source &&
+         !move.destination_stack_offset_bytes.has_value() &&
+         move.destination_contiguous_width == 1 &&
+         move.destination_occupied_register_names.size() <= 1 &&
+         move.destination_register_name.has_value() &&
+         move.destination_register_placement.has_value() &&
+         move.destination_register_placement->bank ==
+             prepare::PreparedRegisterBank::Gpr &&
+         move.destination_register_placement->pool ==
+             prepare::PreparedRegisterSlotPool::CallResult &&
+         move.destination_register_placement->slot_index == 0 &&
+         move.destination_register_placement->contiguous_width == 1;
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_before_return_stack_to_register_abi_move(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    std::size_t stack_frame_bytes,
+    prepare::PreparedObjectTraversalEventKind event_kind,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
+  if (event_kind != prepare::PreparedObjectTraversalEventKind::PreTerminatorCopies ||
+      move_bundle.moves.size() != 1) {
+    return std::nullopt;
+  }
+  const auto& move = move_bundle.moves.front();
+  if (!prepared_move_is_before_return_stack_to_register_abi_move(move_bundle,
+                                                                  move)) {
+    return std::nullopt;
+  }
+  const auto* source_home = prepared_value_home_for_id(lookups, move.from_value_id);
+  if (source_home == nullptr ||
+      source_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+  const auto source_type =
+      prepared_bir_value_type_for_name(names, function, source_home->value_name);
+  if (!source_type.has_value() ||
+      *source_type == c4c::backend::bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+  const auto size_bytes = rv64_scalar_memory_size_for_type(*source_type);
+  const auto destination = rv64_register_number(*move.destination_register_name);
+  if (!size_bytes.has_value() || !destination.has_value()) {
+    return std::nullopt;
+  }
+  const auto stack_offset = prepared_stack_slot_home_offset(stack_layout,
+                                                           *source_home,
+                                                           stack_frame_bytes,
+                                                           *size_bytes);
+  RiscvEncodedFragment fragment;
+  if (!stack_offset.has_value() ||
+      !append_rv64_load_stack_to_register(fragment,
+                                         *destination,
+                                         *stack_offset,
+                                         *size_bytes)) {
+    return std::nullopt;
+  }
+  return fragment;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -2182,6 +2275,45 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
           *parallel_copy_bundle,
           move_bundle);
     }
+  }
+  if (move_bundle.phase == prepare::PreparedMovePhase::BeforeReturn &&
+      move_bundle.authority_kind == prepare::PreparedMoveAuthorityKind::None) {
+    if (auto fragment =
+            fragment_for_prepared_before_return_stack_to_register_abi_move(
+                stack_layout,
+                names,
+                function,
+                lookups,
+                stack_frame_bytes,
+                event_kind,
+                move_bundle)) {
+      return fragment;
+    }
+  }
+  if (std::any_of(move_bundle.moves.begin(),
+                  move_bundle.moves.end(),
+                  [&](const prepare::PreparedMoveResolution& move) {
+                    if (move.reason != "return_stack_to_register") {
+                      return false;
+                    }
+                    const auto* source_home =
+                        prepared_value_home_for_id(lookups, move.from_value_id);
+                    const auto source_type =
+                        source_home == nullptr
+                            ? std::optional<c4c::backend::bir::TypeKind>{}
+                            : prepared_bir_value_type_for_name(
+                                  names, function, source_home->value_name);
+                    return !(source_home != nullptr &&
+                             source_home->kind ==
+                                 prepare::PreparedValueHomeKind::Register &&
+                             source_type == c4c::backend::bir::TypeKind::Ptr &&
+                             move.destination_kind ==
+                                 prepare::PreparedMoveDestinationKind::
+                                     FunctionReturnAbi &&
+                             move.destination_storage_kind ==
+                                 prepare::PreparedMoveStorageKind::Register);
+                  })) {
+    return std::nullopt;
   }
 
   RiscvEncodedFragment fragment;
@@ -4331,6 +4463,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
     const c4c::backend::bir::Terminator& terminator,
     std::size_t block_index,
     std::size_t terminator_instruction_index,
+    const std::unordered_set<PreparedBeforeReturnStackToRegisterKey,
+                             PreparedBeforeReturnStackToRegisterKeyHash>*
+        prepared_before_return_stack_to_register_values,
     bool restore_return_address,
     std::size_t stack_frame_bytes) {
   if (terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -4366,6 +4501,40 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_return(
             block_index,
             value_id_it->second,
             prepare::PreparedRegisterBank::Fpr) != nullptr) {
+      if (restore_return_address) {
+        if (!append_rv64_call_frame_epilogue(fragment, frame_plan, stack_frame_bytes)) {
+          return std::nullopt;
+        }
+      } else if (!append_rv64_stack_frame_epilogue(
+                     fragment,
+                     frame_plan,
+                     stack_frame_bytes)) {
+        return std::nullopt;
+      }
+      append_le32(fragment.bytes, encode_i_type(0x67, 0, 0, 1, 0));  // ret
+      return fragment;
+    }
+  }
+  if (!rv64_floating_type(terminator.value->type) &&
+      terminator.value->type != c4c::backend::bir::TypeKind::Ptr &&
+      terminator.value->kind == c4c::backend::bir::Value::Kind::Named &&
+      !terminator.value->name.empty() && lookups != nullptr) {
+    const auto terminator_value_name =
+        names.value_names.find(terminator.value->name);
+    const auto terminator_value_id =
+        terminator_value_name == c4c::kInvalidValueName
+            ? lookups->value_homes.value_ids.end()
+            : lookups->value_homes.value_ids.find(terminator_value_name);
+    const bool prepared_return_value_already_loaded =
+        terminator_value_name != c4c::kInvalidValueName &&
+        terminator_value_id != lookups->value_homes.value_ids.end() &&
+        prepared_before_return_stack_to_register_values != nullptr &&
+        prepared_before_return_stack_to_register_values->count(
+            PreparedBeforeReturnStackToRegisterKey{
+                .block_index = block_index,
+                .value_id = terminator_value_id->second,
+            }) != 0;
+    if (prepared_return_value_already_loaded) {
       if (restore_return_address) {
         if (!append_rv64_call_frame_epilogue(fragment, frame_plan, stack_frame_bytes)) {
           return std::nullopt;
@@ -8660,6 +8829,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
     std::string_view function_name,
     const std::unordered_map<std::string, PreparedObjectCompare>& compares,
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    const std::unordered_set<PreparedBeforeReturnStackToRegisterKey,
+                             PreparedBeforeReturnStackToRegisterKeyHash>*
+        prepared_before_return_stack_to_register_values,
     bool restore_return_address,
     std::size_t stack_frame_bytes) {
   switch (block.terminator.kind) {
@@ -8671,6 +8843,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_terminator(
                                           block.terminator,
                                           block_index,
                                           block.insts.size(),
+                                          prepared_before_return_stack_to_register_values,
                                           restore_return_address,
                                           stack_frame_bytes);
     case c4c::backend::bir::TerminatorKind::Branch: {
@@ -9372,6 +9545,52 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   const auto* value_locations =
       prepare::find_prepared_value_location_function(prepared,
                                                      control_flow.function_name);
+  std::unordered_set<PreparedBeforeReturnStackToRegisterKey,
+                     PreparedBeforeReturnStackToRegisterKeyHash>
+      prepared_before_return_stack_to_register_values;
+  if (value_locations != nullptr) {
+    for (const auto& move_bundle : value_locations->move_bundles) {
+      if (move_bundle.moves.size() != 1) {
+        continue;
+      }
+      const auto& move = move_bundle.moves.front();
+      const auto* source_home =
+          prepared_value_home_for_id(&lookups, move.from_value_id);
+      const auto source_type =
+          source_home == nullptr
+              ? std::optional<c4c::backend::bir::TypeKind>{}
+              : prepared_bir_value_type_for_name(
+                    prepared.names, *function, source_home->value_name);
+      const bool direct_global_pointer_return_shape =
+          function->return_type == c4c::backend::bir::TypeKind::Ptr &&
+          source_home != nullptr &&
+          source_home->kind == prepare::PreparedValueHomeKind::Register &&
+          source_type == c4c::backend::bir::TypeKind::Ptr &&
+          move.destination_kind ==
+              prepare::PreparedMoveDestinationKind::FunctionReturnAbi &&
+          move.destination_storage_kind ==
+              prepare::PreparedMoveStorageKind::Register;
+      if (move.reason == "return_stack_to_register" &&
+          !direct_global_pointer_return_shape &&
+          !(prepared_move_is_before_return_stack_to_register_abi_move(
+                move_bundle, move) &&
+            source_home != nullptr &&
+            source_home->kind == prepare::PreparedValueHomeKind::StackSlot)) {
+        return make_rv64_prepared_function_rejection(
+            "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves");
+      }
+      if (prepared_move_is_before_return_stack_to_register_abi_move(move_bundle,
+                                                                     move) &&
+          source_home != nullptr &&
+          source_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+        prepared_before_return_stack_to_register_values.insert(
+            PreparedBeforeReturnStackToRegisterKey{
+                .block_index = move_bundle.block_index,
+                .value_id = move.from_value_id,
+            });
+      }
+    }
+  }
   const auto traversal = control_flow.blocks.empty()
                              ? std::vector<prepare::PreparedObjectTraversalEvent>{}
                              : prepare::make_prepared_object_function_traversal(
@@ -9455,6 +9674,22 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                     &dependency_operand_authorities,
                     &select_edge_source_producer_placements));
           }
+          for (const auto& move : classification.move_bundle->moves) {
+            if (classification.move_bundle->phase ==
+                    prepare::PreparedMovePhase::BeforeReturn &&
+                move.destination_kind ==
+                    prepare::PreparedMoveDestinationKind::FunctionReturnAbi &&
+                move.destination_storage_kind ==
+                    prepare::PreparedMoveStorageKind::Register &&
+                move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+                move.reason == "return_stack_to_register") {
+              prepared_before_return_stack_to_register_values.insert(
+                  PreparedBeforeReturnStackToRegisterKey{
+                      .block_index = event.block_index,
+                      .value_id = move.from_value_id,
+                  });
+            }
+          }
           object_function.fragments.push_back(std::move(*fragment));
           break;
         }
@@ -9531,6 +9766,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                function_name,
                                                compares,
                                                frame_plan,
+                                               &prepared_before_return_stack_to_register_values,
                                                has_call,
                                                *stack_frame_bytes);
           if (!terminator_fragment.has_value()) {
@@ -9622,6 +9858,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                          function_name,
                                          compares,
                                          frame_plan,
+                                         nullptr,
                                          has_call,
                                          *stack_frame_bytes);
     if (!terminator_fragment.has_value()) {
