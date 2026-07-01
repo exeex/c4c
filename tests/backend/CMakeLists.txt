@@ -1593,6 +1593,13 @@ c4c_add_backend_rv64_runtime_case(
   CASE_TIMEOUT_SEC 10
   LABELS byval aggregate call formal_publication
 )
+c4c_add_backend_rv64_object_runtime_case(
+  backend_obj_runtime_rv64_frame_slot_pointer_arg_preserves_payload
+  SRC "${BACKEND_CASE_ROOT}/riscv64_frame_slot_pointer_arg_preserves_payload.c"
+  CASE_TIMEOUT_SEC 10
+  EXPECTED_RUN_CODE 7
+  LABELS prepared_call_boundary frame_slot pointer call scan
+)
 c4c_add_backend_rv64_runtime_case(
   backend_rv64_runtime_riscv64_external_strlen_runtime_link_policy
   SRC "${BACKEND_CASE_ROOT}/riscv64_external_strlen_runtime_link.c"
