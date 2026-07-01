@@ -1,72 +1,84 @@
 Status: Active
 Source Idea Path: ideas/open/477_real_semantic_materialization_interval_fact_population.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Real Semantic Fact Population Inputs
+Current Step ID: 2
+Current Step Title: Define Real Population Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 477 by classifying real prepared inputs for
-`930930-1` `%t23 = ne i32 %t22, 0` into slot `#21`.
+Completed Step 2 contract for idea 477 by defining when real prepared evidence
+may populate the idea 476 semantic materialization / interval status surface.
 
-Real population audit:
+Accepted real population contract:
 
-| Required input | Current real evidence | Population classification |
-| --- | --- | --- |
-| Semantic instruction-result identity | `logic.end.14` contains `%t23 = bir.ne i32 %t22, 0`; branch condition records `condition=%t23 compare=ne i32 %t22, 0`. | Present and usable as identity input. |
-| Consumer branch site | `bir.cond_br i32 %t23, block_5, block_6`; prepared branch condition names true/false labels. | Present and usable as consumer input. |
-| Destination slot/object identity | `%t23` has `value_id=17`, home/storage `slot#21+stack156`, object `#21` type `i32 size=4 align=4`. | Present and usable as destination input. |
-| Materialization/write event | No prepared record says the semantic compare result `%t23` was written/materialized into slot `#21`. | Missing first producer fact. |
-| `%t22 -> %t23` storage-only move | `before_instruction authority=none block_index=11 instruction_index=3`, `move from_value_id=16 to_value_id=17 destination_storage=stack_slot`. | Rejected; storage movement is not semantic materialization. |
-| Path / dominance / edge-scope proof | CFG and consumer are visible, but no event-to-consumer proof exists because no event exists. | Missing interval fact. |
-| Same-slot write classification | No slot `#21` interval write classifier is present. | Missing interval fact. |
-| Call/helper/inline-asm safety | Callsite data exists elsewhere, but no slot `#21` interval effect classifier exists. | Missing effect-safety fact. |
-| Publication effects | Block-entry publications for `%t22` are visible and unsupported; no slot `#21` non-clobber classification exists. | Missing publication non-clobber fact; `%t22` publication is protected boundary. |
-| Move-bundle effects | Move bundles are visible, including `%t22 -> %t23` with `authority=none`, but no slot-specific non-clobber interval classification exists. | Missing move-bundle non-clobber fact; storage-only move rejected. |
-| Parallel-copy effects | Parallel copies into `%t22` are visible; no slot `#21` non-clobber classification exists. | Missing parallel-copy non-clobber fact; `%t22` select-result family remains out of scope. |
+| Fact group | Required for real `available` |
+| --- | --- |
+| Semantic identity | Function, producer block/instruction, result value id/name/type, opcode or predicate, operand values/types, and producer kind for `%t23 = ne i32 %t22, 0`. Existing branch-condition identity may seed this input. |
+| Destination identity | Destination value id/name/type, frame slot id `#21`, stack object `#21`, offset `156`, size `4`, and align `4`. Existing home/storage/object rows may seed this input. |
+| Materialization/write event | A durable prepared event carrier saying the semantic result `%t23` was explicitly written/materialized into the destination frame slot/object, with event kind/site/authority and event source matching `%t23`. |
+| Path coverage | Explicit dominance, path, or edge-scope proof from materialization/write event to the branch consumer at `logic.end.14`. |
+| Same-slot exclusion | Slot `#21` writes in the event-to-consumer interval are classified and absent. |
+| Effect safety | Calls/helpers/inline asm, publications, move bundles, and parallel copies in the interval are classified non-clobbering for slot/object `#21`. |
 
-Protected boundaries:
+Rejected / fail-closed cases:
 
-| Boundary row | Evidence | Disposition |
-| --- | --- | --- |
-| `%t22` select-result stack destination | `select_chain root_is_select=yes`; block-entry publications to `%t22` are `unsupported_destination_storage`. | Out of scope for idea 477; separate select-result/block-entry stack-destination owner. |
-| `%t1` / `%t7` pointer/provenance rows | Prior rows remain pointer/provenance boundaries. | Out of scope. |
-| `%t2` / `%t8` unsupported-terminator rows | Branch-stack-load records remain `unsupported_terminator`. | Out of scope. |
-| Source-fact population / branch-stack-load authority / RV64 | Real semantic materialization/interval records are unavailable. | Downstream blocked. |
+| Shape | Required status / disposition |
+| --- | --- |
+| Missing semantic identity | `missing_semantic_result_identity`. |
+| Missing materialization/write event | `missing_materialization_event`. |
+| `%t22 -> %t23` `authority=none` storage movement | Rejected as `materialization_value_mismatch` or equivalent storage-only non-event; never accepted as semantic materialization. |
+| Event writes a different result/source | `materialization_value_mismatch`. |
+| Event writes a different slot/object/offset/size/align | `materialization_destination_mismatch`. |
+| Missing or non-covering path proof | `missing_path_validity` / `path_not_covering_consumer`. |
+| Unknown or present same-slot writes | `same_slot_write_unknown` / `same_slot_write_found`. |
+| Unknown or clobbering calls/helpers/inline asm | `call_or_helper_effect_unknown` / `call_or_helper_clobbers_slot`. |
+| Unknown or clobbering publications/move bundles/parallel copies | Corresponding effect unknown/clobber status. |
+| `%t22` select-result stack destination | Protected boundary; separate select-result/block-entry owner. |
+| `%t1` / `%t7` pointer/provenance rows | Protected boundary; separate pointer/provenance owner. |
+| `%t2` / `%t8` unsupported-terminator rows | Protected boundary; separate branch-site relationship owner. |
+| Source-fact population, branch-stack-load authority, RV64 lowering | Downstream non-goals. |
 
-Selected Step 2 target:
+Selected Step 3 packet:
 
-- Define the real population contract for using existing semantic identity and
-  destination facts while requiring an explicit semantic materialization/write
-  event and interval no-clobber facts.
-- The likely first Step 3 packet is a real producer for semantic
-  materialization/write events and interval classifiers, or a precise blocker
-  if current prepared data has no durable event carrier.
+- `Implement Or Route Real Semantic Fact Population`.
+- First bounded packet: add or route a real prepared semantic
+  materialization/write event carrier for scalar instruction-result frame-slot
+  writes, then feed that explicit carrier into the existing idea 476
+  `PreparedSemanticMaterializationInterval` status planner.
+- Minimal target files/tests if implementation is justified:
+  - `src/backend/prealloc/publication_plans.hpp`
+  - `src/backend/prealloc/publication_plans.cpp`
+  - `tests/backend/bir/backend_prepare_stack_layout_test.cpp`
+  - optional prepared printer files only if evidence exposure is required
+  - `todo.md`
+  - `test_after.log`
+  - `build/agent_state/477_step3_real_semantic_fact_population/**`
+- If current prepared producers cannot supply a durable semantic write-event
+  carrier without raw-shape inference or storage-only move reuse, Step 3 must
+  route/block and name the exact missing carrier.
 
 Artifacts:
 
-- `build/agent_state/477_step1_real_semantic_fact_population_audit/audit.md`
-- `build/agent_state/477_step1_real_semantic_fact_population_audit/evidence_snippets.txt`
+- `build/agent_state/477_step2_real_semantic_fact_population_contract/contract.md`
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: Define Real Population Contract. The contract
-should accept the existing semantic identity and destination inputs but require
-explicit materialization/write, path coverage, same-slot exclusion, and
-non-clobber effect facts before any real `%t23` record can become available.
+Execute Step 3 from `plan.md`: Implement Or Route Real Semantic Fact
+Population. Attempt only the first real event-carrier packet, and stop with a
+blocker if no durable semantic materialization/write event can be populated
+without raw-shape inference.
 
 ## Watchouts
 
-- Do not classify `%t22 -> %t23` `authority=none` storage movement as semantic
-  compare-result materialization.
-- Do not resume `PreparedFrameSlotSourceFact` population, branch-stack-load
-  authority, or RV64 lowering from identity/destination facts alone.
-- Keep `%t22` select-result stack-destination, pointer/provenance, and
-  unsupported-terminator boundaries separate.
-- Step 2 should name an exact event/fact carrier requirement if real
-  materialization/write population is not representable.
+- Existing semantic identity and destination facts are necessary but not
+  sufficient for availability.
+- `%t22 -> %t23` `authority=none` storage movement remains rejected.
+- Do not mark downstream `PreparedFrameSlotSourceFact`,
+  `PreparedBranchStackLoadAuthority`, or RV64 consumers available.
+- Preserve select-result stack-destination, pointer/provenance, and
+  unsupported-terminator rows as separate owner families.
 
 ## Proof
 
