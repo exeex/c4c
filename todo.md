@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/512_stack_passed_parameter_home_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Reclassify Remaining Param-Home Rows
+Current Step ID: 8
+Current Step Title: Validate And Handoff
 
 # Current Packet
 
