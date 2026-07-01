@@ -5369,6 +5369,21 @@ prepare::PreparedBirModule make_prepared_out_of_ssa_phi_join_register_move_modul
 }
 
 prepare::PreparedBirModule
+make_prepared_out_of_ssa_phi_join_immediate_materialization_module() {
+  auto prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
+  auto& parallel_copy =
+      prepared.control_flow.functions.front().parallel_copy_bundles.front();
+  parallel_copy.moves.front().source_value = bir::Value::immediate_i32(1234);
+
+  auto& move_bundle = prepared.value_locations.functions.front().move_bundles.front();
+  auto& move = move_bundle.moves.front();
+  move.from_value_id = move.to_value_id;
+  move.source_immediate_i32 = 1234;
+  move.reason = "phi_join_immediate_materialization";
+  return prepared;
+}
+
+prepare::PreparedBirModule
 make_prepared_out_of_ssa_edge_preservation_register_move_module() {
   auto prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
   const auto function_name = prepared.names.function_names.find("phi_join");
@@ -11322,6 +11337,35 @@ int builds_prepared_out_of_ssa_phi_join_register_move_object() {
   return 0;
 }
 
+int builds_prepared_out_of_ssa_phi_join_immediate_materialization_object() {
+  const auto prepared =
+      make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    return fail("expected prepared out-of-SSA phi-join immediate materialization RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "phi_join");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared out-of-SSA phi-join immediate object to publish text/function");
+  }
+  if (text->bytes.size() < 8 || text->size_bytes != text->bytes.size() ||
+      function->value != 0 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared out-of-SSA phi-join immediate object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x4d200493) {
+    return fail("expected li s1, 1234 for prepared out-of-SSA phi-join immediate materialization");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared out-of-SSA phi-join immediate object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_out_of_ssa_edge_preservation_register_move_object() {
   const auto prepared =
       make_prepared_out_of_ssa_edge_preservation_register_move_module();
@@ -11523,6 +11567,73 @@ int rejects_prepared_out_of_ssa_phi_join_register_move_fail_closed_shapes() {
   prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
   prepared.control_flow.functions[0].parallel_copy_bundles[0].execution_site =
       prepare::PreparedParallelCopyExecutionSite::SuccessorEntry;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int rejects_prepared_out_of_ssa_phi_join_immediate_materialization_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  auto prepared =
+      make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .source_immediate_i32 = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
+  prepared.value_locations.functions[0].move_bundles[0].moves[0].reason =
+      "phi_join_register_to_register";
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .source_parallel_copy_successor_label =
+      prepared.names.block_labels.intern("wrong.join");
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .source_parallel_copy_step_index = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
+  prepared.control_flow.functions[0].parallel_copy_bundles[0]
+      .steps[0]
+      .uses_cycle_temp_source = true;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
+  prepared.value_locations.functions[0].move_bundles[0].moves[0].op_kind =
+      prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp;
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
     return 1;
   }
@@ -16370,11 +16481,15 @@ int main() {
   status |= rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes();
   status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
   status |= builds_prepared_out_of_ssa_phi_join_register_move_object();
+  status |=
+      builds_prepared_out_of_ssa_phi_join_immediate_materialization_object();
   status |= builds_prepared_out_of_ssa_edge_preservation_register_move_object();
   status |= rejects_prepared_out_of_ssa_edge_preservation_fail_closed_shapes();
   status |= builds_prepared_out_of_ssa_edge_preservation_stack_move_object();
   status |= rejects_prepared_out_of_ssa_edge_preservation_stack_fail_closed_shapes();
   status |= rejects_prepared_out_of_ssa_phi_join_register_move_fail_closed_shapes();
+  status |=
+      rejects_prepared_out_of_ssa_phi_join_immediate_materialization_fail_closed_shapes();
   status |= reports_prepared_move_bundle_coordinate_diagnostic();
   status |= builds_prepared_scalar_compare_trunc_object();
   status |= builds_prepared_scalar_ordered_compare_return_object();

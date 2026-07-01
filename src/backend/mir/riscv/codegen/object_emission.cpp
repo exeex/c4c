@@ -2003,6 +2003,7 @@ bool prepared_move_bundle_is_out_of_ssa_move_packet_family(
       move_bundle.moves.end(),
       [](const prepare::PreparedMoveResolution& move) {
         return move.reason == "phi_join_register_to_register" ||
+               move.reason == "phi_join_immediate_materialization" ||
                move.reason.rfind("edge_consumer_preservation", 0) == 0 ||
                move.source_parallel_copy_step_index.has_value() ||
                move.uses_cycle_temp_source ||
@@ -2029,6 +2030,10 @@ fragment_for_prepared_out_of_ssa_moves(
           prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
       parallel_copy_bundle.execution_site !=
           prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator ||
+      move_bundle.source_parallel_copy_predecessor_label !=
+          parallel_copy_bundle.predecessor_label ||
+      move_bundle.source_parallel_copy_successor_label !=
+          parallel_copy_bundle.successor_label ||
       parallel_copy_bundle.has_cycle) {
     return std::nullopt;
   }
@@ -2038,18 +2043,21 @@ fragment_for_prepared_out_of_ssa_moves(
   for (const auto& move : move_bundle.moves) {
     const bool phi_join_move =
         move.reason == "phi_join_register_to_register";
+    const bool phi_join_immediate_move =
+        move.reason == "phi_join_immediate_materialization";
     const bool preservation_move =
         move.reason == "edge_consumer_preservation_register_to_register";
     const bool stack_preservation_move =
         move.reason == "edge_consumer_preservation_register_to_stack";
-    if (!phi_join_move && !preservation_move && !stack_preservation_move) {
+    if (!phi_join_move && !phi_join_immediate_move && !preservation_move &&
+        !stack_preservation_move) {
       return std::nullopt;
     }
     if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
         move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
         move.destination_contiguous_width != 1 ||
         move.destination_occupied_register_names.size() > 1 ||
-        move.source_immediate_i32.has_value() ||
+        (move.source_immediate_i32.has_value() != phi_join_immediate_move) ||
         move.uses_cycle_temp_source ||
         move.authority_kind !=
             prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
@@ -2072,22 +2080,37 @@ fragment_for_prepared_out_of_ssa_moves(
         return std::nullopt;
       }
       ++next_step_index;
+    } else if (phi_join_immediate_move) {
+      if (!move.source_parallel_copy_step_index.has_value() ||
+          *move.source_parallel_copy_step_index != next_step_index ||
+          next_step_index >= parallel_copy_bundle.steps.size()) {
+        return std::nullopt;
+      }
+      const auto& step = parallel_copy_bundle.steps[next_step_index];
+      if (step.kind != prepare::PreparedParallelCopyStepKind::Move ||
+          step.uses_cycle_temp_source) {
+        return std::nullopt;
+      }
+      ++next_step_index;
     } else if (move.source_parallel_copy_step_index.has_value()) {
       return std::nullopt;
     }
 
-    const auto* source_home =
-        prepared_value_home_for_id(lookups, move.from_value_id);
     const auto* destination_home =
         prepared_value_home_for_id(lookups, move.to_value_id);
-    if (source_home == nullptr || destination_home == nullptr) {
-      return std::nullopt;
-    }
-    const auto source = gpr_register_number_for_home(*source_home);
-    if (!source.has_value()) {
+    if (destination_home == nullptr) {
       return std::nullopt;
     }
     if (stack_preservation_move) {
+      const auto* source_home =
+          prepared_value_home_for_id(lookups, move.from_value_id);
+      if (source_home == nullptr) {
+        return std::nullopt;
+      }
+      const auto source = gpr_register_number_for_home(*source_home);
+      if (!source.has_value()) {
+        return std::nullopt;
+      }
       if (move.destination_storage_kind !=
               prepare::PreparedMoveStorageKind::StackSlot ||
           move.destination_stack_offset_bytes.has_value()) {
@@ -2122,6 +2145,21 @@ fragment_for_prepared_out_of_ssa_moves(
     }
     const auto destination = gpr_register_number_for_home(*destination_home);
     if (!destination.has_value()) {
+      return std::nullopt;
+    }
+    if (phi_join_immediate_move) {
+      append_rv64_load_immediate(fragment,
+                                 *destination,
+                                 *move.source_immediate_i32);
+      continue;
+    }
+    const auto* source_home =
+        prepared_value_home_for_id(lookups, move.from_value_id);
+    if (source_home == nullptr) {
+      return std::nullopt;
+    }
+    const auto source = gpr_register_number_for_home(*source_home);
+    if (!source.has_value()) {
       return std::nullopt;
     }
     append_rv64_move(fragment, *destination, *source);
