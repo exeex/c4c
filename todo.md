@@ -1,98 +1,65 @@
 Status: Active
 Source Idea Path: ideas/open/482_semantic_frame_slot_materialization_probe_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish The Blocked Failure-Family Baseline
+Current Step ID: 2
+Current Step Title: Split The Monolithic Probe Into Focused Cases
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 for idea 482 by establishing the blocked semantic frame-slot
-materialization failure-family baseline from the existing 475 -> 481 route.
+Completed Step 2 for idea 482 by splitting the monolithic `%t23` route into
+focused backend probe candidates without adding tests.
 
-Concrete repeated symptoms:
+Accepted focused probe candidates:
 
-| Link | Repeated symptom | First missing owner named there |
+| Candidate | Proposed future path | Why accepted |
 | --- | --- | --- |
-| 475 | `%t23` identity, slot `#21`, frame object/layout, and branch relationship were present, but no source fact could be populated. | Semantic instruction-result frame-slot materialization/write records plus interval no-clobber facts. |
-| 476 | Synthetic explicit interval records worked, but the real `%t23` row still lacked real event and interval facts. | Real semantic materialization/write event and event-to-consumer interval population. |
-| 477 | Real semantic fact population still had `%t23` identity and destination only. | Authoritative semantic instruction-result frame-slot write/materialization event carrier. |
-| 478 | The carrier/status API could represent explicit events, but real `%t23` had no event authority. | Real event-authority producer. |
-| 479 | Event-authority population still had no durable source proving `%t23` materialization into slot `#21`. | Lower-level semantic instruction-result frame-slot write/materialization event producer. |
-| 480 | Write-event production still lacked an explicit materialization point. | Explicit semantic result frame-slot materialization-point producer. |
-| 481 | The materialization-point producer idea remains valid but is parked by idea 482. | Resume only after focused probes bind a smaller generic seam. |
+| Scalar compare result forced to frame-slot destination | `tests/backend/case/riscv64_scalar_compare_frame_slot_destination.c` | Non-duplicative because it isolates semantic instruction-result identity plus final frame-slot destination without copying the `930930-1` select/pointer/terminator graph. Capability-oriented because it tests whether prepared facts can represent identity and destination separately from materialization authority. |
+| Storage-only move rejection | `tests/backend/case/riscv64_storage_only_move_not_semantic_materialization.c` | Non-duplicative because it isolates the rejected `%t22 -> %t23 authority=none` shape as a standalone negative family. Capability-oriented because it protects the rule that storage movement is not semantic producer authority. |
+| Select-result stack-destination boundary | `tests/backend/case/riscv64_select_result_stack_destination_boundary.c` | Non-duplicative because it focuses on `%t22` as a select-result stack destination rather than the `%t23` scalar compare result. Capability-oriented because it prevents select publication from being conflated with scalar instruction-result materialization. |
+| Explicit synthetic materialization-point positive | `tests/backend/case/riscv64_explicit_compare_frame_slot_materialization_point.c` | Non-duplicative because it is a positive control for explicit event authority, not another audit of the real missing producer. Capability-oriented because it proves the materialization seam can accept supplied authority without raw-shape inference. |
 
-Monolithic owner family:
+Rejected probe candidates:
 
-- semantic result `%t23 = bir.ne i32 %t22, 0`;
-- branch condition `%t23 compare=ne i32 %t22, 0`;
-- value id `17`, final home slot `#21`, storage `slot#21+stack156`;
-- stack object `#21`, offset `156`, size `4`, align `4`;
-- rejected nearby movement `%t22 -> %t23`, `from_value_id=16`,
-  `to_value_id=17`, `authority=none`;
-- protected `%t22` select-result stack-destination boundary.
-
-Seams that must not be conflated:
-
-| Seam | Baseline status |
+| Candidate | Reason rejected |
 | --- | --- |
-| Semantic instruction-result identity | Present for `%t23`; not sufficient by itself. |
-| Frame-slot destination/layout | Present for slot `#21`; placement only. |
-| Materialization point / producer authority | Missing; first true blocker for 481-style work. |
-| Storage-only movement | `%t22 -> %t23 authority=none` must remain rejected. |
-| Select-result stack destination | `%t22` is a protected separate owner. |
-| Pointer/provenance rows | `%t1` / `%t7` are separate boundaries. |
-| Unsupported-terminator rows | `%t2` / `%t8` are separate boundaries. |
-| Path/no-clobber interval | Downstream of explicit event production. |
-| Source-fact and branch-stack-load authority | Downstream of event plus interval/source facts. |
-| RV64 branch-load emission | Downstream non-goal. |
+| Copy or trim `930930-1` into `tests/backend/case/` | Duplicates the monolithic graph and continues the stuck `%t23` chase. |
+| One combined probe covering scalar destination, storage-only rejection, select boundary, and synthetic positive authority | Conflates seams and would make Step 3 ownership ambiguous. |
+| Raw-BIR-adjacency materialization probe | Encodes the rejected inference path; raw order plus final home is not authority. |
+| Final-home-only or stack-object-only materialization probe | Repeats the 475 -> 480 failure by treating placement/layout as event production. |
+| RV64 branch-load or object-route probe | Downstream non-goal until explicit producer authority and later interval/source facts exist. |
+| Pointer/provenance or unsupported-terminator repair probe | Separate protected boundary family from scalar compare/result frame-slot materialization. |
+| Expectation, allowlist, baseline, or unsupported-marker probe | Accounting churn, not backend capability decomposition. |
 
-Accepted baseline facts:
-
-- `%t23` semantic identity and branch-condition use are durable enough to form
-  a focused semantic-identity probe.
-- Slot `#21` destination facts are durable enough to form a focused
-  destination/layout probe.
-- Existing dispositions consistently reject `authority=none` storage movement
-  as semantic materialization evidence.
-- Explicit synthetic event carriers are representable when supplied as
-  explicit inputs.
-
-Rejected baseline facts:
-
-- Raw BIR adjacency, branch condition shape, final homes, storage plans, stack
-  object ids, offsets, value names, function names, testcase shape, and dump
-  order are not materialization authority.
-- `%t22 -> %t23` with `authority=none` is storage-only movement, has the wrong
-  semantic source, and cannot populate `%t23` materialization.
-- Copying the full `930930-1` shape into a new focused case would duplicate
-  the monolith instead of isolating one seam.
-- Downstream interval/source-fact/branch authority/RV64 work remains blocked
-  until an explicit materialization-point seam is proven or replaced by a
-  smaller focused probe.
+Step 2 keeps the storage-only move rejection, select-result boundary, and
+synthetic positive probe as separate families. No future path was created in
+this packet; paths are proposals only.
 
 Artifact:
 
-- `build/agent_state/482_step1_blocked_family_baseline/baseline.md`
+- `build/agent_state/482_step2_focused_probe_candidates/candidates.md`
 
 ## Suggested Next
 
-Execute Step 2 by splitting the monolithic probe into focused cases. The first
-probe-splitting target should be a scalar compare result forced to a frame-slot
-destination, isolating semantic identity plus final slot facts while excluding
-select-result stack destinations, storage-only moves, interval/source-fact
-population, branch-stack-load authority, and RV64 consumption.
+Execute Step 3 by binding each accepted candidate to exactly one backend seam.
+The first seam-binding target should be
+`tests/backend/case/riscv64_scalar_compare_frame_slot_destination.c` as a
+proposal only: semantic instruction-result identity plus frame-slot
+destination/layout, with materialization authority, storage-only movement,
+select-result publication, interval/source facts, branch-stack-load authority,
+and RV64 consumption all marked as separate boundaries.
 
 ## Watchouts
 
-- Do not implement materialization-point production in Step 2.
-- Do not copy the full `930930-1` graph into `tests/backend/case/`.
-- Do not rely on raw BIR, final homes, storage, stack objects, offsets, names,
-  testcase shape, or dump order as authority.
-- Keep storage-only move rejection, select-result stack-destination, and
-  synthetic explicit materialization-point probes as separate candidate
-  families unless Step 2 proves a different split is cleaner.
+- Do not add tests until Step 3 binds each accepted probe to one owner and one
+  fail-closed boundary.
+- Do not let the scalar compare destination probe become a hidden
+  materialization-authority probe.
+- Do not merge storage-only move rejection, select-result stack destination,
+  and synthetic positive materialization into one case.
+- Do not infer authority from raw BIR, final homes, storage, stack objects,
+  offsets, names, testcase shape, or dump order.
 
 ## Proof
 
