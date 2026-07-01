@@ -109,13 +109,27 @@ Implement the bounded producer-key-to-prepared/BIR endpoint bridge if Step 2
 identifies one. If current inputs cannot truthfully bind the endpoint, record
 the exact lower owner and stop without publishing available interval facts.
 
-### Step 4: Implement Or Route Bounded Effect Scan
+### Step 4: Implement Real Bounded Effect Scan Or Classify Lower Blocker
 
-Implement the selected proof-source-to-endpoint effect scan if the bridge is
-available. Cover assignments/redefinitions, phi/alias transfers, calls/helpers,
-inline asm, publications, move bundles, parallel copies, and unknown modeled
-effects. If the scan cannot be built truthfully, record the exact lower owner
-and stop.
+Consume the Step 3 `LocalArrayEndpointBridgeRecord` and build the real
+prepared/BIR proof-source-to-endpoint effect-source population before any
+available no-clobber result can be published. The scan builder must own the
+ordered interval inputs and effect-source records; caller-supplied coverage
+booleans, synthetic effect vectors, selected-path availability, or legacy
+bridge flags are not acceptable sources of availability.
+
+Cover assignments/redefinitions, memory accesses, phi/alias transfers,
+calls/helpers, inline asm, publications, move bundles, parallel copies, and
+unknown modeled effects in the selected interval. The interval classifier must
+consume a valid bounded scan record through the Step 3 bridge without also
+requiring the legacy `endpoint_bridge_available` compatibility boolean.
+
+If the prepared/BIR effect-source population cannot yet be built truthfully,
+do not publish available no-clobber facts. Record the exact lower blocker or
+owner, such as missing proof-source coordinates, missing ordered effect-source
+stream population, unsupported boundary ordering, or an unmodeled effect
+family. Completion means either a real builder-backed scan proves available
+or distinguishable fail-closed statuses for the lower blocker are recorded.
 
 ### Step 5: Residual Disposition And Handback Readiness
 
