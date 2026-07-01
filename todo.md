@@ -1,71 +1,83 @@
 Status: Active
 Source Idea Path: ideas/open/479_real_semantic_write_event_authority_producer.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Real Event Authority Inputs
+Current Step ID: 2
+Current Step Title: Define Real Event Authority Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 479 by classifying real event-authority inputs
-for representative `%t23 = bir.ne i32 %t22, 0` into frame slot `#21`.
+Completed Step 2 contract for idea 479 by defining the real semantic
+instruction-result frame-slot write/materialization event authority contract.
 
-Carrier input classification:
+Contract decision:
 
-| Carrier input | Evidence | Verdict |
-| --- | --- | --- |
-| Function/block | `prepared.func @f`, raw block `logic.end.14`. | Present. |
-| Semantic instruction result | `%t23 = bir.ne i32 %t22, 0`. | Present; usable semantic identity. |
-| Prepared branch condition | `branch_condition logic.end.14 kind=fused_compare condition=%t23 compare=ne i32 %t22, 0`. | Present; confirms compare/condition identity. |
-| Result value home | `home %t23 value_id=17 kind=stack_slot slot_id=21 offset=156`. | Present; destination/value input. |
-| Storage plan | `storage %t23 frame_slot ... slot#21+stack156 offset=156`. | Present, but final storage only; not event authority. |
-| Stack object | `object #21 func=f name=%t23 type=i32 size=4 align=4`. | Present; destination object input. |
-| Frame slot | `slot #21 object_id=21 func=f offset=156 size=4 align=4`. | Present; destination slot input. |
-| Event-site evidence | Raw `%t23` instruction and nearby before-instruction bundle coordinates are visible. | Coordinates only; no semantic write authority. |
-| Move into `%t23` | `move_bundle phase=before_instruction authority=none block_index=11 instruction_index=3`; `move from_value_id=16 to_value_id=17 destination_storage=stack_slot reason=consumer_stack_to_stack`. | `storage_only_move`; rejected as semantic materialization. |
-| Publications / parallel copies | Visible records target `%t22`, not `%t23`, and `%t22` block-entry publications are `unsupported_destination_storage`. | Cannot populate `%t23` event authority; protected `%t22` boundary. |
-| Branch-stack-load authority row | `%t23` row remains `status=missing_policy slot=#21 object=#21`. | Downstream only; does not prove event authority. |
-| Idea 478 carrier surface | Explicit synthetic event authority can become `available`. | Surface is sufficient; real producer input is missing. |
+- The idea 478 carrier/status surface is sufficient.
+- Current prepared evidence is insufficient to populate real `%t23` event
+  authority.
+- No bounded real producer implementation packet is justified from the current
+  rows, because the only visible concrete movement into `%t23` is
+  `authority=none` storage movement from `%t22`.
 
-Protected boundaries:
+Accepted real authority facts:
 
-| Boundary | Disposition |
+| Fact group | Required for `available` real event authority |
 | --- | --- |
-| `%t22` select-result stack destination | Separate select-result / stack-destination owner. |
-| `%t1` / `%t7` pointer/provenance rows | Separate pointer/provenance owner. |
-| `%t2` / `%t8` unsupported-terminator rows | Separate branch-site/terminator relationship owner. |
-| Path/no-clobber interval facts | Later interval owner after real event authority exists. |
-| Source-fact, branch-stack-load authority, RV64 | Downstream consumers remain blocked. |
+| Semantic result identity | Function, producer block/instruction, result value id/name/type, opcode/kind, operand identities, and immediates. |
+| Event identity | Event kind, event site/phase, block/instruction coordinate or equivalent stable site, and event source/result identity. |
+| Destination identity | Destination value id/name/type, frame slot id, stack object id, stack offset, size, and alignment. |
+| Destination relationship | Frame slot and stack object must match by function/object id and offset/size/alignment. |
+| Event authority | Explicit authority that the event writes/materializes the semantic instruction result into the destination frame slot/object. |
+| Source/result coherence | Event source/result must be `%t23`, not `%t22`, a storage carrier, or a predecessor/consumer value. |
 
-First missing producer fact:
+Rejected / fail-closed cases:
 
-- A durable real semantic write/materialization event authority record for
-  `%t23 = bir.ne i32 %t22, 0` into frame slot `#21`.
-- The record must prove semantic result identity, event site/source,
-  destination slot/object/offset/size/alignment, and authority that this is
-  semantic compare-result materialization rather than storage movement.
+| Shape | Disposition |
+| --- | --- |
+| Raw `%t23` BIR instruction adjacency | `missing_event_authority`; raw shape is not an event carrier. |
+| Final home, storage plan, stack object, frame slot only | `missing_event_authority`; placement is not a write event. |
+| `%t22 -> %t23` `authority=none` before-instruction move | `storage_only_move`; not semantic compare-result materialization. |
+| Block-entry publications / parallel copies targeting `%t22` | Protected select-result stack-destination boundary. |
+| Event source/result mismatch | `semantic_result_mismatch`. |
+| Destination slot/object/offset/size/alignment mismatch | `destination_mismatch`. |
+| Unknown or unsupported event authority | `missing_event_authority` / `unsupported_event_authority`. |
+| `%t1` / `%t7` pointer/provenance rows | Protected separate owner. |
+| `%t2` / `%t8` unsupported-terminator rows | Protected separate owner. |
+| Path/no-clobber interval, source facts, branch-stack-load authority, RV64 | Downstream non-goals; remain blocked. |
+
+Exact blocker:
+
+- A lower-level durable semantic instruction-result frame-slot
+  write/materialization event source is missing.
+- That source must prove `%t23 = bir.ne i32 %t22, 0`, value id `17`, type
+  `i32`, was written/materialized into slot `#21`, object `#21`, offset `156`,
+  size `4`, align `4`.
+- It must not infer authority from final homes, storage plans, object/slot
+  layout, value names, raw BIR adjacency, testcase shape, or `authority=none`
+  moves.
 
 Artifacts:
 
-- `build/agent_state/479_step1_real_event_authority_audit/audit.md`
+- `build/agent_state/479_step2_real_event_authority_contract/contract.md`
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: Define Real Event Authority Contract. The
-contract should decide whether a bounded producer packet can publish real
-semantic write-event authority from durable prepared producer evidence, or
-whether this route is blocked by absence of an explicit event source.
+Execute Step 3 from `plan.md` as a routing/blocker packet:
+`Route Real Event Authority Producer Blocker`.
+
+Step 3 should record that no implementation is selected from current prepared
+evidence and name the required lower-level producer surface for semantic
+instruction-result frame-slot write/materialization events.
 
 ## Watchouts
 
-- Do not reuse `%t22 -> %t23` `authority=none` stack movement as semantic
-  materialization evidence.
-- Do not infer event authority from raw BIR adjacency, stack homes, storage,
-  offsets, object ids, names, testcase shape, or dump order.
-- Keep path/no-clobber interval proof and downstream source-fact,
-  branch-stack-load authority, and RV64 consumers out of Step 2/3 unless a
-  later packet explicitly owns them.
+- Do not implement a collector that turns `%t22 -> %t23` storage movement into
+  semantic event authority.
+- Do not add raw-shape, value-name, function-name, object-id, stack-offset, or
+  testcase-specific inference.
+- Keep interval/source-fact/branch-stack-load/RV64 consumers blocked until a
+  real event-authority producer exists.
 
 ## Proof
 
