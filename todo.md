@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/512_stack_passed_parameter_home_publication.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Complete Producer Homes For Authorized Stack Formals
+Current Step ID: 6
+Current Step Title: Consume Published Homes Through RV64
 
 # Current Packet
 
