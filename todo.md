@@ -1,43 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/495_prepared_move_bundle_materialization_bucket_review.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Prepared Bundle Coherence
+Current Step ID: 4
+Current Step Title: Residual Lifecycle Disposition
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 classified the 423 reproduced `unsupported_move_bundle_target_shape`
-rows from Step 1 by prepared event kind, authority, parallel-copy status,
-execution site, destination storage, source storage where reported, move
-reason, coherence family, and first owner. Durable evidence is recorded under
-`build/agent_state/495_step2_move_bundle_coherence/`: `classification.tsv`,
-`coherence_counts.tsv`, `owner_matrix.tsv`,
-`representative_classification.tsv`, and `summary.md`.
+Step 3 split the Step 2 move-bundle owner families into focused open follow-up
+ideas:
 
-The classification keeps the Step 1 row count intact. It separates 420 rows
-with coherent prepared authority but missing RV64 materialization support from
-3 select-publication move-bundle rows whose current case-log tokens omit
-function/block/event/phase/authority/storage details. There are no contradictory
-prepared-authority rows in the reproduced bucket.
+- `ideas/open/501_rv64_before_instruction_prepared_move_materialization.md`
+  for 328 coherent prepared before-instruction rows.
+- `ideas/open/502_rv64_out_of_ssa_parallel_copy_move_materialization.md`
+  for 91 coherent out-of-SSA/pre-terminator parallel-copy rows.
+- `ideas/open/503_rv64_before_return_prepared_move_materialization.md`
+  for the single coherent before-return row.
+- `ideas/open/504_select_publication_move_bundle_evidence_authority.md`
+  for 3 select-publication rows that need explicit evidence/authority before
+  RV64 materialization.
+
+The split keeps producer/evidence ownership separate from RV64 materialization
+and does not implement lowering.
 
 ## Suggested Next
 
-Execute Step 3 follow-up splitting. Split implementation/evidence ownership into
-focused packets for RV64 before-instruction prepared move materialization, RV64
-out-of-SSA/pre-terminator parallel-copy materialization, the single before-return
-move materialization shape, and select-publication move-bundle evidence/authority
-before treating those 3 rows as lowerable.
+Ask the plan owner to execute Step 4 residual disposition for idea 495. The
+likely disposition is to close idea 495 as a completed review/splitter and
+activate the highest-priority follow-up selected by the supervisor.
 
 ## Watchouts
 
 - This packet made no implementation changes.
-- The summary TSV itself does not contain the bucket label; the label is in the
-  referenced case logs.
-- Do not treat source names as authority. Use the parsed move-bundle event
-  tokens, authority, phase, destination storage, parallel-copy flag, execution
-  site, and move reason for Step 3 splitting.
+- Do not activate more than one follow-up idea at a time.
+- The select-publication rows remain producer/evidence work until explicit
+  event/phase/authority/storage facts are published.
+- Do not treat source names as authority. Follow-up execution must consume the
+  parsed move-bundle event tokens, authority, phase, destination storage,
+  parallel-copy flag, execution site, and move reason.
 - Source storage is not reported by the current case-log token stream for these
   representatives; do not infer it from the source case name.
 - Preserve existing untracked review artifacts and the rejected
@@ -45,7 +46,7 @@ before treating those 3 rows as lowerable.
 
 ## Proof
 
-Step 2 evidence-only proof:
+Step 3 lifecycle-only proof:
 
 ```sh
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed > test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
