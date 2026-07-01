@@ -1,44 +1,49 @@
-# Dynamic Local-Array Selected Proof-Edge Path Certificate Plan
+# Dynamic Local-Array Selected Proof-Edge Path Record/Status API Plan
 
 Status: Active
-Source Idea: ideas/open/491_dynamic_local_array_selected_proof_edge_path_certificate.md
-Activated From: ideas/closed/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md
+Source Idea: ideas/open/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
+Activated From: ideas/closed/491_dynamic_local_array_selected_proof_edge_path_certificate.md
 
 ## Purpose
 
-Produce the lower selected proof-edge path certificate needed before dynamic
-local-array interval effect/no-clobber work can resume.
+Create the prepared record/status API needed before selected proof-edge path
+certification can publish durable path facts.
 
 ## Goal
 
-Publish durable selected proof edge/outcome, path coverage, and
-dominance/guard validity facts keyed to `lir_producer_*` coordinates.
+Publish explicit selected proof-edge path records keyed to
+`lir_producer_lookup_key`, or route to the next lower API blocker without
+inferring from raw branch shape.
 
 ## Core Rule
 
-Do not infer selected proof edges, path coverage, dominance, guard validity, or
-same-block ordering from branch proximity, loop shape, value names, testcase
-names, dump order, final homes, or target behavior. The certificate must be
-explicit and keyed to the LIR producer site.
+Do not let downstream proof population, checker inputs, or target behavior
+consume helper-local reachability/dominance calculations directly. Selected
+proof-edge path facts must be represented as explicit prepared records or
+explicit unavailable statuses.
 
 ## Read First
 
-- ideas/open/491_dynamic_local_array_selected_proof_edge_path_certificate.md
-- ideas/closed/490_dynamic_local_array_lir_producer_path_no_clobber_certificate.md
-- build/agent_state/490_step3_certificate_producer_route/route.md
-- build/agent_state/490_step4_residual_disposition/disposition.md
+- ideas/open/492_dynamic_local_array_selected_proof_edge_path_record_status_api.md
+- ideas/closed/491_dynamic_local_array_selected_proof_edge_path_certificate.md
+- build/agent_state/491_step3_selected_edge_path_route/route.md
+- build/agent_state/491_step4_residual_disposition/disposition.md
 
 ## Current Target
 
-- Missing certificate fields:
+- Missing surface:
+  - selected proof-edge path record/status API keyed to
+    `lir_producer_lookup_key`.
+- Required record fields:
+  - all `lir_producer_*` fields;
   - proof branch/compare identity;
-  - selected proof edge/outcome;
-  - proof-source-to-LIR-producer path coverage;
-  - dominance or guard validity under the selected outcome;
-  - same-block ordering safety or explicit fail-closed status.
+  - dynamic-index operand role and bound contribution when available;
+  - selected outcome and edge tuple;
+  - path coverage and dominance/guard validity;
+  - fail-closed status vocabulary.
 - First packet:
-  - audit current prepared/BIR selected-edge and path surfaces for a bounded
-    certificate producer.
+  - audit current prepared record homes and helper inputs for a bounded API
+    packet.
 
 ## Non-Goals
 
@@ -47,7 +52,8 @@ explicit and keyed to the LIR producer site.
 - Idea 484 packaging.
 - Scalar local-load consumption.
 - RV64/MIR lowering.
-- Prepared traversal/BIR instruction coordinate conversion.
+- LIR-to-prepared/BIR same-block ordering conversion beyond unavailable status
+  reporting.
 - Broad generic range analysis.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline/log
@@ -57,18 +63,18 @@ explicit and keyed to the LIR producer site.
 
 ## Working Model
 
-Idea 490 found candidate branch/compare proof sources and LIR producer binding
-keys, but no durable selected-edge/path/order certificate. This runbook owns
-that lower certificate only. Later interval effect/no-clobber classification
-stays separate.
+Idea 491 found that raw `PreparedBranchCondition` labels and helper-level
+reachability/dominance logic are not durable proof facts. This runbook owns the
+record/status API that can publish those facts explicitly for each dynamic
+local-array LIR producer key.
 
 ## Execution Rules
 
-- Step 1 is audit/classification unless an already-bounded selected proof-edge
-  certificate surface exists.
-- Any implementation packet must publish explicit certificate facts or
-  unavailable statuses and must not mark proof-population or checker inputs
-  available directly.
+- Step 1 is audit/classification unless the exact record/status home is already
+  obvious and bounded.
+- Any implementation packet must publish records/statuses only; it must not
+  populate proof facts, checker inputs, packaging, scalar loads, or RV64
+  lowering.
 - Classification-only proof:
 
 ```sh
@@ -85,29 +91,27 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Selected Proof-Edge Path Certificate Inputs
+### Step 1: Audit Selected Proof-Edge Record Homes
 
-Inspect prepared branch/compare facts, selected edge/outcome surfaces,
-dominance/reachability helpers, `lir_producer_*` keys, and same-block ordering
-boundaries. Completion means `todo.md` records available certificate inputs and
-the exact missing lower facts, if any.
+Inspect prepared record/status surfaces, selected local-array path records,
+prepared branch/compare facts, and helper inputs for the narrow record/status
+API. Completion means `todo.md` records the exact candidate home or the next
+lower blocker.
 
-### Step 2: Define Selected Proof-Edge Path Certificate Contract
+### Step 2: Define Record/Status API Contract
 
-Define the selected-edge path certificate shape and unavailable statuses.
-Completion means the contract names proof-source identity, selected
-edge/outcome, LIR producer key, path coverage, dominance/guard validity,
-same-block ordering policy, and coordinate-confusion rejections.
+Define the record fields, status enum/vocabulary, dump keys, and fail-closed
+behavior. Completion means the contract names every field from the 491 route
+disposition and the boundaries for same-block ordering.
 
-### Step 3: Implement Or Route Selected Edge Path Certificate
+### Step 3: Implement Or Route Record/Status API
 
-Implement the bounded certificate packet if Step 2 identifies one. If current
-data cannot prove selected edge/path coverage without inference, record the
-exact lower owner and stop without changing interval effects, proof population,
-checker inputs, packaging, scalar loads, or RV64 lowering.
+Implement the bounded prepared record/status API if Step 2 identifies one. If
+current ownership cannot publish it without another lower surface, record the
+exact owner and stop without changing interval effects or downstream consumers.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe selected representatives and decide whether 491 is complete, blocked
-by another lower-level source, or ready to hand forward to dynamic-index
-interval effect/no-clobber classification.
+Re-probe selected representatives and decide whether 492 is complete, blocked
+by another lower-level source, or ready to hand forward to selected proof-edge
+path certification.
