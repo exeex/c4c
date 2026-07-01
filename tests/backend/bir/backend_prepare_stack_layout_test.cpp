@@ -7022,6 +7022,279 @@ int check_frame_slot_source_fact_carrier_contract() {
   return 0;
 }
 
+int check_semantic_materialization_interval_contract() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("semantic_materialization");
+  const auto producer_label = names.block_labels.intern("logic.end.14");
+  const auto materialization_label = names.block_labels.intern("logic.end.14");
+  const auto result_name = names.value_names.intern("%t23");
+  names.value_names.intern("%t22");
+  const bir::Value result = bir::Value::named(bir::TypeKind::I32, "%t23");
+  const bir::Value storage_only_source =
+      bir::Value::named(bir::TypeKind::I32, "%t22");
+
+  const prepare::PreparedFrameSlot target_frame_slot{
+      .slot_id = prepare::PreparedFrameSlotId{21},
+      .object_id = 21,
+      .function_name = function_name,
+      .offset_bytes = 156,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+  const prepare::PreparedStackObject target_object{
+      .object_id = 21,
+      .function_name = function_name,
+      .value_name = result_name,
+      .source_kind = "regalloc.spill_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+
+  prepare::PreparedSemanticMaterializationIntervalInputs accepted_inputs{
+      .names = &names,
+      .semantic_result = &result,
+      .semantic_result_value_id = 23,
+      .semantic_result_value_name = result_name,
+      .semantic_binary_opcode = bir::BinaryOpcode::Ne,
+      .semantic_producer_block_label = producer_label,
+      .semantic_producer_instruction_index = std::size_t{2},
+      .target_frame_slot = &target_frame_slot,
+      .target_stack_object = &target_object,
+      .materialization_kind =
+          prepare::PreparedSemanticMaterializationEventKind::ExplicitWrite,
+      .materialization_source_value = &result,
+      .materialization_frame_slot = &target_frame_slot,
+      .materialization_stack_object = &target_object,
+      .materialization_block_label = materialization_label,
+      .materialization_instruction_index = std::size_t{3},
+      .path_validity_known = true,
+      .path_covers_consumer = true,
+      .same_slot_writes_classified = true,
+      .same_slot_write_found = false,
+      .call_or_helper_effects_classified_safe = true,
+      .call_or_helper_clobbers_slot = false,
+      .publication_effects_classified_non_clobber = true,
+      .publication_clobbers_slot = false,
+      .move_bundle_effects_classified_non_clobber = true,
+      .move_bundle_clobbers_slot = false,
+      .parallel_copy_effects_classified_non_clobber = true,
+      .parallel_copy_clobbers_slot = false,
+  };
+
+  const auto accepted =
+      prepare::plan_prepared_semantic_materialization_interval(accepted_inputs);
+  if (!prepare::prepared_semantic_materialization_interval_available(accepted) ||
+      accepted.status !=
+          prepare::PreparedSemanticMaterializationIntervalStatus::Available ||
+      accepted.materialization_kind !=
+          prepare::PreparedSemanticMaterializationEventKind::ExplicitWrite ||
+      accepted.semantic_result_value_id != 23 ||
+      accepted.semantic_result_value_name != result_name ||
+      accepted.semantic_result_type != bir::TypeKind::I32 ||
+      accepted.semantic_binary_opcode !=
+          std::optional<bir::BinaryOpcode>{bir::BinaryOpcode::Ne} ||
+      accepted.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{21}} ||
+      accepted.stack_object_id !=
+          std::optional<prepare::PreparedObjectId>{21} ||
+      accepted.stack_offset_bytes != std::optional<std::size_t>{156}) {
+    return fail("expected explicit semantic materialization interval to be available");
+  }
+
+  auto missing_identity_inputs = accepted_inputs;
+  missing_identity_inputs.semantic_binary_opcode = std::nullopt;
+  const auto missing_identity =
+      prepare::plan_prepared_semantic_materialization_interval(
+          missing_identity_inputs);
+  if (missing_identity.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          MissingSemanticResultIdentity) {
+    return fail("expected missing semantic result identity to stay fail-closed");
+  }
+
+  auto missing_materialization_inputs = accepted_inputs;
+  missing_materialization_inputs.materialization_kind =
+      prepare::PreparedSemanticMaterializationEventKind::None;
+  missing_materialization_inputs.materialization_source_value = nullptr;
+  missing_materialization_inputs.materialization_frame_slot = nullptr;
+  missing_materialization_inputs.materialization_stack_object = nullptr;
+  const auto missing_materialization =
+      prepare::plan_prepared_semantic_materialization_interval(
+          missing_materialization_inputs);
+  if (missing_materialization.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          MissingMaterializationEvent) {
+    return fail("expected missing semantic materialization event to stay fail-closed");
+  }
+
+  auto storage_only_inputs = accepted_inputs;
+  storage_only_inputs.materialization_source_value = &storage_only_source;
+  const auto storage_only =
+      prepare::plan_prepared_semantic_materialization_interval(
+          storage_only_inputs);
+  if (storage_only.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          MaterializationValueMismatch) {
+    return fail("expected storage-only source move to be rejected");
+  }
+
+  auto wrong_slot = target_frame_slot;
+  wrong_slot.slot_id = prepare::PreparedFrameSlotId{22};
+  auto destination_mismatch_inputs = accepted_inputs;
+  destination_mismatch_inputs.materialization_frame_slot = &wrong_slot;
+  const auto destination_mismatch =
+      prepare::plan_prepared_semantic_materialization_interval(
+          destination_mismatch_inputs);
+  if (destination_mismatch.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          MaterializationDestinationMismatch) {
+    return fail("expected destination mismatch to stay fail-closed");
+  }
+
+  auto missing_path_inputs = accepted_inputs;
+  missing_path_inputs.path_validity_known = false;
+  const auto missing_path =
+      prepare::plan_prepared_semantic_materialization_interval(missing_path_inputs);
+  if (missing_path.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::MissingPathValidity) {
+    return fail("expected missing path validity to stay fail-closed");
+  }
+
+  auto path_not_covering_inputs = accepted_inputs;
+  path_not_covering_inputs.path_covers_consumer = false;
+  const auto path_not_covering =
+      prepare::plan_prepared_semantic_materialization_interval(
+          path_not_covering_inputs);
+  if (path_not_covering.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          PathNotCoveringConsumer) {
+    return fail("expected non-covering path proof to stay fail-closed");
+  }
+
+  auto same_slot_unknown_inputs = accepted_inputs;
+  same_slot_unknown_inputs.same_slot_writes_classified = false;
+  const auto same_slot_unknown =
+      prepare::plan_prepared_semantic_materialization_interval(
+          same_slot_unknown_inputs);
+  if (same_slot_unknown.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::SameSlotWriteUnknown) {
+    return fail("expected unknown same-slot writes to stay fail-closed");
+  }
+
+  auto same_slot_found_inputs = accepted_inputs;
+  same_slot_found_inputs.same_slot_write_found = true;
+  const auto same_slot_found =
+      prepare::plan_prepared_semantic_materialization_interval(
+          same_slot_found_inputs);
+  if (same_slot_found.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::SameSlotWriteFound) {
+    return fail("expected same-slot write to stay fail-closed");
+  }
+
+  auto call_unknown_inputs = accepted_inputs;
+  call_unknown_inputs.call_or_helper_effects_classified_safe = false;
+  const auto call_unknown =
+      prepare::plan_prepared_semantic_materialization_interval(
+          call_unknown_inputs);
+  if (call_unknown.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          CallOrHelperEffectUnknown) {
+    return fail("expected unknown call/helper effects to stay fail-closed");
+  }
+
+  auto call_clobbers_inputs = accepted_inputs;
+  call_clobbers_inputs.call_or_helper_clobbers_slot = true;
+  const auto call_clobbers =
+      prepare::plan_prepared_semantic_materialization_interval(
+          call_clobbers_inputs);
+  if (call_clobbers.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          CallOrHelperClobbersSlot) {
+    return fail("expected call/helper clobber to stay fail-closed");
+  }
+
+  auto publication_unknown_inputs = accepted_inputs;
+  publication_unknown_inputs.publication_effects_classified_non_clobber = false;
+  const auto publication_unknown =
+      prepare::plan_prepared_semantic_materialization_interval(
+          publication_unknown_inputs);
+  if (publication_unknown.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          PublicationEffectUnknown) {
+    return fail("expected unknown publication effects to stay fail-closed");
+  }
+
+  auto publication_clobbers_inputs = accepted_inputs;
+  publication_clobbers_inputs.publication_clobbers_slot = true;
+  const auto publication_clobbers =
+      prepare::plan_prepared_semantic_materialization_interval(
+          publication_clobbers_inputs);
+  if (publication_clobbers.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          PublicationClobbersSlot) {
+    return fail("expected publication clobber to stay fail-closed");
+  }
+
+  auto move_bundle_unknown_inputs = accepted_inputs;
+  move_bundle_unknown_inputs.move_bundle_effects_classified_non_clobber = false;
+  const auto move_bundle_unknown =
+      prepare::plan_prepared_semantic_materialization_interval(
+          move_bundle_unknown_inputs);
+  if (move_bundle_unknown.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          MoveBundleEffectUnknown) {
+    return fail("expected unknown move-bundle effects to stay fail-closed");
+  }
+
+  auto move_bundle_clobbers_inputs = accepted_inputs;
+  move_bundle_clobbers_inputs.move_bundle_clobbers_slot = true;
+  const auto move_bundle_clobbers =
+      prepare::plan_prepared_semantic_materialization_interval(
+          move_bundle_clobbers_inputs);
+  if (move_bundle_clobbers.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          MoveBundleClobbersSlot) {
+    return fail("expected move-bundle clobber to stay fail-closed");
+  }
+
+  auto parallel_copy_unknown_inputs = accepted_inputs;
+  parallel_copy_unknown_inputs.parallel_copy_effects_classified_non_clobber =
+      false;
+  const auto parallel_copy_unknown =
+      prepare::plan_prepared_semantic_materialization_interval(
+          parallel_copy_unknown_inputs);
+  if (parallel_copy_unknown.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          ParallelCopyEffectUnknown) {
+    return fail("expected unknown parallel-copy effects to stay fail-closed");
+  }
+
+  auto parallel_copy_clobbers_inputs = accepted_inputs;
+  parallel_copy_clobbers_inputs.parallel_copy_clobbers_slot = true;
+  const auto parallel_copy_clobbers =
+      prepare::plan_prepared_semantic_materialization_interval(
+          parallel_copy_clobbers_inputs);
+  if (parallel_copy_clobbers.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::
+          ParallelCopyClobbersSlot) {
+    return fail("expected parallel-copy clobber to stay fail-closed");
+  }
+
+  auto unsupported_inputs = accepted_inputs;
+  unsupported_inputs.unsupported_boundary = true;
+  const auto unsupported =
+      prepare::plan_prepared_semantic_materialization_interval(
+          unsupported_inputs);
+  if (unsupported.status !=
+      prepare::PreparedSemanticMaterializationIntervalStatus::UnsupportedBoundary) {
+    return fail("expected protected semantic materialization boundary to stay separate");
+  }
+
+  return 0;
+}
+
 int check_dependency_operand_authority_contract() {
   prepare::PreparedNameTables names;
   const auto function_name = names.function_names.intern("dependency_operand");
@@ -10017,6 +10290,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_frame_slot_source_fact_carrier_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_semantic_materialization_interval_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_dependency_operand_authority_contract(); rc != 0) {

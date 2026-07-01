@@ -738,6 +738,142 @@ struct PreparedFrameSlotSourceFactRecords {
   std::vector<PreparedFrameSlotSourceFactRecord> records;
 };
 
+enum class PreparedSemanticMaterializationEventKind {
+  None,
+  ExplicitWrite,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_semantic_materialization_event_kind_name(
+    PreparedSemanticMaterializationEventKind kind) {
+  switch (kind) {
+    case PreparedSemanticMaterializationEventKind::None:
+      return "none";
+    case PreparedSemanticMaterializationEventKind::ExplicitWrite:
+      return "explicit_write";
+  }
+  return "unknown";
+}
+
+enum class PreparedSemanticMaterializationIntervalStatus {
+  Available,
+  MissingSemanticResultIdentity,
+  MissingMaterializationEvent,
+  MaterializationValueMismatch,
+  MaterializationDestinationMismatch,
+  MissingPathValidity,
+  PathNotCoveringConsumer,
+  SameSlotWriteUnknown,
+  SameSlotWriteFound,
+  CallOrHelperEffectUnknown,
+  CallOrHelperClobbersSlot,
+  PublicationEffectUnknown,
+  PublicationClobbersSlot,
+  MoveBundleEffectUnknown,
+  MoveBundleClobbersSlot,
+  ParallelCopyEffectUnknown,
+  ParallelCopyClobbersSlot,
+  UnsupportedBoundary,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_semantic_materialization_interval_status_name(
+    PreparedSemanticMaterializationIntervalStatus status) {
+  switch (status) {
+    case PreparedSemanticMaterializationIntervalStatus::Available:
+      return "available";
+    case PreparedSemanticMaterializationIntervalStatus::MissingSemanticResultIdentity:
+      return "missing_semantic_result_identity";
+    case PreparedSemanticMaterializationIntervalStatus::MissingMaterializationEvent:
+      return "missing_materialization_event";
+    case PreparedSemanticMaterializationIntervalStatus::MaterializationValueMismatch:
+      return "materialization_value_mismatch";
+    case PreparedSemanticMaterializationIntervalStatus::
+        MaterializationDestinationMismatch:
+      return "materialization_destination_mismatch";
+    case PreparedSemanticMaterializationIntervalStatus::MissingPathValidity:
+      return "missing_path_validity";
+    case PreparedSemanticMaterializationIntervalStatus::PathNotCoveringConsumer:
+      return "path_not_covering_consumer";
+    case PreparedSemanticMaterializationIntervalStatus::SameSlotWriteUnknown:
+      return "same_slot_write_unknown";
+    case PreparedSemanticMaterializationIntervalStatus::SameSlotWriteFound:
+      return "same_slot_write_found";
+    case PreparedSemanticMaterializationIntervalStatus::CallOrHelperEffectUnknown:
+      return "call_or_helper_effect_unknown";
+    case PreparedSemanticMaterializationIntervalStatus::CallOrHelperClobbersSlot:
+      return "call_or_helper_clobbers_slot";
+    case PreparedSemanticMaterializationIntervalStatus::PublicationEffectUnknown:
+      return "publication_effect_unknown";
+    case PreparedSemanticMaterializationIntervalStatus::PublicationClobbersSlot:
+      return "publication_clobbers_slot";
+    case PreparedSemanticMaterializationIntervalStatus::MoveBundleEffectUnknown:
+      return "move_bundle_effect_unknown";
+    case PreparedSemanticMaterializationIntervalStatus::MoveBundleClobbersSlot:
+      return "move_bundle_clobbers_slot";
+    case PreparedSemanticMaterializationIntervalStatus::ParallelCopyEffectUnknown:
+      return "parallel_copy_effect_unknown";
+    case PreparedSemanticMaterializationIntervalStatus::ParallelCopyClobbersSlot:
+      return "parallel_copy_clobbers_slot";
+    case PreparedSemanticMaterializationIntervalStatus::UnsupportedBoundary:
+      return "unsupported_boundary";
+  }
+  return "unknown";
+}
+
+struct PreparedSemanticMaterializationIntervalInputs {
+  const PreparedNameTables* names = nullptr;
+  const bir::Value* semantic_result = nullptr;
+  PreparedValueId semantic_result_value_id = 0;
+  ValueNameId semantic_result_value_name = kInvalidValueName;
+  std::optional<bir::BinaryOpcode> semantic_binary_opcode;
+  std::optional<BlockLabelId> semantic_producer_block_label;
+  std::optional<std::size_t> semantic_producer_instruction_index;
+  const PreparedFrameSlot* target_frame_slot = nullptr;
+  const PreparedStackObject* target_stack_object = nullptr;
+  PreparedSemanticMaterializationEventKind materialization_kind =
+      PreparedSemanticMaterializationEventKind::None;
+  const bir::Value* materialization_source_value = nullptr;
+  const PreparedFrameSlot* materialization_frame_slot = nullptr;
+  const PreparedStackObject* materialization_stack_object = nullptr;
+  std::optional<BlockLabelId> materialization_block_label;
+  std::optional<std::size_t> materialization_instruction_index;
+  bool path_validity_known = false;
+  bool path_covers_consumer = false;
+  bool same_slot_writes_classified = false;
+  bool same_slot_write_found = false;
+  bool call_or_helper_effects_classified_safe = false;
+  bool call_or_helper_clobbers_slot = false;
+  bool publication_effects_classified_non_clobber = false;
+  bool publication_clobbers_slot = false;
+  bool move_bundle_effects_classified_non_clobber = false;
+  bool move_bundle_clobbers_slot = false;
+  bool parallel_copy_effects_classified_non_clobber = false;
+  bool parallel_copy_clobbers_slot = false;
+  bool unsupported_boundary = false;
+};
+
+struct PreparedSemanticMaterializationInterval {
+  PreparedSemanticMaterializationIntervalStatus status =
+      PreparedSemanticMaterializationIntervalStatus::MissingSemanticResultIdentity;
+  PreparedSemanticMaterializationEventKind materialization_kind =
+      PreparedSemanticMaterializationEventKind::None;
+  PreparedValueId semantic_result_value_id = 0;
+  ValueNameId semantic_result_value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind semantic_result_type =
+      c4c::backend::bir::TypeKind::Void;
+  std::optional<bir::BinaryOpcode> semantic_binary_opcode;
+  std::optional<BlockLabelId> semantic_producer_block_label;
+  std::optional<std::size_t> semantic_producer_instruction_index;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<PreparedObjectId> stack_object_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::size_t> stack_size_bytes;
+  std::optional<std::size_t> stack_align_bytes;
+  std::optional<BlockLabelId> materialization_block_label;
+  std::optional<std::size_t> materialization_instruction_index;
+};
+
 enum class PreparedDependencyOperandMaterializationPolicy {
   None,
   LoadFromStackSlot,
@@ -1856,6 +1992,13 @@ plan_prepared_frame_slot_source_fact(
 
 [[nodiscard]] PreparedFrameSlotSourceFactRecords
 collect_prepared_frame_slot_source_facts(const PreparedBirModule& prepared);
+
+[[nodiscard]] PreparedSemanticMaterializationInterval
+plan_prepared_semantic_materialization_interval(
+    const PreparedSemanticMaterializationIntervalInputs& inputs);
+
+[[nodiscard]] bool prepared_semantic_materialization_interval_available(
+    const PreparedSemanticMaterializationInterval& interval);
 
 [[nodiscard]] PreparedDependencyOperandAuthority
 plan_prepared_dependency_operand_authority(

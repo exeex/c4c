@@ -2718,6 +2718,166 @@ bool prepared_frame_slot_source_fact_available(
   return fact.status == PreparedFrameSlotSourceFactStatus::Available;
 }
 
+PreparedSemanticMaterializationInterval
+plan_prepared_semantic_materialization_interval(
+    const PreparedSemanticMaterializationIntervalInputs& inputs) {
+  PreparedSemanticMaterializationInterval interval{
+      .materialization_kind = inputs.materialization_kind,
+      .semantic_result_value_id = inputs.semantic_result_value_id,
+      .semantic_result_value_name = inputs.semantic_result_value_name,
+      .semantic_binary_opcode = inputs.semantic_binary_opcode,
+      .semantic_producer_block_label = inputs.semantic_producer_block_label,
+      .semantic_producer_instruction_index =
+          inputs.semantic_producer_instruction_index,
+      .materialization_block_label = inputs.materialization_block_label,
+      .materialization_instruction_index =
+          inputs.materialization_instruction_index,
+  };
+
+  if (inputs.unsupported_boundary) {
+    interval.status =
+        PreparedSemanticMaterializationIntervalStatus::UnsupportedBoundary;
+    return interval;
+  }
+  if (inputs.names == nullptr || inputs.semantic_result == nullptr ||
+      inputs.semantic_result_value_name == kInvalidValueName ||
+      !inputs.semantic_binary_opcode.has_value()) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        MissingSemanticResultIdentity;
+    return interval;
+  }
+  interval.semantic_result_type = inputs.semantic_result->type;
+  if (inputs.semantic_result->kind != bir::Value::Kind::Named ||
+      inputs.semantic_result->name.empty() ||
+      inputs.names->value_names.find(inputs.semantic_result->name) !=
+          inputs.semantic_result_value_name) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        MissingSemanticResultIdentity;
+    return interval;
+  }
+  if (inputs.target_frame_slot == nullptr ||
+      inputs.target_stack_object == nullptr ||
+      inputs.target_frame_slot->object_id !=
+          inputs.target_stack_object->object_id ||
+      inputs.target_frame_slot->function_name !=
+          inputs.target_stack_object->function_name) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        MaterializationDestinationMismatch;
+    return interval;
+  }
+  interval.slot_id = inputs.target_frame_slot->slot_id;
+  interval.stack_object_id = inputs.target_stack_object->object_id;
+  interval.stack_offset_bytes = inputs.target_frame_slot->offset_bytes;
+  interval.stack_size_bytes = inputs.target_frame_slot->size_bytes;
+  interval.stack_align_bytes = inputs.target_frame_slot->align_bytes;
+
+  if (inputs.materialization_kind ==
+          PreparedSemanticMaterializationEventKind::None ||
+      inputs.materialization_source_value == nullptr ||
+      inputs.materialization_frame_slot == nullptr ||
+      inputs.materialization_stack_object == nullptr) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        MissingMaterializationEvent;
+    return interval;
+  }
+  if (*inputs.materialization_source_value != *inputs.semantic_result ||
+      inputs.materialization_source_value->type !=
+          inputs.semantic_result->type) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        MaterializationValueMismatch;
+    return interval;
+  }
+  if (inputs.materialization_frame_slot->slot_id !=
+          inputs.target_frame_slot->slot_id ||
+      inputs.materialization_frame_slot->object_id !=
+          inputs.target_frame_slot->object_id ||
+      inputs.materialization_frame_slot->function_name !=
+          inputs.target_frame_slot->function_name ||
+      inputs.materialization_frame_slot->offset_bytes !=
+          inputs.target_frame_slot->offset_bytes ||
+      inputs.materialization_frame_slot->size_bytes !=
+          inputs.target_frame_slot->size_bytes ||
+      inputs.materialization_frame_slot->align_bytes !=
+          inputs.target_frame_slot->align_bytes ||
+      inputs.materialization_stack_object->object_id !=
+          inputs.target_stack_object->object_id ||
+      inputs.materialization_stack_object->function_name !=
+          inputs.target_stack_object->function_name) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        MaterializationDestinationMismatch;
+    return interval;
+  }
+  if (!inputs.path_validity_known) {
+    interval.status =
+        PreparedSemanticMaterializationIntervalStatus::MissingPathValidity;
+    return interval;
+  }
+  if (!inputs.path_covers_consumer) {
+    interval.status =
+        PreparedSemanticMaterializationIntervalStatus::PathNotCoveringConsumer;
+    return interval;
+  }
+  if (!inputs.same_slot_writes_classified) {
+    interval.status =
+        PreparedSemanticMaterializationIntervalStatus::SameSlotWriteUnknown;
+    return interval;
+  }
+  if (inputs.same_slot_write_found) {
+    interval.status =
+        PreparedSemanticMaterializationIntervalStatus::SameSlotWriteFound;
+    return interval;
+  }
+  if (!inputs.call_or_helper_effects_classified_safe) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        CallOrHelperEffectUnknown;
+    return interval;
+  }
+  if (inputs.call_or_helper_clobbers_slot) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        CallOrHelperClobbersSlot;
+    return interval;
+  }
+  if (!inputs.publication_effects_classified_non_clobber) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        PublicationEffectUnknown;
+    return interval;
+  }
+  if (inputs.publication_clobbers_slot) {
+    interval.status =
+        PreparedSemanticMaterializationIntervalStatus::PublicationClobbersSlot;
+    return interval;
+  }
+  if (!inputs.move_bundle_effects_classified_non_clobber) {
+    interval.status =
+        PreparedSemanticMaterializationIntervalStatus::MoveBundleEffectUnknown;
+    return interval;
+  }
+  if (inputs.move_bundle_clobbers_slot) {
+    interval.status =
+        PreparedSemanticMaterializationIntervalStatus::MoveBundleClobbersSlot;
+    return interval;
+  }
+  if (!inputs.parallel_copy_effects_classified_non_clobber) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        ParallelCopyEffectUnknown;
+    return interval;
+  }
+  if (inputs.parallel_copy_clobbers_slot) {
+    interval.status = PreparedSemanticMaterializationIntervalStatus::
+        ParallelCopyClobbersSlot;
+    return interval;
+  }
+
+  interval.status = PreparedSemanticMaterializationIntervalStatus::Available;
+  return interval;
+}
+
+bool prepared_semantic_materialization_interval_available(
+    const PreparedSemanticMaterializationInterval& interval) {
+  return interval.status ==
+         PreparedSemanticMaterializationIntervalStatus::Available;
+}
+
 namespace {
 
 void clear_temporary_frame_slot_source_fact_pointers(
