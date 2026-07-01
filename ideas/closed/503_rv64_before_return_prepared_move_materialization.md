@@ -1,6 +1,6 @@
 # RV64 Before-Return Prepared Move Materialization
 
-Status: Open
+Status: Closed
 Type: Focused RV64 materialization idea
 Parent: `ideas/open/495_prepared_move_bundle_materialization_bucket_review.md`
 Source Evidence:
@@ -70,3 +70,26 @@ without weakening the ownership boundary.
   preserving a separate representative test/proof for `before_return`.
 - Reject expectation, allowlist, unsupported-marker, pass/fail accounting, or
   runtime-comparison changes as progress.
+
+## Completion
+
+Closed after Step 3 residual disposition. The isolated before-return
+materialization scope is complete:
+
+- Step 1 inspected the prepared before-return move publication and RV64
+  consumption surfaces.
+- Step 2 implemented coherent prepared `return_stack_to_register`
+  materialization for the single before-return row.
+- The implementation consumes prepared move-bundle facts and prepared
+  source/destination homes, and duplicate generic return-load suppression is
+  keyed by prepared value identity rather than block shape.
+- Focused coverage preserves fail-closed behavior for adjacent incomplete,
+  confused, and out-of-scope shapes.
+
+Select-publication move-bundle evidence/authority remains outside idea 503 and
+is still queued in
+`ideas/open/504_select_publication_move_bundle_evidence_authority.md`.
+
+Any downstream RV64 gcc-torture admission reclassification or broader bucket
+refresh should be handled as a separate lifecycle initiative, not by expanding
+this before-return materialization idea.

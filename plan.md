@@ -1,33 +1,35 @@
-# RV64 Before-Return Prepared Move Materialization Plan
+# Select-Publication Move-Bundle Evidence And Authority Plan
 
 Status: Active
-Source Idea: ideas/open/503_rv64_before_return_prepared_move_materialization.md
-Activated From: ideas/closed/502_rv64_out_of_ssa_parallel_copy_move_materialization.md
+Source Idea: ideas/open/504_select_publication_move_bundle_evidence_authority.md
+Activated From: ideas/closed/503_rv64_before_return_prepared_move_materialization.md
 
 ## Purpose
 
-Implement the isolated coherent before-return move-bundle follow-up split out
-by idea 495 without broadening return lowering or ABI behavior.
+Resolve the remaining select-publication move-bundle rows split out by idea
+495 before any RV64 materialization treats them as lowerable.
 
 ## Goal
 
-Materialize the coherent prepared before-return stack-to-return-register move
-in RV64 from explicit prepared facts.
+Publish or route enough select-publication move-bundle evidence to decide
+whether the three ambiguous rows are coherent RV64-lowerable move bundles or
+producer-authority gaps.
 
 ## Core Rule
 
-RV64 may lower the before-return move only when prepared move-bundle facts
-provide the return-adjacent execution point, source storage, destination
-register, move reason, and value homes. Testcase shape, source names, raw BIR
-order, final homes, target register conventions, and object output are not
-return move authority.
+Select-publication move bundles may become RV64-lowerable only after explicit
+prepared/BIR evidence provides event kind, phase, authority, parallel-copy
+status, execution site, destination storage, source storage when available, and
+move reason. Absent case-log tokens, testcase names, raw BIR shape, object
+output, and final registers are not authority.
 
 ## Read First
 
-- ideas/open/503_rv64_before_return_prepared_move_materialization.md
+- ideas/open/504_select_publication_move_bundle_evidence_authority.md
 - ideas/closed/495_prepared_move_bundle_materialization_bucket_review.md
 - ideas/closed/501_rv64_before_instruction_prepared_move_materialization.md
 - ideas/closed/502_rv64_out_of_ssa_parallel_copy_move_materialization.md
+- ideas/closed/503_rv64_before_return_prepared_move_materialization.md
 - build/agent_state/495_step2_move_bundle_coherence/summary.md
 - build/agent_state/495_step2_move_bundle_coherence/classification.tsv
 - build/agent_state/495_step2_move_bundle_coherence/owner_matrix.tsv
@@ -36,40 +38,47 @@ return move authority.
 ## Current Targets
 
 - Inputs:
-  - one coherent prepared before-return row from idea 495 Step 2;
-  - prepared move-bundle facts with `event_kind=pre_terminator_copies`,
-    `phase=before_return`, `authority=none`, `parallel_copy=no`, destination
-    `register`, and move reason `return_stack_to_register`.
+  - three `select_publication_move_bundle` rows from idea 495 Step 2;
+  - current prepared/BIR select-publication and move-bundle record streams;
+  - current case-log event publication for move-bundle diagnostics.
 - Outputs:
-  - RV64 materialization for the prepared stack-to-return-register move;
-  - focused backend coverage for the representative row and fail-closed
-    incomplete-authority boundaries.
+  - explicit evidence for event, phase, authority, parallel-copy status,
+    execution site, destination storage, source storage when available, and
+    move reason; or
+  - distinguishable fail-closed statuses for missing, ambiguous,
+    contradictory, or raw-shape-only select-publication authority;
+  - a separate RV64 consumer idea if coherent lowerable select-publication
+    materialization remains after the evidence packet.
 
 ## Non-Goals
 
-- General return lowering, call ABI rewrites, or stack-frame redesign.
-- Before-instruction moves already completed by idea 501.
-- Out-of-SSA/pre-terminator moves already completed by idea 502.
-- Select-publication evidence or authority repair.
-- Inferring return storage from testcase shape, source names, raw BIR order, or
-  target register conventions without prepared facts.
+- RV64 materialization of select-publication move bundles before authority is
+  explicit.
+- Before-instruction moves completed by idea 501.
+- Out-of-SSA/pre-terminator moves completed by idea 502.
+- Before-return moves completed by idea 503.
+- Inferring authority from source names, case-log absence, raw BIR shape,
+  object output, final registers, or target behavior.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline churn.
 
 ## Working Model
 
-Idea 495 Step 2 found one coherent before-return row:
-`return_stack_to_register`, represented by `src/20080719-1.c`. The execution
-point is return-adjacent and should remain separately proven even if
-implementation can share local helpers with other move materializers.
+Idea 495 Step 2 found three select-publication rows whose current case-log
+tokens omit the move-bundle authority details needed for a safe RV64 consumer.
+This idea is a producer/evidence splitter first. It should publish or route the
+missing evidence, then split any coherent lowerable family into a separate RV64
+materialization idea.
 
 ## Execution Rules
 
-- Consume prepared before-return move records, not case-log text.
-- Preserve return-adjacent execution semantics.
-- Keep missing return move authority or ambiguous return storage fail-closed.
-- If implementation discovers missing producer facts, stop and route that
-  producer gap instead of inferring in RV64.
+- Audit producer records before proposing target lowering.
+- Keep unavailable cases distinguishable instead of collapsing them into one
+  generic unsupported status.
+- Do not lower the three select-publication rows in RV64 during the evidence
+  packet.
+- If evidence proves a coherent consumer family, create a separate focused
+  open idea for that RV64 materialization work.
 - Code-changing proof:
 
 ```sh
@@ -87,28 +96,36 @@ git diff --check
 
 ## Steps
 
-### Step 1: Inspect Before-Return Move Surfaces
+### Step 1: Inspect Select-Publication Evidence Surfaces
 
-Locate the prepared before-return move-bundle publication and RV64 consumption
-surfaces for the `return_stack_to_register` shape.
+Audit the prepared/BIR select-publication record stream and current
+move-bundle diagnostic publication for the three ambiguous rows.
 
-Completion means `todo.md` records the exact records/helpers to consume, the
-representative proof row, and whether the current prepared facts are complete
-enough for implementation.
+Completion means `todo.md` records the exact missing fields, producer surfaces,
+representative rows, and whether this idea can publish evidence directly or
+must route a lower prerequisite.
 
-### Step 2: Materialize The Before-Return Move
+### Step 2: Publish Or Route Select-Publication Authority
 
-Implement RV64 lowering for the coherent prepared before-return
-`return_stack_to_register` move.
+Publish durable select-publication move-bundle evidence when underlying facts
+exist, or record the precise lower producer gap when they do not.
 
-Completion means focused backend coverage proves the representative
-before-return row and preserves fail-closed behavior for missing or ambiguous
-prepared facts.
+Completion means backend coverage proves explicit available or fail-closed
+evidence statuses without RV64 materialization.
 
-### Step 3: Residual Disposition For Before-Return Moves
+### Step 3: Split Any Coherent RV64 Consumer
 
-Decide whether idea 503 can close after the before-return move is materialized
-or whether a new focused producer/consumer idea is needed.
+If Step 2 proves a coherent lowerable select-publication family, create a
+separate focused RV64 materialization idea.
+
+Completion means the new idea names its evidence rows, owner boundary,
+acceptance criteria, and reviewer reject signals, or `todo.md` records why no
+consumer idea is available yet.
+
+### Step 4: Residual Disposition For Select-Publication Evidence
+
+Decide whether idea 504 can close after evidence publication/routing and
+consumer splitting, or whether the plan needs a narrowed follow-up step.
 
 Completion means `todo.md` records the residual disposition and the active
 lifecycle state is closed, switched, or extended with no more than one active
