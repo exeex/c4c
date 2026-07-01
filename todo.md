@@ -8,36 +8,37 @@ Current Step Title: Package Local-Address Provenance From Checker Inputs
 
 ## Just Finished
 
-Lifecycle switched from completed idea 486 back to reopened idea 484. Idea 486
-closed after publishing `local_array_index_range_checker_inputs`; idea 484 can
-now resume local-address/array-element provenance packaging from that checker
-input surface.
+Implemented Step 5: production dynamic local-array local-address provenance now
+publishes through `local_array_local_address_provenances` only from matching
+available `local_array_index_range_checker_inputs`. The record packages source
+object, derivation, element path, dynamic index, layout/range, checker status,
+and producer coordinate identity, and fails closed for missing/non-available
+checker inputs, missing source object, missing derivation, missing dynamic
+index, missing range, out-of-bounds element paths, aggregate/member,
+integer-pointer round-trip, global, variadic/runtime, unsupported type,
+bootstrap, raw-shape-only, target-only, and coordinate-confusion
+representatives.
 
 ## Suggested Next
 
-Implement Step 5 by packaging matching `local_array_index_range_checker_inputs`
-into the Step 2 local-address/array-element provenance authority record, then
-prove available and fail-closed records through focused backend coverage.
+Execute Step 6 from `plan.md`: record whether idea 483 scalar local-load
+production can resume from `local_array_local_address_provenances`.
 
 ## Watchouts
 
-- Consume `local_array_index_range_checker_inputs`; do not re-derive from
-  proof facts, range certificates, selected paths, interval effects, endpoint
-  bridges, final homes, raw testcase shape, or synthetic effect inputs.
-- Preserve fail-closed distinctions for missing/non-available checker inputs,
-  missing source object, missing derivation, missing dynamic index, missing
-  range, out-of-bounds, aggregate/member, integer-pointer round-trip, global,
-  variadic/runtime, unsupported type, bootstrap, raw-shape-only, target-only,
-  and coordinate confusion.
+- Consumers should use `local_array_local_address_provenances`; they should not
+  re-derive from checker inputs, proof facts, range certificates, selected
+  paths, interval effects, endpoint bridges, final homes, raw testcase shape, or
+  synthetic effect inputs.
 - Scalar local-load production, RV64/MIR lowering, object emission, and broad
-  generic provenance analysis remain out of scope.
+  generic provenance analysis were not implemented in this packet.
 
 ## Proof
 
-Lifecycle switch proof:
+Delegated Step 5 proof:
 
 ```sh
-git diff --check > test_after.log 2>&1 && python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed >> test_after.log 2>&1
+cmake --build build -j2 > test_after.log 2>&1 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' >> test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
 ```
 
 Result: passed. Output preserved in `test_after.log`.

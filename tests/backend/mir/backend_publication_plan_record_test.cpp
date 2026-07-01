@@ -149,7 +149,10 @@ bir::LocalArrayElementPathRecord effect_stream_path() {
       }},
       .element_type = bir::TypeKind::I32,
       .element_size_bytes = 4,
+      .byte_offset = 0,
       .element_count = 4,
+      .scalar_in_bounds = true,
+      .status = bir::LocalArrayCarrierStatus::MissingIndexRangeProof,
       .lir_producer_function_name = "stream_fixture",
       .lir_producer_block_label = "body",
       .lir_producer_instruction_index = std::size_t{2},
@@ -274,6 +277,25 @@ prepare::PreparedBirModule make_effect_stream_prepared_module(
   });
   auto& function = prepared.module.functions.front();
   const auto& path = function.local_array_element_paths.front();
+  function.local_array_source_objects.push_back(bir::LocalArraySourceObjectRecord{
+      .object_name = "%lv.arr",
+      .element_type = bir::TypeKind::I32,
+      .type_text = "[4 x i32]",
+      .element_count = 4,
+      .element_size_bytes = 4,
+      .total_size_bytes = 16,
+      .align_bytes = 4,
+      .element_slots = {"%lv.arr.0", "%lv.arr.1", "%lv.arr.2", "%lv.arr.3"},
+      .status = bir::LocalArrayCarrierStatus::Available,
+  });
+  function.local_array_derivations.push_back(
+      bir::LocalArrayAddressDerivationRecord{
+          .result_name = "%elt.ptr",
+          .source_object_name = "%lv.arr",
+          .base_view_name = "%lv.arr",
+          .kind = bir::LocalArrayDerivationKind::LocalAddressOfElement,
+          .status = bir::LocalArrayCarrierStatus::Available,
+      });
   function.local_array_selected_proof_edge_paths.push_back(
       effect_stream_selected_path(&path));
   function.local_array_endpoint_bridges.push_back(
@@ -346,6 +368,14 @@ int production_publish_contract_plans_populates_local_array_interval_effects() {
       published_function.local_array_index_range_checker_inputs.front().status !=
           bir::LocalArrayRangeProofStatus::MissingLirProducerCoordinate) {
     return fail("expected production publication to populate fail-closed checker input");
+  }
+  if (published_function.local_array_local_address_provenances.size() != 1 ||
+      published_function.local_array_local_address_provenances.front().status !=
+          bir::LocalArrayCarrierStatus::MissingIndexRangeProof ||
+      published_function.local_array_local_address_provenances.front()
+              .checker_status !=
+          bir::LocalArrayRangeProofStatus::MissingLirProducerCoordinate) {
+    return fail("expected production publication to populate fail-closed local-address provenance");
   }
   return 0;
 }
@@ -428,6 +458,80 @@ int populates_clean_local_array_ordered_effect_stream() {
               .checker_record.status !=
           bir::LocalArrayRangeProofStatus::Available) {
     return fail("expected production proof fact to publish one available checker input");
+  }
+  prepare::populate_local_array_local_address_provenances(prepared);
+  if (function.local_array_local_address_provenances.size() != 1 ||
+      function.local_array_local_address_provenances.front().status !=
+          bir::LocalArrayCarrierStatus::Available ||
+      function.local_array_local_address_provenances.front().checker_input !=
+          &function.local_array_index_range_checker_inputs.front() ||
+      function.local_array_local_address_provenances.front().dynamic_index !=
+          bir::Value::named(bir::TypeKind::I64, "%idx") ||
+      function.local_array_local_address_provenances.front()
+              .source_object_name != "%lv.arr") {
+    return fail("expected production checker input to publish available local-address provenance");
+  }
+  return 0;
+}
+
+int local_array_local_address_provenance_requires_matching_checker_input() {
+  auto prepared = make_effect_stream_prepared_module({
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp2"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::CastInst{
+          .opcode = bir::CastOpcode::Bitcast,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+      },
+  });
+  auto& function = prepared.module.functions.front();
+  prepare::populate_local_array_local_address_provenances(prepared);
+  if (function.local_array_local_address_provenances.size() != 1 ||
+      function.local_array_local_address_provenances.front().status !=
+          bir::LocalArrayCarrierStatus::MissingIndexRangeProof ||
+      function.local_array_local_address_provenances.front().checker_status !=
+          bir::LocalArrayRangeProofStatus::MissingProofFact) {
+    return fail("expected provenance publication to reject missing checker inputs");
+  }
+
+  prepare::populate_local_array_ordered_effect_source_streams(prepared);
+  prepare::populate_local_array_interval_effects(prepared);
+  prepare::populate_local_array_index_range_proofs(prepared);
+  prepare::populate_local_array_proof_facts(prepared);
+  prepare::populate_local_array_index_range_checker_inputs(prepared);
+  function.local_array_index_range_checker_inputs.front().status =
+      bir::LocalArrayRangeProofStatus::OperandRoleMismatch;
+  function.local_array_index_range_checker_inputs.front().checker_record.status =
+      bir::LocalArrayRangeProofStatus::OperandRoleMismatch;
+  prepare::populate_local_array_local_address_provenances(prepared);
+  if (function.local_array_local_address_provenances.size() != 1 ||
+      function.local_array_local_address_provenances.front().status !=
+          bir::LocalArrayCarrierStatus::MissingIndexRangeProof ||
+      function.local_array_local_address_provenances.front().checker_status !=
+          bir::LocalArrayRangeProofStatus::OperandRoleMismatch) {
+    return fail("expected provenance publication to preserve non-available checker input status");
+  }
+
+  prepare::populate_local_array_index_range_checker_inputs(prepared);
+  auto confused = function.local_array_index_range_checker_inputs.front();
+  function.local_array_index_range_checker_inputs.push_back(confused);
+  prepare::populate_local_array_local_address_provenances(prepared);
+  if (function.local_array_local_address_provenances.size() != 1 ||
+      function.local_array_local_address_provenances.front().status !=
+          bir::LocalArrayCarrierStatus::PreparedBirCoordinateConfusion) {
+    return fail("expected provenance publication to reject duplicate checker inputs");
   }
   return 0;
 }
@@ -1047,6 +1151,11 @@ int main() {
     return rc;
   }
   if (int rc = populates_clean_local_array_ordered_effect_stream(); rc != 0) {
+    return rc;
+  }
+  if (int rc =
+          local_array_local_address_provenance_requires_matching_checker_input();
+      rc != 0) {
     return rc;
   }
   if (int rc = local_array_checker_input_population_requires_matching_proof_fact();

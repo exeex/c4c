@@ -5627,6 +5627,115 @@ void populate_local_array_index_range_checker_inputs(
   }
 }
 
+[[nodiscard]] const bir::LocalArraySourceObjectRecord*
+find_local_array_source_object_for_path(
+    const bir::Function& function,
+    const bir::LocalArrayElementPathRecord& path,
+    bool* duplicate) {
+  const bir::LocalArraySourceObjectRecord* found = nullptr;
+  if (duplicate != nullptr) {
+    *duplicate = false;
+  }
+  for (const auto& source_object : function.local_array_source_objects) {
+    if (!bir::local_array_source_object_matches_element_path(source_object,
+                                                             path)) {
+      continue;
+    }
+    if (found != nullptr) {
+      if (duplicate != nullptr) {
+        *duplicate = true;
+      }
+      return found;
+    }
+    found = &source_object;
+  }
+  return found;
+}
+
+[[nodiscard]] const bir::LocalArrayAddressDerivationRecord*
+find_local_array_derivation_for_path(
+    const bir::Function& function,
+    const bir::LocalArrayElementPathRecord& path,
+    bool* duplicate) {
+  const bir::LocalArrayAddressDerivationRecord* found = nullptr;
+  if (duplicate != nullptr) {
+    *duplicate = false;
+  }
+  for (const auto& derivation : function.local_array_derivations) {
+    if (!bir::local_array_derivation_matches_element_path(derivation, path)) {
+      continue;
+    }
+    if (found != nullptr) {
+      if (duplicate != nullptr) {
+        *duplicate = true;
+      }
+      return found;
+    }
+    found = &derivation;
+  }
+  return found;
+}
+
+[[nodiscard]] const bir::LocalArrayIndexRangeCheckerInputRecord*
+find_local_array_checker_input_for_path(
+    const bir::Function& function,
+    const bir::LocalArrayElementPathRecord& path,
+    bool* duplicate) {
+  const bir::LocalArrayIndexRangeCheckerInputRecord* found = nullptr;
+  if (duplicate != nullptr) {
+    *duplicate = false;
+  }
+  for (const auto& checker_input :
+       function.local_array_index_range_checker_inputs) {
+    if (!bir::local_array_checker_input_matches_element_path(checker_input,
+                                                             path)) {
+      continue;
+    }
+    if (found != nullptr) {
+      if (duplicate != nullptr) {
+        *duplicate = true;
+      }
+      return found;
+    }
+    found = &checker_input;
+  }
+  return found;
+}
+
+void populate_local_array_local_address_provenances(
+    PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.local_array_local_address_provenances.clear();
+    for (const auto& path : function.local_array_element_paths) {
+      bool duplicate_source_object = false;
+      const auto* source_object = find_local_array_source_object_for_path(
+          function, path, &duplicate_source_object);
+      bool duplicate_derivation = false;
+      const auto* derivation = find_local_array_derivation_for_path(
+          function, path, &duplicate_derivation);
+      bool duplicate_checker_input = false;
+      const auto* checker_input = find_local_array_checker_input_for_path(
+          function, path, &duplicate_checker_input);
+      auto provenance = bir::evaluate_local_array_local_address_provenance(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object =
+                  duplicate_source_object ? nullptr : source_object,
+              .derivation = duplicate_derivation ? nullptr : derivation,
+              .element_path = &path,
+              .checker_input =
+                  duplicate_checker_input ? nullptr : checker_input,
+          });
+      if (duplicate_source_object || duplicate_derivation ||
+          duplicate_checker_input) {
+        provenance.status =
+            bir::LocalArrayCarrierStatus::PreparedBirCoordinateConfusion;
+      }
+      function.local_array_local_address_provenances.push_back(
+          std::move(provenance));
+    }
+  }
+}
+
 PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
     const PreparedBirModule& prepared) {

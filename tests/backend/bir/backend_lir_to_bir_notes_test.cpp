@@ -7066,6 +7066,31 @@ bir::LocalArrayElementPathRecord make_dynamic_local_array_selected_edge_path() {
   return path;
 }
 
+bir::LocalArraySourceObjectRecord make_dynamic_local_array_source_object() {
+  return bir::LocalArraySourceObjectRecord{
+      .object_name = "%lv.arr",
+      .element_type = TypeKind::I32,
+      .type_text = "[4 x i32]",
+      .element_count = 4,
+      .element_size_bytes = 4,
+      .total_size_bytes = 16,
+      .align_bytes = 4,
+      .element_slots = {"%lv.arr.0", "%lv.arr.1", "%lv.arr.2", "%lv.arr.3"},
+      .status = bir::LocalArrayCarrierStatus::Available,
+  };
+}
+
+bir::LocalArrayAddressDerivationRecord
+make_dynamic_local_array_derivation() {
+  return bir::LocalArrayAddressDerivationRecord{
+      .result_name = "%elt.ptr",
+      .source_object_name = "%lv.arr",
+      .base_view_name = "%lv.arr",
+      .kind = bir::LocalArrayDerivationKind::LocalAddressOfElement,
+      .status = bir::LocalArrayCarrierStatus::Available,
+  };
+}
+
 bir::LocalArraySelectedProofEdgePathInputs complete_selected_proof_edge_inputs(
     const bir::LocalArrayElementPathRecord* path) {
   return bir::LocalArraySelectedProofEdgePathInputs{
@@ -8533,6 +8558,234 @@ int expect_local_array_checker_inputs_consume_proof_facts() {
       return rc;
     }
   }
+  return 0;
+}
+
+int expect_local_array_local_address_provenance_consumes_checker_inputs() {
+  auto path = make_dynamic_local_array_selected_edge_path();
+  path.scalar_in_bounds = true;
+  const auto source = make_dynamic_local_array_source_object();
+  const auto derivation = make_dynamic_local_array_derivation();
+  const auto selected_path = bir::evaluate_local_array_selected_proof_edge_path(
+      complete_selected_proof_edge_inputs(&path));
+  const auto interval_effect = bir::LocalArrayIntervalEffectRecord{
+      .status = bir::LocalArrayIntervalEffectStatus::Available,
+      .selected_path = &selected_path,
+      .lir_producer_lookup_key = selected_path.lir_producer_lookup_key,
+      .lir_producer_function_name = selected_path.lir_producer_function_name,
+      .lir_producer_block_label = selected_path.lir_producer_block_label,
+      .lir_producer_instruction_index =
+          selected_path.lir_producer_instruction_index,
+      .dynamic_index = bir::Value::named(TypeKind::I64, "%idx"),
+      .proof_function_name = selected_path.proof_function_name,
+      .proof_block_label = selected_path.proof_block_label,
+      .selected_successor_label = selected_path.selected_successor_label,
+  };
+  const auto range_proof =
+      bir::evaluate_local_array_index_range_proof_certificate(
+          bir::LocalArrayRangeProofCertificateInputs{
+              .element_path = &path,
+              .selected_path = &selected_path,
+              .interval_effect = &interval_effect,
+          });
+  const auto proof_fact = bir::evaluate_local_array_proof_fact(
+      bir::LocalArrayProofFactInputs{
+          .element_path = &path,
+          .range_proof = &range_proof,
+      });
+  const auto checker_input =
+      bir::evaluate_local_array_index_range_checker_input(
+          bir::LocalArrayIndexRangeCheckerInputInputs{
+              .element_path = &path,
+              .proof_fact = &proof_fact,
+          });
+  if (checker_input.status != bir::LocalArrayRangeProofStatus::Available) {
+    return fail("local-address provenance fixture should start from available checker input");
+  }
+
+  const auto available =
+      bir::evaluate_local_array_local_address_provenance(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object = &source,
+              .derivation = &derivation,
+              .element_path = &path,
+              .checker_input = &checker_input,
+          });
+  if (available.status != bir::LocalArrayCarrierStatus::Available ||
+      available.checker_status != bir::LocalArrayRangeProofStatus::Available ||
+      available.source_object_name != "%lv.arr" ||
+      available.derived_pointer_name != "%elt.ptr" ||
+      available.element_result_name != "%elt.ptr" ||
+      available.dynamic_index != bir::Value::named(TypeKind::I64, "%idx") ||
+      available.derivation_kind !=
+          bir::LocalArrayDerivationKind::LocalAddressOfElement ||
+      available.element_type != TypeKind::I32 ||
+      available.element_size_bytes != 4 ||
+      available.element_count != 4 ||
+      available.source_total_size_bytes != 16 ||
+      !available.scalar_in_bounds ||
+      available.checker_input != &checker_input) {
+    return fail("local-address provenance should package available checker input evidence");
+  }
+
+  const auto expect_status =
+      [&](bir::LocalArrayLocalAddressProvenanceInputs inputs,
+          bir::LocalArrayCarrierStatus expected_status,
+          const char* failure_message) -> int {
+    const auto record =
+        bir::evaluate_local_array_local_address_provenance(inputs);
+    if (record.status != expected_status) {
+      return fail(failure_message);
+    }
+    return 0;
+  };
+
+  if (bir::local_array_carrier_status_name(
+          bir::LocalArrayCarrierStatus::PreparedBirCoordinateConfusion) !=
+      "prepared_bir_coordinate_confusion") {
+    return fail("local-address provenance coordinate-confusion status name should remain stable");
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .derivation = &derivation,
+              .element_path = &path,
+              .checker_input = &checker_input,
+          },
+          bir::LocalArrayCarrierStatus::MissingSourceObject,
+          "local-address provenance should reject missing source object");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object = &source,
+              .element_path = &path,
+              .checker_input = &checker_input,
+          },
+          bir::LocalArrayCarrierStatus::MissingDerivation,
+          "local-address provenance should reject missing derivation");
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = expect_status(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object = &source,
+              .derivation = &derivation,
+              .element_path = &path,
+          },
+          bir::LocalArrayCarrierStatus::MissingIndexRangeProof,
+          "local-address provenance should reject missing checker input");
+      rc != 0) {
+    return rc;
+  }
+
+  auto non_available_checker = checker_input;
+  non_available_checker.status =
+      bir::LocalArrayRangeProofStatus::OperandRoleMismatch;
+  non_available_checker.checker_record.status =
+      bir::LocalArrayRangeProofStatus::OperandRoleMismatch;
+  const auto non_available =
+      bir::evaluate_local_array_local_address_provenance(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object = &source,
+              .derivation = &derivation,
+              .element_path = &path,
+              .checker_input = &non_available_checker,
+          });
+  if (non_available.status !=
+          bir::LocalArrayCarrierStatus::MissingIndexRangeProof ||
+      non_available.checker_status !=
+          bir::LocalArrayRangeProofStatus::OperandRoleMismatch) {
+    return fail("local-address provenance should preserve non-available checker status");
+  }
+
+  auto no_dynamic_index = path;
+  no_dynamic_index.indices.clear();
+  if (const int rc = expect_status(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object = &source,
+              .derivation = &derivation,
+              .element_path = &no_dynamic_index,
+              .checker_input = &checker_input,
+          },
+          bir::LocalArrayCarrierStatus::MissingIndexIdentity,
+          "local-address provenance should reject missing dynamic index");
+      rc != 0) {
+    return rc;
+  }
+
+  auto out_of_bounds = path;
+  out_of_bounds.scalar_in_bounds = false;
+  if (const int rc = expect_status(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object = &source,
+              .derivation = &derivation,
+              .element_path = &out_of_bounds,
+              .checker_input = &checker_input,
+          },
+          bir::LocalArrayCarrierStatus::ElementOutOfBounds,
+          "local-address provenance should reject out-of-bounds element paths");
+      rc != 0) {
+    return rc;
+  }
+
+  auto unsupported_type = path;
+  unsupported_type.element_type = TypeKind::Void;
+  if (const int rc = expect_status(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object = &source,
+              .derivation = &derivation,
+              .element_path = &unsupported_type,
+              .checker_input = &checker_input,
+          },
+          bir::LocalArrayCarrierStatus::F128ComplexVectorOrVolatileAtomicBoundary,
+          "local-address provenance should reject unsupported element type");
+      rc != 0) {
+    return rc;
+  }
+
+  auto confused_source = source;
+  confused_source.object_name = "%other";
+  if (const int rc = expect_status(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object = &confused_source,
+              .derivation = &derivation,
+              .element_path = &path,
+              .checker_input = &checker_input,
+          },
+          bir::LocalArrayCarrierStatus::PreparedBirCoordinateConfusion,
+          "local-address provenance should reject coordinate-confused source objects");
+      rc != 0) {
+    return rc;
+  }
+
+  const bir::LocalArrayCarrierStatus propagated_statuses[] = {
+      bir::LocalArrayCarrierStatus::AggregateOrMemberBoundary,
+      bir::LocalArrayCarrierStatus::IntegerPointerRoundTrip,
+      bir::LocalArrayCarrierStatus::GlobalSourceObject,
+      bir::LocalArrayCarrierStatus::VariadicOrVaArgBoundary,
+      bir::LocalArrayCarrierStatus::RuntimeOrCallBoundary,
+      bir::LocalArrayCarrierStatus::BootstrapBoundary,
+      bir::LocalArrayCarrierStatus::RawShapeOnly,
+      bir::LocalArrayCarrierStatus::TargetOnlyOrFinalHomeOnly,
+  };
+  for (const auto status : propagated_statuses) {
+    auto failing_source = source;
+    failing_source.status = status;
+    if (const int rc = expect_status(
+            bir::LocalArrayLocalAddressProvenanceInputs{
+                .source_object = &failing_source,
+                .derivation = &derivation,
+                .element_path = &path,
+                .checker_input = &checker_input,
+            },
+            status,
+            "local-address provenance should preserve fail-closed carrier status");
+        rc != 0) {
+      return rc;
+    }
+  }
+
   return 0;
 }
 
@@ -10730,6 +10983,11 @@ int main() {
           expect_local_array_checker_inputs_consume_proof_facts();
       local_array_checker_input_status != 0) {
     return local_array_checker_input_status;
+  }
+  if (const int local_array_local_address_provenance_status =
+          expect_local_array_local_address_provenance_consumes_checker_inputs();
+      local_array_local_address_provenance_status != 0) {
+    return local_array_local_address_provenance_status;
   }
   if (const int real_dynamic_local_array_status =
           expect_real_dynamic_local_array_row_remains_unavailable_without_range_proof();

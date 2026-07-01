@@ -663,6 +663,7 @@ enum class LocalArrayCarrierStatus : unsigned char {
   BootstrapBoundary,
   RawShapeOnly,
   TargetOnlyOrFinalHomeOnly,
+  PreparedBirCoordinateConfusion,
 };
 
 [[nodiscard]] constexpr std::string_view local_array_carrier_status_name(
@@ -724,6 +725,8 @@ enum class LocalArrayCarrierStatus : unsigned char {
       return "raw_shape_only";
     case LocalArrayCarrierStatus::TargetOnlyOrFinalHomeOnly:
       return "target_only_or_final_home_only";
+    case LocalArrayCarrierStatus::PreparedBirCoordinateConfusion:
+      return "prepared_bir_coordinate_confusion";
   }
   return "unknown";
 }
@@ -2241,6 +2244,38 @@ struct LocalArrayIndexRangeCheckerInputRecord {
   LocalArrayIndexRangeProofRecord checker_record;
 };
 
+struct LocalArrayLocalAddressProvenanceInputs {
+  const LocalArraySourceObjectRecord* source_object = nullptr;
+  const LocalArrayAddressDerivationRecord* derivation = nullptr;
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  const LocalArrayIndexRangeCheckerInputRecord* checker_input = nullptr;
+};
+
+struct LocalArrayLocalAddressProvenanceRecord {
+  LocalArrayCarrierStatus status = LocalArrayCarrierStatus::MissingElementPath;
+  LocalArrayRangeProofStatus checker_status =
+      LocalArrayRangeProofStatus::MissingLocalArrayPath;
+  const LocalArraySourceObjectRecord* source_object = nullptr;
+  const LocalArrayAddressDerivationRecord* derivation = nullptr;
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  const LocalArrayIndexRangeCheckerInputRecord* checker_input = nullptr;
+  std::string source_object_name;
+  std::string derived_pointer_name;
+  std::string element_result_name;
+  std::string lir_producer_lookup_key;
+  std::string lir_producer_function_name;
+  std::string lir_producer_block_label;
+  std::optional<std::size_t> lir_producer_instruction_index;
+  LocalArrayDerivationKind derivation_kind = LocalArrayDerivationKind::Unknown;
+  Value dynamic_index;
+  TypeKind element_type = TypeKind::Void;
+  std::size_t element_size_bytes = 0;
+  std::size_t byte_offset = 0;
+  std::size_t element_count = 0;
+  std::size_t source_total_size_bytes = 0;
+  bool scalar_in_bounds = false;
+};
+
 [[nodiscard]] inline const LocalArrayIndexRecord* single_dynamic_local_array_index(
     const LocalArrayElementPathRecord& path,
     bool* saw_multiple = nullptr) {
@@ -2261,6 +2296,21 @@ struct LocalArrayIndexRangeCheckerInputRecord {
     dynamic_index = &index;
   }
   return dynamic_index;
+}
+
+[[nodiscard]] inline bool local_array_source_object_matches_element_path(
+    const LocalArraySourceObjectRecord& source_object,
+    const LocalArrayElementPathRecord& element_path) {
+  return !source_object.object_name.empty() &&
+         source_object.object_name == element_path.source_object_name;
+}
+
+[[nodiscard]] inline bool local_array_derivation_matches_element_path(
+    const LocalArrayAddressDerivationRecord& derivation,
+    const LocalArrayElementPathRecord& element_path) {
+  return !derivation.result_name.empty() &&
+         derivation.result_name == element_path.derivation_result_name &&
+         derivation.source_object_name == element_path.source_object_name;
 }
 
 [[nodiscard]] constexpr bool local_array_range_proof_index_type_supported(
@@ -2969,6 +3019,154 @@ evaluate_local_array_index_range_checker_input(
   }
   record.checker_record = evaluate_local_array_index_range_proof(record.inputs);
   record.status = record.checker_record.status;
+  return record;
+}
+
+[[nodiscard]] inline bool local_array_checker_input_matches_element_path(
+    const LocalArrayIndexRangeCheckerInputRecord& checker_input,
+    const LocalArrayElementPathRecord& element_path) {
+  if (checker_input.element_path == &element_path) {
+    return true;
+  }
+  if (checker_input.element_path == nullptr) {
+    return false;
+  }
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      single_dynamic_local_array_index(element_path, &saw_multiple_dynamic_indices);
+  return dynamic_index != nullptr &&
+         !saw_multiple_dynamic_indices &&
+         checker_input.element_path->lir_producer_lookup_key ==
+             element_path.lir_producer_lookup_key &&
+         checker_input.element_path->lir_producer_function_name ==
+             element_path.lir_producer_function_name &&
+         checker_input.element_path->lir_producer_block_label ==
+             element_path.lir_producer_block_label &&
+         checker_input.element_path->lir_producer_instruction_index ==
+             element_path.lir_producer_instruction_index &&
+         local_array_range_proof_same_value(
+             checker_input.checker_record.dynamic_index, dynamic_index->value);
+}
+
+[[nodiscard]] inline LocalArrayLocalAddressProvenanceRecord
+evaluate_local_array_local_address_provenance(
+    const LocalArrayLocalAddressProvenanceInputs& inputs) {
+  LocalArrayLocalAddressProvenanceRecord record{
+      .source_object = inputs.source_object,
+      .derivation = inputs.derivation,
+      .element_path = inputs.element_path,
+      .checker_input = inputs.checker_input,
+  };
+
+  if (inputs.element_path == nullptr) {
+    record.status = LocalArrayCarrierStatus::MissingElementPath;
+    return record;
+  }
+
+  const auto& path = *inputs.element_path;
+  record.source_object_name = path.source_object_name;
+  record.derived_pointer_name = path.derivation_result_name;
+  record.element_result_name = path.result_name;
+  record.lir_producer_lookup_key = path.lir_producer_lookup_key;
+  record.lir_producer_function_name = path.lir_producer_function_name;
+  record.lir_producer_block_label = path.lir_producer_block_label;
+  record.lir_producer_instruction_index = path.lir_producer_instruction_index;
+  record.element_type = path.element_type;
+  record.element_size_bytes = path.element_size_bytes;
+  record.byte_offset = path.byte_offset;
+  record.element_count = path.element_count;
+  record.scalar_in_bounds = path.scalar_in_bounds;
+
+  if (path.status != LocalArrayCarrierStatus::Available &&
+      path.status != LocalArrayCarrierStatus::MissingIndexRangeProof) {
+    record.status = path.status;
+    return record;
+  }
+  if (path.lir_producer_coordinate_status !=
+      LocalArrayLirProducerCoordinateStatus::Available) {
+    record.status = LocalArrayCarrierStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+  if (path.lir_producer_operation_role !=
+      LocalArrayLirProducerOperationRole::AddressDerivation) {
+    record.status = LocalArrayCarrierStatus::UnknownProvenance;
+    return record;
+  }
+  if (inputs.source_object == nullptr) {
+    record.status = LocalArrayCarrierStatus::MissingSourceObject;
+    return record;
+  }
+  record.source_total_size_bytes = inputs.source_object->total_size_bytes;
+  if (inputs.source_object->status != LocalArrayCarrierStatus::Available) {
+    record.status = inputs.source_object->status;
+    return record;
+  }
+  if (!local_array_source_object_matches_element_path(*inputs.source_object,
+                                                      path)) {
+    record.status = LocalArrayCarrierStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+  if (inputs.derivation == nullptr) {
+    record.status = LocalArrayCarrierStatus::MissingDerivation;
+    return record;
+  }
+  record.derivation_kind = inputs.derivation->kind;
+  if (inputs.derivation->status != LocalArrayCarrierStatus::Available) {
+    record.status = inputs.derivation->status;
+    return record;
+  }
+  if (!local_array_derivation_matches_element_path(*inputs.derivation, path)) {
+    record.status = LocalArrayCarrierStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+  if (inputs.derivation->kind == LocalArrayDerivationKind::Unknown) {
+    record.status = LocalArrayCarrierStatus::MissingDerivation;
+    return record;
+  }
+
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      single_dynamic_local_array_index(path, &saw_multiple_dynamic_indices);
+  if (dynamic_index == nullptr || saw_multiple_dynamic_indices) {
+    record.status = LocalArrayCarrierStatus::MissingIndexIdentity;
+    return record;
+  }
+  record.dynamic_index = dynamic_index->value;
+
+  if (inputs.checker_input == nullptr) {
+    record.status = LocalArrayCarrierStatus::MissingIndexRangeProof;
+    record.checker_status = LocalArrayRangeProofStatus::MissingProofFact;
+    return record;
+  }
+  record.checker_status = inputs.checker_input->status;
+  if (!local_array_checker_input_matches_element_path(*inputs.checker_input,
+                                                      path)) {
+    record.status = LocalArrayCarrierStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+  if (inputs.checker_input->status != LocalArrayRangeProofStatus::Available ||
+      inputs.checker_input->checker_record.status !=
+          LocalArrayRangeProofStatus::Available) {
+    record.status = LocalArrayCarrierStatus::MissingIndexRangeProof;
+    return record;
+  }
+  if (path.element_type == TypeKind::Void || path.element_size_bytes == 0) {
+    record.status =
+        LocalArrayCarrierStatus::F128ComplexVectorOrVolatileAtomicBoundary;
+    return record;
+  }
+  if (!path.scalar_in_bounds) {
+    record.status = LocalArrayCarrierStatus::ElementOutOfBounds;
+    return record;
+  }
+  if (inputs.source_object->total_size_bytes != 0 &&
+      path.byte_offset + path.element_size_bytes >
+          inputs.source_object->total_size_bytes) {
+    record.status = LocalArrayCarrierStatus::ElementOutOfBounds;
+    return record;
+  }
+
+  record.status = LocalArrayCarrierStatus::Available;
   return record;
 }
 
@@ -5121,6 +5319,8 @@ struct Function {
   std::vector<LocalArrayProofFactRecord> local_array_proof_facts;
   std::vector<LocalArrayIndexRangeCheckerInputRecord>
       local_array_index_range_checker_inputs;
+  std::vector<LocalArrayLocalAddressProvenanceRecord>
+      local_array_local_address_provenances;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;
