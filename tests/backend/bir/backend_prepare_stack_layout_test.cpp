@@ -7190,6 +7190,272 @@ int check_semantic_write_event_carrier_contract() {
   return 0;
 }
 
+int check_materialization_point_authority_contract() {
+  prepare::PreparedNameTables names;
+  const auto function_name = names.function_names.intern("materialization_point");
+  const auto block_label = names.block_labels.intern("entry");
+  const auto result_name = names.value_names.intern("%t2");
+  const auto other_name = names.value_names.intern("%other");
+
+  const bir::Value result = bir::Value::named(bir::TypeKind::I32, "%t2");
+  const bir::BinaryInst binary{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = result,
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "%t1"),
+  };
+  const prepare::PreparedFrameSlot frame_slot{
+      .slot_id = prepare::PreparedFrameSlotId{5},
+      .object_id = 2,
+      .function_name = function_name,
+      .offset_bytes = 24,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+  const prepare::PreparedStackObject stack_object{
+      .object_id = 2,
+      .function_name = function_name,
+      .value_name = result_name,
+      .source_kind = "local_slot",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+  const prepare::PreparedMemoryAccess frame_slot_access{
+      .function_name = function_name,
+      .block_label = block_label,
+      .inst_index = 5,
+      .stored_value_name = result_name,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+              .frame_slot_id = prepare::PreparedFrameSlotId{5},
+              .byte_offset = 0,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .can_use_base_plus_offset = true,
+          },
+  };
+  const prepare::PreparedValueHome source_home{
+      .value_id = 2,
+      .function_name = function_name,
+      .value_name = result_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{5},
+      .offset_bytes = 24,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+  const prepare::PreparedEdgePublicationSourceProducer binary_producer{
+      .kind = prepare::PreparedEdgePublicationSourceProducerKind::Binary,
+      .block_label = block_label,
+      .instruction_index = 4,
+      .binary = &binary,
+  };
+  const auto accepted_plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &result,
+      .destination_access = &frame_slot_access,
+      .source_home = &source_home,
+      .destination_frame_slot = &frame_slot,
+      .destination_stack_object = &stack_object,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      .source_producer = &binary_producer,
+      .publication_instruction_index = std::size_t{5},
+  });
+  const prepare::PreparedStoreSourcePublicationRecord accepted_record{
+      .function_name = function_name,
+      .block_label = block_label,
+      .instruction_index = 5,
+      .plan = accepted_plan,
+  };
+
+  const auto accepted =
+      prepare::plan_prepared_materialization_point_authority({
+          .store_source = &accepted_record,
+      });
+  if (!prepare::prepared_materialization_point_authority_available(accepted) ||
+      accepted.status !=
+          prepare::PreparedMaterializationPointAuthorityStatus::Available ||
+      accepted.authority_source !=
+          prepare::PreparedMaterializationPointAuthoritySource::
+              StoreSourceBinaryFrameSlotStore ||
+      accepted.function_name != function_name ||
+      accepted.store_block_label != block_label ||
+      accepted.store_instruction_index != std::optional<std::size_t>{5} ||
+      accepted.semantic_producer_block_label != block_label ||
+      accepted.semantic_producer_instruction_index !=
+          std::optional<std::size_t>{4} ||
+      accepted.semantic_result_value_id != 2 ||
+      accepted.semantic_result_value_name != result_name ||
+      accepted.semantic_result_type != bir::TypeKind::I32 ||
+      accepted.semantic_binary_opcode !=
+          std::optional<bir::BinaryOpcode>{bir::BinaryOpcode::Ne} ||
+      accepted.destination_frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{5}} ||
+      accepted.destination_object_id !=
+          std::optional<prepare::PreparedObjectId>{2} ||
+      accepted.destination_stack_offset_bytes != std::optional<std::size_t>{24} ||
+      accepted.destination_size_bytes != std::optional<std::size_t>{4} ||
+      accepted.destination_align_bytes != std::optional<std::size_t>{4}) {
+    return fail("expected binary store-source frame-slot materialization point authority");
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.store_source_publications.records.push_back(accepted_record);
+  const auto collected =
+      prepare::collect_prepared_materialization_point_authorities(prepared);
+  if (collected.records.size() != 1 ||
+      !prepare::prepared_materialization_point_authority_available(
+          collected.records.front().authority) ||
+      collected.records.front().authority.authority_source !=
+          prepare::PreparedMaterializationPointAuthoritySource::
+              StoreSourceBinaryFrameSlotStore) {
+    return fail("expected collector to publish materialization point authority");
+  }
+
+  const auto missing =
+      prepare::plan_prepared_materialization_point_authority({});
+  if (missing.status !=
+      prepare::PreparedMaterializationPointAuthorityStatus::
+          MissingStoreSourceAuthority) {
+    return fail("expected missing store-source authority to stay fail-closed");
+  }
+
+  auto mismatched_access = frame_slot_access;
+  mismatched_access.stored_value_name = other_name;
+  auto mismatched_plan = accepted_plan;
+  mismatched_plan.destination_access = &mismatched_access;
+  const prepare::PreparedStoreSourcePublicationRecord mismatched_record{
+      .function_name = function_name,
+      .block_label = block_label,
+      .instruction_index = 5,
+      .plan = mismatched_plan,
+  };
+  const auto mismatched =
+      prepare::plan_prepared_materialization_point_authority({
+          .store_source = &mismatched_record,
+      });
+  if (mismatched.status !=
+      prepare::PreparedMaterializationPointAuthorityStatus::
+          SourceResultMismatch) {
+    return fail("expected mismatched source/access authority to stay unavailable");
+  }
+
+  auto global_like_access = frame_slot_access;
+  global_like_access.address.base_kind =
+      prepare::PreparedAddressBaseKind::GlobalSymbol;
+  global_like_access.address.frame_slot_id = std::nullopt;
+  const auto no_frame_slot_plan = prepare::plan_prepared_store_source_publication({
+      .source_value = &result,
+      .destination_access = &global_like_access,
+      .source_home = &source_home,
+      .destination_frame_slot = nullptr,
+      .destination_stack_object = nullptr,
+      .intent = prepare::PreparedStoreSourcePublicationIntent::StoreLocalPublication,
+      .source_producer = &binary_producer,
+      .publication_instruction_index = std::size_t{5},
+  });
+  const prepare::PreparedStoreSourcePublicationRecord no_frame_slot_record{
+      .function_name = function_name,
+      .block_label = block_label,
+      .instruction_index = 5,
+      .plan = no_frame_slot_plan,
+  };
+  const auto no_frame_slot =
+      prepare::plan_prepared_materialization_point_authority({
+          .store_source = &no_frame_slot_record,
+      });
+  if (no_frame_slot.status !=
+      prepare::PreparedMaterializationPointAuthorityStatus::
+          MissingFrameSlotAccess) {
+    return fail("expected missing frame-slot access to stay fail-closed");
+  }
+
+  const auto storage_only =
+      prepare::plan_prepared_materialization_point_authority({
+          .store_source = &accepted_record,
+          .storage_only_move = true,
+      });
+  if (storage_only.status !=
+      prepare::PreparedMaterializationPointAuthorityStatus::StorageOnlyMove) {
+    return fail("expected storage-only movement evidence to stay rejected");
+  }
+
+  const auto final_home_only =
+      prepare::plan_prepared_materialization_point_authority({
+          .store_source = &accepted_record,
+          .raw_shape_or_final_home_only = true,
+      });
+  if (final_home_only.status !=
+      prepare::PreparedMaterializationPointAuthorityStatus::RawShapeInference) {
+    return fail("expected final-home-only evidence to stay rejected");
+  }
+
+  auto select_plan = accepted_plan;
+  select_plan.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::SelectMaterialization;
+  const prepare::PreparedStoreSourcePublicationRecord select_record{
+      .function_name = function_name,
+      .block_label = block_label,
+      .instruction_index = 5,
+      .plan = select_plan,
+  };
+  const auto select_boundary =
+      prepare::plan_prepared_materialization_point_authority({
+          .store_source = &select_record,
+      });
+  if (select_boundary.status !=
+      prepare::PreparedMaterializationPointAuthorityStatus::
+          ProtectedSelectResultBoundary) {
+    return fail("expected select-result materialization point to stay protected");
+  }
+
+  auto pointer_plan = accepted_plan;
+  pointer_plan.source_value = bir::Value::named(bir::TypeKind::Ptr, "%t2");
+  pointer_plan.source_binary = nullptr;
+  pointer_plan.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::Unknown;
+  const prepare::PreparedStoreSourcePublicationRecord pointer_record{
+      .function_name = function_name,
+      .block_label = block_label,
+      .instruction_index = 5,
+      .plan = pointer_plan,
+  };
+  const auto pointer_boundary =
+      prepare::plan_prepared_materialization_point_authority({
+          .store_source = &pointer_record,
+      });
+  if (pointer_boundary.status !=
+      prepare::PreparedMaterializationPointAuthorityStatus::
+          ProtectedPointerOrTerminatorBoundary) {
+    return fail("expected pointer materialization point to stay protected");
+  }
+
+  auto unsupported_plan = accepted_plan;
+  unsupported_plan.source_producer_kind =
+      prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal;
+  unsupported_plan.source_binary = nullptr;
+  const prepare::PreparedStoreSourcePublicationRecord unsupported_record{
+      .function_name = function_name,
+      .block_label = block_label,
+      .instruction_index = 5,
+      .plan = unsupported_plan,
+  };
+  const auto unsupported =
+      prepare::plan_prepared_materialization_point_authority({
+          .store_source = &unsupported_record,
+      });
+  if (unsupported.status !=
+      prepare::PreparedMaterializationPointAuthorityStatus::
+          UnsupportedSourceProducer) {
+    return fail("expected non-binary producer to stay fail-closed");
+  }
+
+  return 0;
+}
+
 int check_semantic_materialization_interval_contract() {
   prepare::PreparedNameTables names;
   const auto function_name = names.function_names.intern("semantic_materialization");
@@ -10461,6 +10727,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_semantic_write_event_carrier_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_materialization_point_authority_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_semantic_materialization_interval_contract(); rc != 0) {

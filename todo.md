@@ -1,103 +1,79 @@
 Status: Active
 Source Idea Path: ideas/open/481_semantic_result_frame_slot_materialization_point_producer.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Focused Materialization Point Contract
+Current Step ID: 3
+Current Step Title: Implement Focused Materialization Point Producer
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 for idea 481 by defining the focused materialization-point
-contract from the scalar compare destination probe.
+Completed Step 3 for idea 481 by implementing the focused prepared
+materialization-point authority producer surface for scalar binary results
+stored to frame-slot destinations.
 
-Contract decision:
+Implemented:
 
-- A bounded producer packet exists.
-- `store_source status=available source_producer=binary` plus matching
-  store-site frame-slot access and destination object/slot/layout is enough to
-  publish a focused materialization-point authority record.
-- This authority must be produced from prepared rows, not raw BIR shape, final
-  homes, storage, object names, testcase shape, or dump order.
+- Added `PreparedMaterializationPointAuthority` records/statuses and stable
+  source/status spellings in `publication_plans.hpp`.
+- Added `plan_prepared_materialization_point_authority` and
+  `collect_prepared_materialization_point_authorities` in
+  `publication_plans.cpp`.
+- Accepted only available local `store_source` records with binary
+  `source_producer`, a matching producer result, matching store-site
+  frame-slot access, and matching destination frame slot/object/layout.
+- Kept the surface prepared-only; no semantic interval, frame-slot source fact,
+  branch-stack-load authority, or RV64 consumer was populated from this packet.
 
-Accepted focused evidence:
+Focused coverage:
 
-| Field | Required evidence |
-| --- | --- |
-| Function | Same prepared function for all participating rows. |
-| Semantic producer | Binary semantic instruction result, e.g. `%t2 = bir.ne i32 %t0, %t1`. |
-| Producer authority | `store_source status=available source=%t2 source_producer=binary source_producer_block=entry source_producer_inst=4 source_binary=yes`. |
-| Store site | Store-source row identifies the local store site, e.g. `block=entry inst=5`. |
-| Store-site access | Prepared addressing row at the same store site with `base=frame_slot stored=%t2`. |
-| Destination object | Prepared stack object for the stored local destination, e.g. `%lv.comparison` object `#2`, type `i32`, size `4`, align `4`. |
-| Destination slot/layout | Prepared frame slot matching the access row and object, e.g. slot `#0`, object `#2`, offset `0`, size `4`, align `4`. |
-| Result identity | Result value id/name/type for the semantic source, e.g. `%t2` / value id `2` / `i32`. |
-
-Required materialization-point record:
-
-- function name;
-- semantic source value id/name/type;
-- semantic producer kind and producer block/instruction;
-- store block/instruction;
-- destination object id/name/type;
-- destination frame slot id;
-- destination offset/size/alignment;
-- authority/status `available`;
-- authority source `store_source_binary_frame_slot_store` or equivalent stable
-  spelling.
-
-Fail-closed statuses:
-
-| Status | Trigger |
-| --- | --- |
-| `missing_store_source_authority` | No prepared store-source row exists for the store site. |
-| `unsupported_source_producer` | Store source is unavailable, unknown, immediate-only, select-result, load-only, cast-only, or any non-binary producer outside this focused packet. |
-| `source_result_mismatch` | Store-source value does not match the semantic producer result or the frame-slot access stored value. |
-| `missing_frame_slot_access` | No prepared addressing/access row exists at the store site. |
-| `destination_mismatch` | Access row, stack object, frame slot, offset, size, or alignment disagree. |
-| `storage_only_move` | Evidence is only a value/storage movement such as `authority=none`, without store-source plus access authority. |
-| `protected_select_result_boundary` | Candidate source or destination belongs to select-result stack-destination publication rather than this scalar binary store contract. |
-| `protected_pointer_or_terminator_boundary` | Candidate row belongs to pointer/provenance or unsupported-terminator families. |
-| `raw_shape_inference` | Candidate would be accepted only from raw BIR adjacency, final homes, spill slots, object ids, names, testcase shape, or dump order. |
+- Positive scalar compare publication through an explicit binary store-source
+  frame-slot destination.
+- Collector publication from prepared store-source records.
+- Fail-closed boundaries for missing store-source authority,
+  source/access mismatch, missing frame-slot access, storage-only movement,
+  final-home/raw-shape-only evidence, select-result boundary,
+  pointer/terminator boundary, and non-binary source producers.
 
 Artifact:
 
-- `build/agent_state/481_step2_focused_materialization_point_contract/contract.md`
+- `build/agent_state/481_step3_focused_materialization_point_producer/summary.md`
 
 ## Suggested Next
 
-Execute Step 3 by implementing the focused producer surface for
-materialization-point authority records. Target files should be limited to
-`src/backend/prealloc/publication_plans.hpp`,
-`src/backend/prealloc/publication_plans.cpp`, prepared printer files only if
-durable evidence exposure is needed, focused backend BIR/printer tests,
-`todo.md`, `test_after.log`, and
-`build/agent_state/481_step3_focused_materialization_point_producer/**`.
+Execute Step 4 residual disposition and close-readiness review for idea 481.
+Re-probe or classify the focused materialization-point producer residuals,
+confirm no downstream interval/source-fact/branch authority/RV64 consumers were
+claimed by Step 3, and decide whether source-fact population can resume or
+whether one exact producer/printer follow-up remains.
 
-Step 3 proof:
+Suggested Step 4 proof:
 
 ```sh
-{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
+git diff --check
 ```
 
 ## Watchouts
 
-- Do not publish semantic interval, `PreparedFrameSlotSourceFact`,
-  `PreparedBranchStackLoadAuthority`, or RV64 lowering authority from the
-  materialization-point record.
-- Do not accept final home, spill storage, object layout, names, testcase
-  shape, or raw BIR adjacency as standalone materialization authority.
-- Keep storage-only `authority=none`, select-result stack-destination,
-  pointer/provenance, unsupported-terminator, and downstream consumer rows
-  fail-closed.
-- Do not return to the monolithic `930930-1` route for Step 3 coverage.
+- `PreparedMaterializationPointAuthority` is a materialization-point authority
+  surface only. It deliberately does not prove path/no-clobber interval safety
+  and does not directly mark `PreparedFrameSlotSourceFact` or
+  `PreparedBranchStackLoadAuthority` available.
+- Printer exposure was not added in this packet because the implementation and
+  tests produce/query records through the prepared publication API. Route a
+  separate printer packet only if durable dump visibility becomes necessary.
+- Storage-only `authority=none`, final-home-only evidence, select-result
+  stack-destination, pointer/provenance, unsupported-terminator, and downstream
+  consumer rows remain fail-closed.
 
 ## Proof
 
 Delegated proof:
 
 ```sh
-git diff --check
+{ cmake --build build -j2 && ctest --test-dir build -j2 --output-on-failure -R '^backend_'; } > test_after.log 2>&1 && git diff --check
 ```
 
 Result: passed.
+
+Proof log: `test_after.log`.

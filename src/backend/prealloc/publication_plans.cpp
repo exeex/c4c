@@ -1808,6 +1808,179 @@ bool prepared_store_source_publication_available(
   return plan.status == PreparedStoreSourcePublicationStatus::Available;
 }
 
+PreparedMaterializationPointAuthority
+plan_prepared_materialization_point_authority(
+    const PreparedMaterializationPointAuthorityInputs& inputs) {
+  PreparedMaterializationPointAuthority authority;
+  if (inputs.store_source != nullptr) {
+    authority.function_name = inputs.store_source->function_name;
+    authority.store_block_label = inputs.store_source->block_label;
+    authority.store_instruction_index = inputs.store_source->instruction_index;
+  }
+
+  if (inputs.protected_select_result_boundary) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::
+            ProtectedSelectResultBoundary;
+    return authority;
+  }
+  if (inputs.protected_pointer_or_terminator_boundary) {
+    authority.status = PreparedMaterializationPointAuthorityStatus::
+        ProtectedPointerOrTerminatorBoundary;
+    return authority;
+  }
+  if (inputs.storage_only_move) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::StorageOnlyMove;
+    return authority;
+  }
+  if (inputs.raw_shape_or_final_home_only) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::RawShapeInference;
+    return authority;
+  }
+  if (inputs.store_source == nullptr ||
+      !prepared_store_source_publication_available(
+          inputs.store_source->plan)) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::MissingStoreSourceAuthority;
+    return authority;
+  }
+
+  const auto& record = *inputs.store_source;
+  const auto& plan = record.plan;
+  authority.function_name = record.function_name;
+  authority.store_block_label = record.block_label;
+  authority.store_instruction_index = record.instruction_index;
+  authority.semantic_result_value_id = plan.source_value_id;
+  authority.semantic_result_value_name = plan.source_value_name;
+  authority.semantic_result_type = plan.source_value.type;
+  authority.semantic_producer_block_label =
+      plan.source_producer_block_label.value_or(kInvalidBlockLabel);
+  authority.semantic_producer_instruction_index =
+      plan.source_producer_instruction_index;
+
+  if (plan.intent != PreparedStoreSourcePublicationIntent::StoreLocalPublication) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::MissingFrameSlotAccess;
+    return authority;
+  }
+  if (plan.source_producer_kind ==
+      PreparedEdgePublicationSourceProducerKind::SelectMaterialization) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::
+            ProtectedSelectResultBoundary;
+    return authority;
+  }
+  if (plan.source_value.type == bir::TypeKind::Ptr) {
+    authority.status = PreparedMaterializationPointAuthorityStatus::
+        ProtectedPointerOrTerminatorBoundary;
+    return authority;
+  }
+  if (plan.source_producer_kind !=
+          PreparedEdgePublicationSourceProducerKind::Binary ||
+      plan.source_binary == nullptr ||
+      !plan.source_producer_instruction_index.has_value() ||
+      !plan.source_producer_block_label.has_value()) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::UnsupportedSourceProducer;
+    return authority;
+  }
+  authority.semantic_binary_opcode = plan.source_binary->opcode;
+
+  if (plan.source_value.kind != bir::Value::Kind::Named ||
+      plan.source_binary->result.kind != bir::Value::Kind::Named ||
+      plan.source_binary->result.name != plan.source_value.name ||
+      plan.source_binary->result.type != plan.source_value.type ||
+      plan.source_value_name == kInvalidValueName) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::SourceResultMismatch;
+    return authority;
+  }
+
+  if (plan.destination_access == nullptr ||
+      plan.destination_access->address.base_kind !=
+          PreparedAddressBaseKind::FrameSlot ||
+      !plan.destination_access->address.frame_slot_id.has_value()) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::MissingFrameSlotAccess;
+    return authority;
+  }
+  if (!plan.destination_access->stored_value_name.has_value() ||
+      *plan.destination_access->stored_value_name != plan.source_value_name) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::SourceResultMismatch;
+    return authority;
+  }
+  if (plan.destination_frame_slot == nullptr ||
+      plan.destination_stack_object == nullptr ||
+      !plan.destination_frame_slot_id.has_value() ||
+      !plan.destination_object_id.has_value() ||
+      !plan.destination_stack_offset_bytes.has_value() ||
+      !plan.destination_stack_size_bytes.has_value() ||
+      !plan.destination_stack_align_bytes.has_value()) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::DestinationMismatch;
+    return authority;
+  }
+  if (*plan.destination_access->address.frame_slot_id !=
+          *plan.destination_frame_slot_id ||
+      plan.destination_frame_slot->slot_id != *plan.destination_frame_slot_id ||
+      plan.destination_frame_slot->object_id != *plan.destination_object_id ||
+      plan.destination_stack_object->object_id != *plan.destination_object_id ||
+      plan.destination_frame_slot->function_name != record.function_name ||
+      plan.destination_stack_object->function_name != record.function_name ||
+      plan.destination_frame_slot->offset_bytes !=
+          *plan.destination_stack_offset_bytes ||
+      plan.destination_frame_slot->size_bytes !=
+          *plan.destination_stack_size_bytes ||
+      plan.destination_frame_slot->align_bytes !=
+          *plan.destination_stack_align_bytes ||
+      plan.destination_access->address.byte_offset != 0 ||
+      plan.destination_access->address.size_bytes !=
+          *plan.destination_stack_size_bytes ||
+      plan.destination_access->address.align_bytes !=
+          *plan.destination_stack_align_bytes) {
+    authority.status =
+        PreparedMaterializationPointAuthorityStatus::DestinationMismatch;
+    return authority;
+  }
+
+  authority.destination_frame_slot_id = plan.destination_frame_slot_id;
+  authority.destination_object_id = plan.destination_object_id;
+  authority.destination_stack_offset_bytes = plan.destination_stack_offset_bytes;
+  authority.destination_size_bytes = plan.destination_stack_size_bytes;
+  authority.destination_align_bytes = plan.destination_stack_align_bytes;
+  authority.authority_source =
+      PreparedMaterializationPointAuthoritySource::
+          StoreSourceBinaryFrameSlotStore;
+  authority.status = PreparedMaterializationPointAuthorityStatus::Available;
+  return authority;
+}
+
+bool prepared_materialization_point_authority_available(
+    const PreparedMaterializationPointAuthority& authority) {
+  return authority.status ==
+         PreparedMaterializationPointAuthorityStatus::Available;
+}
+
+PreparedMaterializationPointAuthorityRecords
+collect_prepared_materialization_point_authorities(
+    const PreparedBirModule& prepared) {
+  PreparedMaterializationPointAuthorityRecords records;
+  for (const auto& store_source : prepared.store_source_publications.records) {
+    records.records.push_back(PreparedMaterializationPointAuthorityRecord{
+        .function_name = store_source.function_name,
+        .store_block_label = store_source.block_label,
+        .store_instruction_index = store_source.instruction_index,
+        .authority = plan_prepared_materialization_point_authority({
+            .store_source = &store_source,
+        }),
+    });
+  }
+  return records;
+}
+
 bool prepared_store_global_publication_has_authority(
     const PreparedStoreSourcePublicationPlan& plan) {
   if (!prepared_store_source_publication_available(plan) ||

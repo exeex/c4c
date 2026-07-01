@@ -2030,6 +2030,108 @@ struct PreparedStoreSourcePublicationPlans {
   std::vector<PreparedStoreSourcePublicationRecord> records;
 };
 
+enum class PreparedMaterializationPointAuthoritySource {
+  None,
+  StoreSourceBinaryFrameSlotStore,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_materialization_point_authority_source_name(
+    PreparedMaterializationPointAuthoritySource source) {
+  switch (source) {
+    case PreparedMaterializationPointAuthoritySource::None:
+      return "none";
+    case PreparedMaterializationPointAuthoritySource::
+        StoreSourceBinaryFrameSlotStore:
+      return "store_source_binary_frame_slot_store";
+  }
+  return "unknown";
+}
+
+enum class PreparedMaterializationPointAuthorityStatus {
+  Available,
+  MissingStoreSourceAuthority,
+  UnsupportedSourceProducer,
+  SourceResultMismatch,
+  MissingFrameSlotAccess,
+  DestinationMismatch,
+  StorageOnlyMove,
+  ProtectedSelectResultBoundary,
+  ProtectedPointerOrTerminatorBoundary,
+  RawShapeInference,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_materialization_point_authority_status_name(
+    PreparedMaterializationPointAuthorityStatus status) {
+  switch (status) {
+    case PreparedMaterializationPointAuthorityStatus::Available:
+      return "available";
+    case PreparedMaterializationPointAuthorityStatus::MissingStoreSourceAuthority:
+      return "missing_store_source_authority";
+    case PreparedMaterializationPointAuthorityStatus::UnsupportedSourceProducer:
+      return "unsupported_source_producer";
+    case PreparedMaterializationPointAuthorityStatus::SourceResultMismatch:
+      return "source_result_mismatch";
+    case PreparedMaterializationPointAuthorityStatus::MissingFrameSlotAccess:
+      return "missing_frame_slot_access";
+    case PreparedMaterializationPointAuthorityStatus::DestinationMismatch:
+      return "destination_mismatch";
+    case PreparedMaterializationPointAuthorityStatus::StorageOnlyMove:
+      return "storage_only_move";
+    case PreparedMaterializationPointAuthorityStatus::
+        ProtectedSelectResultBoundary:
+      return "protected_select_result_boundary";
+    case PreparedMaterializationPointAuthorityStatus::
+        ProtectedPointerOrTerminatorBoundary:
+      return "protected_pointer_or_terminator_boundary";
+    case PreparedMaterializationPointAuthorityStatus::RawShapeInference:
+      return "raw_shape_inference";
+  }
+  return "unknown";
+}
+
+struct PreparedMaterializationPointAuthorityInputs {
+  const PreparedStoreSourcePublicationRecord* store_source = nullptr;
+  bool storage_only_move = false;
+  bool protected_select_result_boundary = false;
+  bool protected_pointer_or_terminator_boundary = false;
+  bool raw_shape_or_final_home_only = false;
+};
+
+struct PreparedMaterializationPointAuthority {
+  PreparedMaterializationPointAuthorityStatus status =
+      PreparedMaterializationPointAuthorityStatus::MissingStoreSourceAuthority;
+  PreparedMaterializationPointAuthoritySource authority_source =
+      PreparedMaterializationPointAuthoritySource::None;
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId semantic_producer_block_label = kInvalidBlockLabel;
+  std::optional<std::size_t> semantic_producer_instruction_index;
+  BlockLabelId store_block_label = kInvalidBlockLabel;
+  std::optional<std::size_t> store_instruction_index;
+  PreparedValueId semantic_result_value_id = 0;
+  ValueNameId semantic_result_value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind semantic_result_type =
+      c4c::backend::bir::TypeKind::Void;
+  std::optional<bir::BinaryOpcode> semantic_binary_opcode;
+  std::optional<PreparedFrameSlotId> destination_frame_slot_id;
+  std::optional<PreparedObjectId> destination_object_id;
+  std::optional<std::size_t> destination_stack_offset_bytes;
+  std::optional<std::size_t> destination_size_bytes;
+  std::optional<std::size_t> destination_align_bytes;
+};
+
+struct PreparedMaterializationPointAuthorityRecord {
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId store_block_label = kInvalidBlockLabel;
+  std::size_t store_instruction_index = 0;
+  PreparedMaterializationPointAuthority authority;
+};
+
+struct PreparedMaterializationPointAuthorityRecords {
+  std::vector<PreparedMaterializationPointAuthorityRecord> records;
+};
+
 struct PreparedCallArgumentValuePublicationFact {
   FunctionNameId function_name = kInvalidFunctionName;
   BlockLabelId call_block_label = kInvalidBlockLabel;
@@ -2061,6 +2163,17 @@ struct PreparedCallArgumentValuePublicationPlans {
 
 [[nodiscard]] bool prepared_store_global_publication_has_authority(
     const PreparedStoreSourcePublicationPlan& plan);
+
+[[nodiscard]] PreparedMaterializationPointAuthority
+plan_prepared_materialization_point_authority(
+    const PreparedMaterializationPointAuthorityInputs& inputs);
+
+[[nodiscard]] bool prepared_materialization_point_authority_available(
+    const PreparedMaterializationPointAuthority& authority);
+
+[[nodiscard]] PreparedMaterializationPointAuthorityRecords
+collect_prepared_materialization_point_authorities(
+    const PreparedBirModule& prepared);
 
 [[nodiscard]] PreparedDirectGlobalReturnAuthority
 plan_prepared_direct_global_return_authority(
