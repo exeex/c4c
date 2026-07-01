@@ -1,5 +1,7 @@
 # RV64 Fixed Prepared Stack-Frame Emission
 
+Status: Closed
+Closed: 2026-07-01
 Source Parent: ideas/open/424_prepared_global_stack_frame_infrastructure_review.md
 Handoff: docs/rv64_gcc_torture_post_contract/global_stack_frame_infrastructure_review.md
 Owning Layer: RV64 object emission
@@ -72,6 +74,47 @@ or F128 ABI support.
 - Unsupported or incomplete frame-plan variants still fail closed.
 - Backend proof includes the focused coverage and an appropriate `^backend_`
   subset.
+
+## Completion Notes
+
+Closed after Steps 3-6 completed the fixed prepared stack-frame consumer
+repair for RV64 object emission.
+
+The completed route consumes explicit prepared fixed-frame size, alignment,
+slot offset, width, and alignment facts for coherent fixed frames. Large frame
+adjustments and large fixed-slot addresses are materialized from those prepared
+facts, and the new ordinary-C runtime coverage proves a large fixed-frame
+fixed-slot path without relying on the gcc torture row name, `80000`, `10000`,
+or one exact slot layout.
+
+The representative `tests/c/external/gcc_torture/src/20030209-1.c` now
+advances past the old fixed-frame rejection:
+
+- `RV64 object route requires a supported prepared stack frame`
+
+It remains fail-closed on the existing out-of-scope saved-register ABI
+boundary:
+
+- `unsupported_stack_frame: RV64 object route does not support non-GPR prepared
+  callee-saved register save slots (fpr:fs1)`
+
+That FPR saved-register boundary, plus FPR/F128/vector, dynamic stack,
+producer frame-layout gaps, and broader ABI support, remains outside this
+source idea and should be handled as follow-up work if pursued.
+
+Close evidence:
+
+- `backend_riscv_object_emission` passed, including focused fixed-frame object
+  emission coverage and fail-closed object-shape checks.
+- `backend_obj_runtime_rv64_large_fixed_frame_slot_access` passed, proving the
+  ordinary-C large fixed-frame fixed-slot runtime route.
+- Focused representative proof for `src/20030209-1.c` showed the old
+  fixed-frame rejection absent and the residual `fpr:fs1` diagnostic present.
+- Close-time regression guard passed using matching canonical backend logs:
+  `test_before.log` reported 331/331 passing tests, `test_after.log` reported
+  333/333 passing tests, and
+  `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py`
+  reported no new failures.
 
 ## Reviewer Reject Signals
 
