@@ -657,6 +657,17 @@ c4c_add_backend_codegen_object_failure_test(
   LABELS riscv64 object cli
 )
 
+c4c_add_backend_dump_flag_test(
+  backend_dump_riscv64_stack_passed_parameter_home_publication
+  SRC "${PROJECT_SOURCE_DIR}/tests/c/external/gcc_torture/src/20001017-1.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  DUMP_FLAG --dump-prepared-bir
+  REQUIRED_SNIPPETS "abi_binding destination_kind=call_argument_abi destination_storage=stack_slot abi_index=8|abi_binding destination_kind=call_argument_abi destination_storage=stack_slot abi_index=9|abi_binding destination_kind=call_argument_abi destination_storage=stack_slot abi_index=10|abi_binding destination_kind=call_argument_abi destination_storage=stack_slot abi_index=11|abi_binding destination_kind=call_argument_abi destination_storage=stack_slot abi_index=12|home %p.B value_id=8 kind=none|home %p.fdB value_id=9 kind=none|home %p.b value_id=10 kind=none|home %p.C value_id=11 kind=none|home %p.fdC value_id=12 kind=none"
+  FORBIDDEN_SNIPPETS "home %p.B value_id=8 kind=stack_slot|home %p.fdB value_id=9 kind=stack_slot|home %p.b value_id=10 kind=stack_slot|home %p.C value_id=11 kind=stack_slot|home %p.fdC value_id=12 kind=stack_slot|destination_storage=stack_slot abi_index=8 stack_offset=|destination_storage=stack_slot abi_index=9 stack_offset=|destination_storage=stack_slot abi_index=10 stack_offset=|destination_storage=stack_slot abi_index=11 stack_offset=|destination_storage=stack_slot abi_index=12 stack_offset="
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 stack_param prepared_param_home dump
+)
+
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_external_string_literal_strlen_direct_call
   SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00025.c"

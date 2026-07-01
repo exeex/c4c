@@ -1,120 +1,99 @@
 Status: Active
 Source Idea Path: ideas/open/512_stack_passed_parameter_home_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Trace Producer ABI Home Publication
+Current Step ID: 3
+Current Step Title: Publish Stack-Passed Parameter Homes
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` traced the producer ABI/prealloc path for
-stack-passed parameter homes without changing implementation code.
+Step 3 of `plan.md` published producer-side RV64 stack-passed parameter
+homes without changing RV64 object-emission inference.
 
-Producer fact path:
+Implementation boundary:
 
-- Frontend/lowering already carries formal/call ABI metadata in
-  `bir::Param::abi` and `bir::CallInst::arg_abi`.
-- `src/backend/prealloc/regalloc/call_return_abi.cpp` classifies each call
-  argument with `call_arg_storage_kind`, computes ABI register indexes with
-  `call_arg_abi_register_index`, and should be the shared source of stack
-  destination offsets through `call_arg_destination_stack_offset_bytes`.
-- `src/backend/prealloc/regalloc.cpp` publishes call-site ABI bindings in
-  `append_prepared_call_abi_bindings`; stack-slot bindings already keep
-  `destination_storage_kind=StackSlot` and use
-  `destination_stack_offset_bytes` when the helper returns an offset.
-- `src/backend/prealloc/regalloc/call_moves.cpp` publishes matching
-  `PreparedMoveResolution` records for call-argument moves; it also uses
-  `call_arg_destination_stack_offset_bytes`, so RV64 currently gets
-  offsetless stack destinations at both the ABI-binding and move-resolution
-  surfaces.
-- `src/backend/prealloc/regalloc/value_homes.cpp` publishes callee fixed
-  formal register homes in `classify_prepared_value_home` by matching
-  `PreparedRegallocValue` parameter names to `bir::Function::params` and
-  deriving the ABI register name. Ordinary RV64 fixed formals passed on the
-  incoming stack have no equivalent branch, so they fall through to later
-  allocation state or `PreparedValueHomeKind::None`.
-- `src/backend/prealloc/formal_publications.cpp` already validates formal
-  publication plans for `IncomingStackToHome`; it fails closed with
-  `MissingStackOffset`, `MissingValueHome`, `MissingAbiInfo`,
-  `UnsupportedHomeKind`, or `UnsupportedFormalSource` when required producer
-  facts are absent.
+- `call_arg_destination_stack_offset_bytes` now admits RV64 through the shared
+  caller ABI helper only for ordinary fixed stack-passed arguments with
+  explicit call-arg ABI facts. RV64 byval, sret, and memory-class aggregate
+  forms do not receive destination stack offsets from this path.
+- `classify_prepared_value_home` now has a narrow RV64 fixed-formal stack-home
+  branch. It only publishes `PreparedValueHomeKind::StackSlot` for
+  `PreparedValueKind::Parameter` formals with explicit producer ABI metadata:
+  `param.abi.has_value()` and `param.abi->passed_on_stack` are required.
+- The previous sparse-ABI/index fallback was removed. The route no longer
+  derives stack-passed formal homes from parameter index, parameter name, or a
+  late non-Parameter name match.
+- The previous broad RV64 caller offset admission was narrowed after byval
+  regression review. Caller offsets are limited to non-byval, non-sret,
+  non-memory-class stack arguments with explicit `passed_on_stack` ABI.
+- RV64 object emission, unsupported markers, expectation files, allowlists,
+  runtime comparison, and scan accounting were not changed.
 
-Where facts are preserved or lost:
+Representative before/after facts for `tests/c/external/gcc_torture/src/20001017-1.c`:
 
-- Register homes are already preserved at both caller and callee surfaces:
-  caller bindings/moves get register names, occupied register names, register
-  placements, and contiguous width; callee formals get `Register` homes and
-  RV64 target-register identity where supported.
-- Caller stack homes lose offset authority because
-  `call_arg_destination_stack_offset_bytes` returns `nullopt` for RV64 before
-  walking the ABI arguments. `append_prepared_call_abi_bindings` and
-  `append_call_arg_move_resolution` therefore publish stack-slot destination
-  kind and ABI index but no `destination_stack_offset_bytes`.
-- Callee stack homes lose storage kind/slot facts because the fixed-formal
-  branch in `classify_prepared_value_home` only special-cases variadic homes,
-  F128 stack locals, and register-passed fixed formals. Ordinary fixed
-  `passed_on_stack` scalar formals are not mapped to a prepared incoming
-  stack-slot home with offset, size, and alignment.
-- Width/alignment authority exists in `bir::CallArgAbiInfo` and the existing
-  stack argument sizing helpers, but it is not yet connected to RV64 caller
-  stack offsets or callee fixed-formal stack homes.
+- Before: caller stack ABI bindings for indexes 8-12 had
+  `destination_storage=stack_slot` but no `stack_offset`.
+- After byval-safe tightening, the representative still has stack-slot ABI
+  bindings for indexes 8-12 without `stack_offset`, because this gcc_torture
+  route does not expose suitable explicit call-arg stack ABI authority.
+- Before: callee homes for `%p.B`, `%p.fdB`, `%p.b`, `%p.C`, and `%p.fdC`
+  were all `kind=none`.
+- After tightening authority, those representative callee homes remain
+  `kind=none` because the route lacks explicit formal `passed_on_stack` ABI
+  metadata. The withdrawn `%p.B`/`%p.fdB`/`%p.fdC` home improvement depended
+  on index/name inference and was not accepted as Step 3 progress.
+- Focused synthetic coverage now proves the legitimate callee path: an
+  explicit-ABI RV64 fixed formal with `passed_on_stack=true` publishes a
+  stack-slot home with slot, offset, size, and alignment facts.
+- Focused synthetic coverage also proves the legitimate caller path:
+  explicit ordinary RV64 stack call arguments publish stack offsets. Existing
+  RV64 byval dump, codegen, and runtime tests remain preserved.
 
 ## Suggested Next
 
-Execute Step 3 by adding producer-side RV64 stack-argument/formal publication:
+Execute Step 4 by consuming the newly published producer records through the
+RV64 route:
 
-- Extend the shared ABI helper boundary in
-  `src/backend/prealloc/regalloc/call_return_abi.cpp` so ordinary RV64
-  stack-passed call arguments that already require stack destinations receive
-  explicit destination stack offsets. Reuse the existing stack-argument size
-  and alignment helpers rather than teaching RV64 object emission an ABI
-  formula.
-- Add a narrow fixed-formal stack-home helper in
-  `src/backend/prealloc/regalloc/value_homes.cpp` that maps ordinary
-  non-varargs, non-byval, non-sret RV64 formals with `param.abi->passed_on_stack`
-  to `PreparedValueHomeKind::StackSlot` only when the producer can publish
-  coherent offset, size, alignment, and frame-slot/home identity.
-- Keep `append_prepared_call_abi_bindings`,
-  `append_call_arg_move_resolution`, and `plan_prepared_formal_publication` as
-  consumers of those producer facts. RV64 should continue consuming prepared
-  records and should not infer offsets from argument index, parameter name, or
-  testcase shape.
-- Add focused prepared-contract tests around caller stack ABI bindings and
-  callee fixed-formal stack homes before any RV64 object-route widening.
+- Keep RV64 reading prepared call/formal records directly; do not reconstruct
+  stack offsets from argument index, source shape, or parameter spelling.
+- Confirm whether the current `fpr:fs1` save-slot rejection must remain a
+  non-goal blocker or be handled by a separate active-plan step before the old
+  parameter-home rejection can be observed again in object codegen.
+- Preserve the fail-closed behavior for stack-passed formals without explicit
+  producer ABI and coherent home facts, demonstrated here by
+  `%p.B`, `%p.fdB`, `%p.b`, `%p.C`, and `%p.fdC` remaining `kind=none`.
+- Keep byval, sret, and aggregate/memory ABI paths out of the ordinary stack
+  argument offset publication route.
 
 ## Watchouts
 
-- Keep the route limited to producer ABI/prealloc publication of explicit
-  stack-passed parameter homes.
-- Do not infer stack argument homes in RV64 from argument indexes, ABI
-  formulas, source call shape, parameter names, or named gcc_torture rows.
-- Preserve existing fail-closed behavior for missing stack offsets, ambiguous
-  or duplicate homes, missing value homes, missing ABI metadata, unsupported
-  varargs, F128 stack-passed local-home special cases, byval/sret/aggregate
-  ABI paths, dynamic stack cases, and unrelated call/result shapes.
-- Keep varargs, F128, aggregate ABI, dynamic stack work, broad RV64 call
-  lowering, and unrelated ABI repairs out of this plan unless the supervisor
-  splits a new source idea.
-- `20001017-1.c` currently trips `fpr:fs1` save-slot rejection before the old
-  `unsupported_param_home` check, so Step 2 should use prepared dumps and
-  focused synthetic probes to prove the producer facts instead of treating the
-  current object diagnostic as evidence that the param-home gap disappeared.
-- RV64 already has consumer validation for prepared formal stack-slot homes;
-  the next slice should not add RV64 inference from raw ABI indexes or source
-  shape.
+- The callee helper deliberately requires explicit `param.abi->passed_on_stack`
+  plus a unique matching `regalloc.spill_slot` object and frame slot. Missing
+  ABI, ambiguous, duplicate, byval, sret, varargs, F128, dynamic, or aggregate
+  forms should remain fail-closed.
+- The caller helper deliberately refuses RV64 destination stack offsets for
+  byval, sret, and memory-class aggregate arguments. Those paths remain owned
+  by existing byval/aggregate transport logic.
+- `20001017-1.c` object codegen still fails before parameter-home consumption
+  at `unsupported_stack_frame ... fpr:fs1`; this slice does not claim object
+  advancement.
+- The new dump test proves the representative row does not infer stack offsets
+  or stack homes without explicit authority. Synthetic C++ contract coverage
+  proves explicit ordinary caller/formal producer facts.
 
 ## Proof
 
-- Trace-only packet; no build was required and no root-level proof log was
-  rewritten.
-- Inspected the active `plan.md`, `todo.md`, Step 1 evidence notes, and the
-  producer/consumer files named by the packet:
-  `src/backend/prealloc/regalloc/call_return_abi.cpp`,
-  `src/backend/prealloc/regalloc.cpp`,
-  `src/backend/prealloc/regalloc/call_moves.cpp`,
-  `src/backend/prealloc/regalloc/value_homes.cpp`,
-  `src/backend/prealloc/formal_publications.cpp`,
-  `src/backend/prealloc/publication_plans.cpp`, and
-  `src/backend/mir/riscv/codegen/object_emission.cpp`.
-- `git diff --check -- todo.md` passed.
+- `cmake --build build --target c4cll` passed.
+- `ctest --test-dir build -j --output-on-failure -R 'stack_passed_parameter_home|prepare_frame_stack_call_contract|prealloc_formal_publications|backend_riscv_object_emission|riscv64_byval|rv64_runtime_riscv64_byval' | tee test_after.log`
+  passed, 15/15. `test_after.log` is the canonical proof log for this packet.
+- `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20001017-1.c`
+  was captured before, after the rejected inference fallback, and after the
+  tightened authority boundary under
+  `build/agent_state/512_step3_stack_parameter_publication/20001017-1/`.
+- `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20001017-1.c -o build/agent_state/512_step3_stack_parameter_publication/20001017-1/20001017-1.o`
+  still fails with rc 2 at the existing `fpr:fs1` unsupported stack-frame
+  diagnostic.
+- `backend_prepare_frame_stack_call_contract` now includes explicit-ABI
+  synthetic coverage for RV64 stack-formal home publication and ordinary
+  stack call-argument offset publication.

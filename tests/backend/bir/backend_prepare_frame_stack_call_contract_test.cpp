@@ -3413,6 +3413,90 @@ bir::Module make_riscv_i16_formal_identity_contract_module() {
   return module;
 }
 
+bir::Module make_riscv_explicit_stack_formal_home_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-linux-gnu";
+
+  bir::Function function;
+  function.name = "riscv_explicit_stack_formal_home_contract";
+  function.return_type = bir::TypeKind::I64;
+  for (int index = 0; index < 9; ++index) {
+    function.params.push_back(bir::Param{
+        .type = bir::TypeKind::I64,
+        .name = "%p.arg" + std::to_string(index),
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .abi = bir::CallArgAbiInfo{
+            .type = bir::TypeKind::I64,
+            .size_bytes = 8,
+            .align_bytes = 8,
+            .primary_class = bir::AbiValueClass::Integer,
+            .passed_in_register = index < 8,
+            .passed_on_stack = index >= 8,
+        },
+    });
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I64, "%p.arg8")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_riscv_explicit_stack_call_argument_offset_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-linux-gnu";
+
+  auto arg_abi = [](int index) {
+    return bir::CallArgAbiInfo{
+        .type = bir::TypeKind::I64,
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .primary_class = bir::AbiValueClass::Integer,
+        .passed_in_register = index < 8,
+        .passed_on_stack = index >= 8,
+    };
+  };
+
+  bir::Function callee;
+  callee.name = "take_explicit_rv64_stack_args";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::Void;
+  for (int index = 0; index < 10; ++index) {
+    callee.params.push_back(bir::Param{
+        .type = bir::TypeKind::I64,
+        .name = "%p.arg" + std::to_string(index),
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .abi = arg_abi(index),
+    });
+  }
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "riscv_explicit_stack_call_argument_offset_contract";
+  caller.return_type = bir::TypeKind::Void;
+  bir::CallInst call;
+  call.callee = "take_explicit_rv64_stack_args";
+  call.return_type_name = "void";
+  call.return_type = bir::TypeKind::Void;
+  for (int index = 0; index < 10; ++index) {
+    call.arg_types.push_back(bir::TypeKind::I64);
+    call.arg_abi.push_back(arg_abi(index));
+    call.args.push_back(bir::Value::immediate_i64(index + 1));
+  }
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(std::move(call));
+  entry.terminator = bir::ReturnTerminator{};
+  caller.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
 int check_riscv_fpr_formal_home_publishes_target_identity(std::string_view target_triple) {
   const auto prepared =
       prepare_riscv_float_abi_module(
@@ -3512,6 +3596,97 @@ int check_riscv_i16_formal_home_publishes_gpr_identity() {
   };
   if (!check_storage(*x_storage, "a0") || !check_storage(*y_storage, "a1")) {
     return fail("rv64 i16 formal identity contract: storage did not publish GPR register facts");
+  }
+  return 0;
+}
+
+int check_riscv_explicit_stack_formal_home_requires_producer_abi() {
+  const auto prepared =
+      prepare_riscv_module(make_riscv_explicit_stack_formal_home_contract_module());
+  const auto* locations =
+      prepare::find_prepared_value_location_function(
+          prepared, "riscv_explicit_stack_formal_home_contract");
+  const auto* stack_home = locations == nullptr
+                               ? nullptr
+                               : prepare::find_prepared_value_home(
+                                     prepared.names, *locations, "%p.arg8");
+  const auto* register_home = locations == nullptr
+                                  ? nullptr
+                                  : prepare::find_prepared_value_home(
+                                        prepared.names, *locations, "%p.arg7");
+  if (stack_home == nullptr || register_home == nullptr) {
+    return fail("rv64 explicit stack formal contract: missing prepared formal homes");
+  }
+  if (stack_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !stack_home->slot_id.has_value() ||
+      !stack_home->offset_bytes.has_value() ||
+      stack_home->size_bytes != std::optional<std::size_t>{8} ||
+      stack_home->align_bytes != std::optional<std::size_t>{8}) {
+    return fail("rv64 explicit stack formal contract: stack formal did not publish stack-slot authority");
+  }
+  if (register_home->kind != prepare::PreparedValueHomeKind::Register ||
+      register_home->register_name != std::optional<std::string>{"a7"}) {
+    return fail("rv64 explicit stack formal contract: register formal was misclassified");
+  }
+  return 0;
+}
+
+int check_riscv_explicit_stack_call_argument_offsets_require_producer_abi() {
+  const auto prepared =
+      prepare_riscv_module(make_riscv_explicit_stack_call_argument_offset_contract_module());
+  const auto* call_plans =
+      find_call_plans_function(prepared,
+                               "riscv_explicit_stack_call_argument_offset_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 10) {
+    return fail("rv64 explicit stack call-arg contract: missing prepared call plan");
+  }
+  const auto& call_plan = call_plans->calls.front();
+  if (call_plan.arguments[8].destination_stack_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      call_plan.arguments[9].destination_stack_offset_bytes !=
+          std::optional<std::size_t>{8} ||
+      call_plan.arguments[8].destination_stack_size_bytes !=
+          std::optional<std::size_t>{8} ||
+      call_plan.arguments[9].destination_stack_size_bytes !=
+          std::optional<std::size_t>{8}) {
+    return fail("rv64 explicit stack call-arg contract: ordinary stack offsets were not published");
+  }
+  if (call_plan.arguments[7].destination_stack_offset_bytes.has_value()) {
+    return fail("rv64 explicit stack call-arg contract: register arg got stack offset");
+  }
+
+  const auto function_id =
+      prepared.names.function_names.find("riscv_explicit_stack_call_argument_offset_contract");
+  const auto* locations =
+      function_id == c4c::kInvalidFunctionName
+          ? nullptr
+          : prepare::find_prepared_value_location_function(prepared.value_locations, function_id);
+  const auto* bundle =
+      locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(
+                *locations, prepare::PreparedMovePhase::BeforeCall, 0, 0);
+  if (bundle == nullptr) {
+    return fail("rv64 explicit stack call-arg contract: missing before-call bundle");
+  }
+  bool found_arg8 = false;
+  bool found_arg9 = false;
+  for (const auto& binding : bundle->abi_bindings) {
+    if (binding.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot) {
+      continue;
+    }
+    if (binding.destination_abi_index == std::optional<std::size_t>{8} &&
+        binding.destination_stack_offset_bytes == std::optional<std::size_t>{0}) {
+      found_arg8 = true;
+    }
+    if (binding.destination_abi_index == std::optional<std::size_t>{9} &&
+        binding.destination_stack_offset_bytes == std::optional<std::size_t>{8}) {
+      found_arg9 = true;
+    }
+  }
+  if (!found_arg8 || !found_arg9) {
+    return fail("rv64 explicit stack call-arg contract: ABI bindings lost stack offsets");
   }
   return 0;
 }
@@ -9930,6 +10105,14 @@ int main() {
     return rc;
   }
   if (const int rc = check_riscv_i16_formal_home_publishes_gpr_identity();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_riscv_explicit_stack_formal_home_requires_producer_abi();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_riscv_explicit_stack_call_argument_offsets_require_producer_abi();
       rc != 0) {
     return rc;
   }

@@ -140,6 +140,23 @@ template <std::size_t N>
          }();
 }
 
+[[nodiscard]] bool rv64_call_arg_has_ordinary_stack_destination(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallInst& call,
+    std::size_t arg_index) {
+  if (target_profile.arch != c4c::TargetArch::Riscv64 ||
+      call_arg_storage_kind(target_profile, call, arg_index) !=
+          PreparedMoveStorageKind::StackSlot) {
+    return false;
+  }
+  const auto abi = resolve_call_arg_abi(target_profile, call, arg_index);
+  return abi.has_value() &&
+         abi->passed_on_stack &&
+         !abi->byval_copy &&
+         !abi->sret_pointer &&
+         abi->primary_class != bir::AbiValueClass::Memory;
+}
+
 [[nodiscard]] bool aarch64_register_passed_byval_aggregate(
     const c4c::TargetProfile& target_profile,
     const bir::CallArgAbiInfo& abi,
@@ -476,8 +493,13 @@ std::optional<std::size_t> call_arg_destination_stack_offset_bytes(
     const bir::CallInst& call,
     std::size_t arg_index) {
   if ((target_profile.arch != c4c::TargetArch::X86_64 &&
-       target_profile.arch != c4c::TargetArch::Aarch64) ||
+       target_profile.arch != c4c::TargetArch::Aarch64 &&
+       target_profile.arch != c4c::TargetArch::Riscv64) ||
       !call_arg_requires_stack_destination(target_profile, call, arg_index)) {
+    return std::nullopt;
+  }
+  if (target_profile.arch == c4c::TargetArch::Riscv64 &&
+      !rv64_call_arg_has_ordinary_stack_destination(target_profile, call, arg_index)) {
     return std::nullopt;
   }
 

@@ -102,6 +102,81 @@ namespace {
   return matched_slot;
 }
 
+[[nodiscard]] const PreparedFrameSlot* find_rv64_stack_passed_fixed_formal_home_slot(
+    const c4c::TargetProfile& target_profile,
+    const PreparedStackLayout* stack_layout,
+    const bir::Param& param,
+    const PreparedRegallocValue& value) {
+  if (target_profile.arch != c4c::TargetArch::Riscv64 ||
+      stack_layout == nullptr ||
+      param.is_varargs ||
+      param.is_sret ||
+      param.is_byval ||
+      param.type == bir::TypeKind::F128) {
+    return nullptr;
+  }
+  if (!param.abi.has_value() ||
+      !param.abi->passed_on_stack ||
+      param.abi->type != param.type ||
+      param.abi->size_bytes == 0 ||
+      param.abi->align_bytes == 0) {
+    return nullptr;
+  }
+  const std::size_t formal_size_bytes =
+      param.size_bytes == 0 ? param.abi->size_bytes : param.size_bytes;
+  const std::size_t formal_align_bytes =
+      param.align_bytes == 0 ? param.abi->align_bytes : param.align_bytes;
+  if (formal_size_bytes == 0 || formal_align_bytes == 0) {
+    return nullptr;
+  }
+  if (param.abi->size_bytes != formal_size_bytes ||
+      param.abi->align_bytes != formal_align_bytes) {
+    return nullptr;
+  }
+  if (value.assigned_stack_slot.has_value() &&
+      value.assigned_stack_slot->size_bytes == formal_size_bytes &&
+      value.assigned_stack_slot->align_bytes == formal_align_bytes) {
+    return find_frame_slot_by_id(*stack_layout, value.assigned_stack_slot->slot_id);
+  }
+
+  const PreparedStackObject* matched_object = nullptr;
+  for (const auto& object : stack_layout->objects) {
+    if (object.function_name != value.function_name ||
+        object.value_name != value.value_name ||
+        object.source_kind != "regalloc.spill_slot" ||
+        object.type != param.type ||
+        object.size_bytes != formal_size_bytes ||
+        object.align_bytes != formal_align_bytes ||
+        object.address_exposed ||
+        object.requires_home_slot ||
+        object.permanent_home_slot) {
+      continue;
+    }
+    if (matched_object != nullptr && matched_object->object_id != object.object_id) {
+      return nullptr;
+    }
+    matched_object = &object;
+  }
+  if (matched_object == nullptr) {
+    return nullptr;
+  }
+
+  const PreparedFrameSlot* matched_slot = nullptr;
+  for (const auto& slot : stack_layout->frame_slots) {
+    if (slot.object_id != matched_object->object_id ||
+        slot.function_name != value.function_name ||
+        slot.size_bytes != formal_size_bytes ||
+        slot.align_bytes != formal_align_bytes) {
+      continue;
+    }
+    if (matched_slot != nullptr && matched_slot->slot_id != slot.slot_id) {
+      return nullptr;
+    }
+    matched_slot = &slot;
+  }
+  return matched_slot;
+}
+
 [[nodiscard]] PreparedComputedValueLookup make_prepared_computed_value_lookup(
     PreparedNameTables& names,
     const c4c::backend::bir::Function* function) {
@@ -350,6 +425,16 @@ PreparedValueHome classify_prepared_value_home(
           home.align_bytes = slot->align_bytes;
           return home;
         }
+      }
+      if (const auto* slot = find_rv64_stack_passed_fixed_formal_home_slot(
+              target_profile, stack_layout, param, value);
+          slot != nullptr) {
+        home.kind = PreparedValueHomeKind::StackSlot;
+        home.slot_id = slot->slot_id;
+        home.offset_bytes = slot->offset_bytes;
+        home.size_bytes = slot->size_bytes;
+        home.align_bytes = slot->align_bytes;
+        return home;
       }
       const auto abi_register_index =
           fixed_formal_abi_register_index(target_profile, *function, param_index);
