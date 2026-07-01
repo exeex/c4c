@@ -1329,6 +1329,7 @@ enum class LocalArrayIntervalEffectStatus : unsigned char {
   SelectedPathOnlyInference,
   MissingOrderedEffectSourceStream,
   MissingEffectSourceCoordinate,
+  UnorderedEffectSourceBoundary,
   IndexValueRedefined,
   IndexPhiOrAliasUnresolved,
   CallOrHelperEffectUnknown,
@@ -1378,6 +1379,8 @@ enum class LocalArrayIntervalEffectStatus : unsigned char {
       return "missing_ordered_effect_source_stream";
     case LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate:
       return "missing_effect_source_coordinate";
+    case LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary:
+      return "unordered_effect_source_boundary";
     case LocalArrayIntervalEffectStatus::IndexValueRedefined:
       return "index_value_redefined";
     case LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved:
@@ -1436,6 +1439,7 @@ enum class LocalArrayOrderedEffectSourceStreamStatus : unsigned char {
   MissingLowerBoundaryCoordinate,
   MissingEndpointCoordinate,
   MissingSourceCoordinate,
+  UnorderedBoundaryCoordinate,
   UnsupportedModeledEffect,
 };
 
@@ -1463,6 +1467,8 @@ struct LocalArrayOrderedEffectSourceStream {
   LocalArrayOrderedEffectSourceStreamStatus status =
       LocalArrayOrderedEffectSourceStreamStatus::MissingBuilder;
   LocalArrayIntervalBoundaryContract interval;
+  const LocalArraySelectedProofEdgePathRecord* selected_path = nullptr;
+  const LocalArrayEndpointBridgeRecord* endpoint_bridge = nullptr;
   std::vector<LocalArrayOrderedEffectSourceRecord> sources;
 };
 
@@ -1488,6 +1494,9 @@ struct LocalArrayOrderedEffectSourceStream {
   }
   if (lhs.tie_break_index != rhs.tie_break_index) {
     return lhs.tie_break_index < rhs.tie_break_index ? -1 : 1;
+  }
+  if (lhs.bir_block_label != rhs.bir_block_label) {
+    return lhs.bir_block_label < rhs.bir_block_label ? -1 : 1;
   }
   return 0;
 }
@@ -1566,7 +1575,6 @@ struct LocalArrayIntervalEffectInputs {
   const LocalArrayEndpointBridgeRecord* endpoint_bridge = nullptr;
   const LocalArrayOrderedEffectSourceStream* ordered_effect_sources = nullptr;
   bool prepared_bir_coordinate_confusion = false;
-  bool selected_path_only_inference = false;
   bool raw_shape_only = false;
 };
 
@@ -1699,10 +1707,6 @@ evaluate_local_array_interval_effect(
     record.status = LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate;
     return record;
   }
-  if (inputs.selected_path_only_inference) {
-    record.status = LocalArrayIntervalEffectStatus::SelectedPathOnlyInference;
-    return record;
-  }
   if (inputs.ordered_effect_sources == nullptr ||
       inputs.ordered_effect_sources->status ==
           LocalArrayOrderedEffectSourceStreamStatus::MissingBuilder) {
@@ -1715,6 +1719,11 @@ evaluate_local_array_interval_effect(
       stream.status == LocalArrayOrderedEffectSourceStreamStatus::MissingEndpointCoordinate ||
       stream.status == LocalArrayOrderedEffectSourceStreamStatus::MissingSourceCoordinate) {
     record.status = LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate;
+    return record;
+  }
+  if (stream.status ==
+      LocalArrayOrderedEffectSourceStreamStatus::UnorderedBoundaryCoordinate) {
+    record.status = LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary;
     return record;
   }
   if (stream.status ==
@@ -1744,6 +1753,11 @@ evaluate_local_array_interval_effect(
     record.status = LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate;
     return record;
   }
+  if (compare_local_array_effect_source_coordinates(
+          stream.interval.proof_source, stream.interval.endpoint) >= 0) {
+    record.status = LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary;
+    return record;
+  }
   for (const auto& source : stream.sources) {
     if (!local_array_effect_source_coordinate_available(source.coordinate)) {
       record.status = LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate;
@@ -1761,7 +1775,7 @@ evaluate_local_array_interval_effect(
     }
   }
 
-  record.status = LocalArrayIntervalEffectStatus::SelectedPathOnlyInference;
+  record.status = LocalArrayIntervalEffectStatus::Available;
   return record;
 }
 
@@ -4385,6 +4399,8 @@ struct Function {
   std::vector<LocalArraySelectedProofEdgePathRecord>
       local_array_selected_proof_edge_paths;
   std::vector<LocalArrayEndpointBridgeRecord> local_array_endpoint_bridges;
+  std::vector<LocalArrayOrderedEffectSourceStream>
+      local_array_ordered_effect_source_streams;
   std::vector<Block> blocks;
   std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;

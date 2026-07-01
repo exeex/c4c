@@ -5079,6 +5079,328 @@ void populate_local_array_endpoint_bridges(PreparedBirModule& prepared) {
   }
 }
 
+namespace {
+
+[[nodiscard]] std::optional<std::size_t> local_array_block_index_by_label(
+    const bir::Function& function,
+    std::string_view block_label) {
+  if (block_label.empty()) {
+    return std::nullopt;
+  }
+  for (std::size_t block_index = 0; block_index < function.blocks.size();
+       ++block_index) {
+    if (function.blocks[block_index].label == block_label) {
+      return block_index;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bir::LocalArrayEffectSourceCoordinate
+local_array_instruction_coordinate(
+    const bir::Function& function,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t tie_break_index = 0) {
+  bir::LocalArrayEffectSourceCoordinate coordinate{
+      .prepared_block_index = block_index,
+      .instruction_index = instruction_index,
+      .tie_break_index = tie_break_index,
+  };
+  if (block_index < function.blocks.size()) {
+    coordinate.bir_block_label = function.blocks[block_index].label;
+  }
+  return coordinate;
+}
+
+[[nodiscard]] bool local_array_stream_same_value(
+    const bir::Value& lhs,
+    const bir::Value& rhs) {
+  return bir::local_array_interval_effect_same_value(lhs, rhs);
+}
+
+void append_local_array_instruction_effect_source(
+    bir::LocalArrayOrderedEffectSourceStream& stream,
+    const bir::Function& function,
+    const bir::Value& dynamic_index,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const bir::Inst& inst) {
+  const auto coordinate = local_array_instruction_coordinate(
+      function, block_index, instruction_index);
+  if (!bir::local_array_effect_source_coordinate_available(coordinate)) {
+    stream.status =
+        bir::LocalArrayOrderedEffectSourceStreamStatus::MissingSourceCoordinate;
+    return;
+  }
+
+  const auto append = [&](bir::LocalArrayEffectSourceFamily family,
+                          bir::LocalArrayEffectSourceStatus status,
+                          bir::Value value = {}) {
+    stream.sources.push_back(bir::LocalArrayOrderedEffectSourceRecord{
+        .family = family,
+        .status = status,
+        .coordinate = coordinate,
+        .value = std::move(value),
+    });
+  };
+  const auto append_result_definition = [&](const bir::Value& result) {
+    if (local_array_stream_same_value(result, dynamic_index)) {
+      append(bir::LocalArrayEffectSourceFamily::IndexDefinition,
+             bir::LocalArrayEffectSourceStatus::RedefinesIndexValue,
+             result);
+    }
+  };
+
+  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+    append_result_definition(binary->result);
+    return;
+  }
+  if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+    append_result_definition(select->result);
+    return;
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+    append_result_definition(cast->result);
+    return;
+  }
+  if (const auto* phi = std::get_if<bir::PhiInst>(&inst)) {
+    if (local_array_stream_same_value(phi->result, dynamic_index)) {
+      append(bir::LocalArrayEffectSourceFamily::PhiOrAliasTransfer,
+             bir::LocalArrayEffectSourceStatus::PhiOrAliasUnresolved,
+             phi->result);
+    }
+    return;
+  }
+  if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+    if (call->inline_asm.has_value()) {
+      const auto& metadata = *call->inline_asm;
+      append(bir::LocalArrayEffectSourceFamily::InlineAsm,
+             metadata.side_effects || !metadata.clobbers.empty()
+                 ? bir::LocalArrayEffectSourceStatus::ClobbersIndex
+                 : bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+             call->result.value_or(bir::Value{}));
+      return;
+    }
+    append(bir::LocalArrayEffectSourceFamily::CallOrHelper,
+           call->result.has_value() &&
+                   local_array_stream_same_value(*call->result, dynamic_index)
+               ? bir::LocalArrayEffectSourceStatus::ClobbersIndex
+               : bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+           call->result.value_or(bir::Value{}));
+    return;
+  }
+  if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+    append_result_definition(load_local->result);
+    return;
+  }
+  if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+    append_result_definition(load_global->result);
+    return;
+  }
+  if (const auto* store_global = std::get_if<bir::StoreGlobalInst>(&inst)) {
+    append(bir::LocalArrayEffectSourceFamily::Publication,
+           local_array_stream_same_value(store_global->value, dynamic_index)
+               ? bir::LocalArrayEffectSourceStatus::ClobbersIndex
+               : bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+           store_global->value);
+    return;
+  }
+  if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
+    append(bir::LocalArrayEffectSourceFamily::Publication,
+           local_array_stream_same_value(store_local->value, dynamic_index)
+               ? bir::LocalArrayEffectSourceStatus::ClobbersIndex
+               : bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+           store_local->value);
+    return;
+  }
+}
+
+void append_local_array_move_bundle_effect_source(
+    bir::LocalArrayOrderedEffectSourceStream& stream,
+    const PreparedControlFlowFunction& function_cf,
+    const bir::Function& bir_function,
+    const PreparedMoveBundle& bundle) {
+  const auto block_label = prepared_block_label_for_bundle(function_cf, bundle);
+  if (!block_label.has_value() || bundle.block_index >= bir_function.blocks.size()) {
+    stream.status =
+        bir::LocalArrayOrderedEffectSourceStreamStatus::MissingSourceCoordinate;
+    return;
+  }
+  const auto coordinate = local_array_instruction_coordinate(
+      bir_function, bundle.block_index, bundle.instruction_index);
+  if (!bir::local_array_effect_source_coordinate_available(coordinate)) {
+    stream.status =
+        bir::LocalArrayOrderedEffectSourceStreamStatus::MissingSourceCoordinate;
+    return;
+  }
+  stream.sources.push_back(bir::LocalArrayOrderedEffectSourceRecord{
+      .family = prepared_move_bundle_has_out_of_ssa_parallel_copy_authority(bundle)
+                    ? bir::LocalArrayEffectSourceFamily::ParallelCopy
+                    : bir::LocalArrayEffectSourceFamily::MoveBundle,
+      .status = bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+      .coordinate = coordinate,
+  });
+}
+
+[[nodiscard]] const bir::LocalArrayEndpointBridgeRecord*
+find_local_array_endpoint_bridge_for_path(
+    const bir::Function& function,
+    const bir::LocalArraySelectedProofEdgePathRecord& selected_path) {
+  for (const auto& bridge : function.local_array_endpoint_bridges) {
+    if (bridge.element_path == selected_path.element_path ||
+        (!bridge.path_result_name.empty() &&
+         selected_path.element_path != nullptr &&
+         bridge.path_result_name == selected_path.element_path->result_name)) {
+      return &bridge;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bir::LocalArrayOrderedEffectSourceStream
+build_local_array_ordered_effect_source_stream(
+    const PreparedControlFlowFunction& function_cf,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::Function& bir_function,
+    const bir::LocalArraySelectedProofEdgePathRecord& selected_path) {
+  bir::LocalArrayOrderedEffectSourceStream stream{
+      .status = bir::LocalArrayOrderedEffectSourceStreamStatus::Available,
+      .selected_path = &selected_path,
+      .endpoint_bridge =
+          find_local_array_endpoint_bridge_for_path(bir_function, selected_path),
+  };
+
+  const auto proof_block_index =
+      local_array_block_index_by_label(bir_function,
+                                       selected_path.proof_block_label);
+  if (!proof_block_index.has_value() ||
+      !selected_path.proof_instruction_index.has_value()) {
+    stream.status =
+        bir::LocalArrayOrderedEffectSourceStreamStatus::MissingLowerBoundaryCoordinate;
+    return stream;
+  }
+  stream.interval.proof_source = local_array_instruction_coordinate(
+      bir_function, *proof_block_index, *selected_path.proof_instruction_index);
+  if (!bir::local_array_effect_source_coordinate_available(
+          stream.interval.proof_source)) {
+    stream.status =
+        bir::LocalArrayOrderedEffectSourceStreamStatus::MissingLowerBoundaryCoordinate;
+    return stream;
+  }
+
+  if (stream.endpoint_bridge == nullptr ||
+      stream.endpoint_bridge->status != bir::LocalArrayEndpointBridgeStatus::Available ||
+      !stream.endpoint_bridge->prepared_block_index.has_value() ||
+      !stream.endpoint_bridge->endpoint_instruction_index.has_value() ||
+      stream.endpoint_bridge->bir_block_label.empty()) {
+    stream.status =
+        bir::LocalArrayOrderedEffectSourceStreamStatus::MissingEndpointCoordinate;
+    return stream;
+  }
+  stream.interval.endpoint = bir::LocalArrayEffectSourceCoordinate{
+      .prepared_block_index = stream.endpoint_bridge->prepared_block_index,
+      .bir_block_label = stream.endpoint_bridge->bir_block_label,
+      .instruction_index = stream.endpoint_bridge->endpoint_instruction_index,
+  };
+  if (*stream.endpoint_bridge->prepared_block_index >= bir_function.blocks.size() ||
+      *stream.endpoint_bridge->endpoint_instruction_index >=
+          bir_function.blocks[*stream.endpoint_bridge->prepared_block_index]
+              .insts.size() ||
+      bir_function.blocks[*stream.endpoint_bridge->prepared_block_index].label !=
+          stream.endpoint_bridge->bir_block_label) {
+    stream.status =
+        bir::LocalArrayOrderedEffectSourceStreamStatus::MissingEndpointCoordinate;
+    return stream;
+  }
+  if (bir::compare_local_array_effect_source_coordinates(
+          stream.interval.proof_source, stream.interval.endpoint) >= 0) {
+    stream.status =
+        bir::LocalArrayOrderedEffectSourceStreamStatus::UnorderedBoundaryCoordinate;
+    return stream;
+  }
+
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      selected_path.element_path == nullptr
+          ? nullptr
+          : bir::single_dynamic_local_array_index(*selected_path.element_path,
+                                                 &saw_multiple_dynamic_indices);
+  if (dynamic_index == nullptr || saw_multiple_dynamic_indices) {
+    stream.status =
+        bir::LocalArrayOrderedEffectSourceStreamStatus::UnsupportedModeledEffect;
+    return stream;
+  }
+
+  for (std::size_t block_index = 0; block_index < bir_function.blocks.size();
+       ++block_index) {
+    const auto& block = bir_function.blocks[block_index];
+    for (std::size_t inst_index = 0; inst_index < block.insts.size();
+         ++inst_index) {
+      append_local_array_instruction_effect_source(
+          stream,
+          bir_function,
+          dynamic_index->value,
+          block_index,
+          inst_index,
+          block.insts[inst_index]);
+      if (stream.status !=
+          bir::LocalArrayOrderedEffectSourceStreamStatus::Available) {
+        return stream;
+      }
+    }
+  }
+
+  if (value_locations != nullptr) {
+    for (const auto& bundle : value_locations->move_bundles) {
+      if (bundle.function_name != function_cf.function_name) {
+        continue;
+      }
+      append_local_array_move_bundle_effect_source(
+          stream, function_cf, bir_function, bundle);
+      if (stream.status !=
+          bir::LocalArrayOrderedEffectSourceStreamStatus::Available) {
+        return stream;
+      }
+    }
+  }
+
+  std::stable_sort(
+      stream.sources.begin(),
+      stream.sources.end(),
+      [](const bir::LocalArrayOrderedEffectSourceRecord& lhs,
+         const bir::LocalArrayOrderedEffectSourceRecord& rhs) {
+        return bir::compare_local_array_effect_source_coordinates(
+                   lhs.coordinate, rhs.coordinate) < 0;
+      });
+  return stream;
+}
+
+}  // namespace
+
+void populate_local_array_ordered_effect_source_streams(
+    PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.local_array_ordered_effect_source_streams.clear();
+  }
+
+  for (const auto& function_cf : prepared.control_flow.functions) {
+    auto* bir_function =
+        prepared_bir_function_by_name(prepared, function_cf.function_name);
+    if (bir_function == nullptr) {
+      continue;
+    }
+    const auto* value_locations =
+        find_prepared_value_location_function(prepared, function_cf.function_name);
+    for (const auto& selected_path :
+         bir_function->local_array_selected_proof_edge_paths) {
+      bir_function->local_array_ordered_effect_source_streams.push_back(
+          build_local_array_ordered_effect_source_stream(
+              function_cf, value_locations, *bir_function, selected_path));
+    }
+  }
+}
+
 PreparedSelectCarrierAliasAuthorityRecords
 collect_prepared_select_carrier_alias_authorities(
     const PreparedBirModule& prepared) {

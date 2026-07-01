@@ -1,53 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/498_dynamic_local_array_ordered_effect_source_stream_builder.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Ordered Effect-Source Contract
+Current Step ID: 3
+Current Step Title: Implement Ordered Effect-Source Population
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 defined the ordered effect-source contract for dynamic local-array
-bounded scans in `src/backend/bir/bir.hpp` and added focused coverage in
-`tests/backend/bir/backend_lir_to_bir_notes_test.cpp`.
+Step 3 repaired production ordered effect-source population for dynamic
+local-array bounded scans by closing the unordered-boundary gap identified in
+review/498_step3_ordered_effect_source_population_review.md.
 
-Contract result:
+Production result:
 
-- Coordinates are ordered by prepared block index, instruction index, then
-  tie-break index, with BIR block label required as coordinate identity.
-- The bounded scan interval is `(proof_source, endpoint]`: the proof guard is
-  excluded and the endpoint address-materialization coordinate is included.
-- Builder-backed availability now comes through
-  `LocalArrayOrderedEffectSourceStream`, not caller-supplied booleans.
-- Missing builder output maps to `missing_ordered_effect_source_stream`, while
-  explicit path-only inference remains `selected_path_only_inference`.
-- Missing lower/endpoint/source coordinates or endpoint/stream mismatches fail
-  closed as `missing_effect_source_coordinate`.
-- Effect families map to existing fail-closed interval statuses for index
-  redefinitions, phi/alias uncertainty, calls/helpers, inline asm,
-  publications, move bundles, parallel copies, and unknown modeled effects.
+- `populate_local_array_ordered_effect_source_streams` now creates one
+  `LocalArrayOrderedEffectSourceStream` per selected proof-edge path after
+  endpoint bridges are populated.
+- Streams carry their selected path and endpoint bridge, build the
+  `(proof_source, endpoint]` boundary from prepared/BIR coordinates, sort
+  sources by the ordered coordinate contract, and fail closed on missing proof,
+  endpoint, source, or unordered boundary coordinates.
+- `compare(proof_source, endpoint) >= 0` now produces
+  `UnorderedBoundaryCoordinate` in the production stream builder before source
+  collection can classify a stream as available, and the interval classifier
+  maps that to `UnorderedEffectSourceBoundary`.
+- The production collector records concrete BIR instruction families for index
+  redefinitions, phi/alias uncertainty, calls/helpers, inline asm, and
+  publications, and records prepared move-bundle/parallel-copy events when
+  prepared value-location metadata exposes them.
+- `evaluate_local_array_interval_effect` no longer accepts a caller-supplied
+  path-only coverage boolean; a clean builder-backed stream now returns
+  `available`.
+- Focused coverage proves clean, missing-coordinate, reversed/unordered
+  boundary, and unknown/clobber behavior through the production population
+  path.
 
 Detailed notes are recorded in
-`build/agent_state/498_step2_ordered_effect_source_contract/summary.md`.
+`build/agent_state/498_step3_ordered_effect_source_population/summary.md`.
 
 ## Suggested Next
 
-Execute the next packet by building the production ordered effect-source stream
-from the Step 1 audited prepared/BIR inputs and attaching it where
-`evaluate_local_array_interval_effect` can consume the builder-backed stream.
+Execute the next packet by connecting downstream bounded local-array consumers
+to the populated `local_array_ordered_effect_source_streams` records and
+removing any remaining raw/path-only no-clobber inference from the acceptance
+path.
 
 ## Watchouts
 
-- The evaluator still deliberately returns `selected_path_only_inference`
-  rather than `available` when the stream has no blocking source; publishing an
-  available result should wait until the production builder is wired.
-- The stream endpoint must match the `LocalArrayEndpointBridgeRecord`
-  prepared/BIR endpoint; a LIR producer instruction index is still not accepted
-  as effect-source ordering authority.
-- Unsupported modeled effects are fail-closed through family-specific unknown
-  statuses where possible, falling back to `unknown_effect` for unknown-family
-  records.
+- The stream population is attached to prealloc publication-plan publication,
+  but existing downstream bounded-scan consumers may still need to query the
+  stored stream records explicitly.
+- The boundary-ordering repair intentionally uses a precise unavailable status
+  instead of treating existing-but-reversed coordinates as missing coordinates.
+- Move-bundle and parallel-copy records are currently conservative
+  `unknown_modeled_effect` sources because prepared move records do not carry a
+  direct BIR value identity for the local-array dynamic index in this packet.
+- Store/publication sources are conservative and may be refined later if a
+  narrower publication authority proves the dynamic index is preserved.
 
 ## Proof
 

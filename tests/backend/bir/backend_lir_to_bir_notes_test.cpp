@@ -7529,6 +7529,9 @@ int expect_local_array_interval_effect_status_surface_fails_closed() {
           bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate) !=
           "missing_effect_source_coordinate" ||
       bir::local_array_interval_effect_status_name(
+          bir::LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary) !=
+          "unordered_effect_source_boundary" ||
+      bir::local_array_interval_effect_status_name(
           bir::LocalArrayIntervalEffectStatus::PublicationEffectUnknown) !=
           "publication_effect_unknown" ||
       bir::local_array_interval_effect_status_name(
@@ -7659,10 +7662,9 @@ int expect_local_array_interval_effect_status_surface_fails_closed() {
               .selected_path = &selected_path,
               .endpoint_bridge = &endpoint_bridge,
               .ordered_effect_sources = &available_stream,
-              .selected_path_only_inference = true,
           },
-          bir::LocalArrayIntervalEffectStatus::SelectedPathOnlyInference,
-          "interval effect classifier should keep path-only inference separate from builder streams");
+          bir::LocalArrayIntervalEffectStatus::Available,
+          "interval effect classifier should accept clean builder-backed streams");
       rc != 0) {
     return rc;
   }
@@ -7702,6 +7704,22 @@ int expect_local_array_interval_effect_status_surface_fails_closed() {
           },
           bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate,
           "interval effect classifier should reject streams for another endpoint");
+      rc != 0) {
+    return rc;
+  }
+
+  auto unordered_boundary_stream = make_stream();
+  unordered_boundary_stream.status =
+      bir::LocalArrayOrderedEffectSourceStreamStatus::UnorderedBoundaryCoordinate;
+  unordered_boundary_stream.interval.endpoint = proof_coordinate;
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{
+              .selected_path = &selected_path,
+              .endpoint_bridge = &endpoint_bridge,
+              .ordered_effect_sources = &unordered_boundary_stream,
+          },
+          bir::LocalArrayIntervalEffectStatus::UnorderedEffectSourceBoundary,
+          "interval effect classifier should reject unordered stream boundaries");
       rc != 0) {
     return rc;
   }
@@ -7924,7 +7942,7 @@ int expect_local_array_interval_effect_status_surface_fails_closed() {
   });
   if (const int rc = expect_status(
           make_bridged_scanned(stream),
-          bir::LocalArrayIntervalEffectStatus::SelectedPathOnlyInference,
+          bir::LocalArrayIntervalEffectStatus::Available,
           "interval effect classifier should ignore effects outside (proof, endpoint]");
       rc != 0) {
     return rc;
