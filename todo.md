@@ -1,31 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/506_rv64_out_of_ssa_phi_join_immediate_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement The Narrow Materialization Path
+Current Step ID: 3
+Current Step Title: Add Focused Backend Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 2 by extending RV64 prepared out-of-SSA move-bundle
-lowering to materialize only explicit
-`phi_join_immediate_materialization` moves when the prepared facts prove:
-pre-terminator traversal, block-entry `out_of_ssa_parallel_copy` authority,
-matching bundle and move predecessor/successor coordinates, predecessor
-terminator execution, no cycle/temp step, `op_kind=move`, value register
-destination storage with a GPR home, and an explicit `source_imm_i32` fact.
+Completed plan Step 3 coverage acceptance for the generic immediate phi-join
+materialization family. The positive coverage still proves a nonzero
+semantic immediate-to-register materialization through prepared out-of-SSA
+parallel-copy facts, without relying on `src/pr37924.c`, block names, or
+immediate value 0.
 
-Focused backend coverage was added for the semantic family using a nonzero
-immediate, plus fail-closed mutations for missing immediate facts, wrong
-reason/source shape, unsupported destination storage, mismatched edge
-coordinates, missing step coordinates, cycle-temp steps, and non-move ops.
+Kept the new fail-closed source-shape mutation that leaves
+`source_immediate_i32=1234` and `phi_join_immediate_materialization` in the move
+fact but changes the authoritative parallel-copy source to named `%src`. The
+RV64 gate now accepts explicit immediate phi-join materialization only when the
+selected prepared parallel-copy move source is also an I32 immediate matching
+`source_immediate_i32`.
 
 ## Suggested Next
 
-Execute plan Step 3 as a review/coverage packet: confirm the focused backend
-coverage is sufficient for the implemented immediate materialization family, or
-add any missing non-overfit coverage without weakening unsupported contracts.
+Supervisor review for commit readiness, then either close or select the next
+bounded packet for the active idea lifecycle.
 
 ## Watchouts
 
@@ -36,6 +35,8 @@ add any missing non-overfit coverage without weakening unsupported contracts.
   fail-closed coordinate gate for any bundle that reaches target lowering.
 - Stack destinations, memory destinations, pointer immediates, cycle/temp
   moves, and non-`source_imm_i32` source shapes remain unsupported.
+- Do not drop the new source-shape test: it is a non-overfit authority check,
+  not a testcase-name or source-file match.
 
 ## Proof
 
@@ -45,4 +46,5 @@ Delegated proof command:
 cmake --build build -j2 > test_after.log 2>&1 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' >> test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
 ```
 
-Result: passed. Output preserved in `test_after.log`.
+Result: passed. The build completed, the `^backend_` CTest subset passed, and
+`git diff --check` passed. Output preserved in `test_after.log`.

@@ -11596,6 +11596,15 @@ int rejects_prepared_out_of_ssa_phi_join_immediate_materialization_fail_closed_s
   }
 
   prepared = make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
+  prepared.control_flow.functions[0]
+      .parallel_copy_bundles[0]
+      .moves[0]
+      .source_value = bir::Value::named(bir::TypeKind::I32, "%src");
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
   prepared.value_locations.functions[0]
       .move_bundles[0]
       .moves[0]

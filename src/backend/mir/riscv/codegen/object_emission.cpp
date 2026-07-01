@@ -2091,6 +2091,15 @@ fragment_for_prepared_out_of_ssa_moves(
           step.uses_cycle_temp_source) {
         return std::nullopt;
       }
+      const auto* parallel_copy_move =
+          prepare::find_prepared_parallel_copy_move_for_step(parallel_copy_bundle,
+                                                             step);
+      if (parallel_copy_move == nullptr ||
+          parallel_copy_move->source_value.kind != bir::Value::Kind::Immediate ||
+          parallel_copy_move->source_value.type != bir::TypeKind::I32 ||
+          parallel_copy_move->source_value.immediate != *move.source_immediate_i32) {
+        return std::nullopt;
+      }
       ++next_step_index;
     } else if (move.source_parallel_copy_step_index.has_value()) {
       return std::nullopt;
