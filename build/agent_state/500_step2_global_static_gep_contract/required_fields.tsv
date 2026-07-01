@@ -1,0 +1,7 @@
+authority	required_fields
+global_source_object	global_name; link_name_id; storage/static kind; value_type; type_text; size_bytes; align_bytes; is_extern; is_thread_local; is_constant; selected_object_data_identity_when_required
+derivation	result_pointer_value; base_global_name; base_link_name_id; base_byte_offset; relative_base; derivation_kind; direct_or_relative_or_alias_path; source_lir_operand_identity
+layout_path	projection_sequence; aggregate_or_array_path; element_type; element_size_bytes; element_count; byte_offset; total_object_size_bytes; layout_authority_kind
+dynamic_range	dynamic_index_value; element_count; element_stride_bytes; base_byte_offset; range_verdict; dominating_or_guarding_coordinate; non_clobber_coordinate_when_required
+coordinate	lir_producer_function_name; block_label; instruction_index; lookup_key; operation_role; coordinate_status
+consumer_linkage	consumer_function; consumer_block; consumer_instruction_index; consumer_kind; consumed_pointer_or_address_identity; matching_global_static_gep_authority_identity

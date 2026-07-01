@@ -1,0 +1,25 @@
+status	meaning	applies_to	next_owner
+Available	Only from a matching available global_static_gep_authority record after the lower prerequisite exists	src/20000717-4.c; src/20031214-1.c; src/20080424-1.c; src/20120808-1.c after lower certificate	Global/static GEP admission consumer after prerequisite
+MissingGlobalSourceObject	No matching bir::Global/global source identity for the GEP candidate	All direct candidates	Global/static GEP authority certificate
+MissingGlobalLinkIdentity	Global spelling exists but LinkNameId/semantic identity is missing or ambiguous	All direct candidates	Global/static GEP authority certificate
+GlobalSourceUnsupported	Global object exists but is extern/thread-local/unsupported for this focused contract	All direct candidates	Global/static GEP authority certificate
+MissingSelectedObjectData	Selected object-data identity is required but absent or conflicting	All direct candidates when selected data is needed	Global/static GEP authority certificate
+MissingGlobalLayout	Global type/size/alignment/layout authority is absent	All direct candidates	Global/static GEP authority certificate
+MissingLayoutPath	Aggregate/array projection sequence cannot be resolved as a durable path	All direct candidates	Global/static GEP authority certificate
+MissingDerivation	No durable pointer/address derivation record from the GEP result to the global object	All direct candidates	Global/static GEP authority certificate
+MissingDerivedPointerIdentity	GEP result pointer/value identity is absent or ambiguous	All direct candidates	Global/static GEP authority certificate
+MissingDynamicIndexIdentity	Dynamic index value is absent where the GEP path is dynamic	src/20000717-4.c; src/20031214-1.c; src/20080424-1.c; src/20120808-1.c	Global/static GEP authority certificate
+MissingDynamicRangeAuthority	Dynamic element count/stride/range verdict is absent or unproven	src/20000717-4.c; src/20031214-1.c; src/20080424-1.c; src/20120808-1.c	Global/static GEP authority certificate
+RangeProofNotDominatingConsumer	Range proof exists but does not dominate/guard the consumer	Direct dynamic candidates	Global/static GEP authority certificate
+RangeProofPathNotCoveringConsumer	Range/path proof does not cover the consuming access	Direct dynamic candidates	Global/static GEP authority certificate
+IndexValueClobberedBeforeConsumer	Index value changes before the consuming access	Direct dynamic candidates	Global/static GEP authority certificate
+ElementOutOfBounds	Normalized byte range falls outside the global object	All direct candidates	Global/static GEP authority certificate
+ElementNotScalar	Focused contract reaches a non-scalar element without a separate aggregate consumer	All direct candidates	Global/static GEP authority certificate or later aggregate owner
+LayoutRangeMismatch	Layout path byte range and range proof disagree	All direct candidates	Global/static GEP authority certificate
+PointerOrFormalProvenanceBoundary	Base is a formal/runtime pointer rather than direct global/static object	Not in six direct rows; preserved boundary	Later pointer/formal provenance owner
+StringOrGlobalPointerProvenanceBoundary	Indexed base is a global pointer field or string literal pointer, not the global object field itself	src/20051104-1.c	String/global-pointer provenance prerequisite
+RuntimeOrStringIntrinsicBoundary	Use is mediated by runtime/string intrinsic consumer authority	src/ieee/copysign2.c	Runtime/string intrinsic prerequisite
+AggregateOrMemberBoundary	Aggregate/member/flexible alias behavior exceeds this focused scalar GEP contract	Boundary only	Later aggregate/member owner
+RawShapeOnly	Only testcase/source/LIR shape suggests availability	All rows fail closed	Global/static GEP authority certificate
+TargetOnlyOrFinalHomeOnly	Only object emission/final homes/target behavior suggest availability	All rows fail closed	Global/static GEP authority certificate
+PreparedBirCoordinateConfusion	Coordinate, function, block, instruction, source object, index, or consumer identity mismatch/duplicate	All rows	Global/static GEP authority certificate

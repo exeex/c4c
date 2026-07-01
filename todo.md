@@ -1,24 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/500_semantic_global_static_gep_admission_producer.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Classify Global/Static GEP Rows
+Current Step ID: 2
+Current Step Title: Define Or Route The Global/Static GEP Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 reproduced and classified the six global/static object GEP rows
-separated by 499 Step 1. Durable evidence is recorded under
-`build/agent_state/500_step1_global_static_gep_classification/`: four rows are
-direct global/static object GEP candidates, one is a global pointer-field to
-string-literal boundary, and one is a static-array/runtime-intrinsic boundary.
+Step 2 audited the current global/static producer surfaces and recorded the
+contract route under `build/agent_state/500_step2_global_static_gep_contract/`.
+Current surfaces are not sufficient for final semantic admission because no
+durable lower certificate ties global object identity, layout path, dynamic
+range, element byte range, derivation/provenance, and LIR producer coordinate
+into one matched authority record.
 
 ## Suggested Next
 
-Execute Step 2 by defining the semantic global/static GEP admission contract
-for the four direct candidate rows: `src/20000717-4.c`,
-`src/20031214-1.c`, `src/20080424-1.c`, and `src/20120808-1.c`.
+Execute Step 3 as a prerequisite-route packet: publish production
+`global_static_gep_authority` certificates from existing LIR-to-BIR global
+address/layout/range/coordinate inputs. Do not implement final semantic
+global/static GEP admission until that lower certificate exists.
 
 ## Watchouts
 
@@ -35,10 +37,12 @@ for the four direct candidate rows: `src/20000717-4.c`,
   `GlobalAddress` helpers are useful lower surfaces, but there is not yet a
   durable certificate tying global object, layout path, dynamic range, element
   byte range, and LIR producer coordinate together.
+- Preserve final admission fail-closed for all rows until a matching available
+  `global_static_gep_authority` record exists.
 
 ## Proof
 
-Step 1 classification proof:
+Step 2 contract/routing proof:
 
 ```sh
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed > test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
