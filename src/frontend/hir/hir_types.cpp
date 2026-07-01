@@ -2631,7 +2631,12 @@ GlobalId Lowerer::lower_static_local_global(FunctionCtx& ctx, const Node* n) {
   GlobalVar g{};
   g.id = next_global_id();
   g.name = "__static_local_" + sanitize_symbol(ctx.fn->name) + "_" + std::to_string(g.id.value);
-  g.name_text_id = kInvalidText;
+  if (module_ && module_->link_name_texts) {
+    g.name_text_id = module_->link_name_texts->intern(g.name);
+  } else {
+    g.name_text_id = kInvalidText;
+  }
+  g.link_name_id = module_->link_names.intern(g.name);
   g.type = qtype_from(n->type, ValueCategory::LValue);
   g.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
   g.linkage = {true, false, false};

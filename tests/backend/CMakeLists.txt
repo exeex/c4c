@@ -605,14 +605,14 @@ c4c_add_backend_codegen_object_test(
   LABELS riscv64 object global bss prepared_object_data cli
 )
 
-c4c_add_backend_codegen_object_failure_test(
-  backend_cli_riscv64_prepared_object_data_missing_static_label_obj
-  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_object_data_missing_static_label.c"
+c4c_add_backend_codegen_object_test(
+  backend_cli_riscv64_prepared_object_data_static_local_storage_obj
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_object_data_static_local_storage.c"
   TARGET_TRIPLE riscv64-linux-gnu
-  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_object_data_missing_static_label.o"
-  EXPECTED_DIAGNOSTICS "unsupported_global_data: prepared selected object-data contract status=missing_object_label object_size_bytes=0 emitted_byte_count=0 zero_fill_byte_count=0"
+  OUT_OBJECT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_object_data_static_local_storage.o"
+  EXPECTED_MACHINE_LE f300
   CASE_TIMEOUT_SEC 10
-  LABELS riscv64 object global missing_object_label prepared_object_data expected_failure cli
+  LABELS riscv64 object global static_local prepared_object_data cli
 )
 
 c4c_add_backend_dump_flag_test(
@@ -715,6 +715,16 @@ c4c_add_backend_codegen_route_test(
   REQUIRED_SNIPPETS ".bss|rv64_step5_zero_payload:|.zero 8|.text|.globl main|lla t0, rv64_step5_zero_payload|sw t1, 0(t0)|sw t1, 4(t0)|lw t0, 4(t0)|lw s1, 0(s1)"
   CASE_TIMEOUT_SEC 10
   LABELS riscv64 global bss prepared_object_data output_contract
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_riscv64_prepared_object_data_static_local_storage
+  SRC "${BACKEND_CASE_ROOT}/riscv64_prepared_object_data_static_local_storage.c"
+  TARGET_TRIPLE riscv64-linux-gnu
+  OUT_TEXT "${BACKEND_TEST_BINARY_ROOT}/riscv64_prepared_object_data_static_local_storage.s"
+  REQUIRED_SNIPPETS ".bss|.balign 4|__static_local_rv64_step3_static_counter_0:|.zero 4|.text|.globl rv64_step3_static_counter|lla s1, __static_local_rv64_step3_static_counter_0|lla t0, __static_local_rv64_step3_static_counter_0"
+  CASE_TIMEOUT_SEC 10
+  LABELS riscv64 global bss static_local prepared_object_data output_contract
 )
 
 c4c_add_backend_dump_flag_test(
