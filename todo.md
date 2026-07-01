@@ -1,77 +1,78 @@
 Status: Active
 Source Idea Path: ideas/open/479_real_semantic_write_event_authority_producer.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Or Route Real Event Authority Producer
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 479 as a routing/blocker packet. No implementation
-is selected from current prepared evidence.
+Completed Step 4 residual disposition for idea 479 after the real
+event-authority producer route was blocked.
 
-Blocker decision:
+Residual decision:
 
-- The idea 478 carrier API is sufficient.
-- Current prepared evidence cannot populate real `%t23` semantic write-event
-  authority without forbidden inference.
-- The only concrete movement into `%t23` remains `%t22 -> %t23`
-  `authority=none` storage movement, which is explicitly rejected as semantic
-  compare-result materialization.
+- Idea 479 is close-ready as a routed blocker.
+- The idea 478 carrier API is sufficient and is not the remaining blocker.
+- Real `%t23 = bir.ne i32 %t22, 0` still lacks a durable producer-side event
+  source proving semantic instruction-result materialization into frame slot
+  `#21`.
+- No implementation packet should be selected from current prepared evidence.
 
-Rejected evidence:
+Representative residuals:
 
-| Evidence | Disposition |
-| --- | --- |
-| Raw `%t23 = bir.ne i32 %t22, 0` in `logic.end.14` | Semantic identity only; not event authority. |
-| Prepared `branch_condition ... condition=%t23 compare=ne i32 %t22, 0` | Confirms compare identity only. |
-| `home %t23 value_id=17 kind=stack_slot slot_id=21 offset=156` | Final value home; not write/materialization authority. |
-| `storage %t23 frame_slot ... slot#21+stack156` | Storage plan only. |
-| Object `#21` and slot `#21` layout | Destination layout only. |
-| `move_bundle phase=before_instruction authority=none ... move from_value_id=16 to_value_id=17` | `storage_only_move`; rejected. |
-| `%t22` block-entry publications / parallel copies | Select-result stack-destination boundary; not `%t23` authority. |
+| Item | Evidence | Disposition |
+| --- | --- | --- |
+| Real `%t23` semantic identity | `%t23 = bir.ne i32 %t22, 0`; prepared branch condition confirms `condition=%t23 compare=ne i32 %t22, 0`. | Present. |
+| Real `%t23` destination | value id `17`, slot `#21`, object `#21`, offset `156`, size `4`, align `4`. | Present. |
+| Real semantic write/materialization authority | No durable event source exists. | First missing lower-level producer. |
+| `%t22 -> %t23` movement | `move_bundle ... authority=none`; `move from_value_id=16 to_value_id=17`. | Rejected `storage_only_move`; not semantic event authority. |
+| Raw BIR, final home, storage, object, slot layout | Visible. | Insufficient; must not infer authority. |
+| `%t22` select-result stack destination | Publications/parallel copies target `%t22`. | Protected separate owner. |
+| `%t1` / `%t7` pointer/provenance rows | Pointer/provenance gap family. | Protected separate owner. |
+| `%t2` / `%t8` unsupported-terminator rows | Branch-site relationship gap family. | Protected separate owner. |
+| Path/no-clobber interval proof | Requires real event carrier first. | Downstream blocked. |
+| Source-fact population, branch-stack-load authority, RV64 | Require real event authority and later interval facts. | Downstream blocked. |
 
-Required lower-level producer surface:
+First remaining owner:
 
-- A durable semantic instruction-result frame-slot write/materialization event
-  producer.
-- It must explicitly record function/event site, semantic producer identity
-  `%t23 = bir.ne i32 %t22, 0`, result value id/name/type, event source/result
-  matching `%t23`, destination slot/object/offset/size/alignment, and authority
-  proving semantic result materialization into slot `#21`.
-- It must not derive authority from raw BIR adjacency, final homes, storage
-  layout, object ids, value names, function names, testcase shape, dump order,
-  or `authority=none` storage moves.
+- A lower-level semantic instruction-result frame-slot write/materialization
+  event producer.
+- It must explicitly record function/event site, semantic producer identity,
+  result value id/name/type, event source/result matching `%t23`, destination
+  slot/object/offset/size/alignment, and authority proving semantic result
+  materialization into slot `#21`.
+- It must not reconstruct authority from final homes, storage plans, raw BIR
+  adjacency, object ids, value names, function names, testcase shape, dump
+  order, or `authority=none` storage moves.
 
-Preserved boundaries:
+Lifecycle recommendation:
 
-| Boundary | Status |
-| --- | --- |
-| `%t22` select-result stack destination | Separate owner. |
-| `%t1` / `%t7` pointer/provenance rows | Separate owner. |
-| `%t2` / `%t8` unsupported-terminator rows | Separate owner. |
-| Path/no-clobber interval facts | Later owner after real event authority exists. |
-| Source-fact population, branch-stack-load authority, RV64 | Downstream and blocked. |
+- Plan-owner should close/split idea 479 as a routed blocker.
+- If continuing, activate a new source idea for the lower-level event producer
+  surface.
+- Keep idea 479 active only if plan-owner identifies one exact in-scope packet
+  based on a newly found explicit producer event source.
 
 Artifacts:
 
-- `build/agent_state/479_step3_real_event_authority_blocker/blocker.md`
+- `build/agent_state/479_step4_real_event_authority_residual/disposition.md`
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: Residual Disposition And Close Readiness.
-Classify whether idea 479 should close/split because the first owner is the
-lower-level semantic write/materialization event producer, or remain active
-only if a precise in-scope producer packet is identified.
+Plan-owner should decide lifecycle closure/split for idea 479. The next
+technical owner, if activated, should be the lower-level semantic
+instruction-result frame-slot write/materialization event producer.
 
 ## Watchouts
 
-- Do not reopen implementation from current evidence by treating placement or
-  storage movement as event authority.
-- Any future positive path needs a real producer-side event source, not a
-  collector over current final homes or move bundles.
-- Downstream interval/source-fact/branch-stack-load/RV64 work remains blocked.
+- Do not treat `%t22 -> %t23` `authority=none` movement as semantic
+  materialization.
+- Do not infer event authority from placement, storage, object layout, value
+  names, raw shape, testcase shape, or dump order.
+- Downstream interval/source-fact/branch-stack-load/RV64 work remains blocked
+  until a real event producer exists and later interval facts are proven.
 
 ## Proof
 
