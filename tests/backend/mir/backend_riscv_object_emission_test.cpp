@@ -5161,6 +5161,93 @@ prepare::PreparedBirModule make_prepared_stack_slot_to_gpr_move_bundle_module() 
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_out_of_ssa_phi_join_register_move_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Riscv64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("phi_join");
+  const auto predecessor_label = prepared.names.block_labels.intern("pred");
+  const auto successor_label = prepared.names.block_labels.intern("join");
+  const auto source_name = prepared.names.value_names.intern("%src");
+  const auto destination_name = prepared.names.value_names.intern("%dst");
+
+  bir::Block pred{
+      .label = "pred",
+      .terminator = bir::Terminator{},
+      .label_id = predecessor_label,
+  };
+  pred.terminator.value = bir::Value::immediate_i32(0);
+  prepared.module.functions.push_back(bir::Function{
+      .name = "phi_join",
+      .return_type = bir::TypeKind::I32,
+      .return_size_bytes = 4,
+      .return_align_bytes = 4,
+      .blocks = {std::move(pred)},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = predecessor_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+      .parallel_copy_bundles =
+          {prepare::PreparedParallelCopyBundle{
+              .predecessor_label = predecessor_label,
+              .successor_label = successor_label,
+              .execution_site =
+                  prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+              .execution_block_label = predecessor_label,
+              .moves = {prepare::PreparedParallelCopyMove{
+                  .source_value = bir::Value::named(bir::TypeKind::I32, "%src"),
+                  .destination_value =
+                      bir::Value::named(bir::TypeKind::I32, "%dst"),
+              }},
+              .steps = {prepare::PreparedParallelCopyStep{
+                  .kind = prepare::PreparedParallelCopyStepKind::Move,
+                  .move_index = 0,
+              }},
+          }},
+  });
+
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              rv64_gpr_home(1, function_name, source_name, "t0", 5),
+              rv64_gpr_home(2, function_name, destination_name, "s1", 9),
+          },
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = predecessor_label,
+              .source_parallel_copy_successor_label = successor_label,
+              .moves = {prepare::PreparedMoveResolution{
+                  .from_value_id = 1,
+                  .to_value_id = 2,
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_contiguous_width = 1,
+                  .source_parallel_copy_step_index = std::size_t{0},
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .authority_kind =
+                      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  .source_parallel_copy_predecessor_label = predecessor_label,
+                  .source_parallel_copy_successor_label = successor_label,
+                  .reason = "phi_join_register_to_register",
+              }},
+          }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_small_integer_ordinary_select_module(
     bir::TypeKind result_type) {
   prepare::PreparedBirModule prepared;
@@ -10841,6 +10928,88 @@ int rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes() {
   return 0;
 }
 
+int builds_prepared_out_of_ssa_phi_join_register_move_object() {
+  const auto prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    return fail("expected prepared out-of-SSA phi-join register move RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "phi_join");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared out-of-SSA phi-join object to publish text/function");
+  }
+  if (text->bytes.size() < 8 || text->size_bytes != text->bytes.size() ||
+      function->value != 0 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared out-of-SSA phi-join object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00028493) {
+    return fail("expected mv s1, t0 for prepared out-of-SSA phi-join register move");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared out-of-SSA phi-join register object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_out_of_ssa_phi_join_register_move_fail_closed_shapes() {
+  constexpr const char* diagnostic =
+      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+
+  auto prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
+  prepared.value_locations.functions[0].move_bundles[0].moves[0].reason =
+      "edge_consumer_preservation_register_to_register";
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
+  prepared.value_locations.functions[0]
+      .move_bundles[0]
+      .moves[0]
+      .source_parallel_copy_step_index = std::nullopt;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
+  prepared.control_flow.functions[0].parallel_copy_bundles[0].steps[0].kind =
+      prepare::PreparedParallelCopyStepKind::SaveDestinationToTemp;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
+  prepared.control_flow.functions[0].parallel_copy_bundles[0]
+      .steps[0]
+      .uses_cycle_temp_source = true;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
+  prepared.control_flow.functions[0].parallel_copy_bundles[0].execution_site =
+      prepare::PreparedParallelCopyExecutionSite::SuccessorEntry;
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int reports_prepared_move_bundle_coordinate_diagnostic() {
   auto prepared = make_prepared_stack_slot_to_gpr_move_bundle_module();
   auto& move_bundle = prepared.value_locations.functions[0].move_bundles[0];
@@ -15175,6 +15344,8 @@ int main() {
   status |= builds_prepared_stack_to_stack_before_instruction_move_bundle_object();
   status |= rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes();
   status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
+  status |= builds_prepared_out_of_ssa_phi_join_register_move_object();
+  status |= rejects_prepared_out_of_ssa_phi_join_register_move_fail_closed_shapes();
   status |= reports_prepared_move_bundle_coordinate_diagnostic();
   status |= builds_prepared_scalar_compare_trunc_object();
   status |= builds_prepared_scalar_ordered_compare_return_object();

@@ -1989,6 +1989,89 @@ bool prepared_move_bundle_is_authorized_select_edge_source_producer_suppression(
 bool prepared_before_instruction_move_bundle_requires_suppression_authority(
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle);
 
+bool prepared_move_bundle_is_out_of_ssa_phi_join_register_packet_family(
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (move_bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
+      move_bundle.authority_kind !=
+          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy) {
+    return false;
+  }
+  return std::any_of(
+      move_bundle.moves.begin(),
+      move_bundle.moves.end(),
+      [](const prepare::PreparedMoveResolution& move) {
+        return move.reason == "phi_join_register_to_register" ||
+               move.reason.rfind("edge_consumer_preservation", 0) == 0 ||
+               move.source_parallel_copy_step_index.has_value() ||
+               move.uses_cycle_temp_source ||
+               move.op_kind ==
+                   prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp;
+      });
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_out_of_ssa_phi_join_register_moves(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    prepare::PreparedObjectTraversalEventKind event_kind,
+    const c4c::backend::prepare::PreparedParallelCopyBundle& parallel_copy_bundle,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (event_kind != prepare::PreparedObjectTraversalEventKind::PreTerminatorCopies ||
+      move_bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
+      move_bundle.authority_kind !=
+          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+      parallel_copy_bundle.execution_site !=
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator ||
+      parallel_copy_bundle.has_cycle) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  for (std::size_t step_index = 0;
+       step_index < parallel_copy_bundle.steps.size();
+       ++step_index) {
+    const auto& step = parallel_copy_bundle.steps[step_index];
+    if (step.kind != prepare::PreparedParallelCopyStepKind::Move ||
+        step.uses_cycle_temp_source) {
+      return std::nullopt;
+    }
+
+    const auto* move = prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(
+        move_bundle, step_index);
+    if (move == nullptr ||
+        move->op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+        move->reason != "phi_join_register_to_register" ||
+        move->destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+        move->destination_storage_kind !=
+            prepare::PreparedMoveStorageKind::Register ||
+        move->destination_contiguous_width != 1 ||
+        move->destination_occupied_register_names.size() > 1 ||
+        move->destination_stack_offset_bytes.has_value() ||
+        move->source_immediate_i32.has_value() ||
+        move->uses_cycle_temp_source ||
+        move->source_parallel_copy_step_index != step_index) {
+      return std::nullopt;
+    }
+
+    const auto* source_home = prepared_value_home_for_id(lookups, move->from_value_id);
+    const auto* destination_home =
+        prepared_value_home_for_id(lookups, move->to_value_id);
+    if (source_home == nullptr || destination_home == nullptr) {
+      return std::nullopt;
+    }
+    const auto source = gpr_register_number_for_home(*source_home);
+    const auto destination = gpr_register_number_for_home(*destination_home);
+    if (!source.has_value() || !destination.has_value()) {
+      return std::nullopt;
+    }
+    append_rv64_move(fragment, *destination, *source);
+  }
+  return fragment;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -2003,6 +2086,8 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::backend::prepare::PreparedSelectEdgeSourceProducerPlacementRecords*
         select_edge_source_producer_placements,
     std::size_t stack_frame_bytes,
+    prepare::PreparedObjectTraversalEventKind event_kind,
+    const c4c::backend::prepare::PreparedParallelCopyBundle* parallel_copy_bundle,
     const c4c::backend::prepare::PreparedMoveBundle& move_bundle) {
   if (prepared_move_bundle_is_authorized_select_edge_source_producer_suppression(
           control_flow,
@@ -2023,6 +2108,13 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
   if (prepared_before_instruction_move_bundle_requires_suppression_authority(
           move_bundle)) {
     return std::nullopt;
+  }
+  if (parallel_copy_bundle != nullptr) {
+    if (prepared_move_bundle_is_out_of_ssa_phi_join_register_packet_family(
+            move_bundle)) {
+      return fragment_for_prepared_out_of_ssa_phi_join_register_moves(
+          lookups, event_kind, *parallel_copy_bundle, move_bundle);
+    }
   }
 
   RiscvEncodedFragment fragment;
@@ -9282,6 +9374,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                 &carrier_alias_authorities,
                                                 &select_edge_source_producer_placements,
                                                 *stack_frame_bytes,
+                                                event.kind,
+                                                classification.parallel_copy_bundle,
                                                 *classification.move_bundle);
           if (!fragment.has_value()) {
             return make_rv64_prepared_function_rejection(
