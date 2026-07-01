@@ -1,37 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit LIR Coordinate Proof Population Inputs
+Current Step ID: 2
+Current Step Title: Define LIR Coordinate Proof Population Contract
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 audit for idea 489.
+Completed Step 2 contract definition for idea 489.
 
-Audit result:
+Contract result:
 
-| Input family | Step 1 classification |
+| Contract area | Step 2 decision |
 | --- | --- |
-| Dynamic local-array path records | Sufficient path payload exists on `LocalArrayElementPathRecord`, including dynamic index and layout, but dynamic rows remain `missing_index_range_proof`. |
-| LIR producer coordinate | Idea 488's `lir_producer_*` fields and `lir-producer:` key are sufficient as an address-derivation binding surface. They must not be treated as prepared traversal/BIR instruction coordinates. |
-| Prepared branch/compare facts | Candidate proof-source facts exist through prepared branch conditions and fused compare fields, but normalized lower/upper bound population still needs a contract. |
-| Control-flow/path/dominance | Prepared control-flow labels and dominance precedents exist, but no durable proof-to-`lir_producer_*` path coverage certificate is currently exposed. |
-| No-clobber/same-value interval | The idea 486 checker has statuses for these facts, but no current durable interval record proves the dynamic index is unchanged up to the LIR producer site. |
-| Step 2 readiness | Step 2 can define a bounded proof-population contract around the `lir_producer_*` surface, while preserving that real availability remains blocked unless path/dominance and no-clobber certificates are explicit. |
-| First missing lower owner | Durable dynamic local-array LIR producer path/no-clobber certificate surface: proof-edge coverage, dominance/guard validity, and same-value/no-clobber interval facts for the dynamic index. |
+| Accepted representative | Scalar dynamic local-array `address_derivation` path with one dynamic index, `lir_producer_coordinate_status=available`, and a stable `lir-producer:` key. |
+| Binding coordinate | Use `lir_producer_function_name`, `lir_producer_block_label`, `lir_producer_instruction_index`, `lir_producer_operation_role`, and `lir_producer_lookup_key`; never treat the LIR instruction index as a prepared traversal/BIR instruction index. |
+| Proof source | Prepared `FusedCompare` branch-condition facts only, with structured operand match to the dynamic index. |
+| Bounds | Lower bound normalized to `0` inclusive via supported lower predicate; upper bound normalized to `element_count` exclusive via supported upper predicate. |
+| Path/dominance | Requires explicit proof-edge/path coverage and dominance or guard validity from proof source to the `lir_producer_*` site. |
+| No-clobber | Requires explicit same-value/no-clobber interval facts for the dynamic index through redefinition, phi/alias, call/helper, inline-asm, publication/move, and parallel-copy effects. |
+| Checker mapping | Maps `lir_producer_*` fields into idea 486 `LocalArrayIndexRangeProofInputs` consumer fields as LIR producer-site coordinates. |
+| Step 3 decision rule | Implement only if targeted inspection finds authoritative path/no-clobber certificate producers; otherwise route to `dynamic local-array LIR producer path/no-clobber certificate`. |
 
 Supporting artifact:
 
-- `build/agent_state/489_step1_lir_coordinate_proof_population_audit/audit.md`
+- `build/agent_state/489_step2_lir_coordinate_proof_population_contract/contract.md`
 
 ## Suggested Next
 
-Execute Step 2: define the proof-population contract from LIR producer
-coordinates, including accepted branch/compare proof-source shapes, normalized
-bound requirements, path/dominance requirements, no-clobber requirements, and
-fail-closed routing if the missing certificate owner is still absent.
+Execute Step 3: inspect for authoritative proof-source/path coverage and
+same-value/no-clobber interval producers keyed to `lir_producer_*`. Implement a
+bounded producer only if both exist; otherwise record the exact lower-owner
+blocker without changing code.
 
 ## Watchouts
 
@@ -41,13 +42,13 @@ fail-closed routing if the missing certificate owner is still absent.
   `Block::insts` instruction index.
 - Do not mark real dynamic rows available without explicit proof-source,
   path/dominance, and no-clobber facts accepted by the idea 486 checker.
-- Do not change idea 486 checker vocabulary, idea 488 coordinate exposure, idea
-  484 packaging, scalar local-load consumption, or RV64/MIR lowering.
+- Keep idea 486 checker vocabulary, idea 488 coordinate exposure, idea 484
+  packaging, scalar local-load consumption, and RV64/MIR lowering out of scope.
 - Existing untracked `review/*.md` files were not touched.
 
 ## Proof
 
-Step 1 validation:
+Step 2 validation:
 
 ```sh
 git diff --check
