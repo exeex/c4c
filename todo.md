@@ -1,44 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/508_rv64_prepared_callee_saved_gpr_save_slot_emission.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Ordinary-C Coverage
+Current Step ID: 5
+Current Step Title: Validate And Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 of `plan.md`: added focused ordinary-C RV64 object-runtime
-coverage for prepared callee-saved GPR save/restore emission.
+Completed Step 5 of `plan.md`: validated and handed off the RV64 prepared
+callee-saved GPR save-slot emission slice.
 
 Changed files:
 
-- `tests/backend/CMakeLists.txt`
-- `tests/backend/case/riscv64_callee_saved_gpr_live_across_call.c`
 - `todo.md`
 - `test_after.log`
 
-Coverage rationale:
+Validation results:
 
-- `riscv64_callee_saved_gpr_live_across_call.c` keeps an integer value live
-  across a same-module call while the callee also uses prepared callee-saved
-  GPR state. The runtime result depends on the caller's live value surviving
-  the call, so the object route must honor the prepared GPR save/restore path.
-- The focused CTest registration uses the existing
-  `c4c_add_backend_rv64_object_runtime_case` helper, compiling through
-  `--codegen obj`, linking the emitted object with clang, and running it under
-  qemu.
-- Prepared dump probing showed `saved_register bank=gpr` facts for
-  `perturb_value`, `keep_value_across_call`, and `main`, including multiple
-  callee-saved placements in the cross-call function. The test does not assert
-  raw slot numbers, frame shape, function-name shortcuts, expectations,
-  unsupported markers, allowlists, runtime accounting, or scan accounting.
-
-Focused test result:
-
-- `backend_obj_runtime_rv64_callee_saved_gpr_live_across_call` passed.
+- `cmake --build build --target c4cll` passed with no work to do.
+- `backend_riscv_object_emission` passed, including the focused unsupported
+  non-GPR/FPR save-slot diagnostic assertion.
+- `backend_obj_runtime_rv64_callee_saved_gpr_live_across_call` passed,
+  preserving the ordinary-C GPR save/restore runtime coverage added in Step 4.
 - `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed
-  `332/332`, including the new object-runtime case.
+  `332/332`; final proof is recorded in `test_after.log`.
 
 Representative status:
 
@@ -48,33 +34,45 @@ Representative status:
   fact:
   `unsupported_stack_frame: RV64 object route does not support non-GPR prepared
   callee-saved register save slots (fpr:fs1)`.
-- This is intentionally not marked fixed because FPR save-slot support is a
-  non-goal for this idea.
+- Fresh Step 5 probe artifacts are under
+  `build/agent_state/508_step5_validate_handoff/`; the probe returned `2`,
+  which is expected for the out-of-scope FPR fail-closed diagnostic.
+
+Coverage and downgrade status:
+
+- No expectation, allowlist, unsupported-marker, runtime comparison, scan
+  accounting, or testcase-contract downgrade was used as progress.
+- The committed slice changed only RV64 object emission, the focused
+  object-emission assertions, the ordinary-C runtime test registration/case,
+  and canonical `todo.md`/`test_after.log` handoff state.
+- Remaining FPR, F128, vector, dynamic-stack, and broad fixed-frame work stays
+  out of scope for this plan and should remain follow-up work.
 
 ## Suggested Next
 
-Execute Step 5: validate and hand off the completed GPR save-slot slice for
-supervisor review, preserving the current FPR blocker as an out-of-scope
-follow-up rather than weakening the representative.
+Supervisor review can treat this plan as closure-ready for the GPR save-slot
+goal. Any additional FPR/F128/vector/dynamic-stack/broad fixed-frame work
+should be split or preserved as separate follow-up, not folded into this plan.
 
 ## Watchouts
 
 - The representative has advanced to the explicit FPR fail-closed diagnostic,
   which is expected for this packet. Do not weaken that diagnostic or skip FPR
   facts to claim object-route success.
-- The new ordinary-C case is GPR-only. Do not extend this plan into FPR, F128,
-  vector, dynamic-stack, or broad fixed-frame support.
+- The broad backend subset is green, but the representative is still an
+  unsupported row because FPR save-slot support is intentionally a non-goal.
 
 ## Proof
 
-- `scripts/plan_review_state.py set-step --step-id 4 --step-title 'Add Ordinary-C Coverage'`
-- `cmake --build build --target c4cll` passed.
+- `scripts/plan_review_state.py set-step --step-id 5 --step-title 'Validate And Handoff'`
+- `cmake --build build --target c4cll` passed with no work to do.
+- `ctest --test-dir build --output-on-failure -R '^backend_riscv_object_emission$'` passed.
 - `ctest --test-dir build --output-on-failure -R '^backend_obj_runtime_rv64_callee_saved_gpr_live_across_call$'` passed.
 - Representative object-route probe for
   `tests/c/external/gcc_torture/src/20000603-1.c` returned `2` with the
   expected FPR fail-closed diagnostic above; artifacts are under
-  `build/agent_state/508_step4_ordinary_c_coverage/`.
-- `git diff --check -- todo.md tests/backend/CMakeLists.txt tests/backend/case/riscv64_callee_saved_gpr_live_across_call.c` passed after the final `todo.md` update.
+  `build/agent_state/508_step5_validate_handoff/`.
 - `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed
-  `332/332`.
+  `332/332` and was written to `test_after.log`.
+- `git diff --check -- todo.md` passed after this update.
 - Proof log: `test_after.log`.
