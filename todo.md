@@ -1,39 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/424_prepared_global_stack_frame_infrastructure_review.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Write Row-Backed Infrastructure Handoff
+Current Step ID: 4
+Current Step Title: Create Focused Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by writing the durable row-backed infrastructure
-handoff:
+Completed `plan.md` Step 4 by creating five focused follow-up source ideas
+from the row-backed infrastructure handoff:
 
-- `docs/rv64_gcc_torture_post_contract/global_stack_frame_infrastructure_review.md`
+- `ideas/open/508_rv64_prepared_callee_saved_gpr_save_slot_emission.md`
+- `ideas/open/509_rv64_fixed_prepared_stack_frame_emission.md`
+- `ideas/open/510_rv64_selected_object_data_emission.md`
+- `ideas/open/511_static_local_object_data_contract_publication.md`
+- `ideas/open/512_stack_passed_parameter_home_publication.md`
 
-The document records bucket counts (`unsupported_stack_frame` 84,
-`unsupported_global_data` 40, `unsupported_param_home` 4), cites the Step 2
-representative artifact directories, separates coherent RV64 emission gaps
-from producer-contract gaps, records parked F128/FPR scope, and lists reject
-signals against RV64 reconstruction, expectation/unsupported-marker changes,
-and testcase-shaped shortcuts.
+The follow-ups preserve the Step 3 split: ideas 508-510 are RV64 consumer
+work for coherent prepared facts, while ideas 511-512 are producer-contract
+work where RV64 must remain fail-closed until authority is published. Each
+idea links back to idea 424, cites the handoff doc and representative artifact
+paths, records owning layer, scope, acceptance criteria, and concrete reviewer
+reject signals.
 
 ## Suggested Next
 
-Execute Step 4: create separate follow-up ideas for the row-backed owners in
-the handoff doc:
-
-- RV64 callee-saved GPR save-slot emission.
-- RV64 general fixed prepared stack-frame emission.
-- RV64 coherent selected object-data emission.
-- Producer static-local object-data contract publication.
-- Producer stack-passed parameter-home publication.
+Execute Step 5: validate and hand off the infrastructure review for closure
+or deactivation decision.
 
 ## Watchouts
 
-- Step 4 should preserve the owner split: RV64 emission candidates are
+- Step 5 should confirm idea 424 is complete as a review/handoff route, not as
+  implementation of the five new follow-up ideas.
+- Keep the owner split intact: RV64 emission candidates are
   callee-saved save slots, general fixed-frame emission, and coherent selected
   object-data emission; producer-contract candidates are static-local object
   labels/extents and stack-passed parameter-home publication.
@@ -48,7 +48,7 @@ the handoff doc:
 
 ## Proof
 
-Step 3 docs proof was written to `test_after.log`:
+Step 4 lifecycle proof is written to `test_after.log`:
 
-- `scripts/plan_review_state.py set-step --step-id 3 --step-title 'Write Row-Backed Infrastructure Handoff'`
-- `git diff --check -- todo.md docs/rv64_gcc_torture_post_contract`
+- `scripts/plan_review_state.py set-step --step-id 4 --step-title 'Create Focused Follow-Up Ideas'`
+- `git diff --check -- todo.md ideas/open`
