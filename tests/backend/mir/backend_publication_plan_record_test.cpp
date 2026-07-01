@@ -493,6 +493,22 @@ int populates_clean_local_array_ordered_effect_stream() {
     return fail("expected production checker input to publish available local-address provenance");
   }
   prepare::populate_local_array_scalar_local_loads(prepared);
+  if (function.local_array_semantic_geps.size() != 1 ||
+      function.local_array_semantic_geps.front().status !=
+          bir::LocalArrayCarrierStatus::Available ||
+      function.local_array_semantic_geps.front().provenance !=
+          &function.local_array_local_address_provenances.front() ||
+      function.local_array_semantic_geps.front().source_object_name !=
+          "%lv.arr" ||
+      function.local_array_semantic_geps.front().element_result_name !=
+          "%elt.ptr" ||
+      function.local_array_semantic_geps.front().dynamic_index !=
+          bir::Value::named(bir::TypeKind::I64, "%idx") ||
+      function.local_array_semantic_geps.front()
+              .lir_producer_operation_role !=
+          bir::LocalArrayLirProducerOperationRole::AddressDerivation) {
+    return fail("expected production local-address provenance to publish available semantic GEP admission");
+  }
   if (function.local_array_scalar_local_loads.empty()) {
     return fail("expected production scalar load scan to find pointer-addressed load");
   }
@@ -513,6 +529,64 @@ int populates_clean_local_array_ordered_effect_stream() {
           bir::Value::named(bir::TypeKind::I64, "%idx")) {
     return fail("expected production scalar load fact to package load identity");
   }
+  return 0;
+}
+
+int local_array_semantic_gep_population_requires_matching_provenance() {
+  auto prepared = make_effect_stream_prepared_module({
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%idx"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Add,
+          .result = bir::Value::named(bir::TypeKind::I64, "%tmp2"),
+          .operand_type = bir::TypeKind::I64,
+          .lhs = bir::Value::named(bir::TypeKind::I64, "%tmp"),
+          .rhs = bir::Value::immediate_i64(1),
+      },
+      bir::CastInst{
+          .opcode = bir::CastOpcode::Bitcast,
+          .result = bir::Value::named(bir::TypeKind::Ptr, "%elt.ptr"),
+          .operand = bir::Value::named(bir::TypeKind::Ptr, "%base"),
+      },
+  });
+  auto& function = prepared.module.functions.front();
+  prepare::populate_local_array_scalar_local_loads(prepared);
+  if (!function.local_array_semantic_geps.empty()) {
+    return fail("expected semantic GEP publication to require lower provenance records");
+  }
+
+  prepare::populate_local_array_ordered_effect_source_streams(prepared);
+  prepare::populate_local_array_interval_effects(prepared);
+  prepare::populate_local_array_index_range_proofs(prepared);
+  prepare::populate_local_array_proof_facts(prepared);
+  prepare::populate_local_array_index_range_checker_inputs(prepared);
+  prepare::populate_local_array_local_address_provenances(prepared);
+  function.local_array_local_address_provenances.front().status =
+      bir::LocalArrayCarrierStatus::GlobalSourceObject;
+  prepare::populate_local_array_scalar_local_loads(prepared);
+  if (function.local_array_semantic_geps.size() != 1 ||
+      function.local_array_semantic_geps.front().status !=
+          bir::LocalArrayCarrierStatus::GlobalSourceObject) {
+    return fail("expected semantic GEP publication to preserve global/static boundary status");
+  }
+
+  prepare::populate_local_array_local_address_provenances(prepared);
+  auto duplicate = function.local_array_local_address_provenances.front();
+  function.local_array_local_address_provenances.push_back(duplicate);
+  prepare::populate_local_array_scalar_local_loads(prepared);
+  if (function.local_array_semantic_geps.size() != 2 ||
+      function.local_array_semantic_geps.front().status !=
+          bir::LocalArrayCarrierStatus::PreparedBirCoordinateConfusion ||
+      function.local_array_semantic_geps.back().status !=
+          bir::LocalArrayCarrierStatus::PreparedBirCoordinateConfusion) {
+    return fail("expected semantic GEP publication to reject duplicate provenance identities");
+  }
+
   return 0;
 }
 
@@ -1310,6 +1384,11 @@ int main() {
   }
   if (int rc =
           local_array_local_address_provenance_requires_matching_checker_input();
+      rc != 0) {
+    return rc;
+  }
+  if (int rc =
+          local_array_semantic_gep_population_requires_matching_provenance();
       rc != 0) {
     return rc;
   }

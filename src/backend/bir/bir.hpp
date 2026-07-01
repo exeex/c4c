@@ -2276,6 +2276,40 @@ struct LocalArrayLocalAddressProvenanceRecord {
   bool scalar_in_bounds = false;
 };
 
+struct LocalArraySemanticGepInputs {
+  const LocalArrayLocalAddressProvenanceRecord* provenance = nullptr;
+};
+
+struct LocalArraySemanticGepRecord {
+  LocalArrayCarrierStatus status = LocalArrayCarrierStatus::MissingElementPath;
+  LocalArrayRangeProofStatus checker_status =
+      LocalArrayRangeProofStatus::MissingLocalArrayPath;
+  const LocalArrayLocalAddressProvenanceRecord* provenance = nullptr;
+  const LocalArraySourceObjectRecord* source_object = nullptr;
+  const LocalArrayAddressDerivationRecord* derivation = nullptr;
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  const LocalArrayIndexRangeCheckerInputRecord* checker_input = nullptr;
+  std::string source_object_name;
+  std::string derived_pointer_name;
+  std::string element_result_name;
+  std::string lir_producer_lookup_key;
+  std::string lir_producer_function_name;
+  std::string lir_producer_block_label;
+  std::optional<std::size_t> lir_producer_instruction_index;
+  LocalArrayDerivationKind derivation_kind = LocalArrayDerivationKind::Unknown;
+  LocalArrayLirProducerOperationRole lir_producer_operation_role =
+      LocalArrayLirProducerOperationRole::None;
+  LocalArrayLirProducerCoordinateStatus lir_producer_coordinate_status =
+      LocalArrayLirProducerCoordinateStatus::MissingLirProducerCoordinate;
+  Value dynamic_index;
+  TypeKind element_type = TypeKind::Void;
+  std::size_t element_size_bytes = 0;
+  std::size_t byte_offset = 0;
+  std::size_t element_count = 0;
+  std::size_t source_total_size_bytes = 0;
+  bool scalar_in_bounds = false;
+};
+
 enum class LocalArrayScalarLocalLoadStatus : unsigned char {
   Available,
   MissingLoad,
@@ -3241,6 +3275,114 @@ evaluate_local_array_local_address_provenance(
   if (inputs.source_object->total_size_bytes != 0 &&
       path.byte_offset + path.element_size_bytes >
           inputs.source_object->total_size_bytes) {
+    record.status = LocalArrayCarrierStatus::ElementOutOfBounds;
+    return record;
+  }
+
+  record.status = LocalArrayCarrierStatus::Available;
+  return record;
+}
+
+[[nodiscard]] inline LocalArraySemanticGepRecord
+evaluate_local_array_semantic_gep(
+    const LocalArraySemanticGepInputs& inputs) {
+  LocalArraySemanticGepRecord record{
+      .provenance = inputs.provenance,
+  };
+  if (inputs.provenance == nullptr) {
+    record.status = LocalArrayCarrierStatus::MissingElementPath;
+    return record;
+  }
+
+  const auto& provenance = *inputs.provenance;
+  record.checker_status = provenance.checker_status;
+  record.source_object = provenance.source_object;
+  record.derivation = provenance.derivation;
+  record.element_path = provenance.element_path;
+  record.checker_input = provenance.checker_input;
+  record.source_object_name = provenance.source_object_name;
+  record.derived_pointer_name = provenance.derived_pointer_name;
+  record.element_result_name = provenance.element_result_name;
+  record.lir_producer_lookup_key = provenance.lir_producer_lookup_key;
+  record.lir_producer_function_name = provenance.lir_producer_function_name;
+  record.lir_producer_block_label = provenance.lir_producer_block_label;
+  record.lir_producer_instruction_index =
+      provenance.lir_producer_instruction_index;
+  record.derivation_kind = provenance.derivation_kind;
+  record.dynamic_index = provenance.dynamic_index;
+  record.element_type = provenance.element_type;
+  record.element_size_bytes = provenance.element_size_bytes;
+  record.byte_offset = provenance.byte_offset;
+  record.element_count = provenance.element_count;
+  record.source_total_size_bytes = provenance.source_total_size_bytes;
+  record.scalar_in_bounds = provenance.scalar_in_bounds;
+  if (provenance.element_path != nullptr) {
+    record.lir_producer_operation_role =
+        provenance.element_path->lir_producer_operation_role;
+    record.lir_producer_coordinate_status =
+        provenance.element_path->lir_producer_coordinate_status;
+  }
+
+  if (provenance.status != LocalArrayCarrierStatus::Available) {
+    record.status = provenance.status;
+    return record;
+  }
+  if (provenance.source_object == nullptr) {
+    record.status = LocalArrayCarrierStatus::MissingSourceObject;
+    return record;
+  }
+  if (provenance.source_object->status != LocalArrayCarrierStatus::Available) {
+    record.status = provenance.source_object->status;
+    return record;
+  }
+  if (provenance.derivation == nullptr) {
+    record.status = LocalArrayCarrierStatus::MissingDerivation;
+    return record;
+  }
+  if (provenance.derivation->status != LocalArrayCarrierStatus::Available) {
+    record.status = provenance.derivation->status;
+    return record;
+  }
+  if (provenance.derivation_kind == LocalArrayDerivationKind::Unknown ||
+      provenance.derivation->kind == LocalArrayDerivationKind::Unknown) {
+    record.status = LocalArrayCarrierStatus::MissingDerivation;
+    return record;
+  }
+  if (provenance.element_path == nullptr) {
+    record.status = LocalArrayCarrierStatus::MissingElementPath;
+    return record;
+  }
+  if (provenance.element_path->lir_producer_coordinate_status !=
+      LocalArrayLirProducerCoordinateStatus::Available) {
+    record.status = LocalArrayCarrierStatus::PreparedBirCoordinateConfusion;
+    return record;
+  }
+  if (provenance.element_path->lir_producer_operation_role !=
+      LocalArrayLirProducerOperationRole::AddressDerivation) {
+    record.status = LocalArrayCarrierStatus::UnknownProvenance;
+    return record;
+  }
+  if (provenance.checker_input == nullptr ||
+      provenance.checker_status != LocalArrayRangeProofStatus::Available ||
+      provenance.checker_input->status != LocalArrayRangeProofStatus::Available ||
+      provenance.checker_input->checker_record.status !=
+          LocalArrayRangeProofStatus::Available) {
+    record.status = LocalArrayCarrierStatus::MissingIndexRangeProof;
+    return record;
+  }
+  if (provenance.element_type == TypeKind::Void ||
+      provenance.element_size_bytes == 0) {
+    record.status =
+        LocalArrayCarrierStatus::F128ComplexVectorOrVolatileAtomicBoundary;
+    return record;
+  }
+  if (!provenance.scalar_in_bounds) {
+    record.status = LocalArrayCarrierStatus::ElementOutOfBounds;
+    return record;
+  }
+  if (provenance.source_total_size_bytes != 0 &&
+      provenance.byte_offset + provenance.element_size_bytes >
+          provenance.source_total_size_bytes) {
     record.status = LocalArrayCarrierStatus::ElementOutOfBounds;
     return record;
   }
@@ -5524,6 +5666,8 @@ struct Function {
       local_array_index_range_checker_inputs;
   std::vector<LocalArrayLocalAddressProvenanceRecord>
       local_array_local_address_provenances;
+  std::vector<LocalArraySemanticGepRecord>
+      local_array_semantic_geps;
   std::vector<LocalArrayScalarLocalLoadRecord>
       local_array_scalar_local_loads;
   std::vector<Block> blocks;

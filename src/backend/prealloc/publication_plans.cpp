@@ -5736,6 +5736,36 @@ void populate_local_array_local_address_provenances(
   }
 }
 
+void populate_local_array_semantic_geps(PreparedBirModule& prepared) {
+  for (auto& function : prepared.module.functions) {
+    function.local_array_semantic_geps.clear();
+    for (const auto& provenance :
+         function.local_array_local_address_provenances) {
+      auto record = bir::evaluate_local_array_semantic_gep(
+          bir::LocalArraySemanticGepInputs{.provenance = &provenance});
+      const auto duplicate_identity =
+          std::count_if(function.local_array_local_address_provenances.begin(),
+                        function.local_array_local_address_provenances.end(),
+                        [&](const bir::LocalArrayLocalAddressProvenanceRecord&
+                                candidate) {
+                          return candidate.lir_producer_lookup_key ==
+                                     provenance.lir_producer_lookup_key &&
+                                 candidate.element_result_name ==
+                                     provenance.element_result_name &&
+                                 candidate.source_object_name ==
+                                     provenance.source_object_name &&
+                                 candidate.derived_pointer_name ==
+                                     provenance.derived_pointer_name;
+                        }) > 1;
+      if (duplicate_identity) {
+        record.status =
+            bir::LocalArrayCarrierStatus::PreparedBirCoordinateConfusion;
+      }
+      function.local_array_semantic_geps.push_back(std::move(record));
+    }
+  }
+}
+
 [[nodiscard]] bool local_array_load_has_pointer_value_address(
     const bir::LoadLocalInst& load) {
   return load.address.has_value() &&
@@ -5768,6 +5798,7 @@ find_local_array_local_address_provenance_for_load(
 }
 
 void populate_local_array_scalar_local_loads(PreparedBirModule& prepared) {
+  populate_local_array_semantic_geps(prepared);
   for (auto& function : prepared.module.functions) {
     function.local_array_scalar_local_loads.clear();
     for (const auto& block : function.blocks) {

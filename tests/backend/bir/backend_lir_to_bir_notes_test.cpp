@@ -9011,6 +9011,164 @@ int expect_local_array_scalar_local_loads_consume_provenance() {
   return 0;
 }
 
+int expect_local_array_semantic_geps_consume_provenance() {
+  auto path = make_dynamic_local_array_selected_edge_path();
+  path.scalar_in_bounds = true;
+  const auto source = make_dynamic_local_array_source_object();
+  const auto derivation = make_dynamic_local_array_derivation();
+  const auto selected_path = bir::evaluate_local_array_selected_proof_edge_path(
+      complete_selected_proof_edge_inputs(&path));
+  const auto interval_effect = bir::LocalArrayIntervalEffectRecord{
+      .status = bir::LocalArrayIntervalEffectStatus::Available,
+      .selected_path = &selected_path,
+      .lir_producer_lookup_key = selected_path.lir_producer_lookup_key,
+      .lir_producer_function_name = selected_path.lir_producer_function_name,
+      .lir_producer_block_label = selected_path.lir_producer_block_label,
+      .lir_producer_instruction_index =
+          selected_path.lir_producer_instruction_index,
+      .dynamic_index = bir::Value::named(TypeKind::I64, "%idx"),
+      .proof_function_name = selected_path.proof_function_name,
+      .proof_block_label = selected_path.proof_block_label,
+      .selected_successor_label = selected_path.selected_successor_label,
+  };
+  const auto range_proof =
+      bir::evaluate_local_array_index_range_proof_certificate(
+          bir::LocalArrayRangeProofCertificateInputs{
+              .element_path = &path,
+              .selected_path = &selected_path,
+              .interval_effect = &interval_effect,
+          });
+  const auto proof_fact = bir::evaluate_local_array_proof_fact(
+      bir::LocalArrayProofFactInputs{
+          .element_path = &path,
+          .range_proof = &range_proof,
+      });
+  const auto checker_input =
+      bir::evaluate_local_array_index_range_checker_input(
+          bir::LocalArrayIndexRangeCheckerInputInputs{
+              .element_path = &path,
+              .proof_fact = &proof_fact,
+          });
+  const auto provenance =
+      bir::evaluate_local_array_local_address_provenance(
+          bir::LocalArrayLocalAddressProvenanceInputs{
+              .source_object = &source,
+              .derivation = &derivation,
+              .element_path = &path,
+              .checker_input = &checker_input,
+          });
+  if (provenance.status != bir::LocalArrayCarrierStatus::Available) {
+    return fail("semantic GEP fixture should start from available provenance");
+  }
+
+  const auto available = bir::evaluate_local_array_semantic_gep(
+      bir::LocalArraySemanticGepInputs{.provenance = &provenance});
+  if (available.status != bir::LocalArrayCarrierStatus::Available ||
+      available.provenance != &provenance ||
+      available.source_object != &source ||
+      available.derivation != &derivation ||
+      available.element_path != &path ||
+      available.checker_input != &checker_input ||
+      available.source_object_name != "%lv.arr" ||
+      available.derived_pointer_name != "%elt.ptr" ||
+      available.element_result_name != "%elt.ptr" ||
+      available.dynamic_index != bir::Value::named(TypeKind::I64, "%idx") ||
+      available.derivation_kind !=
+          bir::LocalArrayDerivationKind::LocalAddressOfElement ||
+      available.lir_producer_operation_role !=
+          bir::LocalArrayLirProducerOperationRole::AddressDerivation ||
+      available.lir_producer_coordinate_status !=
+          bir::LocalArrayLirProducerCoordinateStatus::Available ||
+      available.element_type != TypeKind::I32 ||
+      available.element_size_bytes != 4 ||
+      available.source_total_size_bytes != 16 ||
+      !available.scalar_in_bounds) {
+    return fail("semantic GEP admission should package available local provenance");
+  }
+
+  const auto expect_status =
+      [&](bir::LocalArrayLocalAddressProvenanceRecord provenance_record,
+          bir::LocalArrayCarrierStatus expected_status,
+          const char* failure_message) -> int {
+    const auto record = bir::evaluate_local_array_semantic_gep(
+        bir::LocalArraySemanticGepInputs{.provenance = &provenance_record});
+    if (record.status != expected_status) {
+      return fail(failure_message);
+    }
+    return 0;
+  };
+
+  if (bir::evaluate_local_array_semantic_gep(
+          bir::LocalArraySemanticGepInputs{})
+          .status != bir::LocalArrayCarrierStatus::MissingElementPath) {
+    return fail("semantic GEP admission should reject missing provenance");
+  }
+
+  auto missing_source = provenance;
+  missing_source.source_object = nullptr;
+  if (const int rc = expect_status(
+          missing_source, bir::LocalArrayCarrierStatus::MissingSourceObject,
+          "semantic GEP admission should reject missing source object");
+      rc != 0) {
+    return rc;
+  }
+  auto missing_derivation = provenance;
+  missing_derivation.derivation = nullptr;
+  if (const int rc = expect_status(
+          missing_derivation, bir::LocalArrayCarrierStatus::MissingDerivation,
+          "semantic GEP admission should reject missing derivation");
+      rc != 0) {
+    return rc;
+  }
+  auto missing_path = provenance;
+  missing_path.element_path = nullptr;
+  if (const int rc = expect_status(
+          missing_path, bir::LocalArrayCarrierStatus::MissingElementPath,
+          "semantic GEP admission should reject missing element path");
+      rc != 0) {
+    return rc;
+  }
+  auto non_address_derivation = provenance;
+  auto load_path = path;
+  load_path.lir_producer_operation_role =
+      bir::LocalArrayLirProducerOperationRole::LoadConsumer;
+  non_address_derivation.element_path = &load_path;
+  if (const int rc = expect_status(
+          non_address_derivation, bir::LocalArrayCarrierStatus::UnknownProvenance,
+          "semantic GEP admission should reject non-address-derivation roles");
+      rc != 0) {
+    return rc;
+  }
+  auto non_available = provenance;
+  non_available.status = bir::LocalArrayCarrierStatus::GlobalSourceObject;
+  if (const int rc = expect_status(
+          non_available, bir::LocalArrayCarrierStatus::GlobalSourceObject,
+          "semantic GEP admission should preserve global/static boundaries");
+      rc != 0) {
+    return rc;
+  }
+  const bir::LocalArrayCarrierStatus propagated_statuses[] = {
+      bir::LocalArrayCarrierStatus::AggregateOrMemberBoundary,
+      bir::LocalArrayCarrierStatus::IntegerPointerRoundTrip,
+      bir::LocalArrayCarrierStatus::VariadicOrVaArgBoundary,
+      bir::LocalArrayCarrierStatus::RuntimeOrCallBoundary,
+      bir::LocalArrayCarrierStatus::RawShapeOnly,
+      bir::LocalArrayCarrierStatus::TargetOnlyOrFinalHomeOnly,
+      bir::LocalArrayCarrierStatus::PreparedBirCoordinateConfusion,
+  };
+  for (const auto status : propagated_statuses) {
+    auto failing = provenance;
+    failing.status = status;
+    if (const int rc = expect_status(
+            failing, status,
+            "semantic GEP admission should preserve fail-closed provenance status");
+        rc != 0) {
+      return rc;
+    }
+  }
+  return 0;
+}
+
 int expect_real_dynamic_local_array_row_remains_unavailable_without_range_proof() {
   auto result =
       try_lower_to_bir_with_options(make_local_array_carrier_dynamic_gep_module(),
@@ -11215,6 +11373,11 @@ int main() {
           expect_local_array_scalar_local_loads_consume_provenance();
       local_array_scalar_local_load_status != 0) {
     return local_array_scalar_local_load_status;
+  }
+  if (const int local_array_semantic_gep_status =
+          expect_local_array_semantic_geps_consume_provenance();
+      local_array_semantic_gep_status != 0) {
+    return local_array_semantic_gep_status;
   }
   if (const int real_dynamic_local_array_status =
           expect_real_dynamic_local_array_row_remains_unavailable_without_range_proof();
