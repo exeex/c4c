@@ -1,51 +1,53 @@
-# BIR Dynamic Local-Array Proof-Source Path/No-Clobber Population Plan
+# BIR Dynamic Local-Array Consumer Coordinate Prepared Exposure Plan
 
 Status: Active
-Source Idea: ideas/open/487_bir_dynamic_local_array_proof_source_path_no_clobber_population.md
-Activated From: ideas/closed/486_bir_index_range_proof_path_dominance_carrier.md
+Source Idea: ideas/open/488_bir_dynamic_local_array_consumer_coordinate_prepared_exposure.md
+Activated From: ideas/closed/487_bir_dynamic_local_array_proof_source_path_no_clobber_population.md
 
 ## Purpose
 
-Populate the real proof inputs needed by idea 486's dynamic local-array range
-checker.
+Expose dynamic local-array consumer coordinates so proof-source/path/no-clobber
+population can later bind branch facts to the exact consumer interval.
 
 ## Goal
 
-Produce real proof-source, path/dominance, and index no-clobber facts for
-supported dynamic local-array indices.
+Publish durable consumer-coordinate records and prepared lookup keys for
+supported dynamic local-array element paths.
 
 ## Core Rule
 
-Do not infer range proof from loop shape, variable names, testcase names, dump
-order, final homes, or RV64 target behavior. Dynamic rows become available only
-when real proof-source, path/dominance, and no-clobber facts feed the checker.
+This is coordinate/prepared-exposure metadata only. Do not infer coordinates
+from dump order, names, branch proximity, loop shape, final homes, or target
+behavior, and do not populate proof-source/path/no-clobber facts here.
 
 ## Read First
 
-- ideas/open/487_bir_dynamic_local_array_proof_source_path_no_clobber_population.md
-- ideas/closed/486_bir_index_range_proof_path_dominance_carrier.md
-- build/agent_state/486_step3_range_proof_path_dominance_carrier/summary.md
-- build/agent_state/486_step4_residual_disposition/disposition.md
+- ideas/open/488_bir_dynamic_local_array_consumer_coordinate_prepared_exposure.md
+- ideas/closed/487_bir_dynamic_local_array_proof_source_path_no_clobber_population.md
+- build/agent_state/487_step3_route_consumer_coordinate_prerequisite/route.md
+- build/agent_state/487_step4_residual_disposition/disposition.md
 
 ## Current Target
 
-- First blocked dynamic carrier state:
-  - real dynamic local-array rows remain `missing_index_range_proof`
-  - proof-source/path/no-clobber records are not populated from real
-    control-flow facts yet
+- Missing prerequisite:
+  - dynamic local-array element-path consumer coordinates
+  - prepared lookup key shared with prepared control-flow branch-condition
+    records
 - First packet:
-  - audit current control-flow branch/compare surfaces and no-clobber evidence
-    for a bounded real population packet.
+  - audit BIR/prepared surfaces that can carry function, block, instruction,
+    path result, source object, derivation result, dynamic index, and consumer
+    role fields.
 
 ## Non-Goals
 
-- Redefining idea 486's checker/status carrier.
-- Local-array source-object, derivation, or layout carrier records completed by
-  idea 485.
+- Proof-source population.
+- Path/dominance or no-clobber facts.
+- Marking dynamic range proofs available.
+- Idea 486 checker vocabulary changes.
 - Idea 484 packaging.
 - Scalar local-load consumption.
 - RV64/MIR lowering.
-- Broad generic range analysis beyond dynamic local-array proof population.
+- Broad generic range analysis.
 - Expectation rewrites, unsupported-marker downgrades, allowlists,
   pass/fail accounting changes, runtime-comparison changes, or baseline/log
   churn.
@@ -54,16 +56,16 @@ when real proof-source, path/dominance, and no-clobber facts feed the checker.
 
 ## Working Model
 
-Idea 486 provides the status/checker surface. This plan owns only the missing
-real inputs: proof source, branch/path coverage, dominance, and index
-same-value/no-clobber evidence.
+Idea 487 proved proof population cannot proceed until dynamic local-array
+element paths are exposed with stable consumer coordinates and lookup keys. This
+plan owns that exposure only.
 
 ## Execution Rules
 
-- Step 1 is audit/classification unless it identifies a bounded real proof
-  population surface.
-- Any implementation packet must feed idea 486's checker with real populated
-  facts and preserve fail-closed statuses.
+- Step 1 is audit/classification unless a bounded coordinate surface already
+  exists.
+- Any implementation packet must publish durable coordinates or fail-closed
+  statuses without changing proof availability.
 - Classification-only proof:
 
 ```sh
@@ -80,28 +82,28 @@ git diff --check
 
 ## Steps
 
-### Step 1: Audit Real Proof Population Inputs
+### Step 1: Audit Consumer Coordinate Exposure Inputs
 
-Inspect control-flow branch/compare facts, local-array dynamic index records,
-and same-value/no-clobber evidence. Completion means `todo.md` records whether
-real proof-source/path/no-clobber population is bounded or names the exact
-lower-level blocker.
+Inspect BIR local-array element-path records, prepared traversal, and prepared
+control-flow lookup surfaces for durable consumer coordinate fields. Completion
+means `todo.md` records available fields, missing coordinates, and whether a
+bounded exposure contract exists.
 
-### Step 2: Define Real Proof Population Contract
+### Step 2: Define Consumer Coordinate Exposure Contract
 
-Define how real proof-source, path/dominance, and no-clobber facts feed the
-idea 486 checker. Completion means the contract names accepted proof shapes,
-required identities, path coverage, no-clobber rules, and fail-closed statuses.
+Define required coordinate fields, lookup key, operation roles, and fail-closed
+statuses. Completion means the contract excludes proof-source/path/no-clobber
+population and raw-shape/name/proximity inference.
 
-### Step 3: Implement Or Route Real Proof Population
+### Step 3: Implement Or Route Prepared Exposure
 
-Implement the bounded population packet if Step 2 identifies one. If current
-control-flow data cannot prove path/dominance or no-clobber without raw-shape
-inference, record the exact lower owner and stop without changing idea 484,
-scalar loads, or RV64 lowering.
+Implement the bounded coordinate/prepared-exposure packet if Step 2 identifies
+one. If current traversal data cannot provide durable coordinates without
+inference, record the exact lower owner and stop without changing proof
+population, packaging, scalar loads, or RV64 lowering.
 
 ### Step 4: Residual Disposition And Close Readiness
 
-Re-probe selected dynamic representatives and decide whether 487 is complete,
-blocked by another lower-level source, or ready to hand back to idea 485/484
-packaging work.
+Re-probe selected dynamic local-array paths and decide whether 488 is complete,
+blocked by another lower-level source, or ready to hand back to proof
+population.
