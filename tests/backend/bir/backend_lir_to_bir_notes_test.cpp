@@ -7450,6 +7450,60 @@ int expect_local_array_interval_effect_status_surface_fails_closed() {
   if (selected_path.status != bir::LocalArraySelectedProofEdgePathStatus::Available) {
     return fail("interval effect fixture should start from an available selected proof-edge path");
   }
+  const auto endpoint_bridge = bir::evaluate_local_array_endpoint_bridge(
+      bir::LocalArrayEndpointBridgeInputs{
+          .element_path = &path,
+          .endpoint_available = true,
+          .prepared_function_name = "selected_edge_fixture",
+          .prepared_block_label = "body",
+          .prepared_block_index = std::size_t{1},
+          .bir_block_label = "body",
+          .endpoint_instruction_index = std::size_t{4},
+          .address_materialization_kind = "frame_slot",
+          .result_value_name = "%elt.ptr",
+          .matched_source_object_name = "%lv.arr",
+          .matched_derivation_result_name = "%elt.ptr",
+      });
+  if (endpoint_bridge.status != bir::LocalArrayEndpointBridgeStatus::Available) {
+    return fail("interval effect fixture should start from an available endpoint bridge");
+  }
+
+  const bir::LocalArrayEffectSourceCoordinate proof_coordinate{
+      .prepared_block_index = std::size_t{0},
+      .bir_block_label = "guard",
+      .instruction_index = std::size_t{0},
+  };
+  const bir::LocalArrayEffectSourceCoordinate endpoint_coordinate{
+      .prepared_block_index = std::size_t{1},
+      .bir_block_label = "body",
+      .instruction_index = std::size_t{4},
+  };
+  const auto make_stream =
+      [&](std::vector<bir::LocalArrayOrderedEffectSourceRecord> sources = {}) {
+        return bir::LocalArrayOrderedEffectSourceStream{
+            .status = bir::LocalArrayOrderedEffectSourceStreamStatus::Available,
+            .interval = {
+                .proof_source = proof_coordinate,
+                .endpoint = endpoint_coordinate,
+            },
+            .sources = std::move(sources),
+        };
+      };
+  const bir::LocalArrayEffectSourceCoordinate first_body_coordinate{
+      .prepared_block_index = std::size_t{1},
+      .bir_block_label = "body",
+      .instruction_index = std::size_t{0},
+  };
+  const bir::LocalArrayEffectSourceCoordinate before_proof_coordinate{
+      .prepared_block_index = std::size_t{0},
+      .bir_block_label = "guard",
+      .instruction_index = std::size_t{0},
+  };
+  const bir::LocalArrayEffectSourceCoordinate after_endpoint_coordinate{
+      .prepared_block_index = std::size_t{1},
+      .bir_block_label = "body",
+      .instruction_index = std::size_t{5},
+  };
 
   const auto expect_status =
       [&](bir::LocalArrayIntervalEffectInputs inputs,
@@ -7468,6 +7522,12 @@ int expect_local_array_interval_effect_status_surface_fails_closed() {
       bir::local_array_interval_effect_status_name(
           bir::LocalArrayIntervalEffectStatus::SelectedPathOnlyInference) !=
           "selected_path_only_inference" ||
+      bir::local_array_interval_effect_status_name(
+          bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream) !=
+          "missing_ordered_effect_source_stream" ||
+      bir::local_array_interval_effect_status_name(
+          bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate) !=
+          "missing_effect_source_coordinate" ||
       bir::local_array_interval_effect_status_name(
           bir::LocalArrayIntervalEffectStatus::PublicationEffectUnknown) !=
           "publication_effect_unknown" ||
@@ -7571,19 +7631,21 @@ int expect_local_array_interval_effect_status_surface_fails_closed() {
 
   auto same_block = selected_path;
   same_block.proof_block_label = same_block.lir_producer_block_label;
+  same_block.proof_instruction_index = same_block.lir_producer_instruction_index;
   if (const int rc = expect_status(
           bir::LocalArrayIntervalEffectInputs{.selected_path = &same_block},
           bir::LocalArrayIntervalEffectStatus::MissingSameBlockOrdering,
-          "interval effect classifier should reject same-block rows without truthful ordering");
+          "interval effect classifier should reject same-block rows without ordered coordinates");
       rc != 0) {
     return rc;
   }
 
+  auto available_stream = make_stream();
   if (const int rc = expect_status(
           bir::LocalArrayIntervalEffectInputs{
               .selected_path = &selected_path,
-              .endpoint_bridge_available = true,
-              .effect_scan_available = true,
+              .endpoint_bridge = &endpoint_bridge,
+              .ordered_effect_sources = &available_stream,
               .prepared_bir_coordinate_confusion = true,
           },
           bir::LocalArrayIntervalEffectStatus::PreparedBirCoordinateConfusion,
@@ -7595,142 +7657,290 @@ int expect_local_array_interval_effect_status_surface_fails_closed() {
   if (const int rc = expect_status(
           bir::LocalArrayIntervalEffectInputs{
               .selected_path = &selected_path,
-              .endpoint_bridge_available = true,
+              .endpoint_bridge = &endpoint_bridge,
+              .ordered_effect_sources = &available_stream,
+              .selected_path_only_inference = true,
           },
           bir::LocalArrayIntervalEffectStatus::SelectedPathOnlyInference,
-          "interval effect classifier should reject selected-path-only inference");
+          "interval effect classifier should keep path-only inference separate from builder streams");
       rc != 0) {
     return rc;
   }
 
-  const auto make_bridged_scanned = [&]() {
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{
+              .selected_path = &selected_path,
+              .endpoint_bridge = &endpoint_bridge,
+          },
+          bir::LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream,
+          "interval effect classifier should fail closed without builder-backed stream");
+      rc != 0) {
+    return rc;
+  }
+
+  auto missing_endpoint_stream = make_stream();
+  missing_endpoint_stream.interval.endpoint.instruction_index.reset();
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{
+              .selected_path = &selected_path,
+              .endpoint_bridge = &endpoint_bridge,
+              .ordered_effect_sources = &missing_endpoint_stream,
+          },
+          bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate,
+          "interval effect classifier should reject missing endpoint coordinates");
+      rc != 0) {
+    return rc;
+  }
+
+  auto mismatched_endpoint_stream = make_stream();
+  mismatched_endpoint_stream.interval.endpoint.instruction_index = std::size_t{5};
+  if (const int rc = expect_status(
+          bir::LocalArrayIntervalEffectInputs{
+              .selected_path = &selected_path,
+              .endpoint_bridge = &endpoint_bridge,
+              .ordered_effect_sources = &mismatched_endpoint_stream,
+          },
+          bir::LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate,
+          "interval effect classifier should reject streams for another endpoint");
+      rc != 0) {
+    return rc;
+  }
+
+  const auto make_bridged_scanned = [&](const bir::LocalArrayOrderedEffectSourceStream& stream) {
     return bir::LocalArrayIntervalEffectInputs{
         .selected_path = &selected_path,
-        .endpoint_bridge_available = true,
-        .effect_scan_available = true,
+        .endpoint_bridge = &endpoint_bridge,
+        .ordered_effect_sources = &stream,
     };
   };
-  auto inputs = make_bridged_scanned();
-  inputs.index_value_redefined = true;
+  auto stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::IndexDefinition,
+          .status = bir::LocalArrayEffectSourceStatus::RedefinesIndexValue,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::IndexValueRedefined,
           "interval effect classifier should report index redefinition");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.index_phi_or_alias_unresolved = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::PhiOrAliasTransfer,
+          .status = bir::LocalArrayEffectSourceStatus::PhiOrAliasUnresolved,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved,
           "interval effect classifier should report unresolved phi/alias identity");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.call_or_helper_effect_unknown = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::CallOrHelper,
+          .status = bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown,
           "interval effect classifier should report unknown call/helper effects");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.call_or_helper_clobbers_index = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::CallOrHelper,
+          .status = bir::LocalArrayEffectSourceStatus::ClobbersIndex,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::CallOrHelperClobbersIndex,
           "interval effect classifier should report call/helper clobbers");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.inline_asm_effect_unknown = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::InlineAsm,
+          .status = bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::InlineAsmEffectUnknown,
           "interval effect classifier should report unknown inline asm effects");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.inline_asm_clobbers_index = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::InlineAsm,
+          .status = bir::LocalArrayEffectSourceStatus::ClobbersIndex,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex,
           "interval effect classifier should report inline asm clobbers");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.publication_effect_unknown = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::Publication,
+          .status = bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::PublicationEffectUnknown,
           "interval effect classifier should report unknown publication effects");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.publication_clobbers_index = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::Publication,
+          .status = bir::LocalArrayEffectSourceStatus::ClobbersIndex,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::PublicationClobbersIndex,
           "interval effect classifier should report publication clobbers");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.move_bundle_effect_unknown = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::MoveBundle,
+          .status = bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::MoveBundleEffectUnknown,
           "interval effect classifier should report unknown move-bundle effects");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.move_bundle_clobbers_index = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::MoveBundle,
+          .status = bir::LocalArrayEffectSourceStatus::ClobbersIndex,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::MoveBundleClobbersIndex,
           "interval effect classifier should report move-bundle clobbers");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.parallel_copy_effect_unknown = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::ParallelCopy,
+          .status = bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::ParallelCopyEffectUnknown,
           "interval effect classifier should report unknown parallel-copy effects");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.parallel_copy_clobbers_index = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::ParallelCopy,
+          .status = bir::LocalArrayEffectSourceStatus::ClobbersIndex,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::ParallelCopyClobbersIndex,
           "interval effect classifier should report parallel-copy clobbers");
       rc != 0) {
     return rc;
   }
-  inputs = make_bridged_scanned();
-  inputs.unknown_effect = true;
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::Unknown,
+          .status = bir::LocalArrayEffectSourceStatus::UnknownModeledEffect,
+          .coordinate = first_body_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          inputs,
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::UnknownEffect,
           "interval effect classifier should report unknown modeled effects");
       rc != 0) {
     return rc;
   }
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::CallOrHelper,
+          .status = bir::LocalArrayEffectSourceStatus::ClobbersIndex,
+          .coordinate = before_proof_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::CallOrHelper,
+          .status = bir::LocalArrayEffectSourceStatus::ClobbersIndex,
+          .coordinate = after_endpoint_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
   if (const int rc = expect_status(
-          make_bridged_scanned(),
+          make_bridged_scanned(stream),
           bir::LocalArrayIntervalEffectStatus::SelectedPathOnlyInference,
-          "interval effect classifier should not publish available facts in this slice");
+          "interval effect classifier should ignore effects outside (proof, endpoint]");
+      rc != 0) {
+    return rc;
+  }
+  stream = make_stream({
+      bir::LocalArrayOrderedEffectSourceRecord{
+          .family = bir::LocalArrayEffectSourceFamily::InlineAsm,
+          .status = bir::LocalArrayEffectSourceStatus::UnsupportedModeledEffect,
+          .coordinate = endpoint_coordinate,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      },
+  });
+  if (const int rc = expect_status(
+          make_bridged_scanned(stream),
+          bir::LocalArrayIntervalEffectStatus::InlineAsmEffectUnknown,
+          "interval effect classifier should fail closed for unsupported modeled effects");
       rc != 0) {
     return rc;
   }

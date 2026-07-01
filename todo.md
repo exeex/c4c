@@ -1,87 +1,58 @@
 Status: Active
 Source Idea Path: ideas/open/498_dynamic_local_array_ordered_effect_source_stream_builder.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Prepared/BIR Effect-Source Surfaces
+Current Step ID: 2
+Current Step Title: Define Ordered Effect-Source Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 audit completed for the prepared/BIR effect-source surfaces required by
-idea 498. Exact builder input surfaces are recorded in
-`build/agent_state/498_step1_effect_source_surface_audit/summary.md`.
+Step 2 defined the ordered effect-source contract for dynamic local-array
+bounded scans in `src/backend/bir/bir.hpp` and added focused coverage in
+`tests/backend/bir/backend_lir_to_bir_notes_test.cpp`.
 
-Audit result: production has comparable source data for the required families,
-but no production builder currently merges them into one ordered local-array
-bounded effect-source stream. The precise lower blocker is the missing stream
-builder/writer, not missing individual source surfaces.
+Contract result:
 
-Builder inputs found:
+- Coordinates are ordered by prepared block index, instruction index, then
+  tie-break index, with BIR block label required as coordinate identity.
+- The bounded scan interval is `(proof_source, endpoint]`: the proof guard is
+  excluded and the endpoint address-materialization coordinate is included.
+- Builder-backed availability now comes through
+  `LocalArrayOrderedEffectSourceStream`, not caller-supplied booleans.
+- Missing builder output maps to `missing_ordered_effect_source_stream`, while
+  explicit path-only inference remains `selected_path_only_inference`.
+- Missing lower/endpoint/source coordinates or endpoint/stream mismatches fail
+  closed as `missing_effect_source_coordinate`.
+- Effect families map to existing fail-closed interval statuses for index
+  redefinitions, phi/alias uncertainty, calls/helpers, inline asm,
+  publications, move bundles, parallel copies, and unknown modeled effects.
 
-- Interval boundaries: `bir::LocalArraySelectedProofEdgePathRecord` for the
-  proof-source coordinates and selected path, plus
-  `bir::LocalArrayEndpointBridgeRecord` for prepared block index, BIR block
-  label, endpoint instruction index, source object, derivation result, and
-  dynamic-index match.
-- Assignments/redefinitions: ordered traversal of
-  `bir::Function::blocks[].insts` using result-defining `BinaryInst`,
-  `SelectInst`, `CastInst`, `PhiInst`, `CallInst` result/result lanes,
-  `LoadLocalInst`, and `LoadGlobalInst`.
-- Memory accesses: `prepare::PreparedAddressingFunction::accesses` through
-  `PreparedMemoryAccess` and `PreparedMemoryAccessLookups`, keyed by
-  function/block label/`inst_index`, with result/stored value names,
-  volatility, address space, and prepared address identity.
-- Phi/alias transfers: BIR `PhiInst`, `PreparedControlFlowFunction`
-  `join_transfers`, `PreparedSelectCarrierAliasAuthorityRecords`, and
-  `PreparedEdgePublication` source-producer coordinates.
-- Calls/helpers: BIR `CallInst`; `PreparedCallPlansFunction::calls`;
-  `PreparedCallPlan` block/instruction coordinates, clobbered registers,
-  preserved values, and `plan_prepared_call_boundary_effects`; runtime-helper
-  clobber/resource ownership surfaces for helper calls.
-- Inline asm: BIR `CallInst::inline_asm` plus `PreparedInlineAsmCarriers` /
-  `PreparedInlineAsmCarrier` with block/index, side effects, operands,
-  clobbers, result home, and missing/unsupported facts.
-- Publications: `PreparedEdgePublicationLookups` / `PreparedEdgePublication`
-  and `PreparedStoreSourcePublicationPlans`, including source producer
-  coordinates, memory-source details, move bundle pointer, parallel-copy facts,
-  and source/destination homes.
-- Move bundles: `PreparedValueLocationFunction::move_bundles`,
-  `PreparedMoveBundleLookups`, and `PreparedMoveResolution`, keyed by
-  phase/block/instruction with from/to values, destination storage, ABI index,
-  authority, and out-of-SSA labels.
-- Parallel copies: `PreparedControlFlowFunction::parallel_copy_bundles` and
-  `PreparedParallelCopyBundle`, with predecessor/successor labels, execution
-  site/block, moves, steps, and cycle state; publications link back through
-  `PreparedEdgePublication::parallel_copy_*`.
-- Unknown modeled effects: default unknown BIR/effect categories, volatile or
-  incomplete prepared memory accesses, unknown call/helper resource policy,
-  inline-asm unsupported/missing facts, unavailable publication statuses,
-  unsupported move operations, and unsupported parallel-copy execution sites.
+Detailed notes are recorded in
+`build/agent_state/498_step2_ordered_effect_source_contract/summary.md`.
 
 ## Suggested Next
 
-Execute Step 2 by defining the ordered effect-source contract over the audited
-inputs: coordinate type, interval inclusion/exclusion, family-to-status mapping,
-stream ordering/tie-breaks, and fail-closed behavior for missing coordinates or
-unsupported modeled effects.
+Execute the next packet by building the production ordered effect-source stream
+from the Step 1 audited prepared/BIR inputs and attaching it where
+`evaluate_local_array_interval_effect` can consume the builder-backed stream.
 
 ## Watchouts
 
-- Do not accept `LocalArrayIntervalEffectInputs` booleans as builder evidence;
-  they remain classifier inputs after a real stream exists.
-- Do not treat `lir_producer_instruction_index` as a prepared traversal index,
-  BIR instruction index, or ordered effect endpoint.
-- Same-block proof-source ordering is still a contract issue for Step 2; the
-  audited endpoint side has prepared block index and endpoint instruction
-  index, but proof-source-to-endpoint ordering must be defined explicitly.
-- Idea 497 remains parked and idea 494 remains fail-closed until this builder
-  can populate ordered effect-source records for the selected interval.
+- The evaluator still deliberately returns `selected_path_only_inference`
+  rather than `available` when the stream has no blocking source; publishing an
+  available result should wait until the production builder is wired.
+- The stream endpoint must match the `LocalArrayEndpointBridgeRecord`
+  prepared/BIR endpoint; a LIR producer instruction index is still not accepted
+  as effect-source ordering authority.
+- Unsupported modeled effects are fail-closed through family-specific unknown
+  statuses where possible, falling back to `unknown_effect` for unknown-family
+  records.
 
 ## Proof
 
 ```sh
-git diff --check
+cmake --build build -j2 > test_after.log 2>&1 && ctest --test-dir build -j2 --output-on-failure -R '^backend_' >> test_after.log 2>&1 && git diff --check >> test_after.log 2>&1
 ```
 
-Result: passed with no output. Output was preserved in `test_after.log`.
+Result: passed. Output was preserved in `test_after.log`.

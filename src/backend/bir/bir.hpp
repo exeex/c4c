@@ -1327,6 +1327,8 @@ enum class LocalArrayIntervalEffectStatus : unsigned char {
   PreparedBirCoordinateConfusion,
   MissingSameBlockOrdering,
   SelectedPathOnlyInference,
+  MissingOrderedEffectSourceStream,
+  MissingEffectSourceCoordinate,
   IndexValueRedefined,
   IndexPhiOrAliasUnresolved,
   CallOrHelperEffectUnknown,
@@ -1372,6 +1374,10 @@ enum class LocalArrayIntervalEffectStatus : unsigned char {
       return "missing_same_block_ordering";
     case LocalArrayIntervalEffectStatus::SelectedPathOnlyInference:
       return "selected_path_only_inference";
+    case LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream:
+      return "missing_ordered_effect_source_stream";
+    case LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate:
+      return "missing_effect_source_coordinate";
     case LocalArrayIntervalEffectStatus::IndexValueRedefined:
       return "index_value_redefined";
     case LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved:
@@ -1404,26 +1410,163 @@ enum class LocalArrayIntervalEffectStatus : unsigned char {
   return "unknown";
 }
 
+enum class LocalArrayEffectSourceFamily : unsigned char {
+  IndexDefinition,
+  PhiOrAliasTransfer,
+  CallOrHelper,
+  InlineAsm,
+  Publication,
+  MoveBundle,
+  ParallelCopy,
+  Unknown,
+};
+
+enum class LocalArrayEffectSourceStatus : unsigned char {
+  PreservesIndex,
+  RedefinesIndexValue,
+  PhiOrAliasUnresolved,
+  ClobbersIndex,
+  UnknownModeledEffect,
+  UnsupportedModeledEffect,
+};
+
+enum class LocalArrayOrderedEffectSourceStreamStatus : unsigned char {
+  Available,
+  MissingBuilder,
+  MissingLowerBoundaryCoordinate,
+  MissingEndpointCoordinate,
+  MissingSourceCoordinate,
+  UnsupportedModeledEffect,
+};
+
+struct LocalArrayEffectSourceCoordinate {
+  std::optional<std::size_t> prepared_block_index;
+  std::string bir_block_label;
+  std::optional<std::size_t> instruction_index;
+  std::size_t tie_break_index = 0;
+};
+
+struct LocalArrayIntervalBoundaryContract {
+  LocalArrayEffectSourceCoordinate proof_source;
+  LocalArrayEffectSourceCoordinate endpoint;
+};
+
+struct LocalArrayOrderedEffectSourceRecord {
+  LocalArrayEffectSourceFamily family = LocalArrayEffectSourceFamily::Unknown;
+  LocalArrayEffectSourceStatus status =
+      LocalArrayEffectSourceStatus::UnknownModeledEffect;
+  LocalArrayEffectSourceCoordinate coordinate;
+  Value value;
+};
+
+struct LocalArrayOrderedEffectSourceStream {
+  LocalArrayOrderedEffectSourceStreamStatus status =
+      LocalArrayOrderedEffectSourceStreamStatus::MissingBuilder;
+  LocalArrayIntervalBoundaryContract interval;
+  std::vector<LocalArrayOrderedEffectSourceRecord> sources;
+};
+
+[[nodiscard]] inline bool local_array_effect_source_coordinate_available(
+    const LocalArrayEffectSourceCoordinate& coordinate) {
+  return coordinate.prepared_block_index.has_value() &&
+         !coordinate.bir_block_label.empty() &&
+         coordinate.instruction_index.has_value();
+}
+
+[[nodiscard]] inline int compare_local_array_effect_source_coordinates(
+    const LocalArrayEffectSourceCoordinate& lhs,
+    const LocalArrayEffectSourceCoordinate& rhs) {
+  const auto lhs_block = lhs.prepared_block_index.value_or(0);
+  const auto rhs_block = rhs.prepared_block_index.value_or(0);
+  if (lhs_block != rhs_block) {
+    return lhs_block < rhs_block ? -1 : 1;
+  }
+  const auto lhs_inst = lhs.instruction_index.value_or(0);
+  const auto rhs_inst = rhs.instruction_index.value_or(0);
+  if (lhs_inst != rhs_inst) {
+    return lhs_inst < rhs_inst ? -1 : 1;
+  }
+  if (lhs.tie_break_index != rhs.tie_break_index) {
+    return lhs.tie_break_index < rhs.tie_break_index ? -1 : 1;
+  }
+  return 0;
+}
+
+// Dynamic local-array effect scans cover the half-open/closed interval
+// (proof_source, endpoint]. The proof-source coordinate is excluded because it
+// is the guard fact; the address-materialization endpoint is included because
+// it can still redefine or clobber the index before the bounded access exists.
+[[nodiscard]] inline bool local_array_effect_source_in_selected_interval(
+    const LocalArrayIntervalBoundaryContract& interval,
+    const LocalArrayEffectSourceCoordinate& coordinate) {
+  return compare_local_array_effect_source_coordinates(
+             interval.proof_source,
+             coordinate) < 0 &&
+         compare_local_array_effect_source_coordinates(coordinate,
+                                                       interval.endpoint) <= 0;
+}
+
+[[nodiscard]] inline LocalArrayIntervalEffectStatus
+local_array_interval_effect_status_for_source(
+    const LocalArrayOrderedEffectSourceRecord& source) {
+  switch (source.status) {
+    case LocalArrayEffectSourceStatus::PreservesIndex:
+      return LocalArrayIntervalEffectStatus::Available;
+    case LocalArrayEffectSourceStatus::RedefinesIndexValue:
+      return LocalArrayIntervalEffectStatus::IndexValueRedefined;
+    case LocalArrayEffectSourceStatus::PhiOrAliasUnresolved:
+      return LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved;
+    case LocalArrayEffectSourceStatus::ClobbersIndex:
+      switch (source.family) {
+        case LocalArrayEffectSourceFamily::CallOrHelper:
+          return LocalArrayIntervalEffectStatus::CallOrHelperClobbersIndex;
+        case LocalArrayEffectSourceFamily::InlineAsm:
+          return LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex;
+        case LocalArrayEffectSourceFamily::Publication:
+          return LocalArrayIntervalEffectStatus::PublicationClobbersIndex;
+        case LocalArrayEffectSourceFamily::MoveBundle:
+          return LocalArrayIntervalEffectStatus::MoveBundleClobbersIndex;
+        case LocalArrayEffectSourceFamily::ParallelCopy:
+          return LocalArrayIntervalEffectStatus::ParallelCopyClobbersIndex;
+        case LocalArrayEffectSourceFamily::IndexDefinition:
+          return LocalArrayIntervalEffectStatus::IndexValueRedefined;
+        case LocalArrayEffectSourceFamily::PhiOrAliasTransfer:
+          return LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved;
+        case LocalArrayEffectSourceFamily::Unknown:
+          return LocalArrayIntervalEffectStatus::UnknownEffect;
+      }
+      break;
+    case LocalArrayEffectSourceStatus::UnknownModeledEffect:
+    case LocalArrayEffectSourceStatus::UnsupportedModeledEffect:
+      switch (source.family) {
+        case LocalArrayEffectSourceFamily::CallOrHelper:
+          return LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown;
+        case LocalArrayEffectSourceFamily::InlineAsm:
+          return LocalArrayIntervalEffectStatus::InlineAsmEffectUnknown;
+        case LocalArrayEffectSourceFamily::Publication:
+          return LocalArrayIntervalEffectStatus::PublicationEffectUnknown;
+        case LocalArrayEffectSourceFamily::MoveBundle:
+          return LocalArrayIntervalEffectStatus::MoveBundleEffectUnknown;
+        case LocalArrayEffectSourceFamily::ParallelCopy:
+          return LocalArrayIntervalEffectStatus::ParallelCopyEffectUnknown;
+        case LocalArrayEffectSourceFamily::IndexDefinition:
+          return LocalArrayIntervalEffectStatus::IndexValueRedefined;
+        case LocalArrayEffectSourceFamily::PhiOrAliasTransfer:
+          return LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved;
+        case LocalArrayEffectSourceFamily::Unknown:
+          return LocalArrayIntervalEffectStatus::UnknownEffect;
+      }
+      break;
+  }
+  return LocalArrayIntervalEffectStatus::UnknownEffect;
+}
+
 struct LocalArrayIntervalEffectInputs {
   const LocalArraySelectedProofEdgePathRecord* selected_path = nullptr;
-  bool endpoint_bridge_available = false;
-  bool same_block_ordering_known = false;
-  bool effect_scan_available = false;
+  const LocalArrayEndpointBridgeRecord* endpoint_bridge = nullptr;
+  const LocalArrayOrderedEffectSourceStream* ordered_effect_sources = nullptr;
   bool prepared_bir_coordinate_confusion = false;
   bool selected_path_only_inference = false;
-  bool index_value_redefined = false;
-  bool index_phi_or_alias_unresolved = false;
-  bool call_or_helper_effect_unknown = false;
-  bool call_or_helper_clobbers_index = false;
-  bool inline_asm_effect_unknown = false;
-  bool inline_asm_clobbers_index = false;
-  bool publication_effect_unknown = false;
-  bool publication_clobbers_index = false;
-  bool move_bundle_effect_unknown = false;
-  bool move_bundle_clobbers_index = false;
-  bool parallel_copy_effect_unknown = false;
-  bool parallel_copy_clobbers_index = false;
-  bool unknown_effect = false;
   bool raw_shape_only = false;
 };
 
@@ -1536,71 +1679,86 @@ evaluate_local_array_interval_effect(
   }
 
   if (selected_path.proof_block_label == selected_path.lir_producer_block_label &&
-      !inputs.same_block_ordering_known) {
+      (!selected_path.proof_instruction_index.has_value() ||
+       !selected_path.lir_producer_instruction_index.has_value() ||
+       *selected_path.proof_instruction_index >=
+           *selected_path.lir_producer_instruction_index)) {
     record.status = LocalArrayIntervalEffectStatus::MissingSameBlockOrdering;
     return record;
   }
-  if (!inputs.endpoint_bridge_available) {
+  if (inputs.endpoint_bridge == nullptr ||
+      inputs.endpoint_bridge->status != LocalArrayEndpointBridgeStatus::Available) {
     record.status =
         LocalArrayIntervalEffectStatus::MissingPreparedBirEndpointBridge;
     return record;
   }
-  if (inputs.selected_path_only_inference || !inputs.effect_scan_available) {
+  const auto& endpoint_bridge = *inputs.endpoint_bridge;
+  if (!endpoint_bridge.prepared_block_index.has_value() ||
+      !endpoint_bridge.endpoint_instruction_index.has_value() ||
+      endpoint_bridge.bir_block_label.empty()) {
+    record.status = LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate;
+    return record;
+  }
+  if (inputs.selected_path_only_inference) {
     record.status = LocalArrayIntervalEffectStatus::SelectedPathOnlyInference;
     return record;
   }
-  if (inputs.index_value_redefined) {
-    record.status = LocalArrayIntervalEffectStatus::IndexValueRedefined;
-    return record;
-  }
-  if (inputs.index_phi_or_alias_unresolved) {
+  if (inputs.ordered_effect_sources == nullptr ||
+      inputs.ordered_effect_sources->status ==
+          LocalArrayOrderedEffectSourceStreamStatus::MissingBuilder) {
     record.status =
-        LocalArrayIntervalEffectStatus::IndexPhiOrAliasUnresolved;
+        LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream;
     return record;
   }
-  if (inputs.call_or_helper_effect_unknown) {
-    record.status = LocalArrayIntervalEffectStatus::CallOrHelperEffectUnknown;
+  const auto& stream = *inputs.ordered_effect_sources;
+  if (stream.status == LocalArrayOrderedEffectSourceStreamStatus::MissingLowerBoundaryCoordinate ||
+      stream.status == LocalArrayOrderedEffectSourceStreamStatus::MissingEndpointCoordinate ||
+      stream.status == LocalArrayOrderedEffectSourceStreamStatus::MissingSourceCoordinate) {
+    record.status = LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate;
     return record;
   }
-  if (inputs.call_or_helper_clobbers_index) {
-    record.status = LocalArrayIntervalEffectStatus::CallOrHelperClobbersIndex;
-    return record;
-  }
-  if (inputs.inline_asm_effect_unknown) {
-    record.status = LocalArrayIntervalEffectStatus::InlineAsmEffectUnknown;
-    return record;
-  }
-  if (inputs.inline_asm_clobbers_index) {
-    record.status = LocalArrayIntervalEffectStatus::InlineAsmClobbersIndex;
-    return record;
-  }
-  if (inputs.publication_effect_unknown) {
-    record.status = LocalArrayIntervalEffectStatus::PublicationEffectUnknown;
-    return record;
-  }
-  if (inputs.publication_clobbers_index) {
-    record.status = LocalArrayIntervalEffectStatus::PublicationClobbersIndex;
-    return record;
-  }
-  if (inputs.move_bundle_effect_unknown) {
-    record.status = LocalArrayIntervalEffectStatus::MoveBundleEffectUnknown;
-    return record;
-  }
-  if (inputs.move_bundle_clobbers_index) {
-    record.status = LocalArrayIntervalEffectStatus::MoveBundleClobbersIndex;
-    return record;
-  }
-  if (inputs.parallel_copy_effect_unknown) {
-    record.status = LocalArrayIntervalEffectStatus::ParallelCopyEffectUnknown;
-    return record;
-  }
-  if (inputs.parallel_copy_clobbers_index) {
-    record.status = LocalArrayIntervalEffectStatus::ParallelCopyClobbersIndex;
-    return record;
-  }
-  if (inputs.unknown_effect) {
+  if (stream.status ==
+      LocalArrayOrderedEffectSourceStreamStatus::UnsupportedModeledEffect) {
     record.status = LocalArrayIntervalEffectStatus::UnknownEffect;
     return record;
+  }
+  if (stream.status != LocalArrayOrderedEffectSourceStreamStatus::Available) {
+    record.status =
+        LocalArrayIntervalEffectStatus::MissingOrderedEffectSourceStream;
+    return record;
+  }
+  if (!local_array_effect_source_coordinate_available(
+          stream.interval.proof_source) ||
+      !local_array_effect_source_coordinate_available(stream.interval.endpoint)) {
+    record.status = LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate;
+    return record;
+  }
+  const LocalArrayEffectSourceCoordinate endpoint_coordinate{
+      .prepared_block_index = endpoint_bridge.prepared_block_index,
+      .bir_block_label = endpoint_bridge.bir_block_label,
+      .instruction_index = endpoint_bridge.endpoint_instruction_index,
+  };
+  if (compare_local_array_effect_source_coordinates(
+          stream.interval.endpoint,
+          endpoint_coordinate) != 0) {
+    record.status = LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate;
+    return record;
+  }
+  for (const auto& source : stream.sources) {
+    if (!local_array_effect_source_coordinate_available(source.coordinate)) {
+      record.status = LocalArrayIntervalEffectStatus::MissingEffectSourceCoordinate;
+      return record;
+    }
+    if (!local_array_effect_source_in_selected_interval(stream.interval,
+                                                        source.coordinate)) {
+      continue;
+    }
+    const auto source_status =
+        local_array_interval_effect_status_for_source(source);
+    if (source_status != LocalArrayIntervalEffectStatus::Available) {
+      record.status = source_status;
+      return record;
+    }
   }
 
   record.status = LocalArrayIntervalEffectStatus::SelectedPathOnlyInference;
