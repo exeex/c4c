@@ -8,44 +8,49 @@ Current Step Title: Audit LIR Coordinate Proof Population Inputs
 
 ## Just Finished
 
-Closed idea 488 as the prerequisite LIR producer-coordinate exposure slice and
-activated idea 489, `BIR Dynamic Local-Array Proof Population From LIR
-Coordinates`.
+Completed Step 1 audit for idea 489.
 
-Reason:
+Audit result:
 
-- Step 3 exposed truthful `LocalArrayElementPathRecord::lir_producer_*` fields
-  and `lir-producer:` lookup keys for address-derivation paths.
-- Step 4 says proof-source/path/no-clobber population should resume separately
-  by consuming that LIR producer-coordinate surface.
-- Dynamic rows remain fail-closed as `missing_index_range_proof` until those
-  proof facts are populated and accepted by the idea 486 checker.
+| Input family | Step 1 classification |
+| --- | --- |
+| Dynamic local-array path records | Sufficient path payload exists on `LocalArrayElementPathRecord`, including dynamic index and layout, but dynamic rows remain `missing_index_range_proof`. |
+| LIR producer coordinate | Idea 488's `lir_producer_*` fields and `lir-producer:` key are sufficient as an address-derivation binding surface. They must not be treated as prepared traversal/BIR instruction coordinates. |
+| Prepared branch/compare facts | Candidate proof-source facts exist through prepared branch conditions and fused compare fields, but normalized lower/upper bound population still needs a contract. |
+| Control-flow/path/dominance | Prepared control-flow labels and dominance precedents exist, but no durable proof-to-`lir_producer_*` path coverage certificate is currently exposed. |
+| No-clobber/same-value interval | The idea 486 checker has statuses for these facts, but no current durable interval record proves the dynamic index is unchanged up to the LIR producer site. |
+| Step 2 readiness | Step 2 can define a bounded proof-population contract around the `lir_producer_*` surface, while preserving that real availability remains blocked unless path/dominance and no-clobber certificates are explicit. |
+| First missing lower owner | Durable dynamic local-array LIR producer path/no-clobber certificate surface: proof-edge coverage, dominance/guard validity, and same-value/no-clobber interval facts for the dynamic index. |
+
+Supporting artifact:
+
+- `build/agent_state/489_step1_lir_coordinate_proof_population_audit/audit.md`
 
 ## Suggested Next
 
-Execute Step 1: audit whether existing prepared branch/compare facts,
-control-flow/path surfaces, no-clobber evidence, and dynamic local-array
-`lir_producer_*` coordinates can support a bounded proof-population packet.
+Execute Step 2: define the proof-population contract from LIR producer
+coordinates, including accepted branch/compare proof-source shapes, normalized
+bound requirements, path/dominance requirements, no-clobber requirements, and
+fail-closed routing if the missing certificate owner is still absent.
 
 ## Watchouts
 
+- Do not infer proof facts from loop shape, branch proximity, value names,
+  testcase names, dump order, final homes, or target behavior.
 - Do not treat `lir_producer_instruction_index` as a prepared traversal or BIR
   `Block::insts` instruction index.
-- Do not infer proof facts from loop shape, branch proximity, value names,
-  testcase names, dump order, final homes, or RV64 target behavior.
-- Do not change idea 488 coordinate exposure, idea 486 checker vocabulary, idea
+- Do not mark real dynamic rows available without explicit proof-source,
+  path/dominance, and no-clobber facts accepted by the idea 486 checker.
+- Do not change idea 486 checker vocabulary, idea 488 coordinate exposure, idea
   484 packaging, scalar local-load consumption, or RV64/MIR lowering.
-- Do not touch `review/`, canonical logs, baseline files, implementation files,
-  or tests until an executor receives a bounded packet.
+- Existing untracked `review/*.md` files were not touched.
 
 ## Proof
 
-Lifecycle validation:
+Step 1 validation:
 
 ```sh
 git diff --check
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
-python3 scripts/plan_review_state.py show
 ```
 
 Result: passed.
