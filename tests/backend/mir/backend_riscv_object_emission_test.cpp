@@ -156,6 +156,38 @@ int expect_prepared_rejection_diagnostic(
   return 0;
 }
 
+int expect_prepared_rejection_diagnostic_contains(
+    const prepare::PreparedBirModule& prepared,
+    const std::vector<std::string>& expected_fragments) {
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (result.ok() || result.module.has_value()) {
+    return fail("expected prepared RV64 object path to reject");
+  }
+  if (result.prepared_consumer_category.has_value()) {
+    return fail("expected RV64-local diagnostic rather than shared category");
+  }
+  for (const auto& fragment : expected_fragments) {
+    if (result.diagnostic.find(fragment) == std::string::npos) {
+      return fail("expected prepared RV64 object diagnostic to contain `" +
+                  fragment + "`, got `" + result.diagnostic + "`");
+    }
+  }
+  const auto image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(prepared);
+  if (image.ok() || image.image.has_value() ||
+      image.prepared_consumer_category.has_value()) {
+    return fail("expected prepared RV64 ELF writer to reject");
+  }
+  for (const auto& fragment : expected_fragments) {
+    if (image.diagnostic.find(fragment) == std::string::npos) {
+      return fail("expected prepared RV64 ELF diagnostic to contain `" +
+                  fragment + "`, got `" + image.diagnostic + "`");
+    }
+  }
+  return 0;
+}
+
 void publish_prepared_object_data(prepare::PreparedBirModule& prepared) {
   prepare::populate_prepared_object_data_plans(prepared);
 }
@@ -12585,8 +12617,44 @@ int rejects_published_prepared_join_transfer_select_ambiguous_publications_objec
       .size_bytes = 4,
       .align_bytes = 4,
   }};
-  if (rv64::build_rv64_prepared_text_object_module(stack_source).has_value()) {
-    return fail("expected published-copy select object path to reject stack-source publication");
+  if (expect_prepared_rejection_diagnostic_contains(
+          stack_source,
+          {
+              "unsupported_move_bundle_target_shape: prepared select publication move bundle requires unsupported RV64 moves",
+              "select_publication_evidence=yes",
+              "event_kind=pre_terminator_copies",
+              "function=main",
+              "block_label=pred.false",
+              "phase=block_entry",
+              "authority=out_of_ssa_parallel_copy",
+              "move_count=1",
+              "parallel_copy=yes",
+              "parallel_copy_predecessor=pred.false",
+              "parallel_copy_successor=join",
+              "parallel_copy_execution_site=predecessor_terminator",
+              "selected_step_index=0",
+              "selected_step_kind=move",
+              "selected_move_carrier=select_materialization",
+              "selected_move_destination_value_id=3",
+              "publication_present=yes",
+              "publication_status=available",
+              "publication_predecessor=pred.false",
+              "publication_successor=join",
+              "publication_destination_value_id=3",
+              "publication_destination_value_name=%selected",
+              "publication_source_value_id=2",
+              "publication_source_value_name=%fallback",
+              "publication_source_producer=unknown",
+              "publication_source_home_kind=stack_slot",
+              "publication_destination_home_kind=register",
+              "publication_carrier=select_materialization",
+              "intent_status=unsupported_source_home",
+              "intent_source_value_id=2",
+              "intent_source_stack_offset=<none>",
+              "intent_destination_register=<none>",
+              "select_publication_rejection_reason=intent_status_unsupported_source_home",
+          }) != 0) {
+    return 1;
   }
 
   auto non_select_carrier =

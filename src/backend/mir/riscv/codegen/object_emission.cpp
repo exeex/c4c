@@ -8053,6 +8053,108 @@ bool prepared_select_publication_move_is_rv64_object_admitted(
   return true;
 }
 
+std::string_view edge_publication_move_intent_status_name(
+    EdgePublicationMoveIntentStatus status) {
+  switch (status) {
+    case EdgePublicationMoveIntentStatus::Available:
+      return "available";
+    case EdgePublicationMoveIntentStatus::MissingSharedLookups:
+      return "missing_shared_lookups";
+    case EdgePublicationMoveIntentStatus::MissingPublication:
+      return "missing_publication";
+    case EdgePublicationMoveIntentStatus::UnsupportedPublication:
+      return "unsupported_publication";
+    case EdgePublicationMoveIntentStatus::UnsupportedSourceHome:
+      return "unsupported_source_home";
+    case EdgePublicationMoveIntentStatus::UnsupportedDestinationHome:
+      return "unsupported_destination_home";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_edge_publication_lookup_status_name(
+    prepare::PreparedEdgePublicationLookupStatus status) {
+  switch (status) {
+    case prepare::PreparedEdgePublicationLookupStatus::Available:
+      return "available";
+    case prepare::PreparedEdgePublicationLookupStatus::MissingPredecessorLabel:
+      return "missing_predecessor_label";
+    case prepare::PreparedEdgePublicationLookupStatus::MissingSuccessorLabel:
+      return "missing_successor_label";
+    case prepare::PreparedEdgePublicationLookupStatus::MissingDestinationValue:
+      return "missing_destination_value";
+    case prepare::PreparedEdgePublicationLookupStatus::MissingDestinationHome:
+      return "missing_destination_home";
+  }
+  return "unknown";
+}
+
+std::string rv64_select_publication_move_rejection_reason(
+    const EdgePublicationMoveIntent& intent) {
+  if (intent.status != EdgePublicationMoveIntentStatus::Available) {
+    return "intent_status_" +
+           std::string(edge_publication_move_intent_status_name(intent.status));
+  }
+  if (intent.destination_register.empty()) {
+    return "missing_destination_register";
+  }
+  if (intent.destination_stack_offset_bytes.has_value()) {
+    return "unsupported_destination_stack_offset";
+  }
+  if (intent.source_stack_offset_bytes.has_value()) {
+    return "unsupported_source_stack_offset";
+  }
+  if (intent.source_memory_byte_offset.has_value()) {
+    return "unsupported_source_memory_byte_offset";
+  }
+  if (intent.source_pointer_byte_delta.has_value()) {
+    return "unsupported_source_pointer_byte_delta";
+  }
+  if (!rv64_register_number(intent.destination_register).has_value()) {
+    return "invalid_destination_register";
+  }
+  if (intent.source_immediate_i32.has_value()) {
+    if (!intent.source_register.empty()) {
+      return "immediate_with_source_register";
+    }
+    if (!fits_signed_12_bit_immediate(*intent.source_immediate_i32)) {
+      return "unsupported_source_immediate_i32_range";
+    }
+    return "available";
+  }
+  if (intent.source_register.empty()) {
+    return "missing_source_register";
+  }
+  if (!rv64_register_number(intent.source_register).has_value()) {
+    return "invalid_source_register";
+  }
+  return "available";
+}
+
+template <typename T>
+void append_optional_value(std::ostringstream& out,
+                           std::string_view name,
+                           const std::optional<T>& value) {
+  out << " " << name << "=";
+  if (value.has_value()) {
+    out << *value;
+  } else {
+    out << "<none>";
+  }
+}
+
+void append_optional_block_label(const prepare::PreparedNameTables& names,
+                                 std::ostringstream& out,
+                                 std::string_view name,
+                                 std::optional<BlockLabelId> label) {
+  out << " " << name << "=";
+  if (label.has_value()) {
+    out << rv64_prepared_block_label(names, *label);
+  } else {
+    out << "<none>";
+  }
+}
+
 bool prepared_select_publication_destination_is_stack_home(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedFunctionLookups* lookups,
@@ -8084,6 +8186,344 @@ bool prepared_select_publication_destination_is_stack_home(
       prepared_value_home_for_id(lookups, *destination_value_id);
   return destination_home != nullptr &&
          destination_home->kind == prepare::PreparedValueHomeKind::StackSlot;
+}
+
+void append_select_publication_intent_evidence(
+    const prepare::PreparedNameTables& names,
+    std::ostringstream& out,
+    const EdgePublicationMoveIntent& intent) {
+  out << " intent_status="
+      << edge_publication_move_intent_status_name(intent.status);
+  out << " intent_destination_value_id=" << intent.destination_value_id;
+  append_optional_value(out, "intent_source_value_id", intent.source_value_id);
+  out << " intent_source_type=" << static_cast<int>(intent.source_type);
+  out << " intent_destination_type=" << static_cast<int>(intent.destination_type);
+  out << " intent_source_register="
+      << (intent.source_register.empty() ? "<none>" : intent.source_register);
+  append_optional_value(out,
+                        "intent_source_immediate_i32",
+                        intent.source_immediate_i32);
+  append_optional_value(out,
+                        "intent_source_stack_slot_id",
+                        intent.source_stack_slot_id);
+  append_optional_value(out,
+                        "intent_source_stack_offset",
+                        intent.source_stack_offset_bytes);
+  append_optional_value(out,
+                        "intent_source_memory_base_value_id",
+                        intent.source_memory_base_value_id);
+  out << " intent_source_memory_base_register="
+      << (intent.source_memory_base_register.empty()
+              ? "<none>"
+              : intent.source_memory_base_register);
+  append_optional_value(out,
+                        "intent_source_memory_byte_offset",
+                        intent.source_memory_byte_offset);
+  append_optional_value(out,
+                        "intent_source_pointer_base_value_id",
+                        intent.source_pointer_base_value_id);
+  out << " intent_source_pointer_base_register="
+      << (intent.source_pointer_base_register.empty()
+              ? "<none>"
+              : intent.source_pointer_base_register);
+  append_optional_value(out,
+                        "intent_source_pointer_byte_delta",
+                        intent.source_pointer_byte_delta);
+  out << " intent_destination_register="
+      << (intent.destination_register.empty()
+              ? "<none>"
+              : intent.destination_register);
+  append_optional_value(out,
+                        "intent_destination_stack_slot_id",
+                        intent.destination_stack_slot_id);
+  append_optional_value(out,
+                        "intent_destination_stack_offset",
+                        intent.destination_stack_offset_bytes);
+  if (intent.route5_edge_status.has_value()) {
+    out << " intent_route5_edge_status="
+        << static_cast<int>(*intent.route5_edge_status);
+  } else {
+    out << " intent_route5_edge_status=<none>";
+  }
+  out << " intent_route5_edge_source_agrees="
+      << (intent.route5_edge_source_agrees ? "yes" : "no");
+  out << " intent_route3_source_memory_agrees="
+      << (intent.route3_source_memory_agrees ? "yes" : "no");
+
+  const auto* publication = intent.publication;
+  if (publication == nullptr) {
+    out << " publication_present=no";
+    return;
+  }
+
+  out << " publication_present=yes";
+  out << " publication_status="
+      << prepared_edge_publication_lookup_status_name(publication->status);
+  out << " publication_predecessor="
+      << rv64_prepared_block_label(names, publication->predecessor_label);
+  out << " publication_successor="
+      << rv64_prepared_block_label(names, publication->successor_label);
+  out << " publication_destination_value_id="
+      << publication->destination_value_id;
+  out << " publication_destination_value_name="
+      << (publication->destination_value_name == kInvalidValueName
+              ? std::string{"<none>"}
+              : names.value_names.spelling(publication->destination_value_name));
+  append_optional_value(out,
+                        "publication_source_value_id",
+                        publication->source_value_id);
+  out << " publication_source_value_name="
+      << (publication->source_value_name == kInvalidValueName
+              ? std::string{"<none>"}
+              : names.value_names.spelling(publication->source_value_name));
+  out << " publication_source_producer="
+      << prepare::prepared_edge_publication_source_producer_kind_name(
+             publication->source_producer_kind);
+  append_optional_block_label(names,
+                              out,
+                              "publication_source_producer_block",
+                              publication->source_producer_block_label);
+  append_optional_value(out,
+                        "publication_source_producer_inst",
+                        publication->source_producer_instruction_index);
+  out << " publication_source_memory_status="
+      << prepare::prepared_edge_publication_source_memory_access_status_name(
+             publication->source_memory_access_status);
+  out << " publication_source_home_kind="
+      << prepare::prepared_value_home_kind_name(publication->source_home_kind);
+  out << " publication_destination_home_kind="
+      << prepare::prepared_value_home_kind_name(
+             publication->destination_home_kind);
+  out << " publication_destination_storage="
+      << rv64_prepared_move_storage_kind_name(
+             publication->destination_storage_kind);
+  out << " publication_phase="
+      << prepare::prepared_move_phase_name(publication->phase);
+  out << " publication_carrier="
+      << prepare::prepared_join_transfer_carrier_kind_name(
+             publication->carrier_kind);
+  append_optional_value(out,
+                        "publication_parallel_copy_step_index",
+                        publication->parallel_copy_step_index);
+  out << " publication_parallel_copy_step_kind="
+      << prepare::prepared_parallel_copy_step_kind_name(
+             publication->parallel_copy_step_kind);
+  out << " publication_parallel_copy_step_uses_cycle_temp="
+      << (publication->parallel_copy_step_uses_cycle_temp_source ? "yes" : "no");
+  out << " publication_parallel_copy_bundle_has_cycle="
+      << (publication->parallel_copy_bundle_has_cycle ? "yes" : "no");
+  out << " publication_parallel_copy_execution_site="
+      << prepare::prepared_parallel_copy_execution_site_name(
+             publication->parallel_copy_execution_site);
+  append_optional_block_label(names,
+                              out,
+                              "publication_parallel_copy_execution_block",
+                              publication->parallel_copy_execution_block_label);
+}
+
+std::optional<std::string> rv64_select_publication_bundle_rejection_diagnostic(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedControlFlowFunction& control_flow,
+    const prepare::PreparedObjectTraversalEvent& event,
+    const prepare::PreparedMoveBundle* move_bundle,
+    const prepare::PreparedFunctionLookups* lookups,
+    const prepare::PreparedParallelCopyBundle& bundle) {
+  if (bundle.execution_site !=
+      prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return std::nullopt;
+  }
+
+  bool has_select_publication = false;
+  for (const auto& move : bundle.moves) {
+    const auto destination_value_id =
+        prepared_value_id_for_named_value(names, lookups, move.destination_value);
+    const auto intent =
+        destination_value_id.has_value()
+            ? consume_edge_publication_move_intent(lookups,
+                                                   bundle.predecessor_label,
+                                                   bundle.successor_label,
+                                                   *destination_value_id)
+            : EdgePublicationMoveIntent{};
+    has_select_publication =
+        has_select_publication ||
+        move.carrier_kind ==
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        (intent.publication != nullptr &&
+         intent.publication->carrier_kind ==
+             prepare::PreparedJoinTransferCarrierKind::SelectMaterialization);
+  }
+  if (!has_select_publication) {
+    return std::nullopt;
+  }
+
+  std::ostringstream out;
+  out << "unsupported_move_bundle_target_shape: prepared select publication "
+         "move bundle requires unsupported RV64 moves";
+  out << " select_publication_evidence=yes";
+  out << " event_kind="
+      << prepare::prepared_object_traversal_event_kind_name(event.kind);
+  out << " function="
+      << rv64_prepared_function_name(names, control_flow.function_name);
+  out << " block_index=" << event.block_index;
+  if (event.prepared_block != nullptr) {
+    out << " block_label="
+        << rv64_prepared_block_label(names, event.prepared_block->block_label);
+  }
+  out << " instruction_index=" << event.instruction_index;
+
+  if (move_bundle != nullptr) {
+    out << " phase=" << prepare::prepared_move_phase_name(move_bundle->phase);
+    out << " bundle_block_index=" << move_bundle->block_index;
+    out << " bundle_instruction_index=" << move_bundle->instruction_index;
+    out << " authority="
+        << prepare::prepared_move_authority_kind_name(
+               move_bundle->authority_kind);
+    out << " move_count=" << move_bundle->moves.size();
+    append_optional_block_label(names,
+                                out,
+                                "move_bundle_parallel_copy_predecessor",
+                                move_bundle->source_parallel_copy_predecessor_label);
+    append_optional_block_label(names,
+                                out,
+                                "move_bundle_parallel_copy_successor",
+                                move_bundle->source_parallel_copy_successor_label);
+    for (std::size_t move_index = 0; move_index < move_bundle->moves.size();
+         ++move_index) {
+      const auto& move = move_bundle->moves[move_index];
+      const std::string move_prefix =
+          " move[" + std::to_string(move_index) + "]";
+      out << move_prefix << ".from_value_id=" << move.from_value_id;
+      out << move_prefix << ".to_value_id=" << move.to_value_id;
+      out << move_prefix << ".destination_kind="
+          << rv64_prepared_move_destination_kind_name(move.destination_kind);
+      out << move_prefix << ".destination_storage="
+          << rv64_prepared_move_storage_kind_name(move.destination_storage_kind);
+      out << move_prefix << ".op_kind="
+          << rv64_prepared_move_op_kind_name(move.op_kind);
+      out << move_prefix << ".reason="
+          << (move.reason.empty() ? "<none>" : move.reason);
+      if (move.source_immediate_i32.has_value()) {
+        out << move_prefix << ".source_imm_i32=" << *move.source_immediate_i32;
+      }
+    }
+  } else {
+    out << " phase=<missing>";
+    out << " authority=<missing>";
+    out << " move_count=<missing>";
+  }
+
+  out << " parallel_copy=yes";
+  out << " parallel_copy_predecessor="
+      << rv64_prepared_block_label(names, bundle.predecessor_label);
+  out << " parallel_copy_successor="
+      << rv64_prepared_block_label(names, bundle.successor_label);
+  out << " parallel_copy_execution_site="
+      << prepare::prepared_parallel_copy_execution_site_name(bundle.execution_site);
+  append_optional_block_label(names,
+                              out,
+                              "parallel_copy_execution_block",
+                              bundle.execution_block_label);
+  out << " parallel_copy_has_cycle="
+      << (bundle.has_cycle ? "yes" : "no");
+  out << " parallel_copy_move_count=" << bundle.moves.size();
+  out << " parallel_copy_step_count=" << bundle.steps.size();
+
+  if (bundle.execution_block_label !=
+      std::optional<BlockLabelId>{bundle.predecessor_label}) {
+    out << " select_publication_rejection_reason="
+        << "execution_block_not_predecessor";
+    return out.str();
+  }
+  if (bundle.has_cycle) {
+    out << " select_publication_rejection_reason=parallel_copy_cycle";
+    return out.str();
+  }
+
+  for (std::size_t step_index = 0; step_index < bundle.steps.size();
+       ++step_index) {
+    const auto& step = bundle.steps[step_index];
+    out << " selected_step_index=" << step_index;
+    out << " selected_step_kind="
+        << prepare::prepared_parallel_copy_step_kind_name(step.kind);
+    out << " selected_step_uses_cycle_temp="
+        << (step.uses_cycle_temp_source ? "yes" : "no");
+    if (step.kind != prepare::PreparedParallelCopyStepKind::Move) {
+      out << " select_publication_rejection_reason=unsupported_step_kind";
+      return out.str();
+    }
+    if (step.uses_cycle_temp_source) {
+      out << " select_publication_rejection_reason=step_uses_cycle_temp";
+      return out.str();
+    }
+
+    const auto* move =
+        prepare::find_prepared_parallel_copy_move_for_step(bundle, step);
+    if (move == nullptr) {
+      out << " select_publication_rejection_reason=missing_parallel_copy_move";
+      return out.str();
+    }
+    out << " selected_move_carrier="
+        << prepare::prepared_join_transfer_carrier_kind_name(move->carrier_kind);
+    const auto destination_value_id =
+        prepared_value_id_for_named_value(names, lookups, move->destination_value);
+    append_optional_value(out,
+                          "selected_move_destination_value_id",
+                          destination_value_id);
+    if (!destination_value_id.has_value()) {
+      if (move->carrier_kind ==
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization) {
+        out << " select_publication_rejection_reason="
+            << "missing_destination_value_id";
+        return out.str();
+      }
+      continue;
+    }
+
+    const auto intent = consume_edge_publication_move_intent(
+        lookups,
+        bundle.predecessor_label,
+        bundle.successor_label,
+        *destination_value_id);
+    const bool is_select_publication =
+        move->carrier_kind ==
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        (intent.publication != nullptr &&
+         intent.publication->carrier_kind ==
+             prepare::PreparedJoinTransferCarrierKind::SelectMaterialization);
+    if (!is_select_publication) {
+      continue;
+    }
+    append_select_publication_intent_evidence(names, out, intent);
+    if (move->carrier_kind !=
+        prepare::PreparedJoinTransferCarrierKind::SelectMaterialization) {
+      out << " select_publication_rejection_reason=move_carrier_mismatch";
+      return out.str();
+    }
+    if (intent.publication == nullptr) {
+      out << " select_publication_rejection_reason=missing_publication";
+      return out.str();
+    }
+    if (intent.publication->parallel_copy_bundle != &bundle) {
+      out << " select_publication_rejection_reason=publication_bundle_mismatch";
+      return out.str();
+    }
+    if (intent.publication->carrier_kind !=
+        prepare::PreparedJoinTransferCarrierKind::SelectMaterialization) {
+      out << " select_publication_rejection_reason=publication_carrier_mismatch";
+      return out.str();
+    }
+    if (!prepared_select_publication_move_is_rv64_object_admitted(intent) &&
+        !prepared_select_publication_destination_is_stack_home(names,
+                                                              lookups,
+                                                              bundle,
+                                                              *move)) {
+      out << " select_publication_rejection_reason="
+          << rv64_select_publication_move_rejection_reason(intent);
+      return out.str();
+    }
+  }
+
+  return std::nullopt;
 }
 
 bool prepared_predecessor_select_publication_bundle_is_stack_join_materialized(
@@ -9633,13 +10073,23 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                 .diagnostic = std::move(diagnostic->message),
             };
           }
-          if (classification.parallel_copy_bundle != nullptr &&
-              !prepared_predecessor_select_publication_bundle_is_rv64_object_admitted(
-                  prepared.names,
-                  &lookups,
-                  *classification.parallel_copy_bundle)) {
-            return make_rv64_prepared_function_rejection(
-                "unsupported_move_bundle_target_shape: prepared select publication move bundle requires unsupported RV64 moves");
+          if (classification.parallel_copy_bundle != nullptr) {
+            auto select_publication_diagnostic =
+                rv64_select_publication_bundle_rejection_diagnostic(
+                    prepared.names,
+                    control_flow,
+                    event,
+                    classification.move_bundle,
+                    &lookups,
+                    *classification.parallel_copy_bundle);
+            if (select_publication_diagnostic.has_value() &&
+                !prepared_predecessor_select_publication_bundle_is_rv64_object_admitted(
+                    prepared.names,
+                    &lookups,
+                    *classification.parallel_copy_bundle)) {
+              return make_rv64_prepared_function_rejection(
+                  std::move(*select_publication_diagnostic));
+            }
           }
           if (classification.parallel_copy_bundle != nullptr &&
               prepared_predecessor_select_publication_bundle_is_stack_join_materialized(
