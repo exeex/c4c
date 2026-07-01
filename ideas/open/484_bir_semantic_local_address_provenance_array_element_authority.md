@@ -1,6 +1,6 @@
 # BIR Semantic Local-Address Provenance And Array-Element Access Authority
 
-Status: Closed
+Status: Open
 Type: BIR semantic producer prerequisite idea
 Parent: `ideas/closed/483_bir_semantic_local_memory_scalar_load_producer.md`
 Source Evidence:
@@ -9,6 +9,7 @@ Source Evidence:
 - `review/483_step1_local_load_route_review.md`
 Owning Layer: BIR semantic local-address/provenance producer
 Closed By: lifecycle review after Step 4
+Reopened After: ideas/closed/486_bir_index_range_proof_path_dominance_carrier.md
 
 ## Completion Notes
 
@@ -51,10 +52,11 @@ Required follow-up scope:
 
 ## Residual Disposition
 
-After 485 exists, this source family may need a small packaging packet that
-exposes the lower-level carrier in the Step 2 local-address/array-element
-record shape. Only after that record exists should idea 483-style scalar
-local-load production resume.
+The lower-level authority chain now exists through idea 486. Reopened 484
+should add the small packaging packet that exposes
+`local_array_index_range_checker_inputs` in the Step 2
+local-address/array-element record shape. Only after that record exists should
+idea 483-style scalar local-load production resume.
 
 Remaining boundaries:
 
@@ -67,6 +69,22 @@ Remaining boundaries:
   separation from variadic/va_arg/memset ownership is available.
 - RV64/MIR lowering remains out of scope.
 
+## Reopened Lifecycle Disposition
+
+Idea 486 Step 6 says local-address/array-element packaging can resume:
+
+- `local_array_index_range_checker_inputs` publishes available checker records
+  only from matching available `local_array_proof_facts`;
+- fail-closed representatives remain distinguishable for missing/non-available
+  proof facts, selected-path-only or interval-only inference, unsupported
+  boundary, missing coordinate, clobber, alias/phi ambiguity, unknown effect,
+  non-covering path, non-dominating/non-guarding proof, operand-role mismatch,
+  and coordinate confusion;
+- idea 484 should consume `local_array_index_range_checker_inputs` instead of
+  re-deriving availability from proof facts, range certificates, selected
+  paths, interval effects, endpoint bridges, final homes, raw testcase shape,
+  or synthetic effect inputs.
+
 ## Validation
 
 Lifecycle validation:
@@ -76,8 +94,9 @@ git diff --check
 python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_before.log --allow-non-decreasing-passed
 ```
 
-Both passed. `test_after.log` was absent at close time, and this lifecycle task
-forbade touching canonical logs, so no new after log was generated.
+Both passed in the original close. The lifecycle retry that reopened 484
+generated `test_after.log` and ran the regression-guard self-comparison against
+the backend `test_before.log`; the guard stayed at `328/328` passed.
 
 ## Reviewer Reject Signals
 

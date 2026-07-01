@@ -1,6 +1,6 @@
 # BIR Index Range Proof And Path-Dominance Carrier
 
-Status: Open
+Status: Closed
 Type: BIR semantic proof carrier/producer prerequisite idea
 Parent: `ideas/closed/485_bir_local_array_address_derivation_index_range_authority_carrier.md`
 Source Evidence:
@@ -9,11 +9,12 @@ Source Evidence:
 Owning Layer: BIR semantic index range proof and path/dominance authority
 Closed By: lifecycle review after Step 4
 Reopened After: ideas/closed/489_bir_dynamic_local_array_proof_population_from_lir_coordinates.md
+Closed After Reopen: lifecycle review after Step 6
 
 ## Completion Notes
 
 Idea 486 is complete for the independent dynamic local-array index range proof
-metadata/status surface.
+metadata/status surface and the reopened production checker-input bridge.
 
 Step 3 added:
 
@@ -36,6 +37,8 @@ Completed evidence:
 - `build/agent_state/486_step2_range_proof_path_dominance_contract/contract.md`
 - `build/agent_state/486_step3_range_proof_path_dominance_carrier/summary.md`
 - `build/agent_state/486_step4_residual_disposition/disposition.md`
+- `build/agent_state/486_step5_checker_inputs_from_proof_facts/summary.md`
+- `build/agent_state/486_step6_residual_disposition_after_checker_inputs/disposition.md`
 
 ## Handoff
 
@@ -51,17 +54,21 @@ Required follow-up scope:
 - update real dynamic local-array element paths from
   `missing_index_range_proof` only after every real proof input exists.
 
-## Residual Disposition
+## Final Residual Disposition
 
-Real dynamic row availability was previously blocked by missing real proof
-facts. Idea 489 now publishes `local_array_proof_facts` from production
-`local_array_index_range_proofs`, so reopened 486 should populate checker inputs
-from that proof-fact surface.
+No idea-486 blocker remains for checker input publication. Reopened Step 5
+publishes `local_array_index_range_checker_inputs` from matching available
+`local_array_proof_facts`, reuses the existing local-array index range checker,
+and preserves distinguishable fail-closed statuses.
 
-The reopened work must keep the original checker/status carrier boundary:
-consume proof facts, preserve fail-closed statuses, and do not add idea 485
-carrier consumer changes, idea 484 packaging, scalar local-load consumption,
-RV64/MIR lowering, or any raw loop-shape/value-name/testcase-name inference.
+Idea 484 packaging can resume by consuming
+`local_array_index_range_checker_inputs`. It should not re-derive availability
+from proof facts, range certificates, selected paths, interval effects,
+endpoint bridges, final homes, raw testcase shape, or synthetic effect inputs.
+
+The reopened work kept the original checker/status carrier boundary and did
+not add idea 484 packaging, scalar local-load consumption, RV64/MIR lowering,
+or raw loop-shape/value-name/testcase-name inference.
 
 `MemoryDynamicArrayRangeVerdict::BoundedByElementCount` remains insufficient by
 itself because it lacks proof source, path/dominance, and no-clobber authority.
@@ -93,7 +100,9 @@ python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
 
 Both passed in the original close. The lifecycle retry that reopened 486
 generated `test_after.log` and ran the regression-guard self-comparison against
-the backend `test_before.log`; the guard stayed at `328/328` passed.
+the backend `test_before.log`; the guard stayed at `328/328` passed. The final
+close/switch retry to idea 484 repeated that validation and preserved the same
+`328/328` result.
 
 ## Reviewer Reject Signals
 
