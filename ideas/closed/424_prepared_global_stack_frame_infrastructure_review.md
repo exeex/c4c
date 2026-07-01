@@ -1,6 +1,6 @@
 # Prepared Global Data And Stack Frame Infrastructure Review
 
-Status: Open
+Status: Closed
 Type: Infrastructure triage idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Owning Layer: Prepared contract and RV64/MIR infrastructure
@@ -48,3 +48,18 @@ low-priority F128 work.
   idea.
 - Reject F128-specific expansion under this infrastructure review.
 - Reject diagnostic-only changes claimed as capability progress.
+
+## Closure Note
+
+Closed after the active runbook produced row-backed infrastructure evidence,
+the global/stack-frame handoff, and five focused follow-up ideas:
+
+- `ideas/open/508_rv64_prepared_callee_saved_gpr_save_slot_emission.md`
+- `ideas/open/509_rv64_fixed_prepared_stack_frame_emission.md`
+- `ideas/open/510_rv64_selected_object_data_emission.md`
+- `ideas/open/511_static_local_object_data_contract_publication.md`
+- `ideas/open/512_stack_passed_parameter_home_publication.md`
+
+The review route is complete. Implementation remains intentionally delegated
+to those follow-up ideas, preserving the RV64 emission versus producer-contract
+owner split and keeping F128-specific work out of scope.
