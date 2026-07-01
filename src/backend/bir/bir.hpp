@@ -795,6 +795,361 @@ struct LocalArrayElementPathRecord {
   LocalArrayCarrierStatus status = LocalArrayCarrierStatus::Available;
 };
 
+enum class LocalArrayRangeProofStatus : unsigned char {
+  Available,
+  MissingLocalArrayPath,
+  MissingDynamicIndex,
+  MissingProofSource,
+  UnsupportedProofSource,
+  MissingLowerBound,
+  MissingUpperBound,
+  UnsupportedPredicate,
+  UnsupportedIndexWidth,
+  OperandRoleMismatch,
+  BoundValueMismatch,
+  ProofFunctionMismatch,
+  ProofNotDominatingConsumer,
+  PathNotCoveringConsumer,
+  MissingPathValidity,
+  MissingNoClobber,
+  IndexValueClobbered,
+  IndexValueRedefined,
+  IndexPhiOrAliasUnresolved,
+  CallOrHelperEffectUnknown,
+  CallOrHelperClobbersIndex,
+  InlineAsmEffectUnknown,
+  PublicationOrMoveEffectUnknown,
+  PublicationOrMoveClobbersIndex,
+  RawShapeOnly,
+  TargetOnlyOrFinalHomeOnly,
+  UnsupportedBoundary,
+};
+
+[[nodiscard]] constexpr std::string_view local_array_range_proof_status_name(
+    LocalArrayRangeProofStatus status) {
+  switch (status) {
+    case LocalArrayRangeProofStatus::Available:
+      return "available";
+    case LocalArrayRangeProofStatus::MissingLocalArrayPath:
+      return "missing_local_array_path";
+    case LocalArrayRangeProofStatus::MissingDynamicIndex:
+      return "missing_dynamic_index";
+    case LocalArrayRangeProofStatus::MissingProofSource:
+      return "missing_proof_source";
+    case LocalArrayRangeProofStatus::UnsupportedProofSource:
+      return "unsupported_proof_source";
+    case LocalArrayRangeProofStatus::MissingLowerBound:
+      return "missing_lower_bound";
+    case LocalArrayRangeProofStatus::MissingUpperBound:
+      return "missing_upper_bound";
+    case LocalArrayRangeProofStatus::UnsupportedPredicate:
+      return "unsupported_predicate";
+    case LocalArrayRangeProofStatus::UnsupportedIndexWidth:
+      return "unsupported_index_width";
+    case LocalArrayRangeProofStatus::OperandRoleMismatch:
+      return "operand_role_mismatch";
+    case LocalArrayRangeProofStatus::BoundValueMismatch:
+      return "bound_value_mismatch";
+    case LocalArrayRangeProofStatus::ProofFunctionMismatch:
+      return "proof_function_mismatch";
+    case LocalArrayRangeProofStatus::ProofNotDominatingConsumer:
+      return "proof_not_dominating_consumer";
+    case LocalArrayRangeProofStatus::PathNotCoveringConsumer:
+      return "path_not_covering_consumer";
+    case LocalArrayRangeProofStatus::MissingPathValidity:
+      return "missing_path_validity";
+    case LocalArrayRangeProofStatus::MissingNoClobber:
+      return "missing_no_clobber";
+    case LocalArrayRangeProofStatus::IndexValueClobbered:
+      return "index_value_clobbered";
+    case LocalArrayRangeProofStatus::IndexValueRedefined:
+      return "index_value_redefined";
+    case LocalArrayRangeProofStatus::IndexPhiOrAliasUnresolved:
+      return "index_phi_or_alias_unresolved";
+    case LocalArrayRangeProofStatus::CallOrHelperEffectUnknown:
+      return "call_or_helper_effect_unknown";
+    case LocalArrayRangeProofStatus::CallOrHelperClobbersIndex:
+      return "call_or_helper_clobbers_index";
+    case LocalArrayRangeProofStatus::InlineAsmEffectUnknown:
+      return "inline_asm_effect_unknown";
+    case LocalArrayRangeProofStatus::PublicationOrMoveEffectUnknown:
+      return "publication_or_move_effect_unknown";
+    case LocalArrayRangeProofStatus::PublicationOrMoveClobbersIndex:
+      return "publication_or_move_clobbers_index";
+    case LocalArrayRangeProofStatus::RawShapeOnly:
+      return "raw_shape_only";
+    case LocalArrayRangeProofStatus::TargetOnlyOrFinalHomeOnly:
+      return "target_only_or_final_home_only";
+    case LocalArrayRangeProofStatus::UnsupportedBoundary:
+      return "unsupported_boundary";
+  }
+  return "unknown";
+}
+
+enum class LocalArrayRangeProofSourceKind : unsigned char {
+  None,
+  BranchCondition,
+  ExplicitCompare,
+};
+
+enum class LocalArrayRangeProofPredicate : unsigned char {
+  Unknown,
+  Slt,
+  Sle,
+  Sge,
+  Uge,
+  Ult,
+  Ule,
+};
+
+struct LocalArrayIndexRangeProofInputs {
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  std::string consumer_function_name;
+  std::string proof_function_name;
+  std::string consumer_block_label;
+  std::string proof_block_label;
+  std::optional<std::size_t> consumer_instruction_index;
+  std::optional<std::size_t> proof_instruction_index;
+  LocalArrayRangeProofSourceKind proof_source_kind =
+      LocalArrayRangeProofSourceKind::None;
+  Value proof_lhs;
+  Value proof_rhs;
+  TypeKind compare_type = TypeKind::Void;
+  LocalArrayRangeProofPredicate lower_predicate =
+      LocalArrayRangeProofPredicate::Unknown;
+  LocalArrayRangeProofPredicate upper_predicate =
+      LocalArrayRangeProofPredicate::Unknown;
+  bool lower_bound_available = false;
+  std::int64_t lower_bound = 0;
+  bool lower_bound_inclusive = true;
+  bool upper_bound_available = false;
+  std::size_t upper_bound = 0;
+  bool upper_bound_exclusive = true;
+  bool operand_roles_match_index = true;
+  bool path_validity_known = false;
+  bool proof_dominates_consumer = false;
+  bool path_covers_consumer = false;
+  bool no_clobber_known = false;
+  bool index_value_clobbered = false;
+  bool index_value_redefined = false;
+  bool index_phi_or_alias_unresolved = false;
+  bool call_or_helper_effect_unknown = false;
+  bool call_or_helper_clobbers_index = false;
+  bool inline_asm_effect_unknown = false;
+  bool publication_or_move_effect_unknown = false;
+  bool publication_or_move_clobbers_index = false;
+  bool raw_shape_only = false;
+  bool target_only_or_final_home_only = false;
+  bool unsupported_boundary = false;
+};
+
+struct LocalArrayIndexRangeProofRecord {
+  LocalArrayRangeProofStatus status =
+      LocalArrayRangeProofStatus::MissingLocalArrayPath;
+  const LocalArrayElementPathRecord* element_path = nullptr;
+  Value dynamic_index;
+  std::string consumer_function_name;
+  std::string proof_function_name;
+  std::string consumer_block_label;
+  std::string proof_block_label;
+  std::optional<std::size_t> consumer_instruction_index;
+  std::optional<std::size_t> proof_instruction_index;
+  LocalArrayRangeProofSourceKind proof_source_kind =
+      LocalArrayRangeProofSourceKind::None;
+  std::int64_t normalized_lower_bound = 0;
+  std::size_t normalized_upper_bound = 0;
+  bool lower_bound_inclusive = true;
+  bool upper_bound_exclusive = true;
+  bool path_validity_known = false;
+  bool proof_dominates_consumer = false;
+  bool path_covers_consumer = false;
+  bool no_clobber_known = false;
+};
+
+[[nodiscard]] inline const LocalArrayIndexRecord* single_dynamic_local_array_index(
+    const LocalArrayElementPathRecord& path,
+    bool* saw_multiple = nullptr) {
+  const LocalArrayIndexRecord* dynamic_index = nullptr;
+  if (saw_multiple != nullptr) {
+    *saw_multiple = false;
+  }
+  for (const auto& index : path.indices) {
+    if (index.kind != LocalArrayIndexKind::Dynamic) {
+      continue;
+    }
+    if (dynamic_index != nullptr) {
+      if (saw_multiple != nullptr) {
+        *saw_multiple = true;
+      }
+      return dynamic_index;
+    }
+    dynamic_index = &index;
+  }
+  return dynamic_index;
+}
+
+[[nodiscard]] constexpr bool local_array_range_proof_index_type_supported(
+    TypeKind type) {
+  return type == TypeKind::I32 || type == TypeKind::I64;
+}
+
+[[nodiscard]] constexpr bool local_array_range_proof_lower_predicate_supported(
+    LocalArrayRangeProofPredicate predicate) {
+  return predicate == LocalArrayRangeProofPredicate::Sge ||
+         predicate == LocalArrayRangeProofPredicate::Uge;
+}
+
+[[nodiscard]] constexpr bool local_array_range_proof_upper_predicate_supported(
+    LocalArrayRangeProofPredicate predicate) {
+  return predicate == LocalArrayRangeProofPredicate::Slt ||
+         predicate == LocalArrayRangeProofPredicate::Ult;
+}
+
+[[nodiscard]] inline LocalArrayIndexRangeProofRecord
+evaluate_local_array_index_range_proof(
+    const LocalArrayIndexRangeProofInputs& inputs) {
+  LocalArrayIndexRangeProofRecord record{
+      .element_path = inputs.element_path,
+      .consumer_function_name = inputs.consumer_function_name,
+      .proof_function_name = inputs.proof_function_name,
+      .consumer_block_label = inputs.consumer_block_label,
+      .proof_block_label = inputs.proof_block_label,
+      .consumer_instruction_index = inputs.consumer_instruction_index,
+      .proof_instruction_index = inputs.proof_instruction_index,
+      .proof_source_kind = inputs.proof_source_kind,
+      .normalized_lower_bound = inputs.lower_bound,
+      .normalized_upper_bound = inputs.upper_bound,
+      .lower_bound_inclusive = inputs.lower_bound_inclusive,
+      .upper_bound_exclusive = inputs.upper_bound_exclusive,
+      .path_validity_known = inputs.path_validity_known,
+      .proof_dominates_consumer = inputs.proof_dominates_consumer,
+      .path_covers_consumer = inputs.path_covers_consumer,
+      .no_clobber_known = inputs.no_clobber_known,
+  };
+
+  if (inputs.raw_shape_only) {
+    record.status = LocalArrayRangeProofStatus::RawShapeOnly;
+    return record;
+  }
+  if (inputs.target_only_or_final_home_only) {
+    record.status = LocalArrayRangeProofStatus::TargetOnlyOrFinalHomeOnly;
+    return record;
+  }
+  if (inputs.unsupported_boundary) {
+    record.status = LocalArrayRangeProofStatus::UnsupportedBoundary;
+    return record;
+  }
+  if (inputs.element_path == nullptr) {
+    record.status = LocalArrayRangeProofStatus::MissingLocalArrayPath;
+    return record;
+  }
+
+  bool saw_multiple_dynamic_indices = false;
+  const auto* dynamic_index =
+      single_dynamic_local_array_index(*inputs.element_path, &saw_multiple_dynamic_indices);
+  if (saw_multiple_dynamic_indices || inputs.index_phi_or_alias_unresolved) {
+    record.status = LocalArrayRangeProofStatus::IndexPhiOrAliasUnresolved;
+    return record;
+  }
+  if (dynamic_index == nullptr) {
+    record.status = LocalArrayRangeProofStatus::MissingDynamicIndex;
+    return record;
+  }
+  record.dynamic_index = dynamic_index->value;
+
+  if (inputs.proof_source_kind == LocalArrayRangeProofSourceKind::None) {
+    record.status = LocalArrayRangeProofStatus::MissingProofSource;
+    return record;
+  }
+  if (inputs.proof_source_kind != LocalArrayRangeProofSourceKind::BranchCondition &&
+      inputs.proof_source_kind != LocalArrayRangeProofSourceKind::ExplicitCompare) {
+    record.status = LocalArrayRangeProofStatus::UnsupportedProofSource;
+    return record;
+  }
+  if (!inputs.consumer_function_name.empty() &&
+      !inputs.proof_function_name.empty() &&
+      inputs.consumer_function_name != inputs.proof_function_name) {
+    record.status = LocalArrayRangeProofStatus::ProofFunctionMismatch;
+    return record;
+  }
+  if (!inputs.lower_bound_available) {
+    record.status = LocalArrayRangeProofStatus::MissingLowerBound;
+    return record;
+  }
+  if (!inputs.upper_bound_available) {
+    record.status = LocalArrayRangeProofStatus::MissingUpperBound;
+    return record;
+  }
+  if (!local_array_range_proof_lower_predicate_supported(inputs.lower_predicate) ||
+      !local_array_range_proof_upper_predicate_supported(inputs.upper_predicate)) {
+    record.status = LocalArrayRangeProofStatus::UnsupportedPredicate;
+    return record;
+  }
+  if (!local_array_range_proof_index_type_supported(dynamic_index->value.type) ||
+      inputs.compare_type != dynamic_index->value.type) {
+    record.status = LocalArrayRangeProofStatus::UnsupportedIndexWidth;
+    return record;
+  }
+  if (!inputs.operand_roles_match_index) {
+    record.status = LocalArrayRangeProofStatus::OperandRoleMismatch;
+    return record;
+  }
+  if (inputs.lower_bound != 0 ||
+      !inputs.lower_bound_inclusive ||
+      inputs.upper_bound != inputs.element_path->element_count ||
+      !inputs.upper_bound_exclusive) {
+    record.status = LocalArrayRangeProofStatus::BoundValueMismatch;
+    return record;
+  }
+  if (!inputs.path_validity_known) {
+    record.status = LocalArrayRangeProofStatus::MissingPathValidity;
+    return record;
+  }
+  if (!inputs.proof_dominates_consumer) {
+    record.status = LocalArrayRangeProofStatus::ProofNotDominatingConsumer;
+    return record;
+  }
+  if (!inputs.path_covers_consumer) {
+    record.status = LocalArrayRangeProofStatus::PathNotCoveringConsumer;
+    return record;
+  }
+  if (!inputs.no_clobber_known) {
+    record.status = LocalArrayRangeProofStatus::MissingNoClobber;
+    return record;
+  }
+  if (inputs.index_value_clobbered) {
+    record.status = LocalArrayRangeProofStatus::IndexValueClobbered;
+    return record;
+  }
+  if (inputs.index_value_redefined) {
+    record.status = LocalArrayRangeProofStatus::IndexValueRedefined;
+    return record;
+  }
+  if (inputs.call_or_helper_effect_unknown) {
+    record.status = LocalArrayRangeProofStatus::CallOrHelperEffectUnknown;
+    return record;
+  }
+  if (inputs.call_or_helper_clobbers_index) {
+    record.status = LocalArrayRangeProofStatus::CallOrHelperClobbersIndex;
+    return record;
+  }
+  if (inputs.inline_asm_effect_unknown) {
+    record.status = LocalArrayRangeProofStatus::InlineAsmEffectUnknown;
+    return record;
+  }
+  if (inputs.publication_or_move_effect_unknown) {
+    record.status = LocalArrayRangeProofStatus::PublicationOrMoveEffectUnknown;
+    return record;
+  }
+  if (inputs.publication_or_move_clobbers_index) {
+    record.status = LocalArrayRangeProofStatus::PublicationOrMoveClobbersIndex;
+    return record;
+  }
+
+  record.status = LocalArrayRangeProofStatus::Available;
+  return record;
+}
+
 enum class GlobalAddressMaterializationPolicy {
   Unspecified,
   Direct,

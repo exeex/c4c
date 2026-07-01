@@ -6923,6 +6923,181 @@ int expect_local_array_carrier_dynamic_gep_preserves_missing_index_range_proof()
   return 0;
 }
 
+bir::LocalArrayElementPathRecord make_dynamic_local_array_range_proof_path() {
+  return bir::LocalArrayElementPathRecord{
+      .result_name = "%elt.ptr",
+      .source_object_name = "%lv.arr",
+      .derivation_result_name = "%elt.ptr",
+      .indices = {bir::LocalArrayIndexRecord{
+          .kind = bir::LocalArrayIndexKind::Dynamic,
+          .value = bir::Value::named(TypeKind::I64, "%idx"),
+      }},
+      .element_type = TypeKind::I32,
+      .element_size_bytes = 4,
+      .element_count = 4,
+      .status = bir::LocalArrayCarrierStatus::MissingIndexRangeProof,
+  };
+}
+
+bir::LocalArrayIndexRangeProofInputs complete_local_array_range_proof_inputs(
+    const bir::LocalArrayElementPathRecord* path) {
+  return bir::LocalArrayIndexRangeProofInputs{
+      .element_path = path,
+      .consumer_function_name = "range_proof_fixture",
+      .proof_function_name = "range_proof_fixture",
+      .consumer_block_label = "body",
+      .proof_block_label = "guard",
+      .consumer_instruction_index = std::size_t{4},
+      .proof_instruction_index = std::size_t{0},
+      .proof_source_kind = bir::LocalArrayRangeProofSourceKind::BranchCondition,
+      .proof_lhs = bir::Value::named(TypeKind::I64, "%idx"),
+      .proof_rhs = bir::Value::immediate_i64(4),
+      .compare_type = TypeKind::I64,
+      .lower_predicate = bir::LocalArrayRangeProofPredicate::Sge,
+      .upper_predicate = bir::LocalArrayRangeProofPredicate::Slt,
+      .lower_bound_available = true,
+      .lower_bound = 0,
+      .lower_bound_inclusive = true,
+      .upper_bound_available = true,
+      .upper_bound = 4,
+      .upper_bound_exclusive = true,
+      .operand_roles_match_index = true,
+      .path_validity_known = true,
+      .proof_dominates_consumer = true,
+      .path_covers_consumer = true,
+      .no_clobber_known = true,
+  };
+}
+
+int expect_local_array_range_proof_checker_accepts_complete_synthetic_inputs() {
+  const auto path = make_dynamic_local_array_range_proof_path();
+  const auto proof = bir::evaluate_local_array_index_range_proof(
+      complete_local_array_range_proof_inputs(&path));
+  if (proof.status != bir::LocalArrayRangeProofStatus::Available ||
+      proof.element_path != &path ||
+      proof.dynamic_index.name != "%idx" ||
+      proof.dynamic_index.type != TypeKind::I64 ||
+      proof.normalized_lower_bound != 0 ||
+      proof.normalized_upper_bound != 4 ||
+      !proof.path_validity_known ||
+      !proof.proof_dominates_consumer ||
+      !proof.path_covers_consumer ||
+      !proof.no_clobber_known) {
+    return fail("local array range proof checker should accept complete synthetic authority");
+  }
+  return 0;
+}
+
+int expect_local_array_range_proof_checker_fails_closed_for_missing_facts() {
+  const auto path = make_dynamic_local_array_range_proof_path();
+  auto inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.element_path = nullptr;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::MissingLocalArrayPath) {
+    return fail("range proof checker should reject missing local-array path");
+  }
+
+  auto constant_path = path;
+  constant_path.indices.front().kind = bir::LocalArrayIndexKind::Constant;
+  inputs = complete_local_array_range_proof_inputs(&constant_path);
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::MissingDynamicIndex) {
+    return fail("range proof checker should reject missing dynamic index");
+  }
+
+  inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.proof_source_kind = bir::LocalArrayRangeProofSourceKind::None;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::MissingProofSource) {
+    return fail("range proof checker should reject missing proof source");
+  }
+
+  inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.lower_bound_available = false;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::MissingLowerBound) {
+    return fail("range proof checker should reject missing lower bound");
+  }
+
+  inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.upper_bound_available = false;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::MissingUpperBound) {
+    return fail("range proof checker should reject missing upper bound");
+  }
+
+  inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.upper_predicate = bir::LocalArrayRangeProofPredicate::Sge;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::UnsupportedPredicate) {
+    return fail("range proof checker should reject unsupported predicate roles");
+  }
+
+  inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.path_validity_known = false;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::MissingPathValidity) {
+    return fail("range proof checker should reject missing path validity");
+  }
+
+  inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.proof_dominates_consumer = false;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::ProofNotDominatingConsumer) {
+    return fail("range proof checker should reject non-dominating proof");
+  }
+
+  inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.path_covers_consumer = false;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::PathNotCoveringConsumer) {
+    return fail("range proof checker should reject uncovered consumer path");
+  }
+
+  inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.no_clobber_known = false;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::MissingNoClobber) {
+    return fail("range proof checker should reject missing no-clobber evidence");
+  }
+
+  inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.index_value_clobbered = true;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::IndexValueClobbered) {
+    return fail("range proof checker should reject clobbered index values");
+  }
+
+  inputs = complete_local_array_range_proof_inputs(&path);
+  inputs.raw_shape_only = true;
+  if (bir::evaluate_local_array_index_range_proof(inputs).status !=
+      bir::LocalArrayRangeProofStatus::RawShapeOnly) {
+    return fail("range proof checker should reject raw-shape-only evidence");
+  }
+  return 0;
+}
+
+int expect_real_dynamic_local_array_row_remains_unavailable_without_range_proof() {
+  auto result =
+      try_lower_to_bir_with_options(make_local_array_carrier_dynamic_gep_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty() ||
+      result.module->functions.front().local_array_element_paths.empty()) {
+    return fail("real dynamic local array fixture should still publish one path");
+  }
+  const auto& path = result.module->functions.front().local_array_element_paths.front();
+  if (path.status != bir::LocalArrayCarrierStatus::MissingIndexRangeProof ||
+      path.scalar_in_bounds) {
+    return fail("real dynamic local array rows must remain unavailable without range proof");
+  }
+  const auto proof = bir::evaluate_local_array_index_range_proof(
+      bir::LocalArrayIndexRangeProofInputs{.element_path = &path});
+  if (proof.status != bir::LocalArrayRangeProofStatus::MissingProofSource) {
+    return fail("real dynamic row without explicit proof should fail at missing proof source");
+  }
+  return 0;
+}
+
 LirModule make_local_array_carrier_aggregate_member_boundary_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -9041,6 +9216,21 @@ int main() {
           expect_local_array_carrier_dynamic_gep_preserves_missing_index_range_proof();
       local_array_dynamic_carrier_status != 0) {
     return local_array_dynamic_carrier_status;
+  }
+  if (const int local_array_range_proof_status =
+          expect_local_array_range_proof_checker_accepts_complete_synthetic_inputs();
+      local_array_range_proof_status != 0) {
+    return local_array_range_proof_status;
+  }
+  if (const int local_array_range_proof_fail_closed_status =
+          expect_local_array_range_proof_checker_fails_closed_for_missing_facts();
+      local_array_range_proof_fail_closed_status != 0) {
+    return local_array_range_proof_fail_closed_status;
+  }
+  if (const int real_dynamic_local_array_status =
+          expect_real_dynamic_local_array_row_remains_unavailable_without_range_proof();
+      real_dynamic_local_array_status != 0) {
+    return real_dynamic_local_array_status;
   }
   if (const int local_array_boundary_status =
           expect_local_array_carrier_rejects_aggregate_member_boundary();
