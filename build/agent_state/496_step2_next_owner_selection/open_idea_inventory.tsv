@@ -1,0 +1,10 @@
+idea	status	relevance_to_step2	decision
+ideas/open/419_closed_idea_metadata_cleanup_after_prepared_contracts.md	open	metadata cleanup; not semantic admission producer	not selected
+ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md	open	parent umbrella for RV64 gcc_torture post-contract work	not selected as implementation packet
+ideas/open/423_rv64_runtime_mismatch_triage.md	open	runtime mismatch triage; Step 1 semantic bucket did not select runtime mismatch as next owner	not selected
+ideas/open/424_prepared_global_stack_frame_infrastructure_review.md	open	global/stack-frame infrastructure; Step 1 semantic bucket did not select stack-frame/global data as next owner	not selected
+ideas/open/425_scalar_fpr_salvage_from_try_gcc_torture.md	open	scalar FPR salvage; unrelated to largest Step 1 semantic producer bucket	not selected
+ideas/open/426_f128_quarantine_and_external_softfloat_policy.md	open	F128 quarantine; explicitly out of the ordinary Step 1 next-owner route	not selected
+ideas/open/442_pointer_value_memory_provenance_publication.md	open	pointer-value memory provenance; related authority vocabulary but parked on missing closed-world formal pointer authority and scoped to runtime pointer dereferences	not selected for semantic gep local-memory packet
+ideas/open/495_prepared_move_bundle_materialization_bucket_review.md	open	move-bundle materialization; separate fresh-scan bucket, not semantic admission producer	not selected
+ideas/open/496_semantic_lir_to_bir_admission_high_impact_cleanup.md	open	active semantic admission cleanup; contains Step 2 routing decision	selected as current routing container only
