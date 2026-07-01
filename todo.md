@@ -1,77 +1,75 @@
 Status: Active
 Source Idea Path: ideas/open/422_bir_semantic_producer_high_impact_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Select The First Producer-Owned Packet
+Current Step ID: 4
+Current Step Title: Residual Disposition And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 for idea 422 by selecting the first producer-owned packet
-from the bucketed evidence and recording the focused implementation contract
-and probe requirements.
+Completed Step 4 for idea 422 by recording residual disposition and
+close/handoff readiness after selecting the local-memory load packet.
 
-Selected first packet:
+Disposition:
 
-| Packet | Count | Owning layer | Disposition |
+- idea 422 is complete as a high-impact BIR semantic producer cleanup planning
+  runbook;
+- it should close or retire after plan-owner lifecycle action creates or
+  activates a narrower implementation idea;
+- the exact proposed follow-up title is `BIR semantic local-memory scalar load
+  producer`;
+- implementation should not happen directly inside idea 422 because the
+  selected load family needs focused probes, a scalar local-object load
+  contract, and fail-closed tests before code changes.
+
+Selected follow-up scope:
+
+- first owner: BIR semantic local-memory load producer;
+- selected bucket: local-memory load, 79 rows;
+- representative rows: `src/20041124-1.c`, `src/20071219-1.c`,
+  `src/991228-1.c`, `src/multi-ix.c`, `src/pr22098-1.c`;
+- required future contract: semantic load identity, source memory/address
+  value, local object or frame-slot identity, layout, size, alignment, access
+  range, scalar result type, and ordinary C origin must be explicit producer
+  facts.
+
+Residual producer buckets and owners:
+
+| Residual bucket | Count | First owner | Disposition |
 | --- | ---: | --- | --- |
-| Local-memory load | 79 | BIR semantic local-memory load producer | Selected as the highest-impact coherent ordinary C producer family. Split/activate as a narrower implementation idea rather than implementing directly under idea 422. |
-
-Representative selected rows:
-
-- `src/20041124-1.c`
-- `src/20071219-1.c`
-- `src/991228-1.c`
-- `src/multi-ix.c`
-- `src/pr22098-1.c`
-
-Required BIR/prepared contract for the future implementation packet:
-
-- admit only semantic local-memory load rows with explicit load operation
-  identity, source memory/address value, local object or frame-slot identity,
-  object layout, size, alignment, access range, scalar result type, and
-  non-bootstrap ordinary C origin;
-- prove source/destination identity through BIR producer facts, not RV64 target
-  fallback, testcase names, raw dump order, value-name patterns, final homes, or
-  expectation/allowlist changes;
-- start with one scalar local-object load shape; keep aggregate/member,
-  GEP-derived, byval/va_arg, pointer/provenance, volatile/atomic, complex,
-  vector, and F128 shapes fail-closed until separately owned.
-
-Rejected adjacent buckets/shapes for the first packet:
-
-- local-memory GEP/address rows;
-- local-memory stores and byte/object-representation writes;
-- direct-call argument/result metadata;
-- alloca-derived storage and dynamic stack object lifetime rows;
-- memcpy/memset runtime byte-range rows;
-- mixed scalar/local-memory rows that cannot be reduced to the selected scalar
-  local-load contract;
-- bootstrap global/type rows;
-- prepared/RV64 materialization, branch/select, stack-home, call, return, or
-  target fallback recovery.
+| Local-memory load | 79 | BIR semantic local-memory load producer | Selected follow-up; split to scalar local-load implementation idea. |
+| Local-memory GEP/address | 62 | BIR semantic local-memory GEP/address producer | Separate producer idea after object/index/layout/provenance contract. |
+| Local-memory store | 58 | BIR semantic local-memory store producer | Separate producer idea after scalar-store versus byte/object-representation split. |
+| Direct-call argument metadata | 52 | BIR semantic direct-call argument/result metadata producer | Separate call-family producer idea. |
+| Scalar/local-memory mixed | 49 | BIR scalar plus local-memory boundary | Split before implementation. |
+| Memcpy/memset byte/object-representation | 34 | BIR runtime/intrinsic byte/object-representation producer | Separate runtime/object-representation producer work. |
+| Alloca-derived storage | 16 | BIR semantic alloca/local stack object producer | Separate alloca identity/lifetime/layout producer work. |
+| Scalar-control-flow | 10 | BIR scalar control-flow producer | Separate lower-priority producer work. |
+| Function-signature | 9 | BIR function signature/type producer | Separate ABI/type admission producer work. |
+| Call-return | 3 | BIR semantic call-return producer | Separate call-return producer work. |
+| Scalar-binop | 1 | BIR scalar operation producer | Single-row residual; not first packet. |
+| Bootstrap adjacent | 44 | Bootstrap/pre-semantic global/type lowering | Adjacent pre-semantic owner outside the selected ordinary C packet. |
 
 Artifact:
 
-- `build/agent_state/422_step3_first_producer_packet/decision.md`
+- `build/agent_state/422_step4_residual_disposition/disposition.md`
 
 ## Suggested Next
 
-Execute Step 4 for idea 422: record residual disposition and close readiness.
-Recommended lifecycle outcome is to close or retire idea 422 as a planning and
-selection runbook after routing the selected implementation to a narrower
-producer-owned idea such as `BIR semantic local-memory scalar load producer`.
+Plan-owner lifecycle packet: close or retire idea 422 as completed
+planning/selection work and create or activate the narrower `BIR semantic
+local-memory scalar load producer` implementation idea.
 
 ## Watchouts
 
-- Do not implement the selected load packet in idea 422 without plan-owner
-  lifecycle action; Step 3 recommends a split/narrow implementation idea.
-- The next implementation idea should first collect focused probes for the
-  representative local-memory load rows and prove scalar load identity plus
-  source object/layout facts.
-- Keep GEP/store/direct-call/memcpy/allocation/runtime/consumer buckets outside
-  the first local-memory load packet.
+- No RV64 lowering should recover missing semantic producer facts from raw BIR
+  shape, value names, testcase names, final homes, or target fallback inference.
+- Do not broaden idea 422 into generic semantic producer implementation; the
+  selected local-memory load packet needs a dedicated source idea/runbook.
+- Keep GEP, store, direct-call, memcpy/memset, alloca, scalar, function
+  signature, call-return, and bootstrap buckets as separate first-owner
+  boundaries.
 
 ## Proof
 
