@@ -3677,7 +3677,8 @@ std::optional<std::int32_t> prepared_sret_memory_return_argument_address_offset(
 struct PreparedFrameSlotAddressArgumentPublication {
   std::int32_t address_offset = 0;
   std::int32_t destination_offset = 0;
-  bir::Value source_value;
+  std::optional<std::int32_t> payload_address_offset;
+  std::optional<bir::Value> payload_value;
 };
 
 [[nodiscard]] const prepare::PreparedStoreSourcePublicationRecord*
@@ -3819,19 +3820,60 @@ prepared_frame_slot_address_call_argument_publication(
   }
 
   const auto& plan = selected->plan;
-  bir::Value source_value = fact->payload_value;
-  if (plan.source_load_local != nullptr) {
+  if (fact->payload_value.kind != bir::Value::Kind::Named ||
+      fact->payload_value.type != bir::TypeKind::Ptr ||
+      fact->destination_stack_offset_bytes >
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
+      fact->payload_value_name == *argument.source_selection->source_value_name) {
+    return std::nullopt;
+  }
+
+  std::optional<std::int32_t> payload_address_offset;
+  std::optional<bir::Value> payload_value;
+  const bool has_any_payload_route =
+      fact->payload_frame_slot_id.has_value() ||
+      fact->payload_stack_offset_bytes.has_value() ||
+      fact->payload_size_bytes.has_value() ||
+      fact->payload_align_bytes.has_value();
+  const bool has_complete_payload_route =
+      fact->payload_frame_slot_id.has_value() &&
+      fact->payload_stack_offset_bytes.has_value() &&
+      fact->payload_size_bytes.has_value() &&
+      fact->payload_align_bytes.has_value();
+  if (has_any_payload_route && !has_complete_payload_route) {
+    return std::nullopt;
+  }
+  if (has_complete_payload_route) {
+    if (!fits_signed_12_bit_immediate(
+            static_cast<std::int64_t>(*fact->payload_stack_offset_bytes))) {
+      return std::nullopt;
+    }
+    const auto* payload_slot =
+        prepare::find_frame_slot_by_id(stack_layout, *fact->payload_frame_slot_id);
+    if (payload_slot == nullptr ||
+        payload_slot->function_name != function_id ||
+        *fact->payload_stack_offset_bytes < payload_slot->offset_bytes ||
+        *fact->payload_stack_offset_bytes >
+            payload_slot->offset_bytes + payload_slot->size_bytes ||
+        payload_slot->size_bytes != *fact->payload_size_bytes ||
+        payload_slot->align_bytes != *fact->payload_align_bytes) {
+      return std::nullopt;
+    }
+    payload_address_offset =
+        static_cast<std::int32_t>(*fact->payload_stack_offset_bytes);
+  } else if (plan.source_load_local != nullptr) {
     if (plan.source_load_local->result.type != bir::TypeKind::Ptr ||
         plan.source_load_local->result != fact->payload_value) {
       return std::nullopt;
     }
+    payload_value = fact->payload_value;
+  } else {
+    return std::nullopt;
   }
-  if (source_value.kind != bir::Value::Kind::Named ||
-      source_value.type != bir::TypeKind::Ptr ||
-      prepared_value_home_for(prepared.names, lookups, source_value) == nullptr ||
-      fact->destination_stack_offset_bytes >
-          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
-      fact->payload_value_name == *argument.source_selection->source_value_name) {
+
+  if (plan.source_value_id != fact->payload_value_id ||
+      plan.source_value_name != fact->payload_value_name ||
+      plan.source_value != fact->payload_value) {
     return std::nullopt;
   }
 
@@ -3839,7 +3881,8 @@ prepared_frame_slot_address_call_argument_publication(
       .address_offset = *address_offset,
       .destination_offset =
           static_cast<std::int32_t>(fact->destination_stack_offset_bytes),
-      .source_value = std::move(source_value),
+      .payload_address_offset = payload_address_offset,
+      .payload_value = std::move(payload_value),
   };
 }
 
@@ -4179,14 +4222,27 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
         return std::nullopt;
       }
       const std::uint32_t scratch = rv64_temporary_gpr_avoiding(*destination);
-      if (!append_rv64_move_value_to_register(fragment,
-                                              scratch,
-                                              stack_layout,
-                                              prepared.names,
-                                              lookups,
-                                              publication->source_value,
-                                              stack_frame_bytes) ||
-          !append_rv64_store_register_to_stack(fragment,
+      if (publication->payload_address_offset.has_value()) {
+        append_le32(fragment.bytes,
+                    encode_i_type(0x13,
+                                  scratch,
+                                  0,
+                                  2,
+                                  *publication->payload_address_offset));  // addi rd, sp, off
+      } else if (publication->payload_value.has_value()) {
+        if (!append_rv64_move_value_to_register(fragment,
+                                                scratch,
+                                                stack_layout,
+                                                prepared.names,
+                                                lookups,
+                                                *publication->payload_value,
+                                                stack_frame_bytes)) {
+          return std::nullopt;
+        }
+      } else {
+        return std::nullopt;
+      }
+      if (!append_rv64_store_register_to_stack(fragment,
                                                scratch,
                                                publication->destination_offset,
                                                8)) {

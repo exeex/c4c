@@ -184,6 +184,18 @@ void append_call_argument_value_publications(std::ostringstream& out,
         << " source_store_inst=" << fact.source_store_instruction_index
         << " payload=" << maybe_value_name(module.names, fact.payload_value_name)
         << " payload_value_id=" << fact.payload_value_id
+        << " payload_frame_slot=";
+    if (fact.payload_frame_slot_id.has_value()) {
+      out << "#" << *fact.payload_frame_slot_id;
+    } else {
+      out << "<none>";
+    }
+    append_optional_index(out,
+                          "payload_stack_offset",
+                          fact.payload_stack_offset_bytes);
+    append_optional_index(out, "payload_size", fact.payload_size_bytes);
+    append_optional_index(out, "payload_align", fact.payload_align_bytes);
+    out
         << " destination_slot=#" << fact.destination_frame_slot_id
         << " destination_stack_offset=" << fact.destination_stack_offset_bytes
         << " destination_size=" << fact.destination_size_bytes

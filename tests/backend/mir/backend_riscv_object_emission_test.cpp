@@ -8180,6 +8180,10 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
           .payload_value_id = prepare::PreparedValueId{13},
           .payload_value_name = source_name,
           .payload_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.src"),
+          .payload_frame_slot_id = prepare::PreparedFrameSlotId{7},
+          .payload_stack_offset_bytes = 24,
+          .payload_size_bytes = 8,
+          .payload_align_bytes = 8,
           .destination_frame_slot_id = prepare::PreparedFrameSlotId{7},
           .destination_stack_offset_bytes = 24,
           .destination_size_bytes = 8,
@@ -8199,6 +8203,10 @@ prepare::PreparedBirModule make_prepared_frame_slot_address_arg_call_module() {
           .payload_value_id = prepare::PreparedValueId{13},
           .payload_value_name = source_name,
           .payload_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.src"),
+          .payload_frame_slot_id = prepare::PreparedFrameSlotId{7},
+          .payload_stack_offset_bytes = 24,
+          .payload_size_bytes = 8,
+          .payload_align_bytes = 8,
           .destination_frame_slot_id = prepare::PreparedFrameSlotId{8},
           .destination_stack_offset_bytes = 32,
           .destination_size_bytes = 8,
@@ -8281,12 +8289,20 @@ make_prepared_frame_slot_address_arg_call_load_local_payload_module() {
   x_fact.payload_value_id = prepare::PreparedValueId{16};
   x_fact.payload_value_name = loaded_x_name;
   x_fact.payload_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.loaded.x");
+  x_fact.payload_frame_slot_id = std::nullopt;
+  x_fact.payload_stack_offset_bytes = std::nullopt;
+  x_fact.payload_size_bytes = std::nullopt;
+  x_fact.payload_align_bytes = std::nullopt;
 
   auto& y_fact = prepared.call_argument_value_publications.facts[1];
   y_fact.source_store_instruction_index = 0;
   y_fact.payload_value_id = prepare::PreparedValueId{17};
   y_fact.payload_value_name = loaded_y_name;
   y_fact.payload_value = bir::Value::named(bir::TypeKind::Ptr, "%lv.loaded.y");
+  y_fact.payload_frame_slot_id = std::nullopt;
+  y_fact.payload_stack_offset_bytes = std::nullopt;
+  y_fact.payload_size_bytes = std::nullopt;
+  y_fact.payload_align_bytes = std::nullopt;
 
   return prepared;
 }
@@ -13452,13 +13468,13 @@ int builds_prepared_frame_slot_address_arg_call_object() {
     return fail("expected frame-slot-address same-module call relocation");
   }
   if (read_u32(text->bytes, module->relocations[0].offset - 24) !=
-          0x00048313 ||
+          0x01810313 ||
       read_u32(text->bytes, module->relocations[0].offset - 20) !=
           0x00613c23 ||
       read_u32(text->bytes, module->relocations[0].offset - 16) !=
           0x01810513 ||
       read_u32(text->bytes, module->relocations[0].offset - 12) !=
-          0x00048313 ||
+          0x01810313 ||
       read_u32(text->bytes, module->relocations[0].offset - 8) !=
           0x02613023 ||
       read_u32(text->bytes, module->relocations[0].offset - 4) !=
@@ -16044,9 +16060,9 @@ int emits_prepared_global_store_relocations_and_instruction() {
     return fail("expected text, data, global symbol, and store AUIPC-site label");
   }
   if (text->bytes.size() < 16 ||
-      text->bytes[0] != 0x97 || text->bytes[1] != 0x02 ||
-      text->bytes[4] != 0x93 || text->bytes[5] != 0x82 ||
-      text->bytes[8] != 0x13 || text->bytes[9] != 0x03 ||
+      text->bytes[0] != 0x13 || text->bytes[1] != 0x03 ||
+      text->bytes[4] != 0x97 || text->bytes[5] != 0x02 ||
+      text->bytes[8] != 0x93 || text->bytes[9] != 0x82 ||
       text->bytes[12] != 0x23 || text->bytes[13] != 0xa0) {
     return fail("expected PC-relative address materialization, value move, and sw");
   }
@@ -16057,11 +16073,11 @@ int emits_prepared_global_store_relocations_and_instruction() {
   }
   if (module->relocations.size() != 2 ||
       module->relocations[0].section != text->id ||
-      module->relocations[0].offset != 0 ||
+      module->relocations[0].offset != 4 ||
       module->relocations[0].type != R_RISCV_PCREL_HI20 ||
       module->relocations[0].symbol != global_symbol->id ||
       module->relocations[1].section != text->id ||
-      module->relocations[1].offset != 4 ||
+      module->relocations[1].offset != 8 ||
       module->relocations[1].type != R_RISCV_PCREL_LO12_I ||
       module->relocations[1].symbol != auipc_label->id) {
     return fail("expected prepared global store PC-relative relocation pair");

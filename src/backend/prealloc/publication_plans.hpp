@@ -2148,6 +2148,10 @@ struct PreparedCallArgumentValuePublicationFact {
   PreparedValueId payload_value_id = 0;
   ValueNameId payload_value_name = kInvalidValueName;
   bir::Value payload_value;
+  std::optional<PreparedFrameSlotId> payload_frame_slot_id;
+  std::optional<std::size_t> payload_stack_offset_bytes;
+  std::optional<std::size_t> payload_size_bytes;
+  std::optional<std::size_t> payload_align_bytes;
 
   PreparedFrameSlotId destination_frame_slot_id = 0;
   std::size_t destination_stack_offset_bytes = 0;

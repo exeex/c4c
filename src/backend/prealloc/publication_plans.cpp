@@ -696,6 +696,71 @@ find_unique_call_argument_value_publication_store_source(
   return selected;
 }
 
+[[nodiscard]] const PreparedAddressMaterialization*
+find_unique_call_argument_value_publication_payload_materialization(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    const PreparedStoreSourcePublicationRecord& source) {
+  const auto& plan = source.plan;
+  if (plan.intent != PreparedStoreSourcePublicationIntent::StoreLocalPublication ||
+      plan.destination_access == nullptr ||
+      plan.destination_access->address_space != bir::AddressSpace::Default ||
+      plan.destination_access->is_volatile ||
+      plan.destination_base_kind != PreparedAddressBaseKind::FrameSlot ||
+      !plan.destination_frame_slot_id.has_value() ||
+      !plan.destination_stack_offset_bytes.has_value() ||
+      plan.source_value.kind != bir::Value::Kind::Named ||
+      plan.source_value.type != bir::TypeKind::Ptr ||
+      plan.source_value_id == PreparedValueId{0} ||
+      plan.source_value_name == kInvalidValueName) {
+    return nullptr;
+  }
+
+  const auto* addressing = find_prepared_addressing(prepared, function_name);
+  if (addressing == nullptr) {
+    return nullptr;
+  }
+
+  const PreparedAddressMaterialization* selected = nullptr;
+  for (const auto& materialization : addressing->address_materializations) {
+    if (materialization.function_name != function_name ||
+        materialization.block_label != source.block_label ||
+        materialization.inst_index != source.instruction_index ||
+        materialization.kind != PreparedAddressMaterializationKind::FrameSlot ||
+        materialization.result_value_name !=
+            std::optional<ValueNameId>{plan.source_value_name} ||
+        !materialization.frame_slot_id.has_value() ||
+        materialization.byte_offset < 0 ||
+        materialization.address_space != bir::AddressSpace::Default ||
+        materialization.is_thread_local ||
+        materialization.has_tls_address_space ||
+        materialization.tls_model != PreparedTlsMaterializationModel::None ||
+        materialization.tls_thread_pointer_register !=
+            PreparedTlsThreadPointerRegister::None ||
+        materialization.tls_high_relocation != PreparedTlsRelocationKind::None ||
+        materialization.tls_low_relocation != PreparedTlsRelocationKind::None) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = &materialization;
+  }
+  if (selected == nullptr) {
+    return nullptr;
+  }
+
+  const auto* slot = find_frame_slot(prepared.stack_layout, *selected->frame_slot_id);
+  const auto offset = static_cast<std::size_t>(selected->byte_offset);
+  if (slot == nullptr ||
+      slot->function_name != function_name ||
+      offset < slot->offset_bytes ||
+      offset > slot->offset_bytes + slot->size_bytes) {
+    return nullptr;
+  }
+  return selected;
+}
+
 void populate_call_argument_value_publication_plans(PreparedBirModule& prepared) {
   prepared.call_argument_value_publications.facts.clear();
   for (const auto& function_plan : prepared.call_plans.functions) {
@@ -724,6 +789,22 @@ void populate_call_argument_value_publication_plans(PreparedBirModule& prepared)
           continue;
         }
         const auto& plan = source->plan;
+        const auto* payload_materialization =
+            find_unique_call_argument_value_publication_payload_materialization(
+                prepared, function_plan.function_name, *source);
+        const auto* payload_slot =
+            payload_materialization != nullptr &&
+                    payload_materialization->frame_slot_id.has_value()
+                ? find_frame_slot(prepared.stack_layout,
+                                  *payload_materialization->frame_slot_id)
+                : nullptr;
+        const auto payload_offset =
+            payload_materialization != nullptr &&
+                    payload_materialization->byte_offset >= 0
+                ? std::optional<std::size_t>{
+                      static_cast<std::size_t>(
+                          payload_materialization->byte_offset)}
+                : std::nullopt;
         prepared.call_argument_value_publications.facts.push_back(
             PreparedCallArgumentValuePublicationFact{
                 .function_name = function_plan.function_name,
@@ -744,6 +825,19 @@ void populate_call_argument_value_publication_plans(PreparedBirModule& prepared)
                 .payload_value_id = plan.source_value_id,
                 .payload_value_name = plan.source_value_name,
                 .payload_value = plan.source_value,
+                .payload_frame_slot_id =
+                    payload_materialization != nullptr
+                        ? payload_materialization->frame_slot_id
+                        : std::nullopt,
+                .payload_stack_offset_bytes = payload_offset,
+                .payload_size_bytes =
+                    payload_slot != nullptr
+                        ? std::optional<std::size_t>{payload_slot->size_bytes}
+                        : std::nullopt,
+                .payload_align_bytes =
+                    payload_slot != nullptr
+                        ? std::optional<std::size_t>{payload_slot->align_bytes}
+                        : std::nullopt,
                 .destination_frame_slot_id = *plan.destination_frame_slot_id,
                 .destination_stack_offset_bytes =
                     *plan.destination_stack_offset_bytes,
