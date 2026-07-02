@@ -66,6 +66,17 @@ can consume them.
   coverage for the producer/classifier boundary, and the backend subset chosen
   by the supervisor.
 
+## Closure Note
+
+Closed after Steps 1-5 completed the producer/classifier-owned reject path for
+ambiguous non-parallel multi-source stack-destination prepared bundles. The
+representative `src/20010518-1.c` row now rejects before RV64 object emission
+materializes an ambiguous `authority=none`, `move_count=2`,
+`parallel_copy=no` bundle, focused semantic backend coverage exists for the
+refined reject path, and the supervisor-provided backend subset regression
+logs passed the non-decreasing guard with 345/345 tests passing before and
+after.
+
 ## Reviewer Reject Signals
 
 Reject any route or slice that:
