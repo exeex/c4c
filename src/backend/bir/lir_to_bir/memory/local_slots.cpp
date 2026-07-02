@@ -1280,6 +1280,7 @@ bool BirFunctionLowerer::lower_memory_load_inst(
   }
 
   loaded_local_scalar_immediates_.erase(load.result.str());
+  loaded_local_integer_pointer_values_.erase(load.result.str());
   if (load.ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
       *value_type != bir::TypeKind::Ptr) {
     const auto ptr_it = local_pointer_slots_.find(load.ptr.str());
@@ -1288,6 +1289,9 @@ bool BirFunctionLowerer::lower_memory_load_inst(
       if (slot_value_it != local_scalar_slot_values_.end() &&
           slot_value_it->second.type == *value_type) {
         loaded_local_scalar_immediates_[load.result.str()] = slot_value_it->second;
+      }
+      if (*value_type == bir::TypeKind::I64) {
+        loaded_local_integer_pointer_values_.insert(load.result.str());
       }
     }
   }

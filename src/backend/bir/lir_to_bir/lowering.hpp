@@ -1503,6 +1503,7 @@ class BirFunctionLowerer {
   LocalPointerValueAliasMap local_pointer_value_aliases_;
   ValueMap local_scalar_slot_values_;
   ValueMap loaded_local_scalar_immediates_;
+  std::unordered_set<std::string> loaded_local_integer_pointer_values_;
   LocalIndirectPointerSlotSet local_indirect_pointer_slots_;
   PointerAddressMap pointer_value_addresses_;
   PointerAddressIntMap pointer_address_ints_;

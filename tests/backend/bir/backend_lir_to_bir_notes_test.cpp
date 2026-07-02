@@ -233,6 +233,7 @@ int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
 int expect_string_literal_pointer_store_publishes_string_address_value();
 int expect_loaded_pointer_addressed_store_uses_pointer_base();
 int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base();
+int expect_inttoptr_loaded_local_i64_byte_load_publishes_opaque_pointer_base();
 int expect_pointer_addressed_aggregate_field_store_publishes_leaf_stores();
 int expect_direct_local_scalar_access_publishes_local_slot_provenance();
 int expect_local_byte_array_scalar_access_publishes_local_slot_provenance();
@@ -1567,6 +1568,113 @@ int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base() {
   return 0;
 }
 
+int expect_inttoptr_loaded_local_i64_byte_load_publishes_opaque_pointer_base() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+
+  c4c::TypeSpec char_type{};
+  char_type.base = c4c::TB_CHAR;
+
+  c4c::TypeSpec long_type{};
+  long_type.base = c4c::TB_LONG;
+
+  LirFunction function;
+  function.name = "inttoptr_loaded_local_i64_byte_load";
+  function.signature_text =
+      "define i8 @inttoptr_loaded_local_i64_byte_load(i64 %p.addr)";
+  function.return_type = char_type;
+  function.params.push_back({"%p.addr", long_type});
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.addr"),
+      .type_str = "i64",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i64",
+      .val = LirOperand("%p.addr"),
+      .ptr = LirOperand("%lv.addr"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.addr"),
+      .type_str = "i64",
+      .ptr = LirOperand("%lv.addr"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%runtime.ptr"),
+      .kind = LirCastKind::IntToPtr,
+      .from_type = "i64",
+      .operand = LirOperand("%loaded.addr"),
+      .to_type = "ptr",
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%byte"),
+      .type_str = "i8",
+      .ptr = LirOperand("%runtime.ptr"),
+  });
+  entry.terminator = LirRet{
+      .value_str = "%byte",
+      .type_str = "i8",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("inttoptr loaded local i64 byte load should lower semantically");
+  }
+
+  bool saw_direct_local_integer_load = false;
+  bool saw_opaque_pointer_base_byte_load = false;
+  const auto& lowered_function = result.module->functions.front();
+  for (const auto& block : lowered_function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+          load != nullptr && load->result.name == "%loaded.addr" &&
+          load->slot_name == "%lv.addr" &&
+          (!load->address.has_value() ||
+           (load->address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot &&
+            load->address->base_name == "%lv.addr"))) {
+        saw_direct_local_integer_load = true;
+      }
+      if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+          load != nullptr && load->result.name == "%byte" &&
+          load->address.has_value() &&
+          load->address->base_kind == bir::MemoryAddress::BaseKind::PointerValue &&
+          load->address->base_value.name == "%runtime.ptr" &&
+          load->address->byte_offset == 0 &&
+          load->address->size_bytes == 1 &&
+          load->address->align_bytes == 1 &&
+          load->address->provenance.base_identity.kind ==
+              bir::MemoryProvenanceBaseIdentityKind::PointerValue &&
+          load->address->provenance.base_identity.spelling == "%runtime.ptr" &&
+          load->address->provenance.base_identity.value.name == "%runtime.ptr" &&
+          load->address->provenance.requested_range.available &&
+          load->address->provenance.requested_range.begin == 0 &&
+          load->address->provenance.requested_range.size_bytes == 1 &&
+          load->address->provenance.requested_range.end_available &&
+          load->address->provenance.requested_range.end == 1 &&
+          load->address->provenance.range_verdict ==
+              bir::MemoryRangeVerdict::UnknownCompatible &&
+          load->address->provenance.layout_authority ==
+              bir::MemoryLayoutAuthorityKind::OpaqueCompatibility) {
+        saw_opaque_pointer_base_byte_load = true;
+      }
+    }
+  }
+
+  if (!saw_direct_local_integer_load) {
+    return fail("inttoptr repair should preserve the direct local i64 load");
+  }
+  if (!saw_opaque_pointer_base_byte_load) {
+    return fail("inttoptr loaded local i64 byte load should use opaque pointer base");
+  }
+  return 0;
+}
+
 int expect_pointer_addressed_aggregate_field_store_publishes_leaf_stores() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
@@ -1870,6 +1978,9 @@ int expect_indirect_local_memory_lvalue_contracts() {
     status = 1;
   }
   if (expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base() != 0) {
+    status = 1;
+  }
+  if (expect_inttoptr_loaded_local_i64_byte_load_publishes_opaque_pointer_base() != 0) {
     status = 1;
   }
   if (expect_casted_byte_pointer_i32_update_fails_closed() != 0) {

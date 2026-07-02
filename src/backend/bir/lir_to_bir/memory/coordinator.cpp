@@ -41,6 +41,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   auto& local_pointer_value_aliases = local_pointer_value_aliases_;
   auto& local_scalar_slot_values = local_scalar_slot_values_;
   auto& loaded_local_scalar_immediates = loaded_local_scalar_immediates_;
+  auto& loaded_local_integer_pointer_values = loaded_local_integer_pointer_values_;
   auto& local_indirect_pointer_slots = local_indirect_pointer_slots_;
   auto& pointer_value_addresses = pointer_value_addresses_;
   auto& pointer_address_ints = pointer_address_ints_;
@@ -234,6 +235,21 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       const auto global_addr_it = global_address_ints.find(cast->operand.str());
       if (global_addr_it != global_address_ints.end()) {
         global_pointer_slots[cast->result.str()] = global_addr_it->second;
+        return true;
+      }
+
+      const auto loaded_local_int_it =
+          loaded_local_integer_pointer_values.find(cast->operand.str());
+      if (loaded_local_int_it != loaded_local_integer_pointer_values.end()) {
+        const auto result_value = bir::Value::named(bir::TypeKind::Ptr, cast->result.str());
+        pointer_value_addresses[cast->result.str()] = PointerAddress{
+            .base_value = result_value,
+            .value_type = bir::TypeKind::Void,
+            .byte_offset = 0,
+            .storage_type_text = "i8",
+            .type_text = "i8",
+            .provenance = bir::MemoryAccessProvenance{},
+        };
         return true;
       }
     }
