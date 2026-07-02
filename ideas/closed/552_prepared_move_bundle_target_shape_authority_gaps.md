@@ -1,6 +1,6 @@
 # Prepared Move-Bundle Target-Shape Authority Gaps
 
-Status: Open
+Status: Closed
 Type: Prepared/module authority repair queue
 Parent: `ideas/open/544_rv64_move_bundle_target_shape_bucket_split.md`
 Owning Layer: Prepared/module target-shape authority
@@ -49,6 +49,18 @@ Additional carry-in rows from the RV64 materialization closure:
   authority instead of an RV64 materialization rule:
   `src/20000717-3.c`, `src/20100316-1.c`, `src/920908-2.c`,
   `src/loop-2d.c`, `src/strcmp-1.c`, and `src/strncmp-1.c`.
+
+## Closure Summary
+
+Closed after active runbook Step 6,
+`docs/rv64_gcc_torture_post_contract/prepared_authority_step6_reconciliation.md`.
+The 43-row prepared-authority queue reconciled to 7 repaired/pass rows, 24
+later RV64 diagnostic or lowering owners, 9 earlier semantic producer or
+explicit classifier owners, 3 runtime mismatches, and 0 unexplained prepared
+authority gaps.
+
+The remaining failures are outside this idea's prepared/module publication
+authority. They should not be repaired by widening prepared inference.
 
 ## In Scope
 
