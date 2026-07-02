@@ -93,6 +93,7 @@ add_executable(backend_lir_to_bir_notes_test
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_route2.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_route3_memory.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_route4_publication.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_route5_publication.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_route8.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_validate.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir.cpp"
