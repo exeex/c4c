@@ -1,111 +1,106 @@
 Status: Active
 Source Idea Path: ideas/open/514_rv64_register_source_stack_destination_move_bundles.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Rebuild Post-516 Register-Source Evidence
+Current Step ID: 2
+Current Step Title: Define The Minimal Single-Move Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Rebuild Post-516 Register-Source Evidence completed for idea 514.
+Step 2 - Define The Minimal Single-Move Contract completed for idea 514.
 
-`tests/c/external/gcc_torture/src/pr27073.c` on
-`--target riscv64-unknown-linux-gnu` still reaches RV64 object emission as the
-single-move representative, not as idea 516's multi-source case. Focused
-prepared dump:
+Accepted semantic boundary: RV64 object emission may materialize only the
+existing same-width single register-source to stack-destination prepared move
+shape owned by `fragment_for_prepared_move_bundle` in
+`src/backend/mir/riscv/codegen/object_emission.cpp`.
 
-- Command:
-  `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu --mir-focus-function foo tests/c/external/gcc_torture/src/pr27073.c`
-- Prepared bundle: function `foo`, `phase=before_instruction`,
-  `authority=none`, `block_index=0`, `instruction_index=1`,
-  `move_count=1`, `parallel_copy=no` by object-route diagnostic.
-- BIR site: `%t0 = bir.sext i16 %p.count to i32`.
-- Move: `from_value_id=4` (`%p.count`) to `to_value_id=10` (`%t0`),
-  `destination_kind=value`, `destination_storage=stack_slot`,
-  `op_kind=move`, `uses_cycle_temp_source=no`,
-  `reason=consumer_stack_to_stack`.
-- Source home/storage: `%p.count value_id=4` has `home kind=register reg=a4`;
-  storage plan is `encoding=register bank=gpr reg=a4 width=1 units=a4`.
-- Destination home/storage: `%t0 value_id=10` has `home kind=stack_slot
-  slot_id=25 offset=68`; storage plan is `encoding=frame_slot bank=gpr
-  spill_slot=slot#25+stack68 width=1 slot_id=#25 stack_offset=68`.
-- Scalar facts: object-route diagnostic reports `source_type=i16` and
-  `destination_type=i32`; prepared stack layout records `%p.count` object
-  type `i16 size=2 align=2` and `%t0` object type `i32 size=4 align=4`.
-- Cardinality/bank/width: one move, GPR bank on both source and destination,
-  one RV64 register unit/source storage unit; destination slot is 4 bytes.
-- Current rejection site:
-  `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/pr27073.c -o /tmp/c4c_514_pr27073.o`
-  exits 2 with `RISC-V backend object route unsupported prepared module shape:
-  unsupported_move_bundle_target_shape ... event_kind=before_instruction_copies
-  function=foo block_index=0 block_label=entry instruction_index=1 ...
-  authority=none move_count=1 ... move[0].source_home_kind=register
-  move[0].source_type=i16 move[0].destination_home_kind=stack_slot
-  move[0].destination_type=i32
-  fragment_status=generic_move_bundle_materialization_failed`.
-- Step 1 authority conclusion: RV64 has explicit prepared bundle, source home,
-  destination home, storage plan, bank, width-unit, and cardinality facts to
-  decide the single register-source stack-destination owner without guessing
-  from row names or ABI order. It does not have authority for a plain same-scalar
-  stack-to-stack materializer: the bundle is `authority=none`, the source home
-  is explicitly a register, and the scalar types differ across a sign-extension
-  BIR instruction (`i16` source, `i32` destination). Step 2 should decide
-  whether RV64 object emission may materialize this as a register-source
-  extension/store, or whether producer classification must publish/reject a
-  more precise conversion-aware contract.
+The accepted predicate is:
 
-`tests/c/external/gcc_torture/src/20010518-1.c` is now confirmed as the closed
-idea 516 boundary rather than the remaining idea 514 single-move
-representative. Focused prepared dump:
+- traversal event is a copy event accepted by
+  `classify_prepared_object_move_bundle_consumer`
+- `phase=before_instruction`, `authority=none`, `destination_kind=value`,
+  `destination_storage=stack_slot`, `op_kind=move`, no cycle-temp source, no
+  immediate source, no destination stack-offset override, contiguous width 1,
+  and no occupied destination registers
+- `reason=consumer_register_to_stack`
+- exactly one `consumer_register_to_stack` move in the bundle
+- source home exists, is `kind=register`, resolves to an RV64 GPR, and any
+  storage-plan endpoint agrees with the same GPR register
+- destination home exists, is a stack slot with an encodable absolute stack
+  offset and a scalar destination type whose size is supported by the RV64
+  store helper
+- source scalar size is authoritative and equals destination scalar size
+- emitted store is the destination-size store from the explicit source GPR to
+  the explicit destination stack slot (`sb`, `sh`, `sw`, or `sd` as permitted
+  by `rv64_load_store_funct3_for_size`)
 
-- Command:
-  `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu --mir-focus-function add tests/c/external/gcc_torture/src/20010518-1.c`
-- Representative bundle: function `add`, `phase=before_instruction`,
-  `authority=none`, `block_index=0`, `instruction_index=0`, `move_count=2`.
-- BIR site: `%t0 = bir.add i32 %p.a, %p.b`.
-- Moves: `from_value_id=0` (`%p.a`, register `a0`) to `to_value_id=13`
-  (`%t0`, stack slot) and `from_value_id=1` (`%p.b`, register `a1`) to the
-  same `to_value_id=13`, both `destination_kind=value`,
-  `destination_storage=stack_slot`, `op_kind=move`, `reason=consumer_stack_to_stack`.
-- Source homes/storage: `%p.a value_id=0` has register home/storage `a0`,
-  `bank=gpr`, `width=1`; `%p.b value_id=1` has register home/storage `a1`,
-  `bank=gpr`, `width=1`.
-- Destination home/storage: `%t0 value_id=13` has `home kind=stack_slot
-  slot_id=8 offset=32`; storage plan is `encoding=frame_slot bank=gpr
-  spill_slot=slot#8+stack32 width=1 slot_id=#8 stack_offset=32`.
-- Scalar facts: all involved values are `i32`; destination slot is 4 bytes.
-- Current rejection site:
-  `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20010518-1.c -o /tmp/c4c_514_20010518.o`
-  exits 2 with `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination:
-  prepared move-bundle classifier rejected ambiguous non-parallel multi-source
-  stack-destination authority`.
-- Post-516 confirmation: yes, `20010518-1.c` now rejects at
+Rejected semantic boundary for `pr27073.c`: the current first failing bundle is
+not accepted by the minimal contract. It is a single explicit register-source
+stack-destination movement, but it arrives as `reason=consumer_stack_to_stack`
+for `%t0 = bir.sext i16 %p.count to i32`, with source home `register a4`,
+destination home `stack_slot #25+68`, source type `i16`, and destination type
+`i32`. The current object-emission diagnostic owner is the generic
+`unsupported_move_bundle_target_shape` path in
+`fragment_for_prepared_move_bundle`, which reports
+`fragment_status=generic_move_bundle_materialization_failed`. The semantic
+owner for Step 3 should be the producer/classification side of the prepared
+move reason or a producer-owned diagnostic: either publish a distinct
+conversion-aware register-source stack-destination contract for this
+`sext i16 -> i32` store-publication shape, or reject it before RV64
+materialization with a precise owner-specific diagnostic.
+
+Adjacent shapes that must remain fail-closed:
+
+- missing source authority: no source home, non-register source home for
+  `consumer_register_to_stack`, unknown source type/size, or source facts only
+  inferable from names/ABI order
+- missing destination authority: no destination home, non-stack-slot
+  destination home, missing/large destination stack offset, destination
+  override offset, or unknown destination scalar type/size
+- unsupported register bank: source home or storage plan is not RV64 GPR, or
+  the target-register identity conflicts with RV64 GPR/general register facts
+- unsupported width: destination contiguous width is not 1, source and
+  destination scalar sizes differ, or the scalar/store size is not supported by
+  the RV64 load/store funct3 helper
+- contradictory storage facts: source storage plan does not agree with the
+  explicit source GPR, destination storage plan does not agree with a coherent
+  GPR frame slot where required, or value-home and storage-plan facts disagree
+- producer misclassification: register-source stack-destination moves tagged
+  as `consumer_stack_to_stack`, stack-source moves tagged as
+  `consumer_register_to_stack`, conversion moves without a distinct
+  conversion-aware reason/authority, or any shape requiring inference from row
+  names/local names/raw BIR text
+- idea 516 multi-source regressions: non-parallel multi-source
+  stack-destination bundles must continue to reject at
   `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`
-  before RV64 object emission tries to materialize the ambiguous
-  `authority=none`, `move_count=2`, non-parallel multi-source stack-destination
-  bundle. Keep it separate from the remaining `pr27073.c` single-move decision.
+  before RV64 object emission attempts materialization
 
 ## Suggested Next
 
-Execute Step 2 by tracing the RV64 prepared move-bundle consumer predicate and
-deciding the minimal accepted or rejected contract for the `pr27073.c`
-single-move register-source stack-destination shape with `i16 -> i32`
-conversion facts.
+Execute Step 3 by either adding a producer/classification repair that publishes
+or rejects the `pr27073.c` conversion-aware register-source stack-destination
+shape, or by keeping RV64 object emission fail-closed with a more precise
+owner diagnostic. Do not broaden the existing same-width
+`consumer_register_to_stack` materializer.
 
 ## Watchouts
 
-Keep the single register-source stack-destination owner separate from idea
-516's closed multi-source producer/classification contract. Do not infer
-source or destination homes from row names, source order, ABI formulas,
-argument indexes, local names, or raw BIR text.
+Do not make `consumer_stack_to_stack` accept register sources as a shortcut:
+that would blur idea 513's stack-to-stack contract and hide the producer
+misclassification in `pr27073.c`.
 
-For `pr27073.c`, do not classify the first failing bundle as idea 513's
-coherent same-scalar stack-slot-to-stack-slot case: its source home/storage is
-explicitly register `a4`, and the current BIR instruction is a sign extension
-from `i16` to `i32`. For `20010518-1.c`, do not reopen materialization unless
-the classifier category regresses from
-`ambiguous_non_parallel_multi_source_stack_destination`.
+Do not make the existing `consumer_register_to_stack` path silently accept
+`i16 -> i32` by choosing either the source size or destination size ad hoc. The
+conversion requires an explicit contract because `sh a4, 68(sp)` would store
+the wrong destination width and `sw a4, 68(sp)` would store an unextended
+source value unless the producer proves the register already holds the widened
+value.
+
+Keep `20010518-1.c` as the idea 516 guard. Its current rejection is still the
+producer/classifier category
+`ambiguous_non_parallel_multi_source_stack_destination`, not the remaining
+idea 514 single-move boundary.
 
 ## Proof
 
@@ -115,15 +110,11 @@ delegation explicitly prohibited touching `test_before.log` or
 
 Commands run:
 
-- `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/pr27073.c`
 - `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu --mir-focus-function foo tests/c/external/gcc_torture/src/pr27073.c`
 - `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/pr27073.c -o /tmp/c4c_514_pr27073.o`
-- `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20010518-1.c`
-- `./build/c4cll --dump-prepared-bir --target riscv64-unknown-linux-gnu --mir-focus-function add tests/c/external/gcc_torture/src/20010518-1.c`
 - `./build/c4cll --codegen obj --target riscv64-unknown-linux-gnu tests/c/external/gcc_torture/src/20010518-1.c -o /tmp/c4c_514_20010518.o`
+- `git diff --check -- todo.md`
 
-Scratch evidence paths: `/tmp/c4c_514_pr27073_prepared.txt`,
-`/tmp/c4c_514_pr27073_foo_prepared.txt`, `/tmp/c4c_514_pr27073_obj.txt`,
-`/tmp/c4c_514_20010518_prepared.txt`,
-`/tmp/c4c_514_20010518_add_prepared.txt`, and
-`/tmp/c4c_514_20010518_obj.txt`.
+The two object commands intentionally fail as probes: `pr27073.c` remains at
+`unsupported_move_bundle_target_shape`, and `20010518-1.c` remains at
+`prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`.
