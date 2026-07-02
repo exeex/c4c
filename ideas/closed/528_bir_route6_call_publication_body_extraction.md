@@ -1,6 +1,6 @@
 # BIR Route6 Call Publication Body Extraction
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 9 of 13, after `ideas/open/527_bir_route7_comparison_body_extraction.md`
@@ -39,6 +39,21 @@ move late as a behavior-preserving owner extraction, not as a semantic rewrite.
 - Focused call-publication, call-result, and publication-routing proof passes.
 - Supervisor considers a full `^backend_` subset if narrower proof is not
   enough for this composed route.
+
+## Completion Note
+
+Closed after the route6 call-use, call-argument publication, call-result
+source, and publication-routing bodies were extracted into
+`src/backend/bir/bir_route6_call_publication.cpp` without moving route6 public
+declarations, route-index facade bodies, memory provenance surfaces, call ABI
+lowering, LIR-to-BIR call generation, or route1-route5 owner behavior.
+
+Accepted proof covered backend build plus `^backend_`, then focused route6
+checks for `backend_lir_to_bir_notes`, `backend_prepared_lookup_helper`,
+`backend_prealloc_call_boundary_classification`, and
+`backend_aarch64_call_boundary_owner`. Close-time regression guard reused the
+focused four-test baseline and refreshed matching `test_after.log` with 4/4
+passing before and after.
 
 ## Reviewer Reject Signals
 
