@@ -1,43 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/543_rv64_object_data_symbol_fixup_module_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Review Text Fixup And Symbol Publication Boundary
+Current Step ID: 4
+Current Step Title: Review Final Module Assembly Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 reviewed local label publication, undefined symbol handling, text
-relocation mapping, and symbol binding in `build_rv64_text_object_module`.
+Step 4 reviewed final object assembly, ELF config, section ordering, section
+flags, relocation attachment, public entrypoints, and result construction.
 
-Moved helpers:
-- `publish_rv64_text_fragment_label` now owns local fragment-label validation,
-  label binding, local no-type symbol definition, and insertion into the
-  explicit `symbols_by_name` publication map.
-- `attach_rv64_text_fixup` now owns text-fixup validation, relocation type
-  mapping through `rv64_elf_relocation_type`, defined-or-undefined target
-  symbol lookup/publication through the explicit `symbols_by_name` map, and
-  text relocation attachment at `fragment_section_offset + fixup.offset_bytes`.
+Moved helpers: none. No narrower final-module helper was extracted.
 
-Explicit dependencies kept visible: `ObjectModule`, `.text` section id,
-`symbols_by_name`, fragment section offset, fragment byte size, and the concrete
-`RiscvObjectLabel` or `RiscvObjectFixup`. The main text-module owner still owns
-function byte ordering, fragment append order, function symbol sizing/binding,
-and the final `ObjectModule` result.
+Explicit dependencies kept visible: `build_rv64_prepared_text_object_module`
+still exposes the ordered sequence from prepared function admission through
+`RiscvObjectFunction` collection, `.text` module construction, data/rodata/bss
+attachment, and module-result diagnostics. `write_rv64_relocatable_elf_object`
+still exposes the `rv64_relocatable_elf_config` handoff to the object writer,
+including ELF64, little-endian, RISC-V machine id, and RV64 double-float ABI
+flags. `write_rv64_prepared_relocatable_elf_object_with_diagnostics` still owns
+the public module-to-image sequencing and image-result diagnostics.
 
-Parked helpers: data-object pointer relocation handling remains in
-`append_rv64_prepared_data_objects`; final module/ELF assembly, public object
-entrypoints, section writer ownership, and function-byte ordering were not
-moved in this packet. Text fixup attachment remains separate from data pointer
-relocations because they still use different producer contracts and relocation
-inputs.
+Parked helpers: final module assembly remains central. Moving it now would hide
+`.text`, `.rodata`, `.data`, `.bss`, section ordering, relocation ownership,
+ELF flags, and public entrypoint/result sequencing behind a broad wrapper rather
+than exposing a smaller contract.
 
 ## Suggested Next
 
-Execute Step 4 by reviewing final module assembly only. Extract code only if
-the API-compatible wrapper keeps section layout, relocation ownership, public
-entrypoints, and ELF config explicit.
+Execute Step 5 by reviewing close readiness for idea 543. Confirm the Step 2
+and Step 4 no-code decisions plus the Step 3 text-side helper extraction satisfy
+the runbook without changing object bytes, relocations, section layout, ELF
+flags, public entrypoints, or expectations.
 
 ## Watchouts
 
@@ -55,11 +50,5 @@ entrypoints, and ELF config explicit.
 
 ## Proof
 
-Code-changing Step 3 proof passed and was written to `test_after.log`: 34/34
-tests passed.
-
-Exact command run:
-
-```sh
-bash -o pipefail -c "cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(riscv_object_emission|object_model_records|cli_riscv64_.*obj|obj_runtime_rv64_|rv64_roundtrip_contract)'" > test_after.log 2>&1
-```
+No code changes were made for Step 4, so no `test_after.log` was written and no
+test subset was run. Local formatting check only: `git diff --check -- todo.md`.
