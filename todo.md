@@ -3,56 +3,50 @@
 Status: Active
 Source Idea Path: ideas/open/527_bir_route7_comparison_body_extraction.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Focused Route7 Proof
+Current Step ID: 5
+Current Step Title: Acceptance Checkpoint
 
 ## Just Finished
 
-Step 3: Repair Includes And Internal Linkage completed as a verification-only
-checkpoint.
+Step 4: Focused Route7 Proof completed as a validation-only packet.
 
-The Step 2 route7 owner move had already repaired the required private helper
-surface and build registration:
+Ran the supervisor-selected focused route7 proof for the separated route7
+comparison owner and facade-backed consumers. The focused set covered all six
+requested backend tests:
 
-- `src/backend/bir/bir_private.hpp` exposes the existing comparison producer
-  helper declarations needed by `src/backend/bir/bir_route7_comparison.cpp`.
-- `tests/backend/bir/CMakeLists.txt` includes
-  `src/backend/bir/bir_route7_comparison.cpp` for the direct-source
-  `backend_lir_to_bir_notes_test`.
-- `src/backend/CMakeLists.txt` required no manual update because backend BIR
-  sources are discovered by the existing `file(GLOB_RECURSE ... bir/*.cpp)`
-  registration.
+- `backend_lir_to_bir_notes`
+- `backend_prepared_lookup_helper`
+- `backend_aarch64_branch_compare_records`
+- `backend_aarch64_compare_branch_candidate_records`
+- `backend_aarch64_branch_compare_contract`
+- `backend_aarch64_branch_control_lowering`
 
-Include/build registration/linkage fallout was verified by the already-passing
-Step 2 backend build/test proof and the supervisor-accepted matching
-before/after backend regression logs. No implementation, test, or log files
-were changed in this Step 3 checkpoint.
+The proof passed with `100% tests passed, 0 tests failed out of 6`. No
+implementation files, tests, build registration, `plan.md`, or source idea
+files were edited in this Step 4 packet.
 
 ## Suggested Next
 
-Supervisor can delegate Step 4 focused route7 proof: comparison condition
-indexing, materialized-condition consumer coverage, and link-time backend
-coverage for the separated owner plus facade-backed helpers.
+Supervisor can delegate Step 5 acceptance checkpoint to inspect the final diff,
+confirm the route7 public declarations and facade-backed public query helpers
+stayed in place, and decide whether broader validation or commit is ready.
 
 ## Watchouts
 
-- This checkpoint did not rerun commands or modify logs by packet instruction.
-- The Step 4 proof should still keep route-index facade bodies,
-  materialized-condition public query helpers, fused-compare public query
-  helpers, route7 public declarations, and tests unchanged unless the
-  supervisor explicitly delegates a code packet.
-- The Step 2 diff kept route7 lookup/validation bodies in `bir.cpp`; only
-  record/index construction moved.
+- This packet only refreshed `test_after.log` and `todo.md`.
+- The Step 2 diff kept route-index facade bodies, materialized-condition public
+  query helpers, fused-compare public query helpers, route7 public
+  declarations, and route7 lookup/validation bodies out of the new owner.
+- `clang-format` was unavailable during Step 2; formatting was kept consistent
+  manually.
 
 ## Proof
 
-No new command was required for this todo-only Step 3 checkpoint.
-
-Verification basis from Step 2:
+Ran exactly:
 
 ```sh
-bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1
+bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_lir_to_bir_notes|backend_prepared_lookup_helper|backend_aarch64_branch_compare_records|backend_aarch64_compare_branch_candidate_records|backend_aarch64_branch_compare_contract|backend_aarch64_branch_control_lowering)$"' > test_after.log 2>&1
 ```
 
-Result recorded in `todo.md`: passed. `test_after.log` remains the canonical
-proof log from the Step 2 code packet.
+Result: passed. `test_after.log` is the canonical focused proof log and records
+all six requested tests passing.
