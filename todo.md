@@ -1,40 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/542_rv64_object_function_traversal_facade_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract Facade Result And Admission Shell
+Current Step ID: 3
+Current Step Title: Extract Traversal Context Assembly
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 extracted the narrow prepared-function admission/result shell into
-`prepared_function_emit.*`.
+Step 3 reviewed the next traversal context assembly boundary and made no code
+changes because Step 2 already moved the safe dependency-gathering/context
+assembly into `prepared_function_emit.*`.
 
-Moved/exposed only `prepare_rv64_object_function_admission_shell` plus its small
-`RiscvPreparedFunctionAdmissionResult` and explicit diagnostic callback set. The
-shell now owns prepared function name resolution, defined BIR body lookup,
-empty-name/missing-body/atomic-operation rejection, prepared lookup construction,
+Confirmed with AST-backed callee inspection that
+`prepare_rv64_object_function_admission_shell` already owns prepared function
+name resolution, defined BIR body lookup, prepared lookup construction,
 dependency operand authority collection, select carrier-alias authority
 collection, select-edge source producer placement collection, prepared
-addressing/frame/storage/inline-asm lookup, stack-frame size admission,
-saved-register/parameter-home/variadic admission callback sequencing, and
-call-presence/call-frame size admissibility.
+addressing/frame/storage/inline-asm lookup, stack-frame sizing admission, and
+call-presence/call-frame admissibility, with those dependencies exposed as
+concrete `RiscvPreparedFunctionAdmissionResult` fields.
 
 Retained object-side: `RiscvPreparedObjectFunctionResult`,
 `RiscvObjectFunction`, prologue and formal-entry fragment appending, variadic
-incoming-GPR fragment emission, before-return setup, traversal loops,
+incoming-GPR fragment emission, before-return stack-to-register validation
+state, `prepare::make_prepared_object_function_traversal` invocation and
+complete/fallback traversal loops, block label fragment emission,
 `fragment_for_prepared_instruction`, `fragment_for_prepared_terminator`, move
 bundle/select-publication fragment bodies and diagnostics, public module/image
 entrypoints, final object module assembly, data/symbol/fixup ownership, tests,
 expectations, unsupported markers, and runtime contracts.
 
+No narrower move remained for Step 3 without either duplicating the Step 2
+admission result or introducing a catch-all traversal/facade carrier that would
+hide fragment and object-emission dependencies.
+
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: consider the next narrow context-assembly move
-around prepared lookup/dependency setup only if dependencies stay explicit.
-Keep traversal, fragment appending, and public object result ownership
-object-side unless the supervisor delegates a narrower boundary.
+Execute Step 4 from `plan.md`: evaluate the smallest object-function traversal
+loop facade only if event order, diagnostics, and fragment dependencies remain
+explicit. Keep `fragment_for_prepared_instruction`, final object module assembly,
+public entrypoints, and symbol/fixup/module ownership parked unless the
+supervisor delegates a reviewed boundary.
 
 ## Watchouts
 
@@ -44,6 +51,9 @@ object-side unless the supervisor delegates a narrower boundary.
   bytes.
 - `prepared_function_emit.cpp` now has a narrow admission shell but must not
   become a second object-emission module.
+- Step 3 intentionally made no code change: moving more context assembly now
+  would either repeat the explicit admission shell fields or hide traversal and
+  fragment dependencies behind a broad carrier.
 - Prior family APIs are available for the boundary: stack frame sizing and
   prologue helpers from `prepared_frame_emit.*`, before-return move classification
   and variadic resource predicates from `prepared_call_emit.*`, and select
@@ -68,10 +78,11 @@ object-side unless the supervisor delegates a narrower boundary.
 
 ## Proof
 
-Ran the delegated proof command and preserved output in `test_after.log`:
+No proof command was run and no new `test_after.log` was written because Step 3
+made no code changes, per the delegated packet.
 
 ```sh
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(riscv_object_emission|prepared_object_consumer_contract|object_model_records|obj_runtime_rv64_|codegen_route_riscv64_)'
 ```
 
-Result: passed, 63/63 tests.
+Result: not run; no-code rationale recorded above.
