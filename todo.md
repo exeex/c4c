@@ -3,35 +3,44 @@
 Status: Complete
 Source Idea Path: ideas/open/525_bir_route3_memory_access_body_extraction.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove memory-access and route6 behavior
+Current Step ID: 4
+Current Step Title: Handoff for review and next cleanup idea
 
 ## Just Finished
 
-- Step 3 proved route3 memory-access/source behavior and the route6/route5
-  consumer behavior remained unchanged after the route3 body extraction.
-- The focused proof passed all four delegated tests:
-  `backend_aarch64_prepared_memory_operand_records`,
-  `backend_store_source_publication_plan`, `backend_lir_to_bir_notes`, and
-  `backend_riscv_prepared_edge_publication`.
+- Step 4 completed the review-only handoff for the route3 memory-access body
+  extraction.
+- Inspected `git diff 7b5282e4b^..HEAD`; the movement boundary is limited to
+  removing route3 memory-access bodies from `src/backend/bir/bir.cpp`, adding
+  the same route3 memory-access body surface in
+  `src/backend/bir/bir_route3_memory.cpp`, and adding that direct source to
+  `backend_lir_to_bir_notes_test` in `tests/backend/bir/CMakeLists.txt`.
+- No `src/backend/bir/bir.hpp` public declarations moved, no route6/route5
+  policy changed, and no test expectation or diagnostic files changed.
 
 ## Suggested Next
 
-- Supervisor should review the Step 2 body-move diff plus this Step 3 proof
-  record for route drift and commit the coherent slice if accepted.
+- Supervisor can treat this packet as ready for final route review and commit
+  decision. No unresolved route3/route6 coupling was found that should block or
+  reshape the next follow-up cleanup idea.
 
 ## Watchouts
 
-- This was a proof-only packet; no implementation, expectation, diagnostic,
-  test, CMake, `plan.md`, or source-idea edits were made.
-- `backend_store_source_publication_plan` covers the route6/route5 consumer
-  source-publication path in the delegated focused subset.
+- This packet made no implementation, test, CMake, `plan.md`, or source-idea
+  edits; it only records the Step 4 handoff in `todo.md`.
+- The protected public API remains in `src/backend/bir/bir.hpp`; the extracted
+  file includes the existing header rather than moving declarations.
+- `backend_store_source_publication_plan` remains the focused route6/route5
+  consumer source-publication proof in the delegated subset, with no route6
+  policy drift observed in the inspected range.
 
 ## Proof
 
-- Passed:
-  `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_prepared_memory_operand_records|backend_store_source_publication_plan|backend_lir_to_bir_notes|backend_riscv_prepared_edge_publication)$') > test_after.log 2>&1`
-- `test_after.log` contains a successful build and 4/4 passing focused tests:
+- Review-only packet; no build or CTest rerun was required.
+- Inspected existing green proof in `test_before.log`: successful build/no-op
+  build plus 4/4 passing focused tests:
   `backend_aarch64_prepared_memory_operand_records`,
   `backend_store_source_publication_plan`, `backend_lir_to_bir_notes`, and
   `backend_riscv_prepared_edge_publication`.
+- Inspected diff range:
+  `git diff 7b5282e4b^..HEAD`.
