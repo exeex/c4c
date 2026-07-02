@@ -45,52 +45,38 @@ constexpr std::uint32_t kRiscvRelocJal = 17;
 constexpr std::size_t kRv64StackFrameAlignment = 16;
 constexpr std::uint32_t kRv64StackFrameScratchRegister = 5;  // t0
 
-constexpr std::uint32_t encode_u_type(std::uint32_t opcode, std::uint32_t rd,
-                                      std::uint32_t imm20) {
-  return ((imm20 & 0xfffffu) << 12) | ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
+std::uint32_t encode_u_type(std::uint32_t opcode, std::uint32_t rd,
+                            std::uint32_t imm20) {
+  return rv64_encode_u_type(opcode, rd, imm20);
 }
 
-constexpr std::uint32_t encode_i_type(std::uint32_t opcode, std::uint32_t rd,
-                                      std::uint32_t funct3, std::uint32_t rs1,
-                                      std::int32_t imm12) {
-  return ((static_cast<std::uint32_t>(imm12) & 0xfffu) << 20) |
-         ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
-         ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
+std::uint32_t encode_i_type(std::uint32_t opcode, std::uint32_t rd,
+                            std::uint32_t funct3, std::uint32_t rs1,
+                            std::int32_t imm12) {
+  return rv64_encode_i_type(opcode, rd, funct3, rs1, imm12);
 }
 
-constexpr std::uint32_t encode_s_type(std::uint32_t opcode, std::uint32_t funct3,
-                                      std::uint32_t rs1, std::uint32_t rs2,
-                                      std::int32_t imm12) {
-  const auto imm = static_cast<std::uint32_t>(imm12) & 0xfffu;
-  return ((imm >> 5) << 25) | ((rs2 & 0x1fu) << 20) |
-         ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
-         ((imm & 0x1fu) << 7) | (opcode & 0x7fu);
+std::uint32_t encode_s_type(std::uint32_t opcode, std::uint32_t funct3,
+                            std::uint32_t rs1, std::uint32_t rs2,
+                            std::int32_t imm12) {
+  return rv64_encode_s_type(opcode, funct3, rs1, rs2, imm12);
 }
 
-constexpr std::uint32_t encode_r_type(std::uint32_t opcode, std::uint32_t rd,
-                                      std::uint32_t funct3, std::uint32_t rs1,
-                                      std::uint32_t rs2, std::uint32_t funct7) {
-  return ((funct7 & 0x7fu) << 25) | ((rs2 & 0x1fu) << 20) |
-         ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
-         ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
+std::uint32_t encode_r_type(std::uint32_t opcode, std::uint32_t rd,
+                            std::uint32_t funct3, std::uint32_t rs1,
+                            std::uint32_t rs2, std::uint32_t funct7) {
+  return rv64_encode_r_type(opcode, rd, funct3, rs1, rs2, funct7);
 }
 
-constexpr std::uint32_t encode_b_type(std::uint32_t opcode, std::uint32_t funct3,
-                                      std::uint32_t rs1, std::uint32_t rs2,
-                                      std::int32_t imm13) {
-  const auto imm = static_cast<std::uint32_t>(imm13);
-  return (((imm >> 12) & 0x1u) << 31) | (((imm >> 5) & 0x3fu) << 25) |
-         ((rs2 & 0x1fu) << 20) | ((rs1 & 0x1fu) << 15) |
-         ((funct3 & 0x7u) << 12) | (((imm >> 1) & 0xfu) << 8) |
-         (((imm >> 11) & 0x1u) << 7) | (opcode & 0x7fu);
+std::uint32_t encode_b_type(std::uint32_t opcode, std::uint32_t funct3,
+                            std::uint32_t rs1, std::uint32_t rs2,
+                            std::int32_t imm13) {
+  return rv64_encode_b_type(opcode, funct3, rs1, rs2, imm13);
 }
 
-constexpr std::uint32_t encode_j_type(std::uint32_t opcode, std::uint32_t rd,
-                                      std::int32_t imm21) {
-  const auto imm = static_cast<std::uint32_t>(imm21);
-  return (((imm >> 20) & 0x1u) << 31) | (((imm >> 1) & 0x3ffu) << 21) |
-         (((imm >> 11) & 0x1u) << 20) | (((imm >> 12) & 0xffu) << 12) |
-         ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
+std::uint32_t encode_j_type(std::uint32_t opcode, std::uint32_t rd,
+                            std::int32_t imm21) {
+  return rv64_encode_j_type(opcode, rd, imm21);
 }
 
 void append_fragment(RiscvEncodedFragment& destination,
@@ -110,16 +96,11 @@ void append_fragment(RiscvEncodedFragment& destination,
 }
 
 void append_le32(std::vector<std::uint8_t>& bytes, std::uint32_t word) {
-  bytes.push_back(static_cast<std::uint8_t>(word & 0xffu));
-  bytes.push_back(static_cast<std::uint8_t>((word >> 8) & 0xffu));
-  bytes.push_back(static_cast<std::uint8_t>((word >> 16) & 0xffu));
-  bytes.push_back(static_cast<std::uint8_t>((word >> 24) & 0xffu));
+  rv64_append_le32(bytes, word);
 }
 
 void append_le64(std::vector<std::uint8_t>& bytes, std::uint64_t word) {
-  for (int shift = 0; shift < 64; shift += 8) {
-    bytes.push_back(static_cast<std::uint8_t>((word >> shift) & 0xffu));
-  }
+  rv64_append_le64(bytes, word);
 }
 
 void append_rv64_fragment(RiscvEncodedFragment& destination,

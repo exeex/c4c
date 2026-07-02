@@ -9,36 +9,35 @@
 #include <vector>
 
 namespace c4c::backend::riscv::codegen {
-namespace {
 
-constexpr std::uint32_t encode_i_type(std::uint32_t opcode, std::uint32_t rd,
-                                      std::uint32_t funct3, std::uint32_t rs1,
-                                      std::int32_t imm12) {
+std::uint32_t rv64_encode_i_type(std::uint32_t opcode, std::uint32_t rd,
+                                 std::uint32_t funct3, std::uint32_t rs1,
+                                 std::int32_t imm12) {
   return ((static_cast<std::uint32_t>(imm12) & 0xfffu) << 20) |
          ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
          ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
 }
 
-constexpr std::uint32_t encode_r_type(std::uint32_t opcode, std::uint32_t rd,
-                                      std::uint32_t funct3, std::uint32_t rs1,
-                                      std::uint32_t rs2, std::uint32_t funct7) {
+std::uint32_t rv64_encode_r_type(std::uint32_t opcode, std::uint32_t rd,
+                                 std::uint32_t funct3, std::uint32_t rs1,
+                                 std::uint32_t rs2, std::uint32_t funct7) {
   return ((funct7 & 0x7fu) << 25) | ((rs2 & 0x1fu) << 20) |
          ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
          ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
 }
 
-constexpr std::uint32_t encode_s_type(std::uint32_t opcode, std::uint32_t funct3,
-                                      std::uint32_t rs1, std::uint32_t rs2,
-                                      std::int32_t imm12) {
+std::uint32_t rv64_encode_s_type(std::uint32_t opcode, std::uint32_t funct3,
+                                 std::uint32_t rs1, std::uint32_t rs2,
+                                 std::int32_t imm12) {
   const auto imm = static_cast<std::uint32_t>(imm12) & 0xfffu;
   return ((imm >> 5) << 25) | ((rs2 & 0x1fu) << 20) |
          ((rs1 & 0x1fu) << 15) | ((funct3 & 0x7u) << 12) |
          ((imm & 0x1fu) << 7) | (opcode & 0x7fu);
 }
 
-constexpr std::uint32_t encode_b_type(std::uint32_t opcode, std::uint32_t funct3,
-                                      std::uint32_t rs1, std::uint32_t rs2,
-                                      std::int32_t imm13) {
+std::uint32_t rv64_encode_b_type(std::uint32_t opcode, std::uint32_t funct3,
+                                 std::uint32_t rs1, std::uint32_t rs2,
+                                 std::int32_t imm13) {
   const auto imm = static_cast<std::uint32_t>(imm13);
   return (((imm >> 12) & 0x1u) << 31) | (((imm >> 5) & 0x3fu) << 25) |
          ((rs2 & 0x1fu) << 20) | ((rs1 & 0x1fu) << 15) |
@@ -46,32 +45,34 @@ constexpr std::uint32_t encode_b_type(std::uint32_t opcode, std::uint32_t funct3
          (((imm >> 11) & 0x1u) << 7) | (opcode & 0x7fu);
 }
 
-constexpr std::uint32_t encode_j_type(std::uint32_t opcode, std::uint32_t rd,
-                                      std::int32_t imm21) {
+std::uint32_t rv64_encode_j_type(std::uint32_t opcode, std::uint32_t rd,
+                                 std::int32_t imm21) {
   const auto imm = static_cast<std::uint32_t>(imm21);
   return (((imm >> 20) & 0x1u) << 31) | (((imm >> 1) & 0x3ffu) << 21) |
          (((imm >> 11) & 0x1u) << 20) | (((imm >> 12) & 0xffu) << 12) |
          ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
 }
 
-constexpr std::uint32_t encode_u_type(std::uint32_t opcode, std::uint32_t rd,
-                                      std::int32_t imm20) {
-  return ((static_cast<std::uint32_t>(imm20) & 0xfffffu) << 12) |
-         ((rd & 0x1fu) << 7) | (opcode & 0x7fu);
+std::uint32_t rv64_encode_u_type(std::uint32_t opcode, std::uint32_t rd,
+                                 std::uint32_t imm20) {
+  return ((imm20 & 0xfffffu) << 12) | ((rd & 0x1fu) << 7) |
+         (opcode & 0x7fu);
 }
 
-void append_le32(std::vector<std::uint8_t>& bytes, std::uint32_t word) {
+void rv64_append_le32(std::vector<std::uint8_t>& bytes, std::uint32_t word) {
   bytes.push_back(static_cast<std::uint8_t>(word & 0xffu));
   bytes.push_back(static_cast<std::uint8_t>((word >> 8) & 0xffu));
   bytes.push_back(static_cast<std::uint8_t>((word >> 16) & 0xffu));
   bytes.push_back(static_cast<std::uint8_t>((word >> 24) & 0xffu));
 }
 
-void append_le64(std::vector<std::uint8_t>& bytes, std::uint64_t word) {
+void rv64_append_le64(std::vector<std::uint8_t>& bytes, std::uint64_t word) {
   for (int shift = 0; shift < 64; shift += 8) {
     bytes.push_back(static_cast<std::uint8_t>((word >> shift) & 0xffu));
   }
 }
+
+namespace {
 
 std::string_view trim_ascii(std::string_view text) {
   while (!text.empty() && (text.front() == ' ' || text.front() == '\t' ||
@@ -718,7 +719,7 @@ std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
     if (!word.has_value()) {
       return std::nullopt;
     }
-    append_le64(bytes, *word);
+    rv64_append_le64(bytes, *word);
     return bytes;
   }
   if (const auto* li = std::get_if<Rv64LiLine>(&line)) {
@@ -726,16 +727,17 @@ std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
     if (!destination.has_value() || !fits_signed_12_bit_immediate(li->immediate)) {
       return std::nullopt;
     }
-    append_le32(bytes,
-                encode_i_type(0x13,
-                              *destination,
-                              0,
-                              0,
-                              static_cast<std::int32_t>(li->immediate)));
+    rv64_append_le32(bytes,
+                     rv64_encode_i_type(
+                         0x13,
+                         *destination,
+                         0,
+                         0,
+                         static_cast<std::int32_t>(li->immediate)));
     return bytes;
   }
   if (std::holds_alternative<Rv64RetLine>(line)) {
-    append_le32(bytes, encode_i_type(0x67, 0, 0, 1, 0));
+    rv64_append_le32(bytes, rv64_encode_i_type(0x67, 0, 0, 1, 0));
     return bytes;
   }
   if (const auto* rv64i = std::get_if<Rv64ILine>(&line)) {
@@ -747,33 +749,51 @@ std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
         if (!rd.has_value() || !rs1.has_value() || !rs2.has_value()) {
           return std::nullopt;
         }
-        append_le32(bytes, encode_r_type(rv64i->opcode, *rd, rv64i->funct3,
-                                         *rs1, *rs2, rv64i->funct7));
+        rv64_append_le32(bytes,
+                         rv64_encode_r_type(rv64i->opcode,
+                                            *rd,
+                                            rv64i->funct3,
+                                            *rs1,
+                                            *rs2,
+                                            rv64i->funct7));
         return bytes;
       case Rv64IFormat::IType:
         if (!rd.has_value() || !rs1.has_value() ||
             !fits_signed_12_bit_immediate(rv64i->immediate)) {
           return std::nullopt;
         }
-        append_le32(bytes, encode_i_type(rv64i->opcode, *rd, rv64i->funct3,
-                                         *rs1,
-                                         static_cast<std::int32_t>(rv64i->immediate)));
+        rv64_append_le32(bytes,
+                         rv64_encode_i_type(
+                             rv64i->opcode,
+                             *rd,
+                             rv64i->funct3,
+                             *rs1,
+                             static_cast<std::int32_t>(rv64i->immediate)));
         return bytes;
       case Rv64IFormat::SType:
         if (!rs1.has_value() || !rs2.has_value() ||
             !fits_signed_12_bit_immediate(rv64i->immediate)) {
           return std::nullopt;
         }
-        append_le32(bytes, encode_s_type(rv64i->opcode, rv64i->funct3, *rs1,
-                                         *rs2,
-                                         static_cast<std::int32_t>(rv64i->immediate)));
+        rv64_append_le32(bytes,
+                         rv64_encode_s_type(
+                             rv64i->opcode,
+                             rv64i->funct3,
+                             *rs1,
+                             *rs2,
+                             static_cast<std::int32_t>(rv64i->immediate)));
         return bytes;
       case Rv64IFormat::UType:
         if (!rd.has_value() || !fits_signed_20_bit_immediate(rv64i->immediate)) {
           return std::nullopt;
         }
-        append_le32(bytes, encode_u_type(rv64i->opcode, *rd,
-                                         static_cast<std::int32_t>(rv64i->immediate)));
+        rv64_append_le32(bytes,
+                         rv64_encode_u_type(
+                             rv64i->opcode,
+                             *rd,
+                             static_cast<std::uint32_t>(
+                                 static_cast<std::int32_t>(
+                                     rv64i->immediate))));
         return bytes;
     }
   }
@@ -784,12 +804,13 @@ std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
         !fits_branch_immediate(branch->immediate)) {
       return std::nullopt;
     }
-    append_le32(bytes,
-                encode_b_type(branch->opcode,
-                              branch->funct3,
-                              *rs1,
-                              *rs2,
-                              static_cast<std::int32_t>(branch->immediate)));
+    rv64_append_le32(bytes,
+                     rv64_encode_b_type(
+                         branch->opcode,
+                         branch->funct3,
+                         *rs1,
+                         *rs2,
+                         static_cast<std::int32_t>(branch->immediate)));
     return bytes;
   }
   if (const auto* jump = std::get_if<Rv64JumpLine>(&line)) {
@@ -798,10 +819,11 @@ std::optional<std::vector<std::uint8_t>> encode_rv64_asm_line(
         !fits_jump_immediate(jump->immediate)) {
       return std::nullopt;
     }
-    append_le32(bytes,
-                encode_j_type(0x6f,
-                              *rd,
-                              static_cast<std::int32_t>(jump->immediate)));
+    rv64_append_le32(bytes,
+                     rv64_encode_j_type(
+                         0x6f,
+                         *rd,
+                         static_cast<std::int32_t>(jump->immediate)));
     return bytes;
   }
   return std::nullopt;

@@ -77,6 +77,43 @@ using Rv64AsmLine =
                  Rv64BranchLine,
                  Rv64JumpLine>;
 
+[[nodiscard]] std::uint32_t rv64_encode_u_type(std::uint32_t opcode,
+                                                std::uint32_t rd,
+                                                std::uint32_t imm20);
+
+[[nodiscard]] std::uint32_t rv64_encode_i_type(std::uint32_t opcode,
+                                                std::uint32_t rd,
+                                                std::uint32_t funct3,
+                                                std::uint32_t rs1,
+                                                std::int32_t imm12);
+
+[[nodiscard]] std::uint32_t rv64_encode_s_type(std::uint32_t opcode,
+                                                std::uint32_t funct3,
+                                                std::uint32_t rs1,
+                                                std::uint32_t rs2,
+                                                std::int32_t imm12);
+
+[[nodiscard]] std::uint32_t rv64_encode_r_type(std::uint32_t opcode,
+                                                std::uint32_t rd,
+                                                std::uint32_t funct3,
+                                                std::uint32_t rs1,
+                                                std::uint32_t rs2,
+                                                std::uint32_t funct7);
+
+[[nodiscard]] std::uint32_t rv64_encode_b_type(std::uint32_t opcode,
+                                                std::uint32_t funct3,
+                                                std::uint32_t rs1,
+                                                std::uint32_t rs2,
+                                                std::int32_t imm13);
+
+[[nodiscard]] std::uint32_t rv64_encode_j_type(std::uint32_t opcode,
+                                                std::uint32_t rd,
+                                                std::int32_t imm21);
+
+void rv64_append_le32(std::vector<std::uint8_t>& bytes, std::uint32_t word);
+
+void rv64_append_le64(std::vector<std::uint8_t>& bytes, std::uint64_t word);
+
 [[nodiscard]] std::optional<Rv64AsmLine> parse_rv64_asm_line(
     std::string_view line);
 
