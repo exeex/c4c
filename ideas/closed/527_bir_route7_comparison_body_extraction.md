@@ -1,6 +1,6 @@
 # BIR Route7 Comparison Body Extraction
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 8 of 13, after `ideas/open/526_bir_route5_publication_body_extraction.md`
@@ -42,6 +42,20 @@ construction owner should be separated before facade cleanup.
   proof passes.
 - Link-time backend proof passes because public query helpers remain in another
   translation unit.
+
+## Completion Note
+
+Closed after the route7 comparison record/index construction bodies were moved
+into `src/backend/bir/bir_route7_comparison.cpp` while keeping route7 public
+declarations in `bir.hpp` and leaving route-index facade bodies plus
+materialized-condition and fused-compare public query helpers in `bir.cpp`.
+
+Close-time focused regression guard passed with the matching six-test route7
+scope: `backend_lir_to_bir_notes`, `backend_prepared_lookup_helper`,
+`backend_aarch64_branch_compare_records`,
+`backend_aarch64_compare_branch_candidate_records`,
+`backend_aarch64_branch_compare_contract`, and
+`backend_aarch64_branch_control_lowering`.
 
 ## Reviewer Reject Signals
 
