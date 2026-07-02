@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/559_bir_runtime_intrinsic_memory_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused Intrinsic Memory Producer Coverage
+Current Step ID: 3
+Current Step Title: Repair Shared Intrinsic Memory Producer Admission
 
 # Current Packet
 
@@ -32,13 +32,17 @@ comparisons, or RV64 object consumers.
 
 ## Suggested Next
 
-Proceed to Step 3 for the remaining `memcpy` producer repair. The
-supervisor-run representative proof shows `src/20041218-1.c` moved off
-`memset runtime family` to downstream RV64 global-data ownership, while
-`src/20000703-1.c` still fails in function `foo` in `memcpy runtime family`.
-The next packet should repair the actual representative `memcpy` shape,
-probably GEP-derived global-source/pointer provenance rather than only the
-direct global-source fixture covered in Step 2.
+Execute Step 3 from `plan.md`: repair the remaining `memcpy` producer shape
+shown by `src/20000703-1.c` in function `foo`. The Step 2 representative proof
+already moved `src/20041218-1.c` off `memset runtime family` to downstream RV64
+global-data ownership, but `src/20000703-1.c` still fails in `memcpy runtime
+family`.
+
+Focus the next packet on the representative `memcpy` source/destination
+provenance gap in `src/backend/bir/lir_to_bir/memory/intrinsics.cpp`, likely
+the GEP-derived global-source or pointer-provenance shape that was not covered
+by the direct declared-global fixture. Prove with focused backend BIR tests and
+the representative allowlist for `src/20000703-1.c` plus `src/20041218-1.c`.
 
 ## Watchouts
 
