@@ -13,6 +13,7 @@ using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::type_size_bytes;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
+using GlobalAddress = BirFunctionLowerer::GlobalAddress;
 
 namespace {
 
@@ -1191,7 +1192,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_direct_memory_intrinsic_call(
     if (typed_call.args.size() != 3 || typed_call.param_types.size() != 3 ||
         c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[0]) != "ptr" ||
         c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[1]) != "ptr" ||
-        c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[2]) != "i64") {
+        (c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[2]) != "i64" &&
+         c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[2]) != "i32")) {
       return fail_memcpy_family();
     }
 
@@ -1208,13 +1210,20 @@ std::optional<bool> BirFunctionLowerer::try_lower_direct_memory_intrinsic_call(
     const std::string src_operand(typed_call.args[1].operand);
     const std::size_t requested_size = static_cast<std::size_t>(copy_size->immediate);
     const auto try_lower_non_local_memcpy_dst = [&]() {
-      if (src_operand.empty() || src_operand.front() != '@') {
+      GlobalAddress source_address;
+      if (!src_operand.empty() && src_operand.front() == '@') {
+        source_address.global_name = src_operand.substr(1);
+      } else if (const auto source_ptr_it = global_pointer_slots_.find(src_operand);
+                 source_ptr_it != global_pointer_slots_.end()) {
+        source_address = source_ptr_it->second;
+      } else {
         return false;
       }
-      const auto source_name = src_operand.substr(1);
+      const auto& source_name = source_address.global_name;
       const auto source_it = global_types_.find(source_name);
       if (source_it == global_types_.end() || !source_it->second.supports_linear_addressing ||
-          requested_size > source_it->second.storage_size_bytes) {
+          source_address.byte_offset > source_it->second.storage_size_bytes ||
+          requested_size > source_it->second.storage_size_bytes - source_address.byte_offset) {
         return false;
       }
       const auto dst_it = pointer_value_addresses_.find(dst_operand);
@@ -1229,24 +1238,25 @@ std::optional<bool> BirFunctionLowerer::try_lower_direct_memory_intrinsic_call(
         const auto chunk_type = chunk_size == 4 ? bir::TypeKind::I32 : bir::TypeKind::I8;
         const std::string copy_name =
             dst_operand + ".memcpy.global.copy." + std::to_string(copied_bytes);
+        const auto source_byte_offset = source_address.byte_offset + copied_bytes;
         lowered_insts->push_back(bir::LoadGlobalInst{
             .result = bir::Value::named(chunk_type, copy_name),
             .global_name = source_name,
             .global_name_id = source_it->second.link_name_id,
-            .byte_offset = copied_bytes,
+            .byte_offset = source_byte_offset,
             .align_bytes = chunk_size,
             .address =
                 bir::MemoryAddress{
                     .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
                     .base_name = source_name,
-                    .byte_offset = static_cast<std::int64_t>(copied_bytes),
+                    .byte_offset = static_cast<std::int64_t>(source_byte_offset),
                     .size_bytes = chunk_size,
                     .align_bytes = chunk_size,
                     .base_link_name_id = source_it->second.link_name_id,
                     .provenance = global_symbol_access_provenance(
                         source_name,
                         source_it->second.link_name_id,
-                        static_cast<std::int64_t>(copied_bytes),
+                        static_cast<std::int64_t>(source_byte_offset),
                         chunk_size,
                         source_it->second.storage_size_bytes),
                 },
@@ -1343,6 +1353,45 @@ std::optional<bool> BirFunctionLowerer::try_lower_direct_memory_intrinsic_call(
     const auto fill_byte = static_cast<std::uint8_t>(fill_value->immediate & 0xff);
     const std::size_t requested_size = static_cast<std::size_t>(fill_size->immediate);
     const auto try_lower_non_local_memset_dst = [&]() {
+      const auto dst_it = pointer_value_addresses_.find(dst_operand);
+      if (dst_it != pointer_value_addresses_.end()) {
+        std::size_t filled_bytes = 0;
+        while (filled_bytes < requested_size) {
+          const std::size_t remaining_bytes = requested_size - filled_bytes;
+          const std::size_t chunk_size = remaining_bytes >= 4 ? 4 : 1;
+          const auto chunk_type = chunk_size == 4 ? bir::TypeKind::I32 : bir::TypeKind::I8;
+          const auto repeated_value =
+              lower_repeated_byte_initializer_value(chunk_type, fill_byte);
+          if (!repeated_value.has_value()) {
+            return false;
+          }
+          const std::string scratch_slot = dst_operand + ".memset.store.addr." +
+                                           std::to_string(filled_bytes);
+          if (!ensure_local_scratch_slot(scratch_slot, chunk_type, chunk_size)) {
+            return false;
+          }
+          const auto byte_offset =
+              static_cast<std::int64_t>(dst_it->second.byte_offset + filled_bytes);
+          lowered_insts->push_back(bir::StoreLocalInst{
+              .slot_name = scratch_slot,
+              .value = *repeated_value,
+              .address =
+                  bir::MemoryAddress{
+                      .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                      .base_value = dst_it->second.base_value,
+                      .byte_offset = byte_offset,
+                      .size_bytes = chunk_size,
+                      .align_bytes = chunk_size,
+                      .provenance = pointer_address_access_provenance(
+                          dst_it->second,
+                          byte_offset,
+                          chunk_size),
+                  },
+          });
+          filled_bytes += chunk_size;
+        }
+        return true;
+      }
       if (dst_operand.empty() || dst_operand.front() != '@') {
         return false;
       }

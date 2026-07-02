@@ -297,7 +297,9 @@ int expect_structured_signature_return_materializes_sret_from_type_ref();
 int expect_metadata_rich_signature_return_without_struct_id_fails_closed();
 int expect_signature_return_with_mismatched_struct_id_fails_closed();
 int expect_runtime_memcpy_pointer_destination_publishes_memory_effect();
+int expect_runtime_memcpy_global_gep_source_publishes_memory_effect();
 int expect_runtime_memset_global_destination_publishes_memory_effect();
+int expect_runtime_memset_pointer_destination_publishes_memory_effect();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -12396,6 +12398,122 @@ int expect_runtime_memcpy_pointer_destination_publishes_memory_effect() {
   return 0;
 }
 
+LirModule make_runtime_memcpy_global_gep_source_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.RuntimeMemcpyBaz = type { [17 x i8], [3 x i8], i32, i32 }");
+
+  LirGlobal source;
+  source.name = "runtime_memcpy_gep_source";
+  source.link_name_id = module.link_names.intern("runtime_memcpy_gep_source");
+  source.qualifier = "private unnamed_addr constant ";
+  source.llvm_type = "[4 x i8]";
+  source.init_text = "c\"abc\\00\"";
+  source.align_bytes = 1;
+  module.globals.push_back(std::move(source));
+
+  LirFunction function;
+  function.name = "runtime_memcpy_global_gep_source";
+  function.signature_text = "define void @runtime_memcpy_global_gep_source(ptr %p.p)";
+  function.params.emplace_back("%p.p", c4c::TypeSpec{.base = c4c::TB_VOID, .ptr_level = 1});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%dst.member"),
+      .element_type = "%struct.RuntimeMemcpyBaz",
+      .ptr = LirOperand("%p.p"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 1")},
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%dst.bytes"),
+      .element_type = "[3 x i8]",
+      .ptr = LirOperand("%dst.member"),
+      .indices = {LirOperand("i64 0"), LirOperand("i64 0")},
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%src.bytes"),
+      .element_type = "[4 x i8]",
+      .ptr = LirOperand("@runtime_memcpy_gep_source"),
+      .indices = {LirOperand("i64 0"), LirOperand("i64 0")},
+  });
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand("%call.result"),
+      .return_type = "ptr",
+      .callee = LirOperand("@memcpy"),
+      .callee_type_suffix = "(ptr, ptr, i32)",
+      .args_str = "ptr %dst.bytes, ptr %src.bytes, i32 3",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_runtime_memcpy_global_gep_source_publishes_memory_effect() {
+  auto result = try_lower_to_bir_with_options(make_runtime_memcpy_global_gep_source_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("runtime memcpy global-GEP-source fixture should lower semantically");
+  }
+
+  bool saw_global_gep_source_load = false;
+  bool saw_pointer_destination_store = false;
+  for (const auto& function : result.module->functions) {
+    if (function.name != "runtime_memcpy_global_gep_source") {
+      continue;
+    }
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst);
+            load != nullptr && load->global_name == "runtime_memcpy_gep_source" &&
+            load->global_name_id != c4c::kInvalidLinkName && load->byte_offset == 0 &&
+            load->align_bytes == 1 && load->address.has_value() &&
+            load->address->base_kind == bir::MemoryAddress::BaseKind::GlobalSymbol &&
+            load->address->base_name == "runtime_memcpy_gep_source" &&
+            load->address->base_link_name_id == load->global_name_id &&
+            load->address->size_bytes == 1 &&
+            load->address->provenance.base_identity.kind ==
+                bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol &&
+            load->address->provenance.base_identity.link_name_id == load->global_name_id &&
+            load->address->provenance.requested_range.available &&
+            load->address->provenance.requested_range.size_bytes == 1 &&
+            load->address->provenance.range_verdict == bir::MemoryRangeVerdict::ProvenInBounds) {
+          saw_global_gep_source_load = true;
+        } else if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+                   store != nullptr && store->value.name.find("%dst.bytes.memcpy.global.copy.") == 0 &&
+                   store->address.has_value() &&
+                   store->address->base_kind == bir::MemoryAddress::BaseKind::PointerValue &&
+                   store->address->base_value == bir::Value::named(TypeKind::Ptr, "%p.p") &&
+                   store->address->byte_offset >= 17 &&
+                   store->address->byte_offset < 20 &&
+                   store->address->size_bytes == 1 &&
+                   store->address->provenance.base_identity.kind ==
+                       bir::MemoryProvenanceBaseIdentityKind::FormalParameter &&
+                   store->address->provenance.base_identity.spelling == "%p.p" &&
+                   store->address->provenance.requested_range.available &&
+                   store->address->provenance.requested_range.size_bytes == 1 &&
+                   store->address->provenance.range_verdict ==
+                       bir::MemoryRangeVerdict::UnknownCompatible) {
+          saw_pointer_destination_store = true;
+        }
+      }
+    }
+  }
+
+  if (!saw_global_gep_source_load || !saw_pointer_destination_store) {
+    return fail("runtime memcpy should publish global-GEP-source and pointer-destination memory facts");
+  }
+  return 0;
+}
+
 LirModule make_runtime_memset_global_destination_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
@@ -12473,6 +12591,91 @@ int expect_runtime_memset_global_destination_publishes_memory_effect() {
 
   if (!saw_global_store) {
     return fail("runtime memset should publish global-destination memory facts");
+  }
+  return 0;
+}
+
+LirModule make_runtime_memset_pointer_destination_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  LirFunction function;
+  function.name = "runtime_memset_pointer_destination";
+  function.signature_text = "define void @runtime_memset_pointer_destination(ptr %p.p)";
+  function.params.emplace_back("%p.p", c4c::TypeSpec{.base = c4c::TB_VOID, .ptr_level = 1});
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.s"),
+      .type_str = "ptr",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "ptr",
+      .val = LirOperand("%p.p"),
+      .ptr = LirOperand("%lv.s"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.ptr"),
+      .type_str = "ptr",
+      .ptr = LirOperand("%lv.s"),
+  });
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand("%call.result"),
+      .return_type = "ptr",
+      .callee = LirOperand("@memset"),
+      .callee_type_suffix = "(ptr, i32, i64)",
+      .args_str = "ptr %loaded.ptr, i32 0, i64 28",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_runtime_memset_pointer_destination_publishes_memory_effect() {
+  auto result = try_lower_to_bir_with_options(make_runtime_memset_pointer_destination_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("runtime memset pointer-destination fixture should lower semantically");
+  }
+
+  bool saw_pointer_destination_store = false;
+  for (const auto& function : result.module->functions) {
+    if (function.name != "runtime_memset_pointer_destination") {
+      continue;
+    }
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+            store != nullptr && store->slot_name.find("%loaded.ptr.memset.store.addr.") == 0 &&
+            store->value == bir::Value::immediate_i32(0) &&
+            store->address.has_value() &&
+            store->address->base_kind == bir::MemoryAddress::BaseKind::PointerValue &&
+            store->address->base_value == bir::Value::named(TypeKind::Ptr, "%loaded.ptr") &&
+            store->address->byte_offset == 0 &&
+            store->address->size_bytes == 4 &&
+            store->address->provenance.requested_range.available &&
+            store->address->provenance.requested_range.size_bytes == 4 &&
+            store->address->provenance.range_verdict ==
+                bir::MemoryRangeVerdict::UnknownCompatible) {
+          saw_pointer_destination_store = true;
+        }
+      }
+    }
+  }
+
+  if (!saw_pointer_destination_store) {
+    return fail("runtime memset should publish pointer-destination memory facts");
   }
   return 0;
 }
@@ -13999,10 +14202,22 @@ int main() {
     return runtime_memcpy_pointer_dst_status;
   }
 
+  if (const int runtime_memcpy_global_gep_src_status =
+          expect_runtime_memcpy_global_gep_source_publishes_memory_effect();
+      runtime_memcpy_global_gep_src_status != 0) {
+    return runtime_memcpy_global_gep_src_status;
+  }
+
   if (const int runtime_memset_global_dst_status =
           expect_runtime_memset_global_destination_publishes_memory_effect();
       runtime_memset_global_dst_status != 0) {
     return runtime_memset_global_dst_status;
+  }
+
+  if (const int runtime_memset_pointer_dst_status =
+          expect_runtime_memset_pointer_destination_publishes_memory_effect();
+      runtime_memset_pointer_dst_status != 0) {
+    return runtime_memset_pointer_dst_status;
   }
 
   if (const int dynamic_gep_lane_status = expect_success_without_function_note(
