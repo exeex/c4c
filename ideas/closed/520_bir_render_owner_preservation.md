@@ -1,11 +1,24 @@
 # BIR Render Owner Preservation
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 1 of 13, before route body extraction and before `ideas/open/519_rv64_object_emission_cleanup_umbrella.md`
 Owning Layer: BIR printer/render helper ownership
 Source Artifact: `docs/bir_core_cleanup/follow_up_ideas.md`
+
+## Closure Note
+
+Closed after moving `render_type`, `render_binary_opcode`, and
+`render_cast_opcode` from central `bir.cpp` into a narrow public render
+translation unit. The audit found mixed public/non-printer consumers, so the
+helpers were not moved under `bir_printer.cpp`; public declarations and
+render/diagnostic behavior were preserved.
+
+Close proof used the accepted backend subset validation for the ownership move:
+default build plus `ctest --test-dir build -j --output-on-failure -R
+'^backend_'` passed, and the regression guard showed 345/345 backend tests
+passing with no new failures.
 
 ## Goal
 
