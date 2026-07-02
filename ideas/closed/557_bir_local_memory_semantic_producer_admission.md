@@ -1,6 +1,6 @@
 # BIR Local-Memory Semantic Producer Admission
 
-Status: Open
+Status: Closed
 Type: Producer implementation follow-up
 Parent: `ideas/closed/545_bir_semantic_producer_admission_reconstruction.md`
 Owning Layer: BIR semantic producer
@@ -49,6 +49,24 @@ semantic memory facts first.
   `src/20000519-1.c`, and `src/20050604-1.c`, or documents a stronger
   current substitute.
 - No downstream consumer guesses missing BIR facts.
+
+## Completion Note
+
+Closed on 2026-07-02 after Step 14 reconciliation showed the five
+representative RV64 rows had all moved off their local-memory semantic
+producer-admission families:
+
+- `src/20000314-1.c`: downstream `unsupported_instruction_fragment`.
+- `src/20000717-4.c`: downstream
+  `ambiguous_non_parallel_multi_source_stack_destination`.
+- `src/20001026-1.c`: downstream `unsupported_instruction_fragment`.
+- `src/20000519-1.c`: downstream `unsupported_local_memory_access`.
+- `src/20050604-1.c`: downstream `scalar-binop semantic family`.
+
+The remaining failures belong to already separate downstream/open lanes such
+as RV64 instruction fragments, prepared local-memory authority, and
+scalar/signature/control semantic producer admission. They are intentionally
+not absorbed into this local-memory producer idea.
 
 ## Reviewer Reject Signals
 
