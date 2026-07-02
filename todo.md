@@ -1,63 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/557_bir_local_memory_semantic_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Reinspect Remaining Local-Memory Admission Boundary
+Current Step ID: 6
+Current Step Title: Pin The Selected Admission Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 inspection completed. The first remaining producer/admission boundary
-after the local-slot `MemoryAddress` repair is the direct local-slot
-load/store path for pointer-value local memory accesses: the byte-array
-widened path now publishes provenance-rich `MemoryAddress` records, but exact
-same-slot `LoadLocalInst`/`StoreLocalInst` branches in
-`memory/local_slots.cpp` still emit bare local instructions and the pointer
-slot store/load helpers also finish through bare local slot carriers after
-recording side-table address state.
+Step 6 was attempted and is blocked. The testcase/process-shaped helper name
+and RV64 exclusion from the first slice were removed. A revised neutral
+producer rule was also tried: publish local-slot `MemoryAddress` facts for
+direct scalar store/load accesses to local alloca aggregate-field slots, with
+RV64 enabled and byval parameter copy slots excluded by slot ownership rather
+than target.
 
-Selected shared boundary: publish/admit complete producer-owned address facts
-for direct local-slot pointer-value stores and loads, including local-slot
-identity, requested range, known extent, layout authority, and in-bounds
-verdict when the local slot extent is known.
-
-Representative row to prove first: `src/20001026-1.c`
-(`build_real_from_int_cst_1`, store local-memory semantic family), because its
-`args->d = real_value_from_int_cst(...)` assignment is the store-family seed
-and exercises a derived local aggregate write through a pointer before the
-backend-object handoff.
+That general rule pinned the intended `backend_lir_to_bir_notes_test.cpp`
+contract, but it broke existing prepared/codegen route identity expectations.
+Because the route-consumer repair is larger than this Step 6 coverage packet,
+the implementation and focused test additions were removed from the worktree.
 
 ## Suggested Next
 
-Execute Step 6 in `plan.md` for this boundary. Add focused
-`backend_lir_to_bir_notes_test.cpp` coverage that constructs a local aggregate
-or local pointer-derived store fixture matching the `20001026-1` shape and
-asserts the resulting direct `StoreLocalInst` carries a `MemoryAddress` with
-local-slot provenance, requested range, complete known extent, scalar/local
-layout authority, and an in-bounds verdict. Include the neighboring direct
-same-slot `LoadLocalInst` case in the same family so the repair cannot be
-testcase-shaped around the store seed alone.
+Route review or split the next packet before implementing Step 7. The next
+coherent packet should decide how prepared/route consumers should treat
+producer-published direct local-slot address facts without changing existing
+byval aggregate and source-identity contracts.
 
 ## Watchouts
 
-- The five current representative `case.log` files still show only family
-  admission notes: `20000314-1` load, `20000717-4` GEP, `20001026-1` store,
-  `20000519-1` scalar/local-memory, and `20050604-1` alloca.
-- This can stay in the current source idea. The selected gap is producer-side
-  local-memory fact publication/admission, not a distinct lifecycle initiative.
-- Do not change expectations, unsupported markers, allowlists, runtime
-  comparison behavior, or semantic admission strength.
-- If Step 6 proves the `20001026-1` store failure is instead an aggregate-copy
-  lowering miss with no direct same-slot address carrier, keep the packet in
-  this source idea but retarget the focused test to derived local aggregate
-  store publication rather than splitting lifecycle state.
+Exact failing evidence from the neutral general-rule attempt:
+- `backend_codegen_route_riscv64_byval_aggregate_fixed_call` failed with
+  missing snippet `lw t3, 32(sp)`.
+- `backend_store_source_publication_plan` failed with `expected BIR load-local
+  source identity to match prepared oracle`.
+- `backend_aarch64_prepared_scalar_alu_records` failed with `expected Route
+  3/prepared source mismatch to reject source-home operand`.
+- `backend_prepared_lookup_helper` failed with `BIR load-local memory identity
+  should match prepared semantic fields`.
+
+These failures show that publishing direct local-slot address facts is not only
+a producer-side contract; route/prepared consumers currently attach meaning to
+the presence of those facts.
 
 ## Proof
 
-Inspection packet only. No build or test command was required or run. Evidence
-inspected: the five current `case.log` files under
-`build/rv64_gcc_c_torture_backend/`, the five representative C sources,
-`docs/rv64_gcc_torture_post_contract/bir_local_memory_producer_boundary.md`,
-focused local-memory coverage in `tests/backend/bir/backend_lir_to_bir_notes_test.cpp`,
-and local-memory producer paths in `src/backend/bir/lir_to_bir/memory/`.
+Command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
+
+Result after removing the blocked implementation/test additions: passed,
+`345/345` backend tests. Proof log: `test_after.log`.
