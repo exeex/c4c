@@ -1,37 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/537_rv64_object_local_memory_helper_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prune only genuinely dead local-memory wrappers
+Current Step ID: 4
+Current Step Title: Close-readiness review
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 from `plan.md` reviewed the remaining object-route local-memory wrapper state and pruned only the dead wrapper confirmed by direct caller review.
+Step 4 from `plan.md` compared the final RV64 object local-memory helper boundary against `ideas/open/537_rv64_object_local_memory_helper_cleanup.md` and found the runbook ready for plan-owner closure evaluation.
 
-Removed:
-- `prepared_frame_slot_absolute_offset` from `object_emission.cpp`; `c4c-clang-tool-ccdb function-callers` reported no direct callers in the translation unit, and `rg` found only the definition.
-
-Retained with call-site reasons:
-- `fragment_for_prepared_store_local` and `fragment_for_prepared_load_local` stay exported from `prepared_local_memory_emit.*`; direct callers are the object-route `fragment_for_prepared_instruction` store/load dispatch cases.
-- `prepared_frame_slot_absolute_byte_offset`, `prepared_byval_stack_slot_pointer_access_offset`, and `prepared_sret_stack_slot_pointer_access` stay exported for `diagnose_unsupported_prepared_instruction_fragment`, with additional direct use inside local store/load emission.
-- `prepared_pointer_value_base_offset`, `prepared_frame_slot_address_materialization_offset`, and `rv64_local_memory_size_for_type` stay live through direct local store/load helper callers; `rv64_local_memory_size_for_type` is also used by `diagnose_unsupported_prepared_param_homes`.
-- `fragment_for_prepared_frame_address_materialization`, global symbol materialization, pcrel/object fixup helpers, data-object emission, relocation/ELF writing, and module assembly remain parked in `object_emission.cpp` because they are outside this local-memory wrapper cleanup packet.
+Close-readiness findings:
+- Local frame-slot load/store, local pointer materialization, and pointer-value base-plus-offset helper ownership is now separated into `prepared_local_memory_emit.*`.
+- Global symbol materialization, prepared data-object emission, pcrel/object fixup helpers, relocation/ELF writing, and module assembly remain outside the local-memory helper boundary.
+- Prepared access facts, stack-layout facts, value-home lookup usage, and diagnostics remain preserved through the extracted helper API and retained diagnostic-facing declarations.
+- No tests, expectations, unsupported markers, local-array semantics, pointer provenance, or prepared memory facts were weakened as part of this runbook.
+- The only pruned wrapper was the genuinely dead `prepared_frame_slot_absolute_offset`; other retained parked helpers have live call-site or mixed-ownership reasons recorded by Step 3.
 
 ## Suggested Next
 
-Supervisor should review/commit the Step 3 cleanup slice, then decide whether the active plan is exhausted enough for lifecycle review.
+Supervisor should hand this active runbook to the plan owner for closure evaluation after reviewing/committing the completed cleanup slice.
 
 ## Watchouts
 
-- Tests, expectation files, unsupported markers, local-array semantics, pointer provenance, and prepared memory facts remain unchanged.
-- No additional parked local-memory wrapper was found with zero direct callers in the owned files.
-- This packet did not move global/object fixup helpers; that remains outside the Step 3 boundary.
+- Remaining parked global/address/object-data helpers belong outside this source idea; any further extraction should be proposed as a later open cleanup idea instead of expanding this runbook.
+- This Step 4 packet made no implementation, test, expectation, or unsupported-marker changes.
+- Plan closure should remain distinct from deciding whether broader RV64 object-route cleanup initiatives exist.
 
 ## Proof
 
-Supervisor-selected Step 3 proof passed and wrote `test_after.log`:
+No build was required for review-only Step 4. Close-readiness relies on the already-passing Step 2/3 proof recorded by the supervisor-selected command:
 
 ```bash
 bash -o pipefail -c "cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(riscv_object_emission|codegen_route_riscv64_prepared_local_array|obj_runtime_rv64_local_temp|obj_runtime_rv64_large_fixed_frame_slot_access|rv64_runtime_riscv64_pointer_to_pointer_local_address)'" > test_after.log 2>&1
