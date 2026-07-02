@@ -249,6 +249,26 @@ void publish_runtime_local_pointer_slot_address(std::string_view slot_name,
   return arch == c4c::TargetArch::Aarch64 || arch == c4c::TargetArch::Riscv64;
 }
 
+[[nodiscard]] std::optional<bir::MemoryAddress> direct_scalar_local_slot_address(
+    std::string_view slot_name,
+    bir::TypeKind value_type) {
+  if (value_type == bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+  const auto slot_size = type_size_bytes(value_type);
+  if (slot_size == 0) {
+    return std::nullopt;
+  }
+  return bir::MemoryAddress{
+      .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+      .base_name = std::string(slot_name),
+      .byte_offset = 0,
+      .size_bytes = slot_size,
+      .align_bytes = slot_size,
+      .provenance = local_slot_access_provenance(slot_name, 0, slot_size, slot_size),
+  };
+}
+
 std::optional<bir::Value> symbol_pointer_value_for_global_address(
     const lir_to_bir_detail::GlobalAddress& address,
     const BirFunctionLowerer::GlobalTypes& global_types) {
@@ -1447,6 +1467,7 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_store(
     lowered_insts->push_back(bir::StoreLocalInst{
         .slot_name = local_slot_ptr.slot_name,
         .value = value,
+        .address = direct_scalar_local_slot_address(local_slot_ptr.slot_name, value_type),
     });
     return true;
   }
@@ -1577,6 +1598,7 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
     lowered_insts->push_back(bir::LoadLocalInst{
         .result = bir::Value::named(value_type, result),
         .slot_name = local_slot_ptr.slot_name,
+        .address = direct_scalar_local_slot_address(local_slot_ptr.slot_name, value_type),
     });
     return true;
   }
@@ -1922,6 +1944,7 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
   lowered_insts->push_back(bir::StoreLocalInst{
       .slot_name = ptr_it->second,
       .value = value,
+      .address = direct_scalar_local_slot_address(ptr_it->second, value_type),
   });
   return LocalSlotStoreResult::Lowered;
 }
@@ -1946,6 +1969,7 @@ bool BirFunctionLowerer::try_lower_nonpointer_local_slot_load(
   lowered_insts->push_back(bir::LoadLocalInst{
       .result = bir::Value::named(value_type, result),
       .slot_name = slot,
+      .address = direct_scalar_local_slot_address(slot, value_type),
   });
   return true;
 }

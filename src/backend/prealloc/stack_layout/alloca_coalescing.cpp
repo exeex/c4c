@@ -13,6 +13,7 @@ namespace {
 
 using SlotBlockSet = std::unordered_map<std::string_view, std::unordered_set<std::size_t>>;
 using SlotNameSet = std::unordered_set<std::string_view>;
+using SlotTypeMap = std::unordered_map<std::string_view, bir::TypeKind>;
 using RootNameSet = std::unordered_set<std::string_view>;
 using PointerAliasMap = std::unordered_map<std::string_view, RootNameSet>;
 
@@ -128,6 +129,7 @@ void record_local_slot_pointer_escape(const bir::Value& value,
 void record_memory_address_use(const std::optional<bir::MemoryAddress>& address,
                                std::size_t block_index,
                                const SlotNameSet& local_slot_names,
+                               const SlotTypeMap& local_slot_types,
                                const PointerAliasMap& pointer_aliases,
                                SlotUseSummary& summary) {
   if (!address.has_value()) {
@@ -136,6 +138,27 @@ void record_memory_address_use(const std::optional<bir::MemoryAddress>& address,
 
   if (address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot && !address->base_name.empty()) {
     summary.use_blocks[address->base_name].insert(block_index);
+    const auto slot_type_it = local_slot_types.find(address->base_name);
+    const std::size_t slot_size =
+        slot_type_it != local_slot_types.end() ? fallback_type_size(slot_type_it->second) : 0;
+    const bool self_contained_scalar_local_fact =
+        slot_size != 0 &&
+        slot_size == address->size_bytes &&
+        address->byte_offset == 0 &&
+        address->provenance.base_identity.kind ==
+            bir::MemoryProvenanceBaseIdentityKind::LocalSlot &&
+        address->provenance.base_identity.spelling == address->base_name &&
+        address->provenance.requested_range.available &&
+        address->provenance.requested_range.begin == 0 &&
+        address->provenance.requested_range.size_bytes == address->size_bytes &&
+        address->provenance.object_extent.completeness ==
+            bir::MemoryObjectExtentCompleteness::Complete &&
+        address->provenance.object_extent.size_bytes == address->size_bytes &&
+        address->provenance.layout_authority ==
+            bir::MemoryLayoutAuthorityKind::ScalarLayout;
+    if (self_contained_scalar_local_fact) {
+      return;
+    }
     summary.addressed_slots.insert(address->base_name);
     return;
   }
@@ -213,10 +236,20 @@ void record_call_pointer_uses(const bir::CallInst& call,
   for (const auto& operand : call.inline_asm->operands) {
     if (operand.kind == bir::InlineAsmOperandKind::MemoryInput) {
       record_memory_address_use(
-          operand.memory_address, block_index, local_slot_names, pointer_aliases, summary);
+          operand.memory_address,
+          block_index,
+          local_slot_names,
+          SlotTypeMap{},
+          pointer_aliases,
+          summary);
     } else if (operand.kind == bir::InlineAsmOperandKind::AddressInput) {
       record_memory_address_use(
-          operand.address, block_index, local_slot_names, pointer_aliases, summary);
+          operand.address,
+          block_index,
+          local_slot_names,
+          SlotTypeMap{},
+          pointer_aliases,
+          summary);
     }
   }
 }
@@ -225,6 +258,11 @@ void record_call_pointer_uses(const bir::CallInst& call,
                                                       const SlotNameSet& local_slot_names) {
   SlotUseSummary summary;
   PointerAliasMap pointer_aliases;
+  SlotTypeMap local_slot_types;
+  local_slot_types.reserve(function.local_slots.size());
+  for (const auto& slot : function.local_slots) {
+    local_slot_types.emplace(slot.name, slot.type);
+  }
   const BlockIndexLookup block_indices = build_block_index_lookup(function);
 
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
@@ -234,26 +272,46 @@ void record_call_pointer_uses(const bir::CallInst& call,
         summary.use_blocks[load->slot_name].insert(block_index);
         summary.direct_access_slots.insert(load->slot_name);
         record_memory_address_use(
-            load->address, block_index, local_slot_names, pointer_aliases, summary);
+            load->address,
+            block_index,
+            local_slot_names,
+            local_slot_types,
+            pointer_aliases,
+            summary);
         continue;
       }
       if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst); store != nullptr) {
         summary.use_blocks[store->slot_name].insert(block_index);
         summary.direct_access_slots.insert(store->slot_name);
         record_memory_address_use(
-            store->address, block_index, local_slot_names, pointer_aliases, summary);
+            store->address,
+            block_index,
+            local_slot_names,
+            local_slot_types,
+            pointer_aliases,
+            summary);
         record_local_slot_pointer_escape(
             store->value, block_index, local_slot_names, pointer_aliases, summary);
         continue;
       }
       if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst); load != nullptr) {
         record_memory_address_use(
-            load->address, block_index, local_slot_names, pointer_aliases, summary);
+            load->address,
+            block_index,
+            local_slot_names,
+            local_slot_types,
+            pointer_aliases,
+            summary);
         continue;
       }
       if (const auto* store = std::get_if<bir::StoreGlobalInst>(&inst); store != nullptr) {
         record_memory_address_use(
-            store->address, block_index, local_slot_names, pointer_aliases, summary);
+            store->address,
+            block_index,
+            local_slot_names,
+            local_slot_types,
+            pointer_aliases,
+            summary);
         record_local_slot_pointer_escape(
             store->value, block_index, local_slot_names, pointer_aliases, summary);
         continue;

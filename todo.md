@@ -8,30 +8,25 @@ Current Step Title: Pin Direct Local-Slot Publication And Route Compatibility
 
 ## Just Finished
 
-Lifecycle rewrite after `review/local_memory_step6_route_review.md`.
-Step 6 is no longer a producer-only coverage packet. The active runbook now
-requires the next executor to pin direct local-slot address publication and the
-prepared/codegen route compatibility for those same facts before reintroducing
-implementation.
+Step 6 - Pin Direct Local-Slot Publication And Route Compatibility completed.
+The slice adds focused coverage for direct same-slot scalar local store/load
+publication, prepared/MIR route consumption of those LocalSlot address facts,
+and byval/source-identity guardrails from the blocked attempt.
 
-The source idea remains active and unchanged. The reviewer found the committed
-local-slot producer work semantic and aligned, but the reverted Step 6 attempt
-showed that direct local-slot address facts affect prepared/source identity and
-byval aggregate route behavior.
+Implementation was required because the notes harness does not keep expected
+failures. Direct scalar local-slot store/load paths now publish neutral
+LocalSlot `MemoryAddress` provenance, requested range, complete scalar extent,
+and scalar layout authority. Pointer-valued direct local stores/loads remain
+addressless to preserve pointer-carrier provenance. Stack-layout classification
+now treats self-contained scalar LocalSlot facts as metadata, not address-taking
+uses, while byte-storage overlays and real addressed local uses still require
+home-slot/address-exposed behavior.
 
 ## Suggested Next
 
-Execute Step 6 by adding or extending focused tests that define:
-
-- direct local-slot address publication for same-slot scalar store/load paths;
-- prepared/route consumer behavior for those facts;
-- byval aggregate and source-identity guardrails exposed by the blocked
-  attempt.
-
-Keep `src/20001026-1.c` as the first store-family representative proof seed,
-not as the contract shape. After code or test changes, use backend-focused
-proof first, then the selected RV64 backend-object representative proof when
-delegated by the supervisor.
+Proceed to Step 7 with a narrow representative producer/admission packet for
+`src/20001026-1.c`, using the new direct scalar LocalSlot facts as the semantic
+contract rather than matching the testcase shape.
 
 ## Watchouts
 
@@ -39,20 +34,14 @@ Reject target exclusions, testcase/helper-name shaped rules, expectation
 rewrites, unsupported-marker changes, allowlist changes, and RV64/MIR inference.
 Do not infer prepared/route compatibility from the RV64 row alone.
 
-The blocked neutral attempt failed these existing expectations:
-
-- `backend_codegen_route_riscv64_byval_aggregate_fixed_call`: missing snippet
-  `lw t3, 32(sp)`.
-- `backend_store_source_publication_plan`: expected BIR load-local source
-  identity to match prepared oracle.
-- `backend_aarch64_prepared_scalar_alu_records`: expected Route 3/prepared
-  source mismatch to reject source-home operand.
-- `backend_prepared_lookup_helper`: BIR load-local memory identity should match
-  prepared semantic fields.
-
-Step 7 should not resume implementation until Step 6 pins how those route
-consumers should accept or semantically reject direct local-slot facts.
+During this packet, broad scalar LocalSlot address publication initially marked
+ordinary locals address-exposed and disturbed RV64/byval route expectations.
+The accepted implementation is intentionally limited to non-pointer direct
+scalar locals and keeps self-contained scalar LocalSlot facts from forcing
+address-taken stack objects.
 
 ## Proof
 
-Lifecycle-only rewrite. No code validation was run.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
+
+Result: passed, `345/345` backend tests. Proof log: `test_after.log`.

@@ -530,6 +530,21 @@ int classifies_byval_load_local_source_from_prepared_authority() {
       plan.source_load_local != &load) {
     return fail("expected byval load-local source from prepared authority");
   }
+
+  auto frame_slot_addressing = addressing;
+  frame_slot_addressing.accesses.front().address =
+      prepare::PreparedAddress{
+          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+          .frame_slot_id = 9,
+          .byte_offset = 8,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .can_use_base_plus_offset = true,
+      };
+  if (prepare::prepared_store_source_load_local_is_byval_formal_pointer_source(
+          names, &function, &frame_slot_addressing, &producer)) {
+    return fail("byval source classification should reject local frame-slot authority");
+  }
   return 0;
 }
 
@@ -938,6 +953,116 @@ int finds_unpublished_load_local_source_from_indexed_authority() {
           bir::Value::named(bir::TypeKind::I64, "%loaded"),
           2)) {
     return fail("expected BIR/prepared load-local source to fail closed for same-slot intervening store");
+  }
+
+  return 0;
+}
+
+int direct_local_slot_address_facts_match_prepared_route_consumers() {
+  prepare::PreparedNameTables names;
+  const auto block_label = c4c::BlockLabelId{23};
+  const auto slot_id = prepare::PreparedFrameSlotId{9};
+  const auto stored_name = names.value_names.intern("%stored");
+  const auto loaded_name = names.value_names.intern("%loaded");
+
+  prepare::PreparedStackLayout stack_layout;
+  stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = 4,
+      .function_name = 17,
+      .offset_bytes = 64,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  auto direct_address = [slot_id] {
+    return bir::MemoryAddress{
+        .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+        .base_name = "slot",
+        .byte_offset = 0,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .base_slot_id = static_cast<c4c::SlotNameId>(slot_id),
+    };
+  };
+
+  bir::Block block;
+  block.label = "entry";
+  block.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "slot",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+      .value = bir::Value::named(bir::TypeKind::I32, "%stored"),
+      .byte_offset = 0,
+      .align_bytes = 4,
+      .address = direct_address(),
+  });
+  block.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+      .slot_name = "slot",
+      .slot_id = static_cast<c4c::SlotNameId>(slot_id),
+      .byte_offset = 0,
+      .align_bytes = 4,
+      .address = direct_address(),
+  });
+
+  const auto* load = std::get_if<bir::LoadLocalInst>(&block.insts[1]);
+  prepare::PreparedEdgePublicationSourceProducerLookups source_producers;
+  source_producers.producers_by_value_name.emplace(
+      loaded_name,
+      prepare::PreparedEdgePublicationSourceProducer{
+          .kind = prepare::PreparedEdgePublicationSourceProducerKind::LoadLocal,
+          .block_label = block_label,
+          .instruction_index = 1,
+          .load_local = load,
+      });
+
+  prepare::PreparedAddressingFunction addressing;
+  auto store_access = frame_slot_store_access(stored_name, slot_id, 0);
+  store_access.inst_index = 0;
+  store_access.address.size_bytes = 4;
+  store_access.address.align_bytes = 4;
+  auto load_access = frame_slot_load_access(loaded_name, slot_id, 1, 0);
+  load_access.address.size_bytes = 4;
+  load_access.address.align_bytes = 4;
+  addressing.accesses = {store_access, load_access};
+  const auto memory_accesses =
+      prepare::make_prepared_memory_access_lookups(&addressing);
+
+  if (!prepared_and_bir_load_local_source_match(
+          names,
+          stack_layout,
+          memory_accesses,
+          source_producers,
+          block_label,
+          block,
+          bir::Value::named(bir::TypeKind::I32, "%loaded"),
+          block.insts.size())) {
+    return fail("direct local-slot load source should match prepared route authority");
+  }
+  if (!prepared_and_bir_load_local_stored_source_match(
+          names,
+          stack_layout,
+          addressing,
+          source_producers,
+          block_label,
+          block,
+          bir::Value::named(bir::TypeKind::I32, "%loaded"),
+          block.insts.size())) {
+    return fail("direct local-slot stored source should match prepared route authority");
+  }
+
+  auto drifted_prepared = addressing;
+  drifted_prepared.accesses[0].address.byte_offset = 4;
+  if (prepared_and_bir_load_local_stored_source_match(
+          names,
+          stack_layout,
+          drifted_prepared,
+          source_producers,
+          block_label,
+          block,
+          bir::Value::named(bir::TypeKind::I32, "%loaded"),
+          block.insts.size())) {
+    return fail("direct local-slot stored source should reject prepared address drift");
   }
 
   return 0;
@@ -1593,6 +1718,10 @@ int main() {
     return rc;
   }
   if (int rc = classifies_byval_load_local_source_from_prepared_authority(); rc != 0) {
+    return rc;
+  }
+  if (int rc = direct_local_slot_address_facts_match_prepared_route_consumers();
+      rc != 0) {
     return rc;
   }
   if (int rc = records_direct_global_select_chain_dependency_from_prepared_authority();

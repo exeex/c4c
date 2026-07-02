@@ -233,6 +233,7 @@ int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
 int expect_string_literal_pointer_store_publishes_string_address_value();
 int expect_loaded_pointer_addressed_store_uses_pointer_base();
 int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base();
+int expect_direct_local_scalar_access_publishes_local_slot_provenance();
 int expect_local_byte_array_scalar_access_publishes_local_slot_provenance();
 int expect_casted_byte_pointer_i32_update_fails_closed();
 int expect_casted_byte_pointer_i32_store_fails_closed();
@@ -7147,6 +7148,101 @@ LirModule make_local_byte_array_scalar_access_module() {
   return module;
 }
 
+LirModule make_direct_local_scalar_access_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "direct_local_scalar_access";
+  function.signature_text = "define i32 @direct_local_scalar_access(i32 %seed)";
+  function.params.emplace_back("%seed", c4c::TypeSpec{.base = c4c::TB_INT});
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.scalar"),
+      .type_str = "i32",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i32",
+      .val = LirOperand("%seed"),
+      .ptr = LirOperand("%lv.scalar"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded"),
+      .type_str = "i32",
+      .ptr = LirOperand("%lv.scalar"),
+  });
+  entry.terminator = LirRet{
+      .value_str = "%loaded",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_direct_local_scalar_access_publishes_local_slot_provenance() {
+  auto result =
+      try_lower_to_bir_with_options(make_direct_local_scalar_access_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("direct local scalar access fixture should lower semantically");
+  }
+
+  const auto has_local_slot_provenance = [](const bir::MemoryAddress& address) {
+    return address.base_kind == bir::MemoryAddress::BaseKind::LocalSlot &&
+           address.base_name == "%lv.scalar" &&
+           address.byte_offset == 0 &&
+           address.size_bytes == 4 &&
+           address.align_bytes == 4 &&
+           address.provenance.base_identity.kind ==
+               bir::MemoryProvenanceBaseIdentityKind::LocalSlot &&
+           address.provenance.base_identity.spelling == "%lv.scalar" &&
+           address.provenance.base_identity.value.name == "%lv.scalar" &&
+           address.provenance.requested_range.available &&
+           address.provenance.requested_range.begin == 0 &&
+           address.provenance.requested_range.size_bytes == 4 &&
+           address.provenance.requested_range.end_available &&
+           address.provenance.requested_range.end == 4 &&
+           address.provenance.object_extent.completeness ==
+               bir::MemoryObjectExtentCompleteness::Complete &&
+           address.provenance.object_extent.size_bytes == 4 &&
+           address.provenance.object_extent.size_known &&
+           address.provenance.layout_authority ==
+               bir::MemoryLayoutAuthorityKind::ScalarLayout &&
+           address.provenance.range_verdict == bir::MemoryRangeVerdict::ProvenInBounds;
+  };
+
+  bool saw_store = false;
+  bool saw_load = false;
+  const auto& function = result.module->functions.front();
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+          store != nullptr && store->value.name == "%seed" &&
+          store->address.has_value() &&
+          has_local_slot_provenance(*store->address)) {
+        saw_store = true;
+      }
+      if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+          load != nullptr && load->result.name == "%loaded" &&
+          load->address.has_value() &&
+          has_local_slot_provenance(*load->address)) {
+        saw_load = true;
+      }
+    }
+  }
+
+  if (!saw_store || !saw_load) {
+    return fail("direct local scalar access should publish local-slot provenance");
+  }
+  return 0;
+}
+
 int expect_local_byte_array_scalar_access_publishes_local_slot_provenance() {
   auto result =
       try_lower_to_bir_with_options(make_local_byte_array_scalar_access_module(),
@@ -11641,6 +11737,11 @@ int main() {
           expect_local_memory_alloca_records_pin_slot_and_source_contracts();
       local_memory_alloca_record_status != 0) {
     return local_memory_alloca_record_status;
+  }
+  if (const int direct_local_slot_provenance_status =
+          expect_direct_local_scalar_access_publishes_local_slot_provenance();
+      direct_local_slot_provenance_status != 0) {
+    return direct_local_slot_provenance_status;
   }
   if (const int local_slot_provenance_status =
           expect_local_byte_array_scalar_access_publishes_local_slot_provenance();
