@@ -74,3 +74,19 @@ Step 4 proof checks that the classification header matches the Step 2 schema,
 that the table has exactly 183 data rows, that every row has exactly one
 allowed lane, that every `case` appears exactly once, and that the case set
 matches the reconstructed row table.
+
+## Step 5 Follow-Up Routing
+
+Step 5 split the classified bucket into durable follow-up queues:
+
+- `ideas/open/551_rv64_move_bundle_materialization_from_classified_bucket.md`
+  owns the 151 `coherent_rv64_mir_materialization` rows.
+- `ideas/open/552_prepared_move_bundle_target_shape_authority_gaps.md` owns
+  the 31 `prepared_module_target_shape_authority_gap` rows.
+- `ideas/open/553_move_bundle_target_shape_evidence_gap_src_960209_1.md`
+  owns the single `evidence_gap` row, `src/960209-1.c`.
+
+The `bir_semantic_producer_gap` and `f128_primary_quarantine` lanes remain
+empty in the current classification. No new BIR or F128 follow-up idea was
+created from this bucket; future rows should use the existing producer and
+F128 quarantine lanes only if row-level evidence supports that routing.
