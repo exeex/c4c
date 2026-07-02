@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/548_prepared_global_stack_frame_infrastructure_review.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Classify Stack-Frame Ownership
+Current Step ID: 4
+Current Step Title: Classify Prepared Move-Bundle Ownership
 
 # Current Packet
 
@@ -45,10 +45,10 @@ Evidence artifact:
 ## Suggested Next
 
 Classify the prepared move-bundle representatives `src/20010224-1.c` and
-`src/pr87623.c` from the existing Step 1 evidence. Confirm whether the first
-owner remains `prepared_move_bundle_classifier` authority or whether either row
-has enough prepared move-bundle facts to hand off to RV64 object-route
-consumption.
+`src/pr87623.c` from the existing Step 1 evidence. Confirm whether each row
+still stops at `prepared_move_bundle_classifier` authority, has a missing
+prepared source/destination form, should remain fail-closed, or has enough
+prepared move-bundle facts to hand off to RV64 object-route consumption.
 
 ## Watchouts
 
