@@ -52,6 +52,9 @@ first comparison point.
 - Identify new files only where existing files do not express the right
   ownership.
 - Produce a staged follow-up cleanup plan that keeps behavior unchanged.
+- Materialize the staged follow-up cleanup plan as concrete source idea files
+  under `ideas/open/` before this umbrella closes. A docs-only staged list is
+  not sufficient closure evidence.
 - Define validation scope for each future split slice.
 - Preserve the ordering:
   `422 -> BIR cleanup analysis -> BIR cleanup follow-ups -> RV64 emission cleanup analysis -> other idea`.
@@ -81,6 +84,8 @@ The runbook should produce a durable plan artifact under
 - proposed destination map for each RV64 region;
 - proposed new-file list, if any;
 - staged follow-up idea list with owned files and validation commands;
+- links to the concrete `ideas/open/` follow-up source ideas created from that
+  staged list;
 - risk notes for symbol/fixup handling, prepared admission, and runtime
   behavior.
 
@@ -106,6 +111,8 @@ The cleanup plan should prefer behavior-preserving slices such as:
   plan.
 - The plan references the AArch64 split and records where RV64 should differ.
 - The plan names concrete follow-up ideas and their owned files.
+- Those follow-up ideas are materialized as separate `ideas/open/*.md` source
+  files before close, not only listed in a docs artifact.
 - The plan identifies high-risk regions that should move late or stay central.
 - No implementation files are changed except for lifecycle or documentation
   artifacts required by the analysis.
@@ -122,6 +129,8 @@ Reject this umbrella or any claimed progress if the slice:
 - presents helper renames, file moves, or expectation churn as backend
   capability progress;
 - creates a giant all-at-once split without staged ownership and validation;
+- closes the umbrella with only a docs staging list and no matching
+  `ideas/open/` follow-up source ideas;
 - copies AArch64 layout blindly where RV64 prepared-object flow has different
   ownership;
 - hides the same monolithic coupling behind new filenames without clear
