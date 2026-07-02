@@ -385,7 +385,11 @@ int verify_move_bundle_consumer_status_names() {
                  prepare::prepared_object_move_bundle_consumer_status_name(
                      prepare::PreparedObjectMoveBundleConsumerStatus::
                          MismatchedParallelCopyExecutionSite) ==
-                     "mismatched_parallel_copy_execution_site",
+                     "mismatched_parallel_copy_execution_site" &&
+                 prepare::prepared_object_move_bundle_consumer_status_name(
+                     prepare::PreparedObjectMoveBundleConsumerStatus::
+                         AmbiguousNonParallelMultiSourceStackDestination) ==
+                     "ambiguous_non_parallel_multi_source_stack_destination",
              "prepared object move-bundle consumer status names should remain stable")
              ? 0
              : 1;
@@ -458,6 +462,10 @@ int verify_consumer_diagnostic_category_names() {
                      prepare::PreparedObjectConsumerDiagnosticCategory::
                          UnsupportedParallelCopyExecutionSite) ==
                      "unsupported_parallel_copy_execution_site" &&
+                 prepare::prepared_object_consumer_diagnostic_category_name(
+                     prepare::PreparedObjectConsumerDiagnosticCategory::
+                         AmbiguousNonParallelMultiSourceStackDestination) ==
+                     "ambiguous_non_parallel_multi_source_stack_destination" &&
                  prepare::prepared_object_consumer_diagnostic_category_name(
                      prepare::PreparedObjectConsumerDiagnosticCategory::
                          MissingFrameSlotOwner) == "missing_frame_slot_owner",
@@ -843,6 +851,122 @@ int verify_move_bundle_consumer_fail_closed_statuses() {
                   prepare::PreparedObjectMoveBundleConsumerStatus::
                       EmptyMoveBundle,
               "empty move bundles should fail closed before target consumption")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_move_bundle_consumer_rejects_ambiguous_multi_source_stack_destination() {
+  auto fixture = make_fixture();
+
+  auto lhs_home =
+      value_home(fixture, "%lhs", 901, prepare::PreparedValueHomeKind::Register);
+  lhs_home.register_name = "a0";
+  fixture.locations.value_homes.push_back(std::move(lhs_home));
+
+  auto rhs_home =
+      value_home(fixture, "%rhs", 902, prepare::PreparedValueHomeKind::Register);
+  rhs_home.register_name = "a1";
+  fixture.locations.value_homes.push_back(std::move(rhs_home));
+
+  auto destination_home = value_home(
+      fixture, "%stack.dest", 903, prepare::PreparedValueHomeKind::StackSlot);
+  destination_home.slot_id = prepare::PreparedFrameSlotId{4};
+  destination_home.offset_bytes = std::size_t{24};
+  destination_home.size_bytes = std::size_t{4};
+  destination_home.align_bytes = std::size_t{4};
+  fixture.locations.value_homes.push_back(std::move(destination_home));
+
+  fixture.locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = fixture.function_name,
+      .phase = prepare::PreparedMovePhase::BeforeInstruction,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+      .block_index = 1,
+      .instruction_index = 0,
+      .moves = {
+          prepare::PreparedMoveResolution{
+              .from_value_id = 901,
+              .to_value_id = 903,
+              .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+              .destination_storage_kind =
+                  prepare::PreparedMoveStorageKind::StackSlot,
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+          },
+          prepare::PreparedMoveResolution{
+              .from_value_id = 902,
+              .to_value_id = 903,
+              .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+              .destination_storage_kind =
+                  prepare::PreparedMoveStorageKind::StackSlot,
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+          },
+      },
+  });
+
+  const auto lookups = prepare::make_prepared_value_home_lookups(
+      &fixture.locations);
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  const auto* before_instruction = find_event(
+      traversal,
+      prepare::PreparedObjectTraversalEventKind::BeforeInstructionCopies,
+      1);
+  if (!expect(before_instruction != nullptr,
+              "ambiguous multi-source stack-destination test should find a copy event")) {
+    return 1;
+  }
+
+  const auto classification =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          prepare::PreparedObjectMoveBundleConsumerQuery{
+              .event = before_instruction,
+              .value_home_lookups = &lookups,
+          });
+  const auto diagnostic =
+      prepare::diagnose_prepared_object_consumer(classification);
+  if (!expect(classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      AmbiguousNonParallelMultiSourceStackDestination,
+              "ambiguous non-parallel multi-source stack destination should fail closed") ||
+      !expect(classification.move_count == 2,
+              "ambiguous stack-destination classification should preserve move count") ||
+      !expect(diagnostic.has_value(),
+              "ambiguous stack-destination classification should produce a diagnostic") ||
+      !expect(diagnostic->category ==
+                  prepare::PreparedObjectConsumerDiagnosticCategory::
+                      AmbiguousNonParallelMultiSourceStackDestination,
+              "ambiguous stack-destination diagnostic category mismatch") ||
+      !expect(diagnostic->message ==
+                  "prepared move-bundle classifier rejected ambiguous non-parallel "
+                  "multi-source stack-destination authority",
+              "ambiguous stack-destination diagnostic message mismatch")) {
+    return 1;
+  }
+
+  fixture.locations.move_bundles.back().moves.pop_back();
+  const auto single_move_lookups =
+      prepare::make_prepared_value_home_lookups(&fixture.locations);
+  const auto single_move_traversal =
+      prepare::make_prepared_object_function_traversal(
+          fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  const auto* single_move_before_instruction = find_event(
+      single_move_traversal,
+      prepare::PreparedObjectTraversalEventKind::BeforeInstructionCopies,
+      1);
+  const auto single_move_classification =
+      single_move_before_instruction == nullptr
+          ? prepare::PreparedObjectMoveBundleConsumerClassification{}
+          : prepare::classify_prepared_object_move_bundle_consumer(
+                prepare::PreparedObjectMoveBundleConsumerQuery{
+                    .event = single_move_before_instruction,
+                    .value_home_lookups = &single_move_lookups,
+                });
+  if (!expect(single_move_classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::Available,
+              "single register-source stack-destination move should remain available")) {
     return 1;
   }
 
@@ -1356,6 +1480,11 @@ int main() {
   }
   if (const auto result =
           verify_move_bundle_consumer_fail_closed_statuses();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result =
+          verify_move_bundle_consumer_rejects_ambiguous_multi_source_stack_destination();
       result != 0) {
     return EXIT_FAILURE;
   }

@@ -63,6 +63,7 @@ enum class PreparedObjectMoveBundleConsumerStatus {
   MismatchedParallelCopyExecutionSite,
   MismatchedParallelCopyMoveBundle,
   UnsupportedParallelCopyMoveBundleAuthority,
+  AmbiguousNonParallelMultiSourceStackDestination,
 };
 
 enum class PreparedObjectFrameSlotConsumerStatus {
@@ -108,6 +109,7 @@ enum class PreparedObjectConsumerDiagnosticCategory {
   MismatchedParallelCopyExecutionSite,
   MismatchedParallelCopyMoveBundle,
   UnsupportedParallelCopyMoveBundleAuthority,
+  AmbiguousNonParallelMultiSourceStackDestination,
   MissingFrameSlotValueHome,
   UnsupportedFrameSlotValueHomeKind,
   IncompleteStackSlotHome,
@@ -225,6 +227,9 @@ prepared_object_move_bundle_consumer_status_name(
     case PreparedObjectMoveBundleConsumerStatus::
         UnsupportedParallelCopyMoveBundleAuthority:
       return "unsupported_parallel_copy_move_bundle_authority";
+    case PreparedObjectMoveBundleConsumerStatus::
+        AmbiguousNonParallelMultiSourceStackDestination:
+      return "ambiguous_non_parallel_multi_source_stack_destination";
   }
   return "unknown";
 }
@@ -325,6 +330,9 @@ prepared_object_consumer_diagnostic_category_name(
     case PreparedObjectConsumerDiagnosticCategory::
         UnsupportedParallelCopyMoveBundleAuthority:
       return "unsupported_parallel_copy_move_bundle_authority";
+    case PreparedObjectConsumerDiagnosticCategory::
+        AmbiguousNonParallelMultiSourceStackDestination:
+      return "ambiguous_non_parallel_multi_source_stack_destination";
     case PreparedObjectConsumerDiagnosticCategory::MissingFrameSlotValueHome:
       return "missing_frame_slot_value_home";
     case PreparedObjectConsumerDiagnosticCategory::UnsupportedFrameSlotValueHomeKind:
@@ -395,6 +403,7 @@ struct PreparedObjectValueHomeConsumerClassification {
 
 struct PreparedObjectMoveBundleConsumerQuery {
   const PreparedObjectTraversalEvent* event = nullptr;
+  const PreparedValueHomeLookups* value_home_lookups = nullptr;
 };
 
 struct PreparedObjectMoveBundleConsumerClassification {

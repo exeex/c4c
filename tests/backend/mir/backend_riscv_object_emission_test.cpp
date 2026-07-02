@@ -201,6 +201,32 @@ int expect_prepared_rejection_diagnostic_contains(
   return 0;
 }
 
+int expect_prepared_consumer_rejection_diagnostic(
+    const prepare::PreparedBirModule& prepared,
+    prepare::PreparedObjectConsumerDiagnosticCategory expected_category,
+    const std::string& expected_diagnostic) {
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (result.ok() || result.module.has_value()) {
+    return fail("expected prepared RV64 object path to reject");
+  }
+  if (result.prepared_consumer_category != expected_category) {
+    return fail("expected shared prepared-consumer diagnostic category");
+  }
+  if (result.diagnostic != expected_diagnostic) {
+    return fail("expected prepared-consumer diagnostic `" +
+                expected_diagnostic + "`, got `" + result.diagnostic + "`");
+  }
+  const auto image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(prepared);
+  if (image.ok() || image.image.has_value() ||
+      image.prepared_consumer_category != expected_category ||
+      image.diagnostic != expected_diagnostic) {
+    return fail("expected prepared RV64 ELF writer to preserve shared diagnostic");
+  }
+  return 0;
+}
+
 void publish_prepared_object_data(prepare::PreparedBirModule& prepared) {
   prepare::populate_prepared_object_data_plans(prepared);
 }
@@ -11690,14 +11716,12 @@ int rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes() {
       make_prepared_before_instruction_register_to_stack_move_bundle_module();
   prepared.value_locations.functions[0].move_bundles[0].moves.push_back(
       prepared.value_locations.functions[0].move_bundles[0].moves[0]);
-  if (expect_prepared_rejection_diagnostic_contains(
+  if (expect_prepared_consumer_rejection_diagnostic(
           prepared,
-          {
-              "move_count=2",
-              "move[0].reason=consumer_register_to_stack",
-              "move[1].reason=consumer_register_to_stack",
-              "fragment_status=generic_move_bundle_materialization_failed",
-          }) != 0) {
+          prepare::PreparedObjectConsumerDiagnosticCategory::
+              AmbiguousNonParallelMultiSourceStackDestination,
+          "prepared move-bundle classifier rejected ambiguous non-parallel "
+          "multi-source stack-destination authority") != 0) {
     return fail("multiple register-source stack-destination moves should reject");
   }
 

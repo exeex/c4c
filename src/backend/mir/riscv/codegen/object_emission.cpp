@@ -11077,7 +11077,11 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
         case prepare::PreparedObjectTraversalEventKind::BeforeInstructionCopies:
         case prepare::PreparedObjectTraversalEventKind::PreTerminatorCopies: {
           const auto classification =
-              prepare::classify_prepared_object_move_bundle_consumer(event);
+              prepare::classify_prepared_object_move_bundle_consumer(
+                  prepare::PreparedObjectMoveBundleConsumerQuery{
+                      .event = &event,
+                      .value_home_lookups = &lookups.value_homes,
+                  });
           if (auto diagnostic =
                   prepare::diagnose_prepared_object_consumer(classification)) {
             return RiscvPreparedObjectFunctionResult{
