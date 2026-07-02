@@ -216,3 +216,119 @@ Completion check:
 
 - `todo.md` contains reconciliation counts and proof links.
 - Remaining rows have an explicit owner or next lifecycle recommendation.
+
+### Step 7: Triage The 17 Residual Register-To-Stack Rows
+
+Goal: isolate the semantic reason the remaining register-to-stack rows still
+reach generic move-bundle materialization failure after the first
+implementation packets.
+
+Primary target:
+`same_generic_move_bundle_materialization_failed` rows from
+`build/agent_state/551_step6_reconciliation/reconciliation_rows.tsv` whose
+original move shape is
+`before_instruction/authority_none/consumer_register_to_stack/register_to_stack_slot`.
+
+Residual rows:
+
+- `src/20000717-3.c`
+- `src/20020226-1.c`
+- `src/20020508-1.c`
+- `src/20020508-2.c`
+- `src/20020508-3.c`
+- `src/20020510-1.c`
+- `src/20100316-1.c`
+- `src/920908-2.c`
+- `src/bf-pack-1.c`
+- `src/loop-2d.c`
+- `src/pr25125.c`
+- `src/pr40386.c`
+- `src/pr48197.c`
+- `src/pr81281.c`
+- `src/pr89195.c`
+- `src/strcmp-1.c`
+- `src/strncmp-1.c`
+
+Actions:
+
+- Inspect the current logs and prepared move-bundle facts for these 17 rows
+  before editing RV64 lowering.
+- Group them by the missing semantic rule, such as width/extension handling,
+  multi-move ordering, stack-slot authority, source-register class, or another
+  observed prepared-home pattern.
+- Implement only a general RV64/MIR materialization rule that is supported by
+  coherent prepared source and destination homes.
+- Keep the three remaining rematerializable-immediate-to-stack rows out of
+  this packet unless inspection proves they share the same missing semantic
+  rule and the proof explicitly covers both families.
+- Reroute any row that lacks coherent prepared facts to the prepared authority
+  or evidence-gap queue instead of inferring homes in RV64.
+
+Completion check:
+
+- A focused allowlist covering the 17 residual register-to-stack rows no
+  longer reports `fragment_status=generic_move_bundle_materialization_failed`,
+  or the remaining rows are explicitly rerouted with row-level evidence.
+- Build proof, focused gcc_torture proof, and row-level residual notes are
+  recorded in `test_after.log` and summarized in `todo.md`.
+
+### Step 8: Triage The 3 Residual Immediate-To-Stack Rows
+
+Goal: handle the remaining rematerializable-immediate-to-stack rows as a
+separate semantic packet unless Step 7 proves they were fixed by the same
+general rule.
+
+Primary target:
+`same_generic_move_bundle_materialization_failed` rows from
+`build/agent_state/551_step6_reconciliation/reconciliation_rows.tsv` whose
+original move shape is
+`before_instruction/authority_none/consumer_register_to_stack/rematerializable_immediate_to_stack_slot`.
+
+Residual rows:
+
+- `src/920721-1.c`
+- `src/pr82192.c`
+- `src/usmul.c`
+
+Actions:
+
+- Inspect whether these rows fail because immediate source materialization,
+  destination stack-slot storage, scalar width, or missing prepared authority
+  remains unsupported.
+- Reuse existing immediate materialization helpers where possible.
+- Do not invent stack slots, offsets, or scalar type facts when the prepared
+  evidence is absent.
+- Keep any prepared-authority or evidence-gap row out of this implementation
+  lane.
+
+Completion check:
+
+- The three residual immediate-to-stack rows either advance beyond generic
+  move-bundle materialization or are rerouted with row-level evidence.
+- Focused proof covers these three rows and records any later residual failure
+  category separately from move-bundle materialization.
+
+### Step 9: Reconcile The Residual 20-Row Lane
+
+Goal: decide whether this source idea can close after Steps 7 and 8, or
+whether the remaining rows require another lifecycle split.
+
+Actions:
+
+- Re-run the focused residual allowlist and compare the 20 Step 6 residual
+  rows against fresh diagnostics.
+- Preserve the distinction between pass, later explicit unsupported
+  diagnostics, later runtime mismatches, prepared-authority reroutes, evidence
+  gaps, and same generic move-bundle materialization failures.
+- Do not treat later backend failures as blockers for this move-bundle
+  materialization source idea.
+- If any row still has the same generic move-bundle materialization failure,
+  record a narrower next packet or ask supervisor for reviewer scrutiny before
+  closure.
+
+Completion check:
+
+- `todo.md` contains fresh residual counts and proof links for the 20-row
+  lane.
+- The supervisor has enough evidence to close this source idea, continue with
+  another narrowed packet, or split a separate follow-up idea.
