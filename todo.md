@@ -1,56 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/523_bir_route2_select_chain_body_extraction.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extract route2 bodies
+Current Step ID: 4
+Current Step Title: Regression and review checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 of `plan.md`: moved the selected route2 select-chain
-implementation bodies from `src/backend/bir/bir.cpp` to the new
-`src/backend/bir/bir_route2.cpp`.
+Completed Step 4 of `plan.md`: recorded validation and baseline-review
+disposition for the route2 select-chain body extraction.
 
-Moved route2 bodies:
+Accepted Step 3 proof:
 
-- `route2_select_chain_producer_kind`
-- `route2_select_chain_producer_record`
-- `route2_select_chain_value_record`
-- `route2_build_select_chain_value_index`
-- `route2_find_select_chain_value_record`
+- `git diff --check` passed.
+- `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1` passed.
+- Build passed and the backend subset passed with `345/345` tests.
 
-Moved the route2-owned anonymous helper
-`route2_find_direct_global_dependency` into `bir_route2.cpp`'s anonymous
-namespace. No `bir_private.hpp` boundary was added.
+Accepted supervisor regression guard:
 
-Preserved public declarations, route2 records, route2 enums, direct-global
-dependency shape, and route6 behavior. Route6 still consumes route2 through the
-public `route2_select_chain_value_record` call path in `bir.cpp`.
+- Ran with `--allow-non-decreasing-passed`.
+- Before: `345/345` passed.
+- After: `345/345` passed.
+- No new failures and no new tests over 30 seconds.
 
-Updated the direct-source `backend_lir_to_bir_notes_test` metadata to compile
-`src/backend/bir/bir_route2.cpp`. The backend library path already picks up the
-new BIR TU through the existing backend source glob.
+The accepted `test_after.log` proof was rolled forward to `test_before.log`.
+The hook-produced full-suite `test_baseline.new.log` candidate was rejected and
+deleted because it introduced failing `string_authority_guard` results versus
+`test_baseline.log`. Baseline review pending is cleared.
 
 ## Suggested Next
 
-Execute Step 4: record the accepted Step 3 proof, run or accept supervisor
-regression guard as required, and decide whether the route2 extraction is ready
-for lifecycle close review.
+Execute Step 5: perform close-readiness bookkeeping and hand off to the plan
+owner for lifecycle close review if the supervisor accepts the route2 slice.
 
 ## Watchouts
 
 - `src/backend/bir/bir_route2.cpp` is intentionally body-only; declarations
   remain in `bir.hpp`.
 - `route2_find_direct_global_dependency` remains private to the route2 TU.
-- `backend_prepare_phi_materialize_test` still links `c4c_backend`, so it did
-  not need a direct `bir_route2.cpp` source entry.
-- `test_after.log` contains the passing delegated backend proof and should be
-  preserved until the supervisor rolls validation forward.
+- Route6 still consumes route2 through public `route2_select_chain_value_record`.
+- The rejected `test_baseline.new.log` must not be treated as accepted baseline
+  state; `test_baseline.log` remains the baseline reference.
 
 ## Proof
 
-Ran:
+No new build or ctest was required for this bookkeeping packet.
+
+Recorded accepted prior proof:
 
 ```sh
 git diff --check
@@ -59,4 +56,8 @@ git diff --check
 
 Result: build passed, backend subset passed with `345/345` tests.
 
-Proof log: `test_after.log`.
+Recorded supervisor regression guard: before `345/345`, after `345/345`, no new
+failures, no new tests over 30 seconds, and `test_after.log` rolled forward to
+`test_before.log`.
+
+This packet's local validation: `git diff --check -- todo.md`.
