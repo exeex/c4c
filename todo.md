@@ -1,62 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/542_rv64_object_function_traversal_facade_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Extract Object Function Traversal Loop Facade
+Current Step ID: 5
+Current Step Title: Review And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 reviewed the object-function traversal loop boundary and made no code
-changes because no small loop facade could reduce central coupling without
-hiding object-emission dependencies.
+Step 5 reviewed the final idea-542 diff from activation through the Step 4
+no-code review and found the runbook close-ready for plan-owner evaluation.
 
-The complete traversal path still directly owns event ordering from
-`prepare::make_prepared_object_function_traversal`, block label fragment
-emission, prepared-consumer diagnostics, move-bundle classification,
-select-publication admission/fragment selection, before-return
-stack-to-register validation state, instruction fragment emission and fallback
-diagnostics, terminator fragment emission, and fragment append order.
+The only safe code extraction landed by this runbook is the Step 2 prepared
+function admission/result shell in `prepared_function_emit.*`. It moves the
+target-name/body lookup, variadic admission callback, atomic-operation
+rejection, prepared lookup and authority collection, frame/storage/inline-asm
+lookup, stack-frame admission callback, parameter-home callback, variadic helper
+callback, and call-frame range precheck behind explicit
+`RiscvPreparedFunctionAdmissionResult` fields and callback dependencies.
 
-The fallback block traversal path still directly owns label emission order,
-instruction fragment fallback diagnostics, terminator fragment emission, and
-fragment append order for the non-complete traversal stream.
+Steps 3 and 4 were intentionally no-code. The remaining context setup and
+traversal loops still own object-local result construction, fragment append
+ordering, diagnostics, before-return validation state, compare state,
+`fragment_for_prepared_instruction` fanout, terminator fragment emission,
+fallback traversal, public object entrypoints, final module assembly, and
+data/symbol/fixup ownership. Moving more in this checkpoint would either move
+object-owned helpers out of scope or hide the same dependency set behind a broad
+callback/context facade.
 
-Moving the loop into `prepared_function_emit.*` now would require either
-moving `RiscvPreparedObjectFunctionResult`, `RiscvObjectFunction`, and the
-object-local fragment helpers with it, or passing a broad callback/context
-bundle for `fragment_for_prepared_instruction`,
-`fragment_for_prepared_terminator`, move-bundle/select-publication fragment
-bodies, diagnostics, compare state, before-return state, and append targets.
-That would recreate the central coupling behind a new facade instead of making
-the dependencies clearer.
+No tests, expectations, unsupported markers, runtime contracts, diagnostics,
+traversal order, object bytes, public entrypoints, final module assembly,
+data/symbol/fixup ownership, or `fragment_for_prepared_instruction` fanout were
+weakened or moved out of scope. The activation-to-HEAD diff touches only
+`plan.md`, `todo.md`, `object_emission.cpp`, `prepared_function_emit.cpp`, and
+`prepared_function_emit.hpp`.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: review close readiness for the active source
-idea. Confirm the Step 2 admission shell is the only safe extraction from this
-runbook, Steps 3 and 4 were intentionally no-code, and remaining traversal loop,
-fragment fanout, diagnostics, public entrypoints, final module assembly, and
-symbol/fixup/module ownership are parked without weakening behavior.
+Ask the plan owner to evaluate closing
+`ideas/open/542_rv64_object_function_traversal_facade_cleanup.md`; no further
+implementation packet is recommended for this runbook.
 
 ## Watchouts
 
 - Keep the next run behavior-preserving and review-only unless the supervisor
   delegates a specific follow-up.
-- Do not change admission semantics, diagnostics, traversal order, function name
-  matching, unsupported markers, runtime expectations, or object bytes.
-- `prepared_function_emit.cpp` now has a narrow admission shell but must not
-  become a second object-emission module.
-- Step 4 intentionally made no code change: moving traversal loops now would
-  either move object-owned fragment/result helpers out of scope or hide them
-  behind a broad callback/context bundle.
-- Prior family APIs are available for the boundary: stack frame sizing and
-  prologue helpers from `prepared_frame_emit.*`, before-return move classification
-  and variadic resource predicates from `prepared_call_emit.*`, and select
-  predecessor/carrier-alias predicates from `prepared_edge_publication_emit.*`.
-- The Step 2 shell exposes the prepared module/control-flow facts as a small
-  result with concrete fields, not an encoder-authority carrier.
+- `prepared_function_emit.cpp` now has a narrow admission shell but should not
+  become a second all-purpose object-emission module.
+- Any future traversal facade work should start from a new plan checkpoint after
+  the object-owned fragment fanout and result/helper boundaries have an explicit
+  API boundary.
 - Keep `fragment_for_prepared_instruction`, `fragment_for_prepared_terminator`,
   `fragment_for_prepared_move_bundle`, predecessor select-publication fragment
   bodies, formal-entry-home and variadic incoming-GPR fragment bodies, block label
@@ -75,11 +68,15 @@ symbol/fixup/module ownership are parked without weakening behavior.
 
 ## Proof
 
-No proof command was run and no new `test_after.log` was written because Step 4
-made no code changes, per the delegated packet.
+No proof command was run and no new `test_after.log` was written because Step 5
+was review-only, per the delegated packet.
+
+Existing code-changing proof for Step 2 was the selected backend/object facade
+subset, recorded in the current `test_before.log` as 63/63 passing:
 
 ```sh
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(riscv_object_emission|prepared_object_consumer_contract|object_model_records|obj_runtime_rv64_|codegen_route_riscv64_)'
 ```
 
-Result: not run; no-code rationale recorded above.
+Result for Step 5: not run; review-only close-readiness rationale recorded
+above.
