@@ -8,49 +8,47 @@ Current Step Title: Classify Stack-Frame Ownership
 
 ## Just Finished
 
-Completed plan Step 2 by classifying the two current
-`unsupported_global_data` representatives into prepared-contract versus RV64
-object-route ownership.
+Completed plan Step 3 by classifying the two current
+`unsupported_stack_frame` representatives into prepared-frame contract versus
+RV64 frame-lowering ownership.
 
 Classifications:
 
-- `src/20000412-1.c`:
-  first owner is the prepared object-data contract. The row reports
-  `prepared selected object-data contract status=unsupported_but_coherent
-  object_label_id=2 object_size_bytes=1656 emitted_byte_count=0
-  zero_fill_byte_count=0`. Prepared has a label and extent, but it has not
-  published consumable zero-fill/emitted-byte authority for the selected global
-  object data. RV64 sees selected object data but cannot consume
-  `unsupported_but_coherent`, and the selected zero-fill fallback does not
-  apply because the facts report no zero-fill authority for the 1656-byte
-  object.
-- `src/20001121-1.c`:
-  first owner is RV64 object-route global-data consumption. Prepared facts are
-  present far enough for the route to classify the operation as prepared global
-  memory access; the failing gate is RV64's
-  `rv64_global_scalar_memory_size_for_type`, which currently accepts
-  integer/pointer `I8`, `I16`, `I32`, `I64`, and `Ptr`, but not the row's
-  global `double` / `F64` load shape.
+- `src/20000603-1.c`:
+  first owner is RV64 frame lowering for prepared non-GPR callee-saved save
+  slots. Prepared frame/callee-saved facts are present enough for RV64 object
+  emission to inspect a saved callee register with bank `fpr` and register
+  name `fs1`; the first rejection is the RV64 consumer gate
+  `diagnose_unsupported_prepared_saved_register_bank`, which currently accepts
+  only GPR prepared callee-saved save slots.
+- `src/20030209-1.c`:
+  same first owner as `src/20000603-1.c`. The row reaches the same prepared
+  FPR callee-saved slot shape and fails at the same RV64 object-route consumer
+  gate: `unsupported_stack_frame: RV64 object route does not support non-GPR
+  prepared callee-saved register save slots (fpr:fs1)`.
 
-Implementation-ready follow-up buckets:
+Scope classification:
 
-- Prepared producer follow-up: publish coherent selected object-data facts for
-  ordinary zero-initialized global arrays like `src/20000412-1.c`, rather than
-  teaching RV64 to consume unsupported-marker selected object data.
-- RV64 consumer follow-up: add or explicitly route prepared floating global
-  load/store consumption for non-F128 `double` globals like `src/20001121-1.c`.
+- Prepared frame facts are not the first missing contract for either row; the
+  diagnostic proves the object route has a prepared callee-saved slot to
+  inspect.
+- The `fpr:fs1` shape is FPR-specific. Treat it as an implementation-ready
+  RV64 FPR frame follow-up only if the follow-up is scoped to FPR
+  callee-saved save/restore plus its prepared slot placement contract.
+- Ordinary GPR frame setup, access, and teardown should stay separate; these
+  rows do not prove a retained GPR-frame producer or consumer gap.
 
 Evidence artifact:
 
-- `build/agent_state/548_step2_global_data_classification/classification.md`
+- `build/agent_state/548_step3_stack_frame_classification/classification.md`
 
 ## Suggested Next
 
-Classify the stack-frame representatives `src/20000603-1.c` and
-`src/20030209-1.c` using the existing Step 1 evidence first. Separate
-prepared-frame contract gaps from RV64 frame setup/access/teardown gaps, and
-explicitly identify whether the current `fpr:fs1` callee-saved slot shape is
-FPR-specific scope rather than ordinary GPR frame work.
+Classify the prepared move-bundle representatives `src/20010224-1.c` and
+`src/pr87623.c` from the existing Step 1 evidence. Confirm whether the first
+owner remains `prepared_move_bundle_classifier` authority or whether either row
+has enough prepared move-bundle facts to hand off to RV64 object-route
+consumption.
 
 ## Watchouts
 
@@ -62,9 +60,9 @@ FPR-specific scope rather than ordinary GPR frame work.
 - No F128 quarantine was discovered for either global-data row. `20000412-1.c`
   is an ordinary pointer-array global case; `20001121-1.c` uses `double`, not
   F128.
-- The current stack-frame evidence is FPR callee-saved slot shaped
-  (`fpr:fs1`), so Step 3 should explicitly screen FPR scope before treating it
-  as ordinary GPR frame work.
+- Stack-frame implementation work should split into an RV64 FPR
+  callee-saved-frame follow-up if accepted. Keep ordinary GPR frame work out of
+  that scope unless separate evidence identifies a GPR-specific gap.
 - The move-bundle rows already name `prepared_move_bundle_classifier` as
   diagnostic owner; avoid converting them into RV64 consumer work before
   classifier authority is reviewed.
@@ -78,11 +76,11 @@ Proof/evidence used:
 - Existing Step 1 aggregate log:
   `build/agent_state/548_step1_infrastructure_evidence.log`
 - Existing per-case log:
-  `build/rv64_gcc_c_torture_backend/src_20000412-1.c/case.log`
+  `build/rv64_gcc_c_torture_backend/src_20000603-1.c/case.log`
 - Existing per-case log:
-  `build/rv64_gcc_c_torture_backend/src_20001121-1.c/case.log`
-- Focused Step 2 classification artifact:
-  `build/agent_state/548_step2_global_data_classification/classification.md`
+  `build/rv64_gcc_c_torture_backend/src_20030209-1.c/case.log`
+- Focused Step 3 classification artifact:
+  `build/agent_state/548_step3_stack_frame_classification/classification.md`
 
 No broad tests were run and no root-level `test_after.log` was written because
 the delegated packet explicitly requested existing-log classification only and
@@ -93,6 +91,6 @@ Traceable logs:
 - Aggregate:
   `build/agent_state/548_step1_infrastructure_evidence.log`
 - Per-case:
-  `build/rv64_gcc_c_torture_backend/src_20000412-1.c/case.log`
+  `build/rv64_gcc_c_torture_backend/src_20000603-1.c/case.log`
 - Per-case:
-  `build/rv64_gcc_c_torture_backend/src_20001121-1.c/case.log`
+  `build/rv64_gcc_c_torture_backend/src_20030209-1.c/case.log`
