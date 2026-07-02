@@ -1,103 +1,84 @@
 Status: Active
 Source Idea Path: ideas/open/442_pointer_value_memory_provenance_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Rebuild Residual Provenance Evidence
+Current Step ID: 2
+Current Step Title: Decide Concrete, Opaque, Or Unsupported Policy
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Rebuild Residual Provenance Evidence completed for
-`tests/c/external/gcc_torture/src/930930-1.c` after ideas 443, 444, and 445.
+Step 2 - Decide Concrete, Opaque, Or Unsupported Policy completed for the
+residual `930930-1` pointer-value memory rows.
 
-Commands and evidence sources used:
+Policy decision:
 
-- `./build/c4cll -I tests/c/external/gcc_torture --target riscv64-linux-gnu
-  --dump-prepared-bir tests/c/external/gcc_torture/src/930930-1.c`
-  redirected to `/tmp/930930-1.step1.prepared.out` and
-  `/tmp/930930-1.step1.prepared.err`.
-- `build/rv64_gcc_c_torture_backend/src_930930-1.c/case.log`
-- `build/agent_state/442_step1_pointer_value_provenance_reaudit/reaudit.md`
-- `build/agent_state/442_step3_concrete_call_arg_provenance/summary.md`
-- `build/agent_state/443_step4_residual_disposition/classification.md`
-- `build/agent_state/443_step4_residual_disposition/evidence_snippets.txt`
-- `build/agent_state/444_step1_no_external_caller_audit/audit.md`
-- `build/agent_state/444_step2_no_external_caller_contract/contract.md`
-- `build/agent_state/445_step1_metadata_source_classification/classification.md`
-- `build/agent_state/445_step2_source_contract_rejection/rejection.md`
-- `tests/c/external/gcc_torture/src/930930-1.c`
+- No residual `930930-1` pointer-value row is concrete today.
+- A narrow `OpaqueCompatibility` policy is rejected for this route.
+- The three `reg1` pointer-value loads are intentionally unsupported until a
+  producer publishes formal pointer authority and concrete object/range facts.
+- The `%mr_TR - 8` store remains pointer-delta-later-work and must stay
+  fail-closed until base formal pointer authority is available.
 
-Closed prerequisite result consumed:
+Reason `OpaqueCompatibility` is rejected:
 
-- Idea 443 added the formal pointer authority carrier and preserves
-  `InternalOnly` for static/internal callees.
-- Idea 444 defined the `NoExternalCaller` producer contract but found no
-  current producer packet.
-- Idea 445 rejected every current non-internal metadata source for
-  `FormalPointerAuthorityKind::NoExternalCaller`.
-- Therefore `NoExternalCaller` remains unpopulated, `930930-1::f` remains
-  `FormalPointerAuthorityKind::Unknown`, and external-linkage formal
-  provenance must not be inferred from observed same-module direct calls or
-  call-argument computed-address dumps.
+- Closed idea 438 permits an explicit opaque policy only for a producer-owned
+  runtime pointer compatibility class with its own coverage. These rows are not
+  inherently opaque runtime pointer accesses; they have plausible concrete
+  `@mem` sources, but the missing fact is authority to attach those sources to
+  external-linkage formals.
+- Accepting `layout_authority=unknown` plus `range_verdict=unknown_compatible`
+  here would bypass `prepared_pointer_value_memory_has_proven_authority` and
+  move provenance inference into the RV64 target.
+- The only available positive signals are same-module direct calls and
+  computed-address call-argument dumps for external-linkage `930930-1::f`.
+  Ideas 443, 444, and 445 explicitly rejected those signals as complete
+  authority: `NoExternalCaller` remains unpopulated and
+  `FormalPointerAuthorityKind` for `%p.reg1`/`%p.mr_TR` remains `Unknown`.
+- A current opaque acceptance would be testcase-shaped around `930930-1`,
+  `reg1`, or `mr_TR`, not a semantic lowering rule.
 
-Current top-level diagnostic:
+Residual row dispositions:
 
-```text
-unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering
-```
+| Row | Disposition | Owner before support | Diagnostic precision needed |
+| --- | --- | --- | --- |
+| `reg1` load A, `/tmp/930930-1.step1.prepared.out:568`, `f:block_4:inst1`, `base=pointer_value`, `%t5` loaded from `%lv.param.reg1` | Unsupported. Do not publish as concrete or opaque. | Producer/formal pointer authority, not RV64 target lowering. A future producer must establish closed-world/no-external-caller authority or equivalent for external-linkage `f`, then publish concrete `@mem` provenance, object extent 800 bytes, requested range, and `ProvenInBounds` for `%p.reg1`-derived pointer values. | Current top-level `unsupported_instruction_fragment` remains an acceptable fail-closed result for this policy step. A later diagnostic-only slice may refine it to an owner-specific prepared pointer-value memory authority diagnostic naming missing `FormalPointerAuthorityKind::NoExternalCaller` or equivalent plus `layout_authority=unknown` / `range_verdict=unknown_compatible`. |
+| `reg1` load B, `/tmp/930930-1.step1.prepared.out:570`, `f:logic.rhs.11:inst1`, `base=pointer_value`, `%t15` loaded from `%lv.param.reg1` | Unsupported. Same policy as load A. | Same producer/formal pointer authority owner. | Same diagnostic precision as load A; no target-side inference from same-module callsite. |
+| `reg1` load C, `/tmp/930930-1.step1.prepared.out:572`, `f:block_5:inst1`, `base=pointer_value`, `%t24` loaded from `%lv.param.reg1` | Unsupported. Same policy as load A. | Same producer/formal pointer authority owner. | Same diagnostic precision as load A; no target-side inference from same-module callsite. |
+| `%mr_TR - 8` pointer-delta store, `/tmp/930930-1.step1.prepared.out:575`, `f:block_5:inst5`, `base=pointer_value`, `pointer=%t27` after `%lv.param.mr_TR` load and decrement | Deferred pointer-delta-later-work. Not concrete, not opaque-compatible, and not a target-consumable row today. | First producer/formal pointer authority for `%p.mr_TR`; after that, a separate pointer-delta provenance producer must carry the constant decrement from the authorized base to prove the resulting `@mem+792` range. | If surfaced, diagnostic should distinguish missing base formal pointer authority from missing pointer-delta propagation; both are producer/prepared-fact issues, not RV64 layout inference opportunities. |
+| Frame-slot carrier rows, `/tmp/930930-1.step1.prepared.out:562-567`, `:569`, `:571`, `:573-574`, `:576-579` | Unrelated to target pointer-value memory consumption. | None for idea 442 Step 2. | No new diagnostic policy. |
+| Global `@mem+792` store, `/tmp/930930-1.step1.prepared.out:581`, `base=global_symbol` | Already concrete as a global-symbol row; unrelated to formal pointer provenance. | None for idea 442 Step 2. | Do not use this global layout authority to authorize `%p.reg1` or `%p.mr_TR`. |
 
-Current call/formal evidence:
+Follow-up source ideas required before target consumption:
 
-- Source `930930-1.c` defines external-linkage K&R function `f` and calls it as
-  `f (mem + 100, mem + 6, mem + 8, mem + 99, mem + 99)`.
-- Prepared call-argument sources remain visible:
-  arg0 `source_base=@mem source_delta=800`, arg1 `@mem+48`,
-  arg2 `@mem+64`, arg3 `@mem+792`, and arg4 `@mem+792`.
-- Formal homes/storage remain register-backed for `%p.mr_TR` and `%p.reg1`,
-  and local slots for `%lv.param.mr_TR`/`%lv.param.reg1` have size 8/align 8.
-- Those call observations are not complete authority for external-linkage
-  formals after ideas 443/444/445.
-
-Residual row table:
-
-| Row | Access evidence | Layout/range | Formal authority | Object extent/provenance source | Current classification |
-| --- | --- | --- | --- | --- | --- |
-| `reg1` load A | `/tmp/930930-1.step1.prepared.out:568`: `f:block_4:inst1`, `base=pointer_value`, `result=%t6`, `pointer=%t5`; `%t5` loaded from `%lv.param.reg1`; arg3 call source is `@mem+792`. | `layout_authority=unknown`, `range_verdict=unknown_compatible`, `size=8`, `align=8`. | `f` is external-linkage, so `%p.reg1` is `Unknown`; `NoExternalCaller` is unpopulated. | Potential semantic object would be `@mem`, source extent 100 pointer elements / 800 bytes from source, but no prepared formal provenance or object extent is attached to the pointer value. | Intentionally unsupported under current model. Do not infer from same-module callsite. |
-| `reg1` load B | `/tmp/930930-1.step1.prepared.out:570`: `f:logic.rhs.11:inst1`, `base=pointer_value`, `result=%t16`, `pointer=%t15`; `%t15` loaded from `%lv.param.reg1`; arg3 call source is `@mem+792`. | `layout_authority=unknown`, `range_verdict=unknown_compatible`, `size=8`, `align=8`. | Same external-linkage `Unknown` formal authority for `%p.reg1`. | Same potential `@mem` source, but unavailable to the pointer-value row without accepted formal authority. | Intentionally unsupported under current model. |
-| `reg1` load C | `/tmp/930930-1.step1.prepared.out:572`: `f:block_5:inst1`, `base=pointer_value`, `result=%t25`, `pointer=%t24`; `%t24` loaded from `%lv.param.reg1`; arg3 call source is `@mem+792`. | `layout_authority=unknown`, `range_verdict=unknown_compatible`, `size=8`, `align=8`. | Same external-linkage `Unknown` formal authority for `%p.reg1`. | Same potential `@mem` source, but unavailable to the pointer-value row without accepted formal authority. | Intentionally unsupported under current model. |
-| `%mr_TR - 8` pointer-delta store | `/tmp/930930-1.step1.prepared.out:575`: `f:block_5:inst5`, `base=pointer_value`, `stored=%t25`, `pointer=%t27`; `%t27` is stored after `%t26` load from `%lv.param.mr_TR` and pointer decrement; arg0 call source is `@mem+800`. | `layout_authority=unknown`, `range_verdict=unknown_compatible`, `size=8`, `align=8`. | `%p.mr_TR` is also external-linkage `Unknown`; no base formal provenance exists. | Potential concrete target would be `@mem+792` after subtracting 8 from `@mem+800`, but neither base formal authority nor pointer-delta propagation is available. | Pointer-delta-later-work only after base formal authority exists; currently fail-closed. |
-| Frame-slot param/local rows | `/tmp/930930-1.step1.prepared.out:562-567`, `:569`, `:571`, `:573-574`, `:576-579` use `base=frame_slot` for parameter local slots and temporaries. | `layout_authority=unknown`, `range_verdict=proven_in_bounds`, `size=8`, `align=8`. | Not formal pointer provenance publication rows; they are local/frame-slot storage facts. | Local slot/object extent is visible as 8-byte pointer slots; not the pointee object extent. | Unrelated to pointer-value memory provenance except as carrier loads/stores. |
-| Global `@mem+792` store | `/tmp/930930-1.step1.prepared.out:581`: `base=global_symbol`, `symbol=mem`, `offset=792`, `size=8`, `align=8`. | Now `layout_authority=byte_storage_aggregate`, `range_verdict=proven_in_bounds`. | Not a formal pointer row. | Concrete global object `@mem`; source declares `ptr_t mem[100]`. | Unrelated global-layout progress; does not authorize external-linkage formal pointer values. |
-
-Step 1 disposition:
-
-- Concrete provenance: none currently available for the residual pointer-value
-  rows because base formal authority is unavailable.
-- Possible opaque compatibility: no row selected yet; Step 2 may only accept a
-  named opaque policy if it is semantic and does not weaken
-  `prepared_pointer_value_memory_has_proven_authority`.
-- Intentionally unsupported: the three `reg1` pointer-value loads remain
-  fail-closed under the current compiler model.
-- Pointer-delta-later-work: the `%mr_TR - 8` store remains split until base
-  formal authority and pointer-delta propagation are both real.
-- Unrelated: frame-slot carrier rows and the now-authorized `@mem+792`
-  global-symbol store must not be folded into this route.
+1. Define and implement a real `NoExternalCaller` or equivalent closed-world
+   metadata source for non-internal definitions. The boundary must include a
+   complete caller-set source, function-address escape coverage, indirect-call
+   target exclusion, visibility/linker/LTO mode constraints, and false-by-
+   default behavior. Same-module direct calls alone remain rejected.
+2. After base formal authority exists, publish formal/local/load pointer
+   provenance for external-linkage formals so `reg1` rows can carry concrete
+   object identity, object extent, base-plus-offset, requested access range,
+   and `ProvenInBounds`.
+3. Only after `%p.mr_TR` has base authority, add a separate pointer-delta
+   propagation idea for constant pointer add/sub chains such as `%mr_TR - 8`.
+4. RV64 target consumption should remain limited to rows that already satisfy
+   `prepared_pointer_value_memory_has_proven_authority` or a future named
+   opaque policy with producer-owned semantics and coverage.
 
 ## Suggested Next
 
-Delegate Step 2 - Decide Concrete, Opaque, Or Unsupported Policy. The starting
-point should be fail-closed/unsupported for external-linkage `930930-1::f`
-unless a narrow opaque policy can be justified without target-side inference.
+Delegate the next packet as a fail-closed diagnostic or handoff step for idea
+442. If implementation is requested, keep it diagnostic-only unless a separate
+producer-owned source idea first publishes formal pointer authority; do not add
+RV64 target lowering for the residual `930930-1` rows from the current facts.
 
 ## Watchouts
 
-Do not resurrect the pre-443 concrete-callsite route for external-linkage
-`930930-1::f`. Ideas 443, 444, and 445 closed by preserving
-external-linkage/no-proof fail-closed behavior: `NoExternalCaller` remains
-unpopulated. Do not infer pointer-value memory authority in RV64 target
-lowering, and do not treat current `@mem` global-layout authority as formal
-pointer provenance.
+Keep pointer-delta propagation deferred until base formal pointer authority is
+soundly published. Do not infer provenance from same-module calls, computed
+call-argument addresses, K&R formals, `@mem` global layout, object names, or
+the current `UnknownCompatible` range verdict.
 
 ## Proof
 
