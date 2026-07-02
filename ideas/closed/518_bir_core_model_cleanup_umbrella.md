@@ -1,6 +1,6 @@
 # BIR Core Model Cleanup Umbrella
 
-Status: Open
+Status: Closed
 Type: Analysis umbrella idea
 Order: after `ideas/closed/422_bir_semantic_producer_high_impact_cleanup.md`, before RV64 emission cleanup and other implementation ideas
 Owning Layer: BIR core model and helpers
@@ -122,3 +122,24 @@ Reject this umbrella or any claimed progress if the slice:
   clear caller and dependency boundaries;
 - creates a plan that depends on testcase-shaped shortcuts or named
   gcc_torture cases rather than source-structure ownership.
+
+## Close Note
+
+Closed after the analysis-only runbook completed all six steps. The durable
+handoff lives under `docs/bir_core_cleanup/` and includes:
+
+- `README.md`
+- `structure_snapshot.md`
+- `declaration_inventory.md`
+- `implementation_inventory.md`
+- `destination_map.md`
+- `follow_up_ideas.md`
+
+The artifact satisfies the umbrella acceptance criteria by providing a
+reviewable cleanup plan, concrete staged follow-up ideas with owned files,
+existing-file versus new-file destination distinctions, do-not-move-yet notes,
+command/query evidence, and public API/include/validation risk notes.
+
+No implementation or test files were changed for the analysis umbrella.
+Follow-up cleanup implementation work should proceed through separate source
+ideas rather than reopening this umbrella.
