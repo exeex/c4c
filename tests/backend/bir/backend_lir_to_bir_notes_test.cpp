@@ -220,6 +220,7 @@ LirModule make_admitted_packed_integer_aggregate_global_module();
 LirModule make_structured_block_label_id_module();
 LirModule make_dynamic_indexed_gep_global_member_array_module();
 LirModule make_global_struct_member_scalar_array_dynamic_gep_module();
+LirModule make_global_vector_load_source_object_module();
 
 int expect_link_name_id_symbol_identity_survives_drifted_display_names();
 int expect_link_name_id_global_identity_rejects_unresolved_id();
@@ -228,6 +229,7 @@ int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_dynamic_global_scalar_array_loads_reject_missing_link_name_spelling();
 int expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
 int expect_global_struct_member_scalar_array_dynamic_gep_publishes_authority();
+int expect_global_vector_load_reads_lane_offsets_and_identity();
 int expect_global_static_gep_authority_publishes_available_constant_record();
 int expect_global_static_gep_authority_fails_closed_without_link_identity();
 int expect_dynamic_global_selected_call_argument_publishes_dependency();
@@ -7667,6 +7669,111 @@ int expect_local_vector_load_reads_lane_slots_and_source_facts() {
   return 0;
 }
 
+LirModule make_global_vector_load_source_object_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  module.type_decls.push_back("%struct.GlobalVectorStorage = type { [8 x i8], [16 x i8] }");
+
+  LirGlobal global;
+  global.name = "global_vectors";
+  global.qualifier = "global ";
+  global.llvm_type = "%struct.GlobalVectorStorage";
+  global.init_text = "zeroinitializer";
+  global.align_bytes = 16;
+  module.globals.push_back(std::move(global));
+
+  LirFunction function;
+  function.name = "global_vector_load_source_object";
+  function.signature_text = "define void @global_vector_load_source_object()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t13"),
+      .element_type = "%struct.GlobalVectorStorage",
+      .ptr = LirOperand("@global_vectors"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 0")},
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.i16"),
+      .type_str = "<4 x i16>",
+      .ptr = LirOperand("%t13"),
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t32"),
+      .element_type = "%struct.GlobalVectorStorage",
+      .ptr = LirOperand("@global_vectors"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 1")},
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.f32"),
+      .type_str = "<4 x float>",
+      .ptr = LirOperand("%t32"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_global_vector_load_reads_lane_offsets_and_identity() {
+  LirModule module = make_global_vector_load_source_object_module();
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId global_id = module.link_names.intern("global_vectors");
+  module.globals.front().link_name_id = global_id;
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("global vector load fixture should lower semantically");
+  }
+
+  const auto expects_lane_load = [&](const bir::LoadGlobalInst& load,
+                                     std::string_view result_name,
+                                     TypeKind type,
+                                     std::size_t byte_offset,
+                                     std::size_t align_bytes) {
+    return load.result == bir::Value::named(type, std::string(result_name)) &&
+           load.global_name == "global_vectors" &&
+           load.global_name_id == global_id &&
+           load.byte_offset == byte_offset &&
+           load.align_bytes == align_bytes;
+  };
+
+  bool saw_i16_lane_0 = false;
+  bool saw_i16_lane_3 = false;
+  bool saw_f32_lane_0 = false;
+  bool saw_f32_lane_3 = false;
+  const auto& function = result.module->functions.front();
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* load = std::get_if<bir::LoadGlobalInst>(&inst);
+      if (load == nullptr) {
+        continue;
+      }
+      if (expects_lane_load(*load, "%loaded.i16.lane.0", TypeKind::I16, 0, 2)) {
+        saw_i16_lane_0 = true;
+      } else if (expects_lane_load(*load, "%loaded.i16.lane.3", TypeKind::I16, 6, 2)) {
+        saw_i16_lane_3 = true;
+      } else if (expects_lane_load(*load, "%loaded.f32.lane.0", TypeKind::F32, 8, 4)) {
+        saw_f32_lane_0 = true;
+      } else if (expects_lane_load(*load, "%loaded.f32.lane.3", TypeKind::F32, 20, 4)) {
+        saw_f32_lane_3 = true;
+      }
+    }
+  }
+
+  if (!saw_i16_lane_0 || !saw_i16_lane_3 || !saw_f32_lane_0 || !saw_f32_lane_3) {
+    return fail("fixed global vector loads should publish deterministic lane global loads");
+  }
+  return 0;
+}
+
 LirModule make_local_byte_array_scalar_access_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -12542,6 +12649,11 @@ int main() {
           expect_local_vector_load_reads_lane_slots_and_source_facts();
       local_vector_load_status != 0) {
     return local_vector_load_status;
+  }
+  if (const int global_vector_load_status =
+          expect_global_vector_load_reads_lane_offsets_and_identity();
+      global_vector_load_status != 0) {
+    return global_vector_load_status;
   }
   if (const int direct_local_slot_provenance_status =
           expect_direct_local_scalar_access_publishes_local_slot_provenance();

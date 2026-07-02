@@ -292,6 +292,56 @@ std::optional<bir::Value> zero_value_for_scalar_type(bir::TypeKind type) {
   }
 }
 
+[[nodiscard]] LinkNameId global_link_name_id_for_address(
+    const lir_to_bir_detail::GlobalAddress& address,
+    const BirFunctionLowerer::GlobalTypes& global_types) {
+  if (address.link_name_id != c4c::kInvalidLinkName) {
+    return address.link_name_id;
+  }
+  const auto global_it = global_types.find(address.global_name);
+  return global_it == global_types.end() ? c4c::kInvalidLinkName
+                                         : global_it->second.link_name_id;
+}
+
+[[nodiscard]] bool append_global_vector_lane_loads(
+    std::string_view result_name,
+    const std::pair<std::size_t, bir::TypeKind>& vector_type,
+    const lir_to_bir_detail::GlobalAddress& address,
+    const BirFunctionLowerer::GlobalTypes& global_types,
+    std::vector<bir::Inst>* lowered_insts) {
+  const auto global_it = global_types.find(address.global_name);
+  const auto lane_size = type_size_bytes(vector_type.second);
+  if (global_it == global_types.end() || !global_it->second.supports_linear_addressing ||
+      lane_size == 0 || vector_type.first == 0) {
+    return false;
+  }
+  if (address.value_type != bir::TypeKind::Void &&
+      address.value_type != bir::TypeKind::I8 &&
+      address.value_type != vector_type.second) {
+    return false;
+  }
+  const std::size_t total_size = lane_size * vector_type.first;
+  if (vector_type.first != total_size / lane_size ||
+      address.byte_offset > global_it->second.storage_size_bytes ||
+      total_size > global_it->second.storage_size_bytes - address.byte_offset) {
+    return false;
+  }
+
+  const LinkNameId global_name_id = global_link_name_id_for_address(address, global_types);
+  for (std::size_t lane_index = 0; lane_index < vector_type.first; ++lane_index) {
+    lowered_insts->push_back(bir::LoadGlobalInst{
+        .result = bir::Value::named(
+            vector_type.second,
+            std::string(result_name) + ".lane." + std::to_string(lane_index)),
+        .global_name = address.global_name,
+        .global_name_id = global_name_id,
+        .byte_offset = address.byte_offset + lane_index * lane_size,
+        .align_bytes = lane_size,
+    });
+  }
+  return true;
+}
+
 std::optional<bir::Value> symbol_pointer_value_for_global_address(
     const lir_to_bir_detail::GlobalAddress& address,
     const BirFunctionLowerer::GlobalTypes& global_types) {
@@ -1185,12 +1235,45 @@ bool BirFunctionLowerer::lower_memory_load_inst(
   if (!value_type.has_value()) {
     const auto vector_type = parse_local_vector_type(load.type_str.str());
     if (vector_type.has_value()) {
+      if (load.ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
+        const std::string global_name = load.ptr.str().substr(1);
+        const auto global_it = global_types_.find(global_name);
+        if (global_it == global_types_.end()) {
+          return false;
+        }
+        return append_global_vector_lane_loads(
+            load.result.str(),
+            *vector_type,
+            lir_to_bir_detail::GlobalAddress{
+                .global_name = global_name,
+                .link_name_id = global_it->second.link_name_id,
+                .value_type = global_it->second.value_type,
+                .byte_offset = 0,
+            },
+            global_types_,
+            lowered_insts);
+      }
       if (load.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
         return false;
       }
       const auto local_array_it = local_array_slots_.find(load.ptr.str());
-      if (local_array_it == local_array_slots_.end() ||
-          local_array_it->second.element_type != vector_type->second ||
+      if (local_array_it == local_array_slots_.end()) {
+        if (const auto global_ptr_it = global_pointer_slots_.find(load.ptr.str());
+            global_ptr_it != global_pointer_slots_.end()) {
+          return append_global_vector_lane_loads(
+              load.result.str(), *vector_type, global_ptr_it->second, global_types_, lowered_insts);
+        }
+        if (const auto global_object_it = global_object_pointer_slots_.find(load.ptr.str());
+            global_object_it != global_object_pointer_slots_.end()) {
+          return append_global_vector_lane_loads(load.result.str(),
+                                                *vector_type,
+                                                global_object_it->second,
+                                                global_types_,
+                                                lowered_insts);
+        }
+        return false;
+      }
+      if (local_array_it->second.element_type != vector_type->second ||
           local_array_it->second.element_slots.size() < vector_type->first) {
         return false;
       }
