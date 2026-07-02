@@ -1,45 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/514_rv64_register_source_stack_destination_move_bundles.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Focused Backend Coverage
+Current Step ID: 5
+Current Step Title: Validate And Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Add Focused Backend Coverage completed for idea 514.
+Step 5 - Validate And Handoff completed for idea 514.
 
-Focused RV64 backend coverage now proves the same-width
-`consumer_register_to_stack` stack-destination path is accepted by both
-prepared object-module emission and the prepared ELF writer.
+Fresh validation passed for the completed register-source stack-destination
+prepared move-bundle slice.
 
-The existing classifier-owned conversion reject coverage is tightened to prove
-the prepared ELF writer preserves the same precise
-`unsupported_prepared_move_bundle_classification` diagnostic as object-module
-emission for the single `consumer_stack_to_stack` register-source
-stack-destination width mismatch.
+`src/pr27073.c` now reports the precise
+`unsupported_prepared_move_bundle_classification` diagnostic with
+`diagnostic_owner=prepared_move_bundle_classifier`, so the conversion mismatch
+no longer relies on the generic stack-to-stack materializer explanation.
 
-The idea 516 multi-source closed boundary remains covered by the duplicate
-register-source stack-destination move case, which still rejects through the
-shared
-`AmbiguousNonParallelMultiSourceStackDestination` prepared-consumer category
-instead of being weakened into RV64 materialization.
+`src/20010518-1.c` still reports
+`prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`,
+preserving the idea 516 multi-source producer/classifier boundary.
+
+The source idea 514 acceptance criteria are satisfied for this runbook: the
+owned same-width register-source stack-destination shape is covered as an
+accepted prepared object/ELF path, the conversion and multi-source
+representatives reject through precise owner diagnostics, focused backend
+coverage exists for the accepted/refined reject paths, and fresh build plus
+backend validation passed.
 
 ## Suggested Next
 
-Execute Step 5 validation and handoff for idea 514, using the supervisor's
-chosen acceptance proof.
+Plan-owner closure review for idea 514.
 
 ## Watchouts
 
-Remaining intentionally fail-closed shapes include same-width
+Residual risks are intentionally out-of-scope fail-closed shapes: same-width
 reason/source-home mismatches, missing source-size authority, malformed
-destination offset facts, and conversion moves that do not have the precise
-single register-source stack-destination classifier-owned mismatch shape.
+destination offset facts, unsupported register banks or widths, and broader
+multi-move scheduling beyond the idea 516 closed boundary.
 
-No implementation was touched in Step 4; the slice is focused backend coverage
-only.
+This packet changed no implementation or tests. It only validated the completed
+runbook and updated canonical execution state.
 
 ## Proof
 
@@ -49,6 +51,10 @@ Commands run:
 
 - `cmake --build --preset default`
 - `ctest --test-dir build -j --output-on-failure -R '^backend_'`
-- `git diff --check -- tests/backend/mir/backend_riscv_object_emission_test.cpp todo.md`
+- `build/c4cll -I tests/c/external/gcc_torture --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/pr27073.c -o build/agent_state/pr27073_step5.o`
+- `build/c4cll -I tests/c/external/gcc_torture --codegen obj --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20010518-1.c -o build/agent_state/20010518-1_step5.o`
+- `git diff --check -- todo.md`
 
-The delegated build and `^backend_` subset passed.
+The delegated build and `^backend_` subset passed. The focused representative
+proofs produced the expected unsupported diagnostics and are appended to
+`test_after.log`.
