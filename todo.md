@@ -1,6 +1,6 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/527_bir_route7_comparison_body_extraction.md
 Source Plan Path: plan.md
 Current Step ID: 5
@@ -8,45 +8,55 @@ Current Step Title: Acceptance Checkpoint
 
 ## Just Finished
 
-Step 4: Focused Route7 Proof completed as a validation-only packet.
+Step 5: Acceptance Checkpoint completed.
 
-Ran the supervisor-selected focused route7 proof for the separated route7
-comparison owner and facade-backed consumers. The focused set covered all six
-requested backend tests:
+Acceptance summary:
 
-- `backend_lir_to_bir_notes`
-- `backend_prepared_lookup_helper`
-- `backend_aarch64_branch_compare_records`
-- `backend_aarch64_compare_branch_candidate_records`
-- `backend_aarch64_branch_compare_contract`
-- `backend_aarch64_branch_control_lowering`
+- The final diff moved only route7 comparison record/index construction into
+  `src/backend/bir/bir_route7_comparison.cpp`.
+- The moved bodies are the mapped construction bodies:
+  `route7_comparison_operand_record`,
+  `route7_comparison_instruction_record`,
+  `route7_branch_condition_record`, and both
+  `route7_build_comparison_condition_index` overloads.
+- `src/backend/bir/bir.hpp` route7 public declarations stayed in place.
+- Route-index facade bodies stayed in `src/backend/bir/bir.cpp`.
+- Facade-backed materialized-condition public query helpers stayed in
+  `src/backend/bir/bir.cpp`.
+- Facade-backed fused-compare public query helpers stayed in
+  `src/backend/bir/bir.cpp`.
+- Route7 lookup/validation bodies stayed in `src/backend/bir/bir.cpp`; the new
+  owner contains record/index construction only.
 
-The proof passed with `100% tests passed, 0 tests failed out of 6`. No
-implementation files, tests, build registration, `plan.md`, or source idea
-files were edited in this Step 4 packet.
+The slice is complete and ready for supervisor/plan-owner lifecycle review.
 
 ## Suggested Next
 
-Supervisor can delegate Step 5 acceptance checkpoint to inspect the final diff,
-confirm the route7 public declarations and facade-backed public query helpers
-stayed in place, and decide whether broader validation or commit is ready.
+Plan-owner lifecycle review can decide whether to close, retire, or replace the
+active plan state. No further executor implementation packet is requested by
+this acceptance checkpoint.
 
 ## Watchouts
 
-- This packet only refreshed `test_after.log` and `todo.md`.
-- The Step 2 diff kept route-index facade bodies, materialized-condition public
-  query helpers, fused-compare public query helpers, route7 public
-  declarations, and route7 lookup/validation bodies out of the new owner.
+- Do not expand this completed body-extraction slice into route-index facade,
+  materialized-condition public query, fused-compare public query, or header
+  splitting work without a separate lifecycle decision.
 - `clang-format` was unavailable during Step 2; formatting was kept consistent
   manually.
 
 ## Proof
 
-Ran exactly:
+Accepted proof coverage:
+
+- Step 2 backend build plus `^backend_` test proof passed and was accepted by
+  supervisor regression guard with matching before/after backend logs.
+- Step 4 focused route7 proof passed and was accepted by supervisor regression
+  guard with matching before/after focused logs.
+
+Step 4 focused proof command:
 
 ```sh
 bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_lir_to_bir_notes|backend_prepared_lookup_helper|backend_aarch64_branch_compare_records|backend_aarch64_compare_branch_candidate_records|backend_aarch64_branch_compare_contract|backend_aarch64_branch_control_lowering)$"' > test_after.log 2>&1
 ```
 
-Result: passed. `test_after.log` is the canonical focused proof log and records
-all six requested tests passing.
+Focused proof result: `100% tests passed, 0 tests failed out of 6`.
