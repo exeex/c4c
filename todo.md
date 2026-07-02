@@ -3,7 +3,6 @@ Source Idea Path: ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md
 Source Plan Path: plan.md
 Current Step ID: 5
 Current Step Title: Generate Ordered Follow-Up Ideas
-你該做code review了
 
 # Current Packet
 
