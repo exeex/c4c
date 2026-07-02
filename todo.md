@@ -1,46 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/520_bir_render_owner_preservation.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Validate Render Ownership
+Current Step ID: 5
+Current Step Title: Handoff Or Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Validate Render Ownership is complete for idea 520.
+Step 5 - Handoff Or Close Readiness is complete for idea 520.
 
-Recorded the accepted validation for the Step 3 BIR render ownership move.
-Step 3 ran `git diff --check` and:
+Recorded close-readiness after the accepted render ownership move and
+validation. The completed route is:
 
-```sh
-{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1
-```
+- Step 1 audited `render_type`, `render_binary_opcode`, and
+  `render_cast_opcode` consumers with clang-tools available and found mixed
+  public/non-printer consumers.
+- Step 2 rejected `bir_printer.cpp` as the destination because it would couple
+  non-printer users to a printer-owned implementation file, and selected a
+  narrow render translation unit instead.
+- Step 3 moved the helper bodies from `src/backend/bir/bir.cpp` into
+  `src/backend/bir/bir_render.cpp`, preserved public declarations in
+  `src/backend/bir/bir.hpp`, and added the build metadata needed for direct
+  BIR test linkage.
+- Step 4 accepted validation: `git diff --check`, default build, backend
+  subset, and regression guard with non-decreasing passed count all passed.
 
-The supervisor then ran regression guard first in strict mode, which reported
-an equal pass count as a non-increase, and then with
-`--allow-non-decreasing-passed`, which passed with before=345/345 and
-after=345/345, no new failures, and no new tests over 30s. The accepted
-`test_after.log` was rolled forward to `test_before.log`; `test_after.log` is
-no longer present.
+Final disposition: the public BIR render helper bodies were moved to a narrow
+render TU, not to `bir_printer.cpp`, preserving printer and validator ownership
+while avoiding new printer-only dependencies for public render consumers.
 
 ## Suggested Next
 
-Suggested Step 5 handoff: close-readiness review for idea 520. Confirm the
-implemented render ownership move, test metadata update, accepted regression
-guard result, and rolled-forward baseline are sufficient for lifecycle close or
-final supervisor commit handling.
+Suggested next packet: plan-owner lifecycle review for idea 520. The source
+idea acceptance criteria appear satisfied subject to lifecycle review.
 
 ## Watchouts
 
-No implementation, build metadata, tests, expectations, or root logs were
-changed for Step 4. `bir_printer.cpp` remains rejected for this route because
-the audited consumer map is mixed, not printer-only.
+Residual risks: none currently known for the completed ownership move. The
+accepted proof covered build/linkage and the backend subset; render text and
+validation diagnostics were not intentionally changed.
+
+No separate cleanup initiative was discovered. Route extraction, validator
+folding, and broader BIR cleanup remain out of scope for idea 520 rather than
+new findings from this slice.
 
 ## Proof
 
-No new build or ctest run was required for this validation-bookkeeping packet.
-Accepted Step 3 proof:
+No build or ctest run was required for this close-readiness bookkeeping packet.
+Accepted implementation proof from Step 3/Step 4:
 
 ```sh
 git diff --check
@@ -51,3 +59,9 @@ Supervisor regression guard acceptance passed with
 `--allow-non-decreasing-passed`: before=345/345, after=345/345, no new
 failures, and no new tests over 30s. The accepted `test_after.log` was rolled
 forward to `test_before.log`, so `test_after.log` is no longer present.
+
+This packet proof:
+
+```sh
+git diff --check -- todo.md
+```
