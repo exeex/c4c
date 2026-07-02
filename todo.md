@@ -1,15 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/558_bir_call_metadata_semantic_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Direct-Call Metadata Publication
+Current Step ID: 3
+Current Step Title: Prove Direct-Call Representative And Classify Residual
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Repair Direct-Call Metadata Publication completed for typed
-`ptr null` pointer operands in metadata-rich direct calls.
+Step 2 - Repair Direct-Call Metadata Publication is complete for the selected
+direct-call representative.
 
 `lower_call_pointer_arg_value` now admits non-SSA, non-global pointer operands
 through existing `lower_value(..., TypeKind::Ptr, ...)` materialization, so
@@ -24,14 +24,17 @@ relationship.
 The selected `src/20000412-2.c` row no longer fails in direct-call semantic
 admission. It now reaches the object route and fails downstream as
 `unsupported_instruction_fragment: BIR instruction requires unsupported RV64
-object lowering`.
+object lowering`. This exhausts Step 2 for the selected direct-call seed; do
+not add another direct-call seed before the Step 3 residual-classification
+checkpoint unless that proof exposes another in-scope call metadata boundary.
 
 ## Suggested Next
 
-Inspect the next call-metadata representative boundary. The `src/20000412-2.c`
-seed has moved past direct-call producer admission, so Step 2 should either
-advance to the next direct-call metadata seed or hand back to plan-owner review
-if the remaining Step 2 scope is exhausted.
+Run Step 3 for `src/20000412-2.c`: refresh the delegated RV64 backend-object
+proof for the direct-call seed, inspect the row `case.log`, and record whether
+the residual remains downstream object lowering or reveals another in-scope
+call metadata boundary. If the residual remains downstream, advance toward the
+call-return representative instead of broadening Step 2.
 
 ## Watchouts
 
@@ -40,7 +43,8 @@ runtime/intrinsic repairs, expectation rewrites, unsupported-marker changes,
 allowlist edits, runtime-comparison changes, and named-case shortcuts. The
 runbook must cover call-return metadata before claiming the source idea is
 complete. Treat the current RV64 object-route failure for `src/20000412-2.c` as
-downstream unless the supervisor explicitly opens an object-lowering packet.
+downstream unless the Step 3 case-log inspection proves another call metadata
+producer boundary or the supervisor explicitly opens an object-lowering packet.
 
 ## Proof
 
@@ -55,3 +59,9 @@ Commands:
   fails, but the failure moved from direct-call semantic producer admission to
   downstream RV64 object lowering.
 - `git diff --check` passed.
+
+Lifecycle decision:
+
+- Step 2 is complete/exhausted for the selected direct-call representative.
+- Active execution advanced to Step 3,
+  `Prove Direct-Call Representative And Classify Residual`.
