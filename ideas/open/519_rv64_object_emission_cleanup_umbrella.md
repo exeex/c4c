@@ -32,6 +32,10 @@ first comparison point.
 ## In Scope
 
 - Inventory major regions and helper families in RV64 `object_emission.cpp`.
+- Use `.codex/skills/c4c-clang-tools/` for the initial C++ structure scan:
+  confirm `c4c-clang-tool` and `c4c-clang-tool-ccdb` are available, then use
+  AST-backed symbol, function-signature, caller/callee, and type-reference
+  queries before falling back to raw long-file reading.
 - Compare those regions with the AArch64 codegen file layout.
 - Identify which RV64 regions already have focused files that should receive
   code, such as:
@@ -71,6 +75,8 @@ The runbook should produce a durable plan artifact under
 `build/agent_state/519_rv64_object_emission_cleanup/` that contains:
 
 - current line-count and region map for `object_emission.cpp`;
+- `c4c-clang-tools` query notes, including the commands used and the symbol or
+  dependency clusters they exposed;
 - AArch64 comparison table;
 - proposed destination map for each RV64 region;
 - proposed new-file list, if any;

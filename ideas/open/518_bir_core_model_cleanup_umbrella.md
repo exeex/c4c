@@ -35,6 +35,10 @@ more producer packets add to the same core files.
 
 - Produce an inventory of top-level declaration families in `bir.hpp`.
 - Produce an inventory of implementation families in `bir.cpp`.
+- Use `.codex/skills/c4c-clang-tools/` for the initial C++ structure scan:
+  confirm `c4c-clang-tool` and `c4c-clang-tool-ccdb` are available, then use
+  AST-backed symbol, function-signature, caller/callee, and type-reference
+  queries before falling back to raw long-file reading.
 - Decide whether declarations should remain in one public model header with
   smaller private implementation files, move into existing focused files, or
   split into new headers by domain.
@@ -69,6 +73,8 @@ The runbook should produce a durable plan artifact under
 contains:
 
 - current line-count and dependency snapshot;
+- `c4c-clang-tools` query notes, including the commands used and the symbol or
+  dependency clusters they exposed;
 - declaration-family inventory for `bir.hpp`;
 - implementation-family inventory for `bir.cpp`;
 - recommended destination map;
