@@ -1,6 +1,6 @@
 # RV64 Prepared Local-Memory Addressing For src/960209-1.c
 
-Status: Open
+Status: Closed
 Type: RV64 object-route capability repair
 Parent: `ideas/closed/554_out_of_ssa_parallel_copy_move_bundle_publication.md`
 Related: `ideas/open/547_bir_local_memory_call_metadata_boundary_review.md`
@@ -68,6 +68,25 @@ implementation owner for this advanced `src/960209-1.c` blocker.
   diagnostic demonstrates a deeper producer-owned blocker.
 - No gcc_torture expectations, unsupported markers, allowlists, or runtime
   comparison behavior are weakened.
+
+## Closure Note
+
+Closed after active runbook Step 3 proved the `src/960209-1.c` row moved past
+`unsupported_local_memory_access`. The current row-level first blocker is now:
+
+```text
+prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination:
+prepared move-bundle classifier rejected ambiguous non-parallel multi-source
+stack-destination authority
+```
+
+That diagnostic is a prepared move-bundle classifier blocker, not an RV64
+prepared local-memory addressing blocker. The local-memory source acceptance
+allowed closure when the one-row proof exposed a deeper auditable blocker.
+Close-time backend regression guard passed in lifecycle-only non-decreasing
+mode with 345/345 tests passing before and after.
+Follow-up work lives in
+`ideas/open/556_prepared_move_bundle_ambiguous_stack_destination_src_960209_1.md`.
 
 ## Reviewer Reject Signals
 
