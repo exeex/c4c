@@ -1,6 +1,6 @@
 # BIR Route1 Scalar Producer Body Extraction
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 3 of 13, after `ideas/open/521_bir_route8_return_chain_body_extraction.md`
@@ -40,6 +40,18 @@ explicit before extracting the larger dependent route families.
 - Focused backend proof covers producer-index consumers, including downstream
   route4, route5, route6, route7, and route8 paths where available.
 - `git diff --check` passes.
+
+## Closure Note
+
+Closed after moving the route1 scalar producer implementation bodies and
+route1-only private helpers from `src/backend/bir/bir.cpp` into
+`src/backend/bir/bir_route1.cpp`. Public route1 declarations and public BIR
+types remain in `src/backend/bir/bir.hpp`; comparison-only helpers and
+downstream route bodies remain outside the route1 translation unit.
+
+Accepted proof covered `git diff --check`, a fresh default build, and the
+backend CTest subset with `345/345` passing. The close-time regression guard
+passed against the rolled-forward backend log with no new failures.
 
 ## Reviewer Reject Signals
 
