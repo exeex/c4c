@@ -40,3 +40,12 @@ Create a small RV64 object-function traversal facade around `prepared_function_t
 - `fragment_for_prepared_instruction` fanout is hidden behind another monolithic dispatcher.
 - Unsupported expectations or pass/fail accounting are rewritten to claim progress.
 - The facade buries prepared lookup/context dependencies instead of exposing them.
+
+## Closure Note
+
+Closed after extracting the narrow prepared-function admission/result shell into
+`prepared_function_emit.*` with explicit result fields and callback
+dependencies. Further traversal context or loop facade extraction was reviewed
+and intentionally parked because the remaining object-side logic still owns
+fragment fanout, append ordering, diagnostics, before-return validation state,
+public entrypoints, final module assembly, and data/symbol/fixup boundaries.
