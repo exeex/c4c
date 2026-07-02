@@ -3,36 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/528_bir_route6_call_publication_body_extraction.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Includes And Internal Linkage
+Current Step ID: 4
+Current Step Title: Focused Route6 Proof
 
 ## Just Finished
 
-Step 2: Create Route6 Call Publication Owner.
+Step 3: Repair Includes And Internal Linkage.
 
-Moved only the mapped route6 call-use, call-argument publication, call-result,
-and publication-routing bodies out of `src/backend/bir/bir.cpp` into
-`src/backend/bir/bir_route6_call_publication.cpp`.
+Verification-only checkpoint completed for include/build registration/linkage
+fallout after the route6 call-publication owner split.
 
-Public route6 declarations and types remained in `bir.hpp`. Route-index facade
-bodies and facade-backed route7/materialized-condition helpers remained in
-`bir.cpp`. Memory provenance/lowering surfaces, route1-route5 owner bodies,
-call ABI lowering, LIR-to-BIR call generation, and idea 422 producer behavior
-were not edited.
+The already-passing Step 2 backend build plus `^backend_` proof verified that
+the new `src/backend/bir/bir_route6_call_publication.cpp` owner was included in
+the core backend build and linked by the standalone BIR notes test source list.
+No additional include, registration, or internal-linkage repair was needed in
+this checkpoint.
 
-Route6 continues to consume route1-route5 behavior through existing public APIs.
-The generic `indexed_call_inst` helper stayed in `bir.cpp` and was declared in
-`bir_private.hpp` for the new route6 owner. Core backend build registration is
-covered by the existing `src/backend/CMakeLists.txt` BIR source glob; the
-standalone `backend_lir_to_bir_notes_test` source list in
-`tests/backend/bir/CMakeLists.txt` now includes
-`bir_route6_call_publication.cpp`.
+No implementation files, tests, logs, `plan.md`, or source idea files were
+edited in this packet.
 
 ## Suggested Next
 
-Supervisor can delegate Step 3 from `plan.md`: verify/repair includes and
-internal linkage after the route6 owner split. The Step 2 backend proof already
-passed with the moved owner linked.
+Supervisor can delegate Step 4 from `plan.md`: run the focused route6 proof for
+call-publication, call-result, publication-routing, and link-time backend
+coverage.
 
 ## Watchouts
 
@@ -45,11 +39,16 @@ passed with the moved owner linked.
   behavior, or idea 422 producer capability.
 - `src/backend/CMakeLists.txt` uses `GLOB_RECURSE` for `src/backend/bir/*.cpp`,
   so no core backend registration edit was needed.
+- Step 3 was metadata-only by delegation. The accepted Step 2 backend proof log
+  has been rolled forward to canonical `test_before.log`; the next proof packet
+  may create a new `test_after.log`.
 
 ## Proof
 
-Ran exactly:
+No new command was required or run for Step 3.
 
+Verification basis: the already-recorded Step 2 command
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-
-Result: passed. Proof log: `test_after.log`.
+passed, and the supervisor regression guard accepted matching before/after
+backend logs. The accepted proof log has been rolled forward to canonical
+`test_before.log`; the next proof packet may create a new `test_after.log`.
