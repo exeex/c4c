@@ -1,6 +1,6 @@
 # BIR Call Metadata Semantic Producer Admission
 
-Status: Open
+Status: Closed
 Type: Producer implementation follow-up
 Parent: `ideas/closed/545_bir_semantic_producer_admission_reconstruction.md`
 Owning Layer: BIR semantic producer
@@ -45,6 +45,24 @@ prepared or RV64 consumers can safely proceed.
 - Focused BIR tests cover both direct-call and call-return behavior.
 - A narrow RV64 subset proves the current call rows advance without consumer
   inference.
+
+## Completion Note
+
+Closed after the active runbook repaired both representative producer-admission
+boundaries.
+
+- `src/20000412-2.c` no longer reports direct-call semantic call metadata
+  admission failure and now reaches downstream RV64 object-route unsupported
+  ownership.
+- `src/20050121-1.c` no longer reports call-return semantic call metadata
+  admission failure and now reaches downstream RV64 object-route unsupported
+  ownership.
+- Step 5 reconciliation proof:
+  `build/agent_state/558_step5_call_metadata_reconcile.log`.
+- Close-time regression guard used backend CTest before/after logs and passed:
+  345/345 before, 345/345 after.
+
+Residual downstream RV64 object lowering is outside this source idea.
 
 ## Reviewer Reject Signals
 
