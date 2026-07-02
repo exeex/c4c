@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/559_bir_runtime_intrinsic_memory_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Intrinsic Memory Admission Boundary
+Current Step ID: 2
+Current Step Title: Add Focused Intrinsic Memory Producer Coverage
 
 # Current Packet
 
@@ -46,13 +46,13 @@ runtime intrinsic memory operations, not separate testcase-specific lowering.
 
 ## Suggested Next
 
-Add focused BIR note coverage for runtime intrinsic stores to non-local
-destinations, then repair `src/backend/bir/lir_to_bir/memory/intrinsics.cpp` so
-`memcpy` can store copied bytes to pointer-value destinations and `memset` can
-store repeated bytes to global-symbol destinations with explicit
-`MemoryAddress` provenance. Keep the first code packet inside the intrinsic
-producer boundary unless the focused tests prove an addressing helper must
-change.
+Add focused BIR note coverage for runtime intrinsic memory-effect publication:
+one `memcpy` case with a pointer-value destination derived from a parameter, and
+one `memset` case with a global-symbol destination. Keep the assertions
+semantic and helper-oriented, tied to explicit `MemoryAddress` provenance and
+not to gcc_torture filenames. Implementation repair belongs to the following
+Step 3 packet unless the coverage cannot be expressed without the same local
+producer change.
 
 ## Watchouts
 
