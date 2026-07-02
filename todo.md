@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/548_prepared_global_stack_frame_infrastructure_review.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconstruct Infrastructure Bucket Evidence
+Current Step ID: 2
+Current Step Title: Classify Global-Data Ownership
 
 # Current Packet
 
@@ -59,9 +59,20 @@ Rows that moved or are missing from intended buckets:
 
 ## Suggested Next
 
-Advance to Step 2 and classify the `unsupported_global_data` rows into
-prepared selected object-data contract gaps versus RV64 object-route global
-memory emission gaps.
+Execute Step 2 by classifying the two current `unsupported_global_data`
+representatives from Step 1:
+
+- `src/20000412-1.c`: determine whether the
+  `prepared selected object-data contract status=unsupported_but_coherent`
+  diagnostic means prepared still owes an object-data contract capability, or
+  whether RV64 object emission should consume the coherent prepared payload.
+- `src/20001121-1.c`: determine whether prepared facts are already sufficient
+  and the first owner is RV64 object-route global memory access emission for
+  widths outside 1, 2, 4, and 8 bytes.
+
+Record the prepared-contract versus RV64 object-route sub-buckets, exact log
+paths, and whether the evidence is implementation-ready for one or more
+follow-up source ideas.
 
 ## Watchouts
 
