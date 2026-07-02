@@ -1,6 +1,6 @@
 # RV64 Move-Bundle Target-Shape Bucket Split
 
-Status: Open
+Status: Closed
 Type: Bucket review and follow-up splitter
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Owning Layer: Prepared contract plus RV64/MIR boundary
@@ -52,6 +52,25 @@ may need earlier BIR or prepared producer repair.
 - No implementation or test-contract changes are required to close this
   review idea.
 
+## Closure Note
+
+Closed after reconstructing the 183-row
+`unsupported_move_bundle_target_shape` bucket, classifying all rows by
+first-owner lane, and splitting the non-empty lanes into durable follow-up
+queues:
+
+- `ideas/open/551_rv64_move_bundle_materialization_from_classified_bucket.md`
+  owns the 151 coherent RV64/MIR materialization rows.
+- `ideas/open/552_prepared_move_bundle_target_shape_authority_gaps.md` owns
+  the 31 prepared/module target-shape authority-gap rows.
+- `ideas/open/553_move_bundle_target_shape_evidence_gap_src_960209_1.md`
+  owns the single evidence-gap row, `src/960209-1.c`.
+
+The `bir_semantic_producer_gap` and `f128_primary_quarantine` lanes were empty
+in the current classification. No implementation files, test expectations,
+unsupported markers, allowlists, or runtime-comparison code were changed by
+this splitter route.
+
 ## Reviewer Reject Signals
 
 - Reject RV64 lowering that infers missing target-shape authority from a
@@ -64,4 +83,3 @@ may need earlier BIR or prepared producer repair.
   as evidence that the bucket was improved.
 - Reject helper renames or diagnostic text changes claimed as capability
   progress while the same `unsupported_move_bundle_target_shape` rows remain.
-
