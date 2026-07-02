@@ -1183,6 +1183,38 @@ bool BirFunctionLowerer::lower_memory_load_inst(
 
   const auto value_type = lower_scalar_or_function_pointer_type(load.type_str.str());
   if (!value_type.has_value()) {
+    const auto vector_type = parse_local_vector_type(load.type_str.str());
+    if (vector_type.has_value()) {
+      if (load.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+        return false;
+      }
+      const auto local_array_it = local_array_slots_.find(load.ptr.str());
+      if (local_array_it == local_array_slots_.end() ||
+          local_array_it->second.element_type != vector_type->second ||
+          local_array_it->second.element_slots.size() < vector_type->first) {
+        return false;
+      }
+      const auto lane_size = type_size_bytes(vector_type->second);
+      if (lane_size == 0) {
+        return false;
+      }
+      for (std::size_t lane_index = 0; lane_index < vector_type->first; ++lane_index) {
+        const auto& lane_slot = local_array_it->second.element_slots[lane_index];
+        const auto lane_slot_type_it = local_slot_types_.find(lane_slot);
+        if (lane_slot_type_it == local_slot_types_.end() ||
+            lane_slot_type_it->second != vector_type->second) {
+          return false;
+        }
+        lowered_insts->push_back(bir::LoadLocalInst{
+            .result = bir::Value::named(
+                vector_type->second,
+                load.result.str() + ".lane." + std::to_string(lane_index)),
+            .slot_name = lane_slot,
+            .address = direct_scalar_local_slot_address(lane_slot, vector_type->second),
+        });
+      }
+      return true;
+    }
     // Step 4 no-id compatibility bridge: local/global aggregate load lowering
     // owns LirLoadOp::type_str rendered text for aggregate loads. The
     // limitation is that the load instruction does not expose a
