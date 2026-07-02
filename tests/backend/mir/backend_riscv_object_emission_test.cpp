@@ -11727,6 +11727,50 @@ int rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes() {
 
   prepared =
       make_prepared_before_instruction_register_to_stack_move_bundle_module();
+  auto& conversion_locations = prepared.value_locations.functions[0];
+  auto& conversion_move = conversion_locations.move_bundles[0].moves[0];
+  conversion_locations.value_homes[2] =
+      rv64_gpr_home(3,
+                    prepared.names.function_names.find("main"),
+                    prepared.names.value_names.find("%trunc"),
+                    "a4",
+                    14);
+  conversion_move.from_value_id = 3;
+  conversion_move.reason = "consumer_stack_to_stack";
+  const auto conversion_mismatch =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (conversion_mismatch.ok() || conversion_mismatch.module.has_value()) {
+    return fail("register-source conversion classified as stack-to-stack should reject");
+  }
+  if (conversion_mismatch.prepared_consumer_category.has_value() ||
+      conversion_mismatch.diagnostic.find(
+          "unsupported_prepared_move_bundle_classification: register-source "
+          "stack-destination conversion move was classified as "
+          "consumer_stack_to_stack") != 0 ||
+      conversion_mismatch.diagnostic.find("move[0].reason=consumer_stack_to_stack") ==
+          std::string::npos ||
+      conversion_mismatch.diagnostic.find("move[0].source_home_kind=register") ==
+          std::string::npos ||
+      conversion_mismatch.diagnostic.find(
+          "move[0].destination_home_kind=stack_slot") == std::string::npos ||
+      conversion_mismatch.diagnostic.find("move[0].source_type=i16") ==
+          std::string::npos ||
+      conversion_mismatch.diagnostic.find("move[0].destination_type=i32") ==
+          std::string::npos ||
+      conversion_mismatch.diagnostic.find(
+          "diagnostic_owner=prepared_move_bundle_classifier") ==
+          std::string::npos ||
+      conversion_mismatch.diagnostic.find(
+          "fragment_status=producer_classification_rejected_register_source_"
+          "stack_destination_conversion") == std::string::npos ||
+      conversion_mismatch.diagnostic.find("generic_move_bundle_materialization_failed") !=
+          std::string::npos) {
+    return fail("conversion-aware register-source stack-destination mismatch should produce classifier diagnostic, got `" +
+                conversion_mismatch.diagnostic + "`");
+  }
+
+  prepared =
+      make_prepared_before_instruction_register_to_stack_move_bundle_module();
   prepared.value_locations.functions[0].value_homes[0].value_name =
       prepared.names.value_names.intern("%prepared.only.source");
   prepared.value_locations.functions[0].value_homes[0].size_bytes =

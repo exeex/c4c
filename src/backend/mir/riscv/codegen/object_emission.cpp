@@ -7831,6 +7831,95 @@ bool prepared_before_instruction_move_bundle_requires_suppression_authority(
       });
 }
 
+std::optional<std::string>
+rv64_prepared_move_bundle_classification_failure_diagnostic(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedObjectTraversalEvent& event,
+    const c4c::backend::prepare::PreparedObjectMoveBundleConsumerClassification&
+        classification,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups) {
+  const auto* move_bundle = classification.move_bundle;
+  if (move_bundle == nullptr || move_bundle->moves.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& move = move_bundle->moves.front();
+  if (move_bundle->phase != prepare::PreparedMovePhase::BeforeInstruction ||
+      move_bundle->authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      move.reason != "consumer_stack_to_stack" ||
+      move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+      move.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
+      move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+      move.destination_contiguous_width != 1 || move.uses_cycle_temp_source ||
+      move.source_immediate_i32.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* source_home =
+      prepared_value_home_for_id(lookups, move.from_value_id);
+  const auto* destination_home =
+      prepared_value_home_for_id(lookups, move.to_value_id);
+  if (source_home == nullptr || destination_home == nullptr ||
+      source_home->kind != prepare::PreparedValueHomeKind::Register ||
+      destination_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+
+  const auto source_type =
+      prepared_bir_value_type_for_name(names, function, source_home->value_name);
+  const auto destination_type = prepared_bir_value_type_for_name(
+      names, function, destination_home->value_name);
+  if (!source_type.has_value() || !destination_type.has_value()) {
+    return std::nullopt;
+  }
+  const auto source_size = rv64_scalar_memory_size_for_type(*source_type);
+  const auto destination_size =
+      rv64_scalar_memory_size_for_type(*destination_type);
+  if (!source_size.has_value() || !destination_size.has_value() ||
+      *source_size == *destination_size) {
+    return std::nullopt;
+  }
+
+  std::ostringstream out;
+  out << "unsupported_prepared_move_bundle_classification: register-source "
+         "stack-destination conversion move was classified as "
+         "consumer_stack_to_stack";
+  out << " event_kind="
+      << prepare::prepared_object_traversal_event_kind_name(event.kind);
+  out << " function="
+      << rv64_prepared_function_name(names, control_flow.function_name);
+  out << " block_index=" << event.block_index;
+  if (event.prepared_block != nullptr) {
+    out << " block_label="
+        << rv64_prepared_block_label(names, event.prepared_block->block_label);
+  }
+  out << " instruction_index=" << event.instruction_index;
+  out << " phase=" << prepare::prepared_move_phase_name(move_bundle->phase);
+  out << " authority="
+      << prepare::prepared_move_authority_kind_name(move_bundle->authority_kind);
+  out << " move_count=" << move_bundle->moves.size();
+  out << " parallel_copy="
+      << (classification.parallel_copy_bundle == nullptr ? "no" : "yes");
+  out << " move[0].from_value_id=" << move.from_value_id;
+  out << " move[0].to_value_id=" << move.to_value_id;
+  out << " move[0].reason=" << move.reason;
+  out << " move[0].source_home_kind="
+      << prepare::prepared_value_home_kind_name(source_home->kind);
+  out << " move[0].destination_home_kind="
+      << prepare::prepared_value_home_kind_name(destination_home->kind);
+  out << " move[0].source_type=" << bir::render_type(*source_type);
+  out << " move[0].destination_type=" << bir::render_type(*destination_type);
+  out << " move[0].source_size_bytes=" << *source_size;
+  out << " move[0].destination_size_bytes=" << *destination_size;
+  out << " diagnostic_owner=prepared_move_bundle_classifier";
+  out << " fragment_status="
+         "producer_classification_rejected_register_source_stack_destination_"
+         "conversion";
+  return out.str();
+}
+
 std::string rv64_prepared_move_bundle_fragment_failure_diagnostic(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
@@ -7843,6 +7932,12 @@ std::string rv64_prepared_move_bundle_fragment_failure_diagnostic(
         dependency_operand_authorities,
     const c4c::backend::prepare::PreparedSelectEdgeSourceProducerPlacementRecords*
         select_edge_source_producer_placements) {
+  if (auto classification_diagnostic =
+          rv64_prepared_move_bundle_classification_failure_diagnostic(
+              names, control_flow, function, event, classification, lookups)) {
+    return *classification_diagnostic;
+  }
+
   std::ostringstream out;
   out << "unsupported_move_bundle_target_shape: prepared move bundle requires "
          "unsupported RV64 moves";
