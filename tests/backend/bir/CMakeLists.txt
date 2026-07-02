@@ -1,6 +1,7 @@
 add_executable(backend_prepare_phi_materialize_test
     "${BACKEND_TEST_ROOT}/bir/backend_prepare_phi_materialize_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_route_facade.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/legalize.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/out_of_ssa.cpp"
@@ -88,6 +89,7 @@ set_tests_properties(backend_prepare_authoritative_join_ownership PROPERTIES
 add_executable(backend_lir_to_bir_notes_test
     "${BACKEND_TEST_ROOT}/bir/backend_lir_to_bir_notes_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_route_facade.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_render.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_route1.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_route2.cpp"
