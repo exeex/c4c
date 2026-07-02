@@ -2,6 +2,9 @@
 
 #include "emit.hpp"
 
+#include "../../../bir/bir.hpp"
+#include "../../../prealloc/publication_plans.hpp"
+
 #include <string_view>
 
 namespace c4c::backend::riscv::codegen {
@@ -58,5 +61,19 @@ prepared_predecessor_select_publication_bundle_is_rv64_object_admitted(
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedParallelCopyBundle& bundle,
     PreparedSelectPublicationStackHomePredicate stack_home_predicate);
+
+[[nodiscard]] bool
+prepared_select_edge_binary_source_has_carrier_alias_authority(
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
+    const c4c::backend::prepare::PreparedEdgePublication& publication);
+
+[[nodiscard]] bool prepared_select_is_authorized_carrier_alias(
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
+        carrier_alias_authorities,
+    const c4c::backend::bir::SelectInst& select);
 
 }  // namespace c4c::backend::riscv::codegen

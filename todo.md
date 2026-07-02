@@ -1,47 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/540_rv64_object_select_edge_publication_helper_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extract Predecessor Edge Fragment Helpers
+Current Step ID: 4
+Current Step Title: Narrow Select Source Producer Dependencies
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 of `plan.md`: extracted predecessor-edge select publication
-bundle admission predicates from `object_emission.cpp` into
-`prepared_edge_publication_emit.cpp` / `.hpp` without changing object-side
-traversal or fragment emission.
+Completed Step 4 of `plan.md`: narrowed select-source producer helper
+ownership by moving the carrier-alias authority predicates from
+`object_emission.cpp` into `prepared_edge_publication_emit.cpp` / `.hpp`.
 
 Moved helper ownership:
 
-- `prepared_predecessor_select_publication_bundle_is_stack_join_materialized`
-- `prepared_predecessor_select_publication_bundle_is_rv64_object_admitted`
-- local prepared value-id lookup needed by those predicates
+- `prepared_select_edge_binary_source_has_carrier_alias_authority`
+- `prepared_select_is_authorized_carrier_alias`
 
 Boundary notes:
 
-- `prepared_edge_publication_emit.hpp` now publishes
-  `PreparedSelectPublicationStackHomePredicate` so the prepared-side
-  predecessor admission walk can call the one retained object-side stack-home
-  exception without taking over its internals.
-- `object_emission.cpp` now passes
-  `prepared_select_publication_destination_is_stack_home` into the prepared
-  predecessor admission APIs.
-- `fragment_for_predecessor_select_publication_pointer_stack_source_to_gpr` and
-  `fragment_for_predecessor_select_publication_gpr_to_stack_destination` remain
-  object-side because they still call object encoder utilities
-  (`rv64_register_number`, `append_rv64_load_stack_to_register`,
-  `append_rv64_store_register_to_stack`).
-- `rv64_select_publication_bundle_rejection_diagnostic` remains object-side
-  because it is diagnostic-heavy and traversal-aware.
+- The moved helpers are record-level predicates over prepared carrier-alias
+  authority/publication records or one explicit `SelectInst`; they do not take
+  over whole-function traversal, fragment emission, or dispatch.
+- `prepared_select_edge_binary_source_has_only_carrier_uses` remains
+  object-side because it scans the whole BIR function for use closure.
+- `prepared_select_edge_binary_source_has_authorized_consumers` remains
+  object-side because it combines the whole-function use scan with the moved
+  record-level carrier-alias predicate.
+- `fragment_for_prepared_select_edge_source_dependencies` and
+  `fragment_for_prepared_select_edge_source_producer` remain object-side
+  because they walk function blocks, call `fragment_for_prepared_binary`, and
+  drive object fragment assembly.
+- Cast-dependency authority helpers remain object-side because they either
+  scan whole-function uses or feed object-side materialization fragments.
 
 ## Suggested Next
 
-Supervisor should delegate Step 4: inspect and narrow select-source producer
-dependencies, moving only helpers whose ownership is naturally
-edge-publication or scalar and whose context can be expressed through narrow
-parameters.
+Supervisor should delegate the next Step 4/5 packet to review whether any
+diagnostic-only select publication helpers can move without pulling in object
+encoder utilities, or proceed to the runbook review step if no narrower
+extraction remains.
 
 ## Watchouts
 
@@ -50,11 +48,13 @@ parameters.
 - Do not turn scalar helpers into select/publication catch-all ownership.
 - Predecessor fragment bodies still call object-side encoder utilities and
   should remain parked until an explicit narrow encoder boundary exists.
+- Select-source producer fragment bodies still depend on BIR block traversal,
+  scalar fragment emission, cast dependency materialization, and object
+  fragment assembly; keep them parked unless a separate narrow boundary is
+  designed.
 - `prepared_select_publication_destination_is_stack_home` remains object-side
   and should not be folded into the prepared publication API without first
   separating its value-home lookup dependency.
-- Step 4 must avoid dragging whole-function traversal or
-  `fragment_for_prepared_instruction` fanout into `prepared_edge_publication_emit.*`.
 - Leave the existing untracked review artifact untouched.
 
 ## Proof

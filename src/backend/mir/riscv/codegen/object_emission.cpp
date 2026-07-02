@@ -5733,39 +5733,6 @@ bool prepared_select_edge_binary_source_has_only_carrier_uses(
   return true;
 }
 
-bool prepared_select_edge_binary_source_has_carrier_alias_authority(
-    c4c::FunctionNameId function_name,
-    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
-        carrier_alias_authorities,
-    const c4c::backend::prepare::PreparedEdgePublication& publication) {
-  if (carrier_alias_authorities == nullptr || !publication.source_value_id.has_value() ||
-      !publication.source_producer_block_label.has_value() ||
-      !publication.source_producer_instruction_index.has_value()) {
-    return false;
-  }
-  for (const auto& record : carrier_alias_authorities->records) {
-    const auto& authority = record.authority;
-    if (record.function_name == function_name &&
-        prepare::prepared_select_carrier_alias_authority_available(authority) &&
-        authority.source_use_closure_proven &&
-        !authority.carrier_aliases.empty() &&
-        authority.predecessor_label == publication.predecessor_label &&
-        authority.successor_label == publication.successor_label &&
-        authority.destination_value_id == publication.destination_value_id &&
-        authority.destination_value_name == publication.destination_value_name &&
-        authority.source_value_id == publication.source_value_id &&
-        authority.source_value_name == publication.source_value_name &&
-        authority.source_producer_kind == publication.source_producer_kind &&
-        authority.source_producer_block_label ==
-            publication.source_producer_block_label &&
-        authority.source_producer_instruction_index ==
-            publication.source_producer_instruction_index) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool prepared_select_edge_binary_source_has_authorized_consumers(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
@@ -6119,35 +6086,6 @@ bool prepared_binary_is_select_edge_owned_source(
       continue;
     }
     return true;
-  }
-  return false;
-}
-
-bool prepared_select_is_authorized_carrier_alias(
-    c4c::FunctionNameId function_name,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
-        carrier_alias_authorities,
-    const c4c::backend::bir::SelectInst& select) {
-  if (carrier_alias_authorities == nullptr ||
-      select.result.kind != c4c::backend::bir::Value::Kind::Named) {
-    return false;
-  }
-  const auto result_name = names.value_names.find(select.result.name);
-  if (result_name == c4c::kInvalidValueName) {
-    return false;
-  }
-  for (const auto& record : carrier_alias_authorities->records) {
-    if (record.function_name != function_name ||
-        !prepare::prepared_select_carrier_alias_authority_available(
-            record.authority)) {
-      continue;
-    }
-    for (const auto& alias : record.authority.carrier_aliases) {
-      if (alias.carrier_value_name == result_name) {
-        return true;
-      }
-    }
   }
   return false;
 }
