@@ -1,6 +1,6 @@
 # Current Packet
 
-Status: Active
+Status: Complete - ready for plan-owner lifecycle review
 Source Idea Path: ideas/open/528_bir_route6_call_publication_body_extraction.md
 Source Plan Path: plan.md
 Current Step ID: 5
@@ -8,24 +8,40 @@ Current Step Title: Acceptance Checkpoint
 
 ## Just Finished
 
-Step 4: Focused Route6 Proof.
+Step 5: Acceptance Checkpoint.
 
-Focused route6 proof completed for the separated route6 call-publication owner.
+Acceptance checkpoint recorded for the completed route6 call-publication body
+extraction.
 
-The proof covered all four delegated focused tests:
+Final diff confirmation:
 
-- `backend_lir_to_bir_notes`
-- `backend_prepared_lookup_helper`
-- `backend_prealloc_call_boundary_classification`
-- `backend_aarch64_call_boundary_owner`
+- Only the mapped route6 call-use, call-argument publication, call-result
+  source, and publication-routing bodies were moved into
+  `src/backend/bir/bir_route6_call_publication.cpp`.
+- Route6 public declarations and public route6 types stayed in `bir.hpp`.
+- Route-index facade bodies stayed in `bir.cpp`.
+- Memory provenance and memory lowering surfaces stayed in place.
+- Call ABI lowering, LIR-to-BIR call generation, route1-route5 owner behavior,
+  and idea 422 producer behavior did not change.
 
-No implementation files, tests, build registration, `plan.md`, or source idea
-files were edited in this validation-only packet.
+Accepted proof coverage:
+
+- Step 2 backend proof: build plus `^backend_` test subset passed, and the
+  supervisor regression guard accepted matching before/after backend logs.
+- Step 4 focused proof: build plus the four focused tests passed
+  (`backend_lir_to_bir_notes`, `backend_prepared_lookup_helper`,
+  `backend_prealloc_call_boundary_classification`,
+  `backend_aarch64_call_boundary_owner`), and the supervisor regression guard
+  accepted matching before/after focused logs.
+- Accepted proof logs were rolled forward to canonical `test_before.log`.
+
+No implementation files, tests, logs, `plan.md`, or source idea files were
+edited in this acceptance-summary packet.
 
 ## Suggested Next
 
-Supervisor can delegate Step 5 from `plan.md`: record the acceptance checkpoint
-for the completed route6 call-publication body extraction.
+Ready for plan-owner lifecycle review of the completed active runbook. No
+additional executor implementation packet is requested.
 
 ## Watchouts
 
@@ -38,13 +54,13 @@ for the completed route6 call-publication body extraction.
   behavior, or idea 422 producer capability.
 - `src/backend/CMakeLists.txt` uses `GLOB_RECURSE` for `src/backend/bir/*.cpp`,
   so no core backend registration edit was needed.
-- Step 4 overwrote `test_after.log` with the focused proof requested for this
-  packet.
+- Accepted proof logs were rolled forward to canonical `test_before.log`; this
+  acceptance packet did not inspect or mutate logs.
 
 ## Proof
 
-Ran exactly:
+No new command was required or run for Step 5.
 
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_lir_to_bir_notes|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_aarch64_call_boundary_owner)$"' > test_after.log 2>&1`
-
-Result: passed, 4/4 focused tests passed. Proof log: `test_after.log`.
+Acceptance basis: the committed Step 2 backend proof/regression guard and the
+committed Step 4 focused four-test proof/regression guard were already accepted
+by the supervisor and rolled forward to canonical `test_before.log`.
