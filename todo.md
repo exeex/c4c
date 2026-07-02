@@ -1,69 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/543_rv64_object_data_symbol_fixup_module_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Map Late Object Assembly Ownership
+Current Step ID: 2
+Current Step Title: Review Data Object And Relocation Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 mapped the late RV64 object assembly ownership without implementation
+Step 2 reviewed `append_rv64_prepared_data_objects` and made no implementation
 changes.
 
-Current ownership map:
-- Public object entrypoints in `object_emission.hpp` are still
-  `build_rv64_text_object_module`,
-  `build_rv64_prepared_text_object_module`,
-  `build_rv64_prepared_text_object_module_with_diagnostics`,
-  `write_rv64_relocatable_elf_object`,
-  `write_rv64_prepared_relocatable_elf_object_with_diagnostics`, and
-  `write_rv64_prepared_relocatable_elf_object`.
-- Text section creation, function byte append order, local label binding,
-  function symbol definition, text fixup symbol lookup/declaration, relocation
-  kind mapping, and text relocation attachment are owned together by
-  `build_rv64_text_object_module`.
-- Data object emission is owned by `append_rv64_prepared_data_objects`: string
-  constants go to `.rodata`; prepared globals are admitted through selected
-  object-data contract facts, then emitted to `.bss`, `.rodata`, or `.data`.
-- Zero-fill reservation is local to `append_rv64_prepared_data_objects` through
-  selected zero-fill classification and `reserve_section_bytes`; it must stay
-  tied to object-data identity, size, alignment, and BSS section selection.
-- Section selection and section flags are currently centralized in
-  `append_rv64_prepared_data_objects` for data and in
-  `build_rv64_text_object_module` for `.text`; final section ordering is
-  therefore a product of text module creation followed by data append.
-- Symbol binding is split by kind: function binding uses
-  `binding_for_function`, data binding uses
-  `rv64_prepared_object_data_symbol_binding`, string constants are local
-  object symbols, and unresolved fixup targets are declared as global
-  undefined symbols.
-- Data pointer relocation handling is owned by
-  `append_rv64_prepared_data_objects` through
+No narrow data-object helper boundary was extracted. The useful unit still has
+to keep the following dependencies visible together:
+- selected object-data contract facts and unsupported-but-coherent fallback
+  status for each global
+- zero-fill classification tied to the original global initializer shape,
+  object-data identity, object size, alignment, and BSS section selection
+- section selection for `.bss`, `.rodata`, and `.data`, including section
+  flags and alignment before byte append or reservation
+- pointer-initializer relocation creation through
   `rv64_selected_symbol_pointer_initializer_label`,
   `rv64_find_or_declare_relocation_symbol`, `rv64_prepared_link_symbol_kind`,
-  and `attach_relocation` with `kRiscvReloc64`.
-- ELF config and serialization stay thin and public:
-  `rv64_relocatable_elf_config` fixes RV64 little-endian flags, and
-  `write_rv64_relocatable_elf_object` delegates to the object writer.
-- Final prepared module/image assembly is owned by
-  `build_rv64_prepared_text_object_module_with_diagnostics` and
-  `write_rv64_prepared_relocatable_elf_object_with_diagnostics`, which sequence
-  function admission, function emission, text module construction, data append,
-  and ELF image writing.
+  and `attach_relocation` with `kRiscvReloc64`
+- final data symbol definition through
+  `rv64_prepared_object_data_symbol_binding`, selected section id, offset, and
+  object size
 
-First executable sub-slice for Step 2: review
-`append_rv64_prepared_data_objects` for a narrow data-emission helper boundary
-that keeps selected object-data facts, zero-fill classification, pointer
-relocation creation, section selection, and symbol definition explicit. If that
-requires a broad context or merges text fixups with data pointer relocations,
-Step 2 should be recorded as no-code.
+Extracting a per-global helper would need to carry `prepared`, `global`,
+selected object-data status, section ownership, symbol lookup/definition, and
+relocation attachment as one broad context. Extracting only section selection,
+zero-fill reservation, or pointer relocation attachment would hide exactly the
+layout and relocation contracts this step is meant to keep explicit. Text fixup
+attachment remains separate from data pointer relocation handling.
+
+Moved helpers: none.
+
+Parked helpers: data-object helper extraction stays parked until a stable
+prepared object-data relocation contract can expose relocation facts without
+falling back to BIR global initializer inspection inside the object emitter.
 
 ## Suggested Next
 
-Execute Step 2 by evaluating the `append_rv64_prepared_data_objects` boundary
-only; do not move text fixup attachment or final ELF/module assembly in that
-packet.
+Execute Step 3 by reviewing text fixup and symbol publication only. Keep text
+fixup attachment separate from data-object pointer relocation handling unless a
+stable shared contract already exists.
 
 ## Watchouts
 
@@ -71,9 +52,9 @@ packet.
   flags, public entrypoints, and zero-fill behavior.
 - Keep text fixup attachment separate from data-object pointer relocation
   handling unless a stable shared contract already exists.
-- A Step 2 extraction is only useful if the helper inputs/outputs are narrower
-  than the current central function and do not hide section/symbol/relocation
-  state behind a catch-all context.
+- Step 2 intentionally left `append_rv64_prepared_data_objects` central because
+  the remaining state is narrower and clearer in place than behind a broad
+  context object.
 - Do not touch tests, expectations, unsupported markers, or runtime contracts.
 - Keep `test_baseline.new.log` treated as a rejected full-suite candidate, not
   an accepted baseline.
@@ -81,8 +62,8 @@ packet.
 
 ## Proof
 
-No build/test command run; this was a mapping-only Step 1 packet. Do not write
-`test_after.log` for this slice.
+No build/test command run; this was a no-code Step 2 packet. No
+`test_after.log` was written.
 
 Exact proof command for code-changing packets:
 
