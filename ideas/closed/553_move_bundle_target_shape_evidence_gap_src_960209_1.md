@@ -1,6 +1,6 @@
 # Move-Bundle Target-Shape Evidence Gap For src/960209-1.c
 
-Status: Open
+Status: Closed
 Type: Evidence reconstruction queue
 Parent: `ideas/open/544_rv64_move_bundle_target_shape_bucket_split.md`
 Owning Layer: Evidence and first-owner reconstruction
@@ -28,6 +28,36 @@ details needed to choose RV64, prepared, BIR, or F128 ownership.
 - Lane filter: `first_owner_lane=evidence_gap`
 - Current row count: 1
 - Current case: `src/960209-1.c`
+
+## Closure Summary
+
+Closed because the evidence gap is satisfied. Step 3 produced auditable
+row-level evidence showing that prepared traversal has a
+`pre_terminator_copies` event, but value locations do not publish a matching
+out-of-SSA parallel-copy move bundle for the event coordinates.
+
+Classification:
+
+- Owner: prepared value-location move-bundle producer/fact propagation.
+- Current diagnostic: `prepared_consumer_category=missing_move_bundle`.
+- Event: `event_kind=pre_terminator_copies`, `event_block_index=15`,
+  `prepared_block_label=20`.
+- Parallel-copy coordinates: `parallel_copy_predecessor=20`,
+  `parallel_copy_successor=19`, `parallel_copy_execution_block=20`,
+  `lookup_execution_block_index=15`.
+- Candidate facts: `candidate_move_bundle_count=21`,
+  `candidate_phase_block_entry_count=3`,
+  `candidate_authority_out_of_ssa_parallel_copy_count=3`,
+  `candidate_execution_block_count=0`,
+  `candidate_predecessor_label_count=0`,
+  `candidate_successor_label_count=1`,
+  `candidate_exact_parallel_copy_match_count=0`.
+- Value/home/type/F128 facts:
+  `value_home_type_f128_facts=unavailable_at_missing_move_bundle`.
+
+Durable follow-up:
+
+- `ideas/open/554_out_of_ssa_parallel_copy_move_bundle_publication.md`
 
 ## In Scope
 

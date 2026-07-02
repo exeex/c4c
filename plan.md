@@ -1,166 +1,148 @@
-# Move-Bundle Evidence Gap Reconstruction Runbook
+# Out-Of-SSA Parallel-Copy Move-Bundle Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/553_move_bundle_target_shape_evidence_gap_src_960209_1.md
+Source Idea: ideas/open/554_out_of_ssa_parallel_copy_move_bundle_publication.md
 
 ## Purpose
 
-Reconstruct enough row-level evidence for `src/960209-1.c` to classify its
-current move-bundle target-shape failure without guessing first ownership.
+Repair the prepared value-location producer path that should publish
+out-of-SSA parallel-copy move bundles with coordinates matching prepared
+traversal events.
 
 ## Goal
 
-Produce an auditable evidence artifact for the single `evidence_gap` row and
-route it to exactly one owner: RV64 materialization, prepared authority, BIR
-producer, F128 quarantine, or a narrower remaining evidence gap.
+Make the `src/960209-1.c` row move past the audited
+`prepared_consumer_category=missing_move_bundle` blocker by publishing or
+propagating the correct out-of-SSA parallel-copy move-bundle facts.
 
 ## Core Rule
 
-Do not assign ownership from the filename, C source shape, raw BIR shape,
-expected register spelling, or bucket membership alone. Classification must be
-based on emitted facts: event kind, phase, authority, move coordinates, value
-ids, source and destination homes, scalar types, and F128 screening evidence.
+Do not infer missing bundles in the prepared consumer and do not special-case
+the testcase, block label, predecessor, successor, or block index. The fix must
+repair generalized phase, authority, execution-block, predecessor, and
+successor coordinate publication.
 
 ## Read First
 
-- `ideas/open/553_move_bundle_target_shape_evidence_gap_src_960209_1.md`
-- `docs/rv64_gcc_torture_post_contract/move_bundle_target_shape_classification.tsv`
-- `docs/rv64_gcc_torture_post_contract/move_bundle_target_shape_classification.md`
-- `docs/rv64_gcc_torture_post_contract/move_bundle_target_shape_representatives.tsv`
-- `docs/rv64_gcc_torture_post_contract/move_bundle_target_shape_classification_rules.md`
-- `ideas/closed/544_rv64_move_bundle_target_shape_bucket_split.md`
-- `ideas/closed/551_rv64_move_bundle_materialization_from_classified_bucket.md`
-- `ideas/closed/552_prepared_move_bundle_target_shape_authority_gaps.md`
+- `ideas/open/554_out_of_ssa_parallel_copy_move_bundle_publication.md`
+- `ideas/closed/553_move_bundle_target_shape_evidence_gap_src_960209_1.md`
+- `src/backend/prealloc/prepared_object_traversal.cpp`
+- `src/backend/prealloc/prepared_object_traversal.hpp`
+- `src/backend/mir/riscv/codegen/object_emission.cpp`
+- `build/rv64_gcc_c_torture_backend/src_960209-1.c/case.log`
 
-## Current Scope
+## Current Targets
 
-- Lane filter: `first_owner_lane=evidence_gap`
-- Current row count: 1
-- Current case: `src/960209-1.c`
-- Current diagnostic key:
-  `unsupported_move_bundle_target_shape;prepared_move;bundle_requires_unsupported_RV64_moves`
-- Current missing fact:
-  `missing_event_phase_authority_coordinate_and_move_facts`
+- Current row: `src/960209-1.c`
+- Current diagnostic: `prepared_consumer_category=missing_move_bundle`
+- Event kind: `pre_terminator_copies`
+- Event block index: `15`
+- Prepared block label: `20`
+- Parallel-copy edge: predecessor `20`, successor `19`
+- Execution block label: `20`
+- Lookup execution block index: `15`
+- Existing candidate shape: three
+  `authority_out_of_ssa_parallel_copy` candidates, zero execution-block
+  matches, zero predecessor-label matches, one successor-label match, zero
+  exact matches
 
 ## Non-Goals
 
-- Do not implement RV64 lowering until ownership is known.
-- Do not repair prepared or BIR behavior from testcase shape alone.
-- Do not route to F128 quarantine without row-level F128 evidence.
-- Do not change gcc_torture expectations, unsupported markers, allowlists, or
+- Do not implement RV64 materialization for the eventual move sequence in this
+  plan.
+- Do not route this row to F128 quarantine unless new row-level facts prove it
+  is F128-primary after the move bundle is found.
+- Do not weaken gcc_torture expectations, unsupported markers, allowlists, or
   runtime comparison behavior.
-- Do not combine this row with larger RV64 materialization or prepared
-  authority queues before its evidence is auditable.
+- Do not expand this into a broad value-location or prepared traversal rewrite
+  beyond the audited coordinate-publication mismatch.
 
 ## Working Model
 
-- Treat this as an evidence reconstruction packet first, not an implementation
-  packet.
-- The existing classification proves only that the row belongs to the
-  move-bundle target-shape bucket and lacks enough details for ownership.
-- The useful output is a durable evidence artifact plus a clear lifecycle
-  recommendation, not necessarily a passing testcase.
-- If instrumentation is required, keep it diagnostic-focused and remove or
-  isolate anything that is not intended as permanent compiler behavior.
+- Prepared traversal is consuming a legitimate pre-terminator parallel-copy
+  event.
+- Value locations contain some out-of-SSA parallel-copy bundle candidates, but
+  their coordinates do not match the event that needs a bundle.
+- The first repair target is producer/fact propagation for move-bundle
+  coordinates, not consumer-side target-shape handling.
 
 ## Execution Rules
 
-- Keep routine packet results and proof commands in `todo.md`.
-- Prefer a one-row allowlist for `src/960209-1.c`.
-- Any code-changing diagnostic packet needs a fresh build proof and focused
-  row proof.
-- Reject progress that only renames diagnostics or still omits the missing
-  facts named by this runbook.
-- If classification yields a new implementation owner, create or update the
-  correct lifecycle idea through the plan owner instead of expanding this
-  runbook silently.
+- Keep packet progress and proof commands in `todo.md`.
+- Preserve the structured missing-bundle diagnostic so follow-up blockers stay
+  auditable.
+- Prefer focused backend contract tests for producer publication behavior
+  before relying on the one-row torture scan.
+- Any code-changing packet needs fresh build proof and the delegated focused
+  proof command from the supervisor.
+- Reject progress that changes only diagnostic text while leaving the same
+  missing publication facts.
 
 ## Steps
 
-### Step 1: Reproduce The Evidence Gap
+### Step 1: Reproduce And Map Producer Facts
 
-Goal: confirm the current `src/960209-1.c` failure and preserve the exact
-missing-fact baseline.
-
-Actions:
-
-- Build a one-row allowlist for `src/960209-1.c`.
-- Run the delegated focused backend scan and capture the current diagnostic.
-- Record the relevant log path, diagnostic text, and which required facts are
-  still absent.
-- Compare the current result with the classification TSV and representatives
-  table so stale evidence is not used.
-
-Completion check:
-
-- `todo.md` records the current diagnostic, proof command, log location, and
-  baseline list of missing facts.
-- No implementation files are changed in this step.
-
-### Step 2: Locate The Missing Diagnostic Authority
-
-Goal: identify where move-bundle target-shape diagnostics should attach event,
-phase, authority, coordinate, value, home, type, and F128-screening facts.
+Goal: identify the producer path and current coordinate facts for
+out-of-SSA parallel-copy move bundles.
 
 Actions:
 
-- Inspect the path that emits
-  `unsupported_move_bundle_target_shape` for prepared move bundles.
-- Trace the available prepared/MIR/BIR facts at the diagnostic point.
-- Determine whether the missing facts already exist but are not printed, are
-  dropped before the diagnostic point, or were never produced.
-- Record the owning source files and the minimal diagnostic or publication
-  surface needed for Step 3.
+- Re-run or inspect the one-row `src/960209-1.c` failure to confirm the current
+  missing-bundle evidence.
+- Trace where `authority_out_of_ssa_parallel_copy` move bundles are created,
+  keyed, and attached to value-location state.
+- Compare producer coordinates with the prepared traversal event coordinates:
+  phase, authority, execution block, predecessor, and successor.
+- Record whether the mismatch is caused by missing execution-block
+  propagation, predecessor/successor inversion or loss, stale block labels, or
+  a different producer ownership bug.
 
 Completion check:
 
-- `todo.md` or a docs artifact names the diagnostic authority path and whether
-  the evidence gap is printing-only, fact-propagation, or producer-owned.
-- No ownership classification is made unless the row-level facts are already
-  sufficient.
+- `todo.md` names the producer path, the first bad coordinate fact, and the
+  minimal repair surface.
+- No semantic repair is made until the first bad producer fact is known.
 
-### Step 3: Add Or Regenerate Auditable Evidence
+### Step 2: Repair Coordinate Publication
 
-Goal: produce the missing row-level facts without changing semantic lowering
-or pass/fail accounting.
+Goal: publish out-of-SSA parallel-copy move bundles with coordinates that
+match the prepared traversal event consuming them.
 
 Actions:
 
-- If facts already exist, improve the diagnostic or reconstruction artifact so
-  the row shows event kind, phase, authority, coordinate, value ids, homes,
-  types, and F128-screening facts.
-- If facts are absent, add the narrowest durable instrumentation or
-  reconstruction path that exposes why they are absent.
-- Re-run the one-row proof and record the full evidence for `src/960209-1.c`.
-- Avoid testcase-shaped branches or diagnostic text that only handles this
-  filename.
+- Update the producer or propagation point that attaches execution block,
+  predecessor, and successor coordinates to out-of-SSA parallel-copy bundles.
+- Keep the rule generalized across blocks and edges; do not special-case
+  `src/960209-1.c` or the labels observed in the evidence row.
+- Add or update focused backend tests for the coordinate contract.
+- Preserve existing behavior for block-entry move bundles and unrelated move
+  authorities.
 
 Completion check:
 
-- A durable docs artifact or current log records the required facts, or states
-  the narrower blocker preventing them.
-- Build proof and focused row proof are recorded in `test_after.log` and
-  summarized in `todo.md`.
+- Focused tests prove out-of-SSA parallel-copy bundles carry matching event
+  coordinates.
+- The old `candidate_execution_block_count=0` and
+  `candidate_predecessor_label_count=0` shape is no longer present for the
+  repaired scenario unless the row exposes a new deeper producer blocker.
 
-### Step 4: Classify And Route The Row
+### Step 3: Prove The Row Moves Past MissingMoveBundle
 
-Goal: convert the evidence into a lifecycle decision without overfitting.
+Goal: verify the repaired publication path against `src/960209-1.c` without
+weakening pass/fail accounting.
 
 Actions:
 
-- Classify `src/960209-1.c` into RV64 materialization, prepared authority,
-  BIR producer, F128 quarantine, or a narrower evidence gap.
-- If the owner is an existing open idea, update `todo.md` with the handoff
-  recommendation for the supervisor.
-- If the owner requires a new durable initiative, ask the plan owner to create
-  it with reviewer reject signals.
-- If this evidence-gap idea is satisfied, ask the plan owner to close it after
-  regression guard requirements are met.
+- Run the delegated build and one-row RV64 gcc torture backend scan.
+- Inspect the case log for the current first blocker.
+- If the row advances to RV64 materialization, F128, or another producer
+  blocker, record the new auditable owner in `todo.md` and request lifecycle
+  routing instead of expanding this plan silently.
 
 Completion check:
 
-- The row has exactly one auditable owner or an explicitly narrowed remaining
-  evidence blocker.
-- The classification cites row-level evidence, not testcase shape.
+- `test_after.log` records build proof and focused row proof.
+- `todo.md` states whether `missing_move_bundle` is fixed or replaced by a
+  different row-level first blocker.
 - No expectations, unsupported markers, allowlists, or runtime comparison
   behavior were weakened.
