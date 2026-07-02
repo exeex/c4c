@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/548_prepared_global_stack_frame_infrastructure_review.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Global-Data Ownership
+Current Step ID: 3
+Current Step Title: Classify Stack-Frame Ownership
 
 # Current Packet
 
@@ -46,9 +46,11 @@ Evidence artifact:
 
 ## Suggested Next
 
-Ask plan-owner to advance to Step 3 so the stack-frame representatives
-`src/20000603-1.c` and `src/20030209-1.c` can be classified for prepared-frame
-contract versus RV64 object-route ownership.
+Classify the stack-frame representatives `src/20000603-1.c` and
+`src/20030209-1.c` using the existing Step 1 evidence first. Separate
+prepared-frame contract gaps from RV64 frame setup/access/teardown gaps, and
+explicitly identify whether the current `fpr:fs1` callee-saved slot shape is
+FPR-specific scope rather than ordinary GPR frame work.
 
 ## Watchouts
 
