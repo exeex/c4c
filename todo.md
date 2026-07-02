@@ -9,46 +9,34 @@ Current Step Title: Repair The Next Remaining Semantic Family
 ## Just Finished
 
 Step 13 - Repair The Next Remaining Semantic Family completed the
-scalar/local-memory inspection subpacket for `src/20000519-1.c`.
+scalar/local-memory producer repair for immediate memcpy between local scalar
+pointer slots.
 
-Boundary found:
+Implemented:
 
-- The RV64 case log still reports semantic `scalar/local-memory` failure in
-  function `foo`.
-- The LLVM/LIR shape in `foo` is `alloca ptr` for `%lv.ap`, `alloca ptr` for
-  `%t0`, `llvm.va_start.p0(ptr %lv.ap)`, then
-  `llvm.memcpy.p0.p0.i64(ptr %t0, ptr %lv.ap, i64 8, i1 false)` before the
-  direct call to `bar(i32 %p.a, ptr %t0)`.
-- `lower_local_memory_alloca_inst` publishes both pointer allocas as scalar
-  local slots through `local_slot_types_` and `local_pointer_slots_`.
-- `lower_runtime_intrinsic_inst` has a direct `LirVaStartOp` lowering path, so
-  the first producer boundary is not ordinary scalar arithmetic or the
-  `va_start` helper itself.
-- `try_lower_immediate_local_memcpy` resolves both `%t0` and `%lv.ap` as
-  `LocalMemcpyScalarSlot` values of type `Ptr`, size 8, align 8, but it has no
-  scalar-slot-to-scalar-slot copy branch. With a scalar target and a local
-  scalar source, it falls through because the pointer-value fallback explicitly
-  rejects sources present in `local_pointer_slots`.
+- `try_lower_immediate_local_memcpy` now handles scalar local-slot source to
+  scalar local-slot target copies when both slots have the same scalar type and
+  the requested immediate copy covers the source slot.
+- The producer emits a `LoadLocalInst` from the source slot and a
+  `StoreLocalInst` to the target slot.
+- Both emitted accesses carry `LocalSlot` `MemoryAddress` facts with requested
+  range/provenance for the copied pointer-sized bytes.
+- Added focused BIR coverage:
+  `expect_local_scalar_pointer_memcpy_copies_between_local_slots`.
 
-Focused BIR test gap to add next:
+RV64 representative result:
 
-- Add `expect_local_scalar_pointer_memcpy_copies_between_local_slots` or an
-  equivalent focused fixture in `backend_lir_to_bir_notes_test.cpp`.
-- The fixture should model two local `ptr` allocas, `LirVaStartOp{ %lv.ap }`,
-  `LirMemcpyOp{ dst=%t0, src=%lv.ap, size=8 }`, and a call consuming `%t0`.
-- The test should pin semantic BIR lowering of the memcpy as a local scalar
-  slot copy, with `LoadLocalInst` from `%lv.ap` and `StoreLocalInst` to `%t0`
-  carrying `LocalSlot` `MemoryAddress` provenance/requested range for the
-  copied pointer-sized bytes.
+- `src/20000519-1.c` moved off semantic `scalar/local-memory` admission.
+- The row now fails downstream in the RV64 object route with
+  `unsupported_local_memory_access: RV64 object route requires prepared
+  frame-slot or pointer-value base-plus-offset local memory addressing`.
 
 ## Suggested Next
 
-Recommended next packet: implement the scalar-slot-to-scalar-slot immediate
-local memcpy producer path in `try_lower_immediate_local_memcpy`, add the
-focused BIR coverage above, and then run backend proof plus the RV64
-representative command:
-
-`ALLOWLIST=build/agent_state/557_step13_20000519.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
+Recommended next packet: continue the source idea with the remaining semantic
+local-memory representative, likely `src/20050604-1.c` / `alloca local-memory`,
+or have the supervisor route downstream RV64 object-preparation failures
+separately if desired.
 
 ## Watchouts
 
@@ -56,32 +44,25 @@ Reject target exclusions, testcase/helper-name shaped rules, expectation
 rewrites, unsupported-marker changes, allowlist changes, runtime-comparison
 changes, and RV64/MIR inference.
 
-Do not route this as a variadic runtime helper rewrite unless the next packet
-finds different evidence: the local evidence points at immediate local memcpy
-between scalar pointer slots after `va_start` has been admitted.
-
-Keep the repair general to local scalar-slot copies. A named `va_list` or
-`20000519-1.c` shortcut would overfit the row and miss the producer gap in the
-shared memcpy helper.
-
 Keep downstream object-route failures out of this producer packet:
-`src/20000314-1.c`, `src/20001026-1.c`, and now `src/20000717-4.c` have moved
-off semantic local-memory admission and should not be absorbed back into this
-source idea without supervisor/lifecycle direction.
+`src/20000314-1.c`, `src/20001026-1.c`, `src/20000717-4.c`, and now
+`src/20000519-1.c` have moved off semantic local-memory admission and should
+not be absorbed back into this source idea without supervisor/lifecycle
+direction.
 
 ## Proof
 
 Proof log: `test_after.log`.
 
-Inspection-only packet; no build or CTest run was required and `test_after.log`
-was preserved.
+Backend proof:
 
-Inspected case log:
-- `build/rv64_gcc_c_torture_backend/src_20000519-1.c/case.log`
+- `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+- Result: passed, `345/345` backend tests.
 
-Inspection commands:
+RV64 representative proof appended to `test_after.log`:
 
-- `./build/c4cll --codegen llvm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000519-1.c -o /tmp/20000519-1.ll`
-- `./build/c4cll --dump-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000519-1.c`
-  confirmed semantic BIR still fails before dumping, with latest function
-  failure `foo` in `scalar/local-memory`.
+- `ALLOWLIST=build/agent_state/557_step13_20000519.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
+- Result: nonzero, `0/1`; row moved off semantic `scalar/local-memory`
+  admission to downstream RV64 object-route `unsupported_local_memory_access`.
+- Case log:
+  `build/rv64_gcc_c_torture_backend/src_20000519-1.c/case.log`.

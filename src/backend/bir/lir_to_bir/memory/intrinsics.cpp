@@ -784,6 +784,48 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
     }
     return covered_bytes == requested_size;
   };
+  const auto append_scalar_slot_to_scalar_slot = [&](const LocalMemcpyScalarSlot& source_slot,
+                                                     const LocalMemcpyScalarSlot& target_slot) -> bool {
+    if (requested_size > source_slot.size_bytes || requested_size > target_slot.size_bytes ||
+        source_slot.type != target_slot.type || requested_size != source_slot.size_bytes) {
+      return false;
+    }
+
+    const std::string copy_name = target_slot.slot_name + ".memcpy.copy.0";
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(source_slot.type, copy_name),
+        .slot_name = source_slot.slot_name,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                .base_name = source_slot.slot_name,
+                .byte_offset = 0,
+                .size_bytes = requested_size,
+                .align_bytes = std::min(source_slot.align_bytes, requested_size),
+                .provenance = local_slot_access_provenance(source_slot.slot_name,
+                                                           0,
+                                                           requested_size,
+                                                           source_slot.size_bytes),
+            },
+    });
+    lowered_insts->push_back(bir::StoreLocalInst{
+        .slot_name = target_slot.slot_name,
+        .value = bir::Value::named(source_slot.type, copy_name),
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                .base_name = target_slot.slot_name,
+                .byte_offset = 0,
+                .size_bytes = requested_size,
+                .align_bytes = std::min(target_slot.align_bytes, requested_size),
+                .provenance = local_slot_access_provenance(target_slot.slot_name,
+                                                           0,
+                                                           requested_size,
+                                                           target_slot.size_bytes),
+            },
+    });
+    return true;
+  };
   const auto append_pointer_value_to_leaf_view = [&](std::string_view source_pointer,
                                                      const LocalMemcpyLeafView& target_view) -> bool {
     std::size_t covered_bytes = 0;
@@ -1029,6 +1071,11 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
     const auto source_view = resolve_local_memcpy_leaf_view(src_operand);
     if (source_view.has_value() &&
         append_leaf_view_to_scalar_slot(*source_view, *target_scalar_slot)) {
+      return true;
+    }
+    const auto source_scalar_slot = resolve_local_memcpy_scalar_slot(src_operand);
+    if (source_scalar_slot.has_value() &&
+        append_scalar_slot_to_scalar_slot(*source_scalar_slot, *target_scalar_slot)) {
       return true;
     }
     if (!src_operand.empty() && src_operand.front() == '@') {

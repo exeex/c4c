@@ -11528,6 +11528,89 @@ LirModule make_local_scalar_i64_partial_i8_memcpy_module() {
   return module;
 }
 
+LirModule make_local_scalar_pointer_slot_memcpy_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+  module.need_va_start = true;
+
+  LirFunction function;
+  function.name = "local_scalar_pointer_slot_memcpy";
+  function.signature_text = "define void @local_scalar_pointer_slot_memcpy()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.ap"),
+      .type_str = "ptr",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.copy"),
+      .type_str = "ptr",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirVaStartOp{
+      .ap_ptr = LirOperand("%lv.ap"),
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirMemcpyOp{
+      .dst = LirOperand("%lv.copy"),
+      .src = LirOperand("%lv.ap"),
+      .size = LirOperand("8"),
+      .is_volatile = false,
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_scalar_pointer_memcpy_copies_between_local_slots() {
+  auto result = try_lower_to_bir_with_options(make_local_scalar_pointer_slot_memcpy_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("local scalar pointer-slot memcpy fixture should lower to BIR");
+  }
+
+  const auto& function = result.module->functions.front();
+  const bir::LoadLocalInst* copy_load = nullptr;
+  const bir::StoreLocalInst* copy_store = nullptr;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+          load != nullptr && load->slot_name == "%lv.ap" &&
+          load->result == bir::Value::named(TypeKind::Ptr, "%lv.copy.memcpy.copy.0")) {
+        copy_load = load;
+      } else if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+                 store != nullptr && store->slot_name == "%lv.copy" &&
+                 store->value == bir::Value::named(TypeKind::Ptr, "%lv.copy.memcpy.copy.0")) {
+        copy_store = store;
+      }
+    }
+  }
+
+  if (copy_load == nullptr || !copy_load->address.has_value() ||
+      copy_load->address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot ||
+      copy_load->address->base_name != "%lv.ap" ||
+      copy_load->address->size_bytes != 8 ||
+      copy_load->address->provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
+    return fail("local scalar pointer-slot memcpy should load through LocalSlot facts");
+  }
+  if (copy_store == nullptr || !copy_store->address.has_value() ||
+      copy_store->address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot ||
+      copy_store->address->base_name != "%lv.copy" ||
+      copy_store->address->size_bytes != 8 ||
+      copy_store->address->provenance.range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
+    return fail("local scalar pointer-slot memcpy should store through LocalSlot facts");
+  }
+  return 0;
+}
+
 LirModule make_dynamic_indexed_gep_local_member_array_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -13006,6 +13089,12 @@ int main() {
           "unexpected local scalar i64 partial-i8 memcpy module failure note");
       local_scalar_i64_partial_i8_memcpy_status != 0) {
     return local_scalar_i64_partial_i8_memcpy_status;
+  }
+
+  if (const int local_scalar_pointer_slot_memcpy_status =
+          expect_local_scalar_pointer_memcpy_copies_between_local_slots();
+      local_scalar_pointer_slot_memcpy_status != 0) {
+    return local_scalar_pointer_slot_memcpy_status;
   }
 
   if (const int dynamic_gep_lane_status = expect_success_without_function_note(
