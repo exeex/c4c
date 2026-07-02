@@ -1,6 +1,6 @@
 # BIR Route2 Select-Chain Body Extraction
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 4 of 13, after `ideas/open/522_bir_route1_scalar_producer_body_extraction.md`
@@ -47,3 +47,16 @@ dependency behavior inside route6.
 - Direct-global select-chain availability changes.
 - Header extraction appears in this body-only slice.
 - Tests or expectations are weakened.
+
+## Closure Note
+
+Closed after extracting route2 select-chain value-record bodies and
+`route2_find_direct_global_dependency` into
+`src/backend/bir/bir_route2.cpp`. Public route2 declarations and record types
+remain in `bir.hpp`, and route6 continues to consume the public
+`route2_select_chain_value_record` surface rather than route2-private details.
+
+Accepted proof covered `git diff --check`, default build, backend subset
+validation with `345/345` tests, and close-time regression guard against the
+rolled-forward `test_before.log` with `345/345` before and after and no new
+failures.
