@@ -1,6 +1,6 @@
 # BIR Route Header Split After Body Moves
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 11 of 13, after `ideas/open/529_bir_route_facade_body_extraction.md`
@@ -53,10 +53,41 @@ narrow dependency header. It is an aggregator-included declaration fragment
 that depends on prerequisite BIR model and route declarations already supplied
 by `bir.hpp`.
 
-Idea 530 is parked rather than closed because direct include replacement has
-been examined and is unsafe, and the dependency-reduction acceptance criteria
-are not yet proven. Follow-up prerequisite work lives in
+Idea 530 was parked rather than closed because direct include replacement had
+been examined and was unsafe, and the dependency-reduction acceptance criteria
+were not yet proven. Follow-up prerequisite work lived in
 `ideas/open/533_bir_route_index_standalone_prerequisites.md`.
+
+### Closed after remaining-candidate map
+
+Idea 533 closed the route-index standalone prerequisite route by proving the
+current safe boundary: `bir_route_index_prereqs.hpp` holds route4/route7 status
+and role prerequisites, while `bir_route_index.hpp` remains an aggregator-only
+fragment because `RouteIndexRecordReference` stores
+`Route1SourceValueIdentity` by value.
+
+The resumed remaining-candidate map for this idea found no additional route
+declaration boundary that can reduce or clarify dependencies without pulling in
+out-of-scope route1 identity/core-model ownership or later
+memory-provenance/local-array work. Route 1, route 3, route 5, route 6, route
+8, and the remaining route4/route7 records all depend on by-value route1
+identity, core BIR model types, memory-provenance records, or broad function
+surfaces. Direct include replacement remains unsupported.
+
+Closure accepts the existing behavior-preserving header work as the useful
+scope for idea 530. Any further dependency reduction should be owned by a
+separate source idea for route1 identity/core-model prerequisite splitting or
+record layout redesign, not by extending this header-split route.
+
+Close proof:
+
+```bash
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering)$') > test_after.log 2>&1
+
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: PASS, before=2 passed / 0 failed, after=2 passed / 0 failed.
 
 ## Reviewer Reject Signals
 
