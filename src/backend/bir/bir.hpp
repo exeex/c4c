@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "../../shared/text_id_table.hpp"
+#include "bir_route_index_prereqs.hpp"
 
 namespace c4c::backend::bir {
 
@@ -4882,16 +4883,6 @@ route3_find_same_block_load_local_stored_value_source(
     Route3MemoryAccessQuery query,
     const Value& value);
 
-enum class Route4PublicationAvailabilityStatus : unsigned char {
-  Unavailable,
-  Available,
-  MissingBlock,
-  MissingValue,
-  MissingPublication,
-  AlternateSource,
-  NoMatch,
-};
-
 [[nodiscard]] constexpr std::string_view
 route4_publication_availability_status_name(
     Route4PublicationAvailabilityStatus status) {
@@ -5494,20 +5485,6 @@ struct MaterializedConditionProducerIdentity {
   std::optional<ComparisonOperandProducer> rhs;
 };
 
-enum class Route7ComparisonStatus : unsigned char {
-  Unavailable,
-  Available,
-  MissingBlock,
-  MissingInstruction,
-  WrongInstruction,
-  NonComparison,
-  MissingConditionValue,
-  MissingOperandProducer,
-  DuplicateProducer,
-  AbsentProvenance,
-  NoMatch,
-};
-
 [[nodiscard]] constexpr std::string_view route7_comparison_status_name(
     Route7ComparisonStatus status) {
   switch (status) {
@@ -5536,13 +5513,6 @@ enum class Route7ComparisonStatus : unsigned char {
   }
   return "unavailable";
 }
-
-enum class Route7ComparisonOperandRole : unsigned char {
-  None,
-  Lhs,
-  Rhs,
-  ConditionValue,
-};
 
 enum class Route7BranchConditionKind : unsigned char {
   Unknown,
@@ -5687,7 +5657,11 @@ struct Route8ReturnChainIndex {
   }
 };
 
+}  // namespace c4c::backend::bir
+
 #include "bir_route_index.hpp"
+
+namespace c4c::backend::bir {
 
 struct CallResultSourceIdentity {
   bool available = false;

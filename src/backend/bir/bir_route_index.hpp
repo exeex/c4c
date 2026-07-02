@@ -1,5 +1,9 @@
 #pragma once
 
+#include "bir_route_index_prereqs.hpp"
+
+namespace c4c::backend::bir {
+
 enum class RouteIndexRoute : unsigned char {
   Unknown,
   Route4PublicationAvailability,
@@ -164,3 +168,5 @@ route_index_validate_materialized_condition_reference(
     const Block& block,
     const Value& condition_value,
     std::size_t before_instruction_index);
+
+}  // namespace c4c::backend::bir
