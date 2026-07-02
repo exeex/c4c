@@ -8,76 +8,59 @@ Current Step Title: Add Focused Intrinsic Memory Producer Coverage
 
 ## Just Finished
 
-Completed Step 1 from `plan.md`: inspected the current runtime/intrinsic
-memory admission boundary for the representative `memcpy` and `memset` rows.
-The delegated RV64 proof reproduces the intended diagnostics:
-`src/20000703-1.c` fails in function `foo` in `memcpy runtime family`, and
-`src/20041218-1.c` fails in function `baz` in `memset runtime family`.
+Completed Step 2 from `plan.md`: added focused BIR coverage for runtime
+intrinsic non-local destination memory-effect publication.
 
-LLVM/BIR-entry shapes:
+The new coverage uses raw LIR fixture modules, not gcc_torture filenames:
 
-- `src/20000703-1.c`: `foo(struct baz *p, ...)` lowers
-  `__builtin_memcpy(p->b, "abc", 3)` to
-  `%t0 = getelementptr %struct.baz, ptr %p.p, i32 0, i32 1`,
-  `%t1 = getelementptr [3 x i8], ptr %t0, i64 0, i64 0`,
-  `%t2 = getelementptr [4 x i8], ptr @.str0, i64 0, i64 0`,
-  `%t3 = call ptr @memcpy(ptr %t1, ptr %t2, i32 3)`.
-- `src/20041218-1.c`: `baz(unsigned int x)` lowers
-  `__builtin_memset(&v, 0x55, sizeof(v))` to
-  `%t0 = call ptr @memset(ptr @__static_local_baz_0, i32 85, i64 72)`.
+- `runtime_memcpy_pointer_destination` calls `@memcpy` with a destination GEP
+  derived from formal pointer `%p.buf` and a declared global byte source. It
+  asserts explicit `GlobalSymbol` source load facts and `PointerValue`
+  destination store facts with provenance rooted at the formal parameter.
+- `runtime_memset_global_destination` calls `@memset` with a declared global
+  destination and asserts `StoreGlobalInst` publication with explicit
+  `GlobalSymbol` `MemoryAddress` provenance and `LinkNameId` identity.
 
-The first missing producer fact is destination memory-effect publication for
-non-local intrinsic targets. `try_lower_direct_memory_intrinsic_call` in
-`src/backend/bir/lir_to_bir/memory/intrinsics.cpp` delegates both runtime
-calls to `try_lower_immediate_local_memcpy` / `try_lower_immediate_local_memset`.
-Those helpers can publish `LoadLocalInst` / `StoreLocalInst` facts for local
-aggregate, array, and scalar slots, and `memcpy` already handles non-local
-sources through `PointerValue` / `GlobalSymbol` memory addresses. They do not
-publish stores for a pointer-value destination such as the parameter-derived
-`p->b`, or for a global-symbol destination such as `@__static_local_baz_0`.
-The owning boundary is therefore the runtime intrinsic memory producer in
-`src/backend/bir/lir_to_bir/memory/intrinsics.cpp`, using existing pointer/global
-provenance facts produced by `memory/addressing.cpp` and tracked through
-`pointer_value_addresses_` / `global_types_`.
-
-`memcpy` and `memset` should stay in one repair lane: the operand shapes differ,
-but the shared repair boundary is non-local destination memory-effect facts for
-runtime intrinsic memory operations, not separate testcase-specific lowering.
+The tests required the minimal producer repair in
+`src/backend/bir/lir_to_bir/memory/intrinsics.cpp`. The runtime intrinsic call
+path now admits non-local destination stores for the covered shapes:
+`memcpy` from a linear-addressable global source to a pointer-value
+destination, and `memset` to a linear-addressable global destination. The
+repair reuses existing pointer/global provenance and scratch-slot publication
+patterns and does not touch expectations, unsupported markers, runtime
+comparisons, or RV64 object consumers.
 
 ## Suggested Next
 
-Add focused BIR note coverage for runtime intrinsic memory-effect publication:
-one `memcpy` case with a pointer-value destination derived from a parameter, and
-one `memset` case with a global-symbol destination. Keep the assertions
-semantic and helper-oriented, tied to explicit `MemoryAddress` provenance and
-not to gcc_torture filenames. Implementation repair belongs to the following
-Step 3 packet unless the coverage cannot be expressed without the same local
-producer change.
+Proceed to Step 3 for the remaining `memcpy` producer repair. The
+supervisor-run representative proof shows `src/20041218-1.c` moved off
+`memset runtime family` to downstream RV64 global-data ownership, while
+`src/20000703-1.c` still fails in function `foo` in `memcpy runtime family`.
+The next packet should repair the actual representative `memcpy` shape,
+probably GEP-derived global-source/pointer provenance rather than only the
+direct global-source fixture covered in Step 2.
 
 ## Watchouts
 
-- Do not replace intrinsic rows with runtime call substitutions or
-  target-specific named-case lowering.
-- Do not weaken expectations, unsupported markers, allowlists, or semantic
-  admission checks.
 - `src/20000703-1.c` first fails before reaching the later `bar` `memset` and
-  additional `memcpy` calls; the next packet should not claim full row movement
-  from a `foo`-only proof.
-- `src/20041218-1.c` requires global destination memset support. `memcpy`
-  already has global-source support, but that is not enough for this row.
-- The delegated proof writes to `build/agent_state/559_step1_intrinsic_memory.log`;
-  no root-level `test_after.log` was requested for this inspection-only packet.
+  additional `memcpy` calls. A representative move for `foo` should not be
+  overstated as whole-row completion until the allowlist log is inspected.
+- The repair intentionally covers the required pointer-value `memcpy`
+  destination and global-symbol `memset` destination shapes. Broader arbitrary
+  non-local intrinsic combinations remain separate unless the representative
+  proof requires them.
+- The new `memcpy` path reads from declared linear-addressable globals. It does
+  not add string-pool or named-case shortcuts.
 
 ## Proof
 
-- `printf '%s\n' src/20000703-1.c src/20041218-1.c > build/agent_state/559_step1_intrinsic_memory.allowlist && ALLOWLIST=build/agent_state/559_step1_intrinsic_memory.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/559_step1_intrinsic_memory.log 2>&1`
-  exited `1`, expected for inspection, with both representatives failing in the
-  current runtime/intrinsic semantic admission families.
-- Row logs:
-  `build/rv64_gcc_c_torture_backend/src_20000703-1.c/case.log` and
-  `build/rv64_gcc_c_torture_backend/src_20041218-1.c/case.log`.
-- LLVM shape dumps were inspected through
-  `build/c4cll --target riscv64-linux-gnu --codegen llvm` for both rows.
-- `build/c4cll --target riscv64-linux-gnu --dump-bir` for both rows stops at
-  the same semantic admission diagnostics, so no complete BIR dump is available
-  before the repair.
+- `./build/tests/backend/bir/backend_lir_to_bir_notes_test` passed.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+  passed; `test_after.log` is the proof log path.
+- Supervisor representative proof:
+  `printf '%s\n' src/20000703-1.c src/20041218-1.c > build/agent_state/559_step2_intrinsic_memory_after.allowlist && ALLOWLIST=build/agent_state/559_step2_intrinsic_memory_after.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/559_step2_intrinsic_memory_after.log 2>&1`
+  exited `1`. `src/20041218-1.c` moved to
+  `unsupported_global_data: RV64 object route requires supported prepared global
+  memory facts`; `src/20000703-1.c` remains in `memcpy runtime family` in
+  function `foo`. Proof log:
+  `build/agent_state/559_step2_intrinsic_memory_after.log`.

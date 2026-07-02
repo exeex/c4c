@@ -68,6 +68,36 @@ struct LocalMemsetLeafStore {
   return provenance;
 }
 
+[[nodiscard]] bir::MemoryAccessProvenance pointer_address_access_provenance(
+    const BirFunctionLowerer::PointerAddress& address,
+    std::int64_t byte_offset,
+    std::size_t size_bytes) {
+  auto provenance = address.provenance;
+  if (provenance.base_identity.kind == bir::MemoryProvenanceBaseIdentityKind::Unknown) {
+    provenance = pointer_value_base_provenance(address.base_value);
+  }
+  provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
+  bir::prove_memory_access_requested_range(provenance);
+  return provenance;
+}
+
+[[nodiscard]] bir::MemoryAccessProvenance global_symbol_access_provenance(
+    std::string_view global_name,
+    c4c::LinkNameId link_name_id,
+    std::int64_t byte_offset,
+    std::size_t size_bytes,
+    std::optional<std::size_t> complete_extent_size = std::nullopt) {
+  auto provenance = memory_provenance_for_base(
+      bir::MemoryProvenanceBaseIdentityKind::GlobalSymbol,
+      std::string(global_name),
+      bir::Value::named_symbol_pointer("@" + std::string(global_name), link_name_id),
+      complete_extent_size);
+  provenance.base_identity.link_name_id = link_name_id;
+  provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
+  bir::prove_memory_access_requested_range(provenance);
+  return provenance;
+}
+
 }  // namespace
 
 std::optional<BirFunctionLowerer::AggregateTypeLayout>
@@ -1176,19 +1206,92 @@ std::optional<bool> BirFunctionLowerer::try_lower_direct_memory_intrinsic_call(
 
     const std::string dst_operand(typed_call.args[0].operand);
     const std::string src_operand(typed_call.args[1].operand);
+    const std::size_t requested_size = static_cast<std::size_t>(copy_size->immediate);
+    const auto try_lower_non_local_memcpy_dst = [&]() {
+      if (src_operand.empty() || src_operand.front() != '@') {
+        return false;
+      }
+      const auto source_name = src_operand.substr(1);
+      const auto source_it = global_types_.find(source_name);
+      if (source_it == global_types_.end() || !source_it->second.supports_linear_addressing ||
+          requested_size > source_it->second.storage_size_bytes) {
+        return false;
+      }
+      const auto dst_it = pointer_value_addresses_.find(dst_operand);
+      if (dst_it == pointer_value_addresses_.end()) {
+        return false;
+      }
+
+      std::size_t copied_bytes = 0;
+      while (copied_bytes < requested_size) {
+        const std::size_t remaining_bytes = requested_size - copied_bytes;
+        const std::size_t chunk_size = remaining_bytes >= 4 ? 4 : 1;
+        const auto chunk_type = chunk_size == 4 ? bir::TypeKind::I32 : bir::TypeKind::I8;
+        const std::string copy_name =
+            dst_operand + ".memcpy.global.copy." + std::to_string(copied_bytes);
+        lowered_insts->push_back(bir::LoadGlobalInst{
+            .result = bir::Value::named(chunk_type, copy_name),
+            .global_name = source_name,
+            .global_name_id = source_it->second.link_name_id,
+            .byte_offset = copied_bytes,
+            .align_bytes = chunk_size,
+            .address =
+                bir::MemoryAddress{
+                    .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                    .base_name = source_name,
+                    .byte_offset = static_cast<std::int64_t>(copied_bytes),
+                    .size_bytes = chunk_size,
+                    .align_bytes = chunk_size,
+                    .base_link_name_id = source_it->second.link_name_id,
+                    .provenance = global_symbol_access_provenance(
+                        source_name,
+                        source_it->second.link_name_id,
+                        static_cast<std::int64_t>(copied_bytes),
+                        chunk_size,
+                        source_it->second.storage_size_bytes),
+                },
+        });
+        const std::string scratch_slot = dst_operand + ".memcpy.store.addr." +
+                                         std::to_string(copied_bytes);
+        if (!ensure_local_scratch_slot(scratch_slot, chunk_type, chunk_size)) {
+          return false;
+        }
+        const auto byte_offset =
+            static_cast<std::int64_t>(dst_it->second.byte_offset + copied_bytes);
+        lowered_insts->push_back(bir::StoreLocalInst{
+            .slot_name = scratch_slot,
+            .value = bir::Value::named(chunk_type, copy_name),
+            .address =
+                bir::MemoryAddress{
+                    .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                    .base_value = dst_it->second.base_value,
+                    .byte_offset = byte_offset,
+                    .size_bytes = chunk_size,
+                    .align_bytes = chunk_size,
+                    .provenance = pointer_address_access_provenance(
+                        dst_it->second,
+                        byte_offset,
+                        chunk_size),
+                },
+        });
+        copied_bytes += chunk_size;
+      }
+      return true;
+    };
     if (!try_lower_immediate_local_memcpy(dst_operand,
                                           src_operand,
-                                          static_cast<std::size_t>(copy_size->immediate),
+                                          requested_size,
                                           lowered_function_,
                                           type_decls_,
                                           &structured_layouts_,
-                                          nullptr,
+                                          &global_types_,
                                           local_slot_types_,
                                           local_pointer_slots_,
                                           local_array_slots_,
                                           local_pointer_array_bases_,
                                           local_aggregate_slots_,
-                                          lowered_insts)) {
+                                          lowered_insts) &&
+        !try_lower_non_local_memcpy_dst()) {
       return fail_memcpy_family();
     }
 
@@ -1237,9 +1340,58 @@ std::optional<bool> BirFunctionLowerer::try_lower_direct_memory_intrinsic_call(
     }
 
     const std::string dst_operand(typed_call.args[0].operand);
+    const auto fill_byte = static_cast<std::uint8_t>(fill_value->immediate & 0xff);
+    const std::size_t requested_size = static_cast<std::size_t>(fill_size->immediate);
+    const auto try_lower_non_local_memset_dst = [&]() {
+      if (dst_operand.empty() || dst_operand.front() != '@') {
+        return false;
+      }
+      const auto target_name = dst_operand.substr(1);
+      const auto target_it = global_types_.find(target_name);
+      if (target_it == global_types_.end() || !target_it->second.supports_linear_addressing ||
+          requested_size > target_it->second.storage_size_bytes) {
+        return false;
+      }
+
+      std::size_t filled_bytes = 0;
+      while (filled_bytes < requested_size) {
+        const std::size_t remaining_bytes = requested_size - filled_bytes;
+        const std::size_t chunk_size = remaining_bytes >= 4 ? 4 : 1;
+        const auto chunk_type = chunk_size == 4 ? bir::TypeKind::I32 : bir::TypeKind::I8;
+        const auto repeated_value =
+            lower_repeated_byte_initializer_value(chunk_type, fill_byte);
+        if (!repeated_value.has_value()) {
+          return false;
+        }
+        lowered_insts->push_back(bir::StoreGlobalInst{
+            .global_name = target_name,
+            .global_name_id = target_it->second.link_name_id,
+            .value = *repeated_value,
+            .byte_offset = filled_bytes,
+            .align_bytes = chunk_size,
+            .address =
+                bir::MemoryAddress{
+                    .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                    .base_name = target_name,
+                    .byte_offset = static_cast<std::int64_t>(filled_bytes),
+                    .size_bytes = chunk_size,
+                    .align_bytes = chunk_size,
+                    .base_link_name_id = target_it->second.link_name_id,
+                    .provenance = global_symbol_access_provenance(
+                        target_name,
+                        target_it->second.link_name_id,
+                        static_cast<std::int64_t>(filled_bytes),
+                        chunk_size,
+                        target_it->second.storage_size_bytes),
+                },
+        });
+        filled_bytes += chunk_size;
+      }
+      return true;
+    };
     if (!try_lower_immediate_local_memset(dst_operand,
-                                          static_cast<std::uint8_t>(fill_value->immediate & 0xff),
-                                          static_cast<std::size_t>(fill_size->immediate),
+                                          fill_byte,
+                                          requested_size,
                                           type_decls_,
                                           &structured_layouts_,
                                           local_slot_types_,
@@ -1247,7 +1399,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_direct_memory_intrinsic_call(
                                           local_array_slots_,
                                           local_pointer_array_bases_,
                                           local_aggregate_slots_,
-                                          lowered_insts)) {
+                                          lowered_insts) &&
+        !try_lower_non_local_memset_dst()) {
       return fail_memset_family();
     }
     if (call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
