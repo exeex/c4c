@@ -173,8 +173,52 @@ constexpr std::size_t kMaxPublishedInterferenceValueCount = 512;
          abi.align_bytes == value_align;
 }
 
+[[nodiscard]] const PreparedValueHome* find_prepared_value_home_by_id(
+    const PreparedValueLocationFunction& function_locations,
+    PreparedValueId value_id) {
+  const auto it = std::find_if(
+      function_locations.value_homes.begin(),
+      function_locations.value_homes.end(),
+      [value_id](const PreparedValueHome& home) {
+        return home.value_id == value_id;
+      });
+  return it == function_locations.value_homes.end() ? nullptr : &*it;
+}
+
+[[nodiscard]] PreparedMoveResolution normalize_prepared_move_publication(
+    const PreparedValueLocationFunction& function_locations,
+    PreparedMoveResolution move) {
+  if (move.authority_kind != PreparedMoveAuthorityKind::None ||
+      move.destination_kind != PreparedMoveDestinationKind::Value ||
+      move.destination_storage_kind != PreparedMoveStorageKind::StackSlot ||
+      move.op_kind != PreparedMoveResolutionOpKind::Move ||
+      move.uses_cycle_temp_source ||
+      move.source_parallel_copy_step_index.has_value() ||
+      move.source_parallel_copy_predecessor_label.has_value() ||
+      move.source_parallel_copy_successor_label.has_value() ||
+      move.source_immediate_i32.has_value() ||
+      (move.reason != "consumer_stack_to_stack" &&
+       move.reason != "consumer_register_to_stack")) {
+    return move;
+  }
+
+  const auto* source_home =
+      find_prepared_value_home_by_id(function_locations, move.from_value_id);
+  if (source_home == nullptr) {
+    return move;
+  }
+  if (source_home->kind == PreparedValueHomeKind::Register) {
+    move.reason = "consumer_register_to_stack";
+  } else if (source_home->kind == PreparedValueHomeKind::StackSlot) {
+    move.reason = "consumer_stack_to_stack";
+  }
+  return move;
+}
+
 void append_prepared_move_bundle(PreparedValueLocationFunction& function_locations,
-                                 const PreparedMoveResolution& move) {
+                                 const PreparedMoveResolution& raw_move) {
+  const PreparedMoveResolution move =
+      normalize_prepared_move_publication(function_locations, raw_move);
   const PreparedMovePhase phase = classify_prepared_move_phase(move);
   const auto existing = std::find_if(
       function_locations.move_bundles.begin(),
