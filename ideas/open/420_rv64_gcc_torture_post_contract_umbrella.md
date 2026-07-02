@@ -45,10 +45,38 @@ worth redoing, identify which route choices were traps, and create follow-up
 ideas in an order that improves broad RV64 coverage without letting BIR or
 prepared producer gaps leak into MIR/RV64 fixups.
 
+## Current Evidence Update
+
+After the BIR and RV64 file-ownership cleanup pass, two full RV64 gcc_torture
+backend-object scans on 2026-07-02 produced the same result and the same
+pass/fail case set:
+
+- `1467` total cases
+- `349` pass
+- `1118` fail
+- `0` pass-to-fail changes between
+  `build/agent_state/rv64_gcc_torture_backend_current_20260702T032151Z.log`
+  and
+  `build/agent_state/rv64_gcc_torture_backend_current_20260702T151551Z.log`
+- `0` fail-to-pass changes between those two scans
+
+This stable post-cleanup scan should supersede older stale handoff counts such
+as the 2026-06-30 `404/1063` summary and the later stale `314/1153` merged
+summary when choosing the next follow-up queue. The umbrella should refresh the
+handoff docs so all current-scan, failure-bucket, and follow-up-plan artifacts
+cite one coherent scan timestamp and matching mutable summary files.
+
+The largest current explicit prepared/module-shape bucket is
+`unsupported_move_bundle_target_shape` with 183 rows in the stable 2026-07-02
+scan. That bucket is the highest expected-value ordinary-C follow-up candidate
+after the umbrella finishes evidence refresh and idea materialization.
+
 ## In Scope
 
 - Record a fresh RV64 gcc_torture backend baseline on reset `main` in
   `docs/rv64_gcc_torture_post_contract/current_scan_summary.md`.
+- Replace stale or conflicting handoff counts with the stable 2026-07-02
+  `349/1118` full-scan evidence and its timestamped log path.
 - Compare reset `main` with the preserved `try_gcc_torture` scan and record
   pass/fail deltas in
   `docs/rv64_gcc_torture_post_contract/regression_delta.md`.
@@ -96,6 +124,8 @@ semantic importance:
    evidence shows `unsupported_move_bundle_target_shape` is the largest
    ordinary-C failure owner. Split coherent prepared facts that RV64 can
    lower from producer/authority gaps that require prepared/BIR follow-up.
+   Under the stable 2026-07-02 scan this is the first implementation-planning
+   target, with 183 current rows.
 2. BIR semantic producer gaps, especially local-memory load/store/GEP,
    call-argument metadata, and memcpy/memset families.
 3. Generic RV64 `unsupported_instruction_fragment` bucket classification and
@@ -118,6 +148,10 @@ evidence proves a better split:
 
 - Prepared/RV64 move-bundle materialization bucket review when the fresh scan
   shows it dominates ordinary-C failures.
+- A first concrete follow-up that consumes the stable 2026-07-02
+  `unsupported_move_bundle_target_shape` evidence, splits its 183 rows by first
+  owner, and decides which rows are coherent RV64 consume work versus
+  prepared/BIR authority work.
 - BIR semantic producer admission cleanup for high-frequency `semantic
   lir_to_bir` failures.
 - RV64 instruction-fragment bucket classification, excluding F128 as a primary
@@ -133,6 +167,9 @@ evidence proves a better split:
 
 - The handoff directory contains current scan, regression delta, failure bucket,
   `try_gcc_torture` postmortem, and follow-up idea plan artifacts.
+- The current scan, failure bucket, and follow-up plan artifacts agree on the
+  same stable post-cleanup scan timestamp, total/pass/fail counts, and summary
+  files.
 - The umbrella explicitly records that RV64 gcc_torture is external evidence,
   not default harness coverage.
 - The follow-up plan explains why F128 is not the main route and why
@@ -163,6 +200,8 @@ evidence proves a better split:
   evidence, default CTest proof, and route-quality review.
 - Reject umbrella output that only lists pass/fail counts without row-level
   ownership, postmortem lessons, and follow-up ideas.
+- Reject leaving stale conflicting scan summaries in the handoff docs after a
+  stable newer full scan exists.
 - Reject follow-up ideas that mix BIR producer repair and MIR/RV64 lowering in
   one implementation slice.
 - Reject continuing a MIR/RV64 implementation after it discovers a missing
