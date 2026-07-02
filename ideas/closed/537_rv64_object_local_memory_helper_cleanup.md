@@ -31,6 +31,17 @@ Local memory helpers in `object_emission.cpp` are mixed with global symbol mater
 - Validation includes:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(riscv_object_emission|codegen_route_riscv64_prepared_local_array|obj_runtime_rv64_local_temp|obj_runtime_rv64_large_fixed_frame_slot_access|rv64_runtime_riscv64_pointer_to_pointer_local_address)'`
 
+## Completion Note
+
+Closed after moving the in-scope RV64 object-route local frame-slot load/store,
+local pointer materialization, and pointer-value base-plus-offset helper
+ownership into `prepared_local_memory_emit.*` while leaving global/address,
+prepared data-object, relocation, ELF writing, and module assembly concerns out
+of scope. Close validation used the source-idea command above with matching
+`test_before.log` and `test_after.log`; both logs reported 8/8 passing tests,
+and the regression guard passed with non-decreasing pass counts for this
+behavior-preserving cleanup.
+
 ## Reviewer Reject Signals
 
 - The slice rewrites local-array semantics, pointer provenance, or prepared memory facts.
