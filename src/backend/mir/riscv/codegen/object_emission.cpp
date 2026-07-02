@@ -1035,30 +1035,6 @@ bool is_rv64_null_pointer_value(const c4c::backend::bir::Value& value) {
          value.immediate == 0 && value.immediate_bits == 0;
 }
 
-std::optional<std::int64_t> materializable_fpr_immediate_bits(
-    const c4c::backend::bir::Value& value) {
-  if (value.kind != c4c::backend::bir::Value::Kind::Immediate) {
-    return std::nullopt;
-  }
-  std::uint64_t bits = 0;
-  switch (value.type) {
-    case c4c::backend::bir::TypeKind::F32:
-      bits = value.immediate_bits & 0xffffffffu;
-      break;
-    case c4c::backend::bir::TypeKind::F64:
-      bits = value.immediate_bits;
-      break;
-    default:
-      return std::nullopt;
-  }
-  if (bits > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
-    return std::nullopt;
-  }
-  const auto immediate = static_cast<std::int64_t>(bits);
-  return fits_signed_12_bit_immediate(immediate) ? std::optional{immediate}
-                                                 : std::nullopt;
-}
-
 std::optional<std::uint32_t> gpr_register_number_for_value(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -1178,44 +1154,6 @@ std::optional<std::int32_t> prepared_stack_slot_home_offset(
     std::size_t size_bytes = 4) {
   return rv64_prepared_stack_slot_home_offset(
       stack_layout, home, stack_frame_bytes, size_bytes);
-}
-
-std::optional<std::size_t> prepared_stack_slot_home_absolute_offset_for_value(
-    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::bir::Value& value,
-    std::size_t stack_frame_bytes) {
-  const auto* home = prepared_value_home_for(names, lookups, value);
-  if (home == nullptr) {
-    return std::nullopt;
-  }
-  const auto size_bytes = rv64_scalar_memory_size_for_type(value.type);
-  if (!size_bytes.has_value()) {
-    return std::nullopt;
-  }
-  return prepared_stack_slot_home_absolute_offset(stack_layout,
-                                                  *home,
-                                                  stack_frame_bytes,
-                                                  *size_bytes);
-}
-
-std::optional<std::int32_t> prepared_stack_slot_home_offset_for_value(
-    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
-    const c4c::backend::bir::Value& value,
-    std::size_t stack_frame_bytes) {
-  const auto* home = prepared_value_home_for(names, lookups, value);
-  if (home == nullptr) {
-    return std::nullopt;
-  }
-  const auto size_bytes = rv64_scalar_memory_size_for_type(value.type);
-  if (!size_bytes.has_value()) {
-    return std::nullopt;
-  }
-  return prepared_stack_slot_home_offset(
-      stack_layout, *home, stack_frame_bytes, *size_bytes);
 }
 
 std::optional<std::uint32_t> rv64_load_store_funct3_for_size(std::size_t size_bytes) {
