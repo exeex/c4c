@@ -219,6 +219,7 @@ LirModule make_admitted_aggregate_long_double_field_global_module();
 LirModule make_admitted_packed_integer_aggregate_global_module();
 LirModule make_structured_block_label_id_module();
 LirModule make_dynamic_indexed_gep_global_member_array_module();
+LirModule make_global_struct_member_scalar_array_dynamic_gep_module();
 
 int expect_link_name_id_symbol_identity_survives_drifted_display_names();
 int expect_link_name_id_global_identity_rejects_unresolved_id();
@@ -226,6 +227,7 @@ int expect_link_name_id_extern_identity_rejects_unresolved_id();
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_dynamic_global_scalar_array_loads_reject_missing_link_name_spelling();
 int expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
+int expect_global_struct_member_scalar_array_dynamic_gep_publishes_authority();
 int expect_global_static_gep_authority_publishes_available_constant_record();
 int expect_global_static_gep_authority_fails_closed_without_link_identity();
 int expect_dynamic_global_selected_call_argument_publishes_dependency();
@@ -11664,6 +11666,152 @@ LirModule make_dynamic_indexed_gep_global_member_array_module() {
   return module;
 }
 
+LirModule make_global_struct_member_scalar_array_dynamic_gep_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.slot = type { [6 x i32] }");
+  module.type_decls.push_back("%struct.Root = type { i32, [4 x %struct.slot] }");
+
+  LirGlobal global;
+  global.name = "s";
+  global.qualifier = "global ";
+  global.llvm_type = "%struct.Root";
+  global.init_text =
+      "%struct.Root { i32 0, [4 x %struct.slot] [%struct.slot zeroinitializer, "
+      "%struct.slot zeroinitializer, %struct.slot zeroinitializer, "
+      "%struct.slot zeroinitializer] }";
+  global.align_bytes = 4;
+  module.globals.push_back(std::move(global));
+
+  LirFunction function;
+  function.name = "global_struct_member_scalar_array_dynamic_gep";
+  function.signature_text =
+      "define i32 @global_struct_member_scalar_array_dynamic_gep(i32 %p.i)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t0"),
+      .element_type = "%struct.Root",
+      .ptr = LirOperand("@s"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 1")},
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t1"),
+      .element_type = "%struct.slot",
+      .ptr = LirOperand("%t0"),
+      .indices = {LirOperand("i64 0")},
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t2"),
+      .element_type = "%struct.slot",
+      .ptr = LirOperand("%t1"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 0")},
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t3"),
+      .kind = LirCastKind::SExt,
+      .from_type = "i32",
+      .operand = LirOperand("%p.i"),
+      .to_type = "i64",
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t4"),
+      .element_type = "i32",
+      .ptr = LirOperand("%t2"),
+      .indices = {LirOperand("i64 %t3")},
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t5"),
+      .type_str = "i32",
+      .ptr = LirOperand("%t4"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%t5"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_global_struct_member_scalar_array_dynamic_gep_publishes_authority() {
+  LirModule module = make_global_struct_member_scalar_array_dynamic_gep_module();
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId global_id = module.link_names.intern("s");
+  module.globals.front().link_name_id = global_id;
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("global struct member scalar-array dynamic GEP fixture should lower to BIR");
+  }
+
+  const auto& lowered_function = result.module->functions.back();
+  const bir::GlobalStaticGepAuthorityRecord* dynamic_record = nullptr;
+  for (const auto& record : lowered_function.global_static_gep_authorities) {
+    if (record.result_name == "%t4") {
+      dynamic_record = &record;
+      break;
+    }
+  }
+  if (dynamic_record == nullptr) {
+    return fail("global struct member scalar-array dynamic GEP should publish authority");
+  }
+  if (dynamic_record->status != bir::GlobalStaticGepAuthorityStatus::Available) {
+    return fail("global struct member scalar-array dynamic GEP authority was not available");
+  }
+  if (dynamic_record->derivation_kind !=
+      bir::GlobalStaticGepDerivationKind::DynamicGlobalScalarArray) {
+    return fail("global struct member scalar-array dynamic GEP authority used wrong derivation");
+  }
+  if (dynamic_record->global_name != "s" ||
+      dynamic_record->global_link_name_id != global_id) {
+    return fail("global struct member scalar-array dynamic GEP authority lost identity");
+  }
+  if (dynamic_record->byte_offset != 4 ||
+      dynamic_record->element_type != TypeKind::I32 ||
+      dynamic_record->element_size_bytes != 4) {
+    return fail("global struct member scalar-array dynamic GEP authority lost element facts");
+  }
+  if (dynamic_record->element_count != 6) {
+    return fail("global struct member scalar-array dynamic GEP authority lost element count");
+  }
+  if (dynamic_record->element_stride_bytes != 4) {
+    return fail("global struct member scalar-array dynamic GEP authority lost element stride");
+  }
+  if (dynamic_record->has_constant_range) {
+    return fail("global struct member scalar-array dynamic GEP authority should not claim constant range");
+  }
+  if (!dynamic_record->has_dynamic_range) {
+    return fail("global struct member scalar-array dynamic GEP authority lost dynamic range");
+  }
+  if (dynamic_record->range_verdict != bir::MemoryRangeVerdict::ProvenInBounds) {
+    return fail("global struct member scalar-array dynamic GEP authority lost range verdict");
+  }
+
+  std::size_t dynamic_load_count = 0;
+  for (const auto& block : lowered_function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* load = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst);
+      if (load == nullptr) {
+        continue;
+      }
+      if (load->global_name != "s" || load->global_name_id != global_id) {
+        return fail("global struct member scalar-array load lost global identity");
+      }
+      ++dynamic_load_count;
+    }
+  }
+  if (dynamic_load_count == 0) {
+    return fail("global struct member scalar-array dynamic GEP should materialize global load");
+  }
+  return 0;
+}
+
 int expect_dynamic_global_selected_call_argument_publishes_dependency() {
   LirModule module = make_dynamic_indexed_gep_global_member_array_module();
   module.link_name_texts = std::make_shared<c4c::TextTable>();
@@ -12909,6 +13057,12 @@ int main() {
           expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
       dynamic_global_array_raw_identity_status != 0) {
     return dynamic_global_array_raw_identity_status;
+  }
+
+  if (const int global_struct_member_scalar_array_status =
+          expect_global_struct_member_scalar_array_dynamic_gep_publishes_authority();
+      global_struct_member_scalar_array_status != 0) {
+    return global_struct_member_scalar_array_status;
   }
 
   if (const int global_static_gep_constant_authority_status =

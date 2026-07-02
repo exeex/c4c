@@ -552,7 +552,8 @@ std::optional<std::size_t> find_pointer_array_length_at_offset_impl(
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable& structured_layouts) {
   const auto projection =
-      resolve_aggregate_byte_offset_projection(type_text, target_offset, type_decls, structured_layouts);
+      resolve_aggregate_byte_offset_projection(
+          type_text, target_offset, type_decls, structured_layouts);
   if (!projection.has_value()) {
     return std::nullopt;
   }
@@ -573,6 +574,49 @@ std::optional<std::size_t> find_pointer_array_length_at_offset_impl(
       return find_pointer_array_length_at_offset_impl(
           projection->child_type_text,
           projection->byte_offset_within_child,
+          type_decls,
+          structured_layouts);
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<BirFunctionLowerer::AggregateArrayExtent>
+find_scalar_array_extent_at_offset_impl(
+    std::string_view type_text,
+    std::size_t target_offset,
+    bir::TypeKind element_type,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  const auto projection =
+      resolve_aggregate_byte_offset_projection(type_text, target_offset, type_decls, structured_layouts);
+  if (!projection.has_value()) {
+    return std::nullopt;
+  }
+
+  switch (projection->kind) {
+    case AggregateByteOffsetProjection::Kind::ArrayElement:
+      if (projection->byte_offset_within_child == 0 &&
+          projection->child_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Scalar &&
+          projection->child_layout.scalar_type == element_type &&
+          projection->child_stride_bytes != 0 &&
+          projection->child_index < projection->layout.array_count) {
+        return BirFunctionLowerer::AggregateArrayExtent{
+            .element_count = projection->layout.array_count - projection->child_index,
+            .element_stride_bytes = projection->child_stride_bytes,
+        };
+      }
+      return find_scalar_array_extent_at_offset_impl(
+          projection->child_type_text,
+          projection->byte_offset_within_child,
+          element_type,
+          type_decls,
+          structured_layouts);
+    case AggregateByteOffsetProjection::Kind::StructField:
+      return find_scalar_array_extent_at_offset_impl(
+          projection->child_type_text,
+          projection->byte_offset_within_child,
+          element_type,
           type_decls,
           structured_layouts);
     default:
@@ -2228,6 +2272,38 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
             *dynamic_aggregate, gep.result.str(), gep.ptr.str());
         dynamic_global_aggregate_arrays[gep.result.str()] = std::move(*dynamic_aggregate);
         return true;
+      }
+      if (gep.indices.size() == 1) {
+        const auto parsed_index = parse_typed_operand(gep.indices.front());
+        const auto element_type = lower_scalar_or_function_pointer_type(gep.element_type.str());
+        const auto global_it = global_types.find(base_address.global_name);
+        if (parsed_index.has_value() && element_type.has_value() &&
+            global_it != global_types.end()) {
+          const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
+          const auto extent = find_scalar_array_extent_at_offset_impl(
+              global_it->second.type_text,
+              base_address.byte_offset,
+              *element_type,
+              type_decls,
+              structured_layouts_);
+          if (index_value.has_value() && extent.has_value()) {
+            auto access = DynamicGlobalScalarArrayAccess{
+                .global_name = base_address.global_name,
+                .link_name_id = base_address.link_name_id,
+                .element_type = *element_type,
+                .byte_offset = base_address.byte_offset,
+                .outer_element_count = 1,
+                .outer_element_stride_bytes = 0,
+                .outer_index = bir::Value{},
+                .element_count = extent->element_count,
+                .element_stride_bytes = extent->element_stride_bytes,
+                .index = *index_value,
+            };
+            publish_global_scalar_array_authority(access, gep.result.str(), gep.ptr.str());
+            dynamic_global_scalar_arrays[gep.result.str()] = std::move(access);
+            return true;
+          }
+        }
       }
       if (gep.indices.size() != 1 || base_address.value_type != bir::TypeKind::Ptr) {
         return fail_gep();

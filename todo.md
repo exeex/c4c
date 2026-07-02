@@ -8,44 +8,38 @@ Current Step Title: Repair The Next Remaining Semantic Family
 
 ## Just Finished
 
-Step 13 - Repair The Next Remaining Semantic Family inspection subpacket
-completed the GEP-family boundary read for `src/20000717-4.c`; no code or test
-files were edited.
+Step 13 - Repair The Next Remaining Semantic Family completed the GEP-family
+producer repair for `src/20000717-4.c`'s boundary.
 
-Exact boundary:
+Implemented producer-side publication for the general shape where a constant
+global GEP chain reaches a scalar-array subobject through `global_pointer_slots`
+and a later dynamic scalar GEP indexes that subobject. The repair walks the
+global root layout at the published byte offset, confirms the scalar element
+type, and publishes `DynamicGlobalScalarArray` /
+`GlobalStaticGepAuthorityRecord` facts before the pointer-array fallback.
 
-- The current case log still reports semantic `lir_to_bir` failure in function
-  `x`, classified as `gep local-memory`.
-- The LLVM-path shape is a global struct-member array chain:
-  `%t0 = gep %struct._anon_0, @s, 0, 1`, then
-  `%t2 = gep %struct.slot, %t0, 0`, then
-  `%t3 = gep %struct.slot, %t2, 0, 0`, followed by the dynamic scalar element
-  GEP `%t9 = gep i32, %t3, %t8`.
-- The constant global GEP chain reaches the `[6 x i32]` member through
-  `global_pointer_slots`, but it does not publish a
-  `dynamic_global_scalar_arrays` authority for that scalar array subobject.
-  The final dynamic `i32` GEP therefore cannot consume global scalar-array
-  provenance/range facts and falls through to `fail_gep()`.
+Focused BIR coverage added:
+
+- `expect_global_struct_member_scalar_array_dynamic_gep_publishes_authority`
+  models `%struct.slot = type { [6 x i32] }`,
+  `%struct.Root = type { i32, [4 x %struct.slot] }`, a global `@s`, a constant
+  GEP chain to the nested `[6 x i32]` member, then a dynamic `i32` GEP and load.
+- The test pins available `DynamicGlobalScalarArray` authority, global identity,
+  dynamic range metadata, and materialized `LoadGlobalInst` behavior.
+
+RV64 representative result:
+
+- `src/20000717-4.c` moved off semantic `gep local-memory` admission.
+- It now fails downstream in the object route with
+  `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`.
 
 ## Suggested Next
 
-Recommended next packet: repair the global scalar-array subobject publication
-boundary for `src/20000717-4.c` by publishing or admitting dynamic
-global-scalar-array authority when a constant global GEP chain lands on a
-scalar array member and a later GEP indexes that member dynamically.
-
-Focused BIR test gap to add or extend:
-
-- Add a `20000717-4`-style fixture, for example
-  `expect_global_struct_member_scalar_array_dynamic_gep_publishes_authority`,
-  with `%struct.slot = type { [6 x i32] }`,
-  `%struct._anon_0 = type { i32, [4 x %struct.slot] }`, global `@s`, the
-  constant GEP chain to `s.slot[0].field`, and a dynamic `i32` element GEP plus
-  load.
-- Assert semantic lowering succeeds without `gep local-memory`, and pin that
-  the dynamic scalar element pointer is backed by available
-  `GlobalStaticGepAuthorityRecord` / `DynamicGlobalScalarArray` facts rather
-  than by RV64/MIR inference.
+Recommended next packet: continue Step 13 or advance to Step 14 by selecting
+one remaining semantic local-memory representative still in the producer lane,
+preferably `src/20000519-1.c` (`scalar/local-memory`) or `src/20050604-1.c`
+(`alloca local-memory`), and inspect its missing BIR fact boundary before code
+changes.
 
 ## Watchouts
 
@@ -54,30 +48,27 @@ rewrites, unsupported-marker changes, allowlist changes, runtime-comparison
 changes, and RV64/MIR inference.
 
 Do not route this as a local-slot repair: the representative source uses a
-global object, but the shared semantic failure bucket still reports
-`gep local-memory`.
+global object, but the shared semantic failure bucket reported
+`gep local-memory`; this packet fixed only the producer fact gap for the
+constant-global-chain-to-scalar-array shape.
 
-The existing dynamic global member-array fixture starts from a top-level global
-array and already passes. The missing shape is a global struct field that is an
-array of structs, then a nested scalar array member indexed dynamically.
-
-Keep the downstream `src/20000314-1.c` and `src/20001026-1.c` object-route
-failures out of this producer packet.
+Keep downstream object-route failures out of this producer packet:
+`src/20000314-1.c`, `src/20001026-1.c`, and now `src/20000717-4.c` have moved
+off semantic local-memory admission and should not be absorbed back into this
+source idea without supervisor/lifecycle direction.
 
 ## Proof
 
-Proof log preserved: `test_after.log`.
+Proof log: `test_after.log`.
 
 Commands run:
 
-- Inspection only; no build or CTest run was required by the delegated packet.
-- `./build/c4cll --codegen llvm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000717-4.c -o /tmp/20000717-4.ll`
-- `./build/c4cll --dump-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000717-4.c`
-  reproduced the semantic `gep local-memory` failure.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
+  passed: `345/345` backend tests.
+- `ALLOWLIST=build/agent_state/557_step13_20000717.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
+  appended to `test_after.log`; result `0/1` passed, `1/1` failed, but the row
+  moved from semantic `gep local-memory` to downstream
+  `ambiguous_non_parallel_multi_source_stack_destination`.
 
 Inspected case log:
 - `build/rv64_gcc_c_torture_backend/src_20000717-4.c/case.log`
-
-Recommended RV64 representative proof command after repair:
-
-- `cmake --build --preset default && ALLOWLIST=build/agent_state/557_step13_20000717.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
