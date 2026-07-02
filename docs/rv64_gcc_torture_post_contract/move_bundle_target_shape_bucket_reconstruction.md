@@ -56,6 +56,10 @@ The `case` field preserves the gcc_torture source-row identifier from the
 summary. The `log` field preserves the current per-case evidence path for
 later classification packets.
 
+Step 2 defines the lane evidence contract and future classification TSV schema
+in
+`docs/rv64_gcc_torture_post_contract/move_bundle_target_shape_classification_rules.md`.
+
 ## Reconciliation
 
 The reconstructed durable TSV has 183 data rows plus one header row. This
