@@ -1,5 +1,6 @@
 #include "src/backend/prealloc/decoded_home_storage.hpp"
 #include "src/backend/prealloc/prepared_contract_verifier.hpp"
+#include "src/backend/prealloc/storage_plans.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -192,6 +193,90 @@ int verify_storage_plan_decoding() {
       !expect(missing_immediate.status ==
                   prepare::PreparedDecodedHomeStorageStatus::MissingImmediatePayload,
               "storage-plan missing immediate status mismatch")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int verify_storage_plan_uses_bir_type_when_regalloc_record_is_missing() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("storage_bank_contract");
+  const auto value_name = prepared.names.value_names.intern("%loaded.i16");
+  prepared.module.functions = {c4c::backend::bir::Function{
+      .name = "storage_bank_contract",
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::LoadLocalInst{
+              .result =
+                  c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I16,
+                                                  "%loaded.i16"),
+              .slot_name = "local.i16",
+              .byte_offset = 0,
+              .align_bytes = 2,
+          }},
+      }},
+  }};
+  prepared.value_locations.functions = {prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = 100,
+          .function_name = function_name,
+          .value_name = value_name,
+          .kind = prepare::PreparedValueHomeKind::StackSlot,
+          .slot_id = 7,
+          .offset_bytes = 64,
+          .size_bytes = 2,
+          .align_bytes = 2,
+      }},
+  }};
+  prepared.regalloc.functions = {prepare::PreparedRegallocFunction{
+      .function_name = function_name,
+      .values = {prepare::PreparedRegallocValue{
+          .value_id = 200,
+          .function_name = function_name,
+          .value_name = value_name,
+          .type = c4c::backend::bir::TypeKind::Void,
+          .register_class = prepare::PreparedRegisterClass::None,
+          .register_group_width = 1,
+          .allocation_status = prepare::PreparedAllocationStatus::AssignedStackSlot,
+          .assigned_stack_slot = prepare::PreparedStackSlotAssignment{
+              .slot_id = 7,
+              .offset_bytes = 64,
+              .size_bytes = 2,
+              .align_bytes = 2,
+          },
+      }},
+  }};
+
+  prepare::populate_storage_plans(prepared);
+
+  const auto* storage_plan =
+      prepare::find_prepared_storage_plan(prepared.storage_plans, function_name);
+  const auto* storage =
+      storage_plan == nullptr || storage_plan->values.empty()
+          ? nullptr
+          : &storage_plan->values.front();
+  if (!expect(storage != nullptr,
+              "storage-plan producer should publish the remapped home") ||
+      !expect(storage->value_id == 100 && storage->value_name == value_name,
+              "storage-plan producer should preserve the home identity") ||
+      !expect(storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot,
+              "storage-plan producer should preserve frame-slot encoding") ||
+      !expect(storage->bank == prepare::PreparedRegisterBank::Gpr,
+              "storage-plan producer should derive GPR bank from BIR value authority") ||
+      !expect(storage->contiguous_width == 1,
+              "storage-plan producer should preserve scalar width for remapped stack slot") ||
+      !expect(storage->slot_id == std::optional<prepare::PreparedFrameSlotId>{7} &&
+                  storage->stack_offset_bytes == std::optional<std::size_t>{64},
+              "storage-plan producer should preserve frame-slot location facts") ||
+      !expect(storage->spill_slot_placement ==
+                  std::optional<prepare::PreparedSpillSlotPlacement>{
+                      prepare::PreparedSpillSlotPlacement{
+                          .slot_id = 7,
+                          .offset_bytes = 64,
+                      }},
+              "storage-plan producer should publish structured spill-slot placement")) {
     return 1;
   }
 
@@ -738,6 +823,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (verify_storage_plan_decoding() != 0) {
+    return EXIT_FAILURE;
+  }
+  if (verify_storage_plan_uses_bir_type_when_regalloc_record_is_missing() != 0) {
     return EXIT_FAILURE;
   }
   if (verify_value_home_and_combined_decoding() != 0) {

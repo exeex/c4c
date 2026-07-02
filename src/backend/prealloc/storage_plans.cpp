@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace c4c::backend::prepare {
@@ -176,6 +177,91 @@ struct RegallocValueIndexes {
   return PreparedStorageEncodingKind::None;
 }
 
+[[nodiscard]] const bir::Function* prepared_bir_function_for_name(
+    const PreparedNameTables& names,
+    const bir::Module& module,
+    FunctionNameId function_name) {
+  if (function_name == kInvalidFunctionName) {
+    return nullptr;
+  }
+  for (const auto& function : module.functions) {
+    if (names.function_names.find(function.name) == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool prepared_bir_value_has_name(const PreparedNameTables& names,
+                                               const bir::Value& value,
+                                               ValueNameId value_name) {
+  return value.kind == bir::Value::Kind::Named && !value.name.empty() &&
+         names.value_names.find(value.name) == value_name;
+}
+
+[[nodiscard]] std::optional<bir::TypeKind> prepared_bir_value_type_for_name(
+    const PreparedNameTables& names,
+    const bir::Function& function,
+    ValueNameId value_name) {
+  if (value_name == kInvalidValueName) {
+    return std::nullopt;
+  }
+  for (const auto& param : function.params) {
+    if (names.value_names.find(param.name) == value_name) {
+      return param.type;
+    }
+  }
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, binary->result, value_name)) {
+          return binary->result.type;
+        }
+      } else if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, select->result, value_name)) {
+          return select->result.type;
+        }
+      } else if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, cast->result, value_name)) {
+          return cast->result.type;
+        }
+      } else if (const auto* phi = std::get_if<bir::PhiInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, phi->result, value_name)) {
+          return phi->result.type;
+        }
+      } else if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+        if (call->result.has_value() &&
+            prepared_bir_value_has_name(names, *call->result, value_name)) {
+          return call->result->type;
+        }
+        for (const auto& lane : call->result_lanes) {
+          if (prepared_bir_value_has_name(names, lane, value_name)) {
+            return lane.type;
+          }
+        }
+      } else if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, load->result, value_name)) {
+          return load->result.type;
+        }
+      } else if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst)) {
+        if (prepared_bir_value_has_name(names, load->result, value_name)) {
+          return load->result.type;
+        }
+      }
+    }
+    if (block.terminator.value.has_value() &&
+        prepared_bir_value_has_name(names, *block.terminator.value, value_name)) {
+      return block.terminator.value->type;
+    }
+    for (const auto& lane : block.terminator.return_lanes) {
+      if (prepared_bir_value_has_name(names, lane, value_name)) {
+        return lane.type;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] PreparedStoragePlanValue build_storage_plan_value(
     const c4c::TargetProfile& target_profile,
     const PreparedRegallocValue* regalloc_value,
@@ -196,7 +282,12 @@ struct RegallocValueIndexes {
   if (regalloc_value != nullptr) {
     if (!home.register_name.has_value() || home_is_assigned_register) {
       contiguous_width = std::max<std::size_t>(regalloc_value->register_group_width, 1);
-      bank = register_bank_from_class(regalloc_value->register_class);
+      if (const auto class_bank = register_bank_from_class(regalloc_value->register_class);
+          class_bank != PreparedRegisterBank::None) {
+        bank = class_bank;
+      } else if (home.kind != PreparedValueHomeKind::StackSlot) {
+        bank = PreparedRegisterBank::None;
+      }
     }
     if (home_is_assigned_register) {
       contiguous_width = regalloc_value->assigned_register->contiguous_width;
@@ -205,7 +296,12 @@ struct RegallocValueIndexes {
           assignment_register_placement(target_profile, *regalloc_value->assigned_register);
     } else if (home.kind != PreparedValueHomeKind::Register) {
       contiguous_width = std::max<std::size_t>(regalloc_value->register_group_width, 1);
-      bank = register_bank_from_class(regalloc_value->register_class);
+      if (const auto class_bank = register_bank_from_class(regalloc_value->register_class);
+          class_bank != PreparedRegisterBank::None) {
+        bank = class_bank;
+      } else if (home.kind != PreparedValueHomeKind::StackSlot) {
+        bank = PreparedRegisterBank::None;
+      }
     }
   }
   return PreparedStoragePlanValue{
@@ -239,18 +335,33 @@ void populate_storage_plans(PreparedBirModule& prepared) {
 
     const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_locations.function_name);
     const auto regalloc_value_indexes = make_regalloc_value_indexes(regalloc_function);
+    const auto* bir_function = prepared_bir_function_for_name(
+        prepared.names,
+        prepared.module,
+        function_locations.function_name);
     function_plan.values.reserve(function_locations.value_homes.size());
     for (const auto& home : function_locations.value_homes) {
-      bir::TypeKind type = bir::TypeKind::Void;
       const auto by_id_it = regalloc_value_indexes.by_id.find(home.value_id);
+      const auto by_name_it = regalloc_value_indexes.by_name.find(home.value_name);
+      const auto* named_regalloc_value =
+          by_name_it == regalloc_value_indexes.by_name.end() ? nullptr : by_name_it->second;
       const auto* typed_regalloc_value =
-          by_id_it == regalloc_value_indexes.by_id.end() ? nullptr : by_id_it->second;
+          by_id_it == regalloc_value_indexes.by_id.end() ? named_regalloc_value : by_id_it->second;
+      bir::TypeKind type = bir::TypeKind::Void;
       if (typed_regalloc_value != nullptr) {
         type = typed_regalloc_value->type;
       }
-      const auto by_name_it = regalloc_value_indexes.by_name.find(home.value_name);
+      if (type == bir::TypeKind::Void &&
+          home.kind == PreparedValueHomeKind::StackSlot &&
+          bir_function != nullptr) {
+        if (const auto bir_type =
+                prepared_bir_value_type_for_name(prepared.names, *bir_function, home.value_name);
+            bir_type.has_value()) {
+          type = *bir_type;
+        }
+      }
       const auto* placed_regalloc_value =
-          by_name_it == regalloc_value_indexes.by_name.end() ? nullptr : by_name_it->second;
+          named_regalloc_value;
       function_plan.values.push_back(
           build_storage_plan_value(prepared.target_profile, placed_regalloc_value, home, type));
     }
