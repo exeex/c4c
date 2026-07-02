@@ -1,62 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/520_bir_render_owner_preservation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Choose Preserve, Printer Move, Or Narrow Render TU
+Current Step ID: 3
+Current Step Title: Apply Minimal Ownership Change Or Preserve Decision
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Choose Preserve, Printer Move, Or Narrow Render TU is complete for
+Step 3 - Apply Minimal Ownership Change Or Preserve Decision is complete for
 idea 520.
 
-Selected disposition:
+Moved the definitions of `render_type`, `render_binary_opcode`, and
+`render_cast_opcode` out of `src/backend/bir/bir.cpp` and into the new narrow
+render translation unit `src/backend/bir/bir_render.cpp`. Public declarations
+remain in `src/backend/bir/bir.hpp`; no printer, route, validation, test,
+expectation, or output spelling changes were made.
 
-- Move only the public BIR render helper definitions for `render_type`,
-  `render_binary_opcode`, and `render_cast_opcode` into a new narrow public
-  render translation unit in Step 3.
-- Preserve the existing declarations in `bir.hpp`.
-- Do not move these helper bodies into `bir_printer.cpp`.
-
-Dependency rationale:
-
-- The committed Step 1 audit found mixed public consumers, not printer-only
-  consumers. `render_type` is used by BIR printer code, BIR lowering
-  diagnostics/state text, prealloc legalize/prepared-printer diagnostics, x86
-  debug, and RISC-V object-emission diagnostics.
-- `render_binary_opcode` and `render_cast_opcode` are also public render
-  helpers used outside the BIR printer by prealloc prepared-printer diagnostic
-  code.
-- Moving the bodies to `bir_printer.cpp` would force non-printer backend
-  diagnostics and object-emission code to link through a printer-owned
-  implementation file, creating ownership and dependency coupling that the
-  cleanup is trying to avoid.
-- A narrow render TU is clearer than preserving the bodies in central `bir.cpp`
-  because these helpers are public text-rendering APIs with no recorded
-  `bir.cpp`-local callees. Isolating their definitions keeps behavior and
-  public signatures unchanged while separating render ownership from the large
-  BIR model implementation.
+Fixed the narrow direct-source backend BIR test metadata gap by adding
+`src/backend/bir/bir_render.cpp` to `backend_lir_to_bir_notes_test`, the target
+that compiles `bir.cpp` and LIR-to-BIR sources directly without linking through
+the backend source set.
 
 ## Suggested Next
 
-Delegate Step 3 - Apply Minimal Ownership Change Or Preserve Decision. Move
-only the three selected helper definitions from `bir.cpp` into a narrow public
-render TU, preserve declarations in `bir.hpp`, and make only the build metadata
-changes strictly required to compile that new TU.
+Supervisor can review the completed Step 3 slice, decide whether additional
+acceptance validation is needed, and commit the coherent code plus `todo.md`
+update if accepted.
 
 ## Watchouts
 
-`bir_printer.cpp` is explicitly rejected for this route because the audited
-consumer map is mixed, not printer-only. Step 3 should move only
-`render_type`, `render_binary_opcode`, and `render_cast_opcode`; it should not
-move route declarations, route records, validation behavior, printer output
-spelling, tests, expectations, or unrelated build behavior. Preserving the
-bodies in `bir.cpp` remains a fallback only if the narrow render TU exposes an
-unexpected compile/link blocker.
+`src/backend/CMakeLists.txt` picked up `bir_render.cpp` through
+`GLOB_RECURSE CONFIGURE_DEPENDS`. `backend_prepare_phi_materialize_test` also
+names `bir.cpp` directly, but it links `c4c_backend`, which supplies the new
+render TU; the delegated backend proof passed without adding a duplicate source
+entry there. `bir_printer.cpp` remains rejected for this route because the
+audited consumer map is mixed, not printer-only.
 
 ## Proof
 
-Decision-only packet. No build or ctest proof was required or run. The fixed
-validation command `git diff --check -- todo.md` passed; no `test_after.log`
-was created for this no-code decision.
+Delegated proof command:
+
+```sh
+git diff --check && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1
+```
+
+`git diff --check` passed. `cmake --build --preset default` passed, and
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed.
+`test_after.log` contains the full proof log.
