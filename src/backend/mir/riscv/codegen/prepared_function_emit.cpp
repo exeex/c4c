@@ -315,7 +315,155 @@ bool append_riscv_formal_entry_homes(
   return true;
 }
 
+const c4c::backend::bir::Function* find_defined_prepared_bir_function(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto it = std::find_if(
+      prepared.module.functions.begin(),
+      prepared.module.functions.end(),
+      [&](const c4c::backend::bir::Function& candidate) {
+        return !candidate.is_declaration && candidate.name == function_name;
+      });
+  return it == prepared.module.functions.end() ? nullptr : &*it;
+}
+
 }  // namespace
+
+RiscvPreparedFunctionAdmissionResult prepare_rv64_object_function_admission_shell(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const RiscvPreparedFunctionAdmissionCallbacks& callbacks) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+
+  RiscvPreparedFunctionAdmissionResult result;
+  result.function_name =
+      std::string(prepare::prepared_function_name(prepared.names,
+                                                  control_flow.function_name));
+  if (result.function_name.empty()) {
+    result.diagnostic =
+        "unsupported_function_admission: prepared function has no target name";
+    return result;
+  }
+
+  result.function = find_defined_prepared_bir_function(prepared, result.function_name);
+  if (result.function == nullptr) {
+    result.diagnostic =
+        "unsupported_function_admission: prepared function has no defined BIR body";
+    return result;
+  }
+
+  if (result.function->is_variadic &&
+      callbacks.variadic_function_admission_diagnostic != nullptr) {
+    if (auto diagnostic = callbacks.variadic_function_admission_diagnostic(
+            prepared,
+            control_flow.function_name)) {
+      result.diagnostic = std::move(*diagnostic);
+      return result;
+    }
+  }
+
+  if (!result.function->atomic_operations.empty()) {
+    result.diagnostic =
+        "unsupported_instruction_fragment: atomic operations are not supported by the RV64 object route";
+    return result;
+  }
+
+  result.lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
+  result.dependency_operand_authorities =
+      prepare::collect_prepared_dependency_operand_authorities(prepared);
+  result.carrier_alias_authorities =
+      prepare::collect_prepared_select_carrier_alias_authorities(prepared);
+  result.select_edge_source_producer_placements =
+      prepare::collect_prepared_select_edge_source_producer_placements(prepared);
+  result.addressing = prepare::find_prepared_addressing(prepared,
+                                                        control_flow.function_name);
+  result.frame_plan = prepare::find_prepared_frame_plan(prepared,
+                                                        control_flow.function_name);
+  result.storage_plan = prepare::find_prepared_storage_plan(prepared,
+                                                            control_flow.function_name);
+  result.inline_asm_carriers =
+      prepare::find_prepared_inline_asm_carriers(prepared,
+                                                 control_flow.function_name);
+
+  if (callbacks.stack_frame_size != nullptr) {
+    result.stack_frame_bytes = callbacks.stack_frame_size(result.addressing,
+                                                          result.frame_plan,
+                                                          prepared.stack_layout);
+  }
+  if (!result.stack_frame_bytes.has_value()) {
+    result.diagnostic =
+        "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame";
+    return result;
+  }
+
+  if (callbacks.saved_register_bank_diagnostic != nullptr) {
+    if (auto diagnostic =
+            callbacks.saved_register_bank_diagnostic(result.frame_plan)) {
+      result.diagnostic = std::move(*diagnostic);
+      return result;
+    }
+  }
+
+  if (callbacks.param_homes_diagnostic != nullptr) {
+    if (auto diagnostic =
+            callbacks.param_homes_diagnostic(prepared.stack_layout,
+                                             prepared.names,
+                                             &result.lookups,
+                                             *result.function,
+                                             *result.stack_frame_bytes)) {
+      result.diagnostic = std::move(*diagnostic);
+      return result;
+    }
+  }
+
+  if (result.function->is_variadic &&
+      callbacks.variadic_helper_diagnostic != nullptr) {
+    if (auto diagnostic =
+            callbacks.variadic_helper_diagnostic(prepared,
+                                                 control_flow.function_name,
+                                                 *result.function,
+                                                 *result.stack_frame_bytes)) {
+      result.diagnostic = std::move(*diagnostic);
+      return result;
+    }
+  }
+
+  result.has_call = std::any_of(
+      result.function->blocks.begin(),
+      result.function->blocks.end(),
+      [](const bir::Block& block) {
+        return std::any_of(block.insts.begin(),
+                           block.insts.end(),
+                           [](const bir::Inst& inst) {
+                             const auto* call = std::get_if<bir::CallInst>(&inst);
+                             return call != nullptr &&
+                                    !call->inline_asm.has_value() &&
+                                    !c4c::backend::prepare::
+                                        prepared_variadic_entry_helper_kind_for_call(
+                                            *call)
+                                             .has_value();
+                           });
+      });
+
+  if (result.has_call) {
+    const auto call_frame_size =
+        rv64_prepared_call_frame_size(*result.stack_frame_bytes);
+    const auto call_frame_ra_offset =
+        rv64_prepared_call_frame_ra_offset(*result.stack_frame_bytes);
+    if (!call_frame_size.has_value() || !call_frame_ra_offset.has_value() ||
+        *call_frame_size > static_cast<std::size_t>(
+                               std::numeric_limits<std::int64_t>::max()) ||
+        *call_frame_ra_offset > static_cast<std::size_t>(
+                                    std::numeric_limits<std::int64_t>::max())) {
+      result.diagnostic =
+          "unsupported_stack_frame: call frame exceeds RV64 object-route size range";
+      return result;
+    }
+  }
+
+  return result;
+}
 
 bool append_simple_prepared_bir_function_asm(
     std::string& out,

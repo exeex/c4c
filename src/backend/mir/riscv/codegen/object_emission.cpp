@@ -7,6 +7,7 @@
 #include "emit.hpp"
 #include "prepared_call_emit.hpp"
 #include "prepared_frame_emit.hpp"
+#include "prepared_function_emit.hpp"
 #include "prepared_global_memory_emit.hpp"
 #include "prepared_local_memory_emit.hpp"
 #include "prepared_module_emit.hpp"
@@ -6682,18 +6683,6 @@ std::optional<RiscvEncodedFragment> make_rv64_formal_entry_home_fragment(
   return fragment;
 }
 
-const c4c::backend::bir::Function* find_defined_bir_function(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    std::string_view function_name) {
-  const auto it = std::find_if(
-      prepared.module.functions.begin(),
-      prepared.module.functions.end(),
-      [&](const c4c::backend::bir::Function& candidate) {
-        return !candidate.is_declaration && candidate.name == function_name;
-      });
-  return it == prepared.module.functions.end() ? nullptr : &*it;
-}
-
 std::optional<c4c::BlockLabelId> prepared_block_label_id_for(
     const c4c::backend::bir::NameTables& bir_names,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -7481,102 +7470,41 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow) {
   namespace prepare = c4c::backend::prepare;
 
-  const std::string function_name(
-      prepare::prepared_function_name(prepared.names, control_flow.function_name));
-  if (function_name.empty()) {
-    return make_rv64_prepared_function_rejection(
-        "unsupported_function_admission: prepared function has no target name");
+  auto admission = prepare_rv64_object_function_admission_shell(
+      prepared,
+      control_flow,
+      RiscvPreparedFunctionAdmissionCallbacks{
+          .variadic_function_admission_diagnostic =
+              rv64_variadic_function_admission_diagnostic,
+          .stack_frame_size = rv64_object_stack_frame_size,
+          .saved_register_bank_diagnostic =
+              diagnose_unsupported_prepared_saved_register_bank,
+          .param_homes_diagnostic = diagnose_unsupported_prepared_param_homes,
+          .variadic_helper_diagnostic =
+              diagnose_first_unsupported_prepared_variadic_helper,
+      });
+  if (!admission.diagnostic.empty()) {
+    return make_rv64_prepared_function_rejection(std::move(admission.diagnostic));
   }
-  const auto* function = find_defined_bir_function(prepared, function_name);
-  if (function == nullptr) {
-    return make_rv64_prepared_function_rejection(
-        "unsupported_function_admission: prepared function has no defined BIR body");
-  }
-  if (function->is_variadic) {
-    if (auto diagnostic = rv64_variadic_function_admission_diagnostic(
-            prepared,
-            control_flow.function_name)) {
-      return make_rv64_prepared_function_rejection(std::move(*diagnostic));
-    }
-  }
-  if (!function->atomic_operations.empty()) {
-    return make_rv64_prepared_function_rejection(
-        "unsupported_instruction_fragment: atomic operations are not supported by the RV64 object route");
-  }
-  const auto lookups = prepare::make_prepared_function_lookups(prepared, control_flow);
-  const auto dependency_operand_authorities =
-      prepare::collect_prepared_dependency_operand_authorities(prepared);
-  const auto carrier_alias_authorities =
-      prepare::collect_prepared_select_carrier_alias_authorities(prepared);
-  const auto select_edge_source_producer_placements =
-      prepare::collect_prepared_select_edge_source_producer_placements(prepared);
+  const std::string& function_name = admission.function_name;
+  const auto* function = admission.function;
+  const auto& lookups = admission.lookups;
+  const auto& dependency_operand_authorities =
+      admission.dependency_operand_authorities;
+  const auto& carrier_alias_authorities = admission.carrier_alias_authorities;
+  const auto& select_edge_source_producer_placements =
+      admission.select_edge_source_producer_placements;
   RiscvObjectFunction object_function{
       .name = function_name,
       .global = true,
   };
-  const auto* addressing = prepare::find_prepared_addressing(prepared, control_flow.function_name);
-  const auto* frame_plan =
-      prepare::find_prepared_frame_plan(prepared, control_flow.function_name);
-  const auto* storage_plan =
-      prepare::find_prepared_storage_plan(prepared, control_flow.function_name);
-  const auto* inline_asm_carriers =
-      prepare::find_prepared_inline_asm_carriers(prepared, control_flow.function_name);
-  const auto stack_frame_bytes =
-      rv64_object_stack_frame_size(addressing, frame_plan, prepared.stack_layout);
-  if (!stack_frame_bytes.has_value()) {
-    return make_rv64_prepared_function_rejection(
-        "unsupported_stack_frame: RV64 object route requires a supported prepared stack frame");
-  }
-  if (auto diagnostic =
-          diagnose_unsupported_prepared_saved_register_bank(frame_plan)) {
-    return make_rv64_prepared_function_rejection(std::move(*diagnostic));
-  }
-  if (auto diagnostic =
-          diagnose_unsupported_prepared_param_homes(prepared.stack_layout,
-                                                   prepared.names,
-                                                   &lookups,
-                                                   *function,
-                                                   *stack_frame_bytes)) {
-    return make_rv64_prepared_function_rejection(std::move(*diagnostic));
-  }
-  if (function->is_variadic) {
-    if (auto diagnostic = diagnose_first_unsupported_prepared_variadic_helper(
-            prepared,
-            control_flow.function_name,
-            *function,
-            *stack_frame_bytes)) {
-      return make_rv64_prepared_function_rejection(std::move(*diagnostic));
-    }
-  }
-
-  bool has_call = false;
-  for (const auto& block : function->blocks) {
-    has_call = has_call ||
-               std::any_of(block.insts.begin(),
-                           block.insts.end(),
-                           [](const c4c::backend::bir::Inst& inst) {
-                             const auto* call =
-                                 std::get_if<c4c::backend::bir::CallInst>(&inst);
-                             return call != nullptr &&
-                                    !call->inline_asm.has_value() &&
-                                    !prepare::prepared_variadic_entry_helper_kind_for_call(
-                                         *call)
-                                         .has_value();
-                           });
-  }
+  const auto* addressing = admission.addressing;
+  const auto* frame_plan = admission.frame_plan;
+  const auto* storage_plan = admission.storage_plan;
+  const auto* inline_asm_carriers = admission.inline_asm_carriers;
+  const auto stack_frame_bytes = admission.stack_frame_bytes;
+  const bool has_call = admission.has_call;
   if (has_call) {
-    const auto call_frame_size =
-        rv64_prepared_call_frame_size(*stack_frame_bytes);
-    const auto call_frame_ra_offset =
-        rv64_prepared_call_frame_ra_offset(*stack_frame_bytes);
-    if (!call_frame_size.has_value() || !call_frame_ra_offset.has_value() ||
-        *call_frame_size > static_cast<std::size_t>(
-                               std::numeric_limits<std::int64_t>::max()) ||
-        *call_frame_ra_offset > static_cast<std::size_t>(
-                                    std::numeric_limits<std::int64_t>::max())) {
-      return make_rv64_prepared_function_rejection(
-          "unsupported_stack_frame: call frame exceeds RV64 object-route size range");
-    }
     auto prologue =
         make_rv64_prepared_call_frame_prologue_fragment(frame_plan,
                                                         *stack_frame_bytes);
