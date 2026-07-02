@@ -1,6 +1,6 @@
 # BIR Route5 Publication Body Extraction
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 7 of 13, after `ideas/open/525_bir_route3_memory_access_body_extraction.md`
@@ -40,6 +40,13 @@ stable APIs.
 - Focused CFG-edge, join-source, and publication proof passes.
 - Route6 coverage passes if route6 consumes route5 records in the linked
   subset.
+
+## Closure Note
+
+Closed on 2026-07-02 after the route5 CFG-edge and join-source publication
+bodies were extracted into the focused route5 publication owner while keeping
+public declarations in `bir.hpp`. Close-scope proof passed before and after
+with the focused backend route5/publication subset at 4/4 tests.
 
 ## Reviewer Reject Signals
 
