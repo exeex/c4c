@@ -1,83 +1,80 @@
 Status: Active
 Source Idea Path: ideas/open/552_prepared_move_bundle_target_shape_authority_gaps.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Repair Return ABI And Select-Publication Authority
+Current Step ID: 6
+Current Step Title: Reconcile The Prepared Authority Queue
 
 # Current Packet
 
 ## Just Finished
 
-Step 5, "Repair Return ABI And Select-Publication Authority," completed as a
-focused proof-and-reroute packet. Initial `git status --short` was clean.
-The three target rows were inspected against Step 1 artifacts, current case
-logs, prepared dumps, prior Step 2-4 changes, return ABI move publication,
-select-publication intent construction, `prepared_lookups.cpp`,
-`publication_plans.*`, `prepared_object_traversal.*`, `regalloc.cpp`, and
-`regalloc/value_homes.cpp`.
+Step 6, "Reconcile The Prepared Authority Queue," completed as a
+proof-and-accounting packet. Initial `git status --short` was clean. The Step
+1 deduplicated queue was re-used to build a fresh 43-row Step 6 allowlist, then
+the current outcomes were reconciled against Step 2-5 row-status artifacts and
+the current case logs.
 
-No implementation file changed. The return rows already publish explicit ABI
-register destinations on their moves, including
-`destination_kind=function_return_abi`, `destination_storage=register`,
-`placement=gpr:call_result#0/w1`, and `reg=a0`; the remaining failure is RV64
-pointer stack-source return lowering, not missing prepared destination-home
-authority. The select row already has concrete source and destination stack
-homes for the select publication (`%t10` slot `#3` offset `2` size `2`,
-`%t11` slot `#4` offset `4` size `2`); the remaining failure is RV64 I16
-select stack-publication policy, not missing prepared source-home authority.
+No implementation file changed. The queue now has no unexplained prepared
+authority gaps. Remaining failures all have non-prepared owners: later RV64
+diagnostic/lowering coverage, earlier semantic producer or explicit classifier
+authority, or runtime mismatch investigation.
 
 Changed files:
 
-- `docs/rv64_gcc_torture_post_contract/prepared_authority_return_select_step5.md`
+- `docs/rv64_gcc_torture_post_contract/prepared_authority_step6_reconciliation.md`
 - `todo.md`
 
 Derived artifacts:
 
-- `build/agent_state/552_step5_return_select_authority.allowlist`
-- `build/agent_state/552_step5_return_select_authority/row_status.tsv`
+- `build/agent_state/552_step6_prepared_authority_reconciliation.allowlist`
+- `build/agent_state/552_step6_prepared_authority_reconciliation/current_results.tsv`
+- `build/agent_state/552_step6_prepared_authority_reconciliation/failed.txt`
+- `build/agent_state/552_step6_prepared_authority_reconciliation/row_status.tsv`
+- `build/agent_state/552_step6_prepared_authority_reconciliation/summary.tsv`
 
-Focused Step 5 row counts:
+Step 6 reconciliation counts:
 
-| Classification | Rows |
+| Bucket | Rows |
 | --- | ---: |
-| Rerouted to RV64 return pointer stack-source lowering | 2 |
-| Rerouted to RV64 I16 select stack-publication lowering | 1 |
-| Still prepared return ABI/select source-home authority gap | 0 |
+| Repaired/pass | 7 |
+| Advanced to later RV64 diagnostic or lowering owner | 24 |
+| Rerouted to earlier semantic producer or explicit multi-source authority | 9 |
+| Runtime mismatch | 3 |
+| Still unexplained prepared-authority gap | 0 |
+| Other owner | 0 |
+| Total | 43 |
 
-Rows rerouted: `src/20001130-2.c`, `src/20080719-1.c`, and `src/pr58726.c`.
+Focused proof result: `total=43 passed=7 failed=36`.
 
 ## Suggested Next
 
-Executor should run Step 6, "Reconcile The Prepared Authority Queue," and
-recompute the 43-row queue after Steps 2-5 to decide whether any prepared
-authority rows remain or whether the residuals have moved to later RV64 or
-semantic-producer owners.
+Supervisor should hand the Step 6 reconciliation to the plan owner for
+lifecycle closure or split. The prepared-authority plan has no unexplained
+prepared residual; remaining owners are outside this source idea.
 
 ## Watchouts
 
-- The focused Step 5 allowlist still fails `0/3` by pass count, but all three
-  rows now have explicit prepared evidence and should not be treated as missing
-  prepared return ABI/select source-home authority.
-- Do not repair the two return rows by inventing a second prepared destination
-  home for the same value; the ABI register destination is already the move
-  destination authority.
-- Do not repair `src/pr58726.c` by widening prepared source-home inference; it
-  already has concrete 2-byte stack source/destination homes.
+- The focused Step 6 scan still fails `36/43` by pass count. That is expected:
+  this packet is closure accounting, and every failing row has a non-prepared
+  residual owner recorded in
+  `build/agent_state/552_step6_prepared_authority_reconciliation/row_status.tsv`.
+- Do not continue this plan by widening prepared inference for the residuals.
+  The remaining rows need RV64 lowering, earlier semantic/classifier authority,
+  or runtime-mismatch work.
 
 ## Proof
 
 ```text
 cmake --build --preset default
 ctest --test-dir build -j --output-on-failure -R '^backend_'
-ALLOWLIST=build/agent_state/552_step5_return_select_authority.allowlist scripts/check_progress_rv64_gcc_c_torture_backend.sh
+ALLOWLIST=build/agent_state/552_step6_prepared_authority_reconciliation.allowlist scripts/check_progress_rv64_gcc_c_torture_backend.sh
 ```
 
 Results:
 
 - Build passed.
 - Backend CTest passed `345/345`.
-- Focused Step 5 proof passed `0/3`, with `0` rows still blocked by prepared
-  return ABI/select-publication source-home authority and all three rows
-  rerouted with row-level evidence.
+- Focused Step 6 proof scanned `43` rows and reported `7` passed, `36`
+  failed, with `0` unexplained prepared-authority gaps.
 
 Proof output is preserved in `test_after.log`.
