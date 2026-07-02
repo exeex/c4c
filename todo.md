@@ -1,29 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/545_bir_semantic_producer_admission_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconstruct Current BIR Admission Rows
+Current Step ID: 2
+Current Step Title: Classify Producer Families
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 from `plan.md` reconstructed the current BIR admission candidate row
-set from the 2026-07-02 RV64 gcc_torture backend scan artifacts. The durable
-evidence artifact is
-`docs/rv64_gcc_torture_post_contract/bir_semantic_admission_rows.md`.
+Step 2 from `plan.md` classified the verified current BIR admission rows by
+first owner and producer topic. The durable classification artifact is
+`docs/rv64_gcc_torture_post_contract/bir_semantic_admission_classification.md`.
 
-Current result: `373` exact `semantic lir_to_bir` rows, all with enough
-visible per-case log evidence to identify a first BIR admission topic, plus
-`44` related bootstrap `lir_to_bir` handoff rows that are not counted as exact
-semantic producer rows.
+Current exact semantic row classification: `373` rows accounted for as
+`264` BIR local-memory facts, `55` BIR call metadata rows, `34` BIR
+runtime/intrinsic memory rows, and `20` BIR scalar/signature/control rows.
+The related `44` bootstrap/global data-shape handoff rows remain separate and
+are not counted as exact semantic producer rows.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: classify the verified `373` exact semantic
-rows by first owner and BIR producer topic, keeping the `44` bootstrap
-handoff rows in a related/non-semantic lane unless classification proves they
-share a producer boundary.
+Execute Step 3 from `plan.md`: generate follow-up routing for coherent
+high-frequency current producer families, keeping local-memory, call metadata,
+runtime/intrinsic, and scalar/signature/control lanes separate unless row
+evidence proves a shared producer boundary.
 
 ## Watchouts
 
@@ -37,14 +37,27 @@ share a producer boundary.
   producer.
 - Do not weaken semantic admission checks, expectations, unsupported markers,
   allowlists, or runtime comparison behavior.
-- Keep F128-primary rows in the quarantine lane, not ordinary-C producer
-  cleanup.
+- Classification rejected non-BIR routes for the `373` exact semantic rows:
+  prepared contract gaps `0`, RV64/MIR object lowering `0`, runtime mismatch
+  `0`, test infrastructure `0`, F128 quarantine as first owner `0`, and
+  evidence gaps `0`.
+- Aggregate facts and publication gaps have `0` first-owner rows in the exact
+  semantic set; do not create those claims from downstream inference.
+- The `44` bootstrap/global data-shape handoff rows are BIR handoff-related
+  but not exact `semantic lir_to_bir` rows.
 - Representative inspected logs include
   `build/rv64_gcc_c_torture_backend/src_pr82388.c/case.log`,
-  `build/rv64_gcc_c_torture_backend/src_stdarg-4.c/case.log`,
+  `build/rv64_gcc_c_torture_backend/src_20000717-4.c/case.log`,
+  `build/rv64_gcc_c_torture_backend/src_20011008-3.c/case.log`,
   `build/rv64_gcc_c_torture_backend/src_20000412-2.c/case.log`,
+  `build/rv64_gcc_c_torture_backend/src_stdarg-4.c/case.log`,
+  `build/rv64_gcc_c_torture_backend/src_20000703-1.c/case.log`,
+  `build/rv64_gcc_c_torture_backend/src_20050604-1.c/case.log`,
+  `build/rv64_gcc_c_torture_backend/src_20041218-1.c/case.log`,
+  `build/rv64_gcc_c_torture_backend/src_20000314-3.c/case.log`,
+  `build/rv64_gcc_c_torture_backend/src_20050316-3.c/case.log`,
   `build/rv64_gcc_c_torture_backend/src_complex-1.c/case.log`,
-  `build/rv64_gcc_c_torture_backend/src_20000314-3.c/case.log`, and
+  `build/rv64_gcc_c_torture_backend/src_960513-1.c/case.log`, and
   `build/rv64_gcc_c_torture_backend/src_strlen-2.c/case.log`.
 
 ## Proof
@@ -53,8 +66,7 @@ Evidence-only packet. No build or compile proof was required, and no
 `test_after.log` update was required by the delegated proof contract.
 
 Extraction commands recorded in
-`docs/rv64_gcc_torture_post_contract/bir_semantic_admission_rows.md` inspected
-`build/agent_state/rv64_gcc_torture_backend_current_log_path.txt`,
-`build/agent_state/rv64_gcc_torture_backend_current_20260702T151551Z.log`,
-the current mutable summary/failed-list artifacts, and current per-case logs
-under `build/rv64_gcc_c_torture_backend/<case-id>/case.log`.
+`docs/rv64_gcc_torture_post_contract/bir_semantic_admission_classification.md`
+classified the Step 1 artifact table, inspected representative per-case logs,
+and confirmed first-topic evidence from current logs under
+`build/rv64_gcc_c_torture_backend/<case-id>/case.log`.
