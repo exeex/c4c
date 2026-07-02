@@ -3,30 +3,29 @@
 Status: Active
 Source Idea Path: ideas/open/528_bir_route6_call_publication_body_extraction.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Focused Route6 Proof
+Current Step ID: 5
+Current Step Title: Acceptance Checkpoint
 
 ## Just Finished
 
-Step 3: Repair Includes And Internal Linkage.
+Step 4: Focused Route6 Proof.
 
-Verification-only checkpoint completed for include/build registration/linkage
-fallout after the route6 call-publication owner split.
+Focused route6 proof completed for the separated route6 call-publication owner.
 
-The already-passing Step 2 backend build plus `^backend_` proof verified that
-the new `src/backend/bir/bir_route6_call_publication.cpp` owner was included in
-the core backend build and linked by the standalone BIR notes test source list.
-No additional include, registration, or internal-linkage repair was needed in
-this checkpoint.
+The proof covered all four delegated focused tests:
 
-No implementation files, tests, logs, `plan.md`, or source idea files were
-edited in this packet.
+- `backend_lir_to_bir_notes`
+- `backend_prepared_lookup_helper`
+- `backend_prealloc_call_boundary_classification`
+- `backend_aarch64_call_boundary_owner`
+
+No implementation files, tests, build registration, `plan.md`, or source idea
+files were edited in this validation-only packet.
 
 ## Suggested Next
 
-Supervisor can delegate Step 4 from `plan.md`: run the focused route6 proof for
-call-publication, call-result, publication-routing, and link-time backend
-coverage.
+Supervisor can delegate Step 5 from `plan.md`: record the acceptance checkpoint
+for the completed route6 call-publication body extraction.
 
 ## Watchouts
 
@@ -39,16 +38,13 @@ coverage.
   behavior, or idea 422 producer capability.
 - `src/backend/CMakeLists.txt` uses `GLOB_RECURSE` for `src/backend/bir/*.cpp`,
   so no core backend registration edit was needed.
-- Step 3 was metadata-only by delegation. The accepted Step 2 backend proof log
-  has been rolled forward to canonical `test_before.log`; the next proof packet
-  may create a new `test_after.log`.
+- Step 4 overwrote `test_after.log` with the focused proof requested for this
+  packet.
 
 ## Proof
 
-No new command was required or run for Step 3.
+Ran exactly:
 
-Verification basis: the already-recorded Step 2 command
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_"' > test_after.log 2>&1`
-passed, and the supervisor regression guard accepted matching before/after
-backend logs. The accepted proof log has been rolled forward to canonical
-`test_before.log`; the next proof packet may create a new `test_after.log`.
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(backend_lir_to_bir_notes|backend_prepared_lookup_helper|backend_prealloc_call_boundary_classification|backend_aarch64_call_boundary_owner)$"' > test_after.log 2>&1`
+
+Result: passed, 4/4 focused tests passed. Proof log: `test_after.log`.
