@@ -1,10 +1,28 @@
 # Scalar FPR Salvage From try_gcc_torture
 
-Status: Open
+Status: Closed
 Type: Salvage and rewrite planning idea
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Owning Layer: RV64/MIR scalar floating lowering
 Reference Branch: `try_gcc_torture`
+
+## Closure Summary
+
+Closed after the scalar FPR salvage route produced exactly one ordered
+bucket-backed follow-up idea:
+`ideas/open/517_residual_scalar_f32_f64_cast_object_lowering.md`.
+
+The accepted boundary is residual scalar F32/F64 cast object lowering for the
+fresh `unsupported_floating_cast` rows `src/cvt-1.c`, `src/920618-1.c`, and
+`src/pr66233.c`. The route records that older scalar residual rows
+`src/ieee/930529-1.c` and `src/ieee/pr72824.c` are supporting context only.
+F128/helper ABI/local-memory, aggregate/byval, stack-frame, and
+`conversion.c`-only work are explicitly quarantined from this salvage output.
+
+Close validation used matching full-suite `test_before.log` and
+`test_after.log` with `3373` passed, `1` failed, and `3374` total before and
+after. The single failure is the known stable `string_authority_guard`
+baseline failure; regression guard passed with no new failures.
 
 ## Goal
 
