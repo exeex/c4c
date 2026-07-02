@@ -1,35 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/518_bir_core_model_cleanup_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Produce Staged Follow-Up Ideas
+Current Step ID: 6
+Current Step Title: Finalize Analysis And Lifecycle Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 - Produce Staged Follow-Up Ideas completed
-`docs/bir_core_cleanup/follow_up_ideas.md`.
+Step 6 - Finalize Analysis And Lifecycle Handoff completed.
 
-The follow-up list turns the Step 4 destination map into staged
-behavior-preserving cleanup ideas in recommended execution order. Each
-follow-up names owned files, non-goals, validation expectations, reviewer
-reject signals, and why the slice should preserve behavior. It keeps idea 422
-producer work separate, separates body-only route extraction from later
-declaration/header extraction, and creates no new source idea files.
+The completed handoff added `docs/bir_core_cleanup/README.md` as the review
+index for the Step 1-5 artifacts:
+
+- `docs/bir_core_cleanup/structure_snapshot.md`
+- `docs/bir_core_cleanup/declaration_inventory.md`
+- `docs/bir_core_cleanup/implementation_inventory.md`
+- `docs/bir_core_cleanup/destination_map.md`
+- `docs/bir_core_cleanup/follow_up_ideas.md`
+
+The index confirms the artifacts satisfy the source idea acceptance criteria:
+they provide a reviewable cleanup plan, concrete staged follow-up ideas with
+owned files, existing-file versus new-file destination distinctions,
+do-not-move-yet notes, command/query evidence, and public API/include/validation
+risk notes. No implementation or test files were changed in this packet.
 
 ## Suggested Next
 
-Delegate Step 6: finalize the analysis and lifecycle handoff. Verify the Step
-1-5 artifacts satisfy the source idea acceptance criteria, confirm no
-implementation files changed as part of the analysis, run an appropriate
-docs/lifecycle sanity check, and update `todo.md` with the final packet summary
-and proof.
+Supervisor should send idea 518 to plan-owner close review. Follow-up cleanup
+implementation work should be split into separate staged ideas instead of
+expanding this analysis umbrella.
 
 ## Watchouts
 
-- This idea is analysis-only; Step 6 should not move declarations or
-  definitions.
+- This idea is analysis-only; close review should preserve the fact that no BIR
+  declarations, definitions, implementation files, tests, CMake files,
+  pass/fail accounting, or allowlists changed for Step 6.
 - The follow-up list deliberately keeps body-only route extraction ahead of
   declaration/header extraction.
 - Idea 422 producer capability remains separate from file-organization cleanup.
@@ -40,19 +46,20 @@ and proof.
 - Public memory provenance and local-array/semantic-GEP header ideas are late
   declaration-only candidates after route body movement and include direction
   are proven.
-- Step 6 should check the working tree for accidental implementation or test
-  edits before lifecycle handoff.
+- The Step 6 proof is docs/lifecycle-only and intentionally does not run a
+  build; later implementation ideas must define build and focused backend
+  proof.
 
 ## Proof
 
 Proof command:
 
 ```sh
-git diff --check && test -s docs/bir_core_cleanup/follow_up_ideas.md
+git diff --check && test -s docs/bir_core_cleanup/structure_snapshot.md && test -s docs/bir_core_cleanup/declaration_inventory.md && test -s docs/bir_core_cleanup/implementation_inventory.md && test -s docs/bir_core_cleanup/destination_map.md && test -s docs/bir_core_cleanup/follow_up_ideas.md && ! git diff --name-only -- src tests | rg .
 ```
 
 Result: passed.
 
-No implementation files were changed. No additional C++ queries were needed.
-No `test_after.log` was produced because the delegated proof command is a
-docs/lifecycle sanity check and does not write one.
+No new clang-tool queries were needed. No `test_after.log` was produced because
+the delegated proof command is a docs/lifecycle sanity check and does not write
+one.
