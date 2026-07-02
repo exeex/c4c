@@ -309,7 +309,8 @@ std::optional<std::vector<bir::Value>> lower_llvm_byte_string_initializer(
     return std::nullopt;
   }
 
-  const auto trimmed_init = c4c::codegen::lir::trim_lir_arg_text(init_text);
+  const auto trimmed_init =
+      strip_typed_initializer_prefix(init_text, type_text);
   if (trimmed_init.size() < 3 || trimmed_init[0] != 'c' || trimmed_init[1] != '"' ||
       trimmed_init.back() != '"') {
     return std::nullopt;
@@ -506,6 +507,12 @@ bool lower_integer_array_initializer_recursive(std::string_view init_text,
   const auto trimmed_init = c4c::codegen::lir::trim_lir_arg_text(init_text);
   if (trimmed_init.empty()) {
     return false;
+  }
+
+  if (const auto lowered_bytes = lower_llvm_byte_string_initializer(trimmed_init, type_text);
+      lowered_bytes.has_value()) {
+    out->insert(out->end(), lowered_bytes->begin(), lowered_bytes->end());
+    return true;
   }
 
   if (trimmed_init == "zeroinitializer") {

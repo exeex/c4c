@@ -8,49 +8,42 @@ Current Step Title: Add Focused Global Data-Shape Handoff Coverage
 
 ## Just Finished
 
-Completed plan Step 1 inspection for the bootstrap/global data-shape handoff,
-then advanced lifecycle state to Step 2.
+Completed plan Step 2 coverage for the retained bootstrap/global data-shape
+handoff boundary. Added focused BIR coverage for string-backed nested
+`char` array globals shaped like `[2 x [3 x i8]]` and
+`[2 x [2 x [5 x i8]]]`, asserting that module/global lowering publishes
+linear byte-addressable `i8` storage facts, element counts, storage sizes,
+and initializer byte order without naming `strlen-2.c` or RV64 diagnostics.
 
-Representative outcomes from
-`build/agent_state/561_step1_global_data_shape.log`:
+The positive coverage required the minimal BIR handoff repair in the
+integer-array initializer helper used by `globals.cpp`: byte-string
+initializers now strip typed `[N x i8]` wrappers and are accepted inside
+nested integer-array recursion, so nested string-backed `char` array globals
+can lower through `lower_minimal_global_impl` as coherent BIR global storage.
 
-- `src/strlen-2.c`: still fails before prepared/RV64 consumption at the BIR
-  bootstrap global lowering gate:
-  `bootstrap lir_to_bir only supports scalar integer/pointer globals, linear
-  integer-array globals, and aggregate-backed globals with honest byte-address
-  semantics right now`. The source shape is static const multidimensional
-  `char` globals initialized from string literals (`a[2][3]`,
-  `b[2][2][5]`) plus scalar volatile index globals. The likely missing BIR
-  handoff fact is byte-addressable global storage for string-backed nested
-  char-array initializers, not a prepared/RV64 consumption fact.
-- `src/20000703-1.c`: no longer fails at BIR bootstrap/global data-shape
-  handoff; it reaches downstream `unsupported_global_data: RV64 object route
-  requires supported prepared global memory facts`.
-- `src/20041218-1.c`: no longer fails at BIR bootstrap/global data-shape
-  handoff; it reaches downstream `unsupported_global_data: RV64 object route
-  requires supported prepared global memory facts`.
-- `src/20140212-1.c`: scalar integer/char globals lower past the BIR handoff
-  and reach downstream `unsupported_global_data: RV64 object route requires
-  supported prepared global memory facts`.
-
-Likely BIR owners for the retained bootstrap boundary:
-`src/backend/bir/lir_to_bir/module.cpp` `lower_module`, and
-`src/backend/bir/lir_to_bir/globals.cpp` `lower_minimal_global_impl` with
-the integer-array and aggregate initializer helpers it calls. The downstream
-prepared/RV64 consumer diagnostics are owned by
-`src/backend/mir/riscv/codegen/object_emission.cpp` global-data memory access
-checks, not this Step 2 BIR bootstrap repair.
+Supervisor-run representative proof for Step 2 confirmed the retained BIR
+handoff moved: `src/strlen-2.c` no longer fails at the bootstrap
+global-data-shape handoff diagnostic. Its current first residual is
+`semantic lir_to_bir function 'test_array_ref_2_2_5' failed in gep
+local-memory semantic family`, which is not prepared/RV64 global-data handoff.
+The other reconciliation rows remain downstream `unsupported_global_data`.
 
 ## Suggested Next
 
-Execute Step 2 by adding focused BIR coverage for the retained bootstrap
-boundary: string-backed byte-address global storage and nested char-array
-initializers should publish coherent BIR global storage facts through the
-module/global lowering handoff. Keep the tests semantic and shape-based rather
-than tied to `strlen-2.c` or RV64 diagnostics.
+Ask for lifecycle judgment before further implementation: the retained
+bootstrap/global data-shape handoff moved for `src/strlen-2.c`, and the new
+first owner appears to be a GEP local-memory residual rather than prepared/RV64
+global-data handoff.
 
 ## Watchouts
 
+- This packet touched `src/backend/bir/lir_to_bir/global_initializers.cpp`,
+  the integer-array initializer helper called by `globals.cpp`, because the
+  coverage failure was below `lower_minimal_global_impl` rather than in
+  `module.cpp` itself.
+- `src/strlen-2.c` now exposes a `gep local-memory semantic family` residual
+  after the BIR handoff repair. Do not treat that as Step 3 prepared/RV64
+  global-data consumption without lifecycle review.
 - Keep this route in BIR bootstrap/global data-shape handoff ownership.
 - Do not fold prepared global-data layout, RV64 object-route global lowering,
   stack-frame support, move-bundle classification, or F128 work into this
@@ -68,12 +61,16 @@ than tied to `strlen-2.c` or RV64 diagnostics.
 
 ## Proof
 
-- Delegated inspection proof:
-  `printf '%s\n' src/strlen-2.c src/20000703-1.c src/20041218-1.c src/20140212-1.c > build/agent_state/561_step1_global_data_shape.allowlist && ALLOWLIST=build/agent_state/561_step1_global_data_shape.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/561_step1_global_data_shape.log 2>&1`
-- Exit status: `1`, acceptable for this inspection packet.
-- Log paths:
-  `build/agent_state/561_step1_global_data_shape.log`,
-  `build/rv64_gcc_c_torture_backend/src_strlen-2.c/case.log`,
-  `build/rv64_gcc_c_torture_backend/src_20000703-1.c/case.log`,
-  `build/rv64_gcc_c_torture_backend/src_20041218-1.c/case.log`,
-  `build/rv64_gcc_c_torture_backend/src_20140212-1.c/case.log`.
+- Focused pre-proof:
+  `cmake --build --preset default --target backend_lir_to_bir_notes_test && ./build/tests/backend/bir/backend_lir_to_bir_notes_test`
+- Delegated proof:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+- Supervisor representative proof:
+  `printf '%s\n' src/strlen-2.c src/20000703-1.c src/20041218-1.c src/20140212-1.c > build/agent_state/561_step2_global_data_shape_after.allowlist && ALLOWLIST=build/agent_state/561_step2_global_data_shape_after.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/561_step2_global_data_shape_after.log 2>&1`
+- Representative proof exit status: `1`, acceptable for residual
+  classification. `src/strlen-2.c` moved off bootstrap/global data-shape
+  handoff and now fails in `gep local-memory semantic family`; the other rows
+  remain downstream `unsupported_global_data`.
+- `test_after.log` is the canonical proof log path for this packet.
+- Representative proof log:
+  `build/agent_state/561_step2_global_data_shape_after.log`.

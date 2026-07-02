@@ -216,6 +216,7 @@ int expect_aarch64_extern_data_global_uses_got_policy();
 LirModule make_admitted_aggregate_pointer_field_global_module();
 LirModule make_admitted_aggregate_zero_sized_member_global_module();
 LirModule make_admitted_aggregate_string_array_field_global_module();
+LirModule make_admitted_nested_string_backed_char_array_globals_module();
 LirModule make_admitted_aggregate_long_double_field_global_module();
 LirModule make_admitted_packed_integer_aggregate_global_module();
 LirModule make_structured_block_label_id_module();
@@ -3621,6 +3622,69 @@ int expect_admitted_aggregate_string_array_field_global() {
   }
   if (global->initializer_elements[16] != c4c::backend::bir::Value::immediate_i8(42)) {
     return fail("aggregate globals with string-backed array fields should preserve following scalar payload bytes");
+  }
+
+  return 0;
+}
+
+int expect_admitted_nested_string_backed_char_array_globals() {
+  auto result =
+      try_lower_to_bir_with_options(make_admitted_nested_string_backed_char_array_globals_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected semantic BIR lowering to admit string-backed nested char-array globals");
+  }
+
+  const auto find_global = [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : result.module->globals) {
+      if (global.name == name) {
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto expect_i8_bytes = [](const c4c::backend::bir::Global& global,
+                                  std::string_view expected,
+                                  const char* message) -> int {
+    if (global.type != TypeKind::I8 || !global.has_integer_array_layout_authority ||
+        global.integer_array_element_size_bytes != 1 ||
+        global.integer_array_element_count != expected.size() ||
+        global.size_bytes != expected.size() ||
+        global.initializer_elements.size() != expected.size()) {
+      return fail(message);
+    }
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+      if (global.initializer_elements[index] != c4c::backend::bir::Value::immediate_i8(
+                                                static_cast<std::int8_t>(expected[index]))) {
+        return fail("string-backed nested char-array globals should preserve byte initializer order");
+      }
+    }
+    return 0;
+  };
+
+  const auto* rows = find_global("nested_rows");
+  if (rows == nullptr) {
+    return fail("string-backed nested char-array fixture lost the two-dimensional global");
+  }
+  if (const int rows_status =
+          expect_i8_bytes(*rows,
+                          std::string_view("ab\0cd\0", 6),
+                          "two-dimensional string-backed char array should publish six i8 storage bytes");
+      rows_status != 0) {
+    return rows_status;
+  }
+
+  const auto* grid = find_global("nested_grid");
+  if (grid == nullptr) {
+    return fail("string-backed nested char-array fixture lost the three-dimensional global");
+  }
+  if (const int grid_status =
+          expect_i8_bytes(*grid,
+                          std::string_view("red\0\0blue\0green\0\0\0\0\0", 20),
+                          "three-dimensional string-backed char array should publish twenty i8 storage bytes");
+      grid_status != 0) {
+    return grid_status;
   }
 
   return 0;
@@ -11451,6 +11515,44 @@ LirModule make_admitted_aggregate_string_array_field_global_module() {
   return module;
 }
 
+LirModule make_admitted_nested_string_backed_char_array_globals_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirGlobal rows;
+  rows.name = "nested_rows";
+  rows.qualifier = "constant ";
+  rows.llvm_type = "[2 x [3 x i8]]";
+  rows.init_text = "[[3 x i8] c\"ab\\00\", [3 x i8] c\"cd\\00\"]";
+  rows.align_bytes = 1;
+  module.globals.push_back(std::move(rows));
+
+  LirGlobal grid;
+  grid.name = "nested_grid";
+  grid.qualifier = "constant ";
+  grid.llvm_type = "[2 x [2 x [5 x i8]]]";
+  grid.init_text =
+      "[[2 x [5 x i8]] [[5 x i8] c\"red\\00\\00\", [5 x i8] c\"blue\\00\"], "
+      "[2 x [5 x i8]] [[5 x i8] c\"green\"]]";
+  grid.align_bytes = 1;
+  module.globals.push_back(std::move(grid));
+
+  LirFunction function;
+  function.name = "admitted_nested_string_backed_char_array_globals";
+  function.signature_text = "define i32 @admitted_nested_string_backed_char_array_globals()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "0",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_admitted_aggregate_long_double_field_global_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -13995,6 +14097,12 @@ int main() {
           expect_admitted_aggregate_string_array_field_global();
       aggregate_string_array_field_global_status != 0) {
     return aggregate_string_array_field_global_status;
+  }
+
+  if (const int nested_string_backed_char_array_global_status =
+          expect_admitted_nested_string_backed_char_array_globals();
+      nested_string_backed_char_array_global_status != 0) {
+    return nested_string_backed_char_array_global_status;
   }
 
   if (const int aggregate_long_double_field_global_status =
