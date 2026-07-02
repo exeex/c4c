@@ -66,6 +66,12 @@ rows with the same semantic admission families:
 The next route must inspect the post-repair remaining admission boundary before
 adding another producer packet.
 
+Step 6 exposed that direct local-slot address publication is also a
+prepared/route consumer compatibility boundary. The next packet must pin both
+the producer-published direct local-slot facts and the prepared/codegen route
+behavior that consumes or rejects those facts before any implementation is
+reintroduced.
+
 ## Non-Goals
 
 - Do not implement call metadata, runtime/intrinsic, scalar/signature/control,
@@ -87,6 +93,13 @@ adding another producer packet.
   surface.
 - Each remaining family should be repaired by making BIR publish or admit the
   semantic facts it already owns, not by downstream inference.
+- Direct local-slot address facts may affect prepared/source identity and
+  byval aggregate route decisions. Treat those consumers as part of the same
+  local-memory semantic admission boundary when they are reacting to newly
+  published producer facts.
+- A producer-side exclusion is acceptable only when it preserves existing
+  prepared/source identity contracts for semantic reasons such as slot
+  ownership, not target, helper name, or testcase shape.
 - If inspection proves a remaining family belongs to a distinct producer
   boundary outside local-memory semantic admission, stop and request a
   lifecycle split instead of absorbing that work.
@@ -97,9 +110,13 @@ adding another producer packet.
   `todo.md`.
 - Each code-changing packet needs fresh build proof plus the exact focused
   command delegated by the supervisor.
-- Add or update focused BIR tests before using RV64 representatives as proof.
+- Add or update focused BIR tests and prepared/route compatibility coverage
+  before using RV64 representatives as proof when a producer fact changes route
+  identity behavior.
 - Use RV64 backend-object representative rows to confirm the current failure
   family moved for the producer reason.
+- Keep `src/20001026-1.c` as a store-family representative proof seed, not as
+  the implementation contract shape.
 - Escalate validation when shared memory helpers affect more than one
   local-memory family.
 - If a proposed fix changes expectations, unsupported markers, allowlists, or
@@ -130,44 +147,60 @@ Completion check:
 - `todo.md` names the selected family or shared boundary, the representative
   row to prove first, and the focused BIR test gap to add next.
 
-### Step 6: Pin The Selected Admission Contract
+### Step 6: Pin Direct Local-Slot Publication And Route Compatibility
 
-Goal: add focused BIR coverage for the selected remaining local-memory
-producer/admission fact before implementation.
+Goal: define the selected direct local-slot address publication contract and
+the prepared/route consumer behavior for those same facts before implementation
+resumes.
 
 Actions:
 
-- Add or extend focused BIR tests for the selected family or shared boundary.
-- Assert producer-owned semantic facts directly: provenance, requested range,
-  known extent, layout authority, access kind, or alloca/local-slot identity as
-  appropriate to the selected failure.
-- Include at least one nearby same-family case when the selected repair could
-  otherwise be testcase-shaped.
-- Run the delegated build and focused BIR test command.
+- Add or extend focused BIR coverage for direct local-slot address publication
+  on same-slot scalar store/load paths, including provenance, requested range,
+  known extent, layout authority, access kind, and local-slot identity where
+  available.
+- Add or extend prepared/codegen route compatibility coverage for the same
+  facts, including byval aggregate and source-identity guardrails exposed by
+  the blocked Step 6 attempt.
+- State in the test or surrounding helper behavior whether prepared consumers
+  should accept the newly published direct facts or reject/exclude them for a
+  semantic slot-ownership reason.
+- Keep `src/20001026-1.c` as the representative store-family proof seed only;
+  do not encode target exclusions, helper names, allowlist changes, expectation
+  rewrites, or RV64/MIR inference as part of the contract.
+- Run the delegated build and backend-focused test command after any code or
+  test changes.
 
 Completion check:
 
-- Focused BIR coverage fails before the repair or documents the already-pinned
-  contract, then passes after implementation.
+- Focused BIR and prepared/route coverage together pin the contract for direct
+  local-slot address facts, existing byval/source-identity expectations remain
+  semantically explained, and `todo.md` records whether implementation can
+  proceed in Step 7 or whether the route needs a lifecycle split.
 
-### Step 7: Repair The Selected Producer/Admission Gap
+### Step 7: Repair The Direct Local-Slot Producer/Consumer Boundary
 
-Goal: make BIR publish or admit the selected local-memory semantic facts
-without bypassing existing admission checks.
+Goal: make BIR publish or admit the selected direct local-slot semantic facts
+and make prepared/route consumers handle those facts consistently without
+bypassing admission checks.
 
 Actions:
 
-- Implement the minimal producer-side repair for the selected boundary.
+- Implement the minimal producer and route-consumer compatibility repair for
+  the contract pinned in Step 6.
 - Preserve semantic admission checks and diagnostics; do not move the repair
   into RV64/MIR.
+- Preserve existing byval aggregate and source-identity behavior unless the
+  Step 6 contract proves a semantic reason to change it.
 - Keep unrelated local-memory families untouched unless code evidence proves
-  they share the same helper boundary.
-- Run the delegated focused proof.
+  they share the same helper or consumer boundary.
+- Run the delegated focused backend proof.
 
 Completion check:
 
-- Focused BIR tests pass, the selected semantic facts are present, and
-  `todo.md` records any neighboring families intentionally left for later.
+- Focused BIR and prepared/route tests pass, direct local-slot facts are
+  present or semantically excluded as specified by Step 6, and `todo.md`
+  records any neighboring families intentionally left for later.
 
 ### Step 8: Prove One Representative Backend-Object Row
 
