@@ -233,6 +233,7 @@ int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
 int expect_string_literal_pointer_store_publishes_string_address_value();
 int expect_loaded_pointer_addressed_store_uses_pointer_base();
 int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base();
+int expect_local_byte_array_scalar_access_publishes_local_slot_provenance();
 int expect_casted_byte_pointer_i32_update_fails_closed();
 int expect_casted_byte_pointer_i32_store_fails_closed();
 int expect_indirect_local_memory_lvalue_contracts();
@@ -7104,6 +7105,106 @@ int expect_local_memory_alloca_records_pin_slot_and_source_contracts() {
   return 0;
 }
 
+LirModule make_local_byte_array_scalar_access_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "local_byte_array_scalar_access";
+  function.signature_text = "define void @local_byte_array_scalar_access()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.bytes"),
+      .type_str = "[8 x i8]",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%bytes.base"),
+      .element_type = "i8",
+      .ptr = LirOperand("%lv.bytes"),
+      .indices = {LirOperand("i64 0")},
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i32",
+      .val = LirOperand("17"),
+      .ptr = LirOperand("%bytes.base"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%word"),
+      .type_str = "i32",
+      .ptr = LirOperand("%bytes.base"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_byte_array_scalar_access_publishes_local_slot_provenance() {
+  auto result =
+      try_lower_to_bir_with_options(make_local_byte_array_scalar_access_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("local byte-array scalar access fixture should lower semantically");
+  }
+
+  const auto has_local_slot_provenance = [](const bir::MemoryAddress& address) {
+    return address.base_kind == bir::MemoryAddress::BaseKind::LocalSlot &&
+           address.base_name == "%lv.bytes.0" &&
+           address.byte_offset == 0 &&
+           address.size_bytes == 4 &&
+           address.align_bytes == 4 &&
+           address.provenance.base_identity.kind ==
+               bir::MemoryProvenanceBaseIdentityKind::LocalSlot &&
+           address.provenance.base_identity.spelling == "%lv.bytes.0" &&
+           address.provenance.base_identity.value.name == "%lv.bytes.0" &&
+           address.provenance.requested_range.available &&
+           address.provenance.requested_range.begin == 0 &&
+           address.provenance.requested_range.size_bytes == 4 &&
+           address.provenance.requested_range.end_available &&
+           address.provenance.requested_range.end == 4 &&
+           address.provenance.object_extent.completeness ==
+               bir::MemoryObjectExtentCompleteness::Complete &&
+           address.provenance.object_extent.size_bytes == 8 &&
+           address.provenance.object_extent.size_known &&
+           address.provenance.layout_authority ==
+               bir::MemoryLayoutAuthorityKind::ScalarLayout &&
+           address.provenance.range_verdict == bir::MemoryRangeVerdict::ProvenInBounds;
+  };
+
+  bool saw_store = false;
+  bool saw_load = false;
+  const auto& function = result.module->functions.front();
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+          store != nullptr && store->value == bir::Value::immediate_i32(17) &&
+          store->address.has_value() &&
+          has_local_slot_provenance(*store->address)) {
+        saw_store = true;
+      }
+      if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+          load != nullptr && load->result.name == "%word" &&
+          load->address.has_value() &&
+          has_local_slot_provenance(*load->address)) {
+        saw_load = true;
+      }
+    }
+  }
+
+  if (!saw_store || !saw_load) {
+    return fail("local byte-array scalar access should publish local-slot provenance");
+  }
+  return 0;
+}
+
 LirModule make_local_array_carrier_dynamic_gep_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -11540,6 +11641,11 @@ int main() {
           expect_local_memory_alloca_records_pin_slot_and_source_contracts();
       local_memory_alloca_record_status != 0) {
     return local_memory_alloca_record_status;
+  }
+  if (const int local_slot_provenance_status =
+          expect_local_byte_array_scalar_access_publishes_local_slot_provenance();
+      local_slot_provenance_status != 0) {
+    return local_slot_provenance_status;
   }
   if (const int local_array_dynamic_carrier_status =
           expect_local_array_carrier_dynamic_gep_preserves_missing_index_range_proof();

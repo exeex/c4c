@@ -7,6 +7,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -187,6 +188,22 @@ struct PointerAddress {
       value.name,
       value,
       complete_extent_size);
+}
+
+[[nodiscard]] inline bir::MemoryAccessProvenance local_slot_access_provenance(
+    std::string_view slot_name,
+    std::int64_t byte_offset,
+    std::size_t size_bytes,
+    std::optional<std::size_t> complete_extent_size = std::nullopt) {
+  auto provenance = memory_provenance_for_base(
+      bir::MemoryProvenanceBaseIdentityKind::LocalSlot,
+      std::string(slot_name),
+      bir::Value::named(bir::TypeKind::Ptr, std::string(slot_name)),
+      complete_extent_size);
+  provenance.requested_range = bir::make_memory_byte_range(byte_offset, size_bytes);
+  provenance.layout_authority = bir::MemoryLayoutAuthorityKind::ScalarLayout;
+  bir::prove_memory_access_requested_range(provenance);
+  return provenance;
 }
 
 [[nodiscard]] inline bir::MemoryAccessProvenance unknown_runtime_base_provenance(

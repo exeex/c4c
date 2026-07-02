@@ -728,6 +728,11 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
                   .byte_offset = static_cast<std::int64_t>(source_leaf.byte_offset),
                   .size_bytes = leaf_size,
                   .align_bytes = std::min(target_slot.align_bytes, leaf_size),
+                  .provenance = local_slot_access_provenance(
+                      target_slot.slot_name,
+                      static_cast<std::int64_t>(source_leaf.byte_offset),
+                      leaf_size,
+                      target_slot.size_bytes),
               },
       });
       covered_bytes += leaf_size;
@@ -764,6 +769,11 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
                   .byte_offset = static_cast<std::int64_t>(target_leaf.byte_offset),
                   .size_bytes = leaf_size,
                   .align_bytes = std::min(source_slot.align_bytes, leaf_size),
+                  .provenance = local_slot_access_provenance(
+                      source_slot.slot_name,
+                      static_cast<std::int64_t>(target_leaf.byte_offset),
+                      leaf_size,
+                      source_slot.size_bytes),
               },
       });
       lowered_insts->push_back(bir::StoreLocalInst{
@@ -851,6 +861,11 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
                   .byte_offset = static_cast<std::int64_t>(copied_bytes),
                   .size_bytes = chunk_size,
                   .align_bytes = std::min(target_slot.align_bytes, chunk_size),
+                  .provenance = local_slot_access_provenance(
+                      target_slot.slot_name,
+                      static_cast<std::int64_t>(copied_bytes),
+                      chunk_size,
+                      target_slot.size_bytes),
               },
       });
       copied_bytes += chunk_size;
@@ -929,6 +944,10 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
                   .byte_offset = static_cast<std::int64_t>(chunk.target_byte_offset),
                   .size_bytes = chunk.size_bytes,
                   .align_bytes = chunk.size_bytes,
+                  .provenance = local_slot_access_provenance(
+                      chunk.target_slot_name,
+                      static_cast<std::int64_t>(chunk.target_byte_offset),
+                      chunk.size_bytes),
               },
       });
     }
@@ -975,6 +994,11 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
                   .byte_offset = static_cast<std::int64_t>(copied_bytes),
                   .size_bytes = chunk_size,
                   .align_bytes = std::min(target_slot.align_bytes, chunk_size),
+                  .provenance = local_slot_access_provenance(
+                      target_slot.slot_name,
+                      static_cast<std::int64_t>(copied_bytes),
+                      chunk_size,
+                      target_slot.size_bytes),
               },
       });
       copied_bytes += chunk_size;

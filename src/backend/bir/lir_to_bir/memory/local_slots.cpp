@@ -460,6 +460,11 @@ std::optional<bool> try_lower_byte_array_base_store(
               .byte_offset = static_cast<std::int64_t>(array_base_it->second.base_index),
               .size_bytes = slot_size,
               .align_bytes = slot_size,
+              .provenance = local_slot_access_provenance(
+                  array_base_it->second.element_slots.front(),
+                  static_cast<std::int64_t>(array_base_it->second.base_index),
+                  slot_size,
+                  array_base_it->second.element_slots.size()),
           },
   });
   return true;
@@ -513,6 +518,11 @@ std::optional<bool> try_lower_byte_array_base_load(
               .byte_offset = static_cast<std::int64_t>(array_base_it->second.base_index),
               .size_bytes = slot_size,
               .align_bytes = slot_size,
+              .provenance = local_slot_access_provenance(
+                  array_base_it->second.element_slots.front(),
+                  static_cast<std::int64_t>(array_base_it->second.base_index),
+                  slot_size,
+                  array_base_it->second.element_slots.size()),
           },
   });
   return true;
@@ -1459,6 +1469,9 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_store(
               .byte_offset = static_cast<std::int64_t>(local_slot_ptr.byte_offset),
               .size_bytes = slot_size,
               .align_bytes = slot_size,
+              .provenance = local_slot_access_provenance(local_slot_ptr.slot_name,
+                                                         local_slot_ptr.byte_offset,
+                                                         slot_size),
           },
   });
   return true;
@@ -1589,6 +1602,9 @@ bool BirFunctionLowerer::try_lower_local_slot_pointer_load(
               .byte_offset = static_cast<std::int64_t>(local_slot_ptr.byte_offset),
               .size_bytes = slot_size,
               .align_bytes = slot_size,
+              .provenance = local_slot_access_provenance(local_slot_ptr.slot_name,
+                                                         local_slot_ptr.byte_offset,
+                                                         slot_size),
           },
   });
   return true;
