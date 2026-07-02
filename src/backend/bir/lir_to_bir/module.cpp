@@ -49,7 +49,26 @@ struct SameModuleFormalPointerProvenance {
 };
 
 using SameModuleFormalPointerProvenanceMap =
-    std::unordered_map<std::string, std::vector<std::optional<SameModuleFormalPointerProvenance>>>;
+    std::unordered_map<const bir::Function*,
+                       std::vector<std::optional<SameModuleFormalPointerProvenance>>>;
+
+struct SameModuleFormalPointerParamKey {
+  const bir::Function* function = nullptr;
+  std::size_t param_index = 0;
+
+  [[nodiscard]] friend bool operator==(
+      const SameModuleFormalPointerParamKey& lhs,
+      const SameModuleFormalPointerParamKey& rhs) {
+    return lhs.function == rhs.function && lhs.param_index == rhs.param_index;
+  }
+};
+
+struct SameModuleFormalPointerParamKeyHash {
+  [[nodiscard]] std::size_t operator()(const SameModuleFormalPointerParamKey& key) const {
+    return std::hash<const bir::Function*>{}(key.function) ^
+           (std::hash<std::size_t>{}(key.param_index) << 1u);
+  }
+};
 
 std::optional<Aarch64HfaLaneName> parse_aarch64_hfa_lane_name(std::string_view name) {
   const auto marker = name.rfind(".hfa");
@@ -421,11 +440,16 @@ SameModuleFormalPointerProvenanceMap collect_same_module_formal_pointer_provenan
   }
 
   SameModuleFormalPointerProvenanceMap accepted;
-  std::unordered_set<std::string> rejected;
+  std::unordered_set<SameModuleFormalPointerParamKey,
+                     SameModuleFormalPointerParamKeyHash>
+      rejected;
 
   const auto reject_param = [&](const bir::Function& callee, std::size_t index) {
-    rejected.insert(callee.name + "#" + std::to_string(index));
-    if (const auto found = accepted.find(callee.name); found != accepted.end() &&
+    rejected.insert(SameModuleFormalPointerParamKey{
+        .function = &callee,
+        .param_index = index,
+    });
+    if (const auto found = accepted.find(&callee); found != accepted.end() &&
         index < found->second.size()) {
       found->second[index] = std::nullopt;
     }
@@ -459,7 +483,7 @@ SameModuleFormalPointerProvenanceMap collect_same_module_formal_pointer_provenan
           continue;
         }
 
-        auto& callee_provenance = accepted[callee->name];
+        auto& callee_provenance = accepted[callee];
         if (callee_provenance.size() < callee->params.size()) {
           callee_provenance.resize(callee->params.size());
         }
@@ -469,7 +493,10 @@ SameModuleFormalPointerProvenanceMap collect_same_module_formal_pointer_provenan
           if (param.type != bir::TypeKind::Ptr || param.is_sret || param.is_byval) {
             continue;
           }
-          const auto key = callee->name + "#" + std::to_string(arg_index);
+          const auto key = SameModuleFormalPointerParamKey{
+              .function = callee,
+              .param_index = arg_index,
+          };
           if (rejected.find(key) != rejected.end()) {
             continue;
           }
@@ -607,7 +634,7 @@ void publish_same_module_formal_pointer_provenance(
   const auto provenance_by_function =
       collect_same_module_formal_pointer_provenance(*module, global_types);
   for (auto& function : module->functions) {
-    const auto found = provenance_by_function.find(function.name);
+    const auto found = provenance_by_function.find(&function);
     if (found == provenance_by_function.end()) {
       continue;
     }
