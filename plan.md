@@ -51,26 +51,26 @@ facts that generalize across the current local-memory families.
 
 ## Current Checkpoint
 
-The first four-step route is exhausted, but the source idea is not complete.
-Focused backend tests passed after publishing local-slot provenance, requested
-range, layout authority, and known extent where available. The refreshed RV64
-backend-object representative scan still passed `0/5` rows and failed `5/5`
-rows with the same semantic admission families:
+Steps 5-9 are exhausted, but the source idea is not complete. The direct
+local-slot and pointer-addressed aggregate-store producer packets moved the
+store-family representative for producer-owned reasons:
 
-- `src/20000314-1.c`: load local-memory in `main`.
-- `src/20000717-4.c`: GEP local-memory in `x`.
-- `src/20001026-1.c`: store local-memory in `build_real_from_int_cst_1`.
-- `src/20000519-1.c`: scalar/local-memory in `foo`.
-- `src/20050604-1.c`: alloca local-memory in `foo`.
+- `src/20001026-1.c` moved off semantic `store local-memory` admission and now
+  fails downstream as `unsupported_instruction_fragment` in the RV64 object
+  route.
 
-The next route must inspect the post-repair remaining admission boundary before
-adding another producer packet.
+The remaining representative failures are still in the local-memory semantic
+producer-admission lane and stay under this source idea:
 
-Step 6 exposed that direct local-slot address publication is also a
-prepared/route consumer compatibility boundary. The next packet must pin both
-the producer-published direct local-slot facts and the prepared/codegen route
-behavior that consumes or rejects those facts before any implementation is
-reintroduced.
+- `src/20000314-1.c`: `load local-memory` in `main`.
+- `src/20000717-4.c`: `gep local-memory` in `x`.
+- `src/20000519-1.c`: `scalar/local-memory` in `foo`.
+- `src/20050604-1.c`: `alloca local-memory` in `foo`.
+
+The next route must repair one of these remaining producer/admission families
+without absorbing the downstream `src/20001026-1.c` object-lowering failure.
+Start with the load-family representative because it is the largest remaining
+classified family and still fails at semantic producer admission.
 
 ## Non-Goals
 
@@ -86,17 +86,16 @@ reintroduced.
 
 ## Working Model
 
-- The first repair published additional facts on local-slot `MemoryAddress`
-  records, but direct same-slot scalar load/store paths that do not publish a
-  `MemoryAddress` may still be outside that repair.
 - Representative RV64 rows remain proof seeds, not the whole acceptance
   surface.
 - Each remaining family should be repaired by making BIR publish or admit the
   semantic facts it already owns, not by downstream inference.
-- Direct local-slot address facts may affect prepared/source identity and
-  byval aggregate route decisions. Treat those consumers as part of the same
-  local-memory semantic admission boundary when they are reacting to newly
-  published producer facts.
+- Direct local-slot address facts and pointer-addressed aggregate leaf stores
+  are already repaired enough to move the store representative. Do not keep
+  routing `src/20001026-1.c` as an unchanged local-memory semantic failure.
+- Load, GEP, scalar/local-memory, and alloca may share local-slot fact
+  publication helpers, but each packet should name the concrete missing fact
+  before implementation.
 - A producer-side exclusion is acceptable only when it preserves existing
   prepared/source identity contracts for semantic reasons such as slot
   ownership, not target, helper name, or testcase shape.
@@ -124,117 +123,105 @@ reintroduced.
 
 ## Steps
 
-### Step 5: Reinspect Remaining Local-Memory Admission Boundary
+### Step 10: Inspect Load Local-Memory Producer Boundary
 
-Goal: identify the first remaining producer/admission fact boundary after the
-local-slot `MemoryAddress` publication repair.
+Goal: identify the missing or malformed producer facts behind the
+`src/20000314-1.c` load-family representative.
 
 Actions:
 
-- Inspect the five representative `case.log` files under
-  `build/rv64_gcc_c_torture_backend/`.
-- Compare those failures with the focused BIR coverage added by the completed
-  producer repair.
-- Inspect direct same-slot scalar load/store paths, local address publication,
-  alloca modeling, and GEP range/provenance emission in
-  `src/backend/bir/lir_to_bir.cpp` and
-  `src/backend/bir/lir_to_bir/memory/`.
-- Choose one coherent next packet that can move at least one representative
-  backend-object row without weakening semantic admission.
+- Inspect `build/rv64_gcc_c_torture_backend/src_20000314-1.c/case.log` and
+  any available semantic/prepared BIR dumps for the failing `main` load.
+- Trace the failing load through `src/backend/bir/lir_to_bir.cpp` and
+  `src/backend/bir/lir_to_bir/memory/`, especially the local-slot address,
+  requested range, layout authority, and load-source admission paths.
+- Compare the failing shape with existing focused BIR tests in
+  `tests/backend/bir/`.
+- Select the smallest focused BIR coverage gap that pins the load-family
+  producer contract before implementation.
 
 Completion check:
 
-- `todo.md` names the selected family or shared boundary, the representative
-  row to prove first, and the focused BIR test gap to add next.
+- `todo.md` names the exact load-family boundary, the focused BIR test to add
+  or extend, and the RV64 representative command the supervisor should use
+  after repair.
 
-### Step 6: Pin Direct Local-Slot Publication And Route Compatibility
+### Step 11: Repair Load Local-Memory Admission
 
-Goal: define the selected direct local-slot address publication contract and
-the prepared/route consumer behavior for those same facts before implementation
-resumes.
+Goal: publish or admit the selected load-family semantic facts in BIR without
+moving the repair downstream.
 
 Actions:
 
-- Add or extend focused BIR coverage for direct local-slot address publication
-  on same-slot scalar store/load paths, including provenance, requested range,
-  known extent, layout authority, access kind, and local-slot identity where
-  available.
-- Add or extend prepared/codegen route compatibility coverage for the same
-  facts, including byval aggregate and source-identity guardrails exposed by
-  the blocked Step 6 attempt.
-- State in the test or surrounding helper behavior whether prepared consumers
-  should accept the newly published direct facts or reject/exclude them for a
-  semantic slot-ownership reason.
-- Keep `src/20001026-1.c` as the representative store-family proof seed only;
-  do not encode target exclusions, helper names, allowlist changes, expectation
-  rewrites, or RV64/MIR inference as part of the contract.
-- Run the delegated build and backend-focused test command after any code or
-  test changes.
+- Add or extend focused BIR tests for the load-family contract selected in
+  Step 10.
+- Implement the minimal producer-side repair in the BIR lowering/memory
+  surfaces.
+- Preserve semantic admission checks, diagnostics, prepared identity behavior,
+  and existing store-family behavior.
+- Run the delegated build and backend-focused test command after code or test
+  changes.
 
 Completion check:
 
-- Focused BIR and prepared/route coverage together pin the contract for direct
-  local-slot address facts, existing byval/source-identity expectations remain
-  semantically explained, and `todo.md` records whether implementation can
-  proceed in Step 7 or whether the route needs a lifecycle split.
+- Focused BIR tests pass, the load-family fact is present or semantically
+  excluded for the documented reason, and `todo.md` records the code surfaces
+  touched plus any neighboring families intentionally left for later.
 
-### Step 7: Repair The Direct Local-Slot Producer/Consumer Boundary
+### Step 12: Prove Load Representative And Classify Residual
 
-Goal: make BIR publish or admit the selected direct local-slot semantic facts
-and make prepared/route consumers handle those facts consistently without
-bypassing admission checks.
+Goal: prove `src/20000314-1.c` moves off the same `load local-memory`
+semantic admission failure for producer-owned reasons.
 
 Actions:
 
-- Implement the minimal producer and route-consumer compatibility repair for
-  the contract pinned in Step 6.
-- Preserve semantic admission checks and diagnostics; do not move the repair
-  into RV64/MIR.
-- Preserve existing byval aggregate and source-identity behavior unless the
-  Step 6 contract proves a semantic reason to change it.
-- Keep unrelated local-memory families untouched unless code evidence proves
-  they share the same helper or consumer boundary.
+- Run the supervisor-delegated RV64 backend-object command for
+  `src/20000314-1.c`.
+- Inspect the row `case.log` to confirm whether the old load semantic
+  admission failure moved.
+- If it moves to another in-scope local-memory semantic family, record that
+  boundary in `todo.md`.
+- If it moves downstream, keep that downstream issue out of this source idea
+  unless the supervisor explicitly opens a separate route.
+
+Completion check:
+
+- `todo.md` records the exact command, result, current `case.log` outcome, and
+  whether the next local-memory packet should target GEP, scalar/local-memory,
+  alloca, or a shared boundary discovered by the load repair.
+
+### Step 13: Repair The Next Remaining Semantic Family
+
+Goal: continue with one coherent producer packet for the next still-failing
+semantic local-memory family.
+
+Actions:
+
+- Choose exactly one of the remaining families based on Step 12 evidence:
+  GEP `src/20000717-4.c`, scalar/local-memory `src/20000519-1.c`, alloca
+  `src/20050604-1.c`, or a shared producer boundary that Step 12 proves covers
+  more than one of them.
+- Add focused BIR coverage before or with implementation.
+- Keep target-specific inference, expectation changes, allowlist edits, and
+  named-case shortcuts out of the repair.
 - Run the delegated focused backend proof.
 
 Completion check:
 
-- Focused BIR and prepared/route tests pass, direct local-slot facts are
-  present or semantically excluded as specified by Step 6, and `todo.md`
-  records any neighboring families intentionally left for later.
+- `todo.md` records the selected family, the repaired producer fact, focused
+  proof, and the remaining representative semantic-admission rows.
 
-### Step 8: Prove One Representative Backend-Object Row
+### Step 14: Reconcile Remaining Local-Memory Representatives
 
-Goal: prove the selected representative row advances for producer-owned
-reasons in the RV64 backend-object route.
-
-Actions:
-
-- Run the supervisor-delegated RV64 backend-object command for the selected
-  representative row.
-- Inspect the row `case.log` to confirm it no longer fails at the same
-  semantic local-memory admission point.
-- If the row advances to a different in-scope local-memory semantic admission
-  family, record the next boundary in `todo.md`.
-- If it advances to runtime comparison or a downstream prepared-object issue,
-  ask the supervisor to choose broader validation or lifecycle handling.
-
-Completion check:
-
-- `todo.md` records the exact backend-object command, result, current
-  `case.log` outcome, and whether the next packet should stay in the same
-  family, broaden to a shared boundary, split, or close.
-
-### Step 9: Reconcile The Five Representative Families
-
-Goal: decide whether the repaired packets now satisfy the source idea or need a
-new runbook checkpoint.
+Goal: decide whether the source idea is complete, needs another runbook
+checkpoint, or needs a separate idea for an actually distinct boundary.
 
 Actions:
 
-- Rerun the five-row RV64 backend-object representative scan using the
-  supervisor-provided allowlist and command.
-- Compare the resulting failures against the five original local-memory
-  families.
+- Rerun the supervisor-delegated representative RV64 backend-object scan for
+  the remaining local-memory rows.
+- Compare current failures against the original load, GEP, store,
+  scalar/local-memory, and alloca families.
 - Confirm no expectation, unsupported-marker, allowlist, runtime comparison, or
   semantic admission weakening occurred.
 - Request supervisor escalation when multiple local-memory packets have landed
@@ -242,6 +229,7 @@ Actions:
 
 Completion check:
 
-- `todo.md` records which representative rows moved, which remain in semantic
-  local-memory admission, and whether this source idea should continue, split,
-  deactivate, or close.
+- `todo.md` records which representative rows moved, which still fail in
+  semantic local-memory admission, and whether this source idea should
+  continue with another checkpoint, split a distinct initiative, deactivate, or
+  close.
