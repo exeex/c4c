@@ -3,34 +3,42 @@
 Status: Active
 Source Idea Path: ideas/open/519_rv64_object_emission_cleanup_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Draft Staged Cleanup Follow-Ups
+Current Step ID: 4
+Current Step Title: Materialize Follow-Up Ideas
 
 ## Just Finished
 
-Step 3 - Draft Staged Cleanup Follow-Ups is complete. Created
-`docs/rv64_object_emission_cleanup/staged_followups.md` with an ordered
-behavior-preserving cleanup list sourced from the Step 1 structure baseline and
-Step 2 AArch64 comparison. Each proposed slice records owned files,
-prerequisites/dependencies, risks, validation expectations, and reviewer reject
-signals, with symbol/fixup/object-module assembly marked as a late central
-boundary.
+Step 4 - Materialize Follow-Up Ideas is complete. Created concrete
+behavior-preserving follow-up source ideas from
+`docs/rv64_object_emission_cleanup/staged_followups.md`:
+
+- `ideas/open/534_rv64_object_encoding_byte_helpers_cleanup.md`
+- `ideas/open/535_rv64_object_frame_stack_helper_cleanup.md`
+- `ideas/open/536_rv64_object_prepared_module_admission_shell_cleanup.md`
+- `ideas/open/537_rv64_object_local_memory_helper_cleanup.md`
+- `ideas/open/538_rv64_object_global_address_helper_cleanup.md`
+- `ideas/open/539_rv64_object_scalar_fragment_helper_cleanup.md`
+- `ideas/open/540_rv64_object_select_edge_publication_helper_cleanup.md`
+- `ideas/open/541_rv64_object_call_variadic_return_fragment_cleanup.md`
+- `ideas/open/542_rv64_object_function_traversal_facade_cleanup.md`
+- `ideas/open/543_rv64_object_data_symbol_fixup_module_cleanup.md`
+
+Updated the staged follow-up artifact with a materialized idea mapping. Each
+idea includes goal, why it exists, in-scope work, out-of-scope work,
+acceptance criteria, and concrete reviewer reject signals. The ideas keep RV64
+capability repair, gcc_torture expectation changes, unsupported marker changes,
+target-side inference, and implementation edits out of scope.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: materialize concrete `ideas/open/*.md`
-follow-up source ideas from
-`docs/rv64_object_emission_cleanup/staged_followups.md`. Start with a narrow
-low-risk slice such as shared encoding/byte append helpers or pure frame/stack
-offset helpers, and keep late symbol/fixup/object-module assembly as an
-explicit later boundary.
+Execute Step 5 from `plan.md`: close readiness review for idea 519. Verify the
+durable artifact contains the Step 1 baseline, Step 2 comparison, Step 3 staged
+follow-up list, Step 4 materialized idea links, and no implementation changes.
 
 ## Watchouts
 
 - This is an analysis umbrella; do not move RV64 implementation code in this
   plan.
-- Step 4 should create source ideas only; do not start implementation movement
-  in the same packet.
 - Keep F128/gcc_torture capability repair, expectation changes, unsupported
   marker changes, and target-side inference out of the materialized ideas.
 - Treat RV64 `calls.cpp`, `memory.cpp`, `globals.cpp`, `returns.cpp`,
@@ -44,6 +52,7 @@ explicit later boundary.
 
 ## Proof
 
-Analysis-only/no build per delegated proof. Evidence sources are recorded in
-`docs/rv64_object_emission_cleanup/staged_followups.md`; no `test_after.log`
-was produced or rewritten.
+Lifecycle/docs-only source-idea materialization; no build run per delegated
+proof. Evidence sources are recorded in
+`docs/rv64_object_emission_cleanup/staged_followups.md`, including the
+materialized idea mapping. No `test_after.log` was produced or rewritten.

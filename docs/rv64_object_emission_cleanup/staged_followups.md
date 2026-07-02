@@ -467,3 +467,26 @@ Each created idea should include owned files, prerequisites, behavior-preserving
 scope, validation commands, and reviewer reject signals copied or narrowed from
 this artifact. Do not create an idea that mixes implementation movement with
 RV64 capability repair or gcc_torture expectation changes.
+
+## Materialized Follow-Up Ideas
+
+Step 4 created concrete behavior-preserving source ideas for each ordered
+cleanup slice:
+
+| Slice | Source idea |
+| --- | --- |
+| 1. Shared RV64 encoding and byte append helpers | `ideas/open/534_rv64_object_encoding_byte_helpers_cleanup.md` |
+| 2. Pure frame, stack offset, and basic stack move helpers | `ideas/open/535_rv64_object_frame_stack_helper_cleanup.md` |
+| 3. Prepared module admission and diagnostics shell | `ideas/open/536_rv64_object_prepared_module_admission_shell_cleanup.md` |
+| 4. Local memory and pointer-value access helpers | `ideas/open/537_rv64_object_local_memory_helper_cleanup.md` |
+| 5. Global address and direct symbol materialization helpers | `ideas/open/538_rv64_object_global_address_helper_cleanup.md` |
+| 6. Scalar arithmetic, casts, compare branches, and simple returns | `ideas/open/539_rv64_object_scalar_fragment_helper_cleanup.md` |
+| 7. Select and edge-publication object helpers | `ideas/open/540_rv64_object_select_edge_publication_helper_cleanup.md` |
+| 8. Call, variadic, prologue, and return object fragments | `ideas/open/541_rv64_object_call_variadic_return_fragment_cleanup.md` |
+| 9. Prepared object function traversal facade | `ideas/open/542_rv64_object_function_traversal_facade_cleanup.md` |
+| 10. Object data, symbol/fixup, and final module assembly | `ideas/open/543_rv64_object_data_symbol_fixup_module_cleanup.md` |
+
+These ideas intentionally keep RV64 capability repair, gcc_torture expectation
+changes, unsupported marker changes, target-side inference, and implementation
+edits out of scope. The late symbol/fixup/module assembly boundary remains
+explicit instead of being hidden inside an earlier catch-all cleanup idea.
