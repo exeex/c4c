@@ -8,50 +8,28 @@ Current Step Title: Add Focused Materialization Coverage
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: materialized the coherent RV64 stack-slot to
-stack-slot prepared move family in
-`src/backend/mir/riscv/codegen/object_emission.cpp`.
+Completed Step 4 from `plan.md`: confirmed the committed
+`tests/backend/mir/backend_riscv_object_emission_test.cpp` coverage already
+satisfies the focused materialization requirement.
 
-Implementation boundary:
+Coverage now includes:
 
-- Added `fragment_for_prepared_stack_slot_to_stack_slot_move` under
-  `fragment_for_prepared_move_bundle`.
-- The helper accepts a per-move stack-to-stack entry inside a non-parallel-copy
-  before-instruction bundle with `authority=none`, no parallel-copy source, no
-  cycle-temp source, no immediate source, no explicit destination stack offset,
-  destination storage `stack_slot`, contiguous width `1`, and reason
-  `consumer_stack_to_stack`.
-- Source and destination homes must both be prepared stack-slot homes with
-  materializable slot id, offset, size, and alignment facts.
-- Source and destination BIR types must both exist, be identical, and be a
-  supported RV64 integer or pointer scalar width from
-  `rv64_scalar_memory_size_for_type`.
-- If storage-plan facts are present for either endpoint, they must describe a
-  single-width GPR frame-slot value with slot id and stack offset. Explicit
-  storage-plan `frame_slot bank=none`, FPR, vector, missing slot, missing
-  offset, or multi-width facts remain fail-closed.
-- If a stack-slot home carries a target register identity, the identity must be
-  RV64 GPR/general. FPR, vector, or other incoherent identities remain
-  fail-closed.
-- Emission uses `rv64_unoccupied_temporary_gpr` and the existing
-  `append_rv64_load_stack_offset_to_register` plus
-  `append_rv64_store_register_to_stack_offset` helpers.
+- Accepted coherent same-scalar stack-slot to stack-slot prepared move emission,
+  asserting the adjacent `lw t1, 4(sp); sw t1, 8(sp)` object words.
+- Mixed stack-destination bundle coverage that emits an already-supported
+  register-to-stack move followed by the coherent stack-to-stack move.
+- Fail-closed reject coverage for missing source slot id, source size/home
+  mismatch, unavailable scratch GPR, incoherent source storage identity,
+  explicit storage-plan `frame_slot bank=none`, and reason/source-home mismatch.
 
-Focused coverage in
-`tests/backend/mir/backend_riscv_object_emission_test.cpp` now proves a typed
-same-scalar stack-slot copy emits `lw t1, 4(sp); sw t1, 8(sp)`, and reject
-coverage keeps missing slot ids, size/home mismatches, unavailable scratch GPR,
-incoherent source storage identity, explicit storage-plan `frame_slot
-bank=none`, and reason/source-home mismatches fail-closed at the move-bundle
-diagnostic. Coverage also proves a mixed non-parallel before-instruction bundle
-can emit an already-supported register-to-stack move followed by a coherent
-stack-to-stack move.
+No expectation rewrites, scan accounting changes, or gcc_torture row-name
+dependencies were needed for this packet.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: confirm and record focused materialization
-coverage for accepted stack-to-stack moves and adjacent malformed/missing
-authority reject cases before representative-row reclassification.
+Execute Step 5 from `plan.md`: reclassify the representative rows and record
+whether they now clear the owned move-bundle gate or expose separate follow-up
+blockers.
 
 ## Watchouts
 
@@ -65,11 +43,8 @@ because Step 2 found register-source first failures despite the
 
 Ran the delegated proof:
 
-- `cmake --build build --target c4cll`
 - `cmake --build build --target backend_riscv_object_emission_test`
 - `ctest --test-dir build -j --output-on-failure -R 'backend_riscv_object_emission|stack_to_stack|move_bundle' | tee test_after.log`
-- `ctest --test-dir build --output-on-failure -R '^backend_obj_runtime_rv64_frame_slot_pointer_arg_preserves_payload$'`
+- `git diff --check -- todo.md tests/backend/mir/backend_riscv_object_emission_test.cpp`
 
 `test_after.log` contains the passing focused CTest run: 1/1 test passed.
-The specific mixed call-boundary runtime regression also passed: 1/1 test
-passed.
