@@ -8,23 +8,47 @@ Current Step Title: Establish Structure Snapshot
 
 ## Just Finished
 
-Lifecycle activation created the active runbook and execution-state skeleton
-for Step 1.
+Step 1 - Establish Structure Snapshot completed the initial BIR core model
+snapshot in `docs/bir_core_cleanup/structure_snapshot.md`.
+
+The snapshot records line counts for `src/backend/bir/bir.hpp` and
+`src/backend/bir/bir.cpp`, confirms `c4c-clang-tool` and
+`c4c-clang-tool-ccdb` on `PATH`, records exact AST query commands, summarizes
+symbol/function/type-reference results, notes the one non-blocking caller query
+fallback, and starts initial declaration/implementation clusters for the
+durable cleanup analysis.
 
 ## Suggested Next
 
-Delegate Step 1: establish the BIR core model structure snapshot with
-`c4c-clang-tools`, record the exact commands used, and start the durable
-analysis artifact.
+Delegate Step 2: inventory declaration families in `src/backend/bir/bir.hpp`
+into core model, route-local analysis, memory authority, call publication,
+validation facade, and printer/render surfaces, then extend
+`docs/bir_core_cleanup/structure_snapshot.md` or a sibling artifact with a
+declaration-family table.
 
 ## Watchouts
 
 - This idea is analysis-only; do not move declarations or definitions.
-- Use AST-backed structure queries before raw long-file reading.
+- Continue using AST-backed structure queries before raw long-file reading.
 - Keep idea 422 producer implementation work separate from cleanup planning.
 - Do not change tests, expectations, unsupported diagnostics, or pass/fail
   accounting.
+- Route3 memory access is directly used by route6 call publication source
+  analysis; do not propose route3 extraction without recording that coupling.
+- `Value`, `Inst`, `Block`, `Function`, and `Module` have broad fanout and
+  should remain late/no-move candidates until lower-risk route families are
+  classified.
 
 ## Proof
 
-Lifecycle-only activation; no build proof required.
+Proof command:
+
+```sh
+git diff --check && test -s docs/bir_core_cleanup/structure_snapshot.md
+```
+
+Result: passed.
+
+No implementation files were changed. No `test_after.log` was produced because
+the delegated proof command was a docs/lifecycle sanity check and did not write
+one.
