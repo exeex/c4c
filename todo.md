@@ -1,62 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/555_rv64_prepared_local_memory_addressing_src_960209_1.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reproduce And Classify Local-Memory Facts
+Current Step ID: 2
+Current Step Title: Implement The Owned Addressing Shape
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Reproduce And Classify Local-Memory Facts completed for
-`src/960209-1.c` without semantic repairs.
+Step 2 - Implement The Owned Addressing Shape completed the RV64 object-route
+consumer slice for prepared pointer-value local memory facts.
 
-The failing operation is in function `f`, `block_12`, `inst_index=5`:
-`bir.store_local %t68.store.addr, i8 %t66, addr %t67`.
+Implementation details:
 
-Prepared facts available for that operation:
-
-- load/store kind: `StoreLocalInst`
-- value type: `i8`
-- stored value: `%t66`
-- address base kind: `pointer_value`
-- pointer-value base: `%t67`
-- byte offset: `0`
-- size/alignment: `size=1 align=1`
-- base-plus-offset: `yes`
-- address-space/volatility: default, non-volatile by prepared access contract
-- range/layout facts: `layout_authority=unknown`,
-  `range_verdict=unknown_compatible`
-- relevant homes: `%t67 value_id=38 kind=register reg=s1`;
-  `%t66 value_id=37 kind=register reg=t0`;
-  `%t68.store.addr` has a lowering-scratch stack object, but the store's
-  prepared address is through pointer `%t67`, not a frame-slot base.
-
-First owner classification: RV64 object-route support for already-published
-prepared pointer-value base-plus-offset local-memory facts. The BIR/prepared
-producer has already published the required pointer-value base, offset, value
-type, and register homes for the failing store.
+- `object_emission.cpp` now keeps the strict block/instruction prepared memory
+  access lookup first, then falls back only to a unique prepared access in the
+  same block whose authoritative result/stored value name matches the BIR
+  local load/store.
+- The local load/store consumer and local-memory diagnostic paths use the same
+  prepared-fact lookup, so a prepared access with shifted carrier index is not
+  treated as missing while raw/testcase shape remains ignored.
+- Focused RV64 object coverage now proves a named `i8` store through a
+  prepared pointer-value base in `s1`, stored byte in `t0`, offset `0`,
+  `size=1 align=1`, emitting `mv t1, t0; sb t1, 0(s1); ret`.
+- Focused fail-closed coverage preserves rejection when the pointer-value fact,
+  pointer register home, or base-plus-offset authority is removed.
 
 ## Suggested Next
 
-Execute Step 2 by adding generalized RV64 object-route consumption for the
-already-published `i8` pointer-value local store shape, preserving the existing
-prepared-fact checks instead of inferring from source/testcase shape.
+Execute Step 3 by running the one-row `src/960209-1.c` RV64 gcc torture
+backend scan, confirming that `unsupported_local_memory_access` is fixed for
+the repaired operation, and recording the newly exposed first blocker without
+silently expanding this local-memory plan into a move-bundle route.
 
 ## Watchouts
 
-- Do not infer local-memory addresses from raw target or testcase shape.
-- The current first bad fact is not missing prepared producer facts: the
-  prepared dump has `access block=block_12 inst_index=5 base=pointer_value
-  stored=%t66 pointer=%t67 offset=0 size=1 align=1 base_plus_offset=yes`.
-- The object-route diagnostic is emitted after `fragment_for_prepared_store_local`
-  fails and the diagnostic's `local_memory_diagnostic` cannot accept the local
-  pointer-value shape through the existing object-route support path.
-- There is nearby textual asm support for pointer-value `i16`, `i32`, and `f32`
-  stores plus frame-slot `i8` stores; avoid a named-case shortcut and implement
-  the semantic pointer-value byte store capability.
-- Keep idea 547 as broader bucket-review context; do not silently expand this
-  route into all local-memory rows.
+- The delegated backend proof passed. A manual one-row
+  `src/960209-1.c` CMake harness probe, run outside the delegated proof log,
+  progressed past the local-memory diagnostic and then exposed
+  `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`.
+  That is a separate move-bundle classifier issue, not the owned pointer-value
+  byte-store addressing shape.
+- The new fallback intentionally requires a unique prepared access with the
+  same prepared block label and matching result/stored value name; it does not
+  infer an address from raw local slot spelling, testcase name, source block, or
+  BIR address carrier shape.
+- The original strict block/instruction lookup still wins when present.
 
 ## Proof
 
@@ -66,13 +55,9 @@ Commands run:
 
 ```sh
 cmake --build --preset default
-cmake -DCOMPILER="$PWD/build/c4cll" -DCLANG="$(command -v clang)" -DQEMU_RISCV64="$(command -v qemu-riscv64)" -DSRC="$PWD/tests/c/external/gcc_torture/src/960209-1.c" -DROOT="$PWD/tests/c/external/gcc_torture" -DTARGET_TRIPLE="riscv64-linux-gnu" -DSYSROOT="/usr/riscv64-linux-gnu" -DOUT_CLANG_BIN="$PWD/build/rv64_gcc_c_torture_backend/src_960209-1.c/clang.bin" -DOUT_OBJECT="$PWD/build/rv64_gcc_c_torture_backend/src_960209-1.c/c4c.o" -DOUT_C4C_BIN="$PWD/build/rv64_gcc_c_torture_backend/src_960209-1.c/c4c.bin" -DCASE_TIMEOUT_SEC="20" -P "$PWD/tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake"
+ctest --test-dir build -j --output-on-failure -R '^backend_'
 ```
 
-Result: build succeeded (`ninja: no work to do`); the one-row RV64 object route
-reproduced `[RV64_C4C_OBJ_COMPILE_FAIL]` with
-`unsupported_local_memory_access: RV64 object route requires prepared frame-slot
-or pointer-value base-plus-offset local memory addressing`.
-
-Inspection command used outside the proof log:
-`./build/c4cll -I tests/c/external/gcc_torture --dump-prepared-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/960209-1.c`.
+Result: passed. `ctest` reported `100% tests passed, 0 tests failed out of
+345`; `backend_riscv_object_emission` passed with the new focused RV64 object
+byte-store coverage.

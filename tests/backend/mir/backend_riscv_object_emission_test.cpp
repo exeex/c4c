@@ -3514,6 +3514,114 @@ prepare::PreparedBirModule make_prepared_pointer_value_scalar_local_module(
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_pointer_value_i8_local_store_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name =
+      prepared.names.function_names.intern("pointer_value_i8_store");
+  const auto block_label = prepared.names.block_labels.intern("block_12");
+  const auto slot_name = prepared.names.slot_names.intern("%store.addr");
+  const auto pointer_name = prepared.names.value_names.intern("%p");
+  const auto stored_name = prepared.names.value_names.intern("%byte");
+
+  bir::Block block{
+      .label = "block_12",
+      .insts =
+          {
+              bir::StoreLocalInst{
+                  .slot_name = "%store.addr",
+                  .slot_id = slot_name,
+                  .value = bir::Value::named(bir::TypeKind::I8, "%byte"),
+                  .align_bytes = 1,
+                  .address = bir::MemoryAddress{
+                      .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                      .base_value = bir::Value::named(bir::TypeKind::Ptr, "%p"),
+                      .byte_offset = 0,
+                      .size_bytes = 1,
+                      .align_bytes = 1,
+                  },
+              },
+          },
+      .terminator = bir::Terminator{},
+      .label_id = block_label,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "pointer_value_i8_store",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .local_slots = {bir::LocalSlot{
+          .name = "%store.addr",
+          .slot_id = slot_name,
+          .type = bir::TypeKind::I8,
+          .size_bytes = 1,
+          .align_bytes = 1,
+      }},
+      .blocks = {std::move(block)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = 1,
+                  .function_name = function_name,
+                  .value_name = pointer_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"s1"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = 2,
+                  .function_name = function_name,
+                  .value_name = stored_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"t0"},
+              },
+          },
+  });
+  prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+      .object_id = 6,
+      .function_name = function_name,
+      .value_name = prepared.names.value_names.intern("%store.addr"),
+      .source_kind = "lowering_scratch",
+      .type = bir::TypeKind::I8,
+      .size_bytes = 1,
+      .align_bytes = 1,
+      .address_exposed = false,
+      .requires_home_slot = true,
+      .permanent_home_slot = false,
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 1,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .stored_value_name = stored_name,
+                  .address = prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                      .pointer_value_name = pointer_name,
+                      .byte_offset = 0,
+                      .size_bytes = 1,
+                      .align_bytes = 1,
+                      .can_use_base_plus_offset = true,
+                  },
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_pointer_value_f64_local_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("f64_pointer_local");
@@ -11277,6 +11385,33 @@ int builds_prepared_pointer_value_scalar_local_store_with_t1_base_object() {
   return 0;
 }
 
+int builds_prepared_pointer_value_i8_local_store_object() {
+  const auto prepared = make_prepared_pointer_value_i8_local_store_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected prepared pointer-value i8 local store RV64 object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "pointer_value_i8_store");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared pointer-value i8 store object to publish text/function");
+  }
+  if (text->bytes.size() != 12 || text->size_bytes != 12 ||
+      function->value != 0 || function->size_bytes != 12 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared pointer-value i8 store object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00028313 ||
+      read_u32(text->bytes, 4) != 0x00648023 ||
+      read_u32(text->bytes, 8) != 0x00008067) {
+    return fail("expected pointer-value i8 local store to emit mv t1, t0; sb t1, 0(s1); ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected pointer-value i8 local store object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_pointer_value_f64_local_object() {
   const auto prepared = make_prepared_pointer_value_f64_local_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -11340,6 +11475,31 @@ int expect_pointer_value_scalar_local_rejection(
   return expect_prepared_rejection_diagnostic(
       prepared,
       "unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing");
+}
+
+int rejects_prepared_pointer_value_i8_local_store_fail_closed_shapes() {
+  auto prepared = make_prepared_pointer_value_i8_local_store_module();
+  prepared.addressing.functions[0].accesses[0].address.pointer_value_name =
+      std::nullopt;
+  if (expect_pointer_value_scalar_local_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_pointer_value_i8_local_store_module();
+  prepared.value_locations.functions[0].value_homes[0].register_name =
+      std::nullopt;
+  if (expect_pointer_value_scalar_local_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_pointer_value_i8_local_store_module();
+  prepared.addressing.functions[0].accesses[0].address.can_use_base_plus_offset =
+      false;
+  if (expect_pointer_value_scalar_local_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int expect_sret_stack_pointer_store_rejection(
@@ -17878,9 +18038,11 @@ int main() {
   status |= rejects_prepared_scalar_local_subobject_fail_closed_shapes();
   status |= builds_prepared_pointer_value_scalar_local_object();
   status |= builds_prepared_pointer_value_scalar_local_store_with_t1_base_object();
+  status |= builds_prepared_pointer_value_i8_local_store_object();
   status |= builds_prepared_pointer_value_f64_local_object();
   status |= builds_prepared_sret_stack_pointer_store_object();
   status |= rejects_prepared_sret_stack_pointer_store_fail_closed_shapes();
+  status |= rejects_prepared_pointer_value_i8_local_store_fail_closed_shapes();
   status |= rejects_prepared_pointer_value_scalar_local_fail_closed_shapes();
   status |= builds_prepared_stack_slot_scalar_flow_object();
   status |= builds_prepared_stack_slot_to_gpr_move_bundle_object();

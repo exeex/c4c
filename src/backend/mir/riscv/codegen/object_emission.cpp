@@ -4206,6 +4206,85 @@ prepared_memory_access_for_instruction(
       instruction_index);
 }
 
+std::optional<c4c::ValueNameId> prepared_named_value_id(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Value& value) {
+  if (value.kind != c4c::backend::bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  return value_name;
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess*
+unique_prepared_memory_access_for_value_in_block(
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::optional<c4c::ValueNameId> result_value_name,
+    std::optional<c4c::ValueNameId> stored_value_name) {
+  if (lookups == nullptr || block_label == c4c::kInvalidBlockLabel ||
+      (!result_value_name.has_value() && !stored_value_name.has_value())) {
+    return nullptr;
+  }
+
+  const c4c::backend::prepare::PreparedMemoryAccess* selected = nullptr;
+  for (const auto& entry : lookups->memory_accesses.accesses_by_position) {
+    const auto* access = entry.second;
+    if (access == nullptr || access->block_label != block_label ||
+        access->result_value_name != result_value_name ||
+        access->stored_value_name != stored_value_name) {
+      continue;
+    }
+    if (selected != nullptr) {
+      return nullptr;
+    }
+    selected = access;
+  }
+  return selected;
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess*
+prepared_memory_access_for_local_instruction(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadLocalInst& load) {
+  const auto* access =
+      prepared_memory_access_for_instruction(lookups, block_label, instruction_index);
+  if (access != nullptr) {
+    return access;
+  }
+  return unique_prepared_memory_access_for_value_in_block(
+      lookups,
+      block_label,
+      prepared_named_value_id(names, load.result),
+      std::nullopt);
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess*
+prepared_memory_access_for_local_instruction(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::StoreLocalInst& store) {
+  const auto* access =
+      prepared_memory_access_for_instruction(lookups, block_label, instruction_index);
+  if (access != nullptr) {
+    return access;
+  }
+  return unique_prepared_memory_access_for_value_in_block(
+      lookups,
+      block_label,
+      std::nullopt,
+      prepared_named_value_id(names, store.value));
+}
+
 std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type) {
   switch (type) {
@@ -7392,10 +7471,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
           prepared_block_label,
           instruction_index,
           *store,
-          prepared_memory_access_for_instruction(
+          prepared_memory_access_for_local_instruction(
+              prepared.names,
               &lookups,
               prepared_block_label,
-              instruction_index),
+              instruction_index,
+              *store),
           stack_frame_bytes);
       if (fragment.has_value()) {
         return fragment;
@@ -7415,10 +7496,12 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
           prepared.names,
           &lookups,
           *load,
-          prepared_memory_access_for_instruction(
+          prepared_memory_access_for_local_instruction(
+              prepared.names,
               &lookups,
               prepared_block_label,
-              instruction_index),
+              instruction_index,
+              *load),
           stack_frame_bytes);
       if (fragment.has_value()) {
         return fragment;
@@ -7581,9 +7664,11 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
 
   if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst)) {
     const auto size_bytes = rv64_local_memory_size_for_type(store->value.type);
-    const auto* access = prepared_memory_access_for_instruction(&lookups,
-                                                               prepared_block_label,
-                                                               instruction_index);
+    const auto* access = prepared_memory_access_for_local_instruction(names,
+                                                                     &lookups,
+                                                                     prepared_block_label,
+                                                                     instruction_index,
+                                                                     *store);
     if (size_bytes.has_value() &&
         prepared_sret_stack_slot_pointer_access(stack_layout,
                                                 &lookups,
@@ -7604,9 +7689,11 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
     }
     return local_memory_diagnostic(
         rv64_local_memory_size_for_type(load->result.type),
-        prepared_memory_access_for_instruction(&lookups,
-                                               prepared_block_label,
-                                               instruction_index),
+        prepared_memory_access_for_local_instruction(names,
+                                                     &lookups,
+                                                     prepared_block_label,
+                                                     instruction_index,
+                                                     *load),
         rv64_floating_type(load->result.type));
   }
   if (const auto* load = std::get_if<bir::LoadGlobalInst>(&inst)) {
