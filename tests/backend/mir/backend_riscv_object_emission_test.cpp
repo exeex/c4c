@@ -11686,6 +11686,60 @@ int rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes() {
     return 1;
   }
 
+  prepared =
+      make_prepared_before_instruction_register_to_stack_move_bundle_module();
+  prepared.value_locations.functions[0].move_bundles[0].moves.push_back(
+      prepared.value_locations.functions[0].move_bundles[0].moves[0]);
+  if (expect_prepared_rejection_diagnostic_contains(
+          prepared,
+          {
+              "move_count=2",
+              "move[0].reason=consumer_register_to_stack",
+              "move[1].reason=consumer_register_to_stack",
+              "fragment_status=generic_move_bundle_materialization_failed",
+          }) != 0) {
+    return fail("multiple register-source stack-destination moves should reject");
+  }
+
+  prepared =
+      make_prepared_before_instruction_register_to_stack_move_bundle_module();
+  prepared.value_locations.functions[0].value_homes[0].value_name =
+      prepared.names.value_names.intern("%prepared.only.source");
+  prepared.value_locations.functions[0].value_homes[0].size_bytes =
+      std::nullopt;
+  const auto missing_source_size =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (missing_source_size.ok() || missing_source_size.module.has_value()) {
+    return fail("missing register-source size authority should reject");
+  }
+  if (missing_source_size.prepared_consumer_category.has_value() ||
+      missing_source_size.diagnostic.find(diagnostic) != 0 ||
+      missing_source_size.diagnostic.find(
+          "move[0].reason=consumer_register_to_stack") == std::string::npos ||
+      missing_source_size.diagnostic.find(
+          "move[0].source_home_kind=register") == std::string::npos ||
+      missing_source_size.diagnostic.find("move[0].source_type=") !=
+          std::string::npos ||
+      missing_source_size.diagnostic.find(
+          "move[0].destination_home_kind=stack_slot") == std::string::npos ||
+      missing_source_size.diagnostic.find("move[0].destination_type=i32") ==
+          std::string::npos ||
+      missing_source_size.diagnostic.find(
+          "fragment_status=generic_move_bundle_materialization_failed") ==
+          std::string::npos) {
+    return fail("missing register-source size authority should produce a semantic move-bundle diagnostic");
+  }
+  const auto missing_source_size_image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(
+          prepared);
+  if (missing_source_size_image.ok() ||
+      missing_source_size_image.image.has_value() ||
+      missing_source_size_image.prepared_consumer_category.has_value() ||
+      missing_source_size_image.diagnostic !=
+          missing_source_size.diagnostic) {
+    return fail("ELF writer should preserve missing source-size diagnostic");
+  }
+
   return 0;
 }
 
