@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/513_rv64_stack_to_stack_prepared_move_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Reclassify Representative Rows
+Current Step ID: 6
+Current Step Title: Validate And Hand Off
 
 # Current Packet
 
