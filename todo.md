@@ -1,30 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/518_bir_core_model_cleanup_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish Structure Snapshot
+Current Step ID: 2
+Current Step Title: Inventory Declaration Families
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Establish Structure Snapshot completed the initial BIR core model
-snapshot in `docs/bir_core_cleanup/structure_snapshot.md`.
+Step 2 - Inventory Declaration Families completed the `bir.hpp` declaration
+family inventory in `docs/bir_core_cleanup/declaration_inventory.md`.
 
-The snapshot records line counts for `src/backend/bir/bir.hpp` and
-`src/backend/bir/bir.cpp`, confirms `c4c-clang-tool` and
-`c4c-clang-tool-ccdb` on `PATH`, records exact AST query commands, summarizes
-symbol/function/type-reference results, notes the one non-blocking caller query
-fallback, and starts initial declaration/implementation clusters for the
-durable cleanup analysis.
+The inventory records exact clang-tool commands, notes the one non-blocking
+`RouteIndexContext` type-reference miss, documents narrow raw-text fallback
+commands for line anchoring, and adds a declaration-family table with current
+location, likely owner, movement risk, and do-not-move-yet notes for the core
+model, value/type/module/function/block/instruction definitions,
+memory-address/object-storage authority, comparison/scalar producers,
+select-chain/direct-global dependency, compatibility helpers, route-specific
+memory analysis, validation facade, and printer/render surfaces.
 
 ## Suggested Next
 
-Delegate Step 2: inventory declaration families in `src/backend/bir/bir.hpp`
-into core model, route-local analysis, memory authority, call publication,
-validation facade, and printer/render surfaces, then extend
-`docs/bir_core_cleanup/structure_snapshot.md` or a sibling artifact with a
-declaration-family table.
+Delegate Step 3: inventory implementation families in `src/backend/bir/bir.cpp`,
+`src/backend/bir/bir_printer.cpp`, `src/backend/bir/bir_validate.cpp`, and
+`src/backend/bir/lir_to_bir/`, then extend the durable cleanup analysis with an
+implementation-family map and low/medium/late movement risk notes.
 
 ## Watchouts
 
@@ -38,13 +39,18 @@ declaration-family table.
 - `Value`, `Inst`, `Block`, `Function`, and `Module` have broad fanout and
   should remain late/no-move candidates until lower-risk route families are
   classified.
+- `RouteIndexContext` is not a current `bir.hpp` type; the relevant facade
+  declaration is `RouteIndexReferenceFacade`.
+- No exact `ObjectStorage` declaration family was found in `bir.hpp`; storage
+  authority is represented through memory extent/range/provenance records,
+  local slots, globals, and module/function storage vectors.
 
 ## Proof
 
 Proof command:
 
 ```sh
-git diff --check && test -s docs/bir_core_cleanup/structure_snapshot.md
+git diff --check && test -s docs/bir_core_cleanup/declaration_inventory.md
 ```
 
 Result: passed.
