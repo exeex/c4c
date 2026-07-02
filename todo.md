@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/558_bir_call_metadata_semantic_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Inspect And Repair Call-Return Metadata
+Current Step ID: 5
+Current Step Title: Reconcile Call Metadata Representatives
 
 # Current Packet
 
@@ -34,9 +34,18 @@ Representative result:
 
 ## Suggested Next
 
-Supervisor should run regression-log comparison and decide whether Step 4 is
-acceptance-ready or whether this source idea should advance to any remaining
-call-metadata family in the active plan.
+Step 5 - Reconcile Call Metadata Representatives should rerun and record both
+representative rows:
+
+- direct-call: `src/20000412-2.c`
+- call-return: `src/20050121-1.c`
+
+Compare current `case.log` outcomes against the original direct-call and
+call-return semantic metadata families, confirm there were no expectation,
+unsupported-marker, allowlist, runtime-comparison, or semantic admission
+weakening changes, and decide whether the source idea should close, split a
+distinct downstream initiative, or continue with another call-metadata
+checkpoint.
 
 ## Watchouts
 
