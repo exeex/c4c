@@ -1,9 +1,25 @@
 # BIR Bootstrap Global Data-Shape Handoff Support
 
-Status: Open
+Status: Closed
 Type: Related BIR handoff implementation follow-up
 Parent: `ideas/closed/545_bir_semantic_producer_admission_reconstruction.md`
 Owning Layer: BIR bootstrap and global data-shape support
+
+## Closure Note
+
+Closed after the retained BIR bootstrap/global data-shape handoff boundary was
+repaired for string-backed nested `char` array globals. Focused BIR coverage
+now proves typed byte-string initializers lower through nested integer-array
+recursion into coherent byte-addressable global storage facts.
+
+The representative RV64 subset advanced through this source idea's handoff
+boundary: `src/strlen-2.c` now exposes a separate `gep local-memory semantic
+family` residual, while `src/20000703-1.c`, `src/20041218-1.c`, and
+`src/20140212-1.c` remain downstream `unsupported_global_data` prepared/RV64
+object-route work. Those residuals are outside this idea's scope.
+
+Close-time regression guard passed for backend CTest: `345/345` before and
+`345/345` after.
 
 ## Goal
 
