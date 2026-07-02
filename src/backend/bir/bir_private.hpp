@@ -30,6 +30,10 @@ struct SameBlockComparisonProducer {
     const Value& value,
     std::size_t before_instruction_index,
     unsigned depth = 0);
+[[nodiscard]] const CallInst* indexed_call_inst(
+    const Block& block,
+    const CallInst& call,
+    std::size_t call_instruction_index);
 
 [[nodiscard]] inline bool route_block_matches(std::string_view record_label,
                                               BlockLabelId record_label_id,
