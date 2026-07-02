@@ -1,68 +1,69 @@
 Status: Active
 Source Idea Path: ideas/open/514_rv64_register_source_stack_destination_move_bundles.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Reassess Multi-Move Bundle Ownership
+Current Step ID: 6
+Current Step Title: Validate And Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 reassessed `tests/c/external/gcc_torture/src/20010518-1.c` after the
-single-move register-source to stack-destination boundary was settled.
+Step 6 validated the RV64 register-source stack-destination move-bundle
+runbook for supervisor/lifecycle handoff.
 
-Decision: split/reject the representative multi-move bundle from the current
-RV64 object-emission runbook. The precise owner is the prepared move-bundle
-producer/classification contract for multiple register sources targeting one
-stack value, not the Step 3 single-move materializer.
+The delegated build plus backend subset is green. The focused object probes
+confirm the current handoff diagnostics:
 
-Evidence:
-
-- Focused object proof still stops at
+- `tests/c/external/gcc_torture/src/pr27073.c` still stops at
+  `unsupported_move_bundle_target_shape` for function `foo`, block `entry`,
+  `instruction_index=1`, with `authority=none`, `move_count=1`,
+  `parallel_copy=no`, `move[0].source_home_kind=register`,
+  `move[0].source_type=i16`, `move[0].destination_home_kind=stack_slot`, and
+  `move[0].destination_type=i32`.
+- `tests/c/external/gcc_torture/src/20010518-1.c` still stops at
   `unsupported_move_bundle_target_shape` for function `add`, block `entry`,
-  `event_kind=before_instruction_copies`, `instruction_index=0`.
-- The failing bundle has `authority=none`, `parallel_copy=no`, and
-  `move_count=2`.
-- Both moves target the same stack destination value: `move[0]` moves
-  `from_value_id=0` to `to_value_id=13`; `move[1]` moves `from_value_id=1` to
-  `to_value_id=13`.
-- Both sources have explicit register homes and `i32` source types; the
-  destination has an explicit stack-slot home and `i32` type.
-- The prepared dump records the same first bundle as two
-  `consumer_stack_to_stack` moves even though `home %p.a value_id=0
-  kind=register`, `home %p.b value_id=1 kind=register`, and `home %t0
-  value_id=13 kind=stack_slot slot_id=8 offset=32`.
-- No explicit prepared sequencing, merge, or parallel-copy authority explains
-  how two register sources should be materialized into one stack destination
-  without dropping a move or choosing by source order.
+  `instruction_index=0`, with `authority=none`, `move_count=2`,
+  `parallel_copy=no`, two register-source `i32` moves, and both moves targeting
+  the same stack-slot destination value.
+
+Source idea 514 acceptance is only partially satisfied by the current runbook:
+fresh validation and representative diagnostics are recorded, and the
+multi-move case has a precise follow-up boundary, but the representative rows
+do not yet advance through RV64 object emission. Closure should either record
+the current runbook as a bounded diagnostic handoff or open a follow-up idea for
+the multi-move producer/classification owner before treating the multi-move
+acceptance path as complete.
 
 ## Suggested Next
 
-Proceed to Step 6 validation/handoff. If the supervisor wants to pursue
-`20010518-1.c`, open a separate producer/classification idea for multi-source
-prepared move bundles that defines explicit sequencing or merge authority
-before RV64 materialization is attempted.
+Supervisor/lifecycle owner should decide whether to close this runbook as a
+validated diagnostic handoff or split a follow-up source idea for the prepared
+multi-move producer/classification contract.
 
 ## Watchouts
 
-Do not accept this row by dropping either source, picking the first or last
-source, renaming `consumer_stack_to_stack` reasons in place, or inferring
-authority from the row name, argument index, source order, or textual BIR. The
-current evidence supports a follow-up owner because the missing fact is an
-explicit prepared contract for all moves in the bundle.
+Residual risk remains around the producer/classification owner for multi-source
+move bundles. Do not accept `20010518-1.c` by dropping either source, picking
+the first or last source, renaming `consumer_stack_to_stack` reasons in place,
+or inferring authority from the row name, argument index, source order, or
+textual BIR. `pr27073.c` also remains a focused handoff diagnostic rather than
+a passing object-route representative.
 
 ## Proof
 
-Ran the focused RV64 object proof for
-`tests/c/external/gcc_torture/src/20010518-1.c` with
-`tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake`; it failed
-at the expected unsupported owner and wrote its probe log to
-`build/agent_state/514_step5_20010518/case.log`.
+Ran `cmake --build --preset default` followed by
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`; the delegated
+proof passed with `100% tests passed, 0 tests failed out of 345`, and the
+canonical proof log is `test_after.log`.
 
-Ran `build/c4cll -I tests/c/external/gcc_torture --dump-prepared-bir
---mir-focus-function add tests/c/external/gcc_torture/src/20010518-1.c`; it
-completed successfully and wrote prepared evidence to
-`build/agent_state/514_step5_20010518/prepared_add.txt`.
+Ran focused RV64 object probes with
+`tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake`:
 
-`test_after.log` was not updated because this packet was evidence-only and
-explicitly listed it under Do Not Touch.
+- `tests/c/external/gcc_torture/src/pr27073.c` failed at the expected current
+  handoff diagnostic; log:
+  `build/agent_state/514_step6_handoff/src_pr27073.c/case.log`.
+- `tests/c/external/gcc_torture/src/20010518-1.c` failed at the expected
+  current handoff diagnostic; log:
+  `build/agent_state/514_step6_handoff/src_20010518-1.c/case.log`.
+
+Ran `git diff --check -- todo.md`; it passed.
