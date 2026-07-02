@@ -2500,6 +2500,39 @@ bool prepared_storage_plan_endpoint_is_coherent_gpr_frame_slot(
          value->stack_offset_bytes.has_value();
 }
 
+bool prepared_storage_plan_endpoint_is_coherent_gpr_register(
+    const prepare::PreparedStoragePlanFunction* storage_plan,
+    prepare::PreparedValueId value_id,
+    std::uint32_t expected_register) {
+  const auto* value = prepared_storage_plan_value_for_id(storage_plan, value_id);
+  if (value == nullptr) {
+    return true;
+  }
+  if (value->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      value->bank != prepare::PreparedRegisterBank::Gpr ||
+      value->contiguous_width != 1) {
+    return false;
+  }
+  if (value->register_name.has_value()) {
+    const auto register_number = rv64_register_number(*value->register_name);
+    if (!register_number.has_value() ||
+        *register_number != expected_register) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::size_t prepared_consumer_register_to_stack_move_count(
+    const prepare::PreparedMoveBundle& move_bundle) {
+  return static_cast<std::size_t>(
+      std::count_if(move_bundle.moves.begin(),
+                    move_bundle.moves.end(),
+                    [](const prepare::PreparedMoveResolution& move) {
+                      return move.reason == "consumer_register_to_stack";
+                    }));
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -2638,9 +2671,45 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
         return std::nullopt;
       }
       if (move.reason == "consumer_register_to_stack") {
+        if (prepared_consumer_register_to_stack_move_count(move_bundle) != 1 ||
+            move.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+            move.destination_register_name.has_value() ||
+            !move.destination_occupied_register_names.empty() ||
+            move.destination_register_placement.has_value() ||
+            move.source_parallel_copy_step_index.has_value() ||
+            move.source_parallel_copy_predecessor_label.has_value() ||
+            move.source_parallel_copy_successor_label.has_value() ||
+            source_home->kind != prepare::PreparedValueHomeKind::Register) {
+          return std::nullopt;
+        }
+        if (source_home->target_register_identity.has_value() &&
+            (source_home->target_register_identity->target_arch !=
+                 c4c::TargetArch::Riscv64 ||
+             source_home->target_register_identity->bank !=
+                 prepare::PreparedRegisterBank::Gpr ||
+             source_home->target_register_identity->register_class !=
+                 prepare::PreparedRegisterClass::General)) {
+          return std::nullopt;
+        }
         const auto source = gpr_register_number_for_home(*source_home);
         if (!source.has_value() ||
-            !append_rv64_store_register_to_stack_offset(fragment,
+            !prepared_storage_plan_endpoint_is_coherent_gpr_register(
+                storage_plan,
+                move.from_value_id,
+                *source)) {
+          return std::nullopt;
+        }
+        const auto source_type = prepared_bir_value_type_for_name(
+            names, function, source_home->value_name);
+        const auto source_size_bytes =
+            source_type.has_value()
+                ? rv64_scalar_memory_size_for_type(*source_type)
+                : source_home->size_bytes;
+        if (!source_size_bytes.has_value() ||
+            *source_size_bytes != *destination_size_bytes) {
+          return std::nullopt;
+        }
+        if (!append_rv64_store_register_to_stack_offset(fragment,
                                                        *source,
                                                        *stack_offset,
                                                        *destination_size_bytes)) {
@@ -7769,6 +7838,7 @@ std::string rv64_prepared_move_bundle_fragment_failure_diagnostic(
     const c4c::backend::prepare::PreparedObjectTraversalEvent& event,
     const c4c::backend::prepare::PreparedObjectMoveBundleConsumerClassification&
         classification,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
         dependency_operand_authorities,
     const c4c::backend::prepare::PreparedSelectEdgeSourceProducerPlacementRecords*
@@ -7849,6 +7919,34 @@ std::string rv64_prepared_move_bundle_fragment_failure_diagnostic(
         << (move.reason.empty() ? "<none>" : move.reason);
     if (move.source_immediate_i32.has_value()) {
       out << move_prefix << ".source_imm_i32=" << *move.source_immediate_i32;
+    }
+    const auto* source_home =
+        prepared_value_home_for_id(lookups, move.from_value_id);
+    const auto* destination_home =
+        prepared_value_home_for_id(lookups, move.to_value_id);
+    if (source_home != nullptr) {
+      out << move_prefix << ".source_home_kind="
+          << prepare::prepared_value_home_kind_name(source_home->kind);
+      const auto source_type = prepared_bir_value_type_for_name(
+          names, function, source_home->value_name);
+      if (source_type.has_value()) {
+        out << move_prefix << ".source_type="
+            << bir::render_type(*source_type);
+      }
+    } else {
+      out << move_prefix << ".source_home_kind=<missing>";
+    }
+    if (destination_home != nullptr) {
+      out << move_prefix << ".destination_home_kind="
+          << prepare::prepared_value_home_kind_name(destination_home->kind);
+      const auto destination_type = prepared_bir_value_type_for_name(
+          names, function, destination_home->value_name);
+      if (destination_type.has_value()) {
+        out << move_prefix << ".destination_type="
+            << bir::render_type(*destination_type);
+      }
+    } else {
+      out << move_prefix << ".destination_home_kind=<missing>";
     }
   }
   out << " fragment_status=generic_move_bundle_materialization_failed";
@@ -11058,6 +11156,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                     *function,
                     event,
                     classification,
+                    &lookups,
                     &dependency_operand_authorities,
                     &select_edge_source_producer_placements));
           }

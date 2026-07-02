@@ -5204,6 +5204,7 @@ make_prepared_before_instruction_register_to_stack_move_bundle_module() {
       .align_bytes = 4,
   });
   auto& locations = prepared.value_locations.functions.front();
+  locations.value_homes[0].size_bytes = std::size_t{4};
   locations.value_homes[1] = rv64_stack_slot_home(
       2, function_name, compare_name, prepare::PreparedFrameSlotId{12}, 16);
   locations.move_bundles.push_back(prepare::PreparedMoveBundle{
