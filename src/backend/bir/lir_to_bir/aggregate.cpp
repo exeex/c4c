@@ -1,6 +1,7 @@
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <utility>
 
 namespace c4c::backend {
 
@@ -427,6 +428,7 @@ bool BirFunctionLowerer::append_local_aggregate_copy_from_slots(
 bool BirFunctionLowerer::append_local_aggregate_copy_to_pointer(
     const LocalAggregateSlots& source_slots,
     const bir::Value& target_pointer,
+    std::int64_t target_base_byte_offset,
     std::size_t target_align_bytes,
     std::string_view temp_prefix,
     bir::MemoryAccessProvenance target_provenance,
@@ -453,16 +455,15 @@ bool BirFunctionLowerer::append_local_aggregate_copy_to_pointer(
         .address = bir::MemoryAddress{
             .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
             .base_value = target_pointer,
-            .byte_offset = static_cast<std::int64_t>(byte_offset),
+            .byte_offset = target_base_byte_offset + static_cast<std::int64_t>(byte_offset),
             .size_bytes = slot_size,
             .align_bytes = std::max(slot_size, target_align_bytes),
             .provenance =
                 [&]() {
                   auto provenance = target_provenance;
-                  if (!provenance.requested_range.available) {
-                    provenance.requested_range = bir::make_memory_byte_range(
-                        static_cast<std::int64_t>(byte_offset), slot_size);
-                  }
+                  provenance.requested_range = bir::make_memory_byte_range(
+                      target_base_byte_offset + static_cast<std::int64_t>(byte_offset),
+                      slot_size);
                   bir::prove_memory_access_requested_range(provenance);
                   return provenance;
                 }(),
@@ -470,6 +471,22 @@ bool BirFunctionLowerer::append_local_aggregate_copy_to_pointer(
     });
   }
   return true;
+}
+
+bool BirFunctionLowerer::append_local_aggregate_copy_to_pointer(
+    const LocalAggregateSlots& source_slots,
+    const bir::Value& target_pointer,
+    std::size_t target_align_bytes,
+    std::string_view temp_prefix,
+    bir::MemoryAccessProvenance target_provenance,
+    std::vector<bir::Inst>* lowered_insts) const {
+  return append_local_aggregate_copy_to_pointer(source_slots,
+                                                target_pointer,
+                                                0,
+                                                target_align_bytes,
+                                                temp_prefix,
+                                                std::move(target_provenance),
+                                                lowered_insts);
 }
 
 bool BirFunctionLowerer::materialize_aggregate_param_aliases(std::vector<bir::Inst>* lowered_insts) {

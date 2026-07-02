@@ -658,6 +658,13 @@ class BirFunctionLowerer {
                                               std::vector<bir::Inst>* lowered_insts) const;
   bool append_local_aggregate_copy_to_pointer(const LocalAggregateSlots& source_slots,
                                               const bir::Value& target_pointer,
+                                              std::int64_t target_base_byte_offset,
+                                              std::size_t target_align_bytes,
+                                              std::string_view temp_prefix,
+                                              bir::MemoryAccessProvenance target_provenance,
+                                              std::vector<bir::Inst>* lowered_insts) const;
+  bool append_local_aggregate_copy_to_pointer(const LocalAggregateSlots& source_slots,
+                                              const bir::Value& target_pointer,
                                               std::size_t target_align_bytes,
                                               std::string_view temp_prefix,
                                               bir::MemoryAccessProvenance target_provenance,

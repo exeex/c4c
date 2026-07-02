@@ -774,12 +774,40 @@ bool BirFunctionLowerer::lower_memory_store_inst(
     }
 
     const auto target_aggregate_it = local_aggregate_slots_.find(store.ptr.str());
+    const auto source_param_it = aggregate_params_.find(store.val.str());
     if (target_aggregate_it == local_aggregate_slots_.end()) {
-      return false;
+      const auto source_alias_it = aggregate_value_aliases_.find(store.val.str());
+      const auto source_aggregate_it =
+          source_alias_it == aggregate_value_aliases_.end()
+              ? local_aggregate_slots_.end()
+              : local_aggregate_slots_.find(source_alias_it->second);
+      const auto addressed_target_it = pointer_value_addresses_.find(store.ptr.str());
+      if (source_aggregate_it == local_aggregate_slots_.end() ||
+          addressed_target_it == pointer_value_addresses_.end()) {
+        return false;
+      }
+      const auto source_layout =
+          lower_byval_aggregate_layout(source_aggregate_it->second.type_text,
+                                       type_decls_,
+                                       &structured_layouts_);
+      if (!source_layout.has_value() ||
+          source_layout->size_bytes != aggregate_layout->size_bytes) {
+        return false;
+      }
+      clear_local_scalar_slot_values();
+      return append_local_aggregate_copy_to_pointer(
+          source_aggregate_it->second,
+          addressed_target_it->second.base_value,
+          addressed_target_it->second.byte_offset,
+          aggregate_layout->align_bytes,
+          store.ptr.str() + ".pointer.aggregate.copy",
+          pointer_address_access_provenance(addressed_target_it->second,
+                                            addressed_target_it->second.byte_offset,
+                                            aggregate_layout->size_bytes),
+          lowered_insts);
     }
 
-    if (const auto source_param_it = aggregate_params_.find(store.val.str());
-        source_param_it != aggregate_params_.end()) {
+    if (source_param_it != aggregate_params_.end()) {
       clear_local_scalar_slot_values();
       const auto leaf_slots = collect_sorted_leaf_slots(target_aggregate_it->second);
       for (const auto& [byte_offset, slot_name] : leaf_slots) {

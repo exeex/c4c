@@ -233,6 +233,7 @@ int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
 int expect_string_literal_pointer_store_publishes_string_address_value();
 int expect_loaded_pointer_addressed_store_uses_pointer_base();
 int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base();
+int expect_pointer_addressed_aggregate_field_store_publishes_leaf_stores();
 int expect_direct_local_scalar_access_publishes_local_slot_provenance();
 int expect_local_byte_array_scalar_access_publishes_local_slot_provenance();
 int expect_casted_byte_pointer_i32_update_fails_closed();
@@ -1562,6 +1563,102 @@ int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base() {
 
   if (!saw_opaque_pointer_base_load || !saw_opaque_pointer_base_store) {
     return fail("runtime pointer-value opaque i32 access should use pointer-base local memory");
+  }
+  return 0;
+}
+
+int expect_pointer_addressed_aggregate_field_store_publishes_leaf_stores() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.Payload = type { i32, i32 }");
+  module.type_decls.push_back("%struct.Container = type { i64, %struct.Payload }");
+
+  c4c::TypeSpec void_pointer_type{};
+  void_pointer_type.base = c4c::TB_VOID;
+  void_pointer_type.ptr_level = 1;
+
+  LirFunction function;
+  function.name = "pointer_addressed_aggregate_field_store";
+  function.signature_text =
+      "define void @pointer_addressed_aggregate_field_store(ptr %dst)";
+  function.params.push_back({"%dst", void_pointer_type});
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.src"),
+      .type_str = "%struct.Payload",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%src.copy"),
+      .type_str = "%struct.Payload",
+      .ptr = LirOperand("%lv.src"),
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%dst.payload"),
+      .element_type = "%struct.Container",
+      .ptr = LirOperand("%dst"),
+      .inbounds = true,
+      .indices = {LirOperand("i32 0"), LirOperand("i32 1")},
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "%struct.Payload",
+      .val = LirOperand("%src.copy"),
+      .ptr = LirOperand("%dst.payload"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("pointer-addressed aggregate field store fixture should lower semantically");
+  }
+
+  bool saw_first_leaf_store = false;
+  bool saw_second_leaf_store = false;
+  const auto has_leaf_pointer_range = [](const bir::MemoryAddress& address,
+                                         std::int64_t byte_offset) {
+    return address.base_kind == bir::MemoryAddress::BaseKind::PointerValue &&
+           address.base_value.name == "%dst" &&
+           address.byte_offset == byte_offset &&
+           address.size_bytes == 4 &&
+           address.align_bytes >= 4 &&
+           address.provenance.base_identity.kind ==
+               bir::MemoryProvenanceBaseIdentityKind::FormalParameter &&
+           address.provenance.base_identity.spelling == "%dst" &&
+           address.provenance.base_identity.value.name == "%dst" &&
+           address.provenance.requested_range.available &&
+           address.provenance.requested_range.begin == byte_offset &&
+           address.provenance.requested_range.size_bytes == 4 &&
+           address.provenance.requested_range.end_available &&
+           address.provenance.requested_range.end == byte_offset + 4 &&
+           address.provenance.range_verdict == bir::MemoryRangeVerdict::UnknownCompatible;
+  };
+
+  const auto& lowered_function = result.module->functions.front();
+  for (const auto& block : lowered_function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+      if (store == nullptr || !store->address.has_value()) {
+        continue;
+      }
+      if (has_leaf_pointer_range(*store->address, 8)) {
+        saw_first_leaf_store = true;
+      }
+      if (has_leaf_pointer_range(*store->address, 12)) {
+        saw_second_leaf_store = true;
+      }
+    }
+  }
+
+  if (!saw_first_leaf_store || !saw_second_leaf_store) {
+    return fail("pointer-addressed aggregate field store should publish leaf pointer stores");
   }
   return 0;
 }
@@ -11747,6 +11844,11 @@ int main() {
           expect_local_byte_array_scalar_access_publishes_local_slot_provenance();
       local_slot_provenance_status != 0) {
     return local_slot_provenance_status;
+  }
+  if (const int pointer_aggregate_store_status =
+          expect_pointer_addressed_aggregate_field_store_publishes_leaf_stores();
+      pointer_aggregate_store_status != 0) {
+    return pointer_aggregate_store_status;
   }
   if (const int local_array_dynamic_carrier_status =
           expect_local_array_carrier_dynamic_gep_preserves_missing_index_range_proof();
