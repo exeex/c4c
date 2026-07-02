@@ -1,6 +1,6 @@
 # BIR Runtime Intrinsic Memory Producer Admission
 
-Status: Open
+Status: Closed
 Type: Producer implementation follow-up
 Parent: `ideas/closed/545_bir_semantic_producer_admission_reconstruction.md`
 Owning Layer: BIR semantic producer
@@ -47,6 +47,17 @@ local-memory work unless producer inspection proves a shared boundary.
   because consumers infer or bypass them.
 - If shared local-memory helpers are changed, the proof includes nearby
   generic local-memory coverage.
+
+## Closure Notes
+
+Closed after Step 4 reconciliation. The representative rows
+`src/20000703-1.c` and `src/20041218-1.c` no longer fail in the `memcpy
+runtime family` or `memset runtime family` semantic producer admission modes.
+Both rows now stop in downstream RV64 `unsupported_global_data` ownership,
+which is outside this producer-admission idea.
+
+Close-time backend regression guard passed with `345/345` tests before and
+`345/345` tests after.
 
 ## Reviewer Reject Signals
 
