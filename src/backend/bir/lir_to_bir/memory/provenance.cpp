@@ -424,7 +424,7 @@ std::optional<bir::Value> BirFunctionLowerer::lower_call_pointer_arg_value(
     return BirFunctionLowerer::lower_value(operand, bir::TypeKind::Ptr, value_aliases);
   }
   if (operand.kind() != c4c::codegen::lir::LirOperandKind::Global) {
-    return std::nullopt;
+    return BirFunctionLowerer::lower_value(operand, bir::TypeKind::Ptr, value_aliases);
   }
 
   const std::string symbol_name = operand.str().substr(1);

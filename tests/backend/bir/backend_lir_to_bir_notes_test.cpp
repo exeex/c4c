@@ -257,6 +257,7 @@ int expect_structured_abi_payload_blocks_legacy_byval_text_fallback();
 int expect_metadata_rich_byval_call_arg_without_struct_id_fails_closed();
 int expect_metadata_rich_byval_call_arg_mismatch_fails_closed();
 int expect_direct_call_prefers_structured_callee_signature_over_stale_suffix();
+int expect_metadata_rich_direct_call_null_pointer_argument_publishes_immediate_source();
 int expect_direct_call_structured_byval_signature_materializes_aggregate_abi();
 int expect_direct_call_structured_byval_signature_mismatch_fails_closed();
 int expect_metadata_rich_direct_call_without_link_name_id_fails_closed();
@@ -4840,6 +4841,114 @@ int expect_direct_call_prefers_structured_callee_signature_over_stale_suffix() {
     }
   }
   return fail("direct call should preserve structured pointer parameter type in BIR");
+}
+
+LirModule make_metadata_rich_direct_call_null_pointer_argument_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId callee_id = module.link_names.intern("semantic_null_pointer_sink");
+
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "stale_null_pointer_sink";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "void";
+  callee.return_type = lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
+  LirFunction function;
+  function.name = "metadata_rich_direct_call_null_pointer_argument";
+  function.signature_text =
+      "define void @metadata_rich_direct_call_null_pointer_argument()";
+  function.return_type.base = c4c::TB_VOID;
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@stale_null_pointer_sink"),
+      .direct_callee_link_name_id = callee_id,
+      .callee_type_suffix = "(i32, ptr)",
+      .args_str = "i32 100, ptr null",
+      .callee_signature = void_call_signature({"i32", "ptr"}),
+      .structured_args = {
+          lir::LirCallArg{
+              .type = "i32",
+              .operand = LirOperand("100"),
+              .type_ref = lir::LirTypeRef("i32"),
+          },
+          lir::LirCallArg{
+              .type = "ptr",
+              .operand = LirOperand("null"),
+              .type_ref = lir::LirTypeRef("ptr"),
+          },
+      },
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_metadata_rich_direct_call_null_pointer_argument_publishes_immediate_source() {
+  auto result = try_lower_to_bir_with_options(
+      make_metadata_rich_direct_call_null_pointer_argument_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("metadata-rich direct call with null pointer argument should lower");
+  }
+
+  for (const auto& function : result.module->functions) {
+    if (function.name != "metadata_rich_direct_call_null_pointer_argument" ||
+        function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr) continue;
+      if (call->is_indirect ||
+          call->callee != "semantic_null_pointer_sink" ||
+          call->callee_link_name_id == c4c::kInvalidLinkName ||
+          call->args.size() != 2 ||
+          call->arg_types.size() != 2 ||
+          call->arg_abi.size() != 2 ||
+          call->arg_sources.size() != 2) {
+        return fail("metadata-rich null-pointer direct call lost call identity or argument facts");
+      }
+      if (call->arg_types[1] != TypeKind::Ptr ||
+          call->arg_abi[1].type != TypeKind::Ptr ||
+          call->arg_abi[1].primary_class !=
+              c4c::backend::bir::AbiValueClass::Integer ||
+          !call->arg_abi[1].passed_in_register ||
+          call->arg_abi[1].size_bytes != 8 ||
+          call->arg_abi[1].align_bytes != 8) {
+        return fail("metadata-rich null-pointer direct call lost pointer ABI facts");
+      }
+      if (call->args[1].kind != c4c::backend::bir::Value::Kind::Immediate ||
+          call->args[1].type != TypeKind::Ptr ||
+          call->args[1].immediate != 0 ||
+          call->args[1].immediate_bits != 0) {
+        return fail("metadata-rich null-pointer direct call lost immediate null value");
+      }
+      const auto* null_source =
+          c4c::backend::bir::find_call_argument_source_relationship(*call, 1);
+      if (null_source == nullptr ||
+          null_source->source_encoding !=
+              c4c::backend::bir::CallArgumentSourceEncodingKind::Immediate ||
+          null_source->source_value_name.has_value() ||
+          null_source->source_base_value_name.has_value()) {
+        return fail("metadata-rich null-pointer direct call lost immediate source relationship");
+      }
+      return 0;
+    }
+  }
+  return fail("metadata-rich null-pointer direct call should publish a CallInst");
 }
 
 LirModule make_direct_structured_byval_call_signature_module(bool mismatched_signature) {
@@ -12858,6 +12967,11 @@ int main() {
           expect_direct_call_prefers_structured_callee_signature_over_stale_suffix();
       direct_structured_signature_status != 0) {
     return direct_structured_signature_status;
+  }
+  if (const int direct_null_pointer_arg_status =
+          expect_metadata_rich_direct_call_null_pointer_argument_publishes_immediate_source();
+      direct_null_pointer_arg_status != 0) {
+    return direct_null_pointer_arg_status;
   }
   if (const int direct_structured_byval_status =
           expect_direct_call_structured_byval_signature_materializes_aggregate_abi();

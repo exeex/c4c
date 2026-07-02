@@ -8,46 +8,30 @@ Current Step Title: Repair Direct-Call Metadata Publication
 
 ## Just Finished
 
-Step 1 - Inspect Direct-Call Producer Boundary completed for
-`src/20000412-2.c`.
+Step 2 - Repair Direct-Call Metadata Publication completed for typed
+`ptr null` pointer operands in metadata-rich direct calls.
 
-Evidence used:
-`build/agent_state/558_step1_20000412.log` and
-`build/rv64_gcc_c_torture_backend/src_20000412-2.c/case.log` both report
-semantic `lir_to_bir` failure in `main` under `direct-call semantic family`.
-`build/c4cll --target riscv64-linux-gnu --codegen llvm
-tests/c/external/gcc_torture/src/20000412-2.c -o
-build/agent_state/558_step1_20000412.ll` shows the failing `main` call shape:
-`%t0 = call i32 (i32, ptr) @f(i32 100, ptr null)`. `--dump-bir` fails at the
-same semantic call-family gate before producing BIR.
+`lower_call_pointer_arg_value` now admits non-SSA, non-global pointer operands
+through existing `lower_value(..., TypeKind::Ptr, ...)` materialization, so
+typed null pointer call arguments publish immediate null BIR values instead of
+failing the direct-call semantic family. Focused coverage
+`expect_metadata_rich_direct_call_null_pointer_argument_publishes_immediate_source`
+now exercises a structured direct `(i32, ptr)` call with `ptr null` and checks
+callee LinkNameId/signature identity, `arg_types[1] == Ptr`, pointer ABI
+metadata, immediate null value facts, and an `Immediate` call-argument source
+relationship.
 
-Boundary: direct-call lowering has enough same-module callee metadata to treat
-`@f` as a metadata-rich direct call with structured signature, but its pointer
-argument path rejects typed null pointer operands. In
-`src/backend/bir/lir_to_bir/calling.cpp`, pointer parameters call
-`lower_public_pointer_call_arg_value`; that falls through to
-`lower_call_pointer_arg_value` in
-`src/backend/bir/lir_to_bir/memory/provenance.cpp`. That helper admits SSA
-local/aggregate pointers and global/function symbols, but returns `nullopt`
-for non-global, non-SSA operands, so `ptr null` never reaches the existing
-`lower_value(..., TypeKind::Ptr, ...)` null-pointer support. The missing BIR
-metadata is therefore the direct-call argument value/source publication for a
-structured pointer parameter whose source operand is `null`: expected BIR
-should publish the `CallInst` with callee LinkNameId/signature identity,
-`arg_types[1] == Ptr`, pointer ABI metadata, an immediate null `Value`, and an
-`Immediate` call-argument source relationship.
+The selected `src/20000412-2.c` row no longer fails in direct-call semantic
+admission. It now reaches the object route and fails downstream as
+`unsupported_instruction_fragment: BIR instruction requires unsupported RV64
+object lowering`.
 
 ## Suggested Next
 
-Step 2 - Repair Direct-Call Metadata Publication should use the Step 1
-boundary above as the executor packet context.
-
-Add focused BIR coverage in `tests/backend/bir/backend_lir_to_bir_notes_test.cpp`
-for a metadata-rich same-module/direct call with a structured `(i32, ptr)`
-callee signature and `ptr null` argument. Suggested test name:
-`expect_metadata_rich_direct_call_null_pointer_argument_publishes_immediate_source`.
-Then repair the producer path so fixed direct-call pointer arguments can use
-existing pointer null lowering and publish the immediate source relationship.
+Inspect the next call-metadata representative boundary. The `src/20000412-2.c`
+seed has moved past direct-call producer admission, so Step 2 should either
+advance to the next direct-call metadata seed or hand back to plan-owner review
+if the remaining Step 2 scope is exhausted.
 
 ## Watchouts
 
@@ -55,28 +39,19 @@ Reject downstream RV64/MIR call inference, generic local-memory routing,
 runtime/intrinsic repairs, expectation rewrites, unsupported-marker changes,
 allowlist edits, runtime-comparison changes, and named-case shortcuts. The
 runbook must cover call-return metadata before claiming the source idea is
-complete. After `ptr null` is admitted, the same representative may expose the
-recursive `f(a-1, &x)` frame-slot address argument next; keep that as the next
-producer boundary unless the direct null-pointer repair also covers it through
-general pointer argument publication.
+complete. Treat the current RV64 object-route failure for `src/20000412-2.c` as
+downstream unless the supervisor explicitly opens an object-lowering packet.
 
 ## Proof
 
-Inspection-only packet. Commands/evidence:
+Proof log: `test_after.log`.
 
-- `build/c4cll --target riscv64-linux-gnu --codegen llvm
-  tests/c/external/gcc_torture/src/20000412-2.c -o
-  build/agent_state/558_step1_20000412.ll`
-- `build/c4cll --target riscv64-linux-gnu --dump-bir
-  tests/c/external/gcc_torture/src/20000412-2.c`, which failed at the expected
-  direct-call semantic admission gate.
-- Source inspection of `src/backend/bir/lir_to_bir/calling.cpp`,
-  `src/backend/bir/lir_to_bir/memory/provenance.cpp`, and existing focused
-  BIR call tests.
+Commands:
 
-Post-repair representative proof command:
-
-`ALLOWLIST=build/agent_state/558_step1_20000412.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
-
-No code build required for this inspection packet. `git diff --check -- todo.md`
-passed.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+  passed `345/345`.
+- `ALLOWLIST=build/agent_state/558_step1_20000412.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
+  rechecked the selected row. The command exits nonzero because the row still
+  fails, but the failure moved from direct-call semantic producer admission to
+  downstream RV64 object lowering.
+- `git diff --check` passed.
