@@ -75,3 +75,17 @@ Reject any route or slice that:
   or scan accounting while leaving the unsupported owner ambiguous
 - broadens into general parallel-copy scheduling without first proving the
   minimal register-source to stack-destination contract
+
+## Lifecycle Handoff
+
+The active runbook that covered Steps 1-6 was retired after producing a bounded
+diagnostic/reclassification handoff. Fresh backend validation was recorded in
+`todo.md` before the switch, and the representative object-route probes now
+fail with precise `unsupported_move_bundle_target_shape` diagnostics instead
+of relying on the older stack-to-stack explanation.
+
+Closure was not accepted during this lifecycle pass because the close gate
+requires matching canonical regression logs and `test_after.log` was absent
+while the delegation explicitly prohibited touching regression logs. The
+remaining capability owner is split to
+`ideas/open/516_rv64_multi_source_prepared_move_bundle_classification.md`.
