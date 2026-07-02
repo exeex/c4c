@@ -1038,9 +1038,26 @@ int verify_move_bundle_consumer_diagnostic_query() {
                   prepare::PreparedObjectConsumerDiagnosticCategory::
                       MissingMoveBundle,
               "missing prepared move-bundle diagnostic category mismatch") ||
-      !expect(diagnostic->message ==
-                  "prepared copy traversal event is missing move-bundle authority",
-              "missing prepared move-bundle diagnostic message mismatch")) {
+      !expect(diagnostic->message.find(
+                  "prepared copy traversal event is missing move-bundle authority") ==
+                  0,
+              "missing prepared move-bundle diagnostic message prefix mismatch") ||
+      !expect(diagnostic->message.find("event_kind=block_entry_copies") !=
+                  std::string::npos,
+              "missing prepared move-bundle diagnostic should report event kind") ||
+      !expect(diagnostic->message.find("event_block_index=1") !=
+                  std::string::npos,
+              "missing prepared move-bundle diagnostic should report block index") ||
+      !expect(diagnostic->message.find("prepared_block_label=20") !=
+                  std::string::npos,
+              "missing prepared move-bundle diagnostic should report block label") ||
+      !expect(diagnostic->message.find("event_has_move_bundle=no") !=
+                  std::string::npos,
+              "missing prepared move-bundle diagnostic should report missing bundle") ||
+      !expect(diagnostic->message.find(
+                  "value_home_type_f128_facts=unavailable_at_missing_move_bundle") !=
+                  std::string::npos,
+              "missing prepared move-bundle diagnostic should report unavailable value facts")) {
     return 1;
   }
 

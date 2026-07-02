@@ -358,6 +358,21 @@ prepared_object_consumer_diagnostic_category_name(
 }
 
 struct PreparedObjectTraversalEvent {
+  struct MoveBundleLookupEvidence {
+    bool available = false;
+    bool has_value_locations = false;
+    bool has_execution_block_label = false;
+    bool execution_block_label_found = false;
+    std::optional<std::size_t> execution_block_index;
+    std::size_t total_move_bundle_count = 0;
+    std::size_t matching_phase_count = 0;
+    std::size_t matching_authority_count = 0;
+    std::size_t matching_execution_block_count = 0;
+    std::size_t matching_predecessor_label_count = 0;
+    std::size_t matching_successor_label_count = 0;
+    std::size_t exact_match_count = 0;
+  };
+
   PreparedObjectTraversalEventKind kind = PreparedObjectTraversalEventKind::Label;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
@@ -367,6 +382,7 @@ struct PreparedObjectTraversalEvent {
   const bir::Terminator* terminator = nullptr;
   const PreparedMoveBundle* move_bundle = nullptr;
   const PreparedParallelCopyBundle* parallel_copy_bundle = nullptr;
+  MoveBundleLookupEvidence move_bundle_lookup_evidence;
 };
 
 struct PreparedObjectSelectConsumerQuery {
@@ -417,7 +433,10 @@ struct PreparedObjectMoveBundleConsumerClassification {
   PreparedMovePhase phase = PreparedMovePhase::BeforeInstruction;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
+  std::optional<BlockLabelId> prepared_block_label;
   std::size_t move_count = 0;
+  PreparedObjectTraversalEvent::MoveBundleLookupEvidence
+      move_bundle_lookup_evidence;
 };
 
 struct PreparedObjectFrameSlotConsumerQuery {

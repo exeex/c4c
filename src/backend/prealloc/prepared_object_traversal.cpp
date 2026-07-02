@@ -1,6 +1,7 @@
 #include "prepared_object_traversal.hpp"
 
 #include <algorithm>
+#include <sstream>
 #include <utility>
 
 namespace c4c::backend::prepare {
@@ -312,6 +313,135 @@ prepared_move_bundle_has_ambiguous_multi_source_stack_destination(
   return match;
 }
 
+[[nodiscard]] PreparedObjectTraversalEvent::MoveBundleLookupEvidence
+collect_parallel_copy_move_bundle_lookup_evidence(
+    const PreparedControlFlowFunction& control_flow,
+    const PreparedValueLocationFunction* value_locations,
+    const PreparedParallelCopyBundle& parallel_copy_bundle) {
+  PreparedObjectTraversalEvent::MoveBundleLookupEvidence evidence;
+  evidence.available = true;
+  evidence.has_value_locations = value_locations != nullptr;
+  evidence.has_execution_block_label =
+      parallel_copy_bundle.execution_block_label.has_value();
+  if (value_locations == nullptr ||
+      !parallel_copy_bundle.execution_block_label.has_value()) {
+    return evidence;
+  }
+
+  evidence.execution_block_index =
+      prepared_block_index_by_label(control_flow,
+                                    *parallel_copy_bundle.execution_block_label);
+  evidence.execution_block_label_found =
+      evidence.execution_block_index.has_value();
+  evidence.total_move_bundle_count = value_locations->move_bundles.size();
+  if (!evidence.execution_block_index.has_value()) {
+    return evidence;
+  }
+
+  for (const auto& move_bundle : value_locations->move_bundles) {
+    if (move_bundle.phase == PreparedMovePhase::BlockEntry) {
+      ++evidence.matching_phase_count;
+    }
+    if (move_bundle.authority_kind ==
+        PreparedMoveAuthorityKind::OutOfSsaParallelCopy) {
+      ++evidence.matching_authority_count;
+    }
+    if (move_bundle.block_index == *evidence.execution_block_index) {
+      ++evidence.matching_execution_block_count;
+    }
+    if (move_bundle.source_parallel_copy_predecessor_label ==
+        parallel_copy_bundle.predecessor_label) {
+      ++evidence.matching_predecessor_label_count;
+    }
+    if (move_bundle.source_parallel_copy_successor_label ==
+        parallel_copy_bundle.successor_label) {
+      ++evidence.matching_successor_label_count;
+    }
+    if (prepared_move_bundle_matches_parallel_copy(
+            move_bundle, parallel_copy_bundle, *evidence.execution_block_index)) {
+      ++evidence.exact_match_count;
+    }
+  }
+
+  return evidence;
+}
+
+void append_optional_block_label(std::ostringstream& out,
+                                 std::string_view name,
+                                 std::optional<BlockLabelId> label) {
+  out << ' ' << name << '=';
+  if (label.has_value()) {
+    out << *label;
+  } else {
+    out << "none";
+  }
+}
+
+void append_move_bundle_consumer_evidence(
+    std::ostringstream& out,
+    const PreparedObjectMoveBundleConsumerClassification& classification) {
+  out << " event_kind="
+      << prepared_object_traversal_event_kind_name(classification.event_kind);
+  out << " event_block_index=" << classification.block_index;
+  out << " event_instruction_index=" << classification.instruction_index;
+  append_optional_block_label(out,
+                              "prepared_block_label",
+                              classification.prepared_block_label);
+  out << " event_has_move_bundle="
+      << (classification.move_bundle == nullptr ? "no" : "yes");
+  out << " parallel_copy="
+      << (classification.parallel_copy_bundle == nullptr ? "no" : "yes");
+
+  if (classification.parallel_copy_bundle != nullptr) {
+    const auto& bundle = *classification.parallel_copy_bundle;
+    out << " parallel_copy_predecessor=" << bundle.predecessor_label;
+    out << " parallel_copy_successor=" << bundle.successor_label;
+    out << " parallel_copy_execution_site="
+        << prepared_parallel_copy_execution_site_name(bundle.execution_site);
+    append_optional_block_label(out,
+                                "parallel_copy_execution_block",
+                                bundle.execution_block_label);
+    out << " parallel_copy_move_count=" << bundle.moves.size();
+    out << " parallel_copy_step_count=" << bundle.steps.size();
+    out << " parallel_copy_has_cycle="
+        << (bundle.has_cycle ? "yes" : "no");
+  }
+
+  const auto& evidence = classification.move_bundle_lookup_evidence;
+  out << " lookup_evidence_available="
+      << (evidence.available ? "yes" : "no");
+  if (!evidence.available) {
+    out << " value_home_type_f128_facts=unavailable_at_missing_move_bundle";
+    return;
+  }
+  out << " lookup_has_value_locations="
+      << (evidence.has_value_locations ? "yes" : "no");
+  out << " lookup_has_execution_block_label="
+      << (evidence.has_execution_block_label ? "yes" : "no");
+  out << " lookup_execution_block_label_found="
+      << (evidence.execution_block_label_found ? "yes" : "no");
+  out << " lookup_execution_block_index=";
+  if (evidence.execution_block_index.has_value()) {
+    out << *evidence.execution_block_index;
+  } else {
+    out << "none";
+  }
+  out << " candidate_move_bundle_count=" << evidence.total_move_bundle_count;
+  out << " candidate_phase_block_entry_count="
+      << evidence.matching_phase_count;
+  out << " candidate_authority_out_of_ssa_parallel_copy_count="
+      << evidence.matching_authority_count;
+  out << " candidate_execution_block_count="
+      << evidence.matching_execution_block_count;
+  out << " candidate_predecessor_label_count="
+      << evidence.matching_predecessor_label_count;
+  out << " candidate_successor_label_count="
+      << evidence.matching_successor_label_count;
+  out << " candidate_exact_parallel_copy_match_count="
+      << evidence.exact_match_count;
+  out << " value_home_type_f128_facts=unavailable_at_missing_move_bundle";
+}
+
 [[nodiscard]] bool move_bundle_has_parallel_copy_owner(
     const PreparedControlFlowFunction& control_flow,
     const PreparedValueLocationFunction* value_locations,
@@ -356,6 +486,9 @@ void append_parallel_copy_events_for_block(
         .move_bundle = find_parallel_copy_move_bundle(
             control_flow, value_locations, parallel_copy_bundle),
         .parallel_copy_bundle = &parallel_copy_bundle,
+        .move_bundle_lookup_evidence =
+            collect_parallel_copy_move_bundle_lookup_evidence(
+                control_flow, value_locations, parallel_copy_bundle),
     });
   }
 }
@@ -708,6 +841,12 @@ classify_prepared_object_move_bundle_consumer(
   result.event_kind = event.kind;
   result.block_index = event.block_index;
   result.instruction_index = event.instruction_index;
+  if (event.prepared_block != nullptr &&
+      event.prepared_block->block_label != kInvalidBlockLabel) {
+    result.prepared_block_label = event.prepared_block->block_label;
+  }
+  result.parallel_copy_bundle = event.parallel_copy_bundle;
+  result.move_bundle_lookup_evidence = event.move_bundle_lookup_evidence;
 
   if (!prepared_object_event_kind_can_consume_move_bundle(event.kind)) {
     result.status =
@@ -722,7 +861,6 @@ classify_prepared_object_move_bundle_consumer(
 
   const auto& move_bundle = *event.move_bundle;
   result.move_bundle = &move_bundle;
-  result.parallel_copy_bundle = event.parallel_copy_bundle;
   result.phase = move_bundle.phase;
   result.move_count = move_bundle.moves.size();
 
@@ -993,9 +1131,14 @@ std::optional<PreparedObjectConsumerDiagnostic> diagnose_prepared_object_consume
           PreparedObjectConsumerDiagnosticCategory::UnsupportedEventKind,
           "prepared move-bundle consumer requires a copy traversal event");
     case PreparedObjectMoveBundleConsumerStatus::MissingMoveBundle:
-      return make_consumer_diagnostic(
-          PreparedObjectConsumerDiagnosticCategory::MissingMoveBundle,
-          "prepared copy traversal event is missing move-bundle authority");
+      {
+        std::ostringstream out;
+        out << "prepared copy traversal event is missing move-bundle authority";
+        append_move_bundle_consumer_evidence(out, classification);
+        return make_consumer_diagnostic(
+            PreparedObjectConsumerDiagnosticCategory::MissingMoveBundle,
+            out.str());
+      }
     case PreparedObjectMoveBundleConsumerStatus::EmptyMoveBundle:
       return make_consumer_diagnostic(
           PreparedObjectConsumerDiagnosticCategory::EmptyMoveBundle,
