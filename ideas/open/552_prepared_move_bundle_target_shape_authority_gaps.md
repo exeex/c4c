@@ -7,9 +7,10 @@ Owning Layer: Prepared/module target-shape authority
 
 ## Goal
 
-Repair or refine prepared/module publication for the 31 current
+Repair or refine prepared/module publication for the 31 originally classified
 `unsupported_move_bundle_target_shape` rows classified as
-`prepared_module_target_shape_authority_gap`.
+`prepared_module_target_shape_authority_gap`, plus prepared-authority residuals
+routed out of the closed RV64 materialization lane.
 
 ## Why This Exists
 
@@ -26,7 +27,9 @@ publish coherent move classification, home, type, and ABI authority first.
 - Classification note:
   `docs/rv64_gcc_torture_post_contract/move_bundle_target_shape_classification.md`
 - Lane filter: `first_owner_lane=prepared_module_target_shape_authority_gap`
-- Current row count: 31
+- Current row count: 31 originally classified rows, plus 12 residual rows
+  routed from
+  `ideas/closed/551_rv64_move_bundle_materialization_from_classified_bucket.md`
 
 Current missing-fact subqueues from the classification table:
 
@@ -36,10 +39,22 @@ Current missing-fact subqueues from the classification table:
 - 2 `prepared_return_abi_destination_home_authority` rows.
 - 1 `prepared_select_publication_source_home_authority` row.
 
+Additional carry-in rows from the RV64 materialization closure:
+
+- Classifier reroutes through
+  `ambiguous_non_parallel_multi_source_stack_destination`:
+  `src/20020226-1.c`, `src/20020508-1.c`, `src/20020508-2.c`,
+  `src/20020508-3.c`, `src/pr40386.c`, and `src/pr81281.c`.
+- Generic-fragment residuals whose row-level evidence points at prepared
+  authority instead of an RV64 materialization rule:
+  `src/20000717-3.c`, `src/20100316-1.c`, `src/920908-2.c`,
+  `src/loop-2d.c`, `src/strcmp-1.c`, and `src/strncmp-1.c`.
+
 ## In Scope
 
 - Make prepared/module move-bundle publication explicit and coherent for the
-  31 classified authority-gap rows.
+  originally classified authority-gap rows and the RV64 materialization
+  carry-in rows.
 - Repair source-home, destination-home, type/size/alignment, return ABI, and
   select-publication authority where those are the earliest missing facts.
 - Preserve row-level evidence that proves RV64 can consume the repaired facts
