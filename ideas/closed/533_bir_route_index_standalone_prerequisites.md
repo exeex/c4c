@@ -1,6 +1,6 @@
 # BIR Route Index Standalone Prerequisites
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving prerequisite cleanup
 Parent: `ideas/open/530_bir_route_header_split_after_body_moves.md`
 Owning Layer: BIR route declaration surface
@@ -78,3 +78,34 @@ owns the prerequisite mapping and any minimal declaration splits needed before
 - The old route-index dependency problem is retained behind a renamed
   catch-all header or another aggregator-only abstraction while being claimed
   as standalone progress.
+
+## Completion Notes
+
+Closed after Step 4 lifecycle checkpoint.
+
+The route-index standalone question is answered for this prerequisite idea:
+`bir_route_index.hpp` remains aggregator-only for now, backed by the direct
+top-level include probe recorded in `todo.md`. The remaining blocker is
+`RouteIndexRecordReference::value`, which stores `Route1SourceValueIdentity`
+by value and therefore requires that complete type rather than only a forward
+declaration.
+
+Implemented prerequisite movement split route4/route7 status and role
+declarations plus supporting includes into
+`src/backend/bir/bir_route_index_prereqs.hpp`, keeping `bir.hpp` as the
+compatibility aggregator. No implementation bodies, route semantics, public
+API names, signatures, or enum values changed.
+
+Close gate:
+
+```bash
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering)$') > test_after.log 2>&1
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: PASS, before=2 passed / 0 failed, after=2 passed / 0 failed.
+
+Follow-up route1 identity prerequisite work is intentionally not folded into
+this source idea. It should be opened as a separate idea only when the
+supervisor chooses to pursue the remaining complete-type blocker by changing
+the route1 identity declaration boundary or the route-index record layout.
