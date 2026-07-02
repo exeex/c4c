@@ -9799,6 +9799,15 @@ int rejects_prepared_same_module_sret_call_fail_closed_shapes() {
   }
 
   prepared = make_prepared_same_module_sret_call_module();
+  prepared.call_plans.functions[0].calls[0].arguments[0]
+      .source_selection->source_pointer_byte_delta = std::int64_t{-8};
+  prepared.call_plans.functions[0].calls[0].arguments[0]
+      .source_selection->address_materialization_byte_offset = std::int64_t{8};
+  if (expect_same_module_sret_call_rejection(prepared) != 0) {
+    return 1;
+  }
+
+  prepared = make_prepared_same_module_sret_call_module();
   prepared.frame_plan.functions[1].has_dynamic_stack = true;
   if (expect_prepared_rejection_diagnostic(
           prepared,

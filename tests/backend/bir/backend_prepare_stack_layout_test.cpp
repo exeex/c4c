@@ -5828,16 +5828,26 @@ int check_external_same_module_computed_address_formal_provenance_stays_fail_clo
     return fail("expected external-linkage same-module callee to keep unknown formal pointer authority");
   }
 
-  const auto* access = find_pointer_value_access_by_result(
-      prepared,
-      "same_module_computed_address_callee",
-      "%loaded.value.0");
-  if (access == nullptr) {
-    return fail("expected external-linkage same-module formal fixture to publish addressing");
-  }
-  if (prepare::prepared_pointer_value_memory_has_proven_authority(access->address)) {
-    return fail(
-        "expected external-linkage same-module formal provenance to stay fail-closed");
+  for (const std::string_view result_name :
+       {"%loaded.value.0", "%loaded.value.1", "%loaded.value.2"}) {
+    const auto* access = find_pointer_value_access_by_result(
+        prepared,
+        "same_module_computed_address_callee",
+        result_name);
+    if (access == nullptr) {
+      return fail("expected external-linkage same-module formal fixture to publish addressing");
+    }
+    if (!access->address.pointer_value_name.has_value() ||
+        access->address.byte_offset != 0 ||
+        access->address.size_bytes != 8 ||
+        access->address.align_bytes != 8 ||
+        !access->address.can_use_base_plus_offset) {
+      return fail("expected external-linkage formal pointer loads to keep pointer-value address facts");
+    }
+    if (prepare::prepared_pointer_value_memory_has_proven_authority(access->address)) {
+      return fail(
+          "expected external-linkage same-module formal provenance to stay fail-closed");
+    }
   }
 
   return 0;
@@ -5890,10 +5900,30 @@ int check_pointer_value_memory_authority_contract() {
   }
 
   rejected_address = proven_address;
+  rejected_address.provenance.layout_authority =
+      bir::MemoryLayoutAuthorityKind::OpaqueCompatibility;
+  rejected_address.provenance.range_verdict =
+      bir::MemoryRangeVerdict::UnknownCompatible;
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
+    return fail("expected opaque-compatible pointer-value layout to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
   rejected_address.provenance.range_verdict =
       bir::MemoryRangeVerdict::UnknownCompatible;
   if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
     return fail("expected unknown-compatible pointer-value range to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.provenance.object_extent =
+      bir::MemoryObjectExtent{
+          .completeness = bir::MemoryObjectExtentCompleteness::Unknown,
+          .size_bytes = 0,
+          .size_known = false,
+      };
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
+    return fail("expected unknown pointer-value object extent to stay fail-closed");
   }
 
   rejected_address = proven_address;
@@ -5922,6 +5952,16 @@ int check_pointer_value_memory_authority_contract() {
       bir::MemoryRangeVerdict::ProvenOutOfBounds;
   if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
     return fail("expected out-of-bounds pointer-value range to stay fail-closed");
+  }
+
+  rejected_address = proven_address;
+  rejected_address.byte_offset = -8;
+  rejected_address.provenance.requested_range =
+      bir::make_memory_byte_range(-8, 4);
+  rejected_address.provenance.range_verdict =
+      bir::MemoryRangeVerdict::ProvenInBounds;
+  if (prepare::prepared_pointer_value_memory_has_proven_authority(rejected_address)) {
+    return fail("expected pointer-delta pointer-value range to stay fail-closed");
   }
 
   return 0;
