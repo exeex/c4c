@@ -1,50 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/520_bir_render_owner_preservation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Apply Minimal Ownership Change Or Preserve Decision
+Current Step ID: 4
+Current Step Title: Validate Render Ownership
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Apply Minimal Ownership Change Or Preserve Decision is complete for
-idea 520.
+Step 4 - Validate Render Ownership is complete for idea 520.
 
-Moved the definitions of `render_type`, `render_binary_opcode`, and
-`render_cast_opcode` out of `src/backend/bir/bir.cpp` and into the new narrow
-render translation unit `src/backend/bir/bir_render.cpp`. Public declarations
-remain in `src/backend/bir/bir.hpp`; no printer, route, validation, test,
-expectation, or output spelling changes were made.
+Recorded the accepted validation for the Step 3 BIR render ownership move.
+Step 3 ran `git diff --check` and:
 
-Fixed the narrow direct-source backend BIR test metadata gap by adding
-`src/backend/bir/bir_render.cpp` to `backend_lir_to_bir_notes_test`, the target
-that compiles `bir.cpp` and LIR-to-BIR sources directly without linking through
-the backend source set.
+```sh
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1
+```
+
+The supervisor then ran regression guard first in strict mode, which reported
+an equal pass count as a non-increase, and then with
+`--allow-non-decreasing-passed`, which passed with before=345/345 and
+after=345/345, no new failures, and no new tests over 30s. The accepted
+`test_after.log` was rolled forward to `test_before.log`; `test_after.log` is
+no longer present.
 
 ## Suggested Next
 
-Supervisor can review the completed Step 3 slice, decide whether additional
-acceptance validation is needed, and commit the coherent code plus `todo.md`
-update if accepted.
+Suggested Step 5 handoff: close-readiness review for idea 520. Confirm the
+implemented render ownership move, test metadata update, accepted regression
+guard result, and rolled-forward baseline are sufficient for lifecycle close or
+final supervisor commit handling.
 
 ## Watchouts
 
-`src/backend/CMakeLists.txt` picked up `bir_render.cpp` through
-`GLOB_RECURSE CONFIGURE_DEPENDS`. `backend_prepare_phi_materialize_test` also
-names `bir.cpp` directly, but it links `c4c_backend`, which supplies the new
-render TU; the delegated backend proof passed without adding a duplicate source
-entry there. `bir_printer.cpp` remains rejected for this route because the
-audited consumer map is mixed, not printer-only.
+No implementation, build metadata, tests, expectations, or root logs were
+changed for Step 4. `bir_printer.cpp` remains rejected for this route because
+the audited consumer map is mixed, not printer-only.
 
 ## Proof
 
-Delegated proof command:
+No new build or ctest run was required for this validation-bookkeeping packet.
+Accepted Step 3 proof:
 
 ```sh
-git diff --check && { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1
+git diff --check
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1
 ```
 
-`git diff --check` passed. `cmake --build --preset default` passed, and
-`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed.
-`test_after.log` contains the full proof log.
+Supervisor regression guard acceptance passed with
+`--allow-non-decreasing-passed`: before=345/345, after=345/345, no new
+failures, and no new tests over 30s. The accepted `test_after.log` was rolled
+forward to `test_before.log`, so `test_after.log` is no longer present.
