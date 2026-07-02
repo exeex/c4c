@@ -11660,6 +11660,13 @@ int builds_prepared_register_to_stack_before_instruction_move_bundle_object() {
   if (!module->relocations.empty()) {
     return fail("expected prepared GPR-to-stack move object to need no relocations");
   }
+  const auto image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(prepared);
+  if (!image.ok() || !image.image.has_value() ||
+      image.prepared_consumer_category.has_value() ||
+      !image.diagnostic.empty()) {
+    return fail("expected prepared GPR-to-stack ELF writer to accept same-width register-source stack-destination move");
+  }
   return 0;
 }
 
@@ -11767,6 +11774,15 @@ int rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes() {
           std::string::npos) {
     return fail("conversion-aware register-source stack-destination mismatch should produce classifier diagnostic, got `" +
                 conversion_mismatch.diagnostic + "`");
+  }
+  const auto conversion_mismatch_image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(
+          prepared);
+  if (conversion_mismatch_image.ok() ||
+      conversion_mismatch_image.image.has_value() ||
+      conversion_mismatch_image.prepared_consumer_category.has_value() ||
+      conversion_mismatch_image.diagnostic != conversion_mismatch.diagnostic) {
+    return fail("ELF writer should preserve classifier-owned register-source stack-destination conversion diagnostic");
   }
 
   prepared =
