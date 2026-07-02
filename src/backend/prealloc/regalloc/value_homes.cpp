@@ -360,6 +360,35 @@ riscv_fpr_identity_for_assigned_register(
   return true;
 }
 
+void publish_register_scalar_storage_facts(const c4c::TargetProfile& target_profile,
+                                           PreparedValueHome& home,
+                                           const PreparedRegallocValue& value) {
+  if (target_profile.arch != c4c::TargetArch::Riscv64) {
+    return;
+  }
+  switch (value.type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+      break;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return;
+  }
+  const std::size_t size_bytes = stack_layout::fallback_type_size(value.type);
+  if (size_bytes == 0) {
+    return;
+  }
+  home.size_bytes = size_bytes;
+  home.align_bytes = stack_layout::normalize_alignment(value.type, 0, size_bytes);
+}
+
 }  // namespace
 
 PreparedValueHome classify_prepared_value_home(
@@ -425,6 +454,7 @@ PreparedValueHome classify_prepared_value_home(
       if (function->is_variadic && value.assigned_register.has_value()) {
         home.kind = PreparedValueHomeKind::Register;
         home.register_name = value.assigned_register->register_name;
+        publish_register_scalar_storage_facts(target_profile, home, value);
         return home;
       }
       if (param.abi->passed_on_stack && param.type == bir::TypeKind::F128) {
@@ -458,6 +488,7 @@ PreparedValueHome classify_prepared_value_home(
       if (register_name.has_value()) {
         home.kind = PreparedValueHomeKind::Register;
         home.register_name = *register_name;
+        publish_register_scalar_storage_facts(target_profile, home, value);
         if (const auto placement = call_arg_destination_register_placement(
                 target_profile, *param.abi, *abi_register_index);
             placement.has_value()) {
@@ -558,6 +589,7 @@ PreparedValueHome classify_prepared_value_home(
   if (value.assigned_register.has_value()) {
     home.kind = PreparedValueHomeKind::Register;
     home.register_name = value.assigned_register->register_name;
+    publish_register_scalar_storage_facts(target_profile, home, value);
     home.target_register_identity =
         riscv_fpr_identity_for_assigned_register(target_profile, *value.assigned_register);
     return home;
