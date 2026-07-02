@@ -6499,6 +6499,43 @@ std::optional<std::uint32_t> rv64_int_to_fp_cast_funct7(
   }
 }
 
+std::optional<std::uint32_t> rv64_fp_to_int_cast_rs2(
+    c4c::backend::bir::CastOpcode opcode,
+    c4c::backend::bir::TypeKind result_type) {
+  switch (result_type) {
+    case c4c::backend::bir::TypeKind::I32:
+      if (opcode == c4c::backend::bir::CastOpcode::FPToSI) {
+        return 0;  // fcvt.w.{s,d}
+      }
+      if (opcode == c4c::backend::bir::CastOpcode::FPToUI) {
+        return 1;  // fcvt.wu.{s,d}
+      }
+      return std::nullopt;
+    case c4c::backend::bir::TypeKind::I64:
+      if (opcode == c4c::backend::bir::CastOpcode::FPToSI) {
+        return 2;  // fcvt.l.{s,d}
+      }
+      if (opcode == c4c::backend::bir::CastOpcode::FPToUI) {
+        return 3;  // fcvt.lu.{s,d}
+      }
+      return std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<std::uint32_t> rv64_fp_to_int_cast_funct7(
+    c4c::backend::bir::TypeKind source_type) {
+  switch (source_type) {
+    case c4c::backend::bir::TypeKind::F32:
+      return 0x60;
+    case c4c::backend::bir::TypeKind::F64:
+      return 0x61;
+    default:
+      return std::nullopt;
+  }
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_floating_cast(
     const c4c::backend::prepare::PreparedNameTables& names,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
@@ -6533,6 +6570,37 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_floating_cast(
               encode_r_type(0x53,
                             *destination,
                             0,
+                            *source,
+                            *rs2,
+                            *funct7));
+  return fragment;
+}
+
+std::optional<RiscvEncodedFragment> fragment_for_prepared_fp_to_int_cast(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::bir::CastInst& cast) {
+  const auto rs2 = rv64_fp_to_int_cast_rs2(cast.opcode, cast.result.type);
+  const auto funct7 = rv64_fp_to_int_cast_funct7(cast.operand.type);
+  if (!rs2.has_value() || !funct7.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* destination_home = prepared_value_home_for(names, lookups, cast.result);
+  const auto* source_home = prepared_value_home_for(names, lookups, cast.operand);
+  const auto destination =
+      destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
+  const auto source =
+      source_home == nullptr ? std::nullopt : fpr_register_number_for_home(*source_home);
+  if (!destination.has_value() || !source.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  append_le32(fragment.bytes,
+              encode_r_type(0x53,
+                            *destination,
+                            1,
                             *source,
                             *rs2,
                             *funct7));
@@ -6661,6 +6729,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_cast(
     const c4c::backend::bir::CastInst& cast,
     std::size_t stack_frame_bytes) {
   if (auto fragment = fragment_for_prepared_floating_cast(names, lookups, cast)) {
+    return fragment;
+  }
+  if (auto fragment = fragment_for_prepared_fp_to_int_cast(names, lookups, cast)) {
     return fragment;
   }
   if (auto fragment = fragment_for_prepared_int_to_fp_cast(stack_layout,
@@ -10937,7 +11008,7 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
     if (rv64_floating_type(cast->operand.type) ||
         rv64_floating_type(cast->result.type)) {
       return std::string{
-          "unsupported_floating_cast: RV64 object route supports only prepared FPR width casts and I32/I64-to-F32/F64 integer-to-floating casts"};
+          "unsupported_floating_cast: RV64 object route supports only prepared FPR width casts, I32/I64-to-F32/F64 integer-to-floating casts, and FPR-register-source F32/F64-to-I32/I64 floating-to-integer casts"};
     }
   }
   if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
