@@ -1,6 +1,6 @@
 # BIR Route8 Return-Chain Body Extraction
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 2 of 13, after `ideas/open/520_bir_render_owner_preservation.md`
@@ -39,6 +39,20 @@ candidate after printer/render ownership is confirmed.
 - Focused return-chain/backend proof covers route8 public queries and callers.
 - The same return-chain records, ordering, and optional/nullopt decisions are
   produced before and after the move.
+
+## Closure Note
+
+Closed after extracting the route8 return-chain implementation bodies into
+`src/backend/bir/bir_route8.cpp` while preserving public declarations in
+`src/backend/bir/bir.hpp`. The route7 block-match dependency was reduced to a
+narrow private `route_block_matches` helper in `src/backend/bir/bir_private.hpp`
+without adding route6 or facade coupling.
+
+Accepted proof covered a fresh build and backend subset:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+The rolled-forward regression guard passed with 345/345 backend tests passing,
+and independent review found the route on track with no testcase-overfit or
+source-idea mismatch.
 
 ## Reviewer Reject Signals
 
