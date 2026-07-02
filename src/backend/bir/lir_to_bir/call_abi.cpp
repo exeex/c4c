@@ -233,6 +233,21 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> lower_signature_aggregate
   }
 
   if (structured_layouts == nullptr || !type_ref->has_struct_name_id()) {
+    if (structured_layouts != nullptr && !type_ref->has_struct_name_id() &&
+        !normalized_type.empty() &&
+        (normalized_type.front() == '{' || normalized_type.front() == '[')) {
+      const auto layout =
+          lir_to_bir_detail::lookup_backend_aggregate_type_layout_result(normalized_type,
+                                                                         type_decls,
+                                                                         *structured_layouts)
+              .layout;
+      if ((layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
+           layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) ||
+          layout.size_bytes == 0 || layout.align_bytes == 0) {
+        return std::nullopt;
+      }
+      return layout;
+    }
     return std::nullopt;
   }
 

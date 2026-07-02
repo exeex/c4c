@@ -28,6 +28,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     std::string_view lir_producer_block_label,
     std::optional<std::size_t> lir_producer_instruction_index) {
   auto& value_aliases = value_aliases_;
+  auto& aggregate_value_aliases = aggregate_value_aliases_;
   auto& compare_exprs = compare_exprs_;
   auto& local_slot_types = local_slot_types_;
   auto& local_pointer_slots = local_pointer_slots_;
@@ -84,6 +85,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   };
   const auto fail_load = [&]() {
     note_function_lowering_family_failure("load local-memory semantic family");
+    return false;
+  };
+  const auto fail_aggregate_extract = [&]() {
+    note_function_lowering_family_failure("aggregate-extract semantic family");
     return false;
   };
   const auto resolve_runtime_pointer_address =
@@ -301,6 +306,37 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   }
 
   if (lower_runtime_intrinsic_inst(inst, value_aliases, lowered_insts)) {
+    return true;
+  }
+
+  if (const auto* extract =
+          std::get_if<c4c::codegen::lir::LirExtractValueOp>(&inst)) {
+    if (extract->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+        extract->agg.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+        extract->index < 0) {
+      return fail_aggregate_extract();
+    }
+    const auto aggregate_alias_it = aggregate_value_aliases.find(extract->agg.str());
+    if (aggregate_alias_it == aggregate_value_aliases.end()) {
+      return fail_aggregate_extract();
+    }
+    const auto aggregate_it = local_aggregate_slots.find(aggregate_alias_it->second);
+    if (aggregate_it == local_aggregate_slots.end()) {
+      return fail_aggregate_extract();
+    }
+    const auto leaf_slots = collect_sorted_leaf_slots(aggregate_it->second);
+    const auto leaf_index = static_cast<std::size_t>(extract->index);
+    if (leaf_index >= leaf_slots.size()) {
+      return fail_aggregate_extract();
+    }
+    const auto slot_type_it = local_slot_types.find(leaf_slots[leaf_index].second);
+    if (slot_type_it == local_slot_types.end()) {
+      return fail_aggregate_extract();
+    }
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(slot_type_it->second, extract->result.str()),
+        .slot_name = leaf_slots[leaf_index].second,
+    });
     return true;
   }
 

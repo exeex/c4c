@@ -32,6 +32,7 @@ using c4c::codegen::lir::LirGlobal;
 using c4c::codegen::lir::LirInlineAsmOp;
 using c4c::codegen::lir::LirBinOp;
 using c4c::codegen::lir::LirCondBr;
+using c4c::codegen::lir::LirExtractValueOp;
 using c4c::codegen::lir::LirLoadOp;
 using c4c::codegen::lir::LirModule;
 using c4c::codegen::lir::LirOperand;
@@ -5833,6 +5834,117 @@ int expect_aarch64_hfa_call_result_uses_fp_lanes_not_sret() {
     }
   }
   return fail("AArch64 fixed HFA call result should materialize every FP lane, not sret");
+}
+
+LirModule make_rv64_anonymous_aggregate_return_extractvalue_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId callee_id = module.link_names.intern("anon_pair_source");
+
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "stale_anon_pair_source";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "{ float, float }";
+  callee.return_type = lir::LirTypeRef("{ float, float }");
+  module.extern_decls.push_back(std::move(callee));
+
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef("{ float, float }");
+  signature.fixed_param_types.push_back("i32");
+  signature.fixed_param_type_refs.push_back(lir::LirTypeRef("i32"));
+
+  LirFunction function;
+  function.name = "rv64_anonymous_aggregate_return_extractvalue";
+  function.signature_text =
+      "define void @rv64_anonymous_aggregate_return_extractvalue(ptr %p.x)";
+  function.signature_return_type_ref = lir::LirTypeRef("void");
+  function.params.emplace_back("%p.x", c4c::TypeSpec{.base = c4c::TB_VOID, .ptr_level = 1});
+  function.signature_params.push_back(lir::LirSignatureParam{.name = "%p.x"});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("ptr"));
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand("%t0"),
+      .return_type = lir::LirTypeRef("{ float, float }"),
+      .callee = LirOperand("@stale_anon_pair_source"),
+      .direct_callee_link_name_id = callee_id,
+      .callee_type_suffix = "(i32)",
+      .args_str = "i32 5",
+      .arg_type_refs = {lir::LirTypeRef("i32")},
+      .callee_signature = std::move(signature),
+      .structured_args = {
+          lir::LirCallArg{
+              .type = "i32",
+              .operand = LirOperand("5"),
+              .type_ref = lir::LirTypeRef("i32"),
+          },
+      },
+  });
+  entry.insts.push_back(LirExtractValueOp{
+      .result = LirOperand("%t1"),
+      .agg_type = lir::LirTypeRef("{ float, float }"),
+      .agg = LirOperand("%t0"),
+      .index = 0,
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "float",
+      .val = LirOperand("%t1"),
+      .ptr = LirOperand("%p.x"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_rv64_anonymous_aggregate_return_extractvalue_publishes_lane_facts() {
+  auto result = try_lower_to_bir_with_options(
+      make_rv64_anonymous_aggregate_return_extractvalue_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("RV64 anonymous aggregate return extractvalue fixture should lower semantically");
+  }
+
+  bool saw_sret_call = false;
+  bool saw_lane_load = false;
+  bool saw_lane_store = false;
+  for (const auto& function : result.module->functions) {
+    if (function.name != "rv64_anonymous_aggregate_return_extractvalue" ||
+        function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      if (const auto* call = std::get_if<bir::CallInst>(&inst);
+          call != nullptr && !call->is_indirect && call->callee == "anon_pair_source" &&
+          call->sret_storage_name == "%t0" && call->args.size() == 2 &&
+          call->args.front() == bir::Value::named(TypeKind::Ptr, "%t0") &&
+          call->arg_abi.size() == 2 && call->arg_abi.front().sret_pointer &&
+          call->return_type == TypeKind::Void && call->return_type_name == "void") {
+        saw_sret_call = true;
+      } else if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+                 load != nullptr && load->result == bir::Value::named(TypeKind::F32, "%t1") &&
+                 load->slot_name == "%t0.0") {
+        saw_lane_load = true;
+      } else if (const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+                 store != nullptr && store->value == bir::Value::named(TypeKind::F32, "%t1") &&
+                 store->address.has_value() &&
+                 store->address->base_kind == bir::MemoryAddress::BaseKind::PointerValue &&
+                 store->address->base_value == bir::Value::named(TypeKind::Ptr, "%p.x")) {
+        saw_lane_store = true;
+      }
+    }
+  }
+
+  if (!saw_sret_call || !saw_lane_load || !saw_lane_store) {
+    return fail("RV64 anonymous aggregate return extractvalue should publish call/lane/store facts");
+  }
+  return 0;
 }
 
 LirModule make_direct_call_symbol_identity_boundary_module(bool structured_metadata,
@@ -13027,6 +13139,11 @@ int main() {
           expect_aarch64_hfa_call_result_uses_fp_lanes_not_sret();
       aarch64_hfa_call_result_status != 0) {
     return aarch64_hfa_call_result_status;
+  }
+  if (const int rv64_anonymous_aggregate_return_extract_status =
+          expect_rv64_anonymous_aggregate_return_extractvalue_publishes_lane_facts();
+      rv64_anonymous_aggregate_return_extract_status != 0) {
+    return rv64_anonymous_aggregate_return_extract_status;
   }
 
   if (const int missing_direct_link_name_status =
