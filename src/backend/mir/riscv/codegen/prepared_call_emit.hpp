@@ -17,6 +17,13 @@ struct PreparedCurrentInstructionContext;
 gpr_register_number_for_prior_preserved_selection(
     const c4c::backend::prepare::PreparedCallArgumentSourceSelection& selection);
 
+[[nodiscard]] const c4c::backend::prepare::PreparedVariadicVaListField*
+rv64_variadic_va_list_overflow_arg_area_field(
+    const c4c::backend::prepare::PreparedVariadicEntryPlanFunction& entry_plan);
+
+[[nodiscard]] bool rv64_variadic_helper_free_entry_contract_is_complete(
+    const c4c::backend::prepare::PreparedVariadicEntryPlanFunction& entry_plan);
+
 [[nodiscard]] std::optional<std::int32_t>
 prepared_frame_slot_call_argument_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,

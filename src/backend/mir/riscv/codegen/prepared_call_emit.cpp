@@ -567,6 +567,34 @@ std::optional<std::uint32_t> gpr_register_number_for_prior_preserved_selection(
   return rv64_prepared_register_number(*selection.preserved_register_name);
 }
 
+const c4c::backend::prepare::PreparedVariadicVaListField*
+rv64_variadic_va_list_overflow_arg_area_field(
+    const c4c::backend::prepare::PreparedVariadicEntryPlanFunction& entry_plan) {
+  namespace prepare = c4c::backend::prepare;
+
+  for (const auto& field : entry_plan.va_list_layout.fields) {
+    if (field.kind == prepare::PreparedVariadicVaListFieldKind::OverflowArgArea) {
+      return &field;
+    }
+  }
+  return nullptr;
+}
+
+bool rv64_variadic_helper_free_entry_contract_is_complete(
+    const c4c::backend::prepare::PreparedVariadicEntryPlanFunction& entry_plan) {
+  const auto* overflow_arg_area =
+      rv64_variadic_va_list_overflow_arg_area_field(entry_plan);
+  return !entry_plan.register_save_area.required &&
+         entry_plan.overflow_area.required &&
+         entry_plan.overflow_area.align_bytes == std::optional<std::size_t>{8} &&
+         entry_plan.va_list_layout.required &&
+         entry_plan.va_list_layout.size_bytes == std::optional<std::size_t>{8} &&
+         entry_plan.va_list_layout.align_bytes == std::optional<std::size_t>{8} &&
+         entry_plan.va_list_layout.fields.size() == 1 &&
+         overflow_arg_area != nullptr && overflow_arg_area->offset_bytes == 0 &&
+         overflow_arg_area->size_bytes == 8;
+}
+
 std::optional<std::int32_t> prepared_frame_slot_call_argument_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,

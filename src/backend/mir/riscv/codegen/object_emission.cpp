@@ -291,13 +291,6 @@ std::optional<std::size_t> rv64_object_stack_frame_size(
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout);
 
-const prepare::PreparedVariadicVaListField*
-rv64_variadic_va_list_overflow_arg_area_field(
-    const prepare::PreparedVariadicEntryPlanFunction& entry_plan);
-
-bool rv64_variadic_helper_free_entry_contract_is_complete(
-    const prepare::PreparedVariadicEntryPlanFunction& entry_plan);
-
 std::optional<std::string> rv64_variadic_incoming_gpr_publications_diagnostic(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const prepare::PreparedVariadicEntryPlanFunction& entry_plan,
@@ -369,37 +362,11 @@ std::optional<std::string> rv64_variadic_va_start_runtime_state_diagnostic(
   return std::nullopt;
 }
 
-const prepare::PreparedVariadicVaListField*
-rv64_variadic_va_list_overflow_arg_area_field(
-    const prepare::PreparedVariadicEntryPlanFunction& entry_plan) {
-  for (const auto& field : entry_plan.va_list_layout.fields) {
-    if (field.kind == prepare::PreparedVariadicVaListFieldKind::OverflowArgArea) {
-      return &field;
-    }
-  }
-  return nullptr;
-}
-
 std::optional<std::int32_t> prepared_stack_slot_home_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedValueHome& home,
     std::size_t stack_frame_bytes,
     std::size_t size_bytes);
-
-bool rv64_variadic_helper_free_entry_contract_is_complete(
-    const prepare::PreparedVariadicEntryPlanFunction& entry_plan) {
-  const auto* overflow_arg_area =
-      rv64_variadic_va_list_overflow_arg_area_field(entry_plan);
-  return !entry_plan.register_save_area.required &&
-         entry_plan.overflow_area.required &&
-         entry_plan.overflow_area.align_bytes == std::optional<std::size_t>{8} &&
-         entry_plan.va_list_layout.required &&
-         entry_plan.va_list_layout.size_bytes == std::optional<std::size_t>{8} &&
-         entry_plan.va_list_layout.align_bytes == std::optional<std::size_t>{8} &&
-         entry_plan.va_list_layout.fields.size() == 1 &&
-         overflow_arg_area != nullptr && overflow_arg_area->offset_bytes == 0 &&
-         overflow_arg_area->size_bytes == 8;
-}
 
 std::optional<std::string> rv64_variadic_incoming_gpr_publications_diagnostic(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
