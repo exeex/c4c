@@ -1,6 +1,6 @@
 # BIR Local-Array And Semantic-GEP Header Readiness
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 13 of 13, after `ideas/open/531_bir_memory_provenance_header_readiness.md`, before `ideas/open/519_rv64_object_emission_cleanup_umbrella.md`
@@ -52,3 +52,28 @@ cycles and accidental semantic churn.
   headers.
 - Lowering behavior or capability tests are edited to justify the split.
 - The slice proceeds before memory provenance ownership is settled.
+
+## Closure Notes
+
+Closed after the behavior-preserving aggregator-only
+`src/backend/bir/bir_local_array_semantic_gep.hpp` split. `bir.hpp` remains the
+compatibility aggregator and includes the focused header at the
+prerequisite-safe boundary after `bir_memory_provenance.hpp`.
+
+Direct consumer include replacement is intentionally parked outside this idea:
+current consumers still need broader complete BIR core model, prealloc
+publication, route, or lowering declarations. The accepted completion for this
+idea is the safe declaration-surface extraction plus proof that no behavior,
+record layout, storage, optionality, lookup, authority policy, or capability
+tests changed.
+
+Close proof used the focused backend subset for local-array proof,
+semantic-GEP, scalar local-load, and static-GEP authority coverage:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(lir_to_bir_notes|publication_plan_record|prepare_stack_layout)' > test_after.log 2>&1
+```
+
+Regression guard passed against the matching rolled-forward `test_before.log`
+with `--allow-non-decreasing-passed`: 3/3 before and 3/3 after, no new
+failures.
