@@ -1,6 +1,6 @@
 # BIR Route4 Publication Body Extraction
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 5 of 13, after `ideas/open/523_bir_route2_select_chain_body_extraction.md`
@@ -40,6 +40,22 @@ route6 are split.
 - Focused publication proof covers current-block and block-entry publication
   availability.
 - Route6 publication coverage passes when route6 consumes moved route4 bodies.
+
+## Closure Note
+
+Closed after the active runbook completed route4 publication mapping, body
+extraction, focused publication proof, and final drift review. The accepted
+slice moved route4 publication bodies into
+`src/backend/bir/bir_route4_publication.cpp` without moving public route4
+declarations, route-index facade bodies, route6 source-selection policy, test
+expectations, unsupported markers, diagnostics, or route4 record
+shape/order/optionality.
+
+Close gate used:
+`cmake --build --preset default && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_prepared_lookup_helper)$' --output-on-failure`.
+`test_before.log` and `test_after.log` both passed 2/2. The regression guard
+passed with `--allow-non-decreasing-passed`, matching this
+behavior-preserving cleanup.
 
 ## Reviewer Reject Signals
 
