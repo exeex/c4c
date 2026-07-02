@@ -8,38 +8,60 @@ Current Step Title: Inspect And Repair Call-Return Metadata
 
 ## Just Finished
 
-Step 3 - Prove Direct-Call Representative And Classify Residual was completed
-for the selected direct-call representative, `src/20000412-2.c`.
+Step 4 - Inspect And Repair Call-Return Metadata inspection half was completed
+for the selected call-return representative, `src/20050121-1.c`.
 
-The supervisor-rerun RV64 backend-object proof still exits nonzero, but the
-direct-call semantic producer admission failure is gone. The current `case.log`
-reports downstream object lowering only:
-`RISC-V backend object route unsupported prepared module shape:
-unsupported_instruction_fragment: BIR instruction requires unsupported RV64
-object lowering`.
+Current evidence:
 
-No `semantic call family`, direct-call, or call-return failure remains in the
-observed Step 3 logs for this row. `src/20000412-2.c` has moved off direct-call
-semantic admission for producer-owned reasons and should stay out of this
-source idea as downstream object lowering unless lifecycle opens a separate
-route.
+- `build/agent_state/558_step4_20050121.log` and
+  `build/rv64_gcc_c_torture_backend/src_20050121-1.c/case.log` both report
+  `bar_float` failing in `semantic call family 'call-return semantic family'`.
+- `build/c4cll --target riscv64-linux-gnu --codegen llvm
+  tests/c/external/gcc_torture/src/20050121-1.c` shows the failing shape:
+  `%t0 = call { float, float } (i32) @foo_float(i32 5)`,
+  `%t1 = extractvalue { float, float } %t0, 0`, then
+  `store float %t1, ptr %p.x`.
+- `build/c4cll --target riscv64-linux-gnu --dump-bir
+  tests/c/external/gcc_torture/src/20050121-1.c` fails before producing BIR
+  with the same call-return semantic family note.
+
+Exact producer boundary:
+
+- `BirFunctionLowerer::lower_call_inst` treats this as a metadata-rich direct
+  call and passes `call.return_type` as a `LirTypeRef` to
+  `lower_return_info_from_type`.
+- `lower_signature_aggregate_layout` rejects metadata-bearing aggregate return
+  refs that do not carry a `StructNameId`. Anonymous aggregate return refs such
+  as `{ float, float }`, `{ double, double }`, and `{ i32, i32 }` therefore
+  cannot use the existing rendered-layout compatibility bridge.
+- Because return ABI/layout admission fails at the call, BIR never publishes
+  the aggregate call-result metadata: no sret aggregate result slot, no
+  `aggregate_value_aliases[%t0]`, and no subsequent lane/extractvalue source
+  facts for `%t1`.
+
+Focused BIR test gap:
+
+- Add a metadata-rich direct call fixture for an anonymous aggregate return,
+  starting with `{ float, float } @callee(i32)` on RV64, followed by
+  `extractvalue` of lane `0` or `1` and a scalar store.
+- The test should prove producer facts, not RV64 inference: the call lowers
+  with deterministic sret aggregate result storage/ABI, the aggregate result
+  name is usable by the following `LirExtractValueOp`, and the extracted scalar
+  lane is published as a normal BIR value/source for the store.
 
 ## Suggested Next
 
-Execute Step 4 - Inspect And Repair Call-Return Metadata.
+Execute the repair half of Step 4.
 
-Inspect `src/20050121-1.c` as the call-return representative seed, capture the
-current call-return row log or BIR dump, and trace returned call-value metadata
-through BIR call emission and semantic admission. Add focused BIR coverage for
-the call-return result metadata boundary before repairing producer publication.
+Add the focused BIR coverage above, then repair producer-side call-return
+publication for metadata-rich direct calls returning anonymous aggregate values.
+The repair should admit rendered anonymous aggregate return layouts only for
+real anonymous aggregate type refs, publish the aggregate result/sret metadata,
+and handle the immediately-following `LirExtractValueOp` as an alias to the
+returned aggregate lane/source value.
 
-Supervisor proof seed for the packet:
+Suggested narrow RV64 representative command after repair:
 
-- `src/20050121-1.c`
-
-Suggested narrow RV64 representative command:
-
-- `printf '%s\n' src/20050121-1.c > build/agent_state/558_step4_20050121.allowlist`
 - `ALLOWLIST=build/agent_state/558_step4_20050121.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
 
 ## Watchouts
@@ -51,27 +73,39 @@ current RV64 object-route failure for `src/20000412-2.c` is downstream and is
 not a reason to broaden this source idea. The runbook must cover call-return
 metadata before claiming the source idea is complete.
 
-For Step 4, do not infer call-return result facts in prepared/RV64 consumers.
-If `src/20050121-1.c` has already moved to a different owner, inspect at least
-one current call-return row before asking lifecycle to split or advance.
+For Step 4 repair, keep the fix in BIR semantic producer lowering. Do not
+repair this by weakening structured aggregate identity generally: named
+aggregate signature refs should still require `StructNameId` consistency. The
+anonymous aggregate bridge should be limited to type refs with rendered
+aggregate spellings and no structured name carrier.
+
+There is no backend `LirExtractValueOp` handler today. If admitting the call
+return moves the row from call-return to scalar/local-memory because of
+`extractvalue`, keep that as the same producer packet only when the fix is the
+direct returned-aggregate lane alias/source fact. Broader arbitrary
+`insertvalue`/`extractvalue` aggregate construction is a separate route unless
+needed for this call-return source contract.
 
 ## Proof
 
 Proof logs:
 
-- `build/agent_state/558_step3_20000412.log`
-- `build/rv64_gcc_c_torture_backend/src_20000412-2.c/case.log`
+- `build/agent_state/558_step4_20050121.log`
+- `build/rv64_gcc_c_torture_backend/src_20050121-1.c/case.log`
 
 Commands:
 
-- `ALLOWLIST=build/agent_state/558_step1_20000412.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/558_step3_20000412.log 2>&1`
-  exited `1`, expected because the selected row still fails downstream.
+- `build/c4cll --target riscv64-linux-gnu --codegen llvm
+  tests/c/external/gcc_torture/src/20050121-1.c` showed the aggregate-return
+  direct call plus `extractvalue`/store shape.
+- `build/c4cll --target riscv64-linux-gnu --dump-bir
+  tests/c/external/gcc_torture/src/20050121-1.c` failed with the expected
+  call-return semantic family diagnostic.
 - `git diff --check -- todo.md` passed.
 
 Residual classification:
 
-- Direct-call semantic admission: moved/resolved for this representative.
-- Current owner: downstream RV64 object lowering.
-- Current failure:
-  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64
-  object lowering`.
+- Call-return semantic admission: still active for this representative.
+- Current owner: BIR call-return producer metadata.
+- Current failure: metadata-rich direct anonymous aggregate return calls reject
+  the return layout before publishing aggregate result/extractvalue lane facts.
