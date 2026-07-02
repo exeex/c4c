@@ -8,79 +8,58 @@ Current Step Title: Classify Global-Data Ownership
 
 ## Just Finished
 
-Completed plan Step 1 by reconstructing current representative evidence for
-the three infrastructure buckets with a seven-row RV64 gcc-torture allowlist.
+Completed plan Step 2 by classifying the two current
+`unsupported_global_data` representatives into prepared-contract versus RV64
+object-route ownership.
 
-Fresh representative outcomes:
+Classifications:
 
-- `unsupported_global_data`
-  - `src/20000412-1.c`:
-    `unsupported_global_data: prepared selected object-data contract
-    status=unsupported_but_coherent object_label_id=2 object_size_bytes=1656
-    emitted_byte_count=0 zero_fill_byte_count=0`.
-  - `src/20001121-1.c`:
-    `unsupported_global_data: RV64 object route supports only 1-, 2-, 4-, and
-    8-byte prepared global memory accesses`.
-  - First-owner hint: prepared object-data facts are present enough to select
-    the object route; later classification should separate prepared selected
-    object-data contract support from RV64 object emission consumption in
-    `src/backend/mir/riscv/codegen/object_emission.cpp`.
-  - Evidence sufficiency for Step 2: enough.
-- `unsupported_stack_frame`
-  - `src/20000603-1.c`:
-    `unsupported_stack_frame: RV64 object route does not support non-GPR
-    prepared callee-saved register save slots (fpr:fs1)`.
-  - `src/20030209-1.c`:
-    same `fpr:fs1` non-GPR prepared callee-saved save-slot diagnostic.
-  - First-owner hint: prepared frame/callee-saved facts exist and name FPR
-    slots; later classification should decide whether ordinary-C scope can
-    support RV64 FPR callee-saved frame emission or whether these rows belong
-    outside the immediate GPR stack-frame lane.
-  - Evidence sufficiency for Step 3: enough.
-- `unsupported_prepared_move_bundle_classification`
-  - `src/20010224-1.c`:
-    stack-source stack-destination conversion-adjacent move rejected by
-    `diagnostic_owner=prepared_move_bundle_classifier`,
-    `fragment_status=producer_classification_rejected_stack_source_stack_destination_conversion_adjacent_move`,
-    in function `ba_compute_psd`.
-  - `src/pr87623.c`:
-    same classifier rejection shape in function `a_or_b_different`.
-  - First-owner hint: producer-side prepared move-bundle classification is
-    rejecting conversion-adjacent stack-to-stack moves before RV64 lowering;
-    later classification should inspect classifier authority rather than
-    consume the move in RV64 by inference.
-  - Evidence sufficiency for Step 4: enough.
+- `src/20000412-1.c`:
+  first owner is the prepared object-data contract. The row reports
+  `prepared selected object-data contract status=unsupported_but_coherent
+  object_label_id=2 object_size_bytes=1656 emitted_byte_count=0
+  zero_fill_byte_count=0`. Prepared has a label and extent, but it has not
+  published consumable zero-fill/emitted-byte authority for the selected global
+  object data. RV64 sees selected object data but cannot consume
+  `unsupported_but_coherent`, and the selected zero-fill fallback does not
+  apply because the facts report no zero-fill authority for the 1656-byte
+  object.
+- `src/20001121-1.c`:
+  first owner is RV64 object-route global-data consumption. Prepared facts are
+  present far enough for the route to classify the operation as prepared global
+  memory access; the failing gate is RV64's
+  `rv64_global_scalar_memory_size_for_type`, which currently accepts
+  integer/pointer `I8`, `I16`, `I32`, `I64`, and `Ptr`, but not the row's
+  global `double` / `F64` load shape.
 
-Rows that moved or are missing from intended buckets:
+Implementation-ready follow-up buckets:
 
-- `src/930513-2.c` now passes the delegated RV64 object-route backend
-  allowlist row and is no longer current evidence for an infrastructure
-  bucket.
+- Prepared producer follow-up: publish coherent selected object-data facts for
+  ordinary zero-initialized global arrays like `src/20000412-1.c`, rather than
+  teaching RV64 to consume unsupported-marker selected object data.
+- RV64 consumer follow-up: add or explicitly route prepared floating global
+  load/store consumption for non-F128 `double` globals like `src/20001121-1.c`.
+
+Evidence artifact:
+
+- `build/agent_state/548_step2_global_data_classification/classification.md`
 
 ## Suggested Next
 
-Execute Step 2 by classifying the two current `unsupported_global_data`
-representatives from Step 1:
-
-- `src/20000412-1.c`: determine whether the
-  `prepared selected object-data contract status=unsupported_but_coherent`
-  diagnostic means prepared still owes an object-data contract capability, or
-  whether RV64 object emission should consume the coherent prepared payload.
-- `src/20001121-1.c`: determine whether prepared facts are already sufficient
-  and the first owner is RV64 object-route global memory access emission for
-  widths outside 1, 2, 4, and 8 bytes.
-
-Record the prepared-contract versus RV64 object-route sub-buckets, exact log
-paths, and whether the evidence is implementation-ready for one or more
-follow-up source ideas.
+Ask plan-owner to advance to Step 3 so the stack-frame representatives
+`src/20000603-1.c` and `src/20030209-1.c` can be classified for prepared-frame
+contract versus RV64 object-route ownership.
 
 ## Watchouts
 
 - This is a review/classification plan. Do not implement prepared or RV64
   lowering inside this active idea.
-- `src/20000412-1.c` and `src/20001121-1.c` are both global-data bucket rows,
-  but they expose different first-owner questions: object-data contract status
-  versus RV64 supported access widths.
+- `src/20000412-1.c` and `src/20001121-1.c` should split into separate
+  follow-up ideas if implementation proceeds: prepared zero-fill object-data
+  producer repair versus RV64 floating global-memory consumption.
+- No F128 quarantine was discovered for either global-data row. `20000412-1.c`
+  is an ordinary pointer-array global case; `20001121-1.c` uses `double`, not
+  F128.
 - The current stack-frame evidence is FPR callee-saved slot shaped
   (`fpr:fs1`), so Step 3 should explicitly screen FPR scope before treating it
   as ordinary GPR frame work.
@@ -92,36 +71,26 @@ follow-up source ideas.
 
 ## Proof
 
-Proof command:
+Proof/evidence used:
 
-```sh
-printf '%s\n' src/20000412-1.c src/20001121-1.c src/930513-2.c src/20000603-1.c src/20030209-1.c src/20010224-1.c src/pr87623.c > build/agent_state/548_step1_infrastructure_evidence.allowlist && ALLOWLIST=build/agent_state/548_step1_infrastructure_evidence.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/548_step1_infrastructure_evidence.log 2>&1
-```
+- Existing Step 1 aggregate log:
+  `build/agent_state/548_step1_infrastructure_evidence.log`
+- Existing per-case log:
+  `build/rv64_gcc_c_torture_backend/src_20000412-1.c/case.log`
+- Existing per-case log:
+  `build/rv64_gcc_c_torture_backend/src_20001121-1.c/case.log`
+- Focused Step 2 classification artifact:
+  `build/agent_state/548_step2_global_data_classification/classification.md`
 
-Result: exited `1`, acceptable for this evidence packet. The run produced
-`total=7 passed=1 failed=6`.
+No broad tests were run and no root-level `test_after.log` was written because
+the delegated packet explicitly requested existing-log classification only and
+forbade root-level proof logs.
 
 Traceable logs:
 
 - Aggregate:
   `build/agent_state/548_step1_infrastructure_evidence.log`
-- Allowlist:
-  `build/agent_state/548_step1_infrastructure_evidence.allowlist`
 - Per-case:
   `build/rv64_gcc_c_torture_backend/src_20000412-1.c/case.log`
 - Per-case:
   `build/rv64_gcc_c_torture_backend/src_20001121-1.c/case.log`
-- Per-case:
-  `build/rv64_gcc_c_torture_backend/src_930513-2.c/case.log`
-- Per-case:
-  `build/rv64_gcc_c_torture_backend/src_20000603-1.c/case.log`
-- Per-case:
-  `build/rv64_gcc_c_torture_backend/src_20030209-1.c/case.log`
-- Per-case:
-  `build/rv64_gcc_c_torture_backend/src_20010224-1.c/case.log`
-- Per-case:
-  `build/rv64_gcc_c_torture_backend/src_pr87623.c/case.log`
-
-No root-level `test_after.log` was written because the delegated packet
-explicitly owned only the Step 1 evidence log artifacts and forbade touching
-root-level `test_before.log` or `test_after.log`.
