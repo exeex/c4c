@@ -3,57 +3,73 @@
 Status: Active
 Source Idea Path: ideas/open/532_bir_local_array_semantic_gep_header_readiness.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract Only A Safe Analysis Header Boundary
+Current Step ID: 3
+Current Step Title: Probe Consumer Include Narrowing
 
 ## Just Finished
 
-Step 2 of `plan.md` extracted the first safe local-array/semantic-GEP
-analysis boundary into
-`src/backend/bir/bir_local_array_semantic_gep.hpp`.
+Step 3 of `plan.md` probed direct include narrowing for
+`src/backend/bir/bir_local_array_semantic_gep.hpp`. No repository code/header
+include replacements were made.
 
-The new header is aggregator-only. It is included from `bir.hpp` immediately
-after `bir_memory_provenance.hpp`, where `Value`, route prereqs, and memory
-provenance declarations are already available. It contains the Step 1 safe
-cluster only: local-array source/path declarations, local-array proof records
-and early evaluators/matchers, local-address provenance records/evaluator,
-local semantic-GEP records/evaluator, and global static-GEP
-authority/semantic-GEP records/evaluator.
+Selected consumers probed:
 
-No direct consumer include replacements were made. `Function` storage, the
-`Function`-taking `evaluate_local_array_interval_effect` overload, scalar
-local-load declarations, and scalar local-load inline behavior remain in
-`bir.hpp`. The scalar local-load declaration block was kept in `bir.hpp` but
-ordered after the new aggregator include so it can continue referencing the
-local-address provenance record without moving scalar-load behavior.
-
-No build-system public header list was found or edited; `src/backend` uses
-globbed sources and public include directories rather than an explicit BIR
-header install/list entry.
+- `src/backend/bir/lir_to_bir.hpp`: replacing `bir.hpp` with
+  `bir_local_array_semantic_gep.hpp` failed syntax-only compilation immediately
+  because the focused header is aggregator-ordered and does not provide its own
+  `std::string_view`/`Value`/`TypeKind` prerequisites. This consumer also needs
+  complete core BIR declarations for lowering-facing module/function surfaces.
+- `src/backend/bir/lir_to_bir/memory/local_gep.cpp`: replacing
+  `../lowering.hpp` with `../../bir_local_array_semantic_gep.hpp` failed at
+  the same focused-header prerequisite boundary before reaching the body. AST
+  type refs also show this file is tied to `BirFunctionLowerer` and complete
+  `bir::Function` route/lowering declarations, so direct narrowing is unsafe.
+- `src/backend/prealloc/publication_plans.hpp`: replacing its direct
+  `../bir/bir.hpp` include with
+  `../bir/bir_local_array_semantic_gep.hpp` syntax-checked, but only because
+  earlier includes such as `addressing.hpp` still include `../bir/bir.hpp`.
+  `-H` include tracing confirmed the full aggregator still enters through
+  `addressing.hpp -> ../bir/bir.hpp -> bir_local_array_semantic_gep.hpp`, so
+  this is not an independent or coupling-reducing replacement.
+- `src/backend/prealloc/publication_plans.cpp`: AST type refs show broad
+  complete-type use of `bir::Function`, `bir::Inst`, and
+  `prepare::PreparedBirModule`; it remains on the prealloc publication header
+  stack rather than the focused analysis header.
+- `tests/backend/mir/backend_publication_plan_record_test.cpp`: replacing
+  `publication_plans.hpp` with the focused BIR header failed syntax-only
+  compilation at the same missing focused-header prerequisites. The test also
+  constructs prepared modules/functions and calls prealloc publication APIs.
+- `tests/backend/bir/backend_lir_to_bir_notes_test.cpp`: replacing
+  `lir_to_bir.hpp` with the focused BIR header failed syntax-only compilation;
+  AST refs show complete `bir::Function` and lowering APIs are required.
+- `tests/backend/bir/backend_prepare_stack_layout_test.cpp`: replacing its
+  direct `src/backend/bir/bir.hpp` include with the focused header failed
+  syntax-only compilation at the focused-header prerequisite boundary; AST refs
+  show extensive complete `bir::Function` construction and prealloc use.
 
 ## Suggested Next
 
-Delegate Step 3: probe consumer include narrowing with temporary syntax-only
-include checks. Keep consumers on `bir.hpp` where they still require complete
-`Function`, `Inst`, route, lowering, or prepared-module declarations.
+Proceed to Step 4 validation for the behavior-preserving aggregator-only split,
+or ask the plan owner to close if the supervisor accepts that direct include
+narrowing is parked outside idea 532.
 
 ## Watchouts
 
-- `bir_local_array_semantic_gep.hpp` is not standalone in this slice; it relies
-  on the `bir.hpp` aggregator prerequisite order.
-- Do not replace consumer includes without proving the consumer no longer
-  needs complete core BIR model, route, lowering, or prealloc declarations.
-- Keep scalar local-load inline behavior parked in `bir.hpp`; it still needs
-  complete `LoadLocalInst` and `MemoryAddress`.
-- The first proof attempt hit a transient `cc1plus` killed failure while
-  compiling `backend_aarch64_instruction_dispatch_test.cpp`, outside the
-  delegated slice. Rerunning the exact delegated proof completed cleanly.
+- `bir_local_array_semantic_gep.hpp` remains aggregator-only and must keep its
+  prerequisite-safe include position inside `bir.hpp`.
+- A green replacement probe is not enough here when another include still
+  pulls in `bir.hpp`; `publication_plans.hpp` is the concrete example.
+- Direct include replacement remains parked until broader BIR core model,
+  lowering route, and prealloc publication headers expose narrower prerequisites.
 
 ## Proof
 
-Ran the delegated proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(lir_to_bir_notes|publication_plan_record|prepare_stack_layout)' > test_after.log 2>&1`
+Direct-include probe/no build. No repository code/include replacement was made,
+so the delegated full proof command was intentionally not run and
+`test_after.log` was not rewritten by this packet.
 
-Result: passed on rerun. `test_after.log` records 3/3 tests passing:
-`backend_lir_to_bir_notes`, `backend_publication_plan_record`, and
-`backend_prepare_stack_layout`.
+Syntax-only probes were run against temporary copies under
+`/tmp/c4c_step3_probe`; c4c-clang-tool type-ref queries were run for
+`publication_plans.cpp`, `local_gep.cpp`,
+`backend_publication_plan_record_test.cpp`, `backend_lir_to_bir_notes_test.cpp`,
+and `backend_prepare_stack_layout_test.cpp`.
