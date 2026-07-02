@@ -5,10 +5,15 @@
 #include "../../../prealloc/addressing.hpp"
 #include "../../../prealloc/prepared_contract_verifier.hpp"
 
+#include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace c4c::backend::riscv::codegen {
+
+namespace bir = c4c::backend::bir;
+namespace prepare = c4c::backend::prepare;
 
 namespace {
 
@@ -813,6 +818,242 @@ EdgePublicationMoveIntent append_edge_publication_move_instruction(
     output += "    " + intent.instruction_text + "\n";
   }
   return intent;
+}
+
+bool prepared_select_publication_move_is_rv64_object_admitted(
+    const EdgePublicationMoveIntent& intent) {
+  if (intent.status != EdgePublicationMoveIntentStatus::Available ||
+      intent.destination_register.empty() ||
+      intent.destination_stack_offset_bytes.has_value() ||
+      intent.source_stack_offset_bytes.has_value() ||
+      intent.source_memory_byte_offset.has_value() ||
+      intent.source_pointer_byte_delta.has_value()) {
+    return false;
+  }
+
+  const auto destination =
+      rv64_prepared_register_number(intent.destination_register);
+  if (!destination.has_value()) {
+    return false;
+  }
+
+  if (intent.source_immediate_i32.has_value()) {
+    if (!intent.source_register.empty() ||
+        !fits_signed_12_bit_immediate(*intent.source_immediate_i32)) {
+      return false;
+    }
+    return true;
+  }
+
+  if (intent.source_register.empty()) {
+    return false;
+  }
+  const auto source = rv64_prepared_register_number(intent.source_register);
+  if (!source.has_value()) {
+    return false;
+  }
+  return true;
+}
+
+bool prepared_select_publication_pointer_stack_source_to_gpr_is_admitted(
+    const EdgePublicationMoveIntent& intent) {
+  if (intent.status != EdgePublicationMoveIntentStatus::Available ||
+      intent.publication == nullptr ||
+      intent.publication->carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+      intent.source_type != bir::TypeKind::Ptr ||
+      intent.destination_type != bir::TypeKind::Ptr ||
+      !intent.source_stack_slot_id.has_value() ||
+      !intent.source_stack_offset_bytes.has_value() ||
+      intent.source_stack_size_bytes != std::optional<std::size_t>{8} ||
+      !intent.source_register.empty() ||
+      intent.source_immediate_i32.has_value() ||
+      intent.source_memory_byte_offset.has_value() ||
+      intent.source_pointer_byte_delta.has_value() ||
+      intent.destination_register.empty() ||
+      intent.destination_stack_offset_bytes.has_value() ||
+      intent.destination_stack_size_bytes.has_value()) {
+    return false;
+  }
+  if (*intent.source_stack_offset_bytes >
+      static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+    return false;
+  }
+  return fits_signed_12_bit_immediate(
+             static_cast<std::int64_t>(*intent.source_stack_offset_bytes)) &&
+         rv64_prepared_register_number(intent.destination_register).has_value();
+}
+
+namespace {
+
+std::optional<std::size_t> rv64_select_publication_scalar_memory_size_for_type(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I8:
+      return std::size_t{1};
+    case bir::TypeKind::I16:
+      return std::size_t{2};
+    case bir::TypeKind::I32:
+      return std::size_t{4};
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return std::size_t{8};
+    default:
+      return std::nullopt;
+  }
+}
+
+}  // namespace
+
+bool prepared_select_publication_gpr_to_stack_destination_is_admitted(
+    const EdgePublicationMoveIntent& intent) {
+  if (intent.status != EdgePublicationMoveIntentStatus::Available ||
+      intent.publication == nullptr ||
+      intent.publication->carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+      intent.source_type != intent.destination_type ||
+      intent.source_register.empty() ||
+      intent.source_immediate_i32.has_value() ||
+      intent.source_stack_slot_id.has_value() ||
+      intent.source_stack_offset_bytes.has_value() ||
+      intent.source_stack_size_bytes.has_value() ||
+      intent.source_memory_base_value_id.has_value() ||
+      !intent.source_memory_base_register.empty() ||
+      intent.source_memory_byte_offset.has_value() ||
+      intent.source_memory_size_bytes.has_value() ||
+      intent.source_pointer_base_value_id.has_value() ||
+      !intent.source_pointer_base_register.empty() ||
+      intent.source_pointer_byte_delta.has_value() ||
+      !intent.destination_register.empty() ||
+      !intent.destination_stack_slot_id.has_value() ||
+      !intent.destination_stack_offset_bytes.has_value() ||
+      !intent.destination_stack_size_bytes.has_value()) {
+    return false;
+  }
+  const auto destination_size_bytes =
+      rv64_select_publication_scalar_memory_size_for_type(intent.destination_type);
+  if (!destination_size_bytes.has_value() ||
+      *destination_size_bytes != *intent.destination_stack_size_bytes ||
+      (*intent.destination_stack_size_bytes != 1 &&
+       *intent.destination_stack_size_bytes != 2 &&
+       *intent.destination_stack_size_bytes != 4) ||
+      *intent.destination_stack_offset_bytes >
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+    return false;
+  }
+  return fits_signed_12_bit_immediate(static_cast<std::int64_t>(
+             *intent.destination_stack_offset_bytes)) &&
+         rv64_prepared_register_number(intent.source_register).has_value();
+}
+
+std::string_view edge_publication_move_intent_status_name(
+    EdgePublicationMoveIntentStatus status) {
+  switch (status) {
+    case EdgePublicationMoveIntentStatus::Available:
+      return "available";
+    case EdgePublicationMoveIntentStatus::MissingSharedLookups:
+      return "missing_shared_lookups";
+    case EdgePublicationMoveIntentStatus::MissingPublication:
+      return "missing_publication";
+    case EdgePublicationMoveIntentStatus::UnsupportedPublication:
+      return "unsupported_publication";
+    case EdgePublicationMoveIntentStatus::UnsupportedSourceHome:
+      return "unsupported_source_home";
+    case EdgePublicationMoveIntentStatus::UnsupportedDestinationHome:
+      return "unsupported_destination_home";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_edge_publication_lookup_status_name(
+    prepare::PreparedEdgePublicationLookupStatus status) {
+  switch (status) {
+    case prepare::PreparedEdgePublicationLookupStatus::Available:
+      return "available";
+    case prepare::PreparedEdgePublicationLookupStatus::MissingPredecessorLabel:
+      return "missing_predecessor_label";
+    case prepare::PreparedEdgePublicationLookupStatus::MissingSuccessorLabel:
+      return "missing_successor_label";
+    case prepare::PreparedEdgePublicationLookupStatus::MissingDestinationValue:
+      return "missing_destination_value";
+    case prepare::PreparedEdgePublicationLookupStatus::MissingDestinationHome:
+      return "missing_destination_home";
+  }
+  return "unknown";
+}
+
+std::string rv64_select_publication_move_rejection_reason(
+    const EdgePublicationMoveIntent& intent) {
+  if (intent.status != EdgePublicationMoveIntentStatus::Available) {
+    return "intent_status_" +
+           std::string(edge_publication_move_intent_status_name(intent.status));
+  }
+  if (intent.destination_register.empty()) {
+    return "missing_destination_register";
+  }
+  if (intent.destination_stack_offset_bytes.has_value()) {
+    return "unsupported_destination_stack_offset";
+  }
+  if (intent.source_stack_offset_bytes.has_value()) {
+    return "unsupported_source_stack_offset";
+  }
+  if (intent.source_memory_byte_offset.has_value()) {
+    return "unsupported_source_memory_byte_offset";
+  }
+  if (intent.source_pointer_byte_delta.has_value()) {
+    return "unsupported_source_pointer_byte_delta";
+  }
+  if (!rv64_prepared_register_number(intent.destination_register).has_value()) {
+    return "invalid_destination_register";
+  }
+  if (intent.source_immediate_i32.has_value()) {
+    if (!intent.source_register.empty()) {
+      return "immediate_with_source_register";
+    }
+    if (!fits_signed_12_bit_immediate(*intent.source_immediate_i32)) {
+      return "unsupported_source_immediate_i32_range";
+    }
+    return "available";
+  }
+  if (intent.source_register.empty()) {
+    return "missing_source_register";
+  }
+  if (!rv64_prepared_register_number(intent.source_register).has_value()) {
+    return "invalid_source_register";
+  }
+  return "available";
+}
+
+bool prepared_select_publication_pointer_stack_source_to_gpr_matches_bundle(
+    const EdgePublicationMoveIntent& intent,
+    const prepare::PreparedParallelCopyBundle& bundle) {
+  return prepared_select_publication_pointer_stack_source_to_gpr_is_admitted(
+             intent) &&
+         intent.publication->parallel_copy_bundle == &bundle &&
+         intent.publication->parallel_copy_execution_site ==
+             prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator &&
+         intent.publication->parallel_copy_execution_block_label ==
+             std::optional<BlockLabelId>{bundle.predecessor_label} &&
+         intent.publication->parallel_copy_step_kind ==
+             prepare::PreparedParallelCopyStepKind::Move &&
+         !intent.publication->parallel_copy_step_uses_cycle_temp_source &&
+         !intent.publication->parallel_copy_bundle_has_cycle;
+}
+
+bool prepared_select_publication_gpr_to_stack_destination_matches_bundle(
+    const EdgePublicationMoveIntent& intent,
+    const prepare::PreparedParallelCopyBundle& bundle) {
+  return prepared_select_publication_gpr_to_stack_destination_is_admitted(
+             intent) &&
+         intent.publication->parallel_copy_bundle == &bundle &&
+         intent.publication->parallel_copy_execution_site ==
+             prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator &&
+         intent.publication->parallel_copy_execution_block_label ==
+             std::optional<BlockLabelId>{bundle.predecessor_label} &&
+         intent.publication->parallel_copy_step_kind ==
+             prepare::PreparedParallelCopyStepKind::Move &&
+         !intent.publication->parallel_copy_step_uses_cycle_temp_source &&
+         !intent.publication->parallel_copy_bundle_has_cycle;
 }
 
 }  // namespace c4c::backend::riscv::codegen
