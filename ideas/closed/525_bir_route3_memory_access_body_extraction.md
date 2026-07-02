@@ -1,6 +1,6 @@
 # BIR Route3 Memory-Access Body Extraction
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 6 of 13, after `ideas/open/524_bir_route4_publication_body_extraction.md`
@@ -40,6 +40,12 @@ private lowering files.
 - Focused memory-access/source proof passes.
 - Route6 call-publication tests that consume route3 records pass.
 - Memory-access record construction semantics remain identical.
+
+## Closure Note
+
+Closed 2026-07-02 after the active route3 run moved the memory-access bodies
+into a focused owner while preserving public declarations, route6 access policy,
+and focused memory/source proof coverage.
 
 ## Reviewer Reject Signals
 
