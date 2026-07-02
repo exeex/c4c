@@ -179,3 +179,27 @@ evidence proves a better split:
   missing BIR/prepared fact.
 - Reject expectation rewrites, allowlist filtering, unsupported downgrades, or
   weaker runtime checks as evidence of progress.
+
+## Closure Note
+
+Closed on 2026-07-02 after the handoff directory was refreshed around the
+stable 2026-07-02 RV64 gcc_torture evidence (`1467` total, `349` pass,
+`1118` fail), stale 2026-06-30 and 2026-07-01 counts were marked historical,
+and follow-up ideas `544` through `550` were generated as the ordinary-C
+implementation queue.
+
+The generated queue separates producer gaps from MIR/RV64 lowering, keeps
+F128 in the existing low-priority policy lane `426`, treats the 567 unowned
+failures as evidence gaps rather than assigned implementation work, and leaves
+RV64 gcc_torture as external evidence rather than default CTest coverage.
+
+The activation-to-HEAD review noted implementation commit `d96c804cb`
+(`use structured same-module provenance keys`) in the broader history window.
+For lifecycle closure, that commit is scoped as unrelated already-accepted
+implementation work outside the completed docs/idea route from material
+checkpoint `339794a36`; it is not counted as umbrella output.
+
+Close gate: default `ctest --test-dir build -j --output-on-failure` was run as
+matching before/after regression proof in `test_before.log` and
+`test_after.log`; both logs passed `3374/3374` tests with `0` failures, and
+the lifecycle-only non-decreasing monotonic regression guard passed.
