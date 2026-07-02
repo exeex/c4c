@@ -1,49 +1,32 @@
-# RV64 gcc_torture Post-Contract Replan Umbrella
+# RV64 gcc_torture Current-Main Replan Umbrella
 
 Status: Open
-Type: Umbrella postmortem, triage, and follow-up idea generator
+Type: Umbrella triage and follow-up idea generator
 Parent: `ideas/closed/412_prepared_fact_contract_normalization_analysis.md`
 Handoff Directory: `docs/rv64_gcc_torture_post_contract/`
-Reference Branch: `try_gcc_torture`
 
 ## Goal
 
-Use the preserved `try_gcc_torture` branch as a failed exploratory run, extract
-the useful lessons, and generate a better ordered RV64 gcc_torture plan that
-prioritizes high-frequency ordinary C coverage over low-priority F128 work.
+Use current reset-main RV64 gcc_torture evidence to generate an ordered
+follow-up plan that prioritizes high-frequency ordinary C coverage over
+low-priority F128 work.
 
 ## Why This Exists
 
-After the prepared fact contract normalization round, the RV64 gcc_torture
-backend scan was:
+After the prepared fact contract normalization round and the BIR/RV64 cleanup
+pass, the project needs a current-main RV64 gcc_torture recovery queue instead
+of more local testcase chasing. F128 support should be treated as the
+lowest-priority RV64 feature family unless it is strictly needed as isolated
+external soft-float ABI glue. Fresh F128 failures should be classified into the
+F128 quarantine path first, not used to steer the ordinary-C RV64 recovery
+route. When a gcc_torture testcase is primarily F128, the preferred immediate
+action is to screen it out of the main progress bucket with an explicit
+quarantine/unsupported classification rather than spending implementation
+budget on it.
 
-- `1467` total cases
-- `404` pass
-- `1063` fail
-
-The exploratory `try_gcc_torture` branch then spent hundreds of commits chasing
-the focused `conversion.c`/F128 route. It did discover useful implementation
-facts, but a later full scan on that branch showed:
-
-- `1467` total cases
-- `324` pass
-- `1143` fail
-
-That result is worse than the starting post-contract baseline and shows the
-route overfit the investigation budget toward a niche F128 feature. F128 support
-should be treated as the lowest-priority RV64 feature family unless it is
-strictly needed as isolated external soft-float ABI glue. Fresh F128 failures
-should be classified into the F128 quarantine path first, not used to steer the
-ordinary-C RV64 recovery route. When a gcc_torture testcase is primarily F128,
-the preferred immediate action is to screen it out of the main progress bucket
-with an explicit quarantine/unsupported classification rather than spending
-implementation budget on it.
-
-The new umbrella must therefore do more than classify current failures. It must
-review what the `try_gcc_torture` branch taught us, identify which changes are
-worth redoing, identify which route choices were traps, and create follow-up
-ideas in an order that improves broad RV64 coverage without letting BIR or
-prepared producer gaps leak into MIR/RV64 fixups.
+The umbrella must classify current failures and create follow-up ideas in an
+order that improves broad RV64 coverage without letting BIR or prepared
+producer gaps leak into MIR/RV64 fixups.
 
 ## Current Evidence Update
 
@@ -77,17 +60,6 @@ after the umbrella finishes evidence refresh and idea materialization.
   `docs/rv64_gcc_torture_post_contract/current_scan_summary.md`.
 - Replace stale or conflicting handoff counts with the stable 2026-07-02
   `349/1118` full-scan evidence and its timestamped log path.
-- Compare reset `main` with the preserved `try_gcc_torture` scan and record
-  pass/fail deltas in
-  `docs/rv64_gcc_torture_post_contract/regression_delta.md`.
-- Write a `try_gcc_torture` postmortem in
-  `docs/rv64_gcc_torture_post_contract/try_gcc_torture_postmortem.md` that
-  answers:
-  - which broad capabilities improved,
-  - which changes regressed broad RV64 gcc_torture pass count,
-  - where the route was pulled into `conversion.c`/F128 local optimization,
-  - which F128 changes should be quarantined or rewritten,
-  - which scalar/FPR or generic RV64 changes are worth redoing.
 - Classify the remaining failures by first owning layer in
   `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`, with priority
   based on broad case count and ordinary C usefulness, not novelty.
@@ -104,7 +76,6 @@ after the umbrella finishes evidence refresh and idea materialization.
 ## Out Of Scope
 
 - Implementing RV64 fixes inside this umbrella idea.
-- Replaying the `try_gcc_torture` branch wholesale.
 - Continuing the `conversion.c` F128 route as the primary KPI.
 - Letting primary-F128 testcase rows remain in the ordinary-C repair queue when
   they can be explicitly quarantined.
@@ -133,9 +104,7 @@ semantic importance:
 4. Runtime mismatches where the RV64 object route already emits and links code
    but produces aborts, segfaults, or wrong output.
 5. Prepared/global-data and stack-frame infrastructure.
-6. Selectively redo useful scalar/FPR work from `try_gcc_torture`, such as
-   F32/F64 casts, scalar FPR binary ops, scalar floating select, and FPR
-   local-store/reload, only after bucket evidence shows broad value.
+6. Scalar/FPR work only when current bucket evidence shows broad value.
 7. F128 quarantine or external soft-float ABI glue. F128 is lowest priority and
    must not drive the umbrella. Primary-F128 testcase failures should normally
    be filtered into this quarantine lane before ordinary-C repair work is
@@ -159,14 +128,15 @@ evidence proves a better split:
 - BIR semantic producer local-memory and call metadata cleanup.
 - RV64 runtime mismatch triage for existing abort/segfault families.
 - Prepared global-data and stack-frame infrastructure review.
-- Scalar/FPR salvage plan from `try_gcc_torture`.
+- Scalar/FPR current-bucket salvage plan only if current evidence shows broad
+  non-F128 value.
 - F128 quarantine and external soft-float ABI policy, explicitly marked lowest
   priority.
 
 ## Acceptance Criteria
 
-- The handoff directory contains current scan, regression delta, failure bucket,
-  `try_gcc_torture` postmortem, and follow-up idea plan artifacts.
+- The handoff directory contains current scan, failure bucket, and follow-up
+  idea plan artifacts.
 - The current scan, failure bucket, and follow-up plan artifacts agree on the
   same stable post-cleanup scan timestamp, total/pass/fail counts, and summary
   files.
@@ -196,10 +166,8 @@ evidence proves a better split:
 - Reject allowing primary-F128 testcase rows to drive ordinary-C RV64 repair
   selection when they can be explicitly quarantined or marked unsupported under
   the F128 policy.
-- Reject wholesale cherry-picking from `try_gcc_torture` without bucket
-  evidence, default CTest proof, and route-quality review.
 - Reject umbrella output that only lists pass/fail counts without row-level
-  ownership, postmortem lessons, and follow-up ideas.
+  ownership and follow-up ideas.
 - Reject leaving stale conflicting scan summaries in the handoff docs after a
   stable newer full scan exists.
 - Reject follow-up ideas that mix BIR producer repair and MIR/RV64 lowering in

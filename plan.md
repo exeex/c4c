@@ -11,9 +11,9 @@ idea generation.
 
 ## Goal
 
-Use reset `main` plus the preserved `try_gcc_torture` branch as evidence to
-produce an ordered RV64 recovery plan that prioritizes broad ordinary-C
-coverage and keeps F128 in a quarantine or low-priority policy lane.
+Use current reset-main RV64 gcc_torture evidence to produce an ordered RV64
+recovery plan that prioritizes broad ordinary-C coverage and keeps F128 in a
+quarantine or low-priority policy lane.
 
 ## Core Rule
 
@@ -33,16 +33,12 @@ gate, and F128 must not become the main progress route.
 ## Current Targets
 
 - `docs/rv64_gcc_torture_post_contract/current_scan_summary.md`
-- `docs/rv64_gcc_torture_post_contract/regression_delta.md`
-- `docs/rv64_gcc_torture_post_contract/try_gcc_torture_postmortem.md`
 - `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`
 - `docs/rv64_gcc_torture_post_contract/followup_idea_plan.md`
 - new follow-up ideas under `ideas/open/`
 
 ## Non-Goals
 
-- Do not replay or cherry-pick the `try_gcc_torture` branch as part of this
-  umbrella.
 - Do not continue `conversion.c` or F128 as the primary KPI.
 - Do not repair BIR, prepared, MIR, RV64, runtime, or test infrastructure
   capability in this plan.
@@ -54,9 +50,7 @@ gate, and F128 must not become the main progress route.
 
 ## Working Model
 
-- The reset-main post-contract baseline and the `try_gcc_torture` branch are
-  evidence sources for route planning, not implementation patches to accept
-  wholesale.
+- Current reset-main scan evidence is the planning anchor for this umbrella.
 - Failure ownership must identify the first responsible layer before any
   implementation idea is selected.
 - Follow-up ideas should rank broad ordinary-C value ahead of niche F128 work.
@@ -86,8 +80,7 @@ acceptance-required docs still need creation or repair.
 Actions:
 - Inspect the handoff directory and source idea acceptance criteria.
 - Map existing scan, bucket, runtime, infrastructure, and follow-up docs.
-- Identify missing required docs, especially regression delta and
-  `try_gcc_torture` postmortem artifacts.
+- Identify missing required docs and stale handoff counts.
 - Record the first executable documentation packet in `todo.md`.
 
 Completion Check:
@@ -110,22 +103,20 @@ Completion Check:
 - `current_scan_summary.md` is either confirmed sufficient in `todo.md` or
   updated with traceable scan evidence and targeted diff proof.
 
-### Step 3: Write Regression Delta And Branch Postmortem
+### Step 3: Reconcile Current Evidence Artifacts
 
-Goal: Compare reset `main` to `try_gcc_torture` and capture why the exploratory
-route should not be replayed wholesale.
+Goal: Ensure the handoff docs agree on the current reset-main scan anchor and
+do not keep stale branch-comparison requirements alive.
 
 Actions:
-- Produce or repair `regression_delta.md` with pass/fail deltas between reset
-  `main` and `try_gcc_torture`.
-- Produce or repair `try_gcc_torture_postmortem.md` covering broad
-  improvements, broad regressions, F128 overfit, useful salvage candidates,
-  and changes that should be quarantined or rewritten.
+- Remove stale comparison-artifact requirements from handoff docs.
+- Ensure current scan, bucket, and follow-up artifacts cite one coherent
+  reset-main scan timestamp and matching summary files.
 - Explicitly record why `conversion.c` and primary-F128 rows are not the main
   route.
 
 Completion Check:
-- Both docs exist, include concrete branch-delta evidence, and `todo.md`
+- Handoff docs no longer require branch comparison artifacts, and `todo.md`
   records proof plus any evidence gaps.
 
 ### Step 4: Classify Failure Buckets By First Owning Layer
@@ -147,8 +138,8 @@ Completion Check:
 
 ### Step 5: Generate Ordered Follow-Up Ideas
 
-Goal: Convert the bucket evidence and postmortem into durable, separately owned
-follow-up ideas.
+Goal: Convert the bucket evidence into durable, separately owned follow-up
+ideas.
 
 Actions:
 - Update `followup_idea_plan.md` with the chosen order and rationale.
