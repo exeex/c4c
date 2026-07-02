@@ -1513,9 +1513,20 @@ int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base() {
           load->address->base_kind ==
               c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
           load->address->base_value.name == "%p.buf" &&
+          load->address->byte_offset == 0 &&
           load->address->size_bytes == 4 &&
+          load->address->align_bytes == 4 &&
           load->address->provenance.base_identity.kind ==
               c4c::backend::bir::MemoryProvenanceBaseIdentityKind::FormalParameter &&
+          load->address->provenance.base_identity.spelling == "%p.buf" &&
+          load->address->provenance.base_identity.value.name == "%p.buf" &&
+          load->address->provenance.requested_range.available &&
+          load->address->provenance.requested_range.begin == 0 &&
+          load->address->provenance.requested_range.size_bytes == 4 &&
+          load->address->provenance.requested_range.end_available &&
+          load->address->provenance.requested_range.end == 4 &&
+          load->address->provenance.range_verdict ==
+              c4c::backend::bir::MemoryRangeVerdict::UnknownCompatible &&
           load->address->provenance.layout_authority ==
               c4c::backend::bir::MemoryLayoutAuthorityKind::OpaqueCompatibility) {
         saw_opaque_pointer_base_load = true;
@@ -1526,9 +1537,20 @@ int expect_runtime_pointer_value_opaque_i32_access_uses_pointer_base() {
           store->address->base_kind ==
               c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
           store->address->base_value.name == "%p.buf" &&
+          store->address->byte_offset == 0 &&
           store->address->size_bytes == 4 &&
+          store->address->align_bytes == 4 &&
           store->address->provenance.base_identity.kind ==
               c4c::backend::bir::MemoryProvenanceBaseIdentityKind::FormalParameter &&
+          store->address->provenance.base_identity.spelling == "%p.buf" &&
+          store->address->provenance.base_identity.value.name == "%p.buf" &&
+          store->address->provenance.requested_range.available &&
+          store->address->provenance.requested_range.begin == 0 &&
+          store->address->provenance.requested_range.size_bytes == 4 &&
+          store->address->provenance.requested_range.end_available &&
+          store->address->provenance.requested_range.end == 4 &&
+          store->address->provenance.range_verdict ==
+              c4c::backend::bir::MemoryRangeVerdict::UnknownCompatible &&
           store->address->provenance.layout_authority ==
               c4c::backend::bir::MemoryLayoutAuthorityKind::OpaqueCompatibility) {
         saw_opaque_pointer_base_store = true;
@@ -6979,6 +7001,109 @@ int expect_local_array_carrier_constant_gep_publishes_source_derivation_and_layo
   return 0;
 }
 
+LirModule make_local_memory_alloca_record_contract_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.Pair = type { i32, double }");
+
+  LirFunction function;
+  function.name = "local_memory_alloca_record_contract";
+  function.signature_text = "define void @local_memory_alloca_record_contract()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.scalar"),
+      .type_str = "i32",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.array"),
+      .type_str = "[3 x i64]",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.pair"),
+      .type_str = "%struct.Pair",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_memory_alloca_records_pin_slot_and_source_contracts() {
+  auto result =
+      try_lower_to_bir_with_options(make_local_memory_alloca_record_contract_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("local-memory alloca record fixture should lower semantically");
+  }
+
+  const auto& function = result.module->functions.front();
+  const bir::LocalSlot* scalar_slot = nullptr;
+  const bir::LocalSlot* array_slot_0 = nullptr;
+  const bir::LocalSlot* array_slot_2 = nullptr;
+  const bir::LocalSlot* pair_i32_slot = nullptr;
+  const bir::LocalSlot* pair_double_slot = nullptr;
+  for (const auto& slot : function.local_slots) {
+    if (slot.name == "%lv.scalar") {
+      scalar_slot = &slot;
+    } else if (slot.name == "%lv.array.0") {
+      array_slot_0 = &slot;
+    } else if (slot.name == "%lv.array.2") {
+      array_slot_2 = &slot;
+    } else if (slot.name == "%lv.pair.0") {
+      pair_i32_slot = &slot;
+    } else if (slot.name == "%lv.pair.8") {
+      pair_double_slot = &slot;
+    }
+  }
+
+  if (scalar_slot == nullptr || scalar_slot->type != TypeKind::I32 ||
+      scalar_slot->size_bytes != 4 || scalar_slot->align_bytes != 4) {
+    return fail("scalar alloca should publish one typed local-slot record");
+  }
+  if (array_slot_0 == nullptr || array_slot_0->type != TypeKind::I64 ||
+      array_slot_0->size_bytes != 8 || array_slot_0->align_bytes != 8 ||
+      array_slot_2 == nullptr || array_slot_2->type != TypeKind::I64 ||
+      array_slot_2->size_bytes != 8 || array_slot_2->align_bytes != 8) {
+    return fail("fixed local-array alloca should publish typed element slot records");
+  }
+  if (pair_i32_slot == nullptr || pair_i32_slot->type != TypeKind::I32 ||
+      pair_i32_slot->size_bytes != 4 || pair_i32_slot->align_bytes != 8 ||
+      pair_double_slot == nullptr || pair_double_slot->type != TypeKind::F64 ||
+      pair_double_slot->size_bytes != 8 || pair_double_slot->align_bytes != 8) {
+    return fail("aggregate alloca should publish typed leaf local-slot records");
+  }
+
+  if (function.local_array_source_objects.size() != 1) {
+    return fail("fixed local-array alloca should publish one source-object record");
+  }
+  const auto& source = function.local_array_source_objects.front();
+  if (source.object_name != "%lv.array" ||
+      source.element_type != TypeKind::I64 ||
+      source.type_text != "[3 x i64]" ||
+      source.element_count != 3 ||
+      source.element_size_bytes != 8 ||
+      source.total_size_bytes != 24 ||
+      source.align_bytes != 8 ||
+      source.element_slots !=
+          std::vector<std::string>{"%lv.array.0", "%lv.array.1", "%lv.array.2"} ||
+      source.status != bir::LocalArrayCarrierStatus::Available) {
+    return fail("fixed local-array alloca source-object record should preserve extent and slots");
+  }
+  return 0;
+}
+
 LirModule make_local_array_carrier_dynamic_gep_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -11410,6 +11535,11 @@ int main() {
           expect_local_array_carrier_constant_gep_publishes_source_derivation_and_layout();
       local_array_carrier_status != 0) {
     return local_array_carrier_status;
+  }
+  if (const int local_memory_alloca_record_status =
+          expect_local_memory_alloca_records_pin_slot_and_source_contracts();
+      local_memory_alloca_record_status != 0) {
+    return local_memory_alloca_record_status;
   }
   if (const int local_array_dynamic_carrier_status =
           expect_local_array_carrier_dynamic_gep_preserves_missing_index_range_proof();
