@@ -9,6 +9,12 @@ namespace c4c::backend::riscv::codegen {
 // Edge-publication move adaptation keeps its public API in emit.hpp for
 // compatibility with existing tests and callers.
 
+using PreparedSelectPublicationStackHomePredicate = bool (*)(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedParallelCopyBundle& bundle,
+    const c4c::backend::prepare::PreparedParallelCopyMove& move);
+
 [[nodiscard]] bool prepared_select_publication_move_is_rv64_object_admitted(
     const EdgePublicationMoveIntent& intent);
 
@@ -38,5 +44,19 @@ prepared_select_publication_pointer_stack_source_to_gpr_matches_bundle(
 prepared_select_publication_gpr_to_stack_destination_matches_bundle(
     const EdgePublicationMoveIntent& intent,
     const c4c::backend::prepare::PreparedParallelCopyBundle& bundle);
+
+[[nodiscard]] bool
+prepared_predecessor_select_publication_bundle_is_stack_join_materialized(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedParallelCopyBundle& bundle,
+    PreparedSelectPublicationStackHomePredicate stack_home_predicate);
+
+[[nodiscard]] bool
+prepared_predecessor_select_publication_bundle_is_rv64_object_admitted(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedParallelCopyBundle& bundle,
+    PreparedSelectPublicationStackHomePredicate stack_home_predicate);
 
 }  // namespace c4c::backend::riscv::codegen

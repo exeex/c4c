@@ -84,6 +84,25 @@ std::optional<std::string> riscv_gpr_register_name_from_placement(
   return std::nullopt;
 }
 
+std::optional<prepare::PreparedValueId> prepared_value_id_for_named_value(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedFunctionLookups* lookups,
+    const bir::Value& value) {
+  if (lookups == nullptr || value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto value_id_it = lookups->value_homes.value_ids.find(value_name);
+  if (value_id_it == lookups->value_homes.value_ids.end()) {
+    return std::nullopt;
+  }
+  return value_id_it->second;
+}
+
 
 std::optional<std::string> render_edge_publication_source_operand(
     EdgePublicationMoveIntent& intent,
@@ -1054,6 +1073,140 @@ bool prepared_select_publication_gpr_to_stack_destination_matches_bundle(
              prepare::PreparedParallelCopyStepKind::Move &&
          !intent.publication->parallel_copy_step_uses_cycle_temp_source &&
          !intent.publication->parallel_copy_bundle_has_cycle;
+}
+
+bool prepared_predecessor_select_publication_bundle_is_stack_join_materialized(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedFunctionLookups* lookups,
+    const prepare::PreparedParallelCopyBundle& bundle,
+    PreparedSelectPublicationStackHomePredicate stack_home_predicate) {
+  if (bundle.execution_site !=
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator ||
+      bundle.execution_block_label != bundle.predecessor_label ||
+      bundle.has_cycle || bundle.moves.empty() ||
+      bundle.steps.size() != bundle.moves.size()) {
+    return false;
+  }
+
+  for (const auto& step : bundle.steps) {
+    if (step.kind != prepare::PreparedParallelCopyStepKind::Move ||
+        step.uses_cycle_temp_source) {
+      return false;
+    }
+    const auto* move =
+        prepare::find_prepared_parallel_copy_move_for_step(bundle, step);
+    if (move == nullptr) {
+      return false;
+    }
+    const auto destination_value_id =
+        prepared_value_id_for_named_value(names, lookups, move->destination_value);
+    if (!destination_value_id.has_value()) {
+      return false;
+    }
+    const auto intent = consume_edge_publication_move_intent(
+        lookups,
+        bundle.predecessor_label,
+        bundle.successor_label,
+        *destination_value_id);
+    if (prepared_select_publication_gpr_to_stack_destination_matches_bundle(
+            intent,
+            bundle) ||
+        (stack_home_predicate != nullptr &&
+         stack_home_predicate(names, lookups, bundle, *move))) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+bool prepared_predecessor_select_publication_bundle_is_rv64_object_admitted(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedFunctionLookups* lookups,
+    const prepare::PreparedParallelCopyBundle& bundle,
+    PreparedSelectPublicationStackHomePredicate stack_home_predicate) {
+  if (bundle.execution_site !=
+      prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return true;
+  }
+
+  bool has_select_publication = false;
+  for (const auto& move : bundle.moves) {
+    const auto destination_value_id =
+        prepared_value_id_for_named_value(names, lookups, move.destination_value);
+    const auto intent =
+        destination_value_id.has_value()
+            ? consume_edge_publication_move_intent(lookups,
+                                                   bundle.predecessor_label,
+                                                   bundle.successor_label,
+                                                   *destination_value_id)
+            : EdgePublicationMoveIntent{};
+    has_select_publication =
+        has_select_publication ||
+        move.carrier_kind ==
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        (intent.publication != nullptr &&
+         intent.publication->carrier_kind ==
+             prepare::PreparedJoinTransferCarrierKind::SelectMaterialization);
+  }
+  if (!has_select_publication) {
+    return true;
+  }
+
+  for (const auto& step : bundle.steps) {
+    if (step.kind != prepare::PreparedParallelCopyStepKind::Move ||
+        step.uses_cycle_temp_source) {
+      return false;
+    }
+    const auto* move =
+        prepare::find_prepared_parallel_copy_move_for_step(bundle, step);
+    if (move == nullptr) {
+      return false;
+    }
+    const auto destination_value_id =
+        prepared_value_id_for_named_value(names, lookups, move->destination_value);
+    if (!destination_value_id.has_value()) {
+      if (move->carrier_kind ==
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization) {
+        return false;
+      }
+      continue;
+    }
+    const auto intent = consume_edge_publication_move_intent(
+        lookups,
+        bundle.predecessor_label,
+        bundle.successor_label,
+        *destination_value_id);
+    const bool is_select_publication =
+        move->carrier_kind ==
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        (intent.publication != nullptr &&
+         intent.publication->carrier_kind ==
+             prepare::PreparedJoinTransferCarrierKind::SelectMaterialization);
+    if (!is_select_publication) {
+      continue;
+    }
+    if (bundle.execution_block_label != bundle.predecessor_label ||
+        bundle.has_cycle ||
+        move->carrier_kind !=
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        intent.publication == nullptr ||
+        intent.publication->parallel_copy_bundle != &bundle ||
+        intent.publication->carrier_kind !=
+            prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
+        (!prepared_select_publication_move_is_rv64_object_admitted(intent) &&
+         !prepared_select_publication_pointer_stack_source_to_gpr_matches_bundle(
+             intent,
+             bundle) &&
+         !prepared_select_publication_gpr_to_stack_destination_matches_bundle(
+             intent,
+             bundle) &&
+         !(stack_home_predicate != nullptr &&
+           stack_home_predicate(names, lookups, bundle, *move)))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace c4c::backend::riscv::codegen
