@@ -1,12 +1,30 @@
 # Prepared Move-Bundle Ambiguous Stack Destination For src/960209-1.c
 
-Status: Open
+Status: Closed
 Type: Prepared move-bundle classifier contract repair
 Parent: `ideas/closed/555_rv64_prepared_local_memory_addressing_src_960209_1.md`
 Related:
 - `ideas/closed/516_rv64_multi_source_prepared_move_bundle_classification.md`
 - `ideas/closed/552_prepared_move_bundle_target_shape_authority_gaps.md`
 Owning Layer: prepared move-bundle producer and classifier contract before RV64 object emission
+
+## Closure Summary
+
+Closed after the active runbook proved that `src/960209-1.c` reaches the
+existing precise prepared classifier rejection rather than an unexplained RV64
+local-memory or object-emission blocker. The captured bundle facts are an
+authority=none, non-parallel `BeforeInstruction` bundle with two register
+sources targeting one stack destination, no parallel-copy owner, and no
+source-parallel-copy step index. That shape is the supported fail-closed
+contract: RV64 object emission must not infer source ownership, drop a source,
+or invent ordering for it.
+
+Focused contract coverage already proves the semantic rejection with
+`verify_move_bundle_consumer_rejects_ambiguous_multi_source_stack_destination`.
+The one-row proof retained
+`prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`
+as the precise supported owner, with no implementation, test, expectation,
+unsupported marker, allowlist, or runtime comparison changes.
 
 ## Goal
 
