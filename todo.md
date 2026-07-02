@@ -8,38 +8,47 @@ Current Step Title: Repair The Next Remaining Semantic Family
 
 ## Just Finished
 
-Step 13 - Repair The Next Remaining Semantic Family completed the GEP-family
-producer repair for `src/20000717-4.c`'s boundary.
+Step 13 - Repair The Next Remaining Semantic Family completed the
+scalar/local-memory inspection subpacket for `src/20000519-1.c`.
 
-Implemented producer-side publication for the general shape where a constant
-global GEP chain reaches a scalar-array subobject through `global_pointer_slots`
-and a later dynamic scalar GEP indexes that subobject. The repair walks the
-global root layout at the published byte offset, confirms the scalar element
-type, and publishes `DynamicGlobalScalarArray` /
-`GlobalStaticGepAuthorityRecord` facts before the pointer-array fallback.
+Boundary found:
 
-Focused BIR coverage added:
+- The RV64 case log still reports semantic `scalar/local-memory` failure in
+  function `foo`.
+- The LLVM/LIR shape in `foo` is `alloca ptr` for `%lv.ap`, `alloca ptr` for
+  `%t0`, `llvm.va_start.p0(ptr %lv.ap)`, then
+  `llvm.memcpy.p0.p0.i64(ptr %t0, ptr %lv.ap, i64 8, i1 false)` before the
+  direct call to `bar(i32 %p.a, ptr %t0)`.
+- `lower_local_memory_alloca_inst` publishes both pointer allocas as scalar
+  local slots through `local_slot_types_` and `local_pointer_slots_`.
+- `lower_runtime_intrinsic_inst` has a direct `LirVaStartOp` lowering path, so
+  the first producer boundary is not ordinary scalar arithmetic or the
+  `va_start` helper itself.
+- `try_lower_immediate_local_memcpy` resolves both `%t0` and `%lv.ap` as
+  `LocalMemcpyScalarSlot` values of type `Ptr`, size 8, align 8, but it has no
+  scalar-slot-to-scalar-slot copy branch. With a scalar target and a local
+  scalar source, it falls through because the pointer-value fallback explicitly
+  rejects sources present in `local_pointer_slots`.
 
-- `expect_global_struct_member_scalar_array_dynamic_gep_publishes_authority`
-  models `%struct.slot = type { [6 x i32] }`,
-  `%struct.Root = type { i32, [4 x %struct.slot] }`, a global `@s`, a constant
-  GEP chain to the nested `[6 x i32]` member, then a dynamic `i32` GEP and load.
-- The test pins available `DynamicGlobalScalarArray` authority, global identity,
-  dynamic range metadata, and materialized `LoadGlobalInst` behavior.
+Focused BIR test gap to add next:
 
-RV64 representative result:
-
-- `src/20000717-4.c` moved off semantic `gep local-memory` admission.
-- It now fails downstream in the object route with
-  `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`.
+- Add `expect_local_scalar_pointer_memcpy_copies_between_local_slots` or an
+  equivalent focused fixture in `backend_lir_to_bir_notes_test.cpp`.
+- The fixture should model two local `ptr` allocas, `LirVaStartOp{ %lv.ap }`,
+  `LirMemcpyOp{ dst=%t0, src=%lv.ap, size=8 }`, and a call consuming `%t0`.
+- The test should pin semantic BIR lowering of the memcpy as a local scalar
+  slot copy, with `LoadLocalInst` from `%lv.ap` and `StoreLocalInst` to `%t0`
+  carrying `LocalSlot` `MemoryAddress` provenance/requested range for the
+  copied pointer-sized bytes.
 
 ## Suggested Next
 
-Recommended next packet: continue Step 13 or advance to Step 14 by selecting
-one remaining semantic local-memory representative still in the producer lane,
-preferably `src/20000519-1.c` (`scalar/local-memory`) or `src/20050604-1.c`
-(`alloca local-memory`), and inspect its missing BIR fact boundary before code
-changes.
+Recommended next packet: implement the scalar-slot-to-scalar-slot immediate
+local memcpy producer path in `try_lower_immediate_local_memcpy`, add the
+focused BIR coverage above, and then run backend proof plus the RV64
+representative command:
+
+`ALLOWLIST=build/agent_state/557_step13_20000519.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
 
 ## Watchouts
 
@@ -47,10 +56,13 @@ Reject target exclusions, testcase/helper-name shaped rules, expectation
 rewrites, unsupported-marker changes, allowlist changes, runtime-comparison
 changes, and RV64/MIR inference.
 
-Do not route this as a local-slot repair: the representative source uses a
-global object, but the shared semantic failure bucket reported
-`gep local-memory`; this packet fixed only the producer fact gap for the
-constant-global-chain-to-scalar-array shape.
+Do not route this as a variadic runtime helper rewrite unless the next packet
+finds different evidence: the local evidence points at immediate local memcpy
+between scalar pointer slots after `va_start` has been admitted.
+
+Keep the repair general to local scalar-slot copies. A named `va_list` or
+`20000519-1.c` shortcut would overfit the row and miss the producer gap in the
+shared memcpy helper.
 
 Keep downstream object-route failures out of this producer packet:
 `src/20000314-1.c`, `src/20001026-1.c`, and now `src/20000717-4.c` have moved
@@ -61,14 +73,15 @@ source idea without supervisor/lifecycle direction.
 
 Proof log: `test_after.log`.
 
-Commands run:
-
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
-  passed: `345/345` backend tests.
-- `ALLOWLIST=build/agent_state/557_step13_20000717.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
-  appended to `test_after.log`; result `0/1` passed, `1/1` failed, but the row
-  moved from semantic `gep local-memory` to downstream
-  `ambiguous_non_parallel_multi_source_stack_destination`.
+Inspection-only packet; no build or CTest run was required and `test_after.log`
+was preserved.
 
 Inspected case log:
-- `build/rv64_gcc_c_torture_backend/src_20000717-4.c/case.log`
+- `build/rv64_gcc_c_torture_backend/src_20000519-1.c/case.log`
+
+Inspection commands:
+
+- `./build/c4cll --codegen llvm --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000519-1.c -o /tmp/20000519-1.ll`
+- `./build/c4cll --dump-bir --target riscv64-linux-gnu tests/c/external/gcc_torture/src/20000519-1.c`
+  confirmed semantic BIR still fails before dumping, with latest function
+  failure `foo` in `scalar/local-memory`.
