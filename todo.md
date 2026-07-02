@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/559_bir_runtime_intrinsic_memory_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Shared Intrinsic Memory Producer Admission
+Current Step ID: 4
+Current Step Title: Reconcile Runtime Intrinsic Memory Representatives
 
 # Current Packet
 
@@ -32,9 +32,11 @@ consumers were changed.
 
 ## Suggested Next
 
-Ask the plan owner to advance to the next runbook step or reconcile the active
-idea. The Step 3 representative allowlist now moves both tracked rows to
-downstream RV64 global-data ownership.
+Run Step 4 reconciliation from `plan.md`: re-run the representative RV64
+allowlist for `src/20000703-1.c` and `src/20041218-1.c`, compare the results
+against the Step 1 runtime/intrinsic producer-admission diagnostics, and
+decide whether to close this source idea, split downstream RV64 global-data
+ownership into separate work, or continue the runbook.
 
 ## Watchouts
 
