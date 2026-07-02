@@ -698,6 +698,8 @@ class BirFunctionLowerer {
                                           const LocalArraySlotMap& local_array_slots);
   static std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(
       std::string_view text);
+  static std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_vector_type(
+      std::string_view text);
   bool lower_local_memory_alloca_inst(const c4c::codegen::lir::LirAllocaOp& alloca,
                                       std::vector<bir::Inst>* lowered_insts);
   bool lower_memory_gep_inst(const c4c::codegen::lir::LirGepOp& gep,

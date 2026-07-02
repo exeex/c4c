@@ -7316,6 +7316,113 @@ int expect_local_memory_alloca_records_pin_slot_and_source_contracts() {
   return 0;
 }
 
+LirModule make_local_vector_alloca_source_object_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+
+  LirFunction function;
+  function.name = "local_vector_alloca_source_object";
+  function.signature_text = "define void @local_vector_alloca_source_object()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.vec"),
+      .type_str = "<4 x i16>",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.vec.1"),
+      .type_str = "<4 x float>",
+      .count = LirOperand(""),
+      .align = 16,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_vector_alloca_publishes_lane_slots_and_source_object() {
+  auto result =
+      try_lower_to_bir_with_options(make_local_vector_alloca_source_object_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("local vector alloca fixture should lower semantically");
+  }
+
+  const auto& function = result.module->functions.front();
+  const bir::LocalSlot* i16_lane_0 = nullptr;
+  const bir::LocalSlot* i16_lane_3 = nullptr;
+  const bir::LocalSlot* f32_lane_0 = nullptr;
+  const bir::LocalSlot* f32_lane_3 = nullptr;
+  for (const auto& slot : function.local_slots) {
+    if (slot.name == "%lv.vec.lane.0") {
+      i16_lane_0 = &slot;
+    } else if (slot.name == "%lv.vec.lane.3") {
+      i16_lane_3 = &slot;
+    } else if (slot.name == "%lv.vec.1.lane.0") {
+      f32_lane_0 = &slot;
+    } else if (slot.name == "%lv.vec.1.lane.3") {
+      f32_lane_3 = &slot;
+    }
+  }
+
+  if (i16_lane_0 == nullptr || i16_lane_0->type != TypeKind::I16 ||
+      i16_lane_0->size_bytes != 2 || i16_lane_0->align_bytes != 8 ||
+      i16_lane_3 == nullptr || i16_lane_3->type != TypeKind::I16 ||
+      i16_lane_3->size_bytes != 2 || i16_lane_3->align_bytes != 8) {
+    return fail("fixed i16 vector alloca should publish deterministic typed lane slots");
+  }
+  if (f32_lane_0 == nullptr || f32_lane_0->type != TypeKind::F32 ||
+      f32_lane_0->size_bytes != 4 || f32_lane_0->align_bytes != 16 ||
+      f32_lane_3 == nullptr || f32_lane_3->type != TypeKind::F32 ||
+      f32_lane_3->size_bytes != 4 || f32_lane_3->align_bytes != 16) {
+    return fail("fixed float vector alloca should publish deterministic typed lane slots");
+  }
+
+  const bir::LocalArraySourceObjectRecord* i16_source = nullptr;
+  const bir::LocalArraySourceObjectRecord* f32_source = nullptr;
+  for (const auto& source : function.local_array_source_objects) {
+    if (source.object_name == "%lv.vec") {
+      i16_source = &source;
+    } else if (source.object_name == "%lv.vec.1") {
+      f32_source = &source;
+    }
+  }
+
+  if (i16_source == nullptr || i16_source->element_type != TypeKind::I16 ||
+      i16_source->type_text != "<4 x i16>" || i16_source->element_count != 4 ||
+      i16_source->element_size_bytes != 2 || i16_source->total_size_bytes != 8 ||
+      i16_source->align_bytes != 8 ||
+      i16_source->element_slots !=
+          std::vector<std::string>{"%lv.vec.lane.0",
+                                   "%lv.vec.lane.1",
+                                   "%lv.vec.lane.2",
+                                   "%lv.vec.lane.3"} ||
+      i16_source->status != bir::LocalArrayCarrierStatus::Available) {
+    return fail("fixed i16 vector alloca source-object record should preserve lane extent");
+  }
+  if (f32_source == nullptr || f32_source->element_type != TypeKind::F32 ||
+      f32_source->type_text != "<4 x float>" || f32_source->element_count != 4 ||
+      f32_source->element_size_bytes != 4 || f32_source->total_size_bytes != 16 ||
+      f32_source->align_bytes != 16 ||
+      f32_source->element_slots !=
+          std::vector<std::string>{"%lv.vec.1.lane.0",
+                                   "%lv.vec.1.lane.1",
+                                   "%lv.vec.1.lane.2",
+                                   "%lv.vec.1.lane.3"} ||
+      f32_source->status != bir::LocalArrayCarrierStatus::Available) {
+    return fail("fixed float vector alloca source-object record should preserve lane extent");
+  }
+  return 0;
+}
+
 LirModule make_local_byte_array_scalar_access_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -12176,6 +12283,11 @@ int main() {
           expect_local_memory_alloca_records_pin_slot_and_source_contracts();
       local_memory_alloca_record_status != 0) {
     return local_memory_alloca_record_status;
+  }
+  if (const int local_vector_alloca_status =
+          expect_local_vector_alloca_publishes_lane_slots_and_source_object();
+      local_vector_alloca_status != 0) {
+    return local_vector_alloca_status;
   }
   if (const int direct_local_slot_provenance_status =
           expect_direct_local_scalar_access_publishes_local_slot_provenance();

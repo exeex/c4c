@@ -633,6 +633,32 @@ std::optional<std::pair<std::size_t, bir::TypeKind>> BirFunctionLowerer::parse_l
   return std::pair<std::size_t, bir::TypeKind>{static_cast<std::size_t>(*count), *element_type};
 }
 
+std::optional<std::pair<std::size_t, bir::TypeKind>> BirFunctionLowerer::parse_local_vector_type(
+    std::string_view text) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed.size() < 6 || trimmed.front() != '<' || trimmed.back() != '>') {
+    return std::nullopt;
+  }
+
+  const auto x_pos = trimmed.find(" x ");
+  if (x_pos == std::string_view::npos || x_pos <= 1) {
+    return std::nullopt;
+  }
+
+  const auto count = parse_i64(trimmed.substr(1, x_pos - 1));
+  if (!count.has_value() || *count <= 0) {
+    return std::nullopt;
+  }
+
+  const auto element_type =
+      lower_scalar_or_function_pointer_type(trimmed.substr(x_pos + 3, trimmed.size() - x_pos - 4));
+  if (!element_type.has_value()) {
+    return std::nullopt;
+  }
+
+  return std::pair<std::size_t, bir::TypeKind>{static_cast<std::size_t>(*count), *element_type};
+}
+
 bool BirFunctionLowerer::lower_local_memory_alloca_inst(
     const c4c::codegen::lir::LirAllocaOp& alloca,
     std::vector<bir::Inst>* lowered_insts) {
@@ -715,6 +741,38 @@ bool BirFunctionLowerer::lower_local_memory_alloca_inst(
         .element_count = array_type->first,
         .element_size_bytes = element_size,
         .total_size_bytes = element_size * array_type->first,
+        .align_bytes = align_bytes,
+        .element_slots = array_slots.element_slots,
+        .status = bir::LocalArrayCarrierStatus::Available,
+    });
+    local_array_slots_.emplace(slot_name, std::move(array_slots));
+    return true;
+  }
+
+  const auto vector_type = parse_local_vector_type(alloca.type_str.str());
+  if (vector_type.has_value()) {
+    LocalArraySlots array_slots{.element_type = vector_type->second};
+    array_slots.element_slots.reserve(vector_type->first);
+    const auto element_size = type_size_bytes(vector_type->second);
+    for (std::size_t index = 0; index < vector_type->first; ++index) {
+      const std::string element_slot = slot_name + ".lane." + std::to_string(index);
+      local_slot_types_.emplace(element_slot, vector_type->second);
+      local_pointer_slots_.emplace(element_slot, element_slot);
+      array_slots.element_slots.push_back(element_slot);
+      lowered_function_.local_slots.push_back(bir::LocalSlot{
+          .name = element_slot,
+          .type = vector_type->second,
+          .size_bytes = element_size,
+          .align_bytes = align_bytes,
+      });
+    }
+    lowered_function_.local_array_source_objects.push_back(bir::LocalArraySourceObjectRecord{
+        .object_name = slot_name,
+        .element_type = vector_type->second,
+        .type_text = std::string(alloca.type_str.str()),
+        .element_count = vector_type->first,
+        .element_size_bytes = element_size,
+        .total_size_bytes = element_size * vector_type->first,
         .align_bytes = align_bytes,
         .element_slots = array_slots.element_slots,
         .status = bir::LocalArrayCarrierStatus::Available,
