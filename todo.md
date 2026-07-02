@@ -1,59 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/542_rv64_object_function_traversal_facade_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extract Traversal Context Assembly
+Current Step ID: 4
+Current Step Title: Extract Object Function Traversal Loop Facade
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 reviewed the next traversal context assembly boundary and made no code
-changes because Step 2 already moved the safe dependency-gathering/context
-assembly into `prepared_function_emit.*`.
+Step 4 reviewed the object-function traversal loop boundary and made no code
+changes because no small loop facade could reduce central coupling without
+hiding object-emission dependencies.
 
-Confirmed with AST-backed callee inspection that
-`prepare_rv64_object_function_admission_shell` already owns prepared function
-name resolution, defined BIR body lookup, prepared lookup construction,
-dependency operand authority collection, select carrier-alias authority
-collection, select-edge source producer placement collection, prepared
-addressing/frame/storage/inline-asm lookup, stack-frame sizing admission, and
-call-presence/call-frame admissibility, with those dependencies exposed as
-concrete `RiscvPreparedFunctionAdmissionResult` fields.
+The complete traversal path still directly owns event ordering from
+`prepare::make_prepared_object_function_traversal`, block label fragment
+emission, prepared-consumer diagnostics, move-bundle classification,
+select-publication admission/fragment selection, before-return
+stack-to-register validation state, instruction fragment emission and fallback
+diagnostics, terminator fragment emission, and fragment append order.
 
-Retained object-side: `RiscvPreparedObjectFunctionResult`,
-`RiscvObjectFunction`, prologue and formal-entry fragment appending, variadic
-incoming-GPR fragment emission, before-return stack-to-register validation
-state, `prepare::make_prepared_object_function_traversal` invocation and
-complete/fallback traversal loops, block label fragment emission,
-`fragment_for_prepared_instruction`, `fragment_for_prepared_terminator`, move
-bundle/select-publication fragment bodies and diagnostics, public module/image
-entrypoints, final object module assembly, data/symbol/fixup ownership, tests,
-expectations, unsupported markers, and runtime contracts.
+The fallback block traversal path still directly owns label emission order,
+instruction fragment fallback diagnostics, terminator fragment emission, and
+fragment append order for the non-complete traversal stream.
 
-No narrower move remained for Step 3 without either duplicating the Step 2
-admission result or introducing a catch-all traversal/facade carrier that would
-hide fragment and object-emission dependencies.
+Moving the loop into `prepared_function_emit.*` now would require either
+moving `RiscvPreparedObjectFunctionResult`, `RiscvObjectFunction`, and the
+object-local fragment helpers with it, or passing a broad callback/context
+bundle for `fragment_for_prepared_instruction`,
+`fragment_for_prepared_terminator`, move-bundle/select-publication fragment
+bodies, diagnostics, compare state, before-return state, and append targets.
+That would recreate the central coupling behind a new facade instead of making
+the dependencies clearer.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: evaluate the smallest object-function traversal
-loop facade only if event order, diagnostics, and fragment dependencies remain
-explicit. Keep `fragment_for_prepared_instruction`, final object module assembly,
-public entrypoints, and symbol/fixup/module ownership parked unless the
-supervisor delegates a reviewed boundary.
+Execute Step 5 from `plan.md`: review close readiness for the active source
+idea. Confirm the Step 2 admission shell is the only safe extraction from this
+runbook, Steps 3 and 4 were intentionally no-code, and remaining traversal loop,
+fragment fanout, diagnostics, public entrypoints, final module assembly, and
+symbol/fixup/module ownership are parked without weakening behavior.
 
 ## Watchouts
 
-- Keep the next run behavior-preserving.
-- Do not change admission semantics, diagnostics, block traversal order,
-  function name matching, unsupported markers, runtime expectations, or object
-  bytes.
+- Keep the next run behavior-preserving and review-only unless the supervisor
+  delegates a specific follow-up.
+- Do not change admission semantics, diagnostics, traversal order, function name
+  matching, unsupported markers, runtime expectations, or object bytes.
 - `prepared_function_emit.cpp` now has a narrow admission shell but must not
   become a second object-emission module.
-- Step 3 intentionally made no code change: moving more context assembly now
-  would either repeat the explicit admission shell fields or hide traversal and
-  fragment dependencies behind a broad carrier.
+- Step 4 intentionally made no code change: moving traversal loops now would
+  either move object-owned fragment/result helpers out of scope or hide them
+  behind a broad callback/context bundle.
 - Prior family APIs are available for the boundary: stack frame sizing and
   prologue helpers from `prepared_frame_emit.*`, before-return move classification
   and variadic resource predicates from `prepared_call_emit.*`, and select
@@ -72,13 +69,13 @@ supervisor delegates a reviewed boundary.
   instruction-fragment fallback diagnostics, and object consumer diagnostic
   category propagation from traversal events.
 - Missing/parked dependency: `fragment_for_prepared_instruction` still fans out
-  through object encoder utilities and multiple fragment families, so Step 2 must
-  not hide it behind a new facade dispatcher.
+  through object encoder utilities and multiple fragment families, so this
+  runbook must not hide it behind a new facade dispatcher.
 - Do not hide dependency sets behind a new catch-all facade or second all-purpose object emission module.
 
 ## Proof
 
-No proof command was run and no new `test_after.log` was written because Step 3
+No proof command was run and no new `test_after.log` was written because Step 4
 made no code changes, per the delegated packet.
 
 ```sh
