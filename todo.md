@@ -3,25 +3,13 @@
 Status: Active
 Source Idea Path: ideas/open/533_bir_route_index_standalone_prerequisites.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Split One Proven Prerequisite Boundary
+Current Step ID: 3
+Current Step Title: Promote or Park Route-Index Standalone Use
 
 ## Just Finished
 
-Step 2 split the first mapped route-index prerequisite boundary without moving
-implementation bodies. `src/backend/bir/bir_route_index_prereqs.hpp` now owns
-the route-index prerequisite includes, forward declarations, and the complete
-route4/route7 status and role enums required by value/default initializers in
-`bir_route_index.hpp`.
-
-`src/backend/bir/bir_route_index.hpp` now includes the prerequisite header and
-declares its API inside `namespace c4c::backend::bir`. `bir.hpp` remains the
-compatibility aggregator: it includes the prerequisite header near the top,
-keeps the broad model, route1 identity, and route4/route7 record/index
-definitions in place, and includes `bir_route_index.hpp` from a top-level
-close/reopen namespace boundary.
-
-The direct no-file top-level include probe:
+Step 3 re-ran the direct no-file top-level include probe for
+`src/backend/bir/bir_route_index.hpp` after the prerequisite split:
 
 ```bash
 printf '#include "src/backend/bir/bir_route_index.hpp"\n' | \
@@ -30,53 +18,54 @@ printf '#include "src/backend/bir/bir_route_index.hpp"\n' | \
     -fsyntax-only -
 ```
 
-still fails, but the missing declaration list shrank to the expected remaining
-complete-type blocker:
+The probe still fails, so `bir_route_index.hpp` cannot be promoted to direct
+standalone use in this packet. The remaining blocker is the expected complete
+type requirement:
 
 - `RouteIndexRecordReference::value` stores `Route1SourceValueIdentity` by
   value, so the forward declaration in `bir_route_index_prereqs.hpp` is not
   sufficient for full standalone compilation.
 
-The previous namespace, standard include, shared ID, route4 status, route7
-status/role, route record, and route index declaration blockers are now supplied
-by the prerequisite boundary.
+No code/header/include edits were made. No consumer include replacement is safe
+while the route-index header fails as a top-level include, because replacing
+`bir.hpp` would require reconstructing broad model/route prerequisites instead
+of proving a narrow dependency surface.
 
 ## Suggested Next
 
-Step 3 should map and split the next narrow prerequisite needed for standalone
-route-index compilation: either reduce `RouteIndexRecordReference` so it no
-longer needs a by-value `Route1SourceValueIdentity`, or split a small route1
-identity prerequisite boundary with its exact `Value`/`TypeKind` dependencies
-proven first. Do not move full route4/route7 records or consumer include sites
-yet.
+Step 4 lifecycle review should decide whether to close this prerequisite idea
+as a proof-backed aggregator-only decision, or split a new source idea for the
+separate work needed to make `Route1SourceValueIdentity` and its `Value` /
+`TypeKind` dependencies available as a narrow standalone prerequisite.
 
 ## Watchouts
 
-- Full `Value` and full `Route1SourceValueIdentity` remain in `bir.hpp`; that is
-  intentional for this packet.
-- Direct consumer include replacement is still unsafe because
-  `bir_route_index.hpp` does not yet compile as a top-level include.
-- The route4/route7 record and index structs remain broad and should not be
-  moved as part of the next packet unless that is explicitly selected and
-  proven as the one boundary.
+- `bir_route_index.hpp` should remain aggregator-only for now.
+- Do not claim dependency reduction or replace consumer includes while the
+  standalone probe fails.
+- The remaining blocker is not a missing forward declaration; it is a by-value
+  complete-type requirement for `Route1SourceValueIdentity`.
+- Resolving that blocker would require an explicitly authorized packet that
+  changes the route1 identity boundary or the `RouteIndexRecordReference`
+  layout. This packet did neither.
 
 ## Proof
 
-Exact delegated proof passed on rerun:
+No build/tests were required because this packet made no code/header/include
+edits and the supervisor delegated the direct no-file compile probe as the
+readiness proof.
 
 ```bash
-(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_lookup_helper|backend_aarch64_branch_control_lowering)$') > test_after.log 2>&1
+printf '#include "src/backend/bir/bir_route_index.hpp"\n' | \
+  c++ -x c++ -std=c++17 -I/workspaces/c4c -I/workspaces/c4c/src \
+    -I/workspaces/c4c/src/codegen/lir -I/workspaces/c4c/src/frontend/parser \
+    -fsyntax-only -
 ```
 
-Result: 2/2 tests passed. Proof log path: `test_after.log`.
+Result: failed as expected on:
 
-The first exact proof attempt failed before tests because `cc1plus` was killed
-while compiling unrelated `backend_aarch64_instruction_dispatch_test.cpp`; the
-rerun overwrote `test_after.log` with the passing proof.
+```text
+src/backend/bir/bir_route_index.hpp:65:29: error: field 'value' has incomplete type 'c4c::backend::bir::Route1SourceValueIdentity'
+```
 
-Additional compile probes:
-
-- `#include "src/backend/bir/bir.hpp"` as a no-file top-level compile passed.
-- `#include "src/backend/bir/bir_route_index.hpp"` as a no-file top-level
-  compile still fails only on incomplete by-value `Route1SourceValueIdentity`,
-  showing the missing declaration list shrank.
+No `test_after.log` was created or updated by this packet.
