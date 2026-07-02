@@ -946,6 +946,46 @@ int verify_move_bundle_consumer_rejects_ambiguous_multi_source_stack_destination
     return 1;
   }
 
+  auto same_slot_destination_home = value_home(
+      fixture, "%stack.alias", 904, prepare::PreparedValueHomeKind::StackSlot);
+  same_slot_destination_home.slot_id = prepare::PreparedFrameSlotId{4};
+  same_slot_destination_home.offset_bytes = std::size_t{24};
+  same_slot_destination_home.size_bytes = std::size_t{4};
+  same_slot_destination_home.align_bytes = std::size_t{4};
+  fixture.locations.value_homes.push_back(std::move(same_slot_destination_home));
+  fixture.locations.move_bundles.back().moves[1].to_value_id = 904;
+  const auto same_slot_lookups =
+      prepare::make_prepared_value_home_lookups(&fixture.locations);
+  const auto same_slot_traversal =
+      prepare::make_prepared_object_function_traversal(
+          fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  const auto* same_slot_before_instruction = find_event(
+      same_slot_traversal,
+      prepare::PreparedObjectTraversalEventKind::BeforeInstructionCopies,
+      1);
+  const auto same_slot_classification =
+      same_slot_before_instruction == nullptr
+          ? prepare::PreparedObjectMoveBundleConsumerClassification{}
+          : prepare::classify_prepared_object_move_bundle_consumer(
+                prepare::PreparedObjectMoveBundleConsumerQuery{
+                    .event = same_slot_before_instruction,
+                    .value_home_lookups = &same_slot_lookups,
+                });
+  const auto same_slot_diagnostic =
+      prepare::diagnose_prepared_object_consumer(same_slot_classification);
+  if (!expect(same_slot_classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      AmbiguousNonParallelMultiSourceStackDestination,
+              "distinct destination values backed by the same stack slot should fail closed") ||
+      !expect(same_slot_diagnostic.has_value(),
+              "same-slot ambiguous stack-destination classification should produce a diagnostic") ||
+      !expect(same_slot_diagnostic->category ==
+                  prepare::PreparedObjectConsumerDiagnosticCategory::
+                      AmbiguousNonParallelMultiSourceStackDestination,
+              "same-slot ambiguous stack-destination diagnostic category mismatch")) {
+    return 1;
+  }
+
   fixture.locations.move_bundles.back().moves.pop_back();
   const auto single_move_lookups =
       prepare::make_prepared_value_home_lookups(&fixture.locations);
