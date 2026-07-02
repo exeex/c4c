@@ -1,29 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/518_bir_core_model_cleanup_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Inventory Implementation Families
+Current Step ID: 4
+Current Step Title: Draft Destination Map
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Inventory Implementation Families completed the implementation-family
-map in `docs/bir_core_cleanup/implementation_inventory.md`.
+Step 4 - Draft Destination Map completed
+`docs/bir_core_cleanup/destination_map.md`.
 
-The inventory records exact clang-tool commands and the one non-blocking
-`memory/coordinator.cpp` function-signature limitation, documents raw-text
-fallback commands used only for line and private-surface anchoring, and maps
-pure helpers in `bir.cpp`, printer-only helpers, validator-only helpers,
-LIR-to-BIR-only surfaces, route-specific memory/publication/comparison
-implementations, caller/callee dependency observations, and low/medium/late
-movement-risk regions.
+The map uses the Step 1-3 artifacts without additional C++ queries and proposes
+destinations for each inventoried family. It separates existing-file
+redistribution candidates, possible new route/facade/memory files, retained
+central public model surfaces, include/API risks, late or no-move regions, and
+a sequencing signal for Step 5 follow-up ideas.
 
 ## Suggested Next
 
-Delegate Step 4: draft the destination map for the inventoried families,
-preferring existing focused files where ownership is already clear and keeping
-broad model types plus route6/facade surfaces late.
+Delegate Step 5: produce staged behavior-preserving follow-up ideas from
+`docs/bir_core_cleanup/destination_map.md`, with owned files, non-goals,
+validation expectations, and reviewer reject signals for each proposed cleanup
+slice.
 
 ## Watchouts
 
@@ -45,17 +44,23 @@ broad model types plus route6/facade surfaces late.
   owners from public API declarations.
 - Treat `lir_to_bir/` as a private lowering subsystem; do not propose moving
   public BIR model records into that tree unless they are proven lowering-only.
+- Step 5 should keep body-only route extraction ideas separate from later
+  declaration/header extraction ideas; early body movement is lower-risk than
+  public header splitting.
+- Avoid proposing one giant `bir_routes.hpp`; the destination map favors
+  per-route or small-family headers only after route dependency direction is
+  proven.
 
 ## Proof
 
 Proof command:
 
 ```sh
-git diff --check && test -s docs/bir_core_cleanup/implementation_inventory.md
+git diff --check && test -s docs/bir_core_cleanup/destination_map.md
 ```
 
 Result: passed.
 
 No implementation files were changed. No `test_after.log` was produced because
-the delegated proof command was a docs/lifecycle sanity check and did not write
+the delegated proof command is a docs/lifecycle sanity check and does not write
 one.
