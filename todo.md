@@ -1,54 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/551_rv64_move_bundle_materialization_from_classified_bucket.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Select-Publication Register Move Coverage
+Current Step ID: 6
+Current Step Title: Reconcile The 151-Row Lane
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5, `Add Select-Publication Register Move Coverage`.
+Completed Step 6, `Reconcile The 151-Row Lane`.
 
-Verified the remaining coherent
-`phi_join_register_to_register/select_publication_immediate_to_register`
-representative, `src/pr37924.c`, with no additional implementation edits.
+Generated
+`build/agent_state/551_step6_reconciliation/coherent_rv64_mir_materialization.allowlist`
+from the Step 4 classification TSV, reran the 151-row RV64 gcc torture backend
+subset, and recorded row-level reconciliation in
+`docs/rv64_gcc_torture_post_contract/move_bundle_materialization_reconciliation.md`.
 
-The case no longer ends at generic move-bundle materialization failure or
-select-publication immediate rejection. It now advances to a later
-`unsupported_instruction_fragment` residual outside this Step 5 packet.
+Fresh counts:
 
-No implementation files, prepared-authority rows, expectation files,
+- 151 coherent-lane rows scanned.
+- 45 rows now pass.
+- 20 rows still contain
+  `fragment_status=generic_move_bundle_materialization_failed`.
+- 48 rows advanced to later explicit unsupported backend diagnostics.
+- 10 rows advanced to runtime mismatch or abort comparison.
+- 28 rows appear to need reroute to prepared authority, prepared classifier,
+  or evidence-gap ownership.
+
+No implementation files, `plan.md`, source ideas, expectation files,
 unsupported markers, allowlists outside `build/agent_state`, or runtime
 comparison code were changed.
 
 ## Suggested Next
 
-Proceed to Step 6 reconciliation for the 151-row coherent lane. Recount fixed
-rows, rows that now stop at later residuals, rows still failing for
-move-bundle materialization, and any rows that should be rerouted to a
-follow-up owner.
+Do not ask plan-owner to close or deactivate yet. Delegate one more
+implementation packet for the 20 rows still failing at generic move-bundle
+materialization, starting with the 17 remaining
+`consumer_register_to_stack/register_to_stack_slot` rows and keeping the three
+`rematerializable_immediate_to_stack_slot` rows separate unless inspection
+shows they share the same semantic missing rule.
 
 ## Watchouts
 
-- `src/pr37924.c` still fails the RV64 gcc torture backend scan, but the
-  observed residual is `unsupported_instruction_fragment`, not the Step 5
-  select-publication path.
-- Step 6 should reconcile later residuals separately from move-bundle
-  materialization coverage; do not count later unsupported instruction or
-  terminator failures as Step 5 blockers.
-- Prepared-authority-gap rows should stay with their follow-up idea unless
-  reconciliation proves a row was misclassified.
+- The 58 later-residual rows are not current move-bundle materialization
+  blockers; they split across unsupported instruction, terminator, local
+  memory, global data, and runtime mismatch categories.
+- The 28 reroute rows should not be repaired by RV64 home inference. Current
+  evidence points at prepared move-bundle authority/classification,
+  select-publication source authority, or a move-bundle evidence gap.
+- The row-level reconciliation TSV is derived under
+  `build/agent_state/551_step6_reconciliation/reconciliation_rows.tsv`.
 
 ## Proof
 
-- Delegated Step 5 proof command was run exactly; full output is preserved in
+- Delegated Step 6 docs/status proof was run; full output is preserved in
   `test_after.log`.
-- `cmake --build --preset default` completed.
-- `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed:
-  345/345 backend tests.
-- The one-case RV64 gcc torture allowlist was `src/pr37924.c`.
-- The final assertion reports `generic_move_bundle_failure_count=0` and
-  `select_publication_failure_count=0`.
-- The per-case status was `advanced_or_pass`; the current later residual is
-  `unsupported_instruction_fragment`.
+- The proof built `c4cll` through
+  `scripts/check_progress_rv64_gcc_c_torture_backend.sh`.
+- The allowlist was
+  `build/agent_state/551_step6_reconciliation/coherent_rv64_mir_materialization.allowlist`.
+- The subset reported `total=151 passed=45 failed=106`.
+- `git diff --check -- todo.md docs/rv64_gcc_torture_post_contract/move_bundle_materialization_reconciliation.md`
+  passed.
