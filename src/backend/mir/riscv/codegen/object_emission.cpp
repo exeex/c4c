@@ -4934,20 +4934,6 @@ prepared_memory_access_for_instruction(
       instruction_index);
 }
 
-std::optional<std::int32_t> prepared_frame_slot_absolute_offset(
-    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
-    const c4c::backend::prepare::PreparedMemoryAccess* access,
-    std::size_t stack_frame_bytes,
-    std::size_t size_bytes = 4) {
-  const auto offset = prepared_frame_slot_absolute_byte_offset(
-      stack_layout, access, stack_frame_bytes, size_bytes);
-  if (!offset.has_value() ||
-      !fits_signed_12_bit_immediate(static_cast<std::int64_t>(*offset))) {
-    return std::nullopt;
-  }
-  return static_cast<std::int32_t>(*offset);
-}
-
 std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type) {
   switch (type) {
