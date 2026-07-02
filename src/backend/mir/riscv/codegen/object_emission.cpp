@@ -2047,16 +2047,6 @@ bool prepared_storage_plan_endpoint_is_coherent_gpr_register(
   return true;
 }
 
-std::size_t prepared_consumer_register_to_stack_move_count(
-    const prepare::PreparedMoveBundle& move_bundle) {
-  return static_cast<std::size_t>(
-      std::count_if(move_bundle.moves.begin(),
-                    move_bundle.moves.end(),
-                    [](const prepare::PreparedMoveResolution& move) {
-                      return move.reason == "consumer_register_to_stack";
-                    }));
-}
-
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -2194,16 +2184,16 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
       if (!stack_offset.has_value()) {
         return std::nullopt;
       }
-      if (move.reason == "consumer_register_to_stack") {
-        if (prepared_consumer_register_to_stack_move_count(move_bundle) != 1 ||
-            move.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      if (move.reason == "consumer_register_to_stack" &&
+          source_home->kind == prepare::PreparedValueHomeKind::Register) {
+        if (move.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
             move.destination_register_name.has_value() ||
             !move.destination_occupied_register_names.empty() ||
             move.destination_register_placement.has_value() ||
             move.source_parallel_copy_step_index.has_value() ||
             move.source_parallel_copy_predecessor_label.has_value() ||
             move.source_parallel_copy_successor_label.has_value() ||
-            source_home->kind != prepare::PreparedValueHomeKind::Register) {
+            destination_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
           return std::nullopt;
         }
         if (source_home->target_register_identity.has_value() &&
@@ -2220,7 +2210,10 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
             !prepared_storage_plan_endpoint_is_coherent_gpr_register(
                 storage_plan,
                 move.from_value_id,
-                *source)) {
+                *source) ||
+            !prepared_storage_plan_endpoint_is_coherent_gpr_frame_slot(
+                storage_plan,
+                move.to_value_id)) {
           return std::nullopt;
         }
         const auto source_type = prepared_bir_value_type_for_name(
@@ -2229,12 +2222,37 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
             source_type.has_value()
                 ? rv64_scalar_memory_size_for_type(*source_type)
                 : source_home->size_bytes;
-        if (!source_size_bytes.has_value() ||
-            *source_size_bytes != *destination_size_bytes) {
+        if (!source_size_bytes.has_value()) {
           return std::nullopt;
         }
         if (!append_rv64_store_register_to_stack_offset(fragment,
                                                        *source,
+                                                       *stack_offset,
+                                                       *destination_size_bytes)) {
+          return std::nullopt;
+        }
+        continue;
+      }
+
+      if (source_home->kind ==
+          prepare::PreparedValueHomeKind::RematerializableImmediate) {
+        const auto report =
+            prepare::verify_prepared_rematerializable_integer_immediate_contract(
+                source_home);
+        const auto fact =
+            prepare::as_rematerializable_integer_immediate_fact(*source_home);
+        const auto scratch = rv64_unoccupied_temporary_gpr(lookups);
+        if (report.owner_class != prepare::PreparedContractOwnerClass::Coherent ||
+            !fact.has_value() || !fact->fits_signed_12_bit_immediate ||
+            !scratch.has_value() ||
+            !prepared_storage_plan_endpoint_is_coherent_gpr_frame_slot(
+                storage_plan,
+                move.to_value_id)) {
+          return std::nullopt;
+        }
+        append_rv64_load_immediate(fragment, *scratch, fact->signed_value);
+        if (!append_rv64_store_register_to_stack_offset(fragment,
+                                                       *scratch,
                                                        *stack_offset,
                                                        *destination_size_bytes)) {
           return std::nullopt;

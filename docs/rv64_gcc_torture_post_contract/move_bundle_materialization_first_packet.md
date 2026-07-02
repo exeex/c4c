@@ -85,11 +85,17 @@ come from the prepared/BIR type facts.
 | `src/20000121-1.c` | `build/rv64_gcc_c_torture_backend/src_20000121-1.c/case.log:6-18` | Single move, small integer source widened to an `i64` stack destination. |
 | `src/20000801-2.c` | `build/rv64_gcc_c_torture_backend/src_20000801-2.c/case.log:6-18` | Pointer register source published to an integer stack destination. |
 | `src/20000422-1.c` | `build/rv64_gcc_c_torture_backend/src_20000422-1.c/case.log:6-28` | Three-move bundle where the first move is register-to-stack and the bundle also contains stack-to-stack moves. |
-| `src/20000717-3.c` | `build/rv64_gcc_c_torture_backend/src_20000717-3.c/case.log:6-23` | Two-move bundle in the selected family. |
+| `src/20000914-1.c` | `build/rv64_gcc_c_torture_backend/src_20000914-1.c/case.log:6-23` | Two-move bundle in the selected family without the later prepared-authority blocker seen in `src/20000717-3.c`. |
 
 These representatives are intentionally not filename contracts. They cover the
 shape variation that the next implementation packet should prove before the
 remaining 130-row family is reconciled.
+
+`src/20000717-3.c` was the original two-move representative, but after the
+register-to-stack materialization advanced it reached a later move bundle whose
+move says `destination_storage=stack_slot` while the prepared destination home
+is `rematerializable_immediate`. That later missing destination stack-slot
+authority makes it unsuitable as a clean Step 2 proof representative.
 
 ## Implementation Surface For Next Packet
 
@@ -127,7 +133,7 @@ src/pr78438.c
 src/20000121-1.c
 src/20000801-2.c
 src/20000422-1.c
-src/20000717-3.c
+src/20000914-1.c
 ```
 
 For each case, the relevant proof condition is that the failure no longer ends
