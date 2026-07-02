@@ -1,5 +1,7 @@
 # RV64 Object Encoding And Byte Helper Cleanup
 
+Status: Closed
+
 ## Goal
 
 Extract or share RV64 object-route U/I/S/R/B/J encoding helpers and little-endian byte append helpers without changing emitted object bytes or public object-route behavior.
@@ -40,3 +42,22 @@ Extract or share RV64 object-route U/I/S/R/B/J encoding helpers and little-endia
 - Object bytes change without a separate approved encoding-fix idea and proof.
 - The change is mainly helper renaming or expectation rewriting while claiming cleanup progress.
 - The same old monolithic coupling remains behind a new helper or filename.
+
+## Closure Notes
+
+Closed as complete. The cleanup exposed the pure RV64 U/I/S/R/B/J instruction
+word encoders and little-endian append helpers through `rv64_line_assembler.*`
+as object-independent shared helpers, while preserving the object-route private
+wrappers in `object_emission.cpp` as compatibility and readability shims.
+
+No object-route public API, structured fragment shape, label handling, fixup
+mapping, module assembly, ELF writing, prepared object emission, unsupported
+contract, or expected output was changed. Further removal of the private
+wrappers was intentionally parked because it would broaden object-route
+call-site churn without reducing the shared helper API or improving ownership.
+
+Close validation used:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(riscv_object_emission|rv64_roundtrip_contract|cli_riscv64_return_zero_writes_elf_obj|cli_riscv64_vrm_insn_d_source_obj)' > test_after.log 2>&1`
+
+Regression guard with `--allow-non-decreasing-passed` passed against
+`test_before.log`: 4/4 before and 4/4 after, with no new failures.
