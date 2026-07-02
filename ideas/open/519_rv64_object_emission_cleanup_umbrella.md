@@ -2,7 +2,7 @@
 
 Status: Open
 Type: Analysis umbrella idea
-Order: after `ideas/open/518_bir_core_model_cleanup_umbrella.md`, before other implementation ideas
+Order: after the BIR cleanup follow-ups from `ideas/closed/518_bir_core_model_cleanup_umbrella.md`, especially `ideas/open/532_bir_local_array_semantic_gep_header_readiness.md`, before other implementation ideas
 Owning Layer: RV64 MIR object emission
 Primary File: `src/backend/mir/riscv/codegen/object_emission.cpp`
 Reference Shape: `src/backend/mir/aarch64/codegen/`
@@ -54,7 +54,7 @@ first comparison point.
 - Produce a staged follow-up cleanup plan that keeps behavior unchanged.
 - Define validation scope for each future split slice.
 - Preserve the ordering:
-  `422 -> BIR cleanup analysis -> RV64 emission cleanup analysis -> other idea`.
+  `422 -> BIR cleanup analysis -> BIR cleanup follow-ups -> RV64 emission cleanup analysis -> other idea`.
 
 ## Out Of Scope
 
