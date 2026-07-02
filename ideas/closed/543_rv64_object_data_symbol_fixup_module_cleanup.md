@@ -39,3 +39,13 @@ The late object-emission region owns the highest-risk behavior: text module layo
 - Text fixups and data-object pointer relocations are merged before stable producer contracts exist.
 - Unsupported markers, expected outputs, or runtime results are weakened.
 - A new object-module file hides the same central coupling without narrower interfaces.
+
+## Closure Note
+
+Closed after extracting only the narrow text-side helper boundary for local
+label publication and text fixup attachment. Data-object emission and final
+module assembly remain central because moving them now would hide section,
+relocation, zero-fill, symbol, ELF config, and public result sequencing behind
+broader contexts. No semantic RV64 behavior, expectation, unsupported marker,
+runtime contract, object layout, or data relocation changes were part of this
+idea.
