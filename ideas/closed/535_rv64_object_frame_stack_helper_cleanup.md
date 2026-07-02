@@ -38,3 +38,13 @@ The RV64 object route mixes pure frame math with call lowering, memory access, f
 - The implementation adds testcase-shaped stack-slot shortcuts or named-case handling.
 - Tests are weakened, unsupported markers are added, or expectations are rewritten to claim progress.
 - The same frame/call/memory coupling is retained behind renamed helpers.
+
+## Completion Note
+
+Closed on 2026-07-02. The active runbook completed the in-scope helper boundary
+cleanup: pure RV64 frame sizing, stack-slot offset, register-home lookup, basic
+stack load/store, and simple stack adjustment helpers were moved under
+`prepared_frame_emit.*`; object-route wrappers that still protect call, memory,
+traversal, FPR-adjacent, or object-assembly boundaries remain intentionally
+parked for separate ideas. Regression guard passed for the focused 4-test
+close scope with no new failures.
