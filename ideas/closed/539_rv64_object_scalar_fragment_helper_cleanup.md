@@ -30,6 +30,16 @@ Scalar helpers are a large region in `object_emission.cpp` and depend on encoder
 - Validation includes:
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(riscv_object_emission|dump_riscv64_prepared_fused_compare|codegen_route_riscv64_prepared_fused_compare|obj_runtime_rv64_return_add|obj_runtime_rv64_return_add_sub_chain)'`
 
+## Completion Note
+
+Closed after scalar binary, cast, compare branch/value, move-to-register/location,
+simple return, and narrow scalar support helpers were extracted into
+`prepared_scalar_emit.*`; dead object-side scalar wrappers were pruned; and
+select-edge publication, predecessor publication movement, before-return move
+bundles, broad dispatch, and non-scalar helper families remained parked for
+later source ideas. Close-time regression guard passed the scoped backend
+RV64/object validation with 7/7 tests before and after.
+
 ## Reviewer Reject Signals
 
 - The slice rewrites select publication, prepared edge movement, or broad instruction dispatch while named scalar-only.
