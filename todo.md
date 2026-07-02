@@ -1,47 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Generate Ordered Follow-Up Ideas
+Current Step ID: 6
+Current Step Title: Review And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 refreshed
-`docs/rv64_gcc_torture_post_contract/followup_idea_plan.md` against the stable
-2026-07-02 reset-main/post-cleanup RV64 gcc_torture backend-object evidence and
-the Step 4 failure bucket map.
+Step 6 reviewed close readiness for the RV64 gcc_torture post-contract
+umbrella and repaired the remaining docs-only evidence mismatch in
+`docs/rv64_gcc_torture_post_contract/current_scan_summary.md`.
 
-Created current-evidence follow-up ideas:
+The handoff docs now agree that the current reset-main/post-cleanup RV64
+gcc_torture backend-object evidence is the stable 2026-07-02 scan pair:
 
-- `ideas/open/544_rv64_move_bundle_target_shape_bucket_split.md`
-- `ideas/open/545_bir_semantic_producer_admission_reconstruction.md`
-- `ideas/open/546_rv64_instruction_fragment_current_classification.md`
-- `ideas/open/547_bir_local_memory_call_metadata_boundary_review.md`
-- `ideas/open/548_prepared_global_stack_frame_infrastructure_review.md`
-- `ideas/open/549_rv64_runtime_and_no_diagnostic_triage.md`
-- `ideas/open/550_rv64_scalar_fpr_residual_salvage.md`
+- `1467` total cases
+- `349` pass
+- `1118` fail
+- `build/agent_state/rv64_gcc_torture_backend_current_20260702T032151Z.log`
+- `build/agent_state/rv64_gcc_torture_backend_current_20260702T151551Z.log`
 
-The follow-up plan no longer treats stale `314/1153`, `404/1063`, or missing
-old idea files as the current queue. It orders the 183-row
-`unsupported_move_bundle_target_shape` bucket first, makes missing row-level
-evidence into classification/reconstruction ideas instead of implementation
-claims, and keeps F128 quarantined through
-`ideas/open/426_f128_quarantine_and_external_softfloat_policy.md`.
+Stale 2026-06-30 and 2026-07-01 totals are documented as historical context
+only. RV64 gcc_torture remains external evidence, not default CTest coverage.
+No implementation files, test expectations, unsupported markers, allowlists, or
+lifecycle source intent files were edited.
+
+Close-readiness status: ready for supervisor/plan-owner lifecycle review. I
+found no remaining docs-only evidence blocker inside the owned files.
 
 ## Suggested Next
 
-Execute Step 6 by reviewing close readiness for the umbrella. Confirm the
-handoff docs and generated ideas satisfy the source idea, verify no
-implementation patches or expectation downgrades entered the umbrella, and
-record the close-gate expectation for supervisor/plan-owner review.
+Supervisor should route the completed umbrella to plan-owner for lifecycle
+close, deactivate, or replacement decision.
 
 ## Watchouts
 
-- `current_scan_summary.md` in this checkout still contains older Step 2 text;
-  the Step 5 plan used the source umbrella and `failure_bucket_map.md` as the
-  authoritative stable 2026-07-02 evidence for this packet.
+- Some auxiliary documents under `docs/rv64_gcc_torture_post_contract/` still
+  intentionally describe historical packets and may mention older totals such
+  as `314/1153` or `404/1063`; do not treat those as current anchors unless a
+  later packet refreshes them.
 - `regression_delta.md` and `try_gcc_torture_postmortem.md` were not present in
   this checkout during Step 5, despite earlier handoff notifications.
 - The current bucket map has verified current diagnostic counts, but it does
@@ -62,5 +60,6 @@ record the close-gate expectation for supervisor/plan-owner review.
 ## Proof
 
 Ran `git diff --check --
-docs/rv64_gcc_torture_post_contract/followup_idea_plan.md todo.md
-ideas/open/*.md`; proof output was captured in `test_after.log`.
+docs/rv64_gcc_torture_post_contract/current_scan_summary.md
+docs/rv64_gcc_torture_post_contract/README.md todo.md`; proof output was
+captured in `test_after.log`.
