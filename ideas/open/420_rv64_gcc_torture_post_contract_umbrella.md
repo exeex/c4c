@@ -32,7 +32,12 @@ facts, but a later full scan on that branch showed:
 That result is worse than the starting post-contract baseline and shows the
 route overfit the investigation budget toward a niche F128 feature. F128 support
 should be treated as the lowest-priority RV64 feature family unless it is
-strictly needed as isolated external soft-float ABI glue.
+strictly needed as isolated external soft-float ABI glue. Fresh F128 failures
+should be classified into the F128 quarantine path first, not used to steer the
+ordinary-C RV64 recovery route. When a gcc_torture testcase is primarily F128,
+the preferred immediate action is to screen it out of the main progress bucket
+with an explicit quarantine/unsupported classification rather than spending
+implementation budget on it.
 
 The new umbrella must therefore do more than classify current failures. It must
 review what the `try_gcc_torture` branch taught us, identify which changes are
@@ -63,12 +68,18 @@ prepared producer gaps leak into MIR/RV64 fixups.
 - Explicitly rank F128 as lowest priority. It may only appear as a quarantine,
   feature-gate, or external soft-float ABI glue follow-up, not as the main
   route.
+- Treat primary-F128 testcase rows as quarantine candidates first. They should
+  be screened out of ordinary-C progress accounting with explicit F128
+  classification unless fresh evidence proves the row also blocks a broad
+  non-F128 capability.
 
 ## Out Of Scope
 
 - Implementing RV64 fixes inside this umbrella idea.
 - Replaying the `try_gcc_torture` branch wholesale.
 - Continuing the `conversion.c` F128 route as the primary KPI.
+- Letting primary-F128 testcase rows remain in the ordinary-C repair queue when
+  they can be explicitly quarantined.
 - Treating RV64 gcc_torture pass count as the default CTest non-regression
   gate.
 - Adding RV64 gcc_torture to the default harness.
@@ -96,7 +107,9 @@ semantic importance:
    F32/F64 casts, scalar FPR binary ops, scalar floating select, and FPR
    local-store/reload, only after bucket evidence shows broad value.
 7. F128 quarantine or external soft-float ABI glue. F128 is lowest priority and
-   must not drive the umbrella.
+   must not drive the umbrella. Primary-F128 testcase failures should normally
+   be filtered into this quarantine lane before ordinary-C repair work is
+   selected.
 
 ## Required Follow-Up Ideas
 
@@ -124,6 +137,8 @@ evidence proves a better split:
   not default harness coverage.
 - The follow-up plan explains why F128 is not the main route and why
   `conversion.c` should not be used as the umbrella KPI.
+- The follow-up plan records how primary-F128 testcase rows are quarantined or
+  screened from ordinary-C progress accounting.
 - Every generated follow-up idea names its owning layer: RV64/MIR,
   BIR/semantic producer, prepared contract, runtime mismatch, test
   infrastructure, or F128 quarantine.
@@ -141,6 +156,9 @@ evidence proves a better split:
 - Reject continuing the `conversion.c`/F128 route as the main umbrella output.
 - Reject treating F128 as high or medium priority unless a fresh failure bucket
   proves it blocks broad non-F128 coverage.
+- Reject allowing primary-F128 testcase rows to drive ordinary-C RV64 repair
+  selection when they can be explicitly quarantined or marked unsupported under
+  the F128 policy.
 - Reject wholesale cherry-picking from `try_gcc_torture` without bucket
   evidence, default CTest proof, and route-quality review.
 - Reject umbrella output that only lists pass/fail counts without row-level
