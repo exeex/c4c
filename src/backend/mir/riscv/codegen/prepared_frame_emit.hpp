@@ -11,6 +11,8 @@
 
 namespace c4c::backend::riscv::codegen {
 
+struct RiscvEncodedFragment;
+
 [[nodiscard]] bool fits_signed_12_bit_load_offset(std::size_t offset_bytes);
 [[nodiscard]] bool fits_signed_12_bit_immediate(std::int64_t value);
 
@@ -20,6 +22,97 @@ namespace c4c::backend::riscv::codegen {
 
 [[nodiscard]] std::optional<std::size_t> prepared_saved_register_stack_end(
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan);
+
+[[nodiscard]] bool rv64_prepared_supported_fixed_frame_alignment(
+    std::size_t alignment);
+
+[[nodiscard]] std::optional<std::size_t>
+align_rv64_prepared_object_stack_frame_size(std::size_t frame_size);
+
+[[nodiscard]] const c4c::backend::prepare::PreparedFrameSlot*
+rv64_prepared_find_function_frame_slot(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    c4c::backend::prepare::PreparedFrameSlotId slot_id,
+    c4c::FunctionNameId function_name);
+
+[[nodiscard]] bool rv64_prepared_frame_slot_extent_is_supported(
+    const c4c::backend::prepare::PreparedFrameSlot& slot,
+    std::size_t frame_size);
+
+[[nodiscard]] std::optional<std::size_t>
+rv64_prepared_validated_fixed_frame_size(
+    const c4c::backend::prepare::PreparedAddressingFunction* addressing,
+    const c4c::backend::prepare::PreparedFramePlanFunction& frame_plan,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout);
+
+[[nodiscard]] std::optional<std::size_t> rv64_prepared_object_stack_frame_size(
+    const c4c::backend::prepare::PreparedAddressingFunction* addressing,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout);
+
+[[nodiscard]] std::optional<std::size_t>
+rv64_prepared_stack_slot_home_absolute_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedValueHome& home,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes = 4);
+
+[[nodiscard]] std::optional<std::int32_t> rv64_prepared_stack_slot_home_offset(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedValueHome& home,
+    std::size_t stack_frame_bytes,
+    std::size_t size_bytes = 4);
+
+[[nodiscard]] std::optional<std::uint32_t> rv64_prepared_register_number(
+    std::string_view name);
+
+[[nodiscard]] std::optional<std::uint32_t>
+rv64_prepared_gpr_register_number_for_home(
+    const c4c::backend::prepare::PreparedValueHome& home);
+
+[[nodiscard]] std::optional<std::uint32_t>
+rv64_prepared_load_store_funct3_for_size(std::size_t size_bytes);
+
+void append_rv64_prepared_move(RiscvEncodedFragment& fragment,
+                                std::uint32_t destination,
+                                std::uint32_t source);
+
+void append_rv64_prepared_add_registers(RiscvEncodedFragment& fragment,
+                                         std::uint32_t destination,
+                                         std::uint32_t lhs,
+                                         std::uint32_t rhs);
+
+void append_rv64_prepared_load_immediate(RiscvEncodedFragment& fragment,
+                                          std::uint32_t destination,
+                                          std::int64_t immediate);
+
+[[nodiscard]] bool append_rv64_prepared_store_register_to_stack(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t source_register,
+    std::int32_t offset,
+    std::size_t size_bytes = 4);
+
+[[nodiscard]] bool append_rv64_prepared_load_stack_to_register(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination_register,
+    std::int32_t offset,
+    std::size_t size_bytes = 4);
+
+[[nodiscard]] bool append_rv64_prepared_store_register_to_stack_offset(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t source_register,
+    std::size_t offset,
+    std::size_t size_bytes);
+
+[[nodiscard]] bool append_rv64_prepared_load_stack_offset_to_register(
+    RiscvEncodedFragment& fragment,
+    std::uint32_t destination_register,
+    std::size_t offset,
+    std::size_t size_bytes);
+
+[[nodiscard]] bool append_rv64_prepared_stack_pointer_adjustment(
+    RiscvEncodedFragment& fragment,
+    std::int64_t byte_delta);
 
 [[nodiscard]] std::string riscv_local_block_label(std::string_view function_name,
                                                   std::string_view block_label);
