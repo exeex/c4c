@@ -269,6 +269,29 @@ void publish_runtime_local_pointer_slot_address(std::string_view slot_name,
   };
 }
 
+std::optional<bir::Value> zero_value_for_scalar_type(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+      return bir::Value::immediate_i1(false);
+    case bir::TypeKind::I8:
+      return bir::Value::immediate_i8(0);
+    case bir::TypeKind::I16:
+      return bir::Value::immediate_i16(0);
+    case bir::TypeKind::I32:
+      return bir::Value::immediate_i32(0);
+    case bir::TypeKind::I64:
+      return bir::Value::immediate_i64(0);
+    case bir::TypeKind::F32:
+      return bir::Value::immediate_f32_bits(0);
+    case bir::TypeKind::F64:
+      return bir::Value::immediate_f64_bits(0);
+    case bir::TypeKind::F128:
+      return bir::Value::immediate_f128_bits(0, 0);
+    default:
+      return std::nullopt;
+  }
+}
+
 std::optional<bir::Value> symbol_pointer_value_for_global_address(
     const lir_to_bir_detail::GlobalAddress& address,
     const BirFunctionLowerer::GlobalTypes& global_types) {
@@ -814,6 +837,41 @@ bool BirFunctionLowerer::lower_memory_store_inst(
           slot_type_it->second == alias_it->second.type) {
         value_type = alias_it->second.type;
       }
+    }
+  }
+  if (!value_type.has_value()) {
+    const auto vector_type = parse_local_vector_type(store.type_str.str());
+    if (vector_type.has_value()) {
+      if (store.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+          store.val.str() != "zeroinitializer") {
+        return false;
+      }
+      const auto local_array_it = local_array_slots_.find(store.ptr.str());
+      if (local_array_it == local_array_slots_.end() ||
+          local_array_it->second.element_type != vector_type->second ||
+          local_array_it->second.element_slots.size() < vector_type->first) {
+        return false;
+      }
+      const auto lane_zero = zero_value_for_scalar_type(vector_type->second);
+      const auto lane_size = type_size_bytes(vector_type->second);
+      if (!lane_zero.has_value() || lane_size == 0) {
+        return false;
+      }
+      clear_local_scalar_slot_values();
+      for (std::size_t lane_index = 0; lane_index < vector_type->first; ++lane_index) {
+        const auto& lane_slot = local_array_it->second.element_slots[lane_index];
+        const auto lane_slot_type_it = local_slot_types_.find(lane_slot);
+        if (lane_slot_type_it == local_slot_types_.end() ||
+            lane_slot_type_it->second != vector_type->second) {
+          return false;
+        }
+        lowered_insts->push_back(bir::StoreLocalInst{
+            .slot_name = lane_slot,
+            .value = *lane_zero,
+            .address = direct_scalar_local_slot_address(lane_slot, vector_type->second),
+        });
+      }
+      return true;
     }
   }
   if (!value_type.has_value()) {

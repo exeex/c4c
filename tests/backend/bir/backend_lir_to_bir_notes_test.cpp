@@ -7423,6 +7423,120 @@ int expect_local_vector_alloca_publishes_lane_slots_and_source_object() {
   return 0;
 }
 
+LirModule make_local_vector_store_source_object_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("riscv64-linux-gnu");
+
+  LirFunction function;
+  function.name = "local_vector_store_source_object";
+  function.signature_text = "define void @local_vector_store_source_object()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.vec"),
+      .type_str = "<4 x i16>",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.vec.1"),
+      .type_str = "<4 x float>",
+      .count = LirOperand(""),
+      .align = 16,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "<4 x i16>",
+      .val = LirOperand("zeroinitializer"),
+      .ptr = LirOperand("%lv.vec"),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "<4 x float>",
+      .val = LirOperand("zeroinitializer"),
+      .ptr = LirOperand("%lv.vec.1"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_local_vector_store_writes_lane_slots_and_source_facts() {
+  auto result =
+      try_lower_to_bir_with_options(make_local_vector_store_source_object_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("local vector store fixture should lower semantically");
+  }
+
+  const auto expects_lane_store = [](const bir::StoreLocalInst& store,
+                                     std::string_view slot_name,
+                                     const bir::Value& value,
+                                     std::size_t size_bytes) {
+    return store.slot_name == slot_name && store.value == value &&
+           store.address.has_value() &&
+           store.address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot &&
+           store.address->base_name == slot_name &&
+           store.address->byte_offset == 0 &&
+           store.address->size_bytes == size_bytes &&
+           store.address->align_bytes == size_bytes &&
+           store.address->provenance.base_identity.kind ==
+               bir::MemoryProvenanceBaseIdentityKind::LocalSlot &&
+           store.address->provenance.base_identity.spelling == slot_name &&
+           store.address->provenance.requested_range.available &&
+           store.address->provenance.requested_range.begin == 0 &&
+           store.address->provenance.requested_range.size_bytes == size_bytes &&
+           store.address->provenance.object_extent.size_known &&
+           store.address->provenance.object_extent.size_bytes == size_bytes &&
+           store.address->provenance.range_verdict ==
+               bir::MemoryRangeVerdict::ProvenInBounds;
+  };
+
+  bool saw_i16_lane_0 = false;
+  bool saw_i16_lane_3 = false;
+  bool saw_f32_lane_0 = false;
+  bool saw_f32_lane_3 = false;
+  const auto& function = result.module->functions.front();
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+      if (store == nullptr) {
+        continue;
+      }
+      if (expects_lane_store(*store,
+                             "%lv.vec.lane.0",
+                             bir::Value::immediate_i16(0),
+                             2)) {
+        saw_i16_lane_0 = true;
+      } else if (expects_lane_store(*store,
+                                    "%lv.vec.lane.3",
+                                    bir::Value::immediate_i16(0),
+                                    2)) {
+        saw_i16_lane_3 = true;
+      } else if (expects_lane_store(*store,
+                                    "%lv.vec.1.lane.0",
+                                    bir::Value::immediate_f32_bits(0),
+                                    4)) {
+        saw_f32_lane_0 = true;
+      } else if (expects_lane_store(*store,
+                                    "%lv.vec.1.lane.3",
+                                    bir::Value::immediate_f32_bits(0),
+                                    4)) {
+        saw_f32_lane_3 = true;
+      }
+    }
+  }
+
+  if (!saw_i16_lane_0 || !saw_i16_lane_3 || !saw_f32_lane_0 || !saw_f32_lane_3) {
+    return fail("fixed vector stores should publish deterministic lane local-slot stores");
+  }
+  return 0;
+}
+
 LirModule make_local_byte_array_scalar_access_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -12288,6 +12402,11 @@ int main() {
           expect_local_vector_alloca_publishes_lane_slots_and_source_object();
       local_vector_alloca_status != 0) {
     return local_vector_alloca_status;
+  }
+  if (const int local_vector_store_status =
+          expect_local_vector_store_writes_lane_slots_and_source_facts();
+      local_vector_store_status != 0) {
+    return local_vector_store_status;
   }
   if (const int direct_local_slot_provenance_status =
           expect_direct_local_scalar_access_publishes_local_slot_provenance();
