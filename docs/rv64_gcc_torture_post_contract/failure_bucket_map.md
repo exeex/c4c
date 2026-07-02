@@ -1,118 +1,121 @@
 # RV64 gcc_torture Failure Bucket Map
 
-Status: Step 3 ranking complete for the regenerated row set.
+Status: Step 4 current reset-main evidence refresh complete.
 
-## 2026-07-01 Fresh Whole-Scan Bucket Summary
+## Current Evidence Anchor
 
-A later supervisor scan on `main` produced a complete external RV64
-gcc_torture backend-object result:
+Use the stable 2026-07-02 reset-main/post-cleanup RV64 gcc_torture
+backend-object scans as the current planning anchor:
 
-- `1467` total
-- `314` pass
-- `1153` fail
+- `1467` total cases
+- `349` pass
+- `1118` fail
+- `build/agent_state/rv64_gcc_torture_backend_current_20260702T032151Z.log`
+- `build/agent_state/rv64_gcc_torture_backend_current_20260702T151551Z.log`
 
-Merged evidence:
+Those two scans had the same totals and the same pass/fail case set. This map
+therefore treats the timestamped 2026-07-02 evidence, the current mutable
+summary, and the current per-case logs as the source of truth:
 
-- `build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv`
-- `build/agent_state/rv64_gcc_c_torture_backend_failed.full.txt`
+- `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
+- `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
+- `build/rv64_gcc_c_torture_backend/<case-id>/case.log`
 
-First-owner bucket summary from that scan:
+Older handoff summaries and instruction-fragment-only classifications are
+historical support only. They must not be used as the current priority anchor.
 
-| Bucket | Count | First routing decision |
-| --- | ---: | --- |
-| `unsupported_move_bundle_target_shape` | 423 | Highest priority; split prepared move-bundle authority gaps from coherent RV64 materialization work. |
-| `semantic lir_to_bir` admission | 373 | BIR semantic producer cleanup before RV64 consumer work. |
-| Other/unclassified compile or run failures | 97 | Re-bucket after the two dominant owners. |
-| `unsupported_stack_frame` | 84 | Prepared/global stack-frame infrastructure review. |
-| `unsupported_instruction_fragment` | 82 | Use the older instruction-fragment classification below as residual sub-plan. |
-| `unsupported_global_data` | 40 | Prepared/global-data infrastructure review. |
-| `unsupported_terminator_fragment` | 23 | RV64 terminator-lowering review after dominant buckets. |
-| `unsupported_local_memory_access` | 23 | Producer/prepared memory authority versus RV64 memory lowering review. |
-| `unsupported_param_home` | 4 | Prepared ABI/frame review. |
-| `unsupported_floating_cast` | 3 | Scalar FP residual; keep separate from F128. |
-| Variadic helper | 1 | Runtime/helper lowering review. |
+## Evidence Limits
 
-This fresh whole-scan summary supersedes the old instruction-fragment-only
-priority order for queue selection. The detailed instruction-fragment analysis
-below remains useful once the queue reaches that residual bucket.
+The current summary TSV records `status`, `case`, and `log` only. It does not
+carry row-level first-owner annotations. The bucket counts below are therefore
+limited to diagnostics directly visible in the current per-case logs plus the
+source idea's explicit stable-scan fact for the move-bundle bucket.
 
-## Evidence Source For `unsupported_instruction_fragment`
+The current per-case logs support these directly counted diagnostic groups:
 
-Use `docs/rv64_gcc_torture_post_contract/current_scan_summary.md` as the
-evidence-source decision for this bucket. Step 2 classified rows from:
+| Diagnostic group | Current rows | First-owner confidence | Routing decision |
+| --- | ---: | --- | --- |
+| `unsupported_move_bundle_target_shape` | 183 | High; source idea explicitly records this as the largest current explicit prepared/module-shape bucket. | First expected-value ordinary-C follow-up candidate. Split coherent RV64 move materialization from prepared/BIR authority gaps before implementation. |
+| `unsupported_instruction_fragment` | 137 | Medium; explicit RV64 unsupported diagnostic, but no refreshed row-level sub-bucket table exists for the current 2026-07-02 rows. | RV64 instruction-fragment follow-up after move-bundle and producer-admission work. Reclassify current rows before implementation. |
+| `unsupported_stack_frame` | 85 | Medium; explicit infrastructure diagnostic, but current rows are not split by ordinary scalar, FPR, F128, or producer authority. | Prepared/RV64 frame infrastructure review. Keep broad FPR/F128 expansion out of the ordinary-C route unless row evidence requires it. |
+| `unsupported_local_memory_access` | 44 | Medium; explicit prepared module-shape diagnostic, but first-owner split is not verified row by row. | BIR/prepared local-memory authority and RV64 memory-lowering boundary review. Do not guess missing prepared address facts in RV64. |
+| `unsupported_global_data` | 43 | Medium; explicit infrastructure diagnostic. | Prepared/global-data infrastructure review before RV64 global-address lowering consumes the facts. |
+| `unsupported_terminator_fragment` | 27 | Medium; explicit RV64 unsupported diagnostic. | RV64 terminator-lowering review after higher-count ordinary-C buckets. |
+| `unsupported_prepared_move_bundle_classification` | 26 | Medium; explicit prepared classification diagnostic. | Prepared/module classification owner first; dependent RV64 move lowering should wait for coherent prepared authority. |
+| `unsupported_scalar_compare_publication` | 3 | Medium; explicit scalar publication diagnostic. | Small RV64 scalar compare/publication residual; not a primary queue driver. |
+| `unsupported_floating_cast` | 2 | Medium; explicit scalar-FP diagnostic. | Tiny non-F128 scalar FP salvage candidate; keep separate from F128. |
+| `unsupported_variadic_helper_lowering` | 1 | Medium; explicit helper diagnostic. | Runtime/helper ABI review, low priority. |
+| Compile failures with no explicit `unsupported_*` diagnostic | 503 | Low; current logs expose compile failure but not a first-owner row reason. | Evidence gap. Re-run or enrich row-level diagnostics before assigning to BIR, prepared, RV64, runtime, or test infrastructure owners. |
+| Other non-unsupported failures | 57 | Low; includes subprocess aborts/timeouts and other non-explicit failures. | Evidence gap. Needs targeted reproduction before ownership assignment. |
+| Segmentation-fault exits | 7 | Low; crash signal only. | Evidence gap. Treat as crash triage, not ordinary-C capability progress, until reproduced. |
 
-- `build/agent_state/unsupported_instruction_fragment_rows.tsv`
-- `build/agent_state/rv64_gcc_torture_backend_current_20260630T032216Z.log`
+The directly counted rows above account for the current `1118` failures. Only
+the rows with explicit current diagnostics should be used for current
+first-owner planning. The 567 rows without explicit current ownership evidence
+must not be silently folded into a named implementation bucket.
 
-The scan recorded `total=1467 passed=404 failed=1063`. The row TSV contains
-190 `unsupported_instruction_fragment` rows from that same scan. Local
-prepared-BIR inspection dumps under `build/agent_state/421_step2_prepared/`
-were used to classify the rows by BIR opcode, operand/result type, prepared
-fact surface, and likely first owner.
+## First-Owner Classification Rules
 
-## Classification Rule
+Classify rows by the first layer that must supply a semantic fact or lowering
+rule:
 
-Rows are assigned to one first-owner bucket using this priority order:
+- F128 rows are screened into the F128 quarantine lane before ordinary non-F128
+  work. F128 remains lowest priority unless fresh evidence proves it blocks a
+  broad non-F128 owner.
+- Prepared/module-shape diagnostics own missing or incoherent prepared facts
+  before RV64 lowering is asked to consume them.
+- BIR semantic producer gaps own missing semantic admission, local-memory,
+  call metadata, or aggregate facts before MIR/RV64 repair work.
+- RV64 object lowering owns coherent prepared/BIR facts that are rejected only
+  because the object route lacks a semantic lowering rule.
+- Runtime mismatch and crash rows require targeted reproduction before they can
+  be treated as ordinary lowering progress.
 
-- F128 rows are quarantined before ordinary non-F128 work.
-- Aggregate ABI rows with `sret` or `byval` are producer/ABI-contract owned
-  before ordinary scalar call rows.
-- Pointer casts and pointer address materialization are separated before
-  integer arithmetic buckets.
-- Scalar F32/F64 rows stay separate from integer lowering.
-- Remaining ordinary non-F128 rows are grouped by the first high-signal BIR
-  opcode family visible in prepared BIR.
+## Current Priority Order
 
-The counts below are therefore disjoint and sum to 190.
+1. `unsupported_move_bundle_target_shape` is the current highest expected-value
+   ordinary-C candidate with 183 verified current rows. The next idea should
+   split those rows into coherent RV64 move-materialization work versus
+   prepared/BIR authority gaps.
+2. BIR semantic producer admission remains a high-priority owner family from
+   the source idea, but this file does not have a verified current row count for
+   it. Step 5 should avoid inventing one unless it creates or cites current
+   row-level evidence.
+3. `unsupported_instruction_fragment` has 137 current explicit rows. The older
+   detailed instruction-fragment sub-bucket work is useful as a taxonomy, but
+   its stale row counts are not current evidence.
+4. `unsupported_local_memory_access`, `unsupported_global_data`,
+   `unsupported_stack_frame`, and
+   `unsupported_prepared_move_bundle_classification` should become
+   prepared/BIR/RV64 boundary reviews before implementation slices consume
+   those facts.
+5. Runtime, crash, timeout, and compile-failure rows without explicit current
+   diagnostics are evidence gaps. They need refreshed row-level classification
+   before being ranked ahead of explicit ordinary-C buckets.
+6. F128 is quarantined and lowest priority. Primary-F128 testcase rows should
+   be screened away from ordinary-C progress accounting unless a future proof
+   shows broad non-F128 impact.
 
-## Owner Buckets
+## Historical Supporting Evidence
 
-| Bucket | Count | Owning layer | Prepared fact completeness | Representative rows |
-| --- | ---: | --- | --- | --- |
-| Select and join materialization | 54 | RV64 object lowering | BIR select instructions and prepared join-transfer facts are present; lowering must reject unsupported ordinary selects without inventing branch facts. | `src/pr43236.c`, `src/pr51933.c`, `src/pr68328.c`, `src/pr82954.c`, `src/pr84524.c` |
-| Call-adjacent scalar publication and inline-asm materialization | 38 | RV64 call/inline-asm object lowering | Prepared calls are present, but the object route lacks support for these scalar result, argument, or inline-asm fragments. | `src/pr38533.c`, `src/pr40657.c`, `src/pr45695.c`, `src/pr49279.c`, `src/pr56982.c` |
-| Pointer cast and address materialization | 21 | RV64 pointer/address lowering, with producer review for pointer provenance | Prepared BIR exposes `inttoptr` or `ptrtoint`; do not paper over missing provenance by guessing RV64 addresses. | `src/930930-1.c`, `src/20000622-1.c`, `src/20010329-1.c`, `src/20011019-1.c`, `src/20041112-1.c` |
-| Aggregate `sret`/`byval` call-storage | 19 | Prepared ABI producer plus RV64 aggregate call lowering | ABI attributes are present in BIR, but some rows show suspicious prepared aggregate sizes or alignments; treat incoherent facts as producer-owned. | `src/pr88904.c`, `src/20000917-1.c`, `src/20010224-1.c`, `src/20020206-1.c`, `src/20020506-1.c` |
-| Integer div/rem lowering | 17 | RV64 integer instruction lowering | BIR contains scalar `udiv`, `sdiv`, `urem`, or `srem`; classify as object lowering only when operand/result types and prepared homes are coherent. | `src/20021120-3.c`, `src/20030105-1.c`, `src/20090113-2.c`, `src/20090113-3.c`, `src/20100416-1.c` |
-| F128 quarantine | 16 | F128/runtime-helper quarantine, not primary route | BIR contains `f128` values or long-double helper calls; keep out of the ordinary non-F128 backlog. | `src/20040709-2.c`, `src/20040709-3.c`, `src/20000910-1.c`, `src/20000910-2.c`, `src/20050203-1.c` |
-| Integer arithmetic shift right | 11 | RV64 integer instruction lowering | BIR contains scalar `ashr`; this is distinct from already broader `shl`/`lshr` and must not be handled by testcase-shaped constants. | `src/pr78438.c`, `src/pr79737-2.c`, `src/20000815-1.c`, `src/20020402-3.c`, `src/20051110-1.c` |
-| Large literal and materialization | 10 | RV64 immediate/materialization lowering | BIR contains integer constants outside small-immediate paths; lowering needs a semantic literal materialization rule, not filename matching. | `src/20071211-1.c`, `src/pr78726.c`, `src/950221-1.c`, `src/960321-1.c`, `src/960402-1.c` |
-| Global memory/addressing residual | 2 | RV64 memory/address lowering | BIR has global load/store rows with prepared memory facts needing separate addressability checks. | `src/pr59387.c`, `src/pr77766.c` |
-| Scalar F32/F64 conversion/op residual | 2 | RV64 scalar floating-point lowering | Non-F128 floating rows remain after quarantine; they should not be mixed with F128 runtime work. | `src/ieee/930529-1.c`, `src/ieee/pr72824.c` |
+The previous instruction-fragment classification remains a useful taxonomy for
+future re-bucketing, but its counts came from an older scan and do not describe
+the current 2026-07-02 row set. When the queue reaches current
+`unsupported_instruction_fragment` work, rerun row-level classification before
+turning those historical categories into implementation ideas.
 
-## Representative Evidence
+Historical categories to consider during that rerun:
 
-- Select/join: `src/pr43236.c` contains
-  `%t13.store0 = bir.select eq i64 %t12, 0, i8 0, %t13.elt0`.
-- Call-adjacent scalar/inline asm: `src/pr38533.c` contains
-  `%t0 = bir.call i32 llvm.inline_asm(i32 0)`.
-- Pointer/address: `src/930930-1.c` contains
-  `%t7 = bir.inttoptr i64 %t6 to ptr`.
-- Aggregate ABI: `src/pr88904.c` declares
-  `bir.func @foo(ptr sret(size=8, align=4) %ret.sret) -> void`.
-- Integer div/rem: `src/20021120-3.c` contains
-  `%t1 = bir.udiv i32 %p.x, %p.y`.
-- F128 quarantine: `src/20040709-2.c` contains
-  `bir.load_local f128 %lv.param.p.x.0`.
-- Arithmetic shift right: `src/pr78438.c` contains
-  `%t1 = bir.ashr i32 %t0, 11`.
-- Large literal/materialization: `src/950221-1.c` contains
-  `%t0 = bir.ne i64 %p.a, 3735928559`.
-- Global memory/addressing: `src/pr59387.c` contains
-  `bir.store_global @a, i32 %t0`.
-- Scalar F32/F64: `src/ieee/pr72824.c` contains a function parameter
-  `float %p.value`.
+- select and join materialization
+- call-adjacent scalar publication and inline-asm materialization
+- pointer cast and address materialization
+- aggregate `sret`/`byval` call-storage
+- integer div/rem lowering
+- integer arithmetic shift right
+- large literal and materialization
+- global memory/addressing residual
+- scalar F32/F64 conversion/op residual
+- F128 quarantine
 
-## Step 3 Ranking Notes
-
-- Highest-impact ordinary non-F128 candidates are select/join materialization
-  (54), call-adjacent scalar/inline-asm fragments (38), pointer/address
-  materialization (21), aggregate ABI call-storage (19), and integer div/rem
-  (17).
-- F128 remains quarantined at 16 rows and should not displace ordinary
-  non-F128 implementation ideas.
-- Producer-owned review is required before implementation ideas for aggregate
-  rows with suspicious prepared size/alignment facts and pointer rows where
-  prepared provenance is incomplete.
-- The ordered Step 3 follow-up backlog is recorded in
-  `docs/rv64_gcc_torture_post_contract/followup_idea_plan.md`.
+Do not reuse the historical category counts as current row counts without a
+fresh 2026-07-02 row table.
