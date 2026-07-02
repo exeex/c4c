@@ -1,6 +1,6 @@
 # Current RV64 gcc_torture Backend Scan Evidence
 
-Status: Step 6 close-readiness evidence reconciled.
+Status: stable reset-main/post-cleanup evidence reconciled for close-readiness.
 
 ## Existing Artifacts
 

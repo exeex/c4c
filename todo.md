@@ -1,15 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Review And Close Readiness
+Current Step ID: 5
+Current Step Title: Generate Ordered Follow-Up Ideas
+你該做code review了
 
 # Current Packet
 
 ## Just Finished
 
-Step 6 reviewed close readiness for the RV64 gcc_torture post-contract
-umbrella and repaired the remaining docs-only evidence mismatch in
+Step 2 repair refreshed the remaining docs-only evidence mismatch in
 `docs/rv64_gcc_torture_post_contract/current_scan_summary.md`.
 
 The handoff docs now agree that the current reset-main/post-cleanup RV64
@@ -26,13 +26,15 @@ only. RV64 gcc_torture remains external evidence, not default CTest coverage.
 No implementation files, test expectations, unsupported markers, allowlists, or
 lifecycle source intent files were edited.
 
-Close-readiness status: ready for supervisor/plan-owner lifecycle review. I
-found no remaining docs-only evidence blocker inside the owned files.
+This repair is a prerequisite for Step 6 close-readiness review. I found no
+remaining docs-only evidence blocker inside the owned files.
 
 ## Suggested Next
 
-Supervisor should route the completed umbrella to plan-owner for lifecycle
-close, deactivate, or replacement decision.
+Execute Step 6 by reviewing close readiness for the umbrella. Confirm the
+handoff docs and generated ideas satisfy the source idea, verify no
+implementation patches or expectation downgrades entered the umbrella, and
+record the close-gate expectation for supervisor/plan-owner review.
 
 ## Watchouts
 
@@ -40,8 +42,6 @@ close, deactivate, or replacement decision.
   intentionally describe historical packets and may mention older totals such
   as `314/1153` or `404/1063`; do not treat those as current anchors unless a
   later packet refreshes them.
-- `regression_delta.md` and `try_gcc_torture_postmortem.md` were not present in
-  this checkout during Step 5, despite earlier handoff notifications.
 - The current bucket map has verified current diagnostic counts, but it does
   not have a refreshed row-level first-owner table for the 567 current failures
   that lack explicit `unsupported_*` ownership evidence.
@@ -61,5 +61,4 @@ close, deactivate, or replacement decision.
 
 Ran `git diff --check --
 docs/rv64_gcc_torture_post_contract/current_scan_summary.md
-docs/rv64_gcc_torture_post_contract/README.md todo.md`; proof output was
-captured in `test_after.log`.
+todo.md`; proof output was captured in `test_after.log`.
