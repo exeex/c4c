@@ -1,7 +1,26 @@
 # RV64 Bankless Or Conversion-Adjacent Stack Slot Moves
 
+Status: Closed
 Source Parent: ideas/closed/513_rv64_stack_to_stack_prepared_move_materialization.md
 Owning Layer: Prepared storage classification and RV64 object emission
+
+## Closure Summary
+
+Closed after the bankless storage-plan publication was repaired and the
+conversion-adjacent stack-source to stack-destination shape was made to fail
+closed before generic stack-copy materialization. The `src/pr69447.c`
+representative now reports the owner-specific
+`unsupported_prepared_move_bundle_classification` diagnostic with
+`diagnostic_owner=prepared_move_bundle_classifier`,
+`source_type=i16`, `destination_type=i64`, and
+`producer_classification_rejected_stack_source_stack_destination_conversion_adjacent_move`;
+the object probe exits unsupported and leaves no output object.
+
+Focused backend coverage covers the accepted same-scalar prepared stack-slot
+copy path, the preserved register-source stack-destination conversion
+rejection, and the conversion-adjacent stack-source stack-destination
+rejection. Close validation used the matching backend regression guard at
+345/345 before and after with no new failures.
 
 ## Goal
 
