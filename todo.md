@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/538_rv64_object_global_address_helper_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prune only genuinely dead global-address wrappers
+Current Step ID: 4
+Current Step Title: Close-readiness review
 
 # Current Packet
 
