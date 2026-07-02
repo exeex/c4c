@@ -2,6 +2,7 @@
 
 Source Parent: ideas/closed/512_stack_passed_parameter_home_publication.md
 Owning Layer: RV64 object emission consuming prepared move-bundle authority
+Status: Closed
 
 ## Goal
 
@@ -58,6 +59,45 @@ authority rather than being folded back into stack-parameter home publication.
   materialization path plus adjacent reject cases.
 - Validation includes a fresh build, focused representative proof, focused
   backend coverage, and the relevant backend subset.
+
+## Closure Summary
+
+Closed after implementing the coherent same-scalar stack-slot to stack-slot
+RV64 materializer in object emission and adding focused accepted/reject
+coverage.
+
+The accepted shape is intentionally narrow: one before-instruction value move
+from a prepared stack-slot source to a prepared stack-slot destination, with
+same scalar type, coherent GPR frame-slot storage facts when present, and
+explicit prepared homes. The materializer emits the RV64 load/store sequence
+through a scratch GPR and leaves malformed, missing-authority, unsupported-bank,
+multi-move, and conversion-adjacent cases fail-closed.
+
+Step 5 reclassified the original representative rows:
+
+- `src/20010518-1.c` still reaches `unsupported_move_bundle_target_shape`, but
+  its first failing bundle is a multi-move register-source bundle targeting a
+  stack value, not the coherent stack-slot to stack-slot shape.
+- `src/pr27073.c` still reaches `unsupported_move_bundle_target_shape`, but
+  its first failing move sources `%p.count` from register `a4` into a stack
+  destination despite the reason string.
+- `src/pr69447.c` still reaches `unsupported_move_bundle_target_shape`, but
+  its first failing coherent-looking move has a source storage-plan entry
+  `frame_slot bank=none` and is conversion-adjacent (`i16` to `i64`), so
+  accepting it would infer bank or conversion semantics outside this idea.
+
+Follow-up ideas now own those separate blockers:
+
+- `ideas/open/514_rv64_register_source_stack_destination_move_bundles.md`
+- `ideas/open/515_rv64_bankless_conversion_adjacent_stack_slot_moves.md`
+
+Close-time validation:
+
+- `cmake --build build --target c4cll`: passed.
+- `cmake --build build --target backend_riscv_object_emission_test`: passed.
+- `ctest --test-dir build -j --output-on-failure -R 'backend_riscv_object_emission|stack_to_stack|move_bundle'`: passed, 1/1.
+- `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`: passed, 345/345.
+- `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`: passed; before 331/331, after 345/345, no new failures.
 
 ## Reviewer Reject Signals
 
