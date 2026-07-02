@@ -122,10 +122,6 @@ constexpr bool fits_signed_12_bit_immediate(std::int64_t value) {
   return value >= -2048 && value <= 2047;
 }
 
-bool rv64_supported_fixed_frame_alignment(std::size_t alignment) {
-  return rv64_prepared_supported_fixed_frame_alignment(alignment);
-}
-
 object::SymbolBinding binding_for_function(const RiscvObjectFunction& function) {
   return function.global ? object::SymbolBinding::Global
                          : object::SymbolBinding::Local;
@@ -3485,33 +3481,6 @@ bool append_rv64_stack_frame_epilogue(
   }
   return append_rv64_stack_pointer_adjustment(
       fragment, static_cast<std::int64_t>(stack_frame_bytes));
-}
-
-std::optional<std::size_t> align_rv64_object_stack_frame_size(
-    std::size_t frame_size) {
-  return align_rv64_prepared_object_stack_frame_size(frame_size);
-}
-
-const prepare::PreparedFrameSlot* rv64_find_function_frame_slot(
-    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
-    c4c::backend::prepare::PreparedFrameSlotId slot_id,
-    c4c::FunctionNameId function_name) {
-  return rv64_prepared_find_function_frame_slot(
-      stack_layout, slot_id, function_name);
-}
-
-bool rv64_frame_slot_extent_is_supported(
-    const c4c::backend::prepare::PreparedFrameSlot& slot,
-    std::size_t frame_size) {
-  return rv64_prepared_frame_slot_extent_is_supported(slot, frame_size);
-}
-
-std::optional<std::size_t> rv64_validated_prepared_fixed_frame_size(
-    const c4c::backend::prepare::PreparedAddressingFunction* addressing,
-    const c4c::backend::prepare::PreparedFramePlanFunction& frame_plan,
-    const c4c::backend::prepare::PreparedStackLayout& stack_layout) {
-  return rv64_prepared_validated_fixed_frame_size(
-      addressing, frame_plan, stack_layout);
 }
 
 std::optional<std::size_t> rv64_object_stack_frame_size(
