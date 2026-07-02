@@ -1,112 +1,80 @@
 Status: Active
 Source Idea Path: ideas/open/552_prepared_move_bundle_target_shape_authority_gaps.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconstruct The 43-Row Prepared Authority Queue
+Current Step ID: 2
+Current Step Title: Repair Destination-Home Shape Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 1, "Reconstruct The 43-Row Prepared Authority Queue," completed as a
-proof/accounting packet. Initial `git status --short` was clean. The queue was
-rebuilt from 31 original
-`first_owner_lane=prepared_module_target_shape_authority_gap` rows plus 12
-carry-ins from the closed 551 RV64 materialization lane, then deduplicated to
-43 rows.
+Step 2, "Repair Destination-Home Shape Authority," completed as a narrow
+implementation packet. Initial `git status --short` was clean. The prepared
+value-home classifier now publishes an assigned stack slot as the canonical
+home before computed `i32` immediate or pointer-base-plus-offset expression
+homes. This gives move-bundle consumers explicit destination stack-slot id,
+offset, size, and alignment when regalloc assigned stack storage.
 
-Artifacts:
+Changed files:
 
-- `build/agent_state/552_step1_prepared_authority_queue/queue.tsv`
-- `build/agent_state/552_step1_prepared_authority_queue/group_counts.tsv`
-- `build/agent_state/552_step1_prepared_authority_queue/observed_family_counts.tsv`
-- `build/agent_state/552_step1_prepared_authority_queue/representatives.tsv`
-- `build/agent_state/552_step1_prepared_authority_queue/current_diagnostics.tsv`
-- `build/agent_state/552_step1_prepared_authority_queue.allowlist`
-- `docs/rv64_gcc_torture_post_contract/prepared_authority_queue_step1_reconstruction.md`
+- `src/backend/prealloc/regalloc/value_homes.cpp`
+- `docs/rv64_gcc_torture_post_contract/prepared_authority_destination_home_step2.md`
+- `todo.md`
 
-Deduplicated group counts by earliest missing prepared fact:
+Derived artifacts:
 
-| Group | Rows |
+- `build/agent_state/552_step2_destination_home.allowlist`
+- `build/agent_state/552_step2_destination_home/summary.tsv`
+- `build/agent_state/552_step2_destination_home/failed.txt`
+- `build/agent_state/552_step2_destination_home/row_status.tsv`
+
+Focused Step 2 row counts:
+
+| Classification | Rows |
 | --- | ---: |
-| Destination home | 16 |
-| Source home or move classification | 15 |
-| Scalar type, size, or alignment | 9 |
-| Return ABI destination home | 2 |
-| Select-publication source home | 1 |
+| Repaired and passing | 4 |
+| Advanced to later RV64 global-data diagnostic | 4 |
+| Advanced to later RV64 instruction-fragment diagnostic | 4 |
+| Advanced to runtime mismatch | 3 |
+| Advanced to other prepared authority gap | 1 |
+| Still destination-home authority gap | 0 |
 
-Observed family counts:
-
-| Observed Family | Rows |
-| --- | ---: |
-| `prepared_destination_home_shape_authority` | 11 |
-| `prepared_move_classification_or_source_home_authority` | 9 |
-| `prepared_move_type_authority` | 8 |
-| `prepared_return_abi_destination_home_authority` | 2 |
-| `prepared_select_publication_source_home_authority` | 1 |
-| `carry_in_classifier_ambiguous_non_parallel_multi_source_stack_destination` | 6 |
-| `carry_in_generic_fragment_destination_home_mismatch` | 5 |
-| `carry_in_generic_fragment_source_type_size_authority` | 1 |
-
-Representative rows:
-
-- Destination home: `src/20040629-1.c`, `src/20040705-1.c`,
-  `src/20000717-3.c`, `src/strcmp-1.c`, `src/strncmp-1.c`.
-- Source home or move classification: `src/20000113-1.c`,
-  `src/20011219-1.c`, `src/20020226-1.c`.
-- Scalar type, size, or alignment: `src/20020402-1.c`,
-  `src/20050215-1.c`, `src/950710-1.c`, `src/loop-2d.c`.
-- Return ABI destination home: `src/20001130-2.c`, `src/20080719-1.c`.
-- Select-publication source home: `src/pr58726.c`.
-
-Prepared/module facts RV64 is waiting for: explicit source and destination home
-kind, stack/register coordinates, scalar type/size/alignment, return ABI
-destination-home agreement, and select-publication source-home intent. No row
-was rerouted out of this idea in Step 1; the six classifier carry-ins may need
-an earlier semantic producer split only if Step 3 proves prepared is mirroring
-missing producer evidence.
+The one remaining prepared-authority row is `src/pr36339.c`: its destination
+home is now `stack_slot`, but the remaining generic move-bundle diagnostic
+lacks source type authority, so it belongs to the scalar type/size/alignment
+family rather than destination-home publication.
 
 ## Suggested Next
 
-Executor should run Step 2, "Repair Destination-Home Shape Authority," starting
-with the 16 destination-home rows. Inspect prepared value-home publication,
-move-bundle construction, typed storage validation, and RV64 diagnostic
-consumption before editing implementation code.
+Executor should run Step 3, "Repair Move Classification And Source-Home
+Authority," starting with the 15 source-home or move-classification rows from
+the Step 1 queue. Reuse the Step 2 row-status evidence so `src/pr36339.c`
+remains reserved for the scalar type packet unless the supervisor chooses to
+fold it into Step 4.
 
 ## Watchouts
 
-- Do not infer prepared facts from RV64 destination spelling or expected
-  assembly.
-- Keep the 12 carry-in rows from the closed 551 materialization lane inside
-  this queue unless row-level evidence reroutes them to an earlier owner.
-- Do not edit implementation files unless the delegated packet explicitly
-  includes a code change.
-- Prepared/module implementation surfaces to inspect next:
-  `src/backend/prealloc/regalloc.cpp`,
-  `src/backend/prealloc/prepared_object_traversal.cpp`,
-  `src/backend/prealloc/prepared_object_traversal.hpp`,
-  `src/backend/prealloc/prepared_lookups.cpp`,
-  `src/backend/prealloc/publication_plans.cpp`,
-  `src/backend/prealloc/publication_plans.hpp`,
-  `src/backend/prealloc/storage_plans.cpp`,
-  `src/backend/prealloc/prepared_contract_verifier.hpp`, and dependent
-  consumer diagnostics in `src/backend/mir/riscv/codegen/object_emission.cpp`.
+- The Step 2 rule is intentionally canonical-home based. It does not create a
+  second context-specific source/destination home for the same prepared value.
+- `src/pr36339.c` no longer proves destination-home absence; it now points at
+  missing source type authority.
+- Four destination-home rows now route to RV64 global-data support, four to
+  RV64 instruction-fragment support, and three to runtime mismatch. Those are
+  not prepared destination-home blockers.
 
 ## Proof
 
-- Build freshness:
-
 ```text
 cmake --build --preset default
+ctest --test-dir build -j --output-on-failure -R '^backend_'
+ALLOWLIST=build/agent_state/552_step2_destination_home.allowlist scripts/check_progress_rv64_gcc_c_torture_backend.sh
 ```
 
-Result: passed; ninja reported no work to do.
+Results:
 
-- Focused queue proof:
+- Build passed.
+- Backend CTest passed `345/345`.
+- Focused Step 2 proof passed `4/16`, with `0` rows still blocked by
+  destination-home authority.
 
-```text
-ALLOWLIST=build/agent_state/552_step1_prepared_authority_queue.allowlist scripts/check_progress_rv64_gcc_c_torture_backend.sh
-```
-
-Result: `total=43 passed=0 failed=43`, as expected for a reconstruction-only
-packet. Proof output is preserved in `test_after.log`.
+Proof output is preserved in `test_after.log`.

@@ -347,6 +347,19 @@ riscv_fpr_identity_for_assigned_register(
   };
 }
 
+[[nodiscard]] bool publish_assigned_stack_home(PreparedValueHome& home,
+                                               const PreparedRegallocValue& value) {
+  if (!value.assigned_stack_slot.has_value()) {
+    return false;
+  }
+  home.kind = PreparedValueHomeKind::StackSlot;
+  home.slot_id = value.assigned_stack_slot->slot_id;
+  home.offset_bytes = value.assigned_stack_slot->offset_bytes;
+  home.size_bytes = value.assigned_stack_slot->size_bytes;
+  home.align_bytes = value.assigned_stack_slot->align_bytes;
+  return true;
+}
+
 }  // namespace
 
 PreparedValueHome classify_prepared_value_home(
@@ -455,6 +468,9 @@ PreparedValueHome classify_prepared_value_home(
       return home;
     }
   }
+  if (publish_assigned_stack_home(home, value)) {
+    return home;
+  }
   if (function != nullptr && value.type == bir::TypeKind::I32) {
     const bir::Value named_value =
         bir::Value::named(value.type, std::string(prepared_value_name(names, value.value_name)));
@@ -546,12 +562,7 @@ PreparedValueHome classify_prepared_value_home(
         riscv_fpr_identity_for_assigned_register(target_profile, *value.assigned_register);
     return home;
   }
-  if (value.assigned_stack_slot.has_value()) {
-    home.kind = PreparedValueHomeKind::StackSlot;
-    home.slot_id = value.assigned_stack_slot->slot_id;
-    home.offset_bytes = value.assigned_stack_slot->offset_bytes;
-    home.size_bytes = value.assigned_stack_slot->size_bytes;
-    home.align_bytes = value.assigned_stack_slot->align_bytes;
+  if (publish_assigned_stack_home(home, value)) {
     return home;
   }
   return home;
