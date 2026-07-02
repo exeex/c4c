@@ -24,6 +24,10 @@ rv64_variadic_va_list_overflow_arg_area_field(
 [[nodiscard]] bool rv64_variadic_helper_free_entry_contract_is_complete(
     const c4c::backend::prepare::PreparedVariadicEntryPlanFunction& entry_plan);
 
+[[nodiscard]] bool prepared_move_is_before_return_stack_to_register_abi_move(
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move);
+
 [[nodiscard]] std::optional<std::int32_t>
 prepared_frame_slot_call_argument_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,

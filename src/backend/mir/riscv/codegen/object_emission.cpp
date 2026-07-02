@@ -1932,33 +1932,6 @@ fragment_for_prepared_out_of_ssa_moves(
   return fragment;
 }
 
-bool prepared_move_is_before_return_stack_to_register_abi_move(
-    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
-    const c4c::backend::prepare::PreparedMoveResolution& move) {
-  return move_bundle.phase == prepare::PreparedMovePhase::BeforeReturn &&
-         move_bundle.authority_kind == prepare::PreparedMoveAuthorityKind::None &&
-         move.destination_kind ==
-             prepare::PreparedMoveDestinationKind::FunctionReturnAbi &&
-         move.destination_storage_kind ==
-             prepare::PreparedMoveStorageKind::Register &&
-         move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
-         move.reason == "return_stack_to_register" &&
-         !move.source_parallel_copy_step_index.has_value() &&
-         !move.source_immediate_i32.has_value() &&
-         !move.uses_cycle_temp_source &&
-         !move.destination_stack_offset_bytes.has_value() &&
-         move.destination_contiguous_width == 1 &&
-         move.destination_occupied_register_names.size() <= 1 &&
-         move.destination_register_name.has_value() &&
-         move.destination_register_placement.has_value() &&
-         move.destination_register_placement->bank ==
-             prepare::PreparedRegisterBank::Gpr &&
-         move.destination_register_placement->pool ==
-             prepare::PreparedRegisterSlotPool::CallResult &&
-         move.destination_register_placement->slot_index == 0 &&
-         move.destination_register_placement->contiguous_width == 1;
-}
-
 std::optional<RiscvEncodedFragment>
 fragment_for_prepared_before_return_stack_to_register_abi_move(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
