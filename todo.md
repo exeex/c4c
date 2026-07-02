@@ -1,50 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/551_rv64_move_bundle_materialization_from_classified_bucket.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement Register-To-Stack Move Materialization
+Current Step ID: 3
+Current Step Title: Add Rematerializable Immediate Move Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Attempted Step 2, `Implement Register-To-Stack Move Materialization`.
+Completed Step 3, `Add Rematerializable Immediate Move Coverage`.
 
-Completed Step 2, `Implement Register-To-Stack Move Materialization`.
+`src/backend/mir/riscv/codegen/object_emission.cpp` now consumes coherent
+rematerializable integer-immediate sources for register destinations in the
+selected move-bundle paths:
 
-`src/backend/mir/riscv/codegen/object_emission.cpp` now consumes prepared
-register-home to stack-slot-home moves semantically for the selected
-before-instruction move-bundle path:
+- block-entry out-of-SSA `phi_join_register_to_register` moves whose prepared
+  source home is `RematerializableImmediate` now verify the prepared immediate
+  contract and load the immediate into the prepared destination GPR
+- predecessor select-publication parallel copies with an available I32
+  immediate source and explicit GPR destination now emit through the existing
+  RV64 load-immediate helper, including wider-than-12-bit immediates
+- prepared-authority gaps remain outside this route; the code requires the
+  published select intent and matching predecessor-terminator parallel-copy
+  authority instead of inferring missing homes
 
-- removes the single-register-to-stack-move restriction so multi-move bundles
-  can be emitted move-by-move
-- keeps explicit source scalar-size authority, source GPR home coherence, and
-  destination frame-slot storage-plan coherence checks
-- stores by the prepared destination value type and stack-slot offset instead
-  of requiring source and destination scalar sizes to match
-- handles coherent rematerializable integer immediate sources to stack slots
-  when they appear in the same stack-destination bundle, using an unoccupied
-  temporary GPR and the existing rematerializable-immediate verifier
-
-The original two-move representative `src/20000717-3.c` is no longer a clean
-Step 2 proof case: after the selected register-to-stack bundle advances, it
-reaches a later move bundle whose move says `destination_storage=stack_slot`
-but whose prepared destination home is `rematerializable_immediate`. RV64 has
-no explicit destination stack-slot home or stack offset authority to consume
-for that later bundle.
-
-Replacement representative: `src/20000914-1.c`. The classification table keeps
-it in the same 130-row selected first packet with
-`move_count=2`, `source_home_kind=register`, and
-`destination_home_kind=stack_slot`, and the revised proof confirms it no longer
-ends at generic move-bundle materialization.
+Immediate-to-stack coverage from Step 2 remains in place for coherent
+stack-destination bundles and was included in the Step 3 representative proof.
 
 ## Suggested Next
 
-Proceed to Step 3 immediate-source move coverage, keeping the
-`src/20000717-3.c` later `destination_home_kind=rematerializable_immediate`
-authority gap out of the RV64 materialization route until prepared authority is
-clarified.
+Proceed to Step 4 stack-to-stack move coverage for coherent
+`consumer_stack_to_stack/stack_slot_to_stack_slot` rows.
 
 ## Watchouts
 
@@ -55,18 +41,21 @@ clarified.
 - The current code changes are semantic over prepared homes and do not use
   filenames, expectation rewrites, unsupported-marker edits, or allowlist
   changes.
-- `src/20000422-1.c` and `src/20000914-1.c` cover multi-move behavior in the
-  revised Step 2 proof set.
+- Step 3 representatives advance past the targeted move-bundle/select
+  publication failures, but several continue to later unsupported features:
+  `src/20080519-1.c` reaches unsupported local-memory addressing,
+  `src/pr29695-1.c` and `src/pr29695-2.c` reach missing move-bundle authority,
+  and `src/pr37924.c` reaches unsupported instruction lowering.
 
 ## Proof
 
-- Revised delegated proof command was run with `src/20000914-1.c` replacing
-  `src/20000717-3.c`; full output is preserved in `test_after.log`.
+- Delegated Step 3 proof command was run exactly; full output is preserved in
+  `test_after.log`.
 - `cmake --build --preset default` completed.
 - `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed:
   345/345 backend tests.
-- The five-case RV64 gcc torture allowlist advanced all representatives past
-  `fragment_status=generic_move_bundle_materialization_failed`:
-  `src/pr78438.c`, `src/20000121-1.c`, `src/20000801-2.c`, and
-  `src/20000422-1.c`, and `src/20000914-1.c`.
-- The final assertion reports `generic_move_bundle_failure_count=0`.
+- The five-case RV64 gcc torture allowlist was
+  `src/20080519-1.c`, `src/20060102-1.c`, `src/pr29695-1.c`,
+  `src/pr29695-2.c`, and `src/pr37924.c`.
+- The final assertion reports `generic_move_bundle_failure_count=0` and
+  `select_publication_failure_count=0`.
