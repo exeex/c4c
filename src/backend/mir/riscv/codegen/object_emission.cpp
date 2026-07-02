@@ -2073,6 +2073,25 @@ bool prepared_storage_plan_endpoint_is_coherent_gpr_register(
   return true;
 }
 
+std::optional<std::size_t> prepared_stack_slot_home_size_bytes(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedValueHome& home) {
+  if (home.kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+  if (home.size_bytes.has_value()) {
+    return home.size_bytes;
+  }
+  if (!home.slot_id.has_value()) {
+    return std::nullopt;
+  }
+  const auto* slot = prepare::find_frame_slot_by_id(stack_layout, *home.slot_id);
+  if (slot == nullptr) {
+    return std::nullopt;
+  }
+  return slot->size_bytes;
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -2487,8 +2506,7 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
       prepared_bir_value_type_for_name(names, function, source_home.value_name);
   const auto destination_type =
       prepared_bir_value_type_for_name(names, function, destination_home.value_name);
-  if (!source_type.has_value() || !destination_type.has_value() ||
-      *source_type != *destination_type) {
+  if (!destination_type.has_value()) {
     return std::nullopt;
   }
   if (source_home.target_register_identity.has_value() &&
@@ -2508,14 +2526,20 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
     return std::nullopt;
   }
 
-  const auto size_bytes = rv64_scalar_memory_size_for_type(*source_type);
-  if (!size_bytes.has_value()) {
+  const auto source_size_bytes =
+      source_type.has_value()
+          ? rv64_scalar_memory_size_for_type(*source_type)
+          : prepared_stack_slot_home_size_bytes(stack_layout, source_home);
+  const auto destination_size_bytes =
+      rv64_scalar_memory_size_for_type(*destination_type);
+  if (!source_size_bytes.has_value() || !destination_size_bytes.has_value() ||
+      *source_size_bytes < *destination_size_bytes) {
     return std::nullopt;
   }
   const auto source_stack_offset = prepared_stack_slot_home_absolute_offset(
-      stack_layout, source_home, stack_frame_bytes, *size_bytes);
+      stack_layout, source_home, stack_frame_bytes, *source_size_bytes);
   const auto destination_stack_offset = prepared_stack_slot_home_absolute_offset(
-      stack_layout, destination_home, stack_frame_bytes, *size_bytes);
+      stack_layout, destination_home, stack_frame_bytes, *destination_size_bytes);
   const auto scratch = rv64_unoccupied_temporary_gpr(lookups);
   if (!source_stack_offset.has_value() || !destination_stack_offset.has_value() ||
       !scratch.has_value()) {
@@ -2526,11 +2550,11 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
   if (!append_rv64_load_stack_offset_to_register(fragment,
                                                 *scratch,
                                                 *source_stack_offset,
-                                                *size_bytes) ||
+                                                *destination_size_bytes) ||
       !append_rv64_store_register_to_stack_offset(fragment,
                                                  *scratch,
                                                  *destination_stack_offset,
-                                                 *size_bytes)) {
+                                                 *destination_size_bytes)) {
     return std::nullopt;
   }
   return fragment;
