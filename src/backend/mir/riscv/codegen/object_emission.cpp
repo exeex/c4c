@@ -1221,36 +1221,6 @@ std::optional<std::uint32_t> rv64_load_store_funct3_for_size(std::size_t size_by
   return rv64_prepared_load_store_funct3_for_size(size_bytes);
 }
 
-std::optional<std::uint32_t> rv64_global_load_funct3_for_size(std::size_t size_bytes) {
-  switch (size_bytes) {
-    case 1:
-      return 0;
-    case 2:
-      return 1;
-    case 4:
-      return 2;
-    case 8:
-      return 3;
-    default:
-      return std::nullopt;
-  }
-}
-
-std::optional<std::uint32_t> rv64_global_store_funct3_for_size(std::size_t size_bytes) {
-  switch (size_bytes) {
-    case 1:
-      return 0;
-    case 2:
-      return 1;
-    case 4:
-      return 2;
-    case 8:
-      return 3;
-    default:
-      return std::nullopt;
-  }
-}
-
 bool append_rv64_store_register_to_stack(RiscvEncodedFragment& fragment,
                                          std::uint32_t source_register,
                                          std::int32_t offset,
@@ -10712,19 +10682,6 @@ std::optional<object::ObjectModule> build_rv64_text_object_module(
   }
 
   return module;
-}
-
-std::string rv64_prepared_object_global_label(
-    const c4c::backend::bir::Module& module,
-    const c4c::backend::bir::Global& global) {
-  if (global.link_name_id != c4c::kInvalidLinkName) {
-    const std::string_view spelling =
-        module.names.link_names.spelling(global.link_name_id);
-    if (!spelling.empty()) {
-      return std::string{spelling};
-    }
-  }
-  return global.name;
 }
 
 std::string rv64_prepared_object_text_label(
