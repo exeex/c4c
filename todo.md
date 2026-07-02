@@ -1,24 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/442_pointer_value_memory_provenance_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Decide Concrete, Opaque, Or Unsupported Policy
+Current Step ID: 3
+Current Step Title: Publish Or Preserve Fail-Closed Behavior
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Decide Concrete, Opaque, Or Unsupported Policy completed for the
-residual `930930-1` pointer-value memory rows.
+Step 3 - Publish Or Preserve Fail-Closed Behavior completed for the residual
+`930930-1` pointer-value memory rows by preserving the current fail-closed
+disposition without publishing new provenance, accepting an opaque policy, or
+adding RV64 target-side inference.
 
-Policy decision:
+Disposition published for this packet:
 
 - No residual `930930-1` pointer-value row is concrete today.
-- A narrow `OpaqueCompatibility` policy is rejected for this route.
+- A narrow `OpaqueCompatibility` policy remains rejected for this route.
 - The three `reg1` pointer-value loads are intentionally unsupported until a
   producer publishes formal pointer authority and concrete object/range facts.
 - The `%mr_TR - 8` store remains pointer-delta-later-work and must stay
   fail-closed until base formal pointer authority is available.
+- No code or test changes were made because Step 2 identified no concrete
+  producer authority, no accepted opaque predicate, and no clearly owned
+  minimal diagnostic file that should be changed ahead of the producer split.
 
 Reason `OpaqueCompatibility` is rejected:
 
@@ -38,7 +43,7 @@ Reason `OpaqueCompatibility` is rejected:
 - A current opaque acceptance would be testcase-shaped around `930930-1`,
   `reg1`, or `mr_TR`, not a semantic lowering rule.
 
-Residual row dispositions:
+Preserved residual row dispositions:
 
 | Row | Disposition | Owner before support | Diagnostic precision needed |
 | --- | --- | --- | --- |
@@ -49,7 +54,7 @@ Residual row dispositions:
 | Frame-slot carrier rows, `/tmp/930930-1.step1.prepared.out:562-567`, `:569`, `:571`, `:573-574`, `:576-579` | Unrelated to target pointer-value memory consumption. | None for idea 442 Step 2. | No new diagnostic policy. |
 | Global `@mem+792` store, `/tmp/930930-1.step1.prepared.out:581`, `base=global_symbol` | Already concrete as a global-symbol row; unrelated to formal pointer provenance. | None for idea 442 Step 2. | Do not use this global layout authority to authorize `%p.reg1` or `%p.mr_TR`. |
 
-Follow-up source ideas required before target consumption:
+Follow-up source ideas required before target consumption remain:
 
 1. Define and implement a real `NoExternalCaller` or equivalent closed-world
    metadata source for non-internal definitions. The boundary must include a
@@ -62,24 +67,32 @@ Follow-up source ideas required before target consumption:
    and `ProvenInBounds`.
 3. Only after `%p.mr_TR` has base authority, add a separate pointer-delta
    propagation idea for constant pointer add/sub chains such as `%mr_TR - 8`.
-4. RV64 target consumption should remain limited to rows that already satisfy
+4. RV64 target consumption remains limited to rows that already satisfy
    `prepared_pointer_value_memory_has_proven_authority` or a future named
-   opaque policy with producer-owned semantics and coverage.
+   opaque policy with producer-owned semantics and coverage. This packet adds
+   no target-side inference from raw pointer values, callsite observations,
+   object names, or global layout facts.
 
 ## Suggested Next
 
-Delegate the next packet as a fail-closed diagnostic or handoff step for idea
-442. If implementation is requested, keep it diagnostic-only unless a separate
-producer-owned source idea first publishes formal pointer authority; do not add
-RV64 target lowering for the residual `930930-1` rows from the current facts.
+Delegate Step 4 - Add Focused Coverage, or request a diagnostic-owner packet if
+the supervisor wants the current generic fail-closed diagnostic refined. Any
+diagnostic refinement should stay producer/prepared-authority owned and should
+not change acceptance of the residual `930930-1` pointer-value rows.
 
 ## Watchouts
 
 Keep pointer-delta propagation deferred until base formal pointer authority is
 soundly published. Do not infer provenance from same-module calls, computed
 call-argument addresses, K&R formals, `@mem` global layout, object names, or
-the current `UnknownCompatible` range verdict.
+the current `UnknownCompatible` range verdict. Current fail-closed behavior is
+the correct disposition until a follow-up producer/formal-pointer-authority
+source idea exists; preserving it is not a closure of pointer-value memory
+provenance in general.
 
 ## Proof
 
 `git diff --check -- todo.md`
+
+The packet was todo-only, so no build, CTest, or `test_after.log` refresh was
+required by the delegated proof contract.
