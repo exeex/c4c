@@ -11942,6 +11942,56 @@ int rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes() {
   prepared =
       make_prepared_before_instruction_stack_to_stack_move_bundle_module();
   route_move_before_first_instruction(prepared);
+  auto* sum = std::get_if<bir::BinaryInst>(
+      &prepared.module.functions[0].blocks[0].insts[2]);
+  if (sum == nullptr) {
+    return fail("expected stack-to-stack fixture to keep binary sum");
+  }
+  sum->result = bir::Value::named(bir::TypeKind::I64, "%sum");
+  const auto conversion_adjacent =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (conversion_adjacent.ok() || conversion_adjacent.module.has_value()) {
+    return fail("stack-source stack-destination conversion-adjacent move should reject");
+  }
+  if (conversion_adjacent.prepared_consumer_category.has_value() ||
+      conversion_adjacent.diagnostic.find(
+          "unsupported_prepared_move_bundle_classification: stack-source "
+          "stack-destination conversion-adjacent move was classified as "
+          "consumer_stack_to_stack") != 0 ||
+      conversion_adjacent.diagnostic.find(
+          "move[0].reason=consumer_stack_to_stack") == std::string::npos ||
+      conversion_adjacent.diagnostic.find(
+          "move[0].source_home_kind=stack_slot") == std::string::npos ||
+      conversion_adjacent.diagnostic.find(
+          "move[0].destination_home_kind=stack_slot") == std::string::npos ||
+      conversion_adjacent.diagnostic.find("move[0].source_type=i32") ==
+          std::string::npos ||
+      conversion_adjacent.diagnostic.find("move[0].destination_type=i64") ==
+          std::string::npos ||
+      conversion_adjacent.diagnostic.find(
+          "diagnostic_owner=prepared_move_bundle_classifier") ==
+          std::string::npos ||
+      conversion_adjacent.diagnostic.find(
+          "fragment_status=producer_classification_rejected_stack_source_"
+          "stack_destination_conversion_adjacent_move") == std::string::npos ||
+      conversion_adjacent.diagnostic.find(
+          "generic_move_bundle_materialization_failed") != std::string::npos) {
+    return fail("conversion-adjacent stack-to-stack mismatch should produce classifier diagnostic, got `" +
+                conversion_adjacent.diagnostic + "`");
+  }
+  const auto conversion_adjacent_image =
+      rv64::write_rv64_prepared_relocatable_elf_object_with_diagnostics(
+          prepared);
+  if (conversion_adjacent_image.ok() ||
+      conversion_adjacent_image.image.has_value() ||
+      conversion_adjacent_image.prepared_consumer_category.has_value() ||
+      conversion_adjacent_image.diagnostic != conversion_adjacent.diagnostic) {
+    return fail("ELF writer should preserve classifier-owned conversion-adjacent stack-to-stack diagnostic");
+  }
+
+  prepared =
+      make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  route_move_before_first_instruction(prepared);
   const auto function_name = prepared.names.function_names.find("main");
   const auto t1_name = prepared.names.value_names.intern("%scratch.t1");
   const auto t2_name = prepared.names.value_names.intern("%scratch.t2");

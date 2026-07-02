@@ -7862,7 +7862,6 @@ rv64_prepared_move_bundle_classification_failure_diagnostic(
   const auto* destination_home =
       prepared_value_home_for_id(lookups, move.to_value_id);
   if (source_home == nullptr || destination_home == nullptr ||
-      source_home->kind != prepare::PreparedValueHomeKind::Register ||
       destination_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
     return std::nullopt;
   }
@@ -7877,15 +7876,27 @@ rv64_prepared_move_bundle_classification_failure_diagnostic(
   const auto source_size = rv64_scalar_memory_size_for_type(*source_type);
   const auto destination_size =
       rv64_scalar_memory_size_for_type(*destination_type);
-  if (!source_size.has_value() || !destination_size.has_value() ||
-      *source_size == *destination_size) {
+  if (source_home->kind == prepare::PreparedValueHomeKind::Register) {
+    if (!source_size.has_value() || !destination_size.has_value() ||
+        *source_size == *destination_size) {
+      return std::nullopt;
+    }
+  } else if (source_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+    if (!source_size.has_value() || !destination_size.has_value() ||
+        *source_type == *destination_type) {
+      return std::nullopt;
+    }
+  } else {
     return std::nullopt;
   }
 
+  const bool stack_source =
+      source_home->kind == prepare::PreparedValueHomeKind::StackSlot;
   std::ostringstream out;
-  out << "unsupported_prepared_move_bundle_classification: register-source "
-         "stack-destination conversion move was classified as "
-         "consumer_stack_to_stack";
+  out << "unsupported_prepared_move_bundle_classification: "
+      << (stack_source ? "stack-source stack-destination conversion-adjacent "
+                       : "register-source stack-destination conversion ")
+      << "move was classified as consumer_stack_to_stack";
   out << " event_kind="
       << prepare::prepared_object_traversal_event_kind_name(event.kind);
   out << " function="
@@ -7911,12 +7922,21 @@ rv64_prepared_move_bundle_classification_failure_diagnostic(
       << prepare::prepared_value_home_kind_name(destination_home->kind);
   out << " move[0].source_type=" << bir::render_type(*source_type);
   out << " move[0].destination_type=" << bir::render_type(*destination_type);
-  out << " move[0].source_size_bytes=" << *source_size;
-  out << " move[0].destination_size_bytes=" << *destination_size;
+  if (source_size.has_value()) {
+    out << " move[0].source_size_bytes=" << *source_size;
+  }
+  if (destination_size.has_value()) {
+    out << " move[0].destination_size_bytes=" << *destination_size;
+  }
   out << " diagnostic_owner=prepared_move_bundle_classifier";
-  out << " fragment_status="
-         "producer_classification_rejected_register_source_stack_destination_"
-         "conversion";
+  out << " fragment_status=";
+  if (stack_source) {
+    out << "producer_classification_rejected_stack_source_stack_destination_"
+           "conversion_adjacent_move";
+  } else {
+    out << "producer_classification_rejected_register_source_stack_destination_"
+           "conversion";
+  }
   return out.str();
 }
 

@@ -1,60 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/515_rv64_bankless_conversion_adjacent_stack_slot_moves.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Producer Classification Or Rejection
+Current Step ID: 4
+Current Step Title: Materialize Or Reject Conversion-Adjacent Movement
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Repair Producer Classification Or Rejection repaired the bankless
-prepared frame-slot producer for known scalar stack-slot homes.
+Step 4 - Materialize Or Reject Conversion-Adjacent Movement added the
+owner-specific RV64 rejection for prepared stack-slot source to stack-slot
+destination moves whose BIR scalar types differ and whose move bundle carries
+no explicit conversion materialization contract.
 
-`src/backend/prealloc/storage_plans.cpp` now lets storage-plan publication
-recover a stack-slot value type from the prepared BIR function when the
-matching regalloc record is absent or only publishes `type=void` /
-`register_class=none`. That BIR/home authority is used in prealloc only; RV64
-object emission still does not infer GPR bank from scalar type after the
-storage plan has been published.
+`src/backend/mir/riscv/codegen/object_emission.cpp` now separates that
+conversion-adjacent shape from the generic move-bundle materialization failure:
+the diagnostic starts with
+`unsupported_prepared_move_bundle_classification`, reports
+`diagnostic_owner=prepared_move_bundle_classifier`, includes the stack-slot
+home kinds plus source/destination scalar types, and ends with
+`fragment_status=producer_classification_rejected_stack_source_stack_destination_conversion_adjacent_move`.
+The existing register-source stack-destination conversion rejection remains
+preserved, and the same-scalar stack-slot copy materializer still owns the
+accepted raw stack-copy path.
 
-The repair is intentionally stack-slot scoped. Empty regalloc class records no
-longer erase a BIR-derived scalar bank for stack-slot homes, but non-stack
-homes such as immediate F128 constants keep the existing `bank=none` behavior.
-Focused prealloc coverage now constructs the `%t8`-like case directly: a
-stack-slot home with slot/offset facts, a BIR `i16` result, and a same-name
-regalloc record with no usable type or class. The resulting storage plan must
-publish `encoding=frame_slot`, `bank=gpr`, width 1, slot id, stack offset, and
-structured spill-slot placement.
+`tests/backend/mir/backend_riscv_object_emission_test.cpp` now covers a
+conversion-adjacent stack-to-stack fixture and asserts that both the text-object
+builder and ELF writer preserve the classifier-owned diagnostic without
+falling through to `generic_move_bundle_materialization_failed`.
 
-Focused `pr69447.c` proof now shows `%t8` as `storage %t8 frame_slot
-bank=gpr` in both focused and full storage-plan dump lines. Object emission
-still fails closed for the remaining `%t8 i16 -> %t9 i64` stack-slot move with
-no conversion authority; no raw stack-copy materialization was added.
+Focused `pr69447.c` proof now reports the owner-specific
+`i16 -> i64` stack-source/stack-destination conversion-adjacent diagnostic for
+the prepared move bundle, exits nonzero as unsupported, and leaves no output
+object behind. No raw stack-copy lowering was added.
 
 ## Suggested Next
 
-Proceed to Step 4 by adding or refining the owner-specific RV64 rejection for
-conversion-adjacent stack-slot movement with mismatched scalar types and no
-explicit conversion materialization contract.
+Proceed to the next Step 4/5 packet by deciding whether any explicit
+conversion materialization contract exists for prepared stack-slot movement, or
+move to coverage/closure if unsupported conversion-adjacent stack-slot moves
+are intentionally fail-closed for this idea.
 
 ## Watchouts
 
-The `pr69447.c` object route still reports
-`fragment_status=generic_move_bundle_materialization_failed` after the bank
-repair, but the diagnostic now includes `source_type=i16` and
-`destination_type=i64`. Step 4 should make that conversion-adjacent rejection
-owner-specific without accepting the raw stack copy and without implementing
-conversion materialization.
+Remaining unsupported shapes are intentionally outside this packet: actual
+stack-slot conversion materialization, bankless storage-plan endpoints, missing
+scalar type authority, non-stack homes, multi-source/non-parallel stack
+destinations, and parallel-copy or cycle-temp stack movement. The new
+diagnostic is deliberately limited to a single prepared
+`consumer_stack_to_stack` move with stack-slot homes and mismatched known scalar
+types.
 
 ## Proof
 
 Proof is captured in `test_after.log`:
 
 - `cmake --build --preset default`
-- Focused `pr69447.c` prepared dump for `%t8`, showing `bank=gpr`.
-- Focused `pr69447.c` object-emission probe, expected nonzero, still failing
-  closed with `unsupported_move_bundle_target_shape`, `reason=consumer_stack_to_stack`,
-  `source_type=i16`, and `destination_type=i64`.
+- Focused `pr69447.c` object-emission probe, expected nonzero, failing closed
+  with `unsupported_prepared_move_bundle_classification`,
+  `diagnostic_owner=prepared_move_bundle_classifier`,
+  `source_type=i16`, `destination_type=i64`, and
+  `fragment_status=producer_classification_rejected_stack_source_stack_destination_conversion_adjacent_move`;
+  the output object is absent.
 - `ctest --test-dir build -j --output-on-failure -R '^backend_'`
-- `git diff --check -- src/backend/prealloc/storage_plans.cpp tests/backend/bir/backend_prealloc_decoded_home_storage_test.cpp todo.md`
+- `git diff --check -- src/backend/mir/riscv/codegen/object_emission.cpp tests/backend/mir/backend_riscv_object_emission_test.cpp todo.md`
