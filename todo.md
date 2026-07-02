@@ -8,47 +8,50 @@ Current Step Title: Classify Prepared Move-Bundle Ownership
 
 ## Just Finished
 
-Completed plan Step 3 by classifying the two current
-`unsupported_stack_frame` representatives into prepared-frame contract versus
-RV64 frame-lowering ownership.
+Completed plan Step 4 by classifying the two current
+`unsupported_prepared_move_bundle_classification` representatives into
+prepared classifier authority versus RV64 handoff readiness.
 
 Classifications:
 
-- `src/20000603-1.c`:
-  first owner is RV64 frame lowering for prepared non-GPR callee-saved save
-  slots. Prepared frame/callee-saved facts are present enough for RV64 object
-  emission to inspect a saved callee register with bank `fpr` and register
-  name `fs1`; the first rejection is the RV64 consumer gate
-  `diagnose_unsupported_prepared_saved_register_bank`, which currently accepts
-  only GPR prepared callee-saved save slots.
-- `src/20030209-1.c`:
-  same first owner as `src/20000603-1.c`. The row reaches the same prepared
-  FPR callee-saved slot shape and fails at the same RV64 object-route consumer
-  gate: `unsupported_stack_frame: RV64 object route does not support non-GPR
-  prepared callee-saved register save slots (fpr:fs1)`.
+- `src/20010224-1.c`:
+  first owner is `prepared_move_bundle_classifier`. The row still stops at
+  `unsupported_prepared_move_bundle_classification` with
+  `diagnostic_owner=prepared_move_bundle_classifier` and
+  `fragment_status=producer_classification_rejected_stack_source_stack_destination_conversion_adjacent_move`.
+  The rejected move is a `before_instruction_copies` stack-slot to stack-slot
+  conversion-adjacent move in `ba_compute_psd`, block `for.cond.1`, with
+  `authority=none`, `i16` source, and `i32` destination. It is not ready for
+  RV64 object-route consumption.
+- `src/pr87623.c`:
+  same first owner as `src/20010224-1.c`. The row stops at
+  `prepared_move_bundle_classifier` for a `before_instruction_copies`
+  stack-slot to stack-slot conversion-adjacent move in `a_or_b_different`,
+  block `logic.end.12`, with `authority=none`, `i8` source, and `i32`
+  destination. It is not ready for RV64 object-route consumption.
 
 Scope classification:
 
-- Prepared frame facts are not the first missing contract for either row; the
-  diagnostic proves the object route has a prepared callee-saved slot to
-  inspect.
-- The `fpr:fs1` shape is FPR-specific. Treat it as an implementation-ready
-  RV64 FPR frame follow-up only if the follow-up is scoped to FPR
-  callee-saved save/restore plus its prepared slot placement contract.
-- Ordinary GPR frame setup, access, and teardown should stay separate; these
-  rows do not prove a retained GPR-frame producer or consumer gap.
+- Both rows are retained prepared-classifier work, not RV64 handoff-ready
+  object-route work.
+- The common missing authority/source-destination form is a conversion-adjacent
+  stack-source to stack-destination move where the integer source and
+  destination sizes differ.
+- This does not look like an expected fail-closed RV64 consumer rejection. The
+  prepared classifier has not yet assigned authority to a coherent prepared
+  move-bundle shape, so RV64 does not have an admissible object-route handoff.
 
 Evidence artifact:
 
-- `build/agent_state/548_step3_stack_frame_classification/classification.md`
+- `build/agent_state/548_step4_move_bundle_classification/classification.md`
 
 ## Suggested Next
 
-Classify the prepared move-bundle representatives `src/20010224-1.c` and
-`src/pr87623.c` from the existing Step 1 evidence. Confirm whether each row
-still stops at `prepared_move_bundle_classifier` authority, has a missing
-prepared source/destination form, should remain fail-closed, or has enough
-prepared move-bundle facts to hand off to RV64 object-route consumption.
+Ask the plan owner to reconcile this review plan. Recommended split: a
+prepared move-bundle classifier follow-up focused on conversion-adjacent
+stack-slot to stack-slot moves with differing integer widths, where the repair
+either publishes an authorized widening stack move bundle or lowers/splits the
+conversion into an explicit supported prepared form before RV64 consumption.
 
 ## Watchouts
 
@@ -63,9 +66,9 @@ prepared move-bundle facts to hand off to RV64 object-route consumption.
 - Stack-frame implementation work should split into an RV64 FPR
   callee-saved-frame follow-up if accepted. Keep ordinary GPR frame work out of
   that scope unless separate evidence identifies a GPR-specific gap.
-- The move-bundle rows already name `prepared_move_bundle_classifier` as
-  diagnostic owner; avoid converting them into RV64 consumer work before
-  classifier authority is reviewed.
+- The move-bundle rows still name `prepared_move_bundle_classifier` as
+  diagnostic owner and `authority=none`; avoid converting them into RV64
+  consumer work before the prepared classifier authority gap is repaired.
 - Do not change expectations, unsupported markers, allowlists, or pass/fail
   accounting as evidence of progress.
 
@@ -76,11 +79,11 @@ Proof/evidence used:
 - Existing Step 1 aggregate log:
   `build/agent_state/548_step1_infrastructure_evidence.log`
 - Existing per-case log:
-  `build/rv64_gcc_c_torture_backend/src_20000603-1.c/case.log`
+  `build/rv64_gcc_c_torture_backend/src_20010224-1.c/case.log`
 - Existing per-case log:
-  `build/rv64_gcc_c_torture_backend/src_20030209-1.c/case.log`
-- Focused Step 3 classification artifact:
-  `build/agent_state/548_step3_stack_frame_classification/classification.md`
+  `build/rv64_gcc_c_torture_backend/src_pr87623.c/case.log`
+- Focused Step 4 classification artifact:
+  `build/agent_state/548_step4_move_bundle_classification/classification.md`
 
 No broad tests were run and no root-level `test_after.log` was written because
 the delegated packet explicitly requested existing-log classification only and
@@ -91,6 +94,6 @@ Traceable logs:
 - Aggregate:
   `build/agent_state/548_step1_infrastructure_evidence.log`
 - Per-case:
-  `build/rv64_gcc_c_torture_backend/src_20000603-1.c/case.log`
+  `build/rv64_gcc_c_torture_backend/src_20010224-1.c/case.log`
 - Per-case:
-  `build/rv64_gcc_c_torture_backend/src_20030209-1.c/case.log`
+  `build/rv64_gcc_c_torture_backend/src_pr87623.c/case.log`
