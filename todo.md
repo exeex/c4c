@@ -1,15 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/558_bir_call_metadata_semantic_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove Direct-Call Representative And Classify Residual
+Current Step ID: 4
+Current Step Title: Inspect And Repair Call-Return Metadata
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Prove Direct-Call Representative And Classify Residual is complete for
-the selected direct-call representative, `src/20000412-2.c`.
+Step 3 - Prove Direct-Call Representative And Classify Residual was completed
+for the selected direct-call representative, `src/20000412-2.c`.
 
 The supervisor-rerun RV64 backend-object proof still exits nonzero, but the
 direct-call semantic producer admission failure is gone. The current `case.log`
@@ -26,9 +26,21 @@ route.
 
 ## Suggested Next
 
-Ask plan-owner/lifecycle to advance toward Step 4 call-return inspection. The
-runbook still requires call-return coverage before completion, with
-`src/20050121-1.c` reserved as the call-return representative seed.
+Execute Step 4 - Inspect And Repair Call-Return Metadata.
+
+Inspect `src/20050121-1.c` as the call-return representative seed, capture the
+current call-return row log or BIR dump, and trace returned call-value metadata
+through BIR call emission and semantic admission. Add focused BIR coverage for
+the call-return result metadata boundary before repairing producer publication.
+
+Supervisor proof seed for the packet:
+
+- `src/20050121-1.c`
+
+Suggested narrow RV64 representative command:
+
+- `printf '%s\n' src/20050121-1.c > build/agent_state/558_step4_20050121.allowlist`
+- `ALLOWLIST=build/agent_state/558_step4_20050121.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
 
 ## Watchouts
 
@@ -38,6 +50,10 @@ allowlist edits, runtime-comparison changes, and named-case shortcuts. The
 current RV64 object-route failure for `src/20000412-2.c` is downstream and is
 not a reason to broaden this source idea. The runbook must cover call-return
 metadata before claiming the source idea is complete.
+
+For Step 4, do not infer call-return result facts in prepared/RV64 consumers.
+If `src/20050121-1.c` has already moved to a different owner, inspect at least
+one current call-return row before asking lifecycle to split or advance.
 
 ## Proof
 
