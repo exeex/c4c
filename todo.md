@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/513_rv64_stack_to_stack_prepared_move_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Materialize Coherent Stack-To-Stack Moves
+Current Step ID: 4
+Current Step Title: Add Focused Materialization Coverage
 
 # Current Packet
 
