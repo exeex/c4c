@@ -8,60 +8,54 @@ Current Step Title: Prove Direct-Call Representative And Classify Residual
 
 ## Just Finished
 
-Step 2 - Repair Direct-Call Metadata Publication is complete for the selected
-direct-call representative.
+Step 3 - Prove Direct-Call Representative And Classify Residual is complete for
+the selected direct-call representative, `src/20000412-2.c`.
 
-`lower_call_pointer_arg_value` now admits non-SSA, non-global pointer operands
-through existing `lower_value(..., TypeKind::Ptr, ...)` materialization, so
-typed null pointer call arguments publish immediate null BIR values instead of
-failing the direct-call semantic family. Focused coverage
-`expect_metadata_rich_direct_call_null_pointer_argument_publishes_immediate_source`
-now exercises a structured direct `(i32, ptr)` call with `ptr null` and checks
-callee LinkNameId/signature identity, `arg_types[1] == Ptr`, pointer ABI
-metadata, immediate null value facts, and an `Immediate` call-argument source
-relationship.
+The supervisor-rerun RV64 backend-object proof still exits nonzero, but the
+direct-call semantic producer admission failure is gone. The current `case.log`
+reports downstream object lowering only:
+`RISC-V backend object route unsupported prepared module shape:
+unsupported_instruction_fragment: BIR instruction requires unsupported RV64
+object lowering`.
 
-The selected `src/20000412-2.c` row no longer fails in direct-call semantic
-admission. It now reaches the object route and fails downstream as
-`unsupported_instruction_fragment: BIR instruction requires unsupported RV64
-object lowering`. This exhausts Step 2 for the selected direct-call seed; do
-not add another direct-call seed before the Step 3 residual-classification
-checkpoint unless that proof exposes another in-scope call metadata boundary.
+No `semantic call family`, direct-call, or call-return failure remains in the
+observed Step 3 logs for this row. `src/20000412-2.c` has moved off direct-call
+semantic admission for producer-owned reasons and should stay out of this
+source idea as downstream object lowering unless lifecycle opens a separate
+route.
 
 ## Suggested Next
 
-Run Step 3 for `src/20000412-2.c`: refresh the delegated RV64 backend-object
-proof for the direct-call seed, inspect the row `case.log`, and record whether
-the residual remains downstream object lowering or reveals another in-scope
-call metadata boundary. If the residual remains downstream, advance toward the
-call-return representative instead of broadening Step 2.
+Ask plan-owner/lifecycle to advance toward Step 4 call-return inspection. The
+runbook still requires call-return coverage before completion, with
+`src/20050121-1.c` reserved as the call-return representative seed.
 
 ## Watchouts
 
 Reject downstream RV64/MIR call inference, generic local-memory routing,
 runtime/intrinsic repairs, expectation rewrites, unsupported-marker changes,
 allowlist edits, runtime-comparison changes, and named-case shortcuts. The
-runbook must cover call-return metadata before claiming the source idea is
-complete. Treat the current RV64 object-route failure for `src/20000412-2.c` as
-downstream unless the Step 3 case-log inspection proves another call metadata
-producer boundary or the supervisor explicitly opens an object-lowering packet.
+current RV64 object-route failure for `src/20000412-2.c` is downstream and is
+not a reason to broaden this source idea. The runbook must cover call-return
+metadata before claiming the source idea is complete.
 
 ## Proof
 
-Proof log: `test_after.log`.
+Proof logs:
+
+- `build/agent_state/558_step3_20000412.log`
+- `build/rv64_gcc_c_torture_backend/src_20000412-2.c/case.log`
 
 Commands:
 
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-  passed `345/345`.
-- `ALLOWLIST=build/agent_state/558_step1_20000412.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
-  rechecked the selected row. The command exits nonzero because the row still
-  fails, but the failure moved from direct-call semantic producer admission to
-  downstream RV64 object lowering.
-- `git diff --check` passed.
+- `ALLOWLIST=build/agent_state/558_step1_20000412.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/558_step3_20000412.log 2>&1`
+  exited `1`, expected because the selected row still fails downstream.
+- `git diff --check -- todo.md` passed.
 
-Lifecycle decision:
+Residual classification:
 
-- Step 2 is complete/exhausted for the selected direct-call representative.
-- Active execution advanced to Step 3,
-  `Prove Direct-Call Representative And Classify Residual`.
+- Direct-call semantic admission: moved/resolved for this representative.
+- Current owner: downstream RV64 object lowering.
+- Current failure:
+  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64
+  object lowering`.
