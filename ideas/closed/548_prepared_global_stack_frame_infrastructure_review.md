@@ -1,6 +1,6 @@
 # Prepared Global-Data And Stack-Frame Infrastructure Review
 
-Status: Open
+Status: Closed
 Type: Infrastructure boundary review
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Owning Layer: Prepared contract and RV64 infrastructure boundary
@@ -44,6 +44,27 @@ consume them.
 - Any F128-primary rows are routed to the existing F128 quarantine lane.
 - Follow-up ideas use current row evidence and concrete proof expectations.
 
+## Completion Notes
+
+Closed after Step 5. The review classified all retained representatives and
+split the implementation-ready buckets into focused follow-up ideas:
+
+- `ideas/open/562_prepared_object_data_zero_fill_contract.md`
+- `ideas/open/563_rv64_f64_global_memory_consumption.md`
+- `ideas/open/564_rv64_fpr_callee_saved_frame_slots.md`
+- `ideas/open/565_prepared_move_bundle_widening_stack_authority.md`
+
+Classification evidence:
+
+- Global data:
+  `build/agent_state/548_step2_global_data_classification/classification.md`
+- Stack frame:
+  `build/agent_state/548_step3_stack_frame_classification/classification.md`
+- Prepared move bundle:
+  `build/agent_state/548_step4_move_bundle_classification/classification.md`
+
+No implementation work was performed in this review idea.
+
 ## Reviewer Reject Signals
 
 - Reject RV64 global or frame work that fabricates missing prepared symbols,
@@ -56,4 +77,3 @@ consume them.
   as evidence of infrastructure progress.
 - Reject F128-driven frame/global changes unless they are isolated in the
   quarantine policy lane.
-
