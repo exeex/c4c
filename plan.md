@@ -1,198 +1,199 @@
-# BIR Route Header Split Runbook
+# BIR Route Index Standalone Prerequisites Runbook
 
 Status: Active
-Source Idea: ideas/open/530_bir_route_header_split_after_body_moves.md
+Source Idea: ideas/open/533_bir_route_index_standalone_prerequisites.md
 
 ## Purpose
 
-Split BIR route declarations out of `src/backend/bir/bir.hpp` only where a
-narrow header boundary reduces coupling after the route body owners have
-stabilized.
+Make the existing route-index declaration boundary either standalone and safe
+to include directly, or explicitly prove that it must remain an internal
+`bir.hpp` fragment.
 
 ## Goal
 
-Create focused route declaration headers without moving implementation bodies,
-changing public names, or forcing broad consumers to include a pile of new
-route headers.
+Resolve the reviewer-identified route drift from idea 530 without forcing
+unsafe direct include replacement.
 
 ## Core Rule
 
-This is behavior-preserving header movement only. Do not change route
-semantics, public signatures, namespaces, enum values, or the ownership of
-implementation bodies.
+This is behavior-preserving prerequisite mapping and declaration movement only.
+Do not change route semantics, public signatures, enum values, or
+implementation-body ownership.
 
 ## Read First
 
+- `ideas/open/533_bir_route_index_standalone_prerequisites.md`
 - `ideas/open/530_bir_route_header_split_after_body_moves.md`
+- `review/bir_route_header_split_review.md`
 - `src/backend/bir/bir.hpp`
-- `src/backend/bir/bir_private.hpp`
+- `src/backend/bir/bir_route_index.hpp`
 - `src/backend/bir/bir_route_facade.cpp`
 - `src/backend/bir/bir_route1.cpp`
-- `src/backend/bir/bir_route2.cpp`
-- `src/backend/bir/bir_route3_memory.cpp`
 - `src/backend/bir/bir_route4_publication.cpp`
-- `src/backend/bir/bir_route5_publication.cpp`
-- `src/backend/bir/bir_route6_call_publication.cpp`
 - `src/backend/bir/bir_route7_comparison.cpp`
-- `src/backend/bir/bir_route8.cpp`
-- Include users under `src/backend/bir/` and direct-source BIR tests in
-  `tests/backend/bir/CMakeLists.txt`
+- Include users under `src/backend/bir/`, `src/backend/mir/`,
+  `src/backend/prealloc/`, and direct-source BIR tests
 - `.codex/skills/c4c-clang-tools/` for declaration, reference, and include
-  evidence before selecting header boundaries
+  evidence before selecting prerequisite boundaries
 
 ## Current Targets
 
-- Route declaration clusters currently in `src/backend/bir/bir.hpp`
-- Candidate focused route headers under `src/backend/bir/`
-- Include sites that can depend on a narrower route header instead of the
-  entire BIR public header
-- Build-system or direct-source test wiring only if include churn exposes a
-  missing translation unit dependency
+- `src/backend/bir/bir_route_index.hpp`
+- The prerequisite route/model declarations that currently make that file
+  namespace- and order-dependent on `bir.hpp`
+- Candidate focused prerequisite headers under `src/backend/bir/`
+- Include sites only after the route-index header compiles as a top-level
+  include
 
 ## Non-Goals
 
 - Do not move implementation bodies.
-- Do not split or move `Value`, `Inst`, `Block`, `Function`, `Module`, or
+- Do not move ownership of `Value`, `Inst`, `Block`, `Function`, `Module`, or
   `MemoryAddress`.
-- Do not create a new catch-all route monolith.
+- Do not create a new catch-all route monolith or a renamed aggregator-only
+  substitute.
 - Do not change public API names, namespaces, signatures, enum values, or
   behavior.
-- Do not make route declaration movement depend on fragile forward
-  declarations for complete-type containers such as `std::vector<Function>`.
+- Do not replace broad includes in consumers that still need broad BIR model or
+  route surfaces.
 - Do not combine this idea with memory-provenance or local-array semantic-GEP
-  header-readiness work from later ideas.
+  header-readiness work.
 
 ## Working Model
 
-- `bir.hpp` remains the broad compatibility include for core BIR data model
-  types and any consumers that genuinely need the full surface.
-- New route headers should be justified by caller/reference evidence, not by
-  mechanically evacuating every route-looking declaration.
-- Header boundaries should follow already-stabilized body owners where that
-  improves include direction.
-- A split is not progress if consumers immediately need to include many new
-  route headers to recover the old surface.
+- `bir_route_index.hpp` is currently an aggregator-included declaration
+  fragment, not a standalone public header.
+- It depends on earlier `bir.hpp` declarations for core BIR model types,
+  route1 source identity, route4 publication records/statuses, route7
+  comparison records/statuses, `BlockLabelId`, and standard library types.
+- `bir.hpp` remains the compatibility aggregator while prerequisites are
+  mapped or split.
+- A direct include replacement is not progress unless the target consumer avoids
+  reconstructing the old broad `bir.hpp` surface with several new headers.
 
 ## Execution Rules
 
-- Start with a mapping-only packet. Record declaration clusters, complete-type
-  dependencies, current include users, and candidate boundaries in `todo.md`
-  before editing headers.
-- Prefer clang-backed symbol and type-reference queries over manual large-file
-  inspection when mapping declarations and consumers.
-- Move declarations in small groups that can be proved by build plus focused
-  backend route tests.
-- Keep `bir.hpp` as a stable aggregator when compatibility or complete-type
-  requirements require it.
+- Start with a mapping-only packet. Record top-level include failures,
+  prerequisite declarations, complete-type dependencies, current include users,
+  and candidate prerequisite boundaries in `todo.md` before editing headers.
+- Prefer clang-backed symbol and type-reference queries over manual
+  large-file inspection when mapping declarations and consumers.
+- Use direct no-file compile probes for `#include
+  "src/backend/bir/bir_route_index.hpp"` as the standalone-readiness signal.
+- Move declarations only in small prerequisite groups that can be proved by
+  build plus focused backend route tests.
+- Keep `bir.hpp` as a stable aggregator unless a direct consumer is proven safe
+  for a narrower include.
 - Treat any semantic diff, body movement, test expectation weakening, or public
   signature change as a blocker.
-- Escalate to supervisor for broader backend proof if multiple route headers
-  move or include churn reaches LIR-to-BIR or prepared-printer consumers.
+- Escalate to supervisor for broader backend proof if prerequisite splitting
+  touches broad model declarations or include churn reaches MIR/prealloc
+  consumers.
 
-## Step 1: Map Route Header Boundaries
+## Step 1: Map Route-Index Prerequisites
 
-Goal: identify which route declarations can move safely and which must remain
-in `bir.hpp`.
+Goal: identify exactly why `bir_route_index.hpp` is not standalone and which
+dependencies can be split safely.
 
-Primary target: route declarations in `src/backend/bir/bir.hpp` and their
-current consumers.
+Primary target: `src/backend/bir/bir_route_index.hpp` and prerequisite
+declarations currently supplied earlier by `src/backend/bir/bir.hpp`.
 
 Actions:
 
-- Use clang-backed symbol, caller/callee, and type-reference queries to map
-  route declaration clusters in `bir.hpp`.
-- Record complete-type dependencies involving `Value`, `Inst`, `Block`,
-  `Function`, `Module`, `MemoryAddress`, and route index containers.
-- Inspect current include sites under `src/backend/bir/` and direct-source BIR
-  tests that rely on the broad `bir.hpp` surface.
-- Decide whether the first split should create one focused route header or no
-  movement because coupling is not reduced.
-- Record candidate header name, declarations to move, declarations to leave,
-  required include-site changes, and focused proof recommendations in
-  `todo.md`.
+- Run clang-backed symbol, signature, and type-reference queries for
+  `bir_route_index.hpp` and its referenced route-index functions/types.
+- Run a direct top-level include compile probe for `bir_route_index.hpp` and
+  record the missing declarations/includes.
+- Map dependencies on `Function`, `Block`, `Value`, `BlockLabelId`,
+  `Route1SourceValueIdentity`, route4 publication records/statuses, and route7
+  comparison records/statuses.
+- Inspect current broad include users under `src/backend/bir/`,
+  `src/backend/mir/`, `src/backend/prealloc/`, and focused BIR tests.
+- Decide whether the next safe packet is a prerequisite declaration split,
+  namespace/include hardening for `bir_route_index.hpp`, or a proof-backed
+  aggregator-only decision.
+- Record candidate header names, declarations to move, declarations to leave,
+  direct include-site constraints, and proof recommendations in `todo.md`.
 
 Completion check:
 
-- `todo.md` contains the mapped declaration clusters, selected first boundary,
-  non-moved declarations, dependency risks, include-site plan, and proof
-  command recommendation.
+- `todo.md` contains the standalone failure map, prerequisite declaration
+  clusters, complete-type risks, safe first boundary, include-site constraints,
+  and proof command recommendation.
 - No implementation or header files are edited in this mapping step.
 
-## Step 2: Introduce One Narrow Route Header
+## Step 2: Split One Proven Prerequisite Boundary
 
-Goal: move the first confirmed declaration cluster into a focused header while
-preserving the public compatibility surface.
+Goal: remove one mapped prerequisite blocker without changing behavior or
+creating a new broad route aggregator.
 
-Primary target: a new or existing focused route header under
-`src/backend/bir/`, plus `src/backend/bir/bir.hpp` aggregator includes as
-needed.
+Primary target: the focused prerequisite header selected by Step 1, plus
+`bir.hpp` and `bir_route_index.hpp` includes only as needed.
 
 Actions:
 
-- Create the selected focused header only for the declaration cluster approved
-  by Step 1.
-- Move declarations without changing spelling, namespace, signatures, enum
-  values, or behavior.
-- Add minimal includes or forward declarations needed for the moved
-  declarations to compile.
-- Keep `bir.hpp` able to serve existing broad include users unless Step 1
-  proves a direct include-site replacement is safer.
-- Do not move any `.cpp` implementation body as part of the header split.
+- Move only the prerequisite declarations approved by Step 1.
+- Preserve spelling, namespace as observed through `bir.hpp`, signatures, enum
+  values, and behavior.
+- Add minimal namespace wrappers, standard includes, and focused prerequisite
+  includes needed for the selected boundary.
+- Keep `bir.hpp` as the compatibility aggregator.
+- Do not move implementation bodies.
 - Run the supervisor-delegated proof command exactly and write results to
   `test_after.log`.
 
 Completion check:
 
 - Build proof passes.
-- Focused backend route tests chosen by the supervisor pass.
-- Diff shows declaration/header/include movement only, with no body movement,
-  semantic changes, or public API changes.
+- Focused BIR route tests chosen by the supervisor pass.
+- The direct top-level include probe for `bir_route_index.hpp` is either
+  closer to standalone with fewer mapped blockers or fully passes.
+- Diff shows declaration/header/include movement only.
 
-## Step 3: Replace Safe Include Sites
+## Step 3: Promote or Park Route-Index Standalone Use
 
-Goal: use the new narrow header only where it reduces dependency pressure
-without spreading include burden.
-
-Primary target: implementation files and tests identified by Step 1 as safe
-direct users of the focused route surface.
+Goal: decide whether `bir_route_index.hpp` is now a safe narrow dependency
+header or should remain explicitly aggregator-only.
 
 Actions:
 
-- Replace broad `bir.hpp` includes only at sites that need the focused route
-  declarations and do not require the full BIR model surface.
-- Keep broad includes where replacing them would require several route headers
-  or fragile forward declarations.
-- Avoid changing source ordering, build target membership, or behavior except
-  for required include hygiene.
-- Run the supervisor-delegated proof command exactly and write results to
-  `test_after.log`.
+- Re-run the direct top-level include compile probe for `bir_route_index.hpp`.
+- If the probe passes, inspect candidate consumers and replace broad `bir.hpp`
+  includes only where the consumer does not need broad BIR model or route
+  surfaces.
+- If the probe still fails or include replacements would reconstruct the old
+  broad surface, record an aggregator-only decision in `todo.md` and stop
+  include churn.
+- Run the supervisor-delegated proof command exactly after any code/header
+  edits and write results to `test_after.log`.
 
 Completion check:
 
-- Build proof passes for backend targets that include BIR headers.
-- Focused route tests chosen by the supervisor pass.
-- Include churn demonstrates reduced or clarified dependencies rather than a
-  new catch-all route include.
+- `todo.md` records either safe standalone include proof plus any include-site
+  replacements, or a proof-backed aggregator-only decision.
+- No consumer requires several new route/model headers just to recover the old
+  `bir.hpp` surface.
+- Build and focused route proof pass after any edits.
 
-## Step 4: Header Split Review Checkpoint
+## Step 4: Review and Lifecycle Checkpoint
 
-Goal: verify the split stayed narrow and decide whether the source idea can
-close or needs another focused header packet.
+Goal: decide whether this prerequisite idea can close and whether idea 530 can
+resume or close with clearer dependency evidence.
 
 Actions:
 
-- Compare final moved declarations and include-site edits against the Step 1
+- Compare final declarations, include edits, and probe results against Step 1
   mapping.
-- Confirm no implementation bodies, core model types, route semantics, public
-  API names, namespaces, signatures, or enum values changed.
-- Check for new catch-all route headers or consumers that now need many route
-  headers.
-- Ask the supervisor to choose broader backend validation if include churn
+- Confirm no implementation bodies, route semantics, public API names,
+  signatures, or enum values changed.
+- Ask the supervisor to choose broader backend validation if header churn
   reached broad backend consumers.
+- Record whether idea 530 should resume for additional header splits, close as
+  a narrow clarification, or remain parked.
 
 Completion check:
 
 - `todo.md` records focused proof results and any supervisor-selected broader
   validation result.
-- The active source idea can close only if header dependencies are reduced or
-  clarified without increasing coupling.
+- The active source idea can close only if the route-index standalone question
+  is answered with proof.

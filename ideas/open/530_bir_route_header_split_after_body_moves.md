@@ -43,6 +43,21 @@ pressure.
 - Header split reduces or clarifies dependencies without forcing broad
   consumers to include many new route headers.
 
+## Lifecycle Notes
+
+### Parked after review checkpoint
+
+Reviewer report `review/bir_route_header_split_review.md` found that the
+current `bir_route_index.hpp` split is behavior-preserving but not a standalone
+narrow dependency header. It is an aggregator-included declaration fragment
+that depends on prerequisite BIR model and route declarations already supplied
+by `bir.hpp`.
+
+Idea 530 is parked rather than closed because direct include replacement has
+been examined and is unsafe, and the dependency-reduction acceptance criteria
+are not yet proven. Follow-up prerequisite work lives in
+`ideas/open/533_bir_route_index_standalone_prerequisites.md`.
+
 ## Reviewer Reject Signals
 
 - Header split increases coupling or creates a new catch-all route monolith.
