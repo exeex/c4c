@@ -3,126 +3,57 @@
 Status: Active
 Source Idea Path: ideas/open/532_bir_local_array_semantic_gep_header_readiness.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Declaration Clusters And Consumers
+Current Step ID: 2
+Current Step Title: Extract Only A Safe Analysis Header Boundary
 
 ## Just Finished
 
-Step 1 of `plan.md` audited the local-array proof and semantic-GEP declaration
-surface with `c4c-clang-tools` plus narrow source reads.
+Step 2 of `plan.md` extracted the first safe local-array/semantic-GEP
+analysis boundary into
+`src/backend/bir/bir_local_array_semantic_gep.hpp`.
 
-Mapped declaration clusters in `src/backend/bir/bir.hpp`:
+The new header is aggregator-only. It is included from `bir.hpp` immediately
+after `bir_memory_provenance.hpp`, where `Value`, route prereqs, and memory
+provenance declarations are already available. It contains the Step 1 safe
+cluster only: local-array source/path declarations, local-array proof records
+and early evaluators/matchers, local-address provenance records/evaluator,
+local semantic-GEP records/evaluator, and global static-GEP
+authority/semantic-GEP records/evaluator.
 
-- Local-array source/path cluster: `LocalArrayCarrierStatus`,
-  `LocalArrayDerivationKind`, `LocalArrayIndexKind`,
-  `LocalArrayLirProducerOperationRole`,
-  `LocalArrayLirProducerCoordinateStatus`, `LocalArrayIndexRecord`,
-  `LocalArraySourceObjectRecord`, `LocalArrayAddressDerivationRecord`, and
-  `LocalArrayElementPathRecord`. Complete prerequisites are `Value`,
-  `TypeKind`, `LinkNameId`/`SlotNameId` constants via route prereqs, STL
-  containers, and no complete `Function`, `Block`, `Inst`, or lowering types.
-- Local-array proof cluster: selected proof edge records, endpoint bridge
-  records, ordered effect source stream records, interval effect records,
-  range proof inputs/records, proof fact records, checker input records, and
-  their inline evaluators/matchers. Complete prerequisites are the source/path
-  cluster plus complete `Value`; `evaluate_local_array_interval_effect` has a
-  `Function` overload after `Function` storage and must remain outside the
-  early declaration header unless Step 2 deliberately keeps that overload in
-  `bir.hpp`.
-- Local-array provenance and semantic-GEP cluster:
-  `LocalArrayLocalAddressProvenance*`, `LocalArraySemanticGep*`, and
-  `evaluate_local_array_semantic_gep`. Complete prerequisites are the
-  source/path/proof clusters plus complete `Value`; no complete core BIR
-  instruction type is needed.
-- Static-GEP authority and semantic-GEP cluster:
-  `GlobalStaticGepAuthorityStatus`, `GlobalStaticGepDerivationKind`,
-  `GlobalStaticGepCoordinateStatus`, `GlobalStaticGepAuthorityRecord`,
-  `GlobalStaticSemanticGep*`, and `evaluate_global_static_semantic_gep`.
-  Complete prerequisites are complete `Value`, `TypeKind`, `LinkNameId`, and
-  memory-provenance declarations from `bir_memory_provenance.hpp`
-  (`MemoryLayoutAuthorityKind`, `MemoryRangeVerdict`). This cluster must be
-  placed after the current memory-provenance include point.
-- Scalar local-load cluster: `LocalArrayScalarLocalLoadStatus`,
-  `LocalArrayScalarLocalLoadInputs`, `LocalArrayScalarLocalLoadRecord`,
-  `local_array_load_uses_provenance_address`, and
-  `evaluate_local_array_scalar_local_load`. The record declaration only needs
-  a forward-declared `LoadLocalInst`, but the helper/evaluator dereference
-  `LoadLocalInst`, `MemoryAddress`, and `Value`, so the inline behavior must
-  stay after the complete `LoadLocalInst`/`MemoryAddress` definitions unless
-  Step 2 splits declarations from evaluators.
+No direct consumer include replacements were made. `Function` storage, the
+`Function`-taking `evaluate_local_array_interval_effect` overload, scalar
+local-load declarations, and scalar local-load inline behavior remain in
+`bir.hpp`. The scalar local-load declaration block was kept in `bir.hpp` but
+ordered after the new aggregator include so it can continue referencing the
+local-address provenance record without moving scalar-load behavior.
 
-AST/include evidence:
-
-- `c4c-clang-tool type-refs src/backend/bir/bir.hpp
-  LocalArraySemanticGepRecord` found only the inline evaluator and
-  `Function::local_array_semantic_geps` storage.
-- `c4c-clang-tool type-refs src/backend/bir/bir.hpp
-  LocalArrayScalarLocalLoadRecord` found the inline evaluator and
-  `Function::local_array_scalar_local_loads` storage; source reads confirm the
-  evaluator needs complete `LoadLocalInst` and `MemoryAddress`.
-- `c4c-clang-tool type-refs src/backend/bir/bir.hpp
-  GlobalStaticSemanticGepRecord` found the inline evaluator and
-  `Function::global_static_semantic_geps` storage.
-- `c4c-clang-tool-ccdb type-refs` on
-  `src/backend/prealloc/publication_plans.cpp` found local semantic-GEP use at
-  line 5838, scalar local-load use at line 5941, and static-GEP authority use
-  at line 5872.
-- `c4c-clang-tool-ccdb type-refs` on
-  `src/backend/bir/lir_to_bir/memory/local_gep.cpp` found
-  `LocalArrayElementPathRecord` publication at line 183.
-- `c4c-clang-tool-ccdb type-refs` on
-  `src/backend/bir/lir_to_bir/memory/addressing.cpp` found
-  `GlobalStaticGepAuthorityRecord` publication at line 1492.
-
-First safe Step 2 boundary: create an aggregator-only BIR analysis header, for
-example `src/backend/bir/bir_local_array_semantic_gep.hpp`, included by
-`bir.hpp` after `#include "bir_memory_provenance.hpp"` and before later BIR
-instruction/core declarations. Move only the declaration/evaluator cluster that
-does not require complete `LoadLocalInst`, `Inst`, `Block`, `Function`, route,
-or lowering declarations: local-array source/path records, local-array proof
-records and early evaluators/matchers, local-address provenance,
-local-array semantic-GEP records/evaluator, and global static-GEP
-authority/semantic-GEP records/evaluator. Keep `Function` storage, the
-`Function`-taking interval-effect overload, and scalar local-load inline
-behavior in `bir.hpp` at their current prerequisite-safe locations for this
-first extraction.
+No build-system public header list was found or edited; `src/backend` uses
+globbed sources and public include directories rather than an explicit BIR
+header install/list entry.
 
 ## Suggested Next
 
-Delegate Step 2: extract the aggregator-only
-`bir_local_array_semantic_gep.hpp` declaration header at the boundary recorded
-above, include it from `bir.hpp` after `bir_memory_provenance.hpp`, and run:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(lir_to_bir_notes|publication_plan_record|prepare_stack_layout)' > test_after.log 2>&1`
+Delegate Step 3: probe consumer include narrowing with temporary syntax-only
+include checks. Keep consumers on `bir.hpp` where they still require complete
+`Function`, `Inst`, route, lowering, or prepared-module declarations.
 
 ## Watchouts
 
-- Keep this as behavior-preserving declaration-surface cleanup.
-- Do not edit lowering behavior, storage semantics, authority policy, tests, or
-  expectations to justify a header split.
-- Preserve the `bir.hpp` aggregator path unless evidence proves a consumer can
-  narrow its include safely.
-- Direct include replacement is unsafe in Step 2. `publication_plans.hpp`
-  includes `../bir/bir.hpp` while exposing/using complete `bir::Function`,
-  `bir::Inst`, and instruction variant types through the prealloc surface;
-  `publication_plans.cpp` reaches the target records through that aggregate.
-  LIR lowering producers enter through `src/backend/bir/lir_to_bir/lowering.hpp`,
-  which includes `../lir_to_bir.hpp` and therefore complete `bir.hpp` plus
-  lowering route state. Tests that inspect these records also construct or
-  mutate complete `bir::Function`, `bir::Block`, `bir::Inst`, lowering, or
-  prepared-module state.
-- Include-cycle risk: `bir_memory_provenance.hpp` is not standalone for this
-  split because it stores `Value` by value and is currently included from
-  `bir.hpp` only after `Value` is complete. The new analysis header should be
-  aggregator-only in Step 2 and included after `bir_memory_provenance.hpp`;
-  consumers should not include it directly until Step 3 proves a standalone
-  prerequisite story.
-- Scalar local-load declarations straddle the complete `LoadLocalInst`
-  boundary. Moving the record declaration alone is possible, but moving its
-  inline evaluator before `LoadLocalInst` would be invalid; keep that cluster
-  parked in `bir.hpp` for the first safe split.
+- `bir_local_array_semantic_gep.hpp` is not standalone in this slice; it relies
+  on the `bir.hpp` aggregator prerequisite order.
+- Do not replace consumer includes without proving the consumer no longer
+  needs complete core BIR model, route, lowering, or prealloc declarations.
+- Keep scalar local-load inline behavior parked in `bir.hpp`; it still needs
+  complete `LoadLocalInst` and `MemoryAddress`.
+- The first proof attempt hit a transient `cc1plus` killed failure while
+  compiling `backend_aarch64_instruction_dispatch_test.cpp`, outside the
+  delegated slice. Rerunning the exact delegated proof completed cleanly.
 
 ## Proof
 
-Mapping-only/no build. Used `c4c-clang-tool` and `c4c-clang-tool-ccdb`
-symbol/type-reference queries plus narrow source/include reads; no
-`test_after.log` was produced because no compile probe or build was run.
+Ran the delegated proof command:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(lir_to_bir_notes|publication_plan_record|prepare_stack_layout)' > test_after.log 2>&1`
+
+Result: passed on rerun. `test_after.log` records 3/3 tests passing:
+`backend_lir_to_bir_notes`, `backend_publication_plan_record`, and
+`backend_prepare_stack_layout`.
