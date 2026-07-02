@@ -1,6 +1,6 @@
 # RV64 Object Emission Cleanup Umbrella
 
-Status: Open
+Status: Closed
 Type: Analysis umbrella idea
 Order: after the BIR cleanup follow-ups from `ideas/closed/518_bir_core_model_cleanup_umbrella.md`, especially `ideas/open/532_bir_local_array_semantic_gep_header_readiness.md`, before other implementation ideas
 Owning Layer: RV64 MIR object emission
@@ -118,6 +118,37 @@ The cleanup plan should prefer behavior-preserving slices such as:
   artifacts required by the analysis.
 - The active plan remains unchanged unless this idea is explicitly activated
   later.
+
+## Closure Notes
+
+Closed after the analysis umbrella produced the durable artifact set under
+`docs/rv64_object_emission_cleanup/`:
+
+- `structure_baseline.md` records the current RV64 object emission line count,
+  clang-tool availability, query log, region map, and dependency clusters.
+- `aarch64_comparison.md` records the AArch64 comparison, RV64 destination map,
+  intentional divergences, and risk notes for symbol/fixup handling, prepared
+  admission, and runtime behavior.
+- `staged_followups.md` records the ordered cleanup slices, validation
+  expectations, reviewer reject signals, and links to the materialized
+  follow-up ideas.
+
+Step 4 materialized separate behavior-preserving follow-up ideas:
+`ideas/open/534_rv64_object_encoding_byte_helpers_cleanup.md`,
+`ideas/open/535_rv64_object_frame_stack_helper_cleanup.md`,
+`ideas/open/536_rv64_object_prepared_module_admission_shell_cleanup.md`,
+`ideas/open/537_rv64_object_local_memory_helper_cleanup.md`,
+`ideas/open/538_rv64_object_global_address_helper_cleanup.md`,
+`ideas/open/539_rv64_object_scalar_fragment_helper_cleanup.md`,
+`ideas/open/540_rv64_object_select_edge_publication_helper_cleanup.md`,
+`ideas/open/541_rv64_object_call_variadic_return_fragment_cleanup.md`,
+`ideas/open/542_rv64_object_function_traversal_facade_cleanup.md`, and
+`ideas/open/543_rv64_object_data_symbol_fixup_module_cleanup.md`.
+
+No RV64 implementation files, tests, expectations, allowlists, unsupported
+markers, runtime comparison, or pass/fail accounting were changed in this
+active route. Remaining implementation work belongs to the materialized
+follow-up ideas, not to this closed umbrella.
 
 ## Reviewer Reject Signals
 
