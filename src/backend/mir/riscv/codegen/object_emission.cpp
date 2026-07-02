@@ -8432,6 +8432,66 @@ RiscvEncodedFragment make_rv64_pcrel_address_fragment(
   return fragment;
 }
 
+bool publish_rv64_text_fragment_label(
+    object::ObjectModule& module,
+    object::SectionId text_section,
+    std::unordered_map<std::string, object::SymbolId>& symbols_by_name,
+    const RiscvObjectLabel& label,
+    std::uint64_t fragment_section_offset,
+    std::uint64_t fragment_size_bytes) {
+  if (label.name.empty() || label.offset_bytes > fragment_size_bytes ||
+      symbols_by_name.find(label.name) != symbols_by_name.end()) {
+    return false;
+  }
+  const auto label_offset = fragment_section_offset + label.offset_bytes;
+  object::bind_label(module, label.name, text_section, label_offset);
+  auto& label_symbol = object::define_symbol(module,
+                                             label.name,
+                                             object::SymbolBinding::Local,
+                                             object::SymbolKind::NoType,
+                                             text_section,
+                                             label_offset,
+                                             0);
+  symbols_by_name.emplace(label_symbol.name, label_symbol.id);
+  return true;
+}
+
+bool attach_rv64_text_fixup(
+    object::ObjectModule& module,
+    object::SectionId text_section,
+    std::unordered_map<std::string, object::SymbolId>& symbols_by_name,
+    const RiscvObjectFixup& fixup,
+    std::uint64_t fragment_section_offset,
+    std::uint64_t fragment_size_bytes) {
+  const auto reloc_type = rv64_elf_relocation_type(fixup.kind);
+  if (!reloc_type.has_value() || fixup.symbol_name.empty() ||
+      fixup.offset_bytes > fragment_size_bytes) {
+    return false;
+  }
+
+  object::SymbolId target_symbol{};
+  const auto existing = symbols_by_name.find(fixup.symbol_name);
+  if (existing != symbols_by_name.end()) {
+    target_symbol = existing->second;
+  } else {
+    auto& undefined = object::declare_undefined_symbol(
+        module,
+        fixup.symbol_name,
+        object::SymbolBinding::Global,
+        symbol_kind_for_fixup_target(fixup.target_kind));
+    target_symbol = undefined.id;
+    symbols_by_name.emplace(undefined.name, undefined.id);
+  }
+
+  object::attach_relocation(module,
+                            text_section,
+                            fragment_section_offset + fixup.offset_bytes,
+                            *reloc_type,
+                            target_symbol,
+                            fixup.addend);
+  return true;
+}
+
 std::optional<object::ObjectModule> build_rv64_text_object_module(
     const std::vector<RiscvObjectFunction>& functions) {
   object::ObjectModule module;
@@ -8468,20 +8528,14 @@ std::optional<object::ObjectModule> build_rv64_text_object_module(
           .section_offset = fragment_offset,
       });
       for (const auto& label : fragment.labels) {
-        if (label.name.empty() || label.offset_bytes > fragment.bytes.size() ||
-            symbols_by_name.find(label.name) != symbols_by_name.end()) {
+        if (!publish_rv64_text_fragment_label(module,
+                                              text.id,
+                                              symbols_by_name,
+                                              label,
+                                              fragment_offset,
+                                              fragment.bytes.size())) {
           return std::nullopt;
         }
-        const auto label_offset = fragment_offset + label.offset_bytes;
-        object::bind_label(module, label.name, text.id, label_offset);
-        auto& label_symbol = object::define_symbol(module,
-                                                   label.name,
-                                                   object::SymbolBinding::Local,
-                                                   object::SymbolKind::NoType,
-                                                   text.id,
-                                                   label_offset,
-                                                   0);
-        symbols_by_name.emplace(label_symbol.name, label_symbol.id);
       }
     }
     auto& symbol = object::define_symbol(module,
@@ -8499,30 +8553,14 @@ std::optional<object::ObjectModule> build_rv64_text_object_module(
       }
       const auto& fragment = *laid_out.fragment;
       for (const auto& fixup : fragment.fixups) {
-        const auto reloc_type = rv64_elf_relocation_type(fixup.kind);
-        if (!reloc_type.has_value() || fixup.symbol_name.empty() ||
-            fixup.offset_bytes > fragment.bytes.size()) {
+        if (!attach_rv64_text_fixup(module,
+                                    text.id,
+                                    symbols_by_name,
+                                    fixup,
+                                    laid_out.section_offset,
+                                    fragment.bytes.size())) {
           return std::nullopt;
         }
-        object::SymbolId target_symbol{};
-        const auto existing = symbols_by_name.find(fixup.symbol_name);
-        if (existing != symbols_by_name.end()) {
-          target_symbol = existing->second;
-        } else {
-          auto& undefined = object::declare_undefined_symbol(
-              module,
-              fixup.symbol_name,
-              object::SymbolBinding::Global,
-              symbol_kind_for_fixup_target(fixup.target_kind));
-          target_symbol = undefined.id;
-          symbols_by_name.emplace(undefined.name, undefined.id);
-        }
-        object::attach_relocation(module,
-                                  text.id,
-                                  laid_out.section_offset + fixup.offset_bytes,
-                                  *reloc_type,
-                                  target_symbol,
-                                  fixup.addend);
       }
     }
   }
