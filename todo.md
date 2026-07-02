@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/558_bir_call_metadata_semantic_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Direct-Call Producer Boundary
+Current Step ID: 2
+Current Step Title: Repair Direct-Call Metadata Publication
 
 # Current Packet
 
@@ -38,6 +38,9 @@ should publish the `CallInst` with callee LinkNameId/signature identity,
 `Immediate` call-argument source relationship.
 
 ## Suggested Next
+
+Step 2 - Repair Direct-Call Metadata Publication should use the Step 1
+boundary above as the executor packet context.
 
 Add focused BIR coverage in `tests/backend/bir/backend_lir_to_bir_notes_test.cpp`
 for a metadata-rich same-module/direct call with a structured `(i32, ptr)`
