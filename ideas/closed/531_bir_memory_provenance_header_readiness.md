@@ -1,6 +1,6 @@
 # BIR Memory Provenance Header Readiness
 
-Status: Open
+Status: Closed
 Type: Behavior-preserving cleanup
 Parent: `ideas/closed/518_bir_core_model_cleanup_umbrella.md`
 Order: BIR cleanup follow-up 12 of 13, after `ideas/open/530_bir_route_header_split_after_body_moves.md`
@@ -44,6 +44,26 @@ after include consumers and route3 ownership are stable.
   and pointer-value provenance proof passes.
 - Supervisor prefers broader backend validation if public model support
   surfaces move.
+
+## Completion Notes
+
+- Closed after mapping memory provenance, storage authority, static GEP,
+  dynamic-array, route3, LIR-to-BIR memory, object emission, and pointer-value
+  provenance consumers.
+- The accepted declaration-surface movement is the aggregator-preserving
+  `src/backend/bir/bir_memory_provenance.hpp` support split. `bir.hpp` remains
+  the compatibility aggregator.
+- Direct include replacement is intentionally parked outside idea 531 because
+  selected consumers still need complete `Value`, `MemoryAddress`, `Inst`,
+  `Block`, `Function`, route, lowering, or prealloc declarations that remain in
+  broader BIR model headers.
+- No provenance authority verdicts, storage semantics, enum values, record
+  layouts, optionality, lookup behavior, lowering behavior, or idea 422
+  producer behavior changed.
+- Close proof: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_'` passed with 345/345 backend tests, and
+  `c4c-regression-guard` passed against the canonical before/after logs with
+  `--allow-non-decreasing-passed`.
 
 ## Reviewer Reject Signals
 
