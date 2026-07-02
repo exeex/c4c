@@ -2288,8 +2288,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
             prepare::as_rematerializable_integer_immediate_fact(*source_home);
         const auto scratch = rv64_unoccupied_temporary_gpr(lookups);
         if (report.owner_class != prepare::PreparedContractOwnerClass::Coherent ||
-            !fact.has_value() || !fact->fits_signed_12_bit_immediate ||
-            !scratch.has_value() ||
+            !fact.has_value() || !scratch.has_value() ||
             !prepared_storage_plan_endpoint_is_coherent_gpr_frame_slot(
                 storage_plan,
                 move.to_value_id)) {
