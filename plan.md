@@ -1,176 +1,165 @@
-# BIR Semantic Producer Admission Reconstruction Runbook
+# BIR Local-Memory Semantic Producer Admission Runbook
 
 Status: Active
-Source Idea: ideas/open/545_bir_semantic_producer_admission_reconstruction.md
+Source Idea: ideas/open/557_bir_local_memory_semantic_producer_admission.md
 
 ## Purpose
 
-Rebuild current row-level evidence for `semantic lir_to_bir` admission
-failures before assigning implementation ownership or letting RV64/MIR consume
-missing producer facts.
+Repair BIR local-memory semantic producer admission for the largest current
+exact `semantic lir_to_bir` lane without letting RV64/MIR infer missing
+producer facts.
 
 ## Goal
 
-Classify current BIR semantic admission failures into producer-owned families,
-evidence gaps, or non-BIR owners, then create follow-up routing only from
-current evidence.
+Publish the local-memory semantic facts needed by load, GEP, store,
+scalar/local-memory, and alloca admission families, then prove the current
+representative RV64 rows advance for producer-owned reasons.
 
 ## Core Rule
 
-Do not claim BIR semantic producer progress from stale counts, downstream
-RV64 workarounds, diagnostic rewrites, or weakened expectations. Current row
-evidence must identify the first producer fact that is missing or malformed.
+Do not claim progress from named-case shortcuts, downstream fact inference,
+diagnostic rewrites, expectation changes, unsupported downgrades, allowlist
+changes, or weakened semantic admission. Progress must come from BIR producer
+facts that generalize across the current local-memory families.
 
 ## Read First
 
-- `ideas/open/545_bir_semantic_producer_admission_reconstruction.md`
-- `docs/rv64_gcc_torture_post_contract/current_scan_summary.md`
-- `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`
-- `build/agent_state/rv64_gcc_torture_backend_current_log_path.txt`
-- `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
-- `build/agent_state/rv64_gcc_c_torture_backend_failed.txt`
-- `build/rv64_gcc_c_torture_backend/<case-id>/case.log`
-- `scripts/check_progress_rv64_gcc_c_torture_backend.sh`
+- `ideas/open/557_bir_local_memory_semantic_producer_admission.md`
+- `docs/rv64_gcc_torture_post_contract/bir_semantic_admission_outcome.md`
+- `docs/rv64_gcc_torture_post_contract/bir_semantic_admission_followups.md`
+- `docs/rv64_gcc_torture_post_contract/bir_semantic_admission_classification.md`
+- `docs/rv64_gcc_torture_post_contract/bir_semantic_admission_rows.md`
 - `src/backend/bir/lir_to_bir.cpp`
-- `src/backend/bir/lir_to_bir/calling.cpp`
 - `src/backend/bir/lir_to_bir/memory/`
 - `tests/backend/bir/`
 
 ## Current Targets
 
-- Current evidence anchor: stable 2026-07-02 reset-main RV64 gcc_torture
-  backend-object scans with `1467` total, `349` passed, and `1118` failed.
-- Candidate diagnostic family: row logs containing `semantic lir_to_bir`.
-- Candidate producer topics: local-memory facts, call metadata, aggregate
-  facts, publication gaps, and malformed or intentionally rejected inputs.
-- Candidate non-BIR routes: prepared contract gaps, RV64/MIR object lowering,
-  runtime mismatch, test infrastructure, F128 quarantine, or evidence gaps.
+- Exact local-memory semantic rows: `264`.
+- Topic counts: `79` load, `62` GEP, `58` store, `49`
+  scalar/local-memory, and `16` alloca.
+- Representative RV64 proof seeds:
+  - `src/20000314-1.c` for load.
+  - `src/20000717-4.c` for GEP.
+  - `src/20001026-1.c` for store.
+  - `src/20000519-1.c` for scalar/local-memory.
+  - `src/20050604-1.c` for alloca.
+- Primary implementation surfaces:
+  `src/backend/bir/lir_to_bir.cpp` and
+  `src/backend/bir/lir_to_bir/memory/`.
 
 ## Non-Goals
 
-- Do not implement RV64 object lowering in this runbook.
-- Do not bypass BIR producer defects from prepared-module or MIR consumers.
-- Do not infer missing facts downstream when the BIR producer did not publish
-  them.
-- Do not use historical branch counts as current evidence.
-- Do not weaken semantic admission checks, gcc_torture expectations,
-  unsupported markers, allowlists, or runtime comparison behavior.
-- Do not mix F128 or long-double work into ordinary-C producer admission work.
+- Do not implement call metadata, runtime/intrinsic, scalar/signature/control,
+  or bootstrap/global data-shape lanes in this runbook.
+- Do not repair RV64/MIR by guessing address, provenance, or memory facts
+  missing from BIR.
+- Do not weaken semantic admission, expectations, unsupported markers,
+  allowlists, or runtime comparison behavior.
+- Do not use one testcase shape as proof for all local-memory families.
+- Do not fold unrelated aggregate, publication, or prepared-contract claims
+  into this lane without fresh evidence.
 
 ## Working Model
 
-- The active failure map explicitly says BIR semantic producer admission is
-  high priority but lacks a verified current row count.
-- The first useful packet is evidence reconstruction, not implementation.
-- Current per-case logs are the source of truth for row membership.
-- Follow-up ideas should be created only for coherent, high-frequency current
-  producer families with clear first ownership and proof shape.
+- The source evidence already reconstructed and classified current rows.
+- The first implementation packet should identify the concrete missing
+  local-memory fact boundary and add focused BIR coverage before broadening.
+- Representative RV64 rows are proof seeds, not the whole acceptance surface.
+- If producer inspection proves one topic needs a separate boundary, stop and
+  request plan-owner lifecycle split instead of silently expanding scope.
 
 ## Execution Rules
 
-- Keep packet progress, extracted row paths, commands, and proof notes in
+- Keep routine packet progress, commands, row seeds, and proof notes in
   `todo.md`.
-- Use the 2026-07-02 current scan artifacts unless the supervisor explicitly
-  requests a fresh scan.
-- If a fresh scan is requested, preserve its timestamped top-level log and
-  update the current-log pointer only as delegated.
-- Treat `semantic lir_to_bir` string matches as candidate rows; inspect each
-  representative log before assigning owner.
-- Prefer row tables under `build/agent_state/` or focused docs under
-  `docs/rv64_gcc_torture_post_contract/` for evidence artifacts; do not
-  encode row inventories only in chat.
-- Any code-changing packet needs fresh build proof plus the exact focused
+- Each code-changing packet needs fresh build proof plus the exact focused
   command delegated by the supervisor.
-- If a packet only reconstructs evidence or writes lifecycle/docs artifacts,
-  record that no compile proof was required.
+- Add or update focused BIR tests before using RV64 representatives as proof.
+- Use representative RV64 rows to confirm the current failure family moved for
+  the producer reason.
+- Escalate validation when shared memory helpers affect more than one
+  local-memory family.
+- If a proposed fix changes expectations, unsupported markers, allowlists, or
+  runtime comparison behavior, reject the route and request supervisor review.
 
 ## Steps
 
-### Step 1: Reconstruct Current BIR Admission Rows
+### Step 1: Locate The Local-Memory Producer Boundary
 
-Goal: produce a traceable current row set for `semantic lir_to_bir` admission
-failures or prove that no verified current row set exists.
-
-Actions:
-
-- Read the current scan pointer, summary TSV, failed-case list, and relevant
-  per-case logs.
-- Extract candidate rows whose logs contain `semantic lir_to_bir` or related
-  BIR lowering-pipeline admission notes.
-- For each candidate, record the case path, case log path, visible diagnostic
-  text, function name when present, and whether the log has enough evidence to
-  identify a first BIR producer topic.
-- Separate current evidence from historical support; do not reuse old branch
-  counts as row counts.
-- Store the reconstructed row table or evidence notes in an auditable artifact
-  and summarize the artifact path in `todo.md`.
-
-Completion check:
-
-- `todo.md` names the current evidence artifact, current row count or explicit
-  no-verified-row-set result, and representative logs inspected.
-
-### Step 2: Classify Producer Families
-
-Goal: classify verified rows by first owner and BIR producer topic without
-turning downstream gaps into producer claims.
+Goal: identify the concrete BIR local-memory facts missing or malformed for
+the current load, GEP, store, scalar/local-memory, and alloca families.
 
 Actions:
 
-- Split verified BIR admission rows into local-memory, call metadata,
-  aggregate facts, publication gaps, malformed/intentionally rejected inputs,
-  and unknown/evidence-gap groups.
-- For each group, identify the first missing fact or malformed semantic input
-  that prevents admission.
-- Route rows that are not BIR producer failures back to prepared contract,
-  RV64/MIR object lowering, runtime mismatch, test infrastructure, F128
-  quarantine, or evidence-gap owners.
-- Compare classifications against focused BIR tests only as support, not as a
-  substitute for current row evidence.
+- Inspect the representative row logs and the classified row table for the
+  five local-memory topics.
+- Inspect `src/backend/bir/lir_to_bir.cpp` and
+  `src/backend/bir/lir_to_bir/memory/` for the fact publication path used by
+  each topic.
+- Identify the first missing semantic fact or malformed BIR input per topic.
+- Decide whether the five topics share one repair boundary or need a lifecycle
+  split before implementation.
 
 Completion check:
 
-- `todo.md` summarizes group counts, first owners, rejected non-BIR routes,
-  and any rows left as evidence gaps.
+- `todo.md` names the concrete producer boundary, affected topics, and the
+  focused tests or split request needed next.
 
-### Step 3: Generate Follow-Up Routing
+### Step 2: Add Focused BIR Coverage
 
-Goal: convert high-frequency current producer families into coherent follow-up
-ideas or explicitly leave them unactivated when evidence is insufficient.
+Goal: pin the local-memory producer contract in focused BIR tests before
+repairing or broadening RV64 proof.
 
 Actions:
 
-- For each coherent high-frequency BIR producer family, draft the intended
-  owner, proof shape, and reviewer reject signals.
-- Keep local-memory, call metadata, aggregate facts, and publication gaps
-  separate unless row evidence proves they share one producer boundary.
-- Route non-BIR families to existing open ideas when they fit, or request a
-  separate lifecycle action for new ideas.
-- Do not edit source ideas during routine execution unless the supervisor
-  delegates lifecycle ownership.
+- Add or extend focused BIR tests for the selected local-memory topics.
+- Cover load, GEP, store, scalar/local-memory, and alloca unless Step 1
+  justifies a narrower first packet.
+- Keep assertions tied to producer facts rather than downstream target output.
+- Run the delegated focused build and test command.
 
 Completion check:
 
-- `todo.md` lists follow-up candidates, rejected or deferred candidates, and
-  the exact lifecycle action needed next, if any.
+- Focused BIR tests expose the intended producer contract and are recorded in
+  `todo.md` with command output.
 
-### Step 4: Prove The Reconstruction Outcome
+### Step 3: Repair Semantic Fact Publication
 
-Goal: make the evidence reconstruction auditable and ready for supervisor
-acceptance or lifecycle follow-up.
+Goal: make BIR publish the semantic local-memory facts required by the focused
+tests and representative current rows.
 
 Actions:
 
-- Verify that the row counts reconcile with the selected current scan
-  artifacts.
-- Confirm no implementation files, tests, expectations, unsupported markers,
-  allowlists, or runtime comparison behavior were weakened.
-- If follow-up ideas are needed, hand the supervisor precise plan-owner
-  lifecycle inputs rather than silently expanding this runbook.
-- If no verified current row set exists, record the reason and the next
-  evidence action instead of inventing an implementation queue.
+- Implement the minimal producer-side repair for the selected local-memory
+  fact boundary.
+- Preserve existing semantic admission checks; do not bypass them.
+- Run focused BIR tests and the delegated build proof.
+- Record any neighboring local-memory families intentionally left for later
+  packets.
 
 Completion check:
 
-- `todo.md` states whether the source idea is satisfied, needs follow-up idea
-  creation, needs a fresh scan, or remains blocked by missing evidence.
+- The selected local-memory facts are published by BIR, focused tests pass,
+  and `todo.md` records remaining local-memory families.
+
+### Step 4: Prove Current RV64 Representative Rows
+
+Goal: prove representative current RV64 rows advance for producer-owned
+reasons after focused BIR coverage is green.
+
+Actions:
+
+- Run a narrow RV64 gcc_torture subset that includes representatives for every
+  repaired local-memory topic.
+- Inspect failures that remain in the same family and decide whether they are
+  in-scope next packets or a separate boundary.
+- Confirm no expectation, unsupported-marker, allowlist, or runtime comparison
+  behavior changed.
+- Ask the supervisor to escalate validation when multiple local-memory packets
+  have landed or shared helpers changed broadly.
+
+Completion check:
+
+- `todo.md` records focused and RV64 proof, remaining rows or topics, and
+  whether this source idea should continue, split, or close.
