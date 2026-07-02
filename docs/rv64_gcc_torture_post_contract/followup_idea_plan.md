@@ -1,157 +1,81 @@
-# RV64 Instruction Fragment Follow-Up Ranking
+# RV64 gcc_torture Follow-Up Idea Plan
 
-Status: Step 4 follow-up ideas created from the regenerated Step 2 bucket
-evidence and Step 3 ranking.
+Status: Step 5 refreshed from stable 2026-07-02 evidence.
 
-## 2026-07-01 Fresh Scan Priority Override
+## Evidence Anchor
 
-A later supervisor scan on `main` recorded:
+This plan uses the stable 2026-07-02 reset-main/post-cleanup RV64
+gcc_torture backend-object evidence recorded by the source umbrella and the
+current failure bucket map:
 
 - `1467` total cases
-- `314` pass
-- `1153` fail
+- `349` pass
+- `1118` fail
+- `0` pass-to-fail changes between the two 2026-07-02 scans
+- `0` fail-to-pass changes between the two 2026-07-02 scans
+- `build/agent_state/rv64_gcc_torture_backend_current_20260702T032151Z.log`
+- `build/agent_state/rv64_gcc_torture_backend_current_20260702T151551Z.log`
 
-The first-owner bucket shape changed the next-idea priority:
+Older `404/1063` and `314/1153` summaries are historical only. They are not
+the current queue anchor, and old missing idea files are not treated as live
+follow-up state.
 
-| Rank | Fresh owner bucket | Rows | Next action |
-| ---: | --- | ---: | --- |
-| 1 | `unsupported_move_bundle_target_shape` | 423 | Review prepared move-bundle authority/materialization and split producer gaps from coherent RV64 lowering. |
-| 2 | `semantic lir_to_bir` admission | 373 | Route to BIR semantic producer cleanup before any RV64 consumer work. |
-| 3 | `unsupported_stack_frame` | 84 | Keep prepared/global stack-frame infrastructure review queued after the two dominant buckets. |
-| 4 | `unsupported_instruction_fragment` | 82 | Keep the older instruction-fragment ranking as a sub-plan for this smaller residual bucket. |
-| 5 | `unsupported_global_data` | 40 | Keep prepared/global infrastructure review queued. |
+RV64 gcc_torture remains external evidence, not default CTest coverage. F128
+is quarantined through
+`ideas/open/426_f128_quarantine_and_external_softfloat_policy.md` and must not
+drive ordinary-C RV64 recovery.
 
-This override does not invalidate the older instruction-fragment analysis
-below; it only demotes it behind the two larger fresh buckets. RV64 gcc_torture
-remains external evidence and must not become a default CTest gate. Any
-BIR/prepared producer gap discovered by a MIR/RV64 idea must become a separate
-producer idea and close before returning to MIR/RV64 work.
+## Ordering Rule
 
-Created high-priority follow-ups:
+Order ideas by current ordinary-C impact, first-owner clarity, and route
+quality:
 
-- `ideas/open/495_prepared_move_bundle_materialization_bucket_review.md`
-- `ideas/open/496_semantic_lir_to_bir_admission_high_impact_cleanup.md`
+- start with the largest explicit current ordinary-C bucket;
+- split producer/authority gaps from MIR/RV64 lowering before implementation;
+- create classification or reconstruction ideas when current row-level
+  evidence is missing;
+- keep runtime/crash/no-diagnostic rows out of implementation queues until
+  they have reproducible first-owner evidence;
+- keep primary-F128 rows in the F128 quarantine lane unless fresh evidence
+  proves broad non-F128 impact.
 
-Continue `ideas/open/494_dynamic_local_array_lir_producer_interval_effect_classifier.md`
-only as a contract/fail-closed route. It should not publish available interval
-facts until a truthful prepared/BIR endpoint bridge exists.
+## Ordered Follow-Up Queue
 
-Evidence source:
+| Rank | Idea | Current evidence | Owner | Route decision |
+| ---: | --- | --- | --- | --- |
+| 1 | `ideas/open/544_rv64_move_bundle_target_shape_bucket_split.md` | 183 current `unsupported_move_bundle_target_shape` rows | Prepared contract plus RV64/MIR boundary | First queue item. Split coherent RV64 move materialization from prepared/BIR authority gaps before any lowering work. |
+| 2 | `ideas/open/545_bir_semantic_producer_admission_reconstruction.md` | Required by source idea; no verified current row count in the Step 4 map | BIR semantic producer | Classification/reconstruction lane. Rebuild current row evidence before creating producer implementation slices. |
+| 3 | `ideas/open/546_rv64_instruction_fragment_current_classification.md` | 137 current `unsupported_instruction_fragment` rows | RV64/MIR object lowering, with F128 screened out | Reclassify current rows before reusing older instruction-fragment taxonomy or creating implementation packets. |
+| 4 | `ideas/open/547_bir_local_memory_call_metadata_boundary_review.md` | 44 current `unsupported_local_memory_access` rows plus source-required call metadata lane without verified count | BIR semantic producer and prepared contract | Review producer authority and call/local-memory facts before RV64 memory/call lowering consumes them. |
+| 5 | `ideas/open/548_prepared_global_stack_frame_infrastructure_review.md` | 85 `unsupported_stack_frame`, 43 `unsupported_global_data`, 26 `unsupported_prepared_move_bundle_classification` rows | Prepared contract and RV64 infrastructure boundary | Infrastructure review for global data, stack frame, and prepared move-bundle classification facts. |
+| 6 | `ideas/open/549_rv64_runtime_and_no_diagnostic_triage.md` | 503 compile failures without explicit `unsupported_*`, 57 other non-unsupported failures, 7 segmentation-fault exits | Runtime mismatch, crash triage, or evidence reconstruction | Reproduce and classify before claiming ordinary-C capability progress. |
+| 7 | `ideas/open/550_rv64_scalar_fpr_residual_salvage.md` | 3 scalar-compare, 2 floating-cast, 1 variadic-helper rows | RV64 scalar/FPR/helper boundary | Low-volume ordinary-C salvage lane after higher-count buckets. Keep separate from F128. |
+| 8 | `ideas/open/426_f128_quarantine_and_external_softfloat_policy.md` | Existing policy lane; primary-F128 rows are lowest priority | F128 quarantine and external soft-float policy | Screen primary-F128 rows away from ordinary-C accounting. Do not duplicate this idea. |
 
-- `docs/rv64_gcc_torture_post_contract/current_scan_summary.md`
-- `docs/rv64_gcc_torture_post_contract/failure_bucket_map.md`
-- `build/agent_state/unsupported_instruction_fragment_rows.tsv`
-- `build/agent_state/rv64_gcc_torture_backend_current_20260630T032216Z.log`
+## Dependency Notes
 
-The source scan recorded `total=1467 passed=404 failed=1063`. The row TSV
-contains 190 `unsupported_instruction_fragment` rows. The rankings below use
-the disjoint Step 2 owner buckets and keep F128 out of the ordinary non-F128
-implementation backlog.
+- The move-bundle split idea is the first concrete bucket review because the
+  source umbrella records `unsupported_move_bundle_target_shape` as the largest
+  explicit current ordinary-C bucket.
+- Rows that need missing BIR or prepared facts must move to producer-owned
+  ideas before dependent MIR/RV64 lowering resumes.
+- The BIR semantic producer admission lane is deliberately a reconstruction
+  idea because the current Step 4 map does not verify a row count for that
+  family.
+- The instruction-fragment lane must refresh the current 137-row table before
+  any older `unsupported_instruction_fragment` sub-bucket counts are reused.
+- Runtime, crash, timeout, and no-diagnostic rows must not be counted as
+  implementation-ready ordinary-C progress until targeted reproduction assigns
+  first ownership.
 
-## Ranking Rule
+## Reviewer Reject Signals For This Plan
 
-Rank candidates by:
-
-- row count and representative spread across gcc_torture cases
-- likelihood that one semantic lowering rule helps many nearby rows
-- owning-layer clarity
-- prepared-fact completeness
-- risk that the route would require producer repair before RV64 lowering
-
-Ordinary non-F128 RV64 lowering work ranks ahead of F128. Producer-owned gaps
-are not ranked as RV64 lowering work until their prepared facts are coherent.
-
-## Ordered Implementation Candidates
-
-| Rank | Candidate | Rows | Owning layer | Expected broad impact | Route note |
-| ---: | --- | ---: | --- | --- | --- |
-| 1 | Select and join materialization | 54 | RV64 object lowering | Highest row count and direct ordinary non-F128 lowering surface; a semantic select/join materialization route should cover multiple comparison and value-merge shapes. | Implementation idea should define legal scalar select lowering and reject branch-fact invention or filename-shaped special cases. |
-| 2 | Call-adjacent scalar publication and inline-asm materialization | 38 | RV64 call/inline-asm object lowering | Large ordinary scalar bucket spanning call results, call arguments, and inline asm fragments; likely to unlock several call-near cases without touching ABI aggregates. | Split scalar call/inline-asm publication from aggregate `sret`/`byval` and from F128 helper calls. |
-| 3 | Pointer cast and address materialization | 21 | RV64 pointer/address lowering, with producer review for provenance gaps | Material for address-bearing tests and pointer/integer boundary rows; broad if prepared provenance is adequate. | First implementation packet should only cover rows with coherent `inttoptr`/`ptrtoint` facts and route incomplete provenance to producer review. |
-| 4 | Integer div/rem lowering | 17 | RV64 integer instruction lowering | Clear instruction-family owner with scalar `udiv`, `sdiv`, `urem`, and `srem`; lower count than pointer work but more implementation-ready. | Prefer as the first pure integer-op packet if pointer provenance review is not ready. Avoid case-specific divisor or width matching. |
-| 5 | Aggregate `sret`/`byval` call-storage | 19 | Prepared ABI producer plus RV64 aggregate call lowering | Count is high, but some rows show suspicious prepared aggregate size/alignment facts, so the first impact depends on producer validation. | Should become a producer/ABI-contract idea before an RV64 lowering idea when facts are incoherent. |
-| 6 | Integer arithmetic shift right | 11 | RV64 integer instruction lowering | Smaller but clean ordinary integer bucket; useful follow-up after div/rem or as a narrow integer lowering slice. | Add a semantic `ashr` route, not a constants-only or representative-file shortcut. |
-| 7 | Large literal and materialization | 10 | RV64 immediate/materialization lowering | Small-to-medium bucket with likely shared literal materialization benefit beyond these rows. | Needs a general constant materialization strategy for out-of-range immediates. |
-| 8 | Global memory/addressing residual | 2 | RV64 memory/address lowering | Very small residual; likely best handled after pointer/address and literal materialization clarify addressability. | Keep separate from pointer cast rows until global address facts are inspected. |
-| 9 | Scalar F32/F64 conversion/op residual | 2 | RV64 scalar floating-point lowering | Tiny non-F128 residual; preserve as separate scalar-FP work but do not let it steer the main backlog. | Do not mix with F128 runtime-helper or long-double work. |
-| 10 | F128 quarantine | 16 | F128/runtime-helper quarantine | Explicitly not the primary route for this runbook despite its row count. | Lowest priority unless a future proof shows F128 blocks a broader ordinary non-F128 owner. |
-
-## High-Impact Non-F128 Ideas
-
-The evidence supports at least these implementation-ready follow-up ideas:
-
-1. RV64 select and join materialization for ordinary scalar values.
-   - Evidence: 54 rows, the largest bucket, with representative rows such as
-     `src/pr43236.c`, `src/pr51933.c`, and `src/pr68328.c`.
-   - Owner: RV64 object lowering.
-   - Acceptance shape: lower prepared scalar select/join fragments through a
-     semantic rule that works across comparison/value-merge forms.
-   - Reject signals: branch-fact invention, expectation downgrades, or
-     testcase/file-name matching.
-
-2. RV64 call-adjacent scalar and inline-asm fragment materialization.
-   - Evidence: 38 rows, with representative rows such as `src/pr38533.c`,
-     `src/pr40657.c`, and `src/pr45695.c`.
-   - Owner: RV64 call/inline-asm object lowering.
-   - Acceptance shape: publish scalar call results, scalar call arguments, and
-     inline-asm fragments without absorbing aggregate ABI or F128 helper cases.
-   - Reject signals: treating aggregate `sret`/`byval` rows as scalar calls,
-     broadening inline asm through named-case shortcuts, or changing pass/fail
-     accounting.
-
-3. RV64 pointer cast and address materialization with producer-gap boundaries.
-   - Evidence: 21 rows, with representative rows such as `src/930930-1.c`,
-     `src/20000622-1.c`, and `src/20010329-1.c`.
-   - Owner: RV64 pointer/address lowering when prepared provenance is coherent;
-     producer review when it is not.
-   - Acceptance shape: lower coherent `inttoptr`/`ptrtoint` materialization and
-     explicitly reject rows whose prepared facts do not describe safe address
-     provenance.
-   - Reject signals: guessing addresses, bypassing missing provenance, or
-     routing producer gaps through RV64 inference.
-
-4. RV64 integer div/rem scalar lowering.
-   - Evidence: 17 rows, with representative rows such as `src/20021120-3.c`,
-     `src/20030105-1.c`, and `src/20090113-2.c`.
-   - Owner: RV64 integer instruction lowering.
-   - Acceptance shape: lower scalar signed/unsigned div/rem over coherent
-     operand and result types.
-   - Reject signals: divisor-specific handling, width-specific shortcuts not
-     grounded in the type system, or expectation rewrites.
-
-5. Prepared aggregate ABI contract review for `sret`/`byval` call-storage.
-   - Evidence: 19 rows, but Step 2 found suspicious prepared aggregate sizes or
-     alignments in some rows.
-   - Owner: prepared ABI producer first, then RV64 aggregate call lowering.
-   - Acceptance shape: separate coherent aggregate call-storage rows from
-     producer-fact defects before writing RV64 lowering.
-   - Reject signals: treating incoherent size/alignment as RV64 object-lowering
-     work or merging aggregate ABI with scalar call publication.
-
-## F128 Quarantine
-
-F128 remains quarantined and lowest priority for this runbook. The F128 bucket
-has 16 rows, but its owner is runtime-helper/long-double support rather than
-ordinary RV64 instruction-fragment lowering. It should not displace the larger
-ordinary non-F128 buckets above unless future evidence proves it blocks a
-broader non-F128 owner.
-
-## Suggested Step 4 Idea Order
-
-Create follow-up ideas in this order unless supervisor review chooses a
-different route:
-
-1. RV64 scalar select/join materialization.
-2. RV64 call-adjacent scalar and inline-asm materialization.
-3. RV64 pointer/address materialization with explicit producer-gap boundaries.
-4. RV64 integer div/rem lowering, or use this as the first pure-integer packet
-   if pointer provenance review needs more evidence.
-5. Prepared aggregate ABI contract review before aggregate RV64 lowering.
-
-## Step 4 Created Ideas
-
-- `ideas/open/427_rv64_scalar_select_join_materialization.md`
-- `ideas/open/428_rv64_call_adjacent_scalar_inline_asm_materialization.md`
-- `ideas/open/429_rv64_pointer_address_materialization.md`
-- `ideas/open/430_rv64_integer_div_rem_lowering.md`
-- `ideas/open/431_prepared_aggregate_abi_contract_review.md`
+- Reject treating stale `404/1063`, `314/1153`, or missing old idea files as
+  the current queue.
+- Reject creating implementation ideas from unverified row counts.
+- Reject any MIR/RV64 idea that continues after discovering a missing
+  BIR/prepared producer fact instead of switching to a producer-owned idea.
+- Reject expectation rewrites, unsupported downgrades, allowlist filtering, or
+  weaker runtime comparison as evidence of RV64 progress.
+- Reject F128 promotion above ordinary-C buckets unless fresh row evidence
+  proves broad non-F128 impact.

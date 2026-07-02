@@ -1,40 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Classify Failure Buckets By First Owning Layer
+Current Step ID: 5
+Current Step Title: Generate Ordered Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 refreshed
-`docs/rv64_gcc_torture_post_contract/failure_bucket_map.md` against the stable
-2026-07-02 reset-main/post-cleanup RV64 gcc_torture backend-object evidence:
-`1467` total, `349` pass, `1118` fail, with logs
-`build/agent_state/rv64_gcc_torture_backend_current_20260702T032151Z.log` and
-`build/agent_state/rv64_gcc_torture_backend_current_20260702T151551Z.log`.
+Step 5 refreshed
+`docs/rv64_gcc_torture_post_contract/followup_idea_plan.md` against the stable
+2026-07-02 reset-main/post-cleanup RV64 gcc_torture backend-object evidence and
+the Step 4 failure bucket map.
 
-The map now treats stale older summaries as historical only, records the
-source-idea fact that `unsupported_move_bundle_target_shape` has 183 current
-rows and is the first expected-value ordinary-C follow-up candidate, keeps F128
-quarantined and lowest priority, and explicitly marks current row-level
-ownership gaps instead of inventing exact first-owner counts for unverified
-rows.
+Created current-evidence follow-up ideas:
+
+- `ideas/open/544_rv64_move_bundle_target_shape_bucket_split.md`
+- `ideas/open/545_bir_semantic_producer_admission_reconstruction.md`
+- `ideas/open/546_rv64_instruction_fragment_current_classification.md`
+- `ideas/open/547_bir_local_memory_call_metadata_boundary_review.md`
+- `ideas/open/548_prepared_global_stack_frame_infrastructure_review.md`
+- `ideas/open/549_rv64_runtime_and_no_diagnostic_triage.md`
+- `ideas/open/550_rv64_scalar_fpr_residual_salvage.md`
+
+The follow-up plan no longer treats stale `314/1153`, `404/1063`, or missing
+old idea files as the current queue. It orders the 183-row
+`unsupported_move_bundle_target_shape` bucket first, makes missing row-level
+evidence into classification/reconstruction ideas instead of implementation
+claims, and keeps F128 quarantined through
+`ideas/open/426_f128_quarantine_and_external_softfloat_policy.md`.
 
 ## Suggested Next
 
-Execute Step 5 by refreshing
-`docs/rv64_gcc_torture_post_contract/followup_idea_plan.md` and generating or
-updating the follow-up idea set from the stable 2026-07-02 evidence. The next
-packet should prioritize a move-bundle bucket idea that consumes the 183
-current `unsupported_move_bundle_target_shape` rows and splits coherent RV64
-materialization work from prepared/BIR authority gaps.
+Execute Step 6 by reviewing close readiness for the umbrella. Confirm the
+handoff docs and generated ideas satisfy the source idea, verify no
+implementation patches or expectation downgrades entered the umbrella, and
+record the close-gate expectation for supervisor/plan-owner review.
 
 ## Watchouts
 
-- `followup_idea_plan.md` is still listed as stale in the Step 4 handoff and
-  may still cite older bucket ordering or stale current counts.
+- `current_scan_summary.md` in this checkout still contains older Step 2 text;
+  the Step 5 plan used the source umbrella and `failure_bucket_map.md` as the
+  authoritative stable 2026-07-02 evidence for this packet.
+- `regression_delta.md` and `try_gcc_torture_postmortem.md` were not present in
+  this checkout during Step 5, despite earlier handoff notifications.
 - The current bucket map has verified current diagnostic counts, but it does
   not have a refreshed row-level first-owner table for the 567 current failures
   that lack explicit `unsupported_*` ownership evidence.
@@ -53,5 +62,5 @@ materialization work from prepared/BIR authority gaps.
 ## Proof
 
 Ran `git diff --check --
-docs/rv64_gcc_torture_post_contract/failure_bucket_map.md todo.md`; proof
-output was captured in `test_after.log`.
+docs/rv64_gcc_torture_post_contract/followup_idea_plan.md todo.md
+ideas/open/*.md`; proof output was captured in `test_after.log`.
