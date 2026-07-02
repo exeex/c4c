@@ -5660,6 +5660,24 @@ make_prepared_out_of_ssa_phi_join_immediate_materialization_module() {
 }
 
 prepare::PreparedBirModule
+make_prepared_out_of_ssa_phi_join_i64_zero_materialization_module() {
+  auto prepared = make_prepared_out_of_ssa_phi_join_immediate_materialization_module();
+  auto& function = prepared.module.functions.front();
+  function.return_type = bir::TypeKind::I64;
+  function.return_size_bytes = 8;
+  function.return_align_bytes = 8;
+  auto& parallel_copy =
+      prepared.control_flow.functions.front().parallel_copy_bundles.front();
+  parallel_copy.moves.front().source_value = bir::Value::immediate_i64(0);
+  parallel_copy.moves.front().destination_value =
+      bir::Value::named(bir::TypeKind::I64, "%dst");
+
+  auto& move = prepared.value_locations.functions.front().move_bundles.front().moves.front();
+  move.source_immediate_i32 = 0;
+  return prepared;
+}
+
+prepare::PreparedBirModule
 make_prepared_out_of_ssa_edge_preservation_register_move_module() {
   auto prepared = make_prepared_out_of_ssa_phi_join_register_move_module();
   const auto function_name = prepared.names.function_names.find("phi_join");
@@ -12278,6 +12296,35 @@ int builds_prepared_out_of_ssa_phi_join_immediate_materialization_object() {
   return 0;
 }
 
+int builds_prepared_out_of_ssa_phi_join_i64_zero_materialization_object() {
+  const auto prepared =
+      make_prepared_out_of_ssa_phi_join_i64_zero_materialization_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    return fail("expected prepared out-of-SSA phi-join i64 zero materialization RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "phi_join");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared out-of-SSA phi-join i64 zero object to publish text/function");
+  }
+  if (text->bytes.size() < 8 || text->size_bytes != text->bytes.size() ||
+      function->value != 0 ||
+      function->section != std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared out-of-SSA phi-join i64 zero object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00000493) {
+    return fail("expected li s1, 0 for prepared out-of-SSA phi-join i64 zero materialization");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected prepared out-of-SSA phi-join i64 zero object to need no relocations");
+  }
+  return 0;
+}
+
 int builds_prepared_out_of_ssa_edge_preservation_register_move_object() {
   const auto prepared =
       make_prepared_out_of_ssa_edge_preservation_register_move_module();
@@ -17849,6 +17896,8 @@ int main() {
   status |= builds_prepared_out_of_ssa_phi_join_register_move_object();
   status |=
       builds_prepared_out_of_ssa_phi_join_immediate_materialization_object();
+  status |=
+      builds_prepared_out_of_ssa_phi_join_i64_zero_materialization_object();
   status |= builds_prepared_out_of_ssa_edge_preservation_register_move_object();
   status |= rejects_prepared_out_of_ssa_edge_preservation_fail_closed_shapes();
   status |= builds_prepared_out_of_ssa_edge_preservation_stack_move_object();

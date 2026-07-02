@@ -13,7 +13,22 @@ namespace c4c::backend::prepare::regalloc_detail {
 
 namespace {
 
-void append_immediate_i32_move_resolution_record(
+[[nodiscard]] bool is_scalar_integer_immediate(const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Immediate) {
+    return false;
+  }
+  switch (value.type) {
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+      return true;
+    default:
+      return false;
+  }
+}
+
+void append_immediate_integer_move_resolution_record(
     PreparedRegallocFunction& regalloc_function,
     const bir::Value& source,
     const PreparedRegallocValue& destination,
@@ -24,7 +39,7 @@ void append_immediate_i32_move_resolution_record(
     std::string reason,
     std::optional<BlockLabelId> source_parallel_copy_predecessor_label = std::nullopt,
     std::optional<BlockLabelId> source_parallel_copy_successor_label = std::nullopt) {
-  if (source.kind != bir::Value::Kind::Immediate || source.type != bir::TypeKind::I32 ||
+  if (!is_scalar_integer_immediate(source) ||
       assigned_storage_kind(destination) == PreparedMoveStorageKind::None) {
     return;
   }
@@ -153,9 +168,8 @@ void append_phi_move_resolution(const PreparedNameTables& names,
         continue;
       }
 
-      if (move.source_value.kind == bir::Value::Kind::Immediate &&
-          move.source_value.type == bir::TypeKind::I32) {
-        append_immediate_i32_move_resolution_record(
+      if (is_scalar_integer_immediate(move.source_value)) {
+        append_immediate_integer_move_resolution_record(
             regalloc_function,
             move.source_value,
             *destination,

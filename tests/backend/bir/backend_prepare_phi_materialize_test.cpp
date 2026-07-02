@@ -91,6 +91,11 @@ bool is_immediate_i32(const bir::Value& value, std::int64_t expected) {
          value.immediate == expected;
 }
 
+bool is_immediate_i64(const bir::Value& value, std::int64_t expected) {
+  return value.kind == bir::Value::Kind::Immediate && value.type == bir::TypeKind::I64 &&
+         value.immediate == expected;
+}
+
 bool is_named_i32(const bir::Value& value, std::string_view expected_name) {
   return value.kind == bir::Value::Kind::Named && value.type == bir::TypeKind::I32 &&
          value.name == expected_name;
@@ -757,6 +762,62 @@ int check_critical_edge_parallel_copy_contract(const prepare::PreparedBirModule&
     return fail("expected the critical-edge lane to preserve the per-edge copy sources and destination");
   }
 
+  return 0;
+}
+
+int check_i64_immediate_phi_move_bundle_publication(
+    const prepare::PreparedBirModule& prepared) {
+  const char* function_name = "i64_immediate_phi_parallel_copy";
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  const auto* value_locations =
+      prepare::find_prepared_value_location_function(prepared, function_name);
+  const auto* function =
+      !prepared.module.functions.empty() ? &prepared.module.functions.front() : nullptr;
+  if (control_flow == nullptr || value_locations == nullptr || function == nullptr) {
+    return fail("expected i64 immediate phi fixture to publish prepared control-flow and value-location data");
+  }
+
+  const auto* right_bundle =
+      prepare::find_prepared_parallel_copy_bundle(prepared.names, *control_flow, "right", "join");
+  if (right_bundle == nullptr || right_bundle->moves.size() != 1 ||
+      right_bundle->steps.size() != 1) {
+    return fail("expected the i64 immediate phi edge to publish one parallel-copy move and step");
+  }
+  if (right_bundle->execution_site !=
+      prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return fail("expected the i64 immediate phi edge to stay predecessor-terminator-owned");
+  }
+  const auto right_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*right_bundle);
+  const auto right_execution_block_index =
+      prepare::published_prepared_parallel_copy_execution_block_index(
+          prepared.names, *function, *right_bundle);
+  if (!right_execution_block.has_value() ||
+      prepare::prepared_block_label(prepared.names, *right_execution_block) != "right" ||
+      !right_execution_block_index.has_value() || *right_execution_block_index != 2) {
+    return fail("expected the i64 immediate phi edge to publish the right-block execution coordinate");
+  }
+  if (!is_immediate_i64(right_bundle->moves.front().source_value, 0) ||
+      right_bundle->moves.front().destination_value.kind != bir::Value::Kind::Named ||
+      right_bundle->moves.front().destination_value.type != bir::TypeKind::I64 ||
+      right_bundle->moves.front().destination_value.name != "phi.i64") {
+    return fail("expected the i64 immediate phi edge to preserve the immediate source and phi destination");
+  }
+
+  const auto* move_bundle = prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
+      prepared.names, *function, *value_locations, *right_bundle);
+  if (move_bundle == nullptr || move_bundle->moves.size() != 1) {
+    return fail("expected the i64 immediate phi edge to publish a value-location move bundle");
+  }
+  const auto& move = move_bundle->moves.front();
+  if (!move.source_immediate_i32.has_value() || *move.source_immediate_i32 != 0 ||
+      move.reason != "phi_join_immediate_materialization" ||
+      move.source_parallel_copy_step_index != std::optional<std::size_t>{0} ||
+      move.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+      move.source_parallel_copy_predecessor_label != right_bundle->predecessor_label ||
+      move.source_parallel_copy_successor_label != right_bundle->successor_label) {
+    return fail("expected the i64 immediate phi move bundle to preserve immediate and source-edge authority facts");
+  }
   return 0;
 }
 
@@ -1505,6 +1566,81 @@ prepare::PreparedBirModule legalize_critical_edge_parallel_copy_module() {
   planner.run_legalize();
   planner.run_out_of_ssa();
   return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule prepare_i64_immediate_phi_parallel_copy_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "i64_immediate_phi_parallel_copy";
+  function.return_type = bir::TypeKind::I64;
+  function.return_size_bytes = 8;
+  function.return_align_bytes = 8;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.flag",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.flag"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .true_label = "left",
+      .false_label = "right",
+  };
+
+  bir::Block left;
+  left.label = "left";
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I64, "left.feed"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::immediate_i64(40),
+      .rhs = bir::Value::immediate_i64(2),
+  });
+  left.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block right;
+  right.label = "right";
+  right.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "phi.i64"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "left",
+              .value = bir::Value::named(bir::TypeKind::I64, "left.feed"),
+          },
+          bir::PhiIncoming{
+              .label = "right",
+              .value = bir::Value::immediate_i64(0),
+          },
+      },
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I64, "phi.i64"),
+  };
+
+  function.blocks = {std::move(entry), std::move(left), std::move(right), std::move(join)};
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::BirPreAlloc planner(std::move(prepared));
+  return planner.run();
 }
 
 prepare::PreparedBirModule legalize_memory_access_module() {
@@ -2600,6 +2736,16 @@ int main() {
           critical_edge_dump,
           "parallel_copy right -> join execution_site=predecessor_terminator execution_block=right has_cycle=no resolution=acyclic moves=1 steps=1")) {
     return EXIT_FAILURE;
+  }
+
+  const auto prepared_i64_immediate_phi = prepare_i64_immediate_phi_parallel_copy_module();
+  if (const int status = check_prepare_phi_invariant(prepared_i64_immediate_phi); status != 0) {
+    return status;
+  }
+  if (const int status =
+          check_i64_immediate_phi_move_bundle_publication(prepared_i64_immediate_phi);
+      status != 0) {
+    return status;
   }
 
   const auto prepared_conditional_successor_use = legalize_merge3_conditional_successor_use_module();
