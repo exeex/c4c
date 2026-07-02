@@ -1,6 +1,6 @@
 # Pointer-Value Memory Provenance Publication
 
-Status: Open
+Status: Closed
 Type: Producer publication and opaque-compatibility policy idea
 Parent: `ideas/closed/438_prepared_pointer_value_memory_authority.md`
 Source Evidence: `build/agent_state/438_step1_pointer_value_memory_audit/`
@@ -8,19 +8,28 @@ Owning Layer: BIR/prepared pointer-value memory provenance publication before RV
 
 ## Current Lifecycle State
 
-Parked after Step 4. The internal-only same-module computed-address formal
-pointer provenance packet is complete and valid, but the external-linkage
-`930930-1::f` representative is not close-ready. Observed same-module direct
-calls are not complete authority for an external-linkage callee formal.
+Closed after Step 5. The internal-only same-module computed-address formal
+pointer provenance packet is complete and valid. The external-linkage
+`930930-1::f` representative remains intentionally unsupported because
+observed same-module direct calls are not complete authority for an
+external-linkage callee formal, and ideas 443, 444, and 445 did not produce a
+sound no-external-caller metadata source.
 
-Before this idea can extend formal pointer provenance beyond
-`LirFunction::is_internal`, the producer must first expose reliable
-closed-world/internal/private/no-external-caller authority. That prerequisite is
-tracked separately in
-`ideas/open/443_closed_world_formal_pointer_authority.md`.
+Residual pointer-value memory accesses are classified as intentionally
+unsupported under the prepared authority contract. Pointer-delta propagation,
+including `%mr_TR - 8`, remains later work only after base formal pointer
+provenance is authorized.
 
-Pointer-delta propagation, including `%mr_TR - 8`, remains later work only
-after base formal pointer provenance is authorized.
+Close proof used the focused backend regression guard scope:
+
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
+
+`test_before.log` and `test_after.log` both covered the same backend scope with
+`345/345` tests passing and no new failures under the non-decreasing
+maintenance/lifecycle guard mode. Broader/full-suite baseline acceptance was
+not used for this close because it is blocked by the separate reproducible
+`string_authority_guard` failure in
+`src/backend/bir/lir_to_bir/module.cpp`.
 
 ## Goal
 
