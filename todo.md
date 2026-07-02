@@ -3,49 +3,58 @@
 Status: Complete
 Source Idea Path: ideas/open/535_rv64_object_frame_stack_helper_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Probe Remaining Frame Cleanup
+Current Step ID: 4
+Current Step Title: Close Readiness Review
 
 ## Just Finished
 
-Completed Step 3 by probing the remaining object-route wrapper/include/API
-surface after the RV64 frame stack helper move.
+Completed Step 4 close-readiness review for the RV64 object frame/stack helper
+cleanup.
 
-Removed unused fixed-frame compatibility wrappers from `object_emission.cpp`
-that only forwarded to prepared-frame helpers:
+The diff from plan activation through `HEAD` matches the source idea: pure RV64
+frame sizing, stack-slot offset, register-home lookup, basic stack load/store,
+and simple stack adjustment helpers now live under `prepared_frame_emit.*`, with
+`object_emission.cpp` retaining only object-route wrappers and call sites where
+they still preserve object-route readability.
 
-- `rv64_supported_fixed_frame_alignment`
-- `align_rv64_object_stack_frame_size`
-- `rv64_find_function_frame_slot`
-- `rv64_frame_slot_extent_is_supported`
-- `rv64_validated_prepared_fixed_frame_size`
-
-Left the high-traffic object-route helper wrappers parked because their call
-sites still cross call-specific publication, memory, traversal, FPR-adjacent,
-and prepared instruction dispatch code. Replacing those local object-route
-names with prepared-frame API names would be broad churn rather than a cleaner
-boundary.
+Confirmed no tests, allowlists, unsupported markers, diagnostics, build-system
+files, `ideas/open/*`, or `plan.md` changed for this runbook. The checked diff
+does not move call lowering, byval/sret publication, local-memory semantics,
+broad function traversal, prepared instruction dispatch, data/global object
+assembly, relocation handling, or ELF writing under the frame cleanup label.
 
 ## Suggested Next
 
-Execute Step 4 close-readiness review: compare the moved prepared-frame helper
-surface against the source idea, confirm the remaining parked wrappers are
-intentional, and decide whether this runbook is ready for supervisor review or
-needs a follow-up split.
+Runbook is ready for plan-owner closure evaluation. No follow-up split is
+needed for the in-scope frame/stack helper movement.
 
 ## Watchouts
 
-- The remaining object-route stack/register wrappers are not dead code; they
-  have many call sites across object-specific lowering paths.
-- `prepared_frame_emit.hpp` still exposes the moved safe helper set used by
-  other prepared emitters; no include cleanup was safe inside this packet.
-- `clang-format` was not available in this environment, so formatting remained
-  manual.
+- The remaining object-route wrappers are intentional compatibility/readability
+  wrappers, not unreviewed dead code.
+- Further movement would cross into separate call, local-memory, traversal,
+  FPR-adjacent, or object-assembly cleanup work and should be a new idea rather
+  than an expansion of this runbook.
+- No testcase-overfit signals were found: no named-case shortcuts, expectation
+  rewrites, or unsupported-contract weakening were introduced.
 
 ## Proof
 
-Passed:
+No new build was run for this review-only packet.
+
+Existing focused regression proof recorded for Steps 2 and 3:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(riscv_object_emission|dump_riscv64_stack_passed_parameter_home_publication|obj_runtime_rv64_large_fixed_frame_slot_access|obj_runtime_rv64_frame_slot_pointer_arg_preserves_payload)'`
 
-Proof log: `test_after.log`.
+Result: passed, 4/4 targeted tests green before and after the helper movement;
+`test_before.log` currently contains the focused passing output.
+
+Supervisor-reported broader proof after Step 2:
+
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`
+
+Result: passed, 345/345 backend tests green.
+
+Review note: root `test_after.log` is not present in the current checkout, so
+this packet recorded the existing proof from the delegated handoff and available
+`test_before.log` rather than creating a new proof log.
