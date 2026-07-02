@@ -1,6 +1,7 @@
 #include "prepared_module_emit.hpp"
 
 #include "emit.hpp"
+#include "object_emission.hpp"
 #include "prepared_function_emit.hpp"
 #include "prepared_global_memory_emit.hpp"
 
@@ -9,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace c4c::backend::riscv::codegen {
 namespace {
@@ -164,7 +166,89 @@ void append_available_edge_publication_moves(
   }
 }
 
+const c4c::backend::bir::Function* find_defined_prepared_bir_function(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto it = std::find_if(
+      prepared.module.functions.begin(),
+      prepared.module.functions.end(),
+      [&](const c4c::backend::bir::Function& function) {
+        return function.name == function_name && !function.is_declaration;
+      });
+  if (it == prepared.module.functions.end()) {
+    return nullptr;
+  }
+  return &*it;
+}
+
+std::optional<c4c::backend::prepare::PreparedObjectConsumerDiagnostic>
+diagnose_unplaced_parallel_copy_obligations(
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow) {
+  namespace prepare = c4c::backend::prepare;
+
+  const auto obligations =
+      prepare::collect_unplaced_prepared_object_parallel_copy_obligations(
+          control_flow);
+  for (const auto& obligation : obligations) {
+    auto diagnostic = prepare::diagnose_prepared_object_consumer(obligation);
+    if (diagnostic.has_value()) {
+      return diagnostic;
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace
+
+RiscvPreparedObjectModuleResult make_rv64_prepared_module_rejection(
+    std::string diagnostic) {
+  return RiscvPreparedObjectModuleResult{
+      .diagnostic = std::move(diagnostic),
+  };
+}
+
+RiscvPreparedObjectImageResult make_rv64_prepared_image_rejection(
+    std::string diagnostic) {
+  return RiscvPreparedObjectImageResult{
+      .diagnostic = std::move(diagnostic),
+  };
+}
+
+RiscvPreparedModuleFunctionAdmission admit_rv64_prepared_module_function(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow) {
+  namespace prepare = c4c::backend::prepare;
+
+  if (auto diagnostic =
+          diagnose_unplaced_parallel_copy_obligations(control_flow)) {
+    return RiscvPreparedModuleFunctionAdmission{
+        .control_flow = &control_flow,
+        .prepared_consumer_category = diagnostic->category,
+        .diagnostic = std::move(diagnostic->message),
+    };
+  }
+
+  const std::string_view function_name =
+      prepare::prepared_function_name(prepared.names, control_flow.function_name);
+  if (function_name.empty()) {
+    return RiscvPreparedModuleFunctionAdmission{
+        .control_flow = &control_flow,
+        .diagnostic =
+            "unsupported_function_admission: prepared function has no target name",
+    };
+  }
+  if (find_defined_prepared_bir_function(prepared, function_name) == nullptr) {
+    return RiscvPreparedModuleFunctionAdmission{
+        .control_flow = &control_flow,
+        .function_name = function_name,
+        .skip = true,
+    };
+  }
+  return RiscvPreparedModuleFunctionAdmission{
+      .control_flow = &control_flow,
+      .function_name = function_name,
+  };
+}
 
 std::string emit_prepared_module_text(
     const c4c::backend::prepare::PreparedBirModule& module) {

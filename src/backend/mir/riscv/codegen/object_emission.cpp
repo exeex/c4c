@@ -6,6 +6,7 @@
 #include "../../../prealloc/target_register_profile.hpp"
 #include "emit.hpp"
 #include "prepared_frame_emit.hpp"
+#include "prepared_module_emit.hpp"
 #include "rv64_line_assembler.hpp"
 
 #include <algorithm>
@@ -764,20 +765,6 @@ std::optional<std::string> diagnose_first_unsupported_prepared_variadic_helper(
     }
   }
   return std::nullopt;
-}
-
-RiscvPreparedObjectModuleResult make_rv64_prepared_module_rejection(
-    std::string diagnostic) {
-  return RiscvPreparedObjectModuleResult{
-      .diagnostic = std::move(diagnostic),
-  };
-}
-
-RiscvPreparedObjectImageResult make_rv64_prepared_image_rejection(
-    std::string diagnostic) {
-  return RiscvPreparedObjectImageResult{
-      .diagnostic = std::move(diagnostic),
-  };
 }
 
 struct RiscvLaidOutFragment {
@@ -11218,21 +11205,6 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   };
 }
 
-std::optional<prepare::PreparedObjectConsumerDiagnostic>
-diagnose_unplaced_parallel_copy_obligations(
-    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow) {
-  const auto obligations =
-      prepare::collect_unplaced_prepared_object_parallel_copy_obligations(
-          control_flow);
-  for (const auto& obligation : obligations) {
-    auto diagnostic = prepare::diagnose_prepared_object_consumer(obligation);
-    if (diagnostic.has_value()) {
-      return diagnostic;
-    }
-  }
-  return std::nullopt;
-}
-
 std::string_view strip_inline_asm_register_constraint(std::string_view constraint) {
   while (!constraint.empty()) {
     const char ch = constraint.front();
@@ -12255,22 +12227,17 @@ build_rv64_prepared_text_object_module_with_diagnostics(
   std::vector<RiscvObjectFunction> functions;
   functions.reserve(prepared.control_flow.functions.size());
   for (const auto& control_flow : prepared.control_flow.functions) {
-    if (auto diagnostic =
-            diagnose_unplaced_parallel_copy_obligations(control_flow)) {
+    auto admission = admit_rv64_prepared_module_function(prepared, control_flow);
+    if (admission.prepared_consumer_category.has_value()) {
       return RiscvPreparedObjectModuleResult{
-          .prepared_consumer_category = diagnostic->category,
-          .diagnostic = std::move(diagnostic->message),
+          .prepared_consumer_category = admission.prepared_consumer_category,
+          .diagnostic = std::move(admission.diagnostic),
       };
     }
-
-    const std::string_view function_name =
-        c4c::backend::prepare::prepared_function_name(prepared.names,
-                                                      control_flow.function_name);
-    if (function_name.empty()) {
-      return make_rv64_prepared_module_rejection(
-          "unsupported_function_admission: prepared function has no target name");
+    if (!admission.diagnostic.empty()) {
+      return make_rv64_prepared_module_rejection(std::move(admission.diagnostic));
     }
-    if (find_defined_bir_function(prepared, function_name) == nullptr) {
+    if (admission.skip) {
       continue;
     }
     auto function = prepared_function_to_object_function(prepared, control_flow);
