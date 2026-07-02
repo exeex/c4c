@@ -50,6 +50,20 @@ rv64_prepared_validated_fixed_frame_size(
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout);
 
+[[nodiscard]] std::optional<std::size_t> rv64_prepared_call_frame_size(
+    std::size_t local_frame_bytes);
+
+[[nodiscard]] std::optional<std::size_t> rv64_prepared_call_frame_ra_offset(
+    std::size_t local_frame_bytes);
+
+[[nodiscard]] bool rv64_prepared_is_callee_saved_gpr_register_name(
+    std::string_view name);
+
+[[nodiscard]] std::optional<std::int32_t>
+rv64_prepared_saved_callee_gpr_stack_offset(
+    const c4c::backend::prepare::PreparedSavedRegister& saved,
+    std::size_t stack_frame_bytes);
+
 [[nodiscard]] std::optional<std::size_t>
 rv64_prepared_stack_slot_home_absolute_offset(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -113,6 +127,36 @@ void append_rv64_prepared_load_immediate(RiscvEncodedFragment& fragment,
 [[nodiscard]] bool append_rv64_prepared_stack_pointer_adjustment(
     RiscvEncodedFragment& fragment,
     std::int64_t byte_delta);
+
+[[nodiscard]] bool append_rv64_prepared_saved_callee_gpr_spills(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    std::size_t stack_frame_bytes);
+
+[[nodiscard]] bool append_rv64_prepared_saved_callee_gpr_restores(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    std::size_t stack_frame_bytes);
+
+[[nodiscard]] std::optional<RiscvEncodedFragment>
+make_rv64_prepared_call_frame_prologue_fragment(
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    std::size_t local_frame_bytes);
+
+[[nodiscard]] std::optional<RiscvEncodedFragment>
+make_rv64_prepared_stack_frame_prologue_fragment(
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    std::size_t stack_frame_bytes);
+
+[[nodiscard]] bool append_rv64_prepared_call_frame_epilogue(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    std::size_t local_frame_bytes);
+
+[[nodiscard]] bool append_rv64_prepared_stack_frame_epilogue(
+    RiscvEncodedFragment& fragment,
+    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
+    std::size_t stack_frame_bytes);
 
 [[nodiscard]] std::string riscv_local_block_label(std::string_view function_name,
                                                   std::string_view block_label);

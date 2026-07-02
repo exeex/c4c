@@ -2982,73 +2982,6 @@ RiscvEncodedFragment make_rv64_return_immediate_fragment(std::int64_t immediate)
   return fragment;
 }
 
-std::optional<std::size_t> rv64_call_frame_size(std::size_t local_frame_bytes) {
-  if (local_frame_bytes > std::numeric_limits<std::size_t>::max() - 16) {
-    return std::nullopt;
-  }
-  return local_frame_bytes + 16;
-}
-
-std::optional<std::size_t> rv64_call_frame_ra_offset(
-    std::size_t local_frame_bytes) {
-  if (local_frame_bytes > std::numeric_limits<std::size_t>::max() - 8) {
-    return std::nullopt;
-  }
-  return local_frame_bytes + 8;
-}
-
-bool rv64_is_callee_saved_gpr_register_name(std::string_view name) {
-  return name == "s0" || name == "fp" || name == "s1" || name == "s2" ||
-         name == "s3" || name == "s4" || name == "s5" || name == "s6" ||
-         name == "s7" || name == "s8" || name == "s9" || name == "s10" ||
-         name == "s11";
-}
-
-std::optional<std::int32_t> rv64_saved_callee_gpr_stack_offset(
-    const c4c::backend::prepare::PreparedSavedRegister& saved,
-    std::size_t stack_frame_bytes) {
-  namespace prepare = c4c::backend::prepare;
-
-  if (saved.bank != prepare::PreparedRegisterBank::Gpr ||
-      saved.register_name.empty() ||
-      !rv64_is_callee_saved_gpr_register_name(saved.register_name) ||
-      !rv64_register_number(saved.register_name).has_value() ||
-      saved.contiguous_width != 1 ||
-      saved.occupied_register_names.size() != 1 ||
-      saved.occupied_register_names.front() != saved.register_name ||
-      !saved.placement.has_value() ||
-      saved.placement->bank != prepare::PreparedRegisterBank::Gpr ||
-      saved.placement->pool != prepare::PreparedRegisterSlotPool::CalleeSaved ||
-      saved.placement->contiguous_width != 1 ||
-      !saved.slot_placement.has_value() ||
-      !prepare::has_complete_prepared_saved_register_slot_placement(
-          *saved.slot_placement)) {
-    return std::nullopt;
-  }
-
-  const auto& slot = *saved.slot_placement;
-  if (slot.bank != prepare::PreparedRegisterBank::Gpr ||
-      slot.register_name != saved.register_name ||
-      slot.contiguous_width != 1 ||
-      slot.occupied_register_names.size() != 1 ||
-      slot.occupied_register_names.front() != saved.register_name ||
-      !slot.register_placement.has_value() ||
-      slot.register_placement != saved.placement ||
-      !slot.stack_offset_bytes.has_value() ||
-      !slot.size_bytes.has_value() ||
-      *slot.size_bytes != 8 ||
-      slot.stack_offset_bytes > std::optional<std::size_t>{stack_frame_bytes} ||
-      stack_frame_bytes - *slot.stack_offset_bytes < *slot.size_bytes ||
-      *slot.stack_offset_bytes >
-          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
-      !fits_signed_12_bit_immediate(
-          static_cast<std::int64_t>(*slot.stack_offset_bytes))) {
-    return std::nullopt;
-  }
-
-  return static_cast<std::int32_t>(*slot.stack_offset_bytes);
-}
-
 std::optional<std::string> diagnose_unsupported_prepared_saved_register_bank(
     const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan) {
   if (frame_plan == nullptr) {
@@ -3079,130 +3012,6 @@ std::optional<std::string> diagnose_unsupported_prepared_saved_register_bank(
     }
   }
   return std::nullopt;
-}
-
-bool append_rv64_saved_callee_gpr_spills(
-    RiscvEncodedFragment& fragment,
-    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
-    std::size_t stack_frame_bytes) {
-  if (frame_plan == nullptr) {
-    return true;
-  }
-  for (const auto& saved : frame_plan->saved_callee_registers) {
-    const auto source = rv64_register_number(saved.register_name);
-    const auto offset =
-        rv64_saved_callee_gpr_stack_offset(saved, stack_frame_bytes);
-    if (!source.has_value() || !offset.has_value() ||
-        !append_rv64_store_register_to_stack(fragment, *source, *offset, 8)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool append_rv64_saved_callee_gpr_restores(
-    RiscvEncodedFragment& fragment,
-    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
-    std::size_t stack_frame_bytes) {
-  if (frame_plan == nullptr) {
-    return true;
-  }
-  for (auto it = frame_plan->saved_callee_registers.rbegin();
-       it != frame_plan->saved_callee_registers.rend();
-       ++it) {
-    const auto destination = rv64_register_number(it->register_name);
-    const auto offset = rv64_saved_callee_gpr_stack_offset(*it, stack_frame_bytes);
-    if (!destination.has_value() || !offset.has_value() ||
-        !append_rv64_load_stack_to_register(fragment, *destination, *offset, 8)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-std::optional<RiscvEncodedFragment> make_rv64_call_frame_prologue_fragment(
-    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
-    std::size_t local_frame_bytes) {
-  RiscvEncodedFragment fragment;
-  const auto frame_size = rv64_call_frame_size(local_frame_bytes);
-  const auto ra_offset = rv64_call_frame_ra_offset(local_frame_bytes);
-  if (!frame_size.has_value() || !ra_offset.has_value() ||
-      *frame_size >
-          static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
-    return std::nullopt;
-  }
-  if (!append_rv64_stack_pointer_adjustment(
-          fragment, -static_cast<std::int64_t>(*frame_size)) ||
-      !append_rv64_store_register_to_stack_offset(
-          fragment, 1, *ra_offset, 8)) {
-    return std::nullopt;
-  }
-  if (!append_rv64_saved_callee_gpr_spills(fragment,
-                                          frame_plan,
-                                          local_frame_bytes)) {
-    return std::nullopt;
-  }
-  return fragment;
-}
-
-std::optional<RiscvEncodedFragment> make_rv64_stack_frame_prologue_fragment(
-    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
-    std::size_t stack_frame_bytes) {
-  RiscvEncodedFragment fragment;
-  if (stack_frame_bytes >
-          static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()) ||
-      !append_rv64_stack_pointer_adjustment(
-          fragment, -static_cast<std::int64_t>(stack_frame_bytes))) {
-    return std::nullopt;
-  }
-  if (!append_rv64_saved_callee_gpr_spills(fragment,
-                                          frame_plan,
-                                          stack_frame_bytes)) {
-    return std::nullopt;
-  }
-  return fragment;
-}
-
-bool append_rv64_call_frame_epilogue(
-    RiscvEncodedFragment& fragment,
-    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
-    std::size_t local_frame_bytes) {
-  const auto frame_size = rv64_call_frame_size(local_frame_bytes);
-  const auto ra_offset = rv64_call_frame_ra_offset(local_frame_bytes);
-  if (!frame_size.has_value() || !ra_offset.has_value() ||
-      *frame_size >
-          static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
-    return false;
-  }
-  if (!append_rv64_saved_callee_gpr_restores(fragment,
-                                            frame_plan,
-                                            local_frame_bytes)) {
-    return false;
-  }
-  return append_rv64_load_stack_offset_to_register(
-             fragment, 1, *ra_offset, 8) &&
-         append_rv64_stack_pointer_adjustment(
-             fragment, static_cast<std::int64_t>(*frame_size));
-}
-
-bool append_rv64_stack_frame_epilogue(
-    RiscvEncodedFragment& fragment,
-    const c4c::backend::prepare::PreparedFramePlanFunction* frame_plan,
-    std::size_t stack_frame_bytes) {
-  if (stack_frame_bytes == 0) {
-    return frame_plan == nullptr || frame_plan->saved_callee_registers.empty();
-  }
-  if (!append_rv64_saved_callee_gpr_restores(fragment,
-                                            frame_plan,
-                                            stack_frame_bytes)) {
-    return false;
-  }
-  if (stack_frame_bytes >
-      static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
-    return false;
-  }
-  return append_rv64_stack_pointer_adjustment(
-      fragment, static_cast<std::int64_t>(stack_frame_bytes));
 }
 
 std::optional<std::size_t> rv64_object_stack_frame_size(
@@ -7783,8 +7592,10 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                            });
   }
   if (has_call) {
-    const auto call_frame_size = rv64_call_frame_size(*stack_frame_bytes);
-    const auto call_frame_ra_offset = rv64_call_frame_ra_offset(*stack_frame_bytes);
+    const auto call_frame_size =
+        rv64_prepared_call_frame_size(*stack_frame_bytes);
+    const auto call_frame_ra_offset =
+        rv64_prepared_call_frame_ra_offset(*stack_frame_bytes);
     if (!call_frame_size.has_value() || !call_frame_ra_offset.has_value() ||
         *call_frame_size > static_cast<std::size_t>(
                                std::numeric_limits<std::int64_t>::max()) ||
@@ -7794,7 +7605,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
           "unsupported_stack_frame: call frame exceeds RV64 object-route size range");
     }
     auto prologue =
-        make_rv64_call_frame_prologue_fragment(frame_plan, *stack_frame_bytes);
+        make_rv64_prepared_call_frame_prologue_fragment(frame_plan,
+                                                        *stack_frame_bytes);
     if (!prologue.has_value()) {
       return make_rv64_prepared_function_rejection(
           "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved GPR save slots");
@@ -7802,7 +7614,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
     object_function.fragments.push_back(std::move(*prologue));
   } else if (*stack_frame_bytes > 0) {
     auto prologue =
-        make_rv64_stack_frame_prologue_fragment(frame_plan, *stack_frame_bytes);
+        make_rv64_prepared_stack_frame_prologue_fragment(frame_plan,
+                                                         *stack_frame_bytes);
     if (!prologue.has_value()) {
       return make_rv64_prepared_function_rejection(
           "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved GPR save slots");
