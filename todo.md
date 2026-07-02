@@ -1,38 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/557_bir_local_memory_semantic_producer_admission.md
 Source Plan Path: plan.md
-Current Step ID: 11
-Current Step Title: Repair Load Local-Memory Admission
+Current Step ID: 12
+Current Step Title: Prove Load Representative And Classify Residual
 
 # Current Packet
 
 ## Just Finished
 
-Step 11 - Repair Load Local-Memory Admission completed the selected
-producer-side load repair for `src/20000314-1.c`.
-
-Implemented facts:
-
-- `lower_memory_load_inst` now records SSA values produced by local `i64`
-  scalar loads as integer pointer candidates.
-- `lower_scalar_or_local_memory_inst` now handles `inttoptr i64 <loaded local
-  integer>` by publishing a producer-owned opaque byte-compatible
-  `PointerAddress` for the resulting pointer value.
-- The published fact uses the `inttoptr` result as the `PointerValue` memory
-  base and keeps byte offset `0`, storage/type text `i8`, `value_type Void`,
-  and unknown provenance so byte loads receive requested range `[0, 1)` with
-  `OpaqueCompatibility` / `UnknownCompatible` while wider typed opaque access
-  remains fail-closed.
-- Existing known-address `ptrtoint` / `inttoptr` recovery remains earlier in
-  the cast path and was not changed.
-
-Focused BIR coverage added:
-
-- `expect_inttoptr_loaded_local_i64_byte_load_publishes_opaque_pointer_base`
-  covers local `i64` store/load, `inttoptr i64`, and a follow-on `i8` load. It
-  verifies the direct local integer load remains a local-slot load and the byte
-  load uses `MemoryAddress::BaseKind::PointerValue` based on the `inttoptr`
-  result with opaque-compatible range metadata.
+Step 12 - Prove Load Representative And Classify Residual completed the
+representative proof already run during Step 11 for `src/20000314-1.c`.
 
 RV64 representative result:
 
@@ -75,11 +52,9 @@ Proof log: `test_after.log`.
 
 Commands run:
 
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
-- Result: passed, `345/345` backend tests.
-- Appended RV64 representative command:
+- Already present from Step 11:
   `ALLOWLIST=build/agent_state/557_step12_20000314.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh`
-- Result: nonzero with `0/1` passed, but the row moved from semantic
+- Result: nonzero with `0/1` passed; the row moved from semantic
   `load local-memory` admission to downstream `unsupported_instruction_fragment`.
 
 Inspected case log:
