@@ -1,14 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/561_bir_bootstrap_global_data_shape_handoff_support.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Bootstrap Global Data-Shape Boundary
+Current Step ID: 2
+Current Step Title: Add Focused Global Data-Shape Handoff Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 1 inspection for the bootstrap/global data-shape handoff.
+Completed plan Step 1 inspection for the bootstrap/global data-shape handoff,
+then advanced lifecycle state to Step 2.
 
 Representative outcomes from
 `build/agent_state/561_step1_global_data_shape.log`:
@@ -43,9 +44,10 @@ checks, not this Step 2 BIR bootstrap repair.
 ## Suggested Next
 
 Execute Step 2 by adding focused BIR coverage for the retained bootstrap
-boundary: multidimensional/string-backed byte-array globals should publish
-coherent byte-addressable BIR global storage facts through the module/global
-lowering handoff.
+boundary: string-backed byte-address global storage and nested char-array
+initializers should publish coherent BIR global storage facts through the
+module/global lowering handoff. Keep the tests semantic and shape-based rather
+than tied to `strlen-2.c` or RV64 diagnostics.
 
 ## Watchouts
 
