@@ -3,33 +3,29 @@
 Status: Complete
 Source Idea Path: ideas/open/525_bir_route3_memory_access_body_extraction.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract route3 memory-access bodies
+Current Step ID: 3
+Current Step Title: Prove memory-access and route6 behavior
 
 ## Just Finished
 
-- Step 2 extracted the mapped route3 memory-access bodies and private helpers
-  from `src/backend/bir/bir.cpp` into the new focused owner
-  `src/backend/bir/bir_route3_memory.cpp` without changing public declarations
-  in `src/backend/bir/bir.hpp`.
-- `bir.cpp` retains the route5 and route6 consumers:
-  `route5_cfg_edge_publication_record`,
-  `route6_call_argument_publication_source_record`, and
-  `find_call_argument_publication_source_routing`.
-- Added `src/backend/bir/bir_route3_memory.cpp` to the direct-source
-  `backend_lir_to_bir_notes_test` source list; production `c4c_backend` already
-  picks up the new BIR source through the existing glob.
+- Step 3 proved route3 memory-access/source behavior and the route6/route5
+  consumer behavior remained unchanged after the route3 body extraction.
+- The focused proof passed all four delegated tests:
+  `backend_aarch64_prepared_memory_operand_records`,
+  `backend_store_source_publication_plan`, `backend_lir_to_bir_notes`, and
+  `backend_riscv_prepared_edge_publication`.
 
 ## Suggested Next
 
-- Supervisor should review the body-move diff for route drift and commit this
-  coherent Step 2 slice if accepted.
+- Supervisor should review the Step 2 body-move diff plus this Step 3 proof
+  record for route drift and commit the coherent slice if accepted.
 
 ## Watchouts
 
-- No route3 helper promotion or `bir.hpp` edits were needed.
-- The extraction depends on the existing BIR source glob for production builds
-  and explicit direct-source wiring only for `backend_lir_to_bir_notes_test`.
+- This was a proof-only packet; no implementation, expectation, diagnostic,
+  test, CMake, `plan.md`, or source-idea edits were made.
+- `backend_store_source_publication_plan` covers the route6/route5 consumer
+  source-publication path in the delegated focused subset.
 
 ## Proof
 
