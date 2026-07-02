@@ -8,101 +8,68 @@ Current Step Title: Materialize Coherent Stack-To-Stack Moves
 
 ## Just Finished
 
-Completed Step 2 from `plan.md`: traced RV64 move-bundle consumption in
-`src/backend/mir/riscv/codegen/object_emission.cpp` and classified the narrow
-future stack-slot to stack-slot materialization boundary.
+Completed Step 3 from `plan.md`: materialized the coherent RV64 stack-slot to
+stack-slot prepared move family in
+`src/backend/mir/riscv/codegen/object_emission.cpp`.
 
-Current lowering path:
+Implementation boundary:
 
-- `fragment_for_prepared_move_bundle` first suppresses authorized select-edge
-  and cast-dependency bundles, then handles out-of-SSA parallel copies and
-  before-return stack-to-register ABI moves before the generic move loop.
-- The generic loop already accepts simple before-instruction
-  `destination_storage=stack_slot` moves only when the bundle is
-  `phase=before_instruction`, `authority=none`, `destination_kind=value`,
-  `op_kind=move`, no cycle-temp source, no source immediate, no explicit
-  destination stack offset, contiguous width `1`, and reason is either
-  `consumer_register_to_stack` or `consumer_stack_to_stack`.
-- Existing register-to-stack support gets the source from
-  `gpr_register_number_for_home`, derives the destination byte width from the
-  destination BIR type via `rv64_scalar_memory_size_for_type`, validates the
-  prepared destination home with `prepared_stack_slot_home_absolute_offset`,
-  then emits `append_rv64_store_register_to_stack_offset`.
-- Existing stack-to-register support elsewhere uses the same scalar size and
-  stack-home validation before `append_rv64_load_stack_offset_to_register`.
-- The current generic `consumer_stack_to_stack` branch attempts a load from the
-  source home into `rv64_unoccupied_temporary_gpr` and a store into the
-  destination home, using the destination type size for both sides. It therefore
-  fail-closes when either home is missing/non-stack, the source slot cannot
-  satisfy that size/alignment, there is no free scratch GPR, the scalar width is
-  unsupported, or the stack offsets cannot be materialized.
+- Added `fragment_for_prepared_stack_slot_to_stack_slot_move` under
+  `fragment_for_prepared_move_bundle`.
+- The helper accepts a per-move stack-to-stack entry inside a non-parallel-copy
+  before-instruction bundle with `authority=none`, no parallel-copy source, no
+  cycle-temp source, no immediate source, no explicit destination stack offset,
+  destination storage `stack_slot`, contiguous width `1`, and reason
+  `consumer_stack_to_stack`.
+- Source and destination homes must both be prepared stack-slot homes with
+  materializable slot id, offset, size, and alignment facts.
+- Source and destination BIR types must both exist, be identical, and be a
+  supported RV64 integer or pointer scalar width from
+  `rv64_scalar_memory_size_for_type`.
+- If storage-plan facts are present for either endpoint, they must describe a
+  single-width GPR frame-slot value with slot id and stack offset. Explicit
+  storage-plan `frame_slot bank=none`, FPR, vector, missing slot, missing
+  offset, or multi-width facts remain fail-closed.
+- If a stack-slot home carries a target register identity, the identity must be
+  RV64 GPR/general. FPR, vector, or other incoherent identities remain
+  fail-closed.
+- Emission uses `rv64_unoccupied_temporary_gpr` and the existing
+  `append_rv64_load_stack_offset_to_register` plus
+  `append_rv64_store_register_to_stack_offset` helpers.
 
-Accepted predicate for Step 3 should be made explicit rather than relying on
-the current broad reason string:
-
-- Bundle: one before-instruction value move, `authority=none`, `parallel_copy`
-  absent, no cycle-temp source, no immediate source, `destination_storage` is
-  `stack_slot`, `destination_stack_offset_bytes` absent, contiguous width `1`,
-  and reason is `consumer_stack_to_stack`.
-- Source and destination: both `prepared_value_home_for_id` records exist and
-  both homes are `kind=stack_slot` with stable slot id, offset, size, and align
-  facts accepted by `prepared_stack_slot_home_absolute_offset`.
-- Type/class: source and destination BIR types are the same supported RV64
-  integer or pointer-sized scalar copy width from
-  `rv64_scalar_memory_size_for_type`; no F128, aggregate, memory-class,
-  floating, vector, or conversion/widen/narrow move is admitted.
-- Storage class: source and destination prepared storage must be coherent GPR
-  scalar frame-slot storage. `bank=none` is not positive copy authority.
-- Emission: load source stack slot into a temporary GPR chosen by
-  `rv64_unoccupied_temporary_gpr`, then store that same scratch GPR to the
-  destination stack slot using the existing offset-aware load/store helpers.
-
-`pr69447.c` caveat: the first failing move (`from_value_id=15` `%t8` to
-`to_value_id=16` `%t9`) has stack-slot homes on both sides, but the source
-storage plan is `encoding=frame_slot bank=none` and the source object is `i16`
-while the destination object is `i64` at a `zext i16 to i64` site. Step 3
-should leave this first failure fail-closed under the stack-to-stack scalar
-copy predicate. Admitting it would infer a widening/zero-extension copy from
-home shape and destination size rather than consuming coherent producer
-storage authority. A later producer or conversion-specific packet may publish
-separate authority for this shape; this packet should not.
-
-Adjacent malformed cases that must remain rejected:
-
-- missing source home or missing destination home
-- source or destination home not a stack slot for the stack-to-stack helper
-- register-source moves with `reason=consumer_stack_to_stack`
-  (`20010518-1.c` and `pr27073.c` first failures)
-- source and destination BIR types differ, including zext/sext/trunc-like
-  conversion moves
-- unsupported scalar width, F128, aggregate, memory-class, vector, floating, or
-  multi-register/contiguous-width moves
-- incoherent home size/alignment, mismatched frame-slot object facts, dynamic
-  stack locations, or non-materializable offsets
-- unavailable scratch GPR or load/store helper rejection
+Focused coverage in
+`tests/backend/mir/backend_riscv_object_emission_test.cpp` now proves a typed
+same-scalar stack-slot copy emits `lw t1, 4(sp); sw t1, 8(sp)`, and reject
+coverage keeps missing slot ids, size/home mismatches, unavailable scratch GPR,
+incoherent source storage identity, explicit storage-plan `frame_slot
+bank=none`, and reason/source-home mismatches fail-closed at the move-bundle
+diagnostic. Coverage also proves a mixed non-parallel before-instruction bundle
+can emit an already-supported register-to-stack move followed by a coherent
+stack-to-stack move.
 
 ## Suggested Next
 
-Execute Step 3 by factoring a narrow helper under
-`fragment_for_prepared_move_bundle`, for example a
-`fragment_for_prepared_stack_slot_to_stack_slot_move` helper that owns only the
-coherent same-scalar GPR frame-slot copy predicate above. Add a focused
-synthetic object-emission test for an accepted same-type stack-slot to
-stack-slot copy, plus reject coverage for missing homes, non-stack homes,
-register-source reason mismatch, type/size mismatch, `bank=none`, and
-unsupported widths/classes.
+Execute Step 4 from `plan.md`: confirm and record focused materialization
+coverage for accepted stack-to-stack moves and adjacent malformed/missing
+authority reject cases before representative-row reclassification.
 
 ## Watchouts
 
-The row label `consumer_stack_to_stack` is weaker than the facts needed for
-object emission. `pr69447.c` is not an accepted proof case for the coherent
-same-scalar helper until producer storage bank/type authority is coherent;
-`20010518-1.c` and `pr27073.c` should remain rejected by the stack-to-stack
-helper because their first failing source homes are registers. Step 3 proof
-should use synthetic semantic coverage first, then rerun the three row probes
-to classify any remaining first failures without widening the predicate.
+This slice intentionally did not make `pr69447.c` acceptable: the traced first
+failure is a `zext i16 to i64` shape with `bank=none` source storage, not a
+same-type scalar copy. `20010518-1.c` and `pr27073.c` also need reclassification
+because Step 2 found register-source first failures despite the
+`consumer_stack_to_stack` reason string.
 
 ## Proof
 
-Trace-only packet. Ran `git diff --check -- todo.md`. No build or CTest was
-required by the packet, and `test_after.log` was not overwritten.
+Ran the delegated proof:
+
+- `cmake --build build --target c4cll`
+- `cmake --build build --target backend_riscv_object_emission_test`
+- `ctest --test-dir build -j --output-on-failure -R 'backend_riscv_object_emission|stack_to_stack|move_bundle' | tee test_after.log`
+- `ctest --test-dir build --output-on-failure -R '^backend_obj_runtime_rv64_frame_slot_pointer_arg_preserves_payload$'`
+
+`test_after.log` contains the passing focused CTest run: 1/1 test passed.
+The specific mixed call-boundary runtime regression also passed: 1/1 test
+passed.

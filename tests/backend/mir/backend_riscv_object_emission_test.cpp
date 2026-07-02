@@ -63,6 +63,18 @@ bool contains_u32(const std::vector<std::uint8_t>& bytes, std::uint32_t word) {
   return false;
 }
 
+bool contains_adjacent_u32_pair(const std::vector<std::uint8_t>& bytes,
+                                std::uint32_t first,
+                                std::uint32_t second) {
+  for (std::size_t offset = 0; offset + 8 <= bytes.size(); offset += 4) {
+    if (read_u32(bytes, offset) == first &&
+        read_u32(bytes, offset + 4) == second) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bir::Value null_pointer_value() {
   return bir::Value{
       .kind = bir::Value::Kind::Immediate,
@@ -5214,21 +5226,26 @@ make_prepared_before_instruction_register_to_stack_move_bundle_module() {
 
 prepare::PreparedBirModule
 make_prepared_before_instruction_stack_to_stack_move_bundle_module() {
-  auto prepared = make_prepared_before_instruction_register_to_stack_move_bundle_module();
+  auto prepared = make_prepared_stack_slot_scalar_flow_module();
   const auto function_name = prepared.names.function_names.find("main");
-  const auto lhs_name = prepared.names.value_names.find("%lhs");
-
-  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
-      .slot_id = prepare::PreparedFrameSlotId{13},
-      .function_name = function_name,
-      .offset_bytes = 8,
-      .size_bytes = 4,
-      .align_bytes = 4,
-  });
   auto& locations = prepared.value_locations.functions.front();
-  locations.value_homes[0] = rv64_stack_slot_home(
-      1, function_name, lhs_name, prepare::PreparedFrameSlotId{13}, 8);
-  locations.move_bundles[0].moves[0].reason = "consumer_stack_to_stack";
+  locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = function_name,
+      .phase = prepare::PreparedMovePhase::BeforeInstruction,
+      .block_index = 0,
+      .instruction_index = 2,
+      .moves = {prepare::PreparedMoveResolution{
+          .from_value_id = 1,
+          .to_value_id = 2,
+          .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+          .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+          .destination_contiguous_width = 1,
+          .block_index = 0,
+          .instruction_index = 2,
+          .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+          .reason = "consumer_stack_to_stack",
+      }},
+  });
   return prepared;
 }
 
@@ -11691,10 +11708,8 @@ int builds_prepared_stack_to_stack_before_instruction_move_bundle_object() {
       function->section != std::optional<object::SectionId>{text->id}) {
     return fail("expected prepared stack-to-stack move object text layout");
   }
-  if (read_u32(text->bytes, 0) != 0xfe010113 ||
-      read_u32(text->bytes, 4) != 0x00812303 ||
-      read_u32(text->bytes, 8) != 0x00612823) {
-    return fail("expected lw t1, 8(sp); sw t1, 16(sp) before prepared compare instruction");
+  if (!contains_adjacent_u32_pair(text->bytes, 0x00412303, 0x00612423)) {
+    return fail("expected lw t1, 4(sp); sw t1, 8(sp) from prepared stack-to-stack move");
   }
   if (!module->relocations.empty()) {
     return fail("expected prepared stack-to-stack move object to need no relocations");
@@ -11702,28 +11717,92 @@ int builds_prepared_stack_to_stack_before_instruction_move_bundle_object() {
   return 0;
 }
 
+int builds_prepared_mixed_stack_destination_move_bundle_object() {
+  auto prepared = make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto loaded_name = prepared.names.value_names.find("%loaded");
+
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{12},
+      .function_name = function_name,
+      .offset_bytes = 12,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  auto& locations = prepared.value_locations.functions.front();
+  locations.value_homes.push_back(rv64_stack_slot_home(
+      3, function_name, loaded_name, prepare::PreparedFrameSlotId{12}, 12));
+  locations.value_homes.push_back(
+      rv64_gpr_home(4, function_name, loaded_name, "t0", 5));
+  auto& bundle = locations.move_bundles.front();
+  bundle.moves.insert(bundle.moves.begin(),
+                      prepare::PreparedMoveResolution{
+                          .from_value_id = 4,
+                          .to_value_id = 3,
+                          .destination_kind =
+                              prepare::PreparedMoveDestinationKind::Value,
+                          .destination_storage_kind =
+                              prepare::PreparedMoveStorageKind::StackSlot,
+                          .destination_contiguous_width = 1,
+                          .block_index = 0,
+                          .instruction_index = 2,
+                          .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                          .reason = "consumer_register_to_stack",
+                      });
+
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    const auto result =
+        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+    return fail("expected mixed stack-destination move-bundle RV64 object module to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* function = object::find_symbol(*module, "main");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected mixed stack-destination move object to publish text/main");
+  }
+  if (!contains_adjacent_u32_pair(text->bytes, 0x00512623, 0x00412303) ||
+      !contains_adjacent_u32_pair(text->bytes, 0x00412303, 0x00612423)) {
+    return fail("expected mixed register-to-stack and stack-to-stack moves to emit");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected mixed stack-destination move object to need no relocations");
+  }
+  return 0;
+}
+
 int rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes() {
   constexpr const char* diagnostic =
       "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+  const auto route_move_before_first_instruction =
+      [](prepare::PreparedBirModule& prepared) {
+        auto& bundle = prepared.value_locations.functions[0].move_bundles[0];
+        bundle.instruction_index = 0;
+        bundle.moves[0].instruction_index = 0;
+      };
 
   auto prepared =
       make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  route_move_before_first_instruction(prepared);
   prepared.value_locations.functions[0].value_homes[0].slot_id = std::nullopt;
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return 1;
+    return fail("expected missing source slot id to reject at move bundle");
   }
 
   prepared =
       make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  route_move_before_first_instruction(prepared);
   prepared.value_locations.functions[0].value_homes[0].size_bytes =
       std::size_t{2};
   prepared.stack_layout.frame_slots.back().size_bytes = 2;
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return 1;
+    return fail("expected source size mismatch to reject at move bundle");
   }
 
   prepared =
       make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  route_move_before_first_instruction(prepared);
   const auto function_name = prepared.names.function_names.find("main");
   const auto t1_name = prepared.names.value_names.intern("%scratch.t1");
   const auto t2_name = prepared.names.value_names.intern("%scratch.t2");
@@ -11733,15 +11812,55 @@ int rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes() {
   homes.push_back(rv64_gpr_home(5, function_name, t2_name, "t2", 7));
   homes.push_back(rv64_gpr_home(6, function_name, t3_name, "t3", 28));
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return 1;
+    return fail("expected unavailable scratch GPR to reject at move bundle");
   }
 
   prepared =
       make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  route_move_before_first_instruction(prepared);
+  prepared.value_locations.functions[0].value_homes[0].target_register_identity =
+      prepare::PreparedTargetRegisterIdentity{
+          .target_arch = c4c::TargetArch::Riscv64,
+          .bank = prepare::PreparedRegisterBank::None,
+          .register_class = prepare::PreparedRegisterClass::General,
+          .physical_index = 0,
+      };
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("expected incoherent source storage identity to reject at move bundle");
+  }
+
+  prepared =
+      make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  route_move_before_first_instruction(prepared);
+  const auto& bank_none_source_home =
+      prepared.value_locations.functions[0].value_homes[0];
+  prepared.storage_plans.functions = {prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {prepare::PreparedStoragePlanValue{
+          .value_id = bank_none_source_home.value_id,
+          .value_name = bank_none_source_home.value_name,
+          .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+          .bank = prepare::PreparedRegisterBank::None,
+          .contiguous_width = 1,
+          .slot_id = bank_none_source_home.slot_id,
+          .stack_offset_bytes = bank_none_source_home.offset_bytes,
+          .spill_slot_placement = prepare::PreparedSpillSlotPlacement{
+              .slot_id = *bank_none_source_home.slot_id,
+              .offset_bytes = *bank_none_source_home.offset_bytes,
+          },
+      }},
+  }};
+  if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
+    return fail("expected storage-plan frame_slot bank=none source to reject at move bundle");
+  }
+
+  prepared =
+      make_prepared_before_instruction_stack_to_stack_move_bundle_module();
+  route_move_before_first_instruction(prepared);
   prepared.value_locations.functions[0].move_bundles[0].moves[0].reason =
       "consumer_register_to_stack";
   if (expect_prepared_rejection_diagnostic(prepared, diagnostic) != 0) {
-    return 1;
+    return fail("expected reason/source-home mismatch to reject at move bundle");
   }
 
   return 0;
@@ -17253,6 +17372,7 @@ int main() {
   status |= builds_prepared_register_to_stack_before_instruction_move_bundle_object();
   status |= rejects_prepared_register_to_stack_move_bundle_fail_closed_shapes();
   status |= builds_prepared_stack_to_stack_before_instruction_move_bundle_object();
+  status |= builds_prepared_mixed_stack_destination_move_bundle_object();
   status |= rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes();
   status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
   status |= builds_prepared_out_of_ssa_phi_join_register_move_object();

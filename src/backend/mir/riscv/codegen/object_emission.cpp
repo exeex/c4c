@@ -2459,6 +2459,47 @@ fragment_for_prepared_before_return_stack_to_register_abi_move(
   return fragment;
 }
 
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_stack_slot_to_stack_slot_move(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedStoragePlanFunction* storage_plan,
+    std::size_t stack_frame_bytes,
+    const c4c::backend::prepare::PreparedParallelCopyBundle* parallel_copy_bundle,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move,
+    const c4c::backend::prepare::PreparedValueHome& source_home,
+    const c4c::backend::prepare::PreparedValueHome& destination_home);
+
+const prepare::PreparedStoragePlanValue* prepared_storage_plan_value_for_id(
+    const prepare::PreparedStoragePlanFunction* storage_plan,
+    prepare::PreparedValueId value_id) {
+  if (storage_plan == nullptr) {
+    return nullptr;
+  }
+  for (const auto& value : storage_plan->values) {
+    if (value.value_id == value_id) {
+      return &value;
+    }
+  }
+  return nullptr;
+}
+
+bool prepared_storage_plan_endpoint_is_coherent_gpr_frame_slot(
+    const prepare::PreparedStoragePlanFunction* storage_plan,
+    prepare::PreparedValueId value_id) {
+  const auto* value = prepared_storage_plan_value_for_id(storage_plan, value_id);
+  if (value == nullptr) {
+    return true;
+  }
+  return value->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+         value->bank == prepare::PreparedRegisterBank::Gpr &&
+         value->contiguous_width == 1 && value->slot_id.has_value() &&
+         value->stack_offset_bytes.has_value();
+}
+
 std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::TargetProfile& target_profile,
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -2466,6 +2507,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedStoragePlanFunction* storage_plan,
     const c4c::backend::prepare::PreparedDependencyOperandAuthorityRecords*
         dependency_operand_authorities,
     const c4c::backend::prepare::PreparedSelectCarrierAliasAuthorityRecords*
@@ -2607,23 +2649,22 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
         continue;
       }
 
-      const auto source_stack_offset = prepared_stack_slot_home_absolute_offset(
-          stack_layout,
-          *source_home,
-          stack_frame_bytes,
-          *destination_size_bytes);
-      const auto scratch = rv64_unoccupied_temporary_gpr(lookups);
-      if (!source_stack_offset.has_value() || !scratch.has_value() ||
-          !append_rv64_load_stack_offset_to_register(fragment,
-                                                    *scratch,
-                                                    *source_stack_offset,
-                                                    *destination_size_bytes) ||
-          !append_rv64_store_register_to_stack_offset(fragment,
-                                                     *scratch,
-                                                     *stack_offset,
-                                                     *destination_size_bytes)) {
+      auto stack_to_stack_fragment =
+          fragment_for_prepared_stack_slot_to_stack_slot_move(stack_layout,
+                                                              names,
+                                                              function,
+                                                              lookups,
+                                                              storage_plan,
+                                                              stack_frame_bytes,
+                                                              parallel_copy_bundle,
+                                                              move_bundle,
+                                                              move,
+                                                              *source_home,
+                                                              *destination_home);
+      if (!stack_to_stack_fragment.has_value()) {
         return std::nullopt;
       }
+      append_rv64_fragment(fragment, std::move(*stack_to_stack_fragment));
       continue;
     }
 
@@ -2758,6 +2799,102 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
       return std::nullopt;
     }
     append_rv64_move(fragment, *destination, *source);
+  }
+  return fragment;
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_stack_slot_to_stack_slot_move(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedStoragePlanFunction* storage_plan,
+    std::size_t stack_frame_bytes,
+    const c4c::backend::prepare::PreparedParallelCopyBundle* parallel_copy_bundle,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move,
+    const c4c::backend::prepare::PreparedValueHome& source_home,
+    const c4c::backend::prepare::PreparedValueHome& destination_home) {
+  if (parallel_copy_bundle != nullptr ||
+      move_bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
+      move_bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      move.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      move.reason != "consumer_stack_to_stack" ||
+      move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+      move.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
+      move.destination_register_name.has_value() ||
+      !move.destination_occupied_register_names.empty() ||
+      move.destination_register_placement.has_value() ||
+      move.destination_contiguous_width != 1 ||
+      move.destination_stack_offset_bytes.has_value() ||
+      move.uses_cycle_temp_source || move.source_parallel_copy_step_index.has_value() ||
+      move.source_parallel_copy_predecessor_label.has_value() ||
+      move.source_parallel_copy_successor_label.has_value() ||
+      move.source_immediate_i32.has_value() ||
+      move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+      source_home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      destination_home.kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+  if (!prepared_storage_plan_endpoint_is_coherent_gpr_frame_slot(
+          storage_plan,
+          move.from_value_id) ||
+      !prepared_storage_plan_endpoint_is_coherent_gpr_frame_slot(
+          storage_plan,
+          move.to_value_id)) {
+    return std::nullopt;
+  }
+
+  const auto source_type =
+      prepared_bir_value_type_for_name(names, function, source_home.value_name);
+  const auto destination_type =
+      prepared_bir_value_type_for_name(names, function, destination_home.value_name);
+  if (!source_type.has_value() || !destination_type.has_value() ||
+      *source_type != *destination_type) {
+    return std::nullopt;
+  }
+  if (source_home.target_register_identity.has_value() &&
+      (source_home.target_register_identity->target_arch != c4c::TargetArch::Riscv64 ||
+       source_home.target_register_identity->bank != prepare::PreparedRegisterBank::Gpr ||
+       source_home.target_register_identity->register_class !=
+           prepare::PreparedRegisterClass::General)) {
+    return std::nullopt;
+  }
+  if (destination_home.target_register_identity.has_value() &&
+      (destination_home.target_register_identity->target_arch !=
+           c4c::TargetArch::Riscv64 ||
+       destination_home.target_register_identity->bank !=
+           prepare::PreparedRegisterBank::Gpr ||
+       destination_home.target_register_identity->register_class !=
+           prepare::PreparedRegisterClass::General)) {
+    return std::nullopt;
+  }
+
+  const auto size_bytes = rv64_scalar_memory_size_for_type(*source_type);
+  if (!size_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto source_stack_offset = prepared_stack_slot_home_absolute_offset(
+      stack_layout, source_home, stack_frame_bytes, *size_bytes);
+  const auto destination_stack_offset = prepared_stack_slot_home_absolute_offset(
+      stack_layout, destination_home, stack_frame_bytes, *size_bytes);
+  const auto scratch = rv64_unoccupied_temporary_gpr(lookups);
+  if (!source_stack_offset.has_value() || !destination_stack_offset.has_value() ||
+      !scratch.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  if (!append_rv64_load_stack_offset_to_register(fragment,
+                                                *scratch,
+                                                *source_stack_offset,
+                                                *size_bytes) ||
+      !append_rv64_store_register_to_stack_offset(fragment,
+                                                 *scratch,
+                                                 *destination_stack_offset,
+                                                 *size_bytes)) {
+    return std::nullopt;
   }
   return fragment;
 }
@@ -10653,6 +10790,8 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
   const auto* addressing = prepare::find_prepared_addressing(prepared, control_flow.function_name);
   const auto* frame_plan =
       prepare::find_prepared_frame_plan(prepared, control_flow.function_name);
+  const auto* storage_plan =
+      prepare::find_prepared_storage_plan(prepared, control_flow.function_name);
   const auto* inline_asm_carriers =
       prepare::find_prepared_inline_asm_carriers(prepared, control_flow.function_name);
   const auto stack_frame_bytes =
@@ -10903,6 +11042,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                 control_flow,
                                                 *function,
                                                 &lookups,
+                                                storage_plan,
                                                 &dependency_operand_authorities,
                                                 &carrier_alias_authorities,
                                                 &select_edge_source_producer_placements,
