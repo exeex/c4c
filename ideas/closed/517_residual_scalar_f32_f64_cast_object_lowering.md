@@ -1,6 +1,6 @@
 # Residual Scalar F32/F64 Cast Object Lowering
 
-Status: Open
+Status: Closed
 Type: Bucket-backed scalar FPR salvage implementation idea
 Parent: `ideas/open/425_scalar_fpr_salvage_from_try_gcc_torture.md`
 Owning Layer: RV64 prepared object lowering for scalar FPR/GPR conversion casts
@@ -9,6 +9,23 @@ Source Evidence:
 - `build/rv64_gcc_c_torture_backend/src_cvt-1.c/case.log`
 - `build/rv64_gcc_c_torture_backend/src_920618-1.c/case.log`
 - `build/rv64_gcc_c_torture_backend/src_pr66233.c/case.log`
+
+## Closure Summary
+
+Closed after explicit FPR-register-source FP-to-I32/I64 casts were lowered
+with RTZ semantics and focused coverage was added for accepted and fail-closed
+scalar cast shapes.
+
+The `src/cvt-1.c` and `src/pr66233.c` representatives now advance past the old
+`unsupported_floating_cast` gate to the separate
+`ambiguous_non_parallel_multi_source_stack_destination` move-bundle authority
+boundary. The `src/920618-1.c` representative remains intentionally
+split/fail-closed at `unsupported_floating_cast` pending explicit
+FP-immediate materialization authority, which is outside this source idea.
+
+Close validation used matching backend `test_before.log` and `test_after.log`
+with `345/345` passing before and after. Regression guard passed with no new
+failures.
 
 ## Goal
 
