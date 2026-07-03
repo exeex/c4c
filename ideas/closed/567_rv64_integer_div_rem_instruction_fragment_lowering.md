@@ -100,3 +100,31 @@ The durable source evidence is:
   or heterogeneous scalar-binary rows into this idea without first-owner proof.
 - Reject a patch that passes only one named representative while nearby
   `integer_div_rem` rows remain unexamined or retain the same owned diagnostic.
+
+## Closure Notes
+
+Closed after Step 2 as a completed ownership reroute, not as a div/rem opcode
+implementation slice.
+
+Step 1 proved that raw RV64 object lowering for BIR `sdiv`, `udiv`, `srem`,
+and `urem` already exists through `fragment_for_prepared_binary(...)`,
+`prepared_scalar_emit.cpp`, and the current ALU mnemonic selection, with
+focused object-emission coverage for I32 and I64 forms.
+
+Step 2 pinned the first remaining generic `unsupported_instruction_fragment`
+in representative `src/20001026-1.c` to:
+
+```text
+%t12 = bir.add ptr %lv.r.0, %t12.byte_offset
+```
+
+The pinned instruction is a pointer-result local address-materialization
+fragment for a dynamic local aggregate element address. Its result type is
+`ptr`, so it is not owned by the existing integer div/rem binary lowering path,
+which handles integer binary results. The concrete downstream owner was split
+into `ideas/open/568_rv64_pointer_result_frame_slot_address_materialization.md`.
+
+Remaining rows from the original `integer_div_rem` routing should not be
+treated as div/rem opcode work unless a future packet pins a genuinely missing
+div/rem semantic fragment. This idea is therefore concluded as a reroute:
+duplicate div/rem opcode lowering would be route drift.
