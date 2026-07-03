@@ -4515,6 +4515,189 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_frame_address_material
   return fragment;
 }
 
+std::optional<std::uint32_t> rv64_temporary_gpr_avoiding(
+    std::uint32_t first,
+    std::optional<std::uint32_t> second) {
+  constexpr std::array<std::uint32_t, 3> candidates = {6, 7, 28};  // t1, t2, t3
+  for (const auto candidate : candidates) {
+    if (candidate != first && (!second.has_value() || candidate != *second)) {
+      return candidate;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<RiscvEncodedFragment>
+fragment_for_prepared_pointer_result_frame_address_materialization(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::BinaryInst& binary,
+    std::size_t stack_frame_bytes) {
+  namespace bir = c4c::backend::bir;
+
+  if (lookups == nullptr ||
+      binary.opcode != bir::BinaryOpcode::Add ||
+      binary.result.type != bir::TypeKind::Ptr ||
+      binary.result.kind != bir::Value::Kind::Named ||
+      binary.lhs.type != bir::TypeKind::Ptr ||
+      binary.lhs.kind != bir::Value::Kind::Named ||
+      binary.rhs.type == bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+  const auto lhs_value_name = names.value_names.find(binary.lhs.name);
+  if (lhs_value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto* base_home = prepared_value_home_for(names, lookups, binary.lhs);
+  const auto base_register =
+      base_home == nullptr ? std::nullopt : gpr_register_number_for_home(*base_home);
+  if (base_home == nullptr || !base_register.has_value()) {
+    return std::nullopt;
+  }
+  const auto* result_home = prepared_value_home_for(names, lookups, binary.result);
+  if (result_home == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* materializations =
+      prepare::find_indexed_prepared_address_materializations(
+          &lookups->address_materializations,
+          block_label);
+  if (materializations == nullptr) {
+    return std::nullopt;
+  }
+  const prepare::PreparedAddressMaterialization* selected = nullptr;
+  for (const auto* materialization : *materializations) {
+    if (materialization == nullptr ||
+        materialization->inst_index != instruction_index) {
+      continue;
+    }
+    const bool identifies_base =
+        materialization->result_value_name ==
+            std::optional<c4c::ValueNameId>{lhs_value_name} ||
+        (materialization->result_value_id.has_value() &&
+         *materialization->result_value_id == base_home->value_id);
+    if (!identifies_base) {
+      continue;
+    }
+    if (materialization->kind !=
+            prepare::PreparedAddressMaterializationKind::FrameSlot ||
+        materialization->address_space != bir::AddressSpace::Default ||
+        materialization->is_thread_local ||
+        materialization->has_tls_address_space ||
+        !materialization->frame_slot_id.has_value() ||
+        materialization->byte_offset < 0 ||
+        (materialization->result_home_kind.has_value() &&
+         *materialization->result_home_kind != base_home->kind)) {
+      return std::nullopt;
+    }
+    if (selected != nullptr) {
+      return std::nullopt;
+    }
+    selected = materialization;
+  }
+  if (selected == nullptr) {
+    return std::nullopt;
+  }
+  const auto slot_it =
+      std::find_if(stack_layout.frame_slots.begin(),
+                   stack_layout.frame_slots.end(),
+                   [&](const prepare::PreparedFrameSlot& slot) {
+                     return slot.slot_id == *selected->frame_slot_id &&
+                            (selected->function_name == c4c::kInvalidFunctionName ||
+                             slot.function_name == c4c::kInvalidFunctionName ||
+                             slot.function_name == selected->function_name);
+                   });
+  if (slot_it == stack_layout.frame_slots.end() ||
+      selected->byte_offset < static_cast<std::int64_t>(slot_it->offset_bytes)) {
+    return std::nullopt;
+  }
+  const auto address_offset = static_cast<std::size_t>(selected->byte_offset);
+  if (slot_it->offset_bytes >
+          std::numeric_limits<std::size_t>::max() - slot_it->size_bytes ||
+      address_offset > slot_it->offset_bytes + slot_it->size_bytes ||
+      address_offset > stack_frame_bytes) {
+    return std::nullopt;
+  }
+
+  const auto* offset_home = prepared_value_home_for(names, lookups, binary.rhs);
+  const auto offset_register_home =
+      offset_home == nullptr ? std::nullopt : gpr_register_number_for_home(*offset_home);
+  const auto offset_stack_home =
+      offset_home == nullptr
+          ? std::nullopt
+          : prepared_stack_slot_home_absolute_offset(stack_layout,
+                                                     *offset_home,
+                                                     stack_frame_bytes,
+                                                     8);
+  const auto offset_immediate = integer_immediate_for_value(names, lookups, binary.rhs);
+  if (!offset_register_home.has_value() && !offset_stack_home.has_value() &&
+      !offset_immediate.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto destination_register = gpr_register_number_for_home(*result_home);
+  const auto destination_stack_offset =
+      destination_register.has_value()
+          ? std::nullopt
+          : prepared_stack_slot_home_absolute_offset(stack_layout,
+                                                     *result_home,
+                                                     stack_frame_bytes,
+                                                     8);
+  if (!destination_register.has_value() && !destination_stack_offset.has_value()) {
+    return std::nullopt;
+  }
+
+  RiscvEncodedFragment fragment;
+  std::uint32_t offset_register = 0;
+  if (offset_register_home.has_value()) {
+    offset_register = *offset_register_home;
+  } else {
+    const auto scratch = rv64_temporary_gpr_avoiding(*base_register, destination_register);
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    offset_register = *scratch;
+    if (offset_stack_home.has_value()) {
+      if (!append_rv64_load_stack_offset_to_register(
+              fragment,
+              offset_register,
+              *offset_stack_home,
+              8)) {
+        return std::nullopt;
+      }
+    } else {
+      append_rv64_load_immediate(fragment, offset_register, *offset_immediate);
+    }
+  }
+
+  std::uint32_t result_register = 0;
+  if (destination_register.has_value()) {
+    result_register = *destination_register;
+  } else {
+    const auto scratch =
+        rv64_temporary_gpr_avoiding(*base_register, std::optional{offset_register});
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    result_register = *scratch;
+  }
+  append_rv64_add_registers(
+      fragment, result_register, *base_register, offset_register);
+  if (destination_stack_offset.has_value() &&
+      !append_rv64_store_register_to_stack_offset(
+          fragment,
+          result_register,
+          *destination_stack_offset,
+          8)) {
+    return std::nullopt;
+  }
+  return fragment;
+}
+
 
 bool rv64_select_edge_binary_operand_is_register_or_immediate(
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -7367,6 +7550,18 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_instruction(
       }
     }
     if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+      if (auto fragment =
+              fragment_for_prepared_pointer_result_frame_address_materialization(
+                  prepared.stack_layout,
+                  prepared.names,
+                  &lookups,
+                  prepared_block_label,
+                  instruction_index,
+                  *binary,
+                  stack_frame_bytes);
+          fragment.has_value()) {
+        return fragment;
+      }
       if (auto fragment = fragment_for_prepared_frame_address_materialization(
               prepared.stack_layout,
               prepared.names,
