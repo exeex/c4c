@@ -1,51 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/577_rv64_20000622_1_runtime_abort_after_call_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused Coverage For The Classified Family
+Current Step ID: 3
+Current Step Title: Repair The Underlying RV64 Object-Route Semantics
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added focused RV64 object-route coverage in
-`tests/backend/mir/backend_riscv_object_emission_test.cpp` for the classified
-family. The new prepared fixture models three incoming GPR parameters where
-the third pointer parameter is materialized through a `ptrtoint` local in
-`s1`, survives a nested same-module call, and is then moved from `s1` into
-`a0` for a later same-module call argument.
+Step 3 repaired the semantic/materialization path for `d = (long)c` in
+`src/20000622-1.c`. LIR-to-BIR lowering now emits a real `bir.ptrtoint` for
+formal pointer parameters while preserving pointer-address metadata for address
+reasoning, so `%t0` is no longer an unproduced scalar value. The RV64 prepared
+object cast path now supports pointer-width cast results in stack homes, and
+the focused pointer-cast object coverage was updated for that supported shape.
 
-The object-emission harness can prove the emitter honors correct prepared
-facts for this semantic shape, but it cannot express the full pre-fix compiler
-failure because it does not run the frontend/preparation path that selected the
-wrong incoming value in the representative. Kept the suite green and recorded
-this as prepared-facts coverage rather than a red end-to-end reproduction.
+Current artifacts show the original classified `baz` wrong-argument family is
+fixed: `baz` materializes from incoming `a2`, preserves the loaded local in
+`s2` across `bar`, and passes `s2` as `foo` argument 0.
 
 ## Suggested Next
 
-Delegate Step 3: repair the preparation/lowering path that classifies
-`d = (long)c` so the pointer-to-integer local is sourced from incoming `a2`
-and preserved across the nested same-module call before later GPR argument
-publication.
+The representative still aborts, but it has advanced to a later family in
+`foo`: after `a == 12`, the emitted logical condition treats `b != 0` as the
+failure path, so `foo(12, 1, 11)` still reaches `abort`. The next packet should
+classify/repair that logical OR/select publication behavior rather than the
+now-fixed `baz` pointer-to-integer local materialization.
 
 ## Watchouts
 
-- The Step 2 object-emission test is not a full end-to-end red reproducer; it
-  validates the RV64 prepared object route once the source/prepared facts are
-  correct.
 - Do not edit expectations, unsupported markers, allowlists, runtime comparison
   behavior, or the gcc_torture runner.
 - Do not add filename-specific handling for `src/20000622-1.c`.
 - Preserve the same-module call/result behavior repaired under 572.
-- The classified bad value is the `baz` local/parameter materialization for
-  `d = (long)c`; `bar(a, 1)` still returns 1 into the second `foo` argument.
-- Step 3 should target semantic source selection/materialization rather than
-  changing runtime comparison files or exact generated symbol names.
+- The prior classified bad value in `baz` is fixed; do not regress the
+  `a2 -> ptrtoint -> local -> s2 -> foo arg0` route.
+- Remaining failure is in `foo` logical/select lowering, not `bar(a, 1)` result
+  publication and not the original `baz` arg0 source selection.
 
 ## Proof
 
-Proof log: `test_after.log`.
+Focused proof log: `test_after.log`.
+Combined representative proof log:
+`build/agent_state/577_rv64_20000622_1_runtime_abort_after_call_lowering/src_20000622-1.c/step3-combined-proof.log`.
 
-Command run:
-
-- `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'; } > test_after.log 2>&1` -> passed
+Delegated combined proof was run exactly and preserved in the artifact log
+above. `cmake --build --preset default` passed, and
+`ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'`
+passed. The gcc_torture object case still fails with
+`[RV64_BACKEND_RUNTIME_MISMATCH] clang_exit=0 c4c_exit=Subprocess aborted`,
+now classified as the later `foo` logical/select condition family.

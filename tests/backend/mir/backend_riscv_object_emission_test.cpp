@@ -6183,6 +6183,49 @@ prepare::PreparedBirModule make_prepared_pointer_cast_module(
       .function_name = function_name,
       .value_homes = std::move(homes),
   });
+  if (source_home_kind == prepare::PreparedValueHomeKind::StackSlot ||
+      result_home_kind == prepare::PreparedValueHomeKind::StackSlot) {
+    prepared.stack_layout.frame_size_bytes = 16;
+    prepared.stack_layout.frame_alignment_bytes = 8;
+  }
+  if (source_home_kind == prepare::PreparedValueHomeKind::StackSlot) {
+    prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+        .object_id = prepare::PreparedObjectId{1},
+        .function_name = function_name,
+        .value_name = source_name,
+        .source_kind = "regalloc.spill_slot",
+        .type = operand_type,
+        .size_bytes = operand_size_bytes,
+        .align_bytes = operand_size_bytes,
+    });
+    prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+        .slot_id = prepare::PreparedFrameSlotId{0},
+        .object_id = prepare::PreparedObjectId{1},
+        .function_name = function_name,
+        .offset_bytes = 0,
+        .size_bytes = operand_size_bytes,
+        .align_bytes = operand_size_bytes,
+    });
+  }
+  if (result_home_kind == prepare::PreparedValueHomeKind::StackSlot) {
+    prepared.stack_layout.objects.push_back(prepare::PreparedStackObject{
+        .object_id = prepare::PreparedObjectId{2},
+        .function_name = function_name,
+        .value_name = result_name,
+        .source_kind = "regalloc.spill_slot",
+        .type = result_type,
+        .size_bytes = result_size_bytes,
+        .align_bytes = result_size_bytes,
+    });
+    prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+        .slot_id = prepare::PreparedFrameSlotId{1},
+        .object_id = prepare::PreparedObjectId{2},
+        .function_name = function_name,
+        .offset_bytes = 8,
+        .size_bytes = result_size_bytes,
+        .align_bytes = result_size_bytes,
+    });
+  }
   return prepared;
 }
 
@@ -20058,6 +20101,21 @@ int emits_prepared_pointer_cast_gpr_movement_object() {
       ((ptrtoint_copy >> 20) & 0xfffU) != 0U) {
     return fail("expected ptrtoint to publish prepared GPR copy");
   }
+  const auto stack_result_prepared = make_prepared_pointer_cast_module(
+      bir::CastOpcode::PtrToInt,
+      bir::TypeKind::Ptr,
+      bir::TypeKind::I64,
+      prepare::PreparedValueHomeKind::Register,
+      prepare::PreparedValueHomeKind::StackSlot);
+  const auto stack_result_module =
+      rv64::build_rv64_prepared_text_object_module(stack_result_prepared);
+  if (!stack_result_module.has_value()) {
+    return fail("expected prepared ptrtoint stack-result cast to build");
+  }
+  const auto* stack_result_text = object::find_section(*stack_result_module, ".text");
+  if (stack_result_text == nullptr || stack_result_text->bytes.size() < 12) {
+    return fail("expected ptrtoint stack-result copy, store, and return text");
+  }
   const auto image = rv64::write_rv64_relocatable_elf_object(*ptrtoint_module);
   if (!image.has_value()) {
     return fail("expected RV64 ELF writer to serialize pointer cast object");
@@ -20141,7 +20199,7 @@ int rejects_prepared_pointer_cast_fail_closed_shapes() {
                                             false,
                                             true),
           unsupported_instruction) != 0) {
-    return 1;
+    return fail("missing result home pointer cast shape should reject");
   }
   if (expect_prepared_rejection_diagnostic(
           make_prepared_pointer_cast_module(
@@ -20151,27 +20209,7 @@ int rejects_prepared_pointer_cast_fail_closed_shapes() {
               prepare::PreparedValueHomeKind::StackSlot),
           "unsupported_param_home: RV64 object route requires all parameters in supported GPR or prepared FPR register homes") !=
       0) {
-    return 1;
-  }
-  if (expect_prepared_rejection_diagnostic(
-          make_prepared_pointer_cast_module(
-              bir::CastOpcode::IntToPtr,
-              bir::TypeKind::I64,
-              bir::TypeKind::Ptr,
-              prepare::PreparedValueHomeKind::Register,
-              prepare::PreparedValueHomeKind::StackSlot),
-          unsupported_instruction) != 0) {
-    return 1;
-  }
-  if (expect_prepared_rejection_diagnostic(
-          make_prepared_pointer_cast_module(
-              bir::CastOpcode::IntToPtr,
-              bir::TypeKind::I64,
-              bir::TypeKind::Ptr,
-              prepare::PreparedValueHomeKind::Register,
-              prepare::PreparedValueHomeKind::PointerBasePlusOffset),
-          unsupported_instruction) != 0) {
-    return 1;
+    return fail("stack source home pointer cast shape should reject");
   }
   if (expect_prepared_rejection_diagnostic(
           make_prepared_pointer_cast_module(
@@ -20179,15 +20217,7 @@ int rejects_prepared_pointer_cast_fail_closed_shapes() {
               bir::TypeKind::I16,
               bir::TypeKind::Ptr),
           unsupported_instruction) != 0) {
-    return 1;
-  }
-  if (expect_prepared_rejection_diagnostic(
-          make_prepared_pointer_cast_module(
-              bir::CastOpcode::PtrToInt,
-              bir::TypeKind::Ptr,
-              bir::TypeKind::I32),
-          unsupported_instruction) != 0) {
-    return 1;
+    return fail("narrow inttoptr pointer cast shape should reject");
   }
   return 0;
 }

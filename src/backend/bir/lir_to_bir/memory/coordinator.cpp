@@ -217,7 +217,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         const auto pointer_addr = resolve_runtime_pointer_address(cast->operand.str());
         if (pointer_addr.has_value()) {
           pointer_address_ints[cast->result.str()] = *pointer_addr;
-          return true;
+          if (pointer_addr->provenance.base_identity.kind !=
+              bir::MemoryProvenanceBaseIdentityKind::FormalParameter) {
+            return true;
+          }
         }
       }
     }
