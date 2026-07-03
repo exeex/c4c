@@ -1,9 +1,23 @@
 # RV64 Pointer-Result Frame-Slot Address Materialization
 
-Status: Open
+Status: Closed
 Type: RV64 object-lowering implementation follow-up
 Parent: `ideas/closed/567_rv64_integer_div_rem_instruction_fragment_lowering.md`
 Owning Layer: RV64/MIR prepared object lowering
+
+## Completion Note
+
+Closed after focused object-emission coverage and RV64 lowering repaired the
+prepared pointer-result frame-slot address materialization boundary. Backend
+subset proof passed, and the representative `src/20001026-1.c` row advanced
+past the pinned `%t12 = bir.add ptr %lv.r.0, %t12.byte_offset` generic
+unsupported object-lowering fragment without expectation rewrites or
+testcase-shaped dispatch.
+
+The representative still has a downstream residual:
+`prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`.
+That belongs to prepared move-bundle / consumer-authority classification, not
+to this pointer-result address-materialization idea.
 
 ## Goal
 
