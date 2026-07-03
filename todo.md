@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/566_rv64_large_offset_gpr_callee_saved_frame_slots.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Large-Offset GPR Boundary
+Current Step ID: 2
+Current Step Title: Add Focused Large-Offset GPR Coverage
 
 ## Just Finished
 
@@ -36,10 +36,33 @@ stack immediates.
 
 ## Suggested Next
 
-Advance to Step 2 with focused coverage plus minimal RV64 consumer repair for
-large-offset GPR callee-saved save/restore materialization. Cover a validated
-`gpr:s1` saved slot at `stack80000`, preserve existing direct-offset GPR
-behavior, and keep missing or malformed prepared slot facts fail-closed.
+Step 2 executor packet: add focused RV64 backend coverage for large-offset GPR
+callee-saved save/restore materialization, then apply the minimal consumer
+repair needed for that coverage if the current implementation cannot express
+the contract.
+
+Scope:
+
+- Primary file: `tests/backend/mir/backend_riscv_object_emission_test.cpp`.
+- Implementation files only if needed by the focused tests:
+  `src/backend/mir/riscv/codegen/prepared_frame_emit.cpp`,
+  `src/backend/mir/riscv/codegen/object_emission.cpp`, and directly adjacent
+  RV64 scalar/frame helpers.
+- Cover a validated `gpr:s1` callee-saved slot at `stack80000`.
+- Assert the save and restore path consumes prepared saved-register and
+  prepared slot facts, rather than testcase names, raw register names, or
+  synthesized frame facts.
+- Preserve existing direct-offset GPR saved-register behavior.
+- Keep missing or malformed prepared slot facts fail-closed.
+
+Proof required:
+
+- Build and backend tests:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+- Representative probe after repair:
+  `printf '%s\n' src/20030209-1.c > build/agent_state/566_step2_large_offset_gpr.allowlist && ALLOWLIST=build/agent_state/566_step2_large_offset_gpr.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/566_step2_large_offset_gpr.log 2>&1`
+- Update `todo.md` with the old diagnostic status, backend proof result, and
+  any downstream residual owner if the representative row still fails.
 
 ## Watchouts
 
