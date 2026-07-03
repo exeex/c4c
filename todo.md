@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/546_rv64_instruction_fragment_current_classification.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Recover Or Refresh Authoritative Row Scope
+Current Step ID: 3
+Current Step Title: Classify Semantic Families And First Owners
 
 ## Just Finished
 
@@ -32,13 +32,21 @@ from that coherent run:
 
 ## Suggested Next
 
-Step 3 (`Classify Semantic Families And First Owners`) should classify the
-accepted coherent-run table
+Current packet: Step 3 (`Classify Semantic Families And First Owners`).
+Classify the accepted coherent-run table
 `build/agent_state/unsupported_instruction_fragment_current_rows.tsv` with its
 `265` rows. Use
 `build/agent_state/rv64_gcc_torture_backend_current_20260703T015523Z.log`,
 `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`, and the referenced
 per-case logs as the provenance basis.
+
+Expected output for this packet:
+
+- A classification table or durable notes artifact named in `todo.md`.
+- Sub-bucket counts for the 265 accepted rows.
+- Representative cases for each recurring semantic family.
+- First-owner rationale separating RV64 lowering gaps from producer,
+  prepared-contract, ABI, F128, and evidence-gap rows.
 
 ## Watchouts
 
