@@ -120,6 +120,46 @@ void append_unsigned_le_bytes(std::vector<std::uint8_t>& bytes,
   });
 }
 
+[[nodiscard]] bool is_zero_initializer_element(const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Immediate || value.immediate != 0) {
+    return false;
+  }
+  switch (value.type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::I128:
+      return true;
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return value.immediate_bits == 0;
+    default:
+      return false;
+  }
+}
+
+[[nodiscard]] bool has_full_zero_initializer_elements(
+    const bir::Global& global) {
+  return !global.initializer.has_value() &&
+         !global.initializer_symbol_name.has_value() &&
+         global.initializer_symbol_name_id == kInvalidLinkName &&
+         !global.initializer_elements.empty() &&
+         std::all_of(global.initializer_elements.begin(),
+                     global.initializer_elements.end(),
+                     is_zero_initializer_element);
+}
+
+[[nodiscard]] bool has_implicit_zero_initializer(const bir::Global& global) {
+  return !global.initializer.has_value() &&
+         !global.initializer_symbol_name.has_value() &&
+         global.initializer_symbol_name_id == kInvalidLinkName &&
+         global.initializer_elements.empty();
+}
+
 [[nodiscard]] PreparedGlobalObjectData unsupported_global_object_data(
     const PreparedBirModule& prepared,
     const bir::Global& global) {
@@ -163,17 +203,16 @@ const PreparedGlobalObjectData* find_prepared_global_object_data(
 void populate_prepared_object_data_plans(PreparedBirModule& prepared) {
   prepared.object_data.globals.clear();
   for (const auto& global : prepared.module.globals) {
-    if (global.is_extern && !global.initializer.has_value() &&
-        !global.initializer_symbol_name.has_value() &&
-        global.initializer_symbol_name_id == kInvalidLinkName &&
-        global.initializer_elements.empty()) {
+    const bool implicit_zero_initializer = has_implicit_zero_initializer(global);
+    const bool zero_initializer_elements =
+        has_full_zero_initializer_elements(global);
+    if (global.is_extern && implicit_zero_initializer) {
       continue;
     }
 
     const auto bytes = global_initializer_bytes(global);
-    if (!bytes.has_value() || global.link_name_id == kInvalidLinkName ||
-        global.align_bytes == 0 || global.size_bytes == 0 ||
-        global.is_thread_local ||
+    if (global.link_name_id == kInvalidLinkName || global.align_bytes == 0 ||
+        global.size_bytes == 0 || global.is_thread_local ||
         global.address_materialization_policy ==
             bir::GlobalAddressMaterializationPolicy::GotRequired) {
       prepared.object_data.globals.push_back(
@@ -185,6 +224,30 @@ void populate_prepared_object_data_plans(PreparedBirModule& prepared) {
     if (label.empty()) {
       label = std::string{
           prepared.module.names.link_names.spelling(global.link_name_id)};
+    }
+
+    if (!bytes.has_value()) {
+      if (!implicit_zero_initializer && !zero_initializer_elements) {
+        prepared.object_data.globals.push_back(
+            unsupported_global_object_data(prepared, global));
+        continue;
+      }
+      prepared.object_data.globals.push_back(PreparedGlobalObjectData{
+          .object_label = global.link_name_id,
+          .object_label_text = std::move(label),
+          .section_kind = PreparedObjectDataSectionKind::Bss,
+          .object_byte_offset = 0,
+          .object_size_bytes = global.size_bytes,
+          .align_bytes = global.align_bytes,
+          .zero_fill_byte_count = global.size_bytes,
+          .public_symbol = true,
+          .has_object_label = true,
+          .has_publication_identity = true,
+          .has_object_byte_range = true,
+          .requires_zero_fill = true,
+          .has_zero_fill = true,
+      });
+      continue;
     }
 
     const bool zero_fill = !global.is_constant && bytes_are_all_zero(*bytes);

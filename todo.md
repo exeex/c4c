@@ -8,74 +8,65 @@ Current Step Title: Add Focused Zero-Fill Contract Coverage
 
 ## Just Finished
 
-Completed plan Step 1 inspection for `src/20000412-1.c`.
+Completed plan Step 2 coverage plus the minimal producer repair needed to make
+that coverage pass.
 
-Current representative proof:
+Changed files:
 
-- Allowlist: `build/agent_state/562_step1_zero_fill_boundary.allowlist`
-- Log: `build/agent_state/562_step1_zero_fill_boundary.log`
-- Result: still fails at the prepared selected object-data contract diagnostic:
-  `status=unsupported_but_coherent object_label_id=2 object_size_bytes=1656
-  emitted_byte_count=0 zero_fill_byte_count=0`.
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+- `src/backend/prealloc/object_data.cpp`
 
-Owning boundary:
+Work completed:
 
-- Prepared producer: `src/backend/prealloc/object_data.cpp`
-  `populate_prepared_object_data_plans(...)` calls `global_initializer_bytes(...)`
-  and publishes unsupported coherent data when no materialized initializer bytes
-  are available.
-- The zero-fill publication branch currently depends on initializer bytes and
-  computes `zero_fill = !global.is_constant && bytes_are_all_zero(*bytes)`, so
-  it does not publish zero-fill authority for the representative no-explicit-
-  initializer `const char * const wordlist[207]` aggregate.
-- RV64 consumption receives these prepared facts through
-  `rv64_selected_object_data_contract_facts(...)` in
-  `src/backend/mir/riscv/codegen/object_emission.cpp` and correctly reports the
-  fail-closed prepared contract diagnostic instead of inventing missing
-  zero-fill authority.
+- Added focused prepared object-data coverage for the actual lowered
+  no-explicit-initializer const pointer-element aggregate shape: integer-array
+  layout authority plus zero pointer initializer elements. The test asserts the
+  producer facts directly: no emitted bytes, `requires_zero_fill`,
+  `has_zero_fill`, and `zero_fill_byte_count == object_size_bytes`.
+- Updated `populate_prepared_object_data_plans(...)` so eligible globals with
+  no explicit initializer bytes and no initializer symbol publish full-extent
+  BSS zero-fill authority instead of `unsupported_but_coherent`, including
+  all-zero initializer element lists that cannot be byte-materialized by the
+  existing scalar-byte helper.
+- Preserved fail-closed handling for extern declarations, missing labels,
+  missing extents, thread-local globals, GOT-required globals, and other
+  non-materialized initializer shapes.
 
-Boundary classification: still prepared producer-owned. The boundary has not
-moved to RV64 consumption.
+Step 3 repair is no longer a separate necessary packet for this producer
+boundary; the corrected semantic repair was folded into Step 2 and now clears
+the representative.
 
 ## Suggested Next
 
-Execute plan Step 2 by adding focused prepared/backend coverage for
-`populate_prepared_object_data_plans(...)` that asserts ordinary
-no-explicit-initializer global aggregates publish full-extent zero-fill
-authority.
-
-Coverage should include the representative semantic shape: a const global
-aggregate whose elements are pointer-typed, with no explicit initializer bytes
-materialized. Assert semantic prepared object-data facts such as
-`requires_zero_fill`, `has_zero_fill`, and `zero_fill_byte_count ==
-object_size_bytes`.
-
-Do not match `src/20000412-1.c`, object label id 2, the 1656-byte extent, or
-any filename/label/size-specific shortcut.
+Ask the plan owner to evaluate lifecycle closure for this source idea. The
+focused backend subset is green and the representative `src/20000412-1.c`
+allowlist probe now passes.
 
 ## Watchouts
 
-- Keep this as prepared object-data producer work unless inspection proves
-  selected object data is already coherent before RV64 consumption.
-- Do not change RV64 object emission to accept missing prepared data.
-- Do not special-case the representative filename, object label id, or
-  1656-byte extent.
-- Do not touch expectations, unsupported markers, allowlists, or pass/fail
-  accounting.
-- Existing RV64 object-emission coverage already proves explicit zero
-  initializer-elements can reserve BSS storage; the missing target is the
-  prepared producer contract for implicit/no-explicit-initializer aggregate
-  zero-fill, especially when `global.is_constant` is true.
+- This slice did not touch RV64 object emission, expectations, unsupported
+  markers, allowlists, or pass/fail accounting.
+- The repair is semantic: it keys on implicit-zero initializer state and normal
+  object publication identity/extent, including all-zero initializer elements;
+  it does not key on `src/20000412-1.c`, object label id 2, or a 1656-byte
+  size.
+- No downstream owner appeared in the representative probe.
 
 ## Proof
 
-Ran delegated representative proof:
+Ran delegated backend proof:
 
 ```sh
-printf '%s\n' src/20000412-1.c > build/agent_state/562_step1_zero_fill_boundary.allowlist && ALLOWLIST=build/agent_state/562_step1_zero_fill_boundary.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/562_step1_zero_fill_boundary.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
 ```
 
-The command exited 1 as expected for the current failing representative and
-wrote the current diagnostic to
-`build/agent_state/562_step1_zero_fill_boundary.log`. No root-level
-`test_before.log` or `test_after.log` was written.
+Result: passed. Canonical proof log: `test_after.log`.
+
+Ran representative allowlist proof:
+
+```sh
+mkdir -p build/agent_state && printf '%s\n' src/20000412-1.c > build/agent_state/562_step2_zero_fill_after.allowlist && ALLOWLIST=build/agent_state/562_step2_zero_fill_after.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/562_step2_zero_fill_after.log 2>&1
+```
+
+Result: passed (`total=1 passed=1 failed=0`). Representative log:
+`build/agent_state/562_step2_zero_fill_after.log`.

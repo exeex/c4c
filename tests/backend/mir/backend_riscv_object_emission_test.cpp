@@ -16681,6 +16681,56 @@ int emits_prepared_selected_zero_pointer_global_bss_storage() {
   return 0;
 }
 
+int publishes_implicit_const_pointer_array_zero_fill_object_data_facts() {
+  auto prepared = make_prepared_direct_call_module();
+  const auto link_name =
+      prepared.module.names.link_names.intern("implicit_pointer_table");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "implicit_pointer_table",
+      .link_name_id = link_name,
+      .type = bir::TypeKind::Ptr,
+      .is_constant = true,
+      .has_integer_array_layout_authority = true,
+      .integer_array_element_size_bytes = 8,
+      .integer_array_element_count = 3,
+      .size_bytes = 24,
+      .align_bytes = 8,
+      .initializer_elements =
+          {
+              null_pointer_value(),
+              null_pointer_value(),
+              null_pointer_value(),
+          },
+  });
+  publish_prepared_object_data(prepared);
+
+  const auto* object_data =
+      prepare::find_prepared_global_object_data(prepared.object_data, link_name);
+  if (object_data == nullptr) {
+    return fail("expected implicit pointer-table object-data facts");
+  }
+  if (object_data->object_label != link_name ||
+      object_data->object_label_text != "implicit_pointer_table" ||
+      object_data->section_kind != prepare::PreparedObjectDataSectionKind::Bss ||
+      object_data->object_byte_offset != 0 ||
+      object_data->object_size_bytes != 24 ||
+      object_data->align_bytes != 8 || !object_data->emitted_bytes.empty() ||
+      object_data->zero_fill_byte_count != object_data->object_size_bytes ||
+      !object_data->has_object_label ||
+      !object_data->has_publication_identity ||
+      !object_data->has_object_byte_range ||
+      object_data->requires_emitted_bytes ||
+      object_data->has_emitted_bytes ||
+      !object_data->requires_zero_fill ||
+      !object_data->has_zero_fill ||
+      object_data->requires_unsupported_marker ||
+      object_data->has_unsupported_marker ||
+      object_data->unsupported_but_coherent) {
+    return fail("expected full-extent zero-fill prepared object-data authority");
+  }
+  return 0;
+}
+
 int rejects_unsupported_selected_global_object_data_shapes() {
   {
     auto prepared = make_prepared_direct_call_module();
@@ -18174,6 +18224,7 @@ int main() {
   status |= rejects_unsupported_prepared_floating_cast_with_precise_diagnostic();
   status |= emits_prepared_selected_symbol_pointer_global_object_storage();
   status |= emits_prepared_selected_zero_pointer_global_bss_storage();
+  status |= publishes_implicit_const_pointer_array_zero_fill_object_data_facts();
   status |= rejects_unsupported_selected_global_object_data_shapes();
   status |= emits_prepared_writable_i32_global_object_storage();
   status |= emits_prepared_global_object_storage_from_prepared_record_authority();
