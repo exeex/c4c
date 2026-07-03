@@ -1,50 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/572_rv64_same_module_call_result_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Rerun The Two Same-Module Call Representatives
+Current Step ID: 6
+Current Step Title: Review And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed the Step 3 implementation follow-up for the Step 5
-`src/20000622-1.c` blocker. The RV64 object call emitter now handles ordinary
-same-module GPR call arguments whose physical source is a prepared frame-slot
-home even when the `FrameSlotValue` selection still describes the original
-local slot route. The repair remains semantic: it validates the selected value
-id, scalar size/alignment, prepared value home, argument source slot/offset,
-stack layout slot, and immediate-range offset before loading the argument.
+Step 6 close-readiness review rejected closure for the 572 source idea.
 
-Focused backend coverage now includes a representative-shaped same-module call
-with two frame-slot GPR source arguments loaded into `a0`/`a1`, a prior-
-preserved GPR source argument moved from `s2` into `a2`, and the call result
-published from `a0` to the prepared owner GPR.
+Accepted as satisfied:
 
-Reran `src/20000622-1.c` with absolute artifact/output paths:
+- The old ordinary same-module `CallInst` fallback is gone for both retained
+  representatives. `build/agent_state/572_rv64_same_module_call_result_lowering/summary.tsv`
+  records `src/20000412-2.c` as `lowered_and_runtime_matched` and
+  `src/20000622-1.c` as `blocked_by_later_non_call_family`.
+- The `src/20000622-1.c` remaining failure is not a call-fallback failure: the
+  rerun now reaches runtime comparison and aborts with
+  `[RV64_BACKEND_RUNTIME_MISMATCH]`, `clang_exit=0`, and
+  `c4c_exit=Subprocess aborted`.
+- Focused backend coverage includes same-module GPR argument passing, prior
+  call-result consumption, frame-slot GPR arguments, and integer/GPR result
+  publication.
 
-- `src/20000412-2.c`: `rc=0`,
-  `classification=lowered_and_runtime_matched`; log:
-  `build/agent_state/572_rv64_same_module_call_result_lowering/src_20000412-2.c/object-route.log`.
-  The representative now passes the RV64 object-route compile, link, and qemu
-  runtime comparison.
-- `src/20000622-1.c`: `rc=1`,
-  `classification=blocked_by_later_non_call_family`; log:
-  `build/agent_state/572_rv64_same_module_call_result_lowering/src_20000622-1.c/object-route.log`.
-  It moved past `still_old_generic_call_fallback`.
-- Exact remaining first blocker:
-  `[RV64_BACKEND_RUNTIME_MISMATCH]` for
-  `/workspaces/c4c/tests/c/external/gcc_torture/src/20000622-1.c`,
-  with `clang_exit=0` and `c4c_exit=Subprocess aborted`.
-- Updated summary artifact:
-  `build/agent_state/572_rv64_same_module_call_result_lowering/summary.tsv`.
+Close blocker:
+
+- The source idea still has an unmet diagnostic acceptance item. It explicitly
+  scopes in diagnostics that distinguish unsupported call ABI forms from the
+  generic unsupported instruction fallback, but the focused unsupported
+  same-module call shapes still assert
+  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`.
+  This does fail closed, but it is not the narrower call-specific diagnostic
+  required by the active source idea and Step 6 runbook.
+
+Lifecycle split:
+
+- Created `ideas/open/577_rv64_20000622_1_runtime_abort_after_call_lowering.md`
+  for the distinct `src/20000622-1.c` runtime abort. Do not solve that abort
+  inside this 572 plan unless the supervisor explicitly switches lifecycle
+  state.
 
 ## Suggested Next
 
-Proceed to Step 6 close-readiness review for this runbook. The source idea's
-call-fallback acceptance condition is satisfied for both representatives; the
-new `src/20000622-1.c` runtime abort should be classified before any separate
-follow-up idea is opened.
+Keep 572 active and delegate a narrow executor packet for the remaining
+diagnostic acceptance item: unsupported ordinary same-module call ABI/result
+shapes should reject with a call-specific diagnostic rather than the generic
+`unsupported_instruction_fragment` fallback. After that passes focused backend
+proof, rerun Step 6 close-readiness and then the close-time backend regression
+gate.
 
 ## Watchouts
 
@@ -56,29 +60,25 @@ follow-up idea is opened.
   `src/20000622-1.c`.
 - Do not change expectations, unsupported markers, allowlists, or runtime
   comparison behavior.
-- Unsupported ordinary call ABI forms still fail closed through the existing
-  generic `unsupported_instruction_fragment` surface in this bounded packet;
-  precise call-specific diagnostics were not implemented here.
-- The `src/20000622-1.c` rerun now reaches runtime execution and aborts, so
-  any next packet should first classify the abort before expanding code changes.
+- Do not use the new `src/20000622-1.c` runtime-abort follow-up as a reason to
+  expand 572. The abort is separate from the ordinary same-module call fallback
+  repair.
+- Do not close 572 until unsupported ordinary same-module call ABI/result
+  forms have distinguishable call-specific diagnostics or the source idea is
+  explicitly narrowed by the supervisor.
 
 ## Proof
 
-Ran:
+Close-readiness inputs reviewed:
 
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_riscv_object_emission$'; } > test_after.log 2>&1`
+- Source idea: `ideas/open/572_rv64_same_module_call_result_lowering.md`.
+- Active runbook: `plan.md`.
+- Step 5 summary:
+  `build/agent_state/572_rv64_same_module_call_result_lowering/summary.tsv`.
+- Step 5 `src/20000622-1.c` log:
+  `build/agent_state/572_rv64_same_module_call_result_lowering/src_20000622-1.c/object-route.log`.
+- Existing broad backend proof in `test_before.log`: 346/346 backend tests
+  passed.
 
-Result: build succeeded; focused `backend_riscv_object_emission` CTest passed.
-
-Proof log: `test_after.log`.
-
-Representative rerun:
-
-`src/20000412-2.c` was rerun through `tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake` with absolute `OUT_CLANG_BIN`, `OUT_OBJECT`, and `OUT_C4C_BIN` paths under `/workspaces/c4c/build/agent_state/572_rv64_same_module_call_result_lowering/src_20000412-2.c/`.
-
-Result: `lowered_and_runtime_matched`.
-
-`src/20000622-1.c` was rerun through `tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake` with absolute `OUT_CLANG_BIN`, `OUT_OBJECT`, and `OUT_C4C_BIN` paths under `/workspaces/c4c/build/agent_state/572_rv64_same_module_call_result_lowering/src_20000622-1.c/`.
-
-Result: moved past `still_old_generic_call_fallback`; now blocked by
-`[RV64_BACKEND_RUNTIME_MISMATCH]` with `c4c_exit=Subprocess aborted`.
+The close-time regression gate was not run because source-idea completion is
+false.
