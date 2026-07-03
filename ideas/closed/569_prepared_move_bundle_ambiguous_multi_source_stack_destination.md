@@ -1,6 +1,6 @@
 # Prepared Move-Bundle Ambiguous Multi-Source Stack Destination
 
-Status: Open
+Status: Closed
 Type: Prepared contract repair
 Parent: `ideas/open/549_rv64_runtime_and_no_diagnostic_triage.md`
 Owning Layer: Prepared move-bundle classifier
@@ -70,6 +70,36 @@ has been crossed.
   later failure is classified separately rather than claimed as closure.
 - No runtime comparison, expected output, unsupported marker, or allowlist
   behavior is weakened.
+
+## Completion Notes
+
+Closed after the active 569 runbook completed all four steps.
+
+- Step 1 pinned the representative boundary to the prepared move-bundle
+  classifier for `src/20001026-1.c`.
+- Step 2 added focused prepared consumer contract coverage for the
+  non-parallel multi-source stack-destination shape.
+- Step 3 repaired the classifier so the select-materialization
+  stack-destination shape is accepted with coherent prepared authority while
+  unrelated simpler ambiguous bundles still fail closed.
+- Step 4 reran `src/20001026-1.c` through the RV64 gcc_torture object route
+  and confirmed the old
+  `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`
+  diagnostic is gone.
+
+The representative now fails later with generic
+`unsupported_instruction_fragment: BIR instruction requires unsupported RV64
+object lowering`. That remaining owner is separate from this prepared
+classifier repair and should stay with the generic RV64 object-lowering
+diagnostic/evidence work, not 569.
+
+Close gate:
+
+- `test_before.log`: `ctest --test-dir build -j --output-on-failure -R '^backend_'`, 346/346 passed.
+- `test_after.log`: same command, 346/346 passed.
+- Regression guard:
+  `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+  passed.
 
 ## Reviewer Reject Signals
 
