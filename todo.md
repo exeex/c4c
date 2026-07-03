@@ -1,78 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/549_rv64_runtime_and_no_diagnostic_triage.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconstruct Representative No-Diagnostic Families
+Current Step ID: 2
+Current Step Title: Classify First Owners
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 evidence reconstruction ran for representative RV64 gcc_torture
-no-diagnostic families.
+Step 2 classified first-owner boundaries for the Step 1 representative RV64
+gcc_torture no-diagnostic families.
 
-Artifact provenance:
+Evidence written under
+`build/agent_state/549_step2_first_owner_classification/`:
 
-- Literal 503/57/7 count statement found in
-  `ideas/open/549_rv64_runtime_and_no_diagnostic_triage.md`; no standalone
-  generated bucket-count file with those exact three counts was found under
-  `build/agent_state` outside archived agent logs.
-- Freshest current scan/log pointer:
-  `build/agent_state/rv64_gcc_torture_backend_current_log_path.txt` ->
-  `build/agent_state/rv64_gcc_torture_backend_current_20260703T015523Z.log`.
-- Freshest no-diagnostic family map found:
-  `build/agent_state/546_step3_instruction_fragment_classification.tsv`
-  (2026-07-03 02:07 UTC), 265 classified rows. Family counts from that map:
-  `join_phi_branch_publication=56`,
-  `local_memory_or_stack_value=36`,
-  `global_memory_addressing_small=33`,
-  `integer_div_rem=30`,
-  `f128_or_long_double_primary=28`,
-  `select_join_or_value_publication=18`,
-  `scalar_fp_cast_or_op=18`,
-  `scalar_integer_binary=15`,
-  `integer_arithmetic_shift_right=12`,
-  `pointer_integer_cast=12`,
-  `call_adjacent_or_helper=5`,
-  `evidence_gap=2`.
-- Related raw scan state:
-  `build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv`
-  (1467 rows, 1152 failures in
-  `build/agent_state/rv64_gcc_c_torture_backend_failed.full.txt`) and current
-  smoke/current summary `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`
-  (1 row).
+- `stage_matrix.tsv`: per-representative rc matrix for `--dump-bir`,
+  `--dump-prepared-bir`, `--dump-mir`, and the RV64 object runner.
+- `classification.tsv`: first-owner classification with source family,
+  object diagnostic, BIR operation summary, confidence, and log paths.
+- `supporting_facts.tsv`: compact grep facts from object logs or dumps.
+- `commands.sh.txt`: exact dump and object-runner commands.
+- `classification.md`: readable owner summary and caveats.
 
-Representative rerun evidence was written under
-`build/agent_state/549_step1_no_diagnostic_families/`:
+Shared stage fact: all 12 representatives returned rc=0 for `--dump-bir`,
+`--dump-prepared-bir`, and `--dump-mir`; all 12 returned rc=1 only at the
+RV64 object runner. That separates these samples from parser/HIR/BIR producer,
+runtime mismatch, timeout, and test-infrastructure failures.
 
-| Family | Representative | Exit mode | Log |
+| Family | Representative | First owner | Evidence |
 | --- | --- | --- | --- |
-| `join_phi_branch_publication` | `src/20030408-1.c` | compile fail, rc=1, `unsupported_instruction_fragment` | `build/agent_state/549_step1_no_diagnostic_families/src_20030408-1.c/case.log` |
-| `local_memory_or_stack_value` | `src/20000412-2.c` | compile fail, rc=1, `unsupported_instruction_fragment` | `build/agent_state/549_step1_no_diagnostic_families/src_20000412-2.c/case.log` |
-| `global_memory_addressing_small` | `src/20071211-1.c` | compile fail, rc=1, `unsupported_instruction_fragment` | `build/agent_state/549_step1_no_diagnostic_families/src_20071211-1.c/case.log` |
-| `select_join_or_value_publication` | `src/pr51933.c` | compile fail, rc=1, `unsupported_instruction_fragment` | `build/agent_state/549_step1_no_diagnostic_families/src_pr51933.c/case.log` |
-| `call_adjacent_or_helper` | `src/pr56982.c` | compile fail, rc=1, `unsupported_instruction_fragment` | `build/agent_state/549_step1_no_diagnostic_families/src_pr56982.c/case.log` |
-| `integer_div_rem` | `src/20001026-1.c` | compile fail, rc=1, `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination` | `build/agent_state/549_step1_no_diagnostic_families/src_20001026-1.c/case.log` |
-| `f128_or_long_double_primary` | `src/20000910-1.c` | compile fail, rc=1, `unsupported_instruction_fragment`; quarantine lane | `build/agent_state/549_step1_no_diagnostic_families/src_20000910-1.c/case.log` |
-| `scalar_fp_cast_or_op` | `src/20000605-1.c` | compile fail, rc=1, `unsupported_instruction_fragment` | `build/agent_state/549_step1_no_diagnostic_families/src_20000605-1.c/case.log` |
-| `integer_arithmetic_shift_right` | `src/pr78438.c` | compile fail, rc=1, `unsupported_instruction_fragment` | `build/agent_state/549_step1_no_diagnostic_families/src_pr78438.c/case.log` |
-| `pointer_integer_cast` | `src/20000622-1.c` | compile fail, rc=1, `unsupported_instruction_fragment` | `build/agent_state/549_step1_no_diagnostic_families/src_20000622-1.c/case.log` |
-| `scalar_integer_binary` | `src/20000819-1.c` | compile fail, rc=1, `unsupported_instruction_fragment` | `build/agent_state/549_step1_no_diagnostic_families/src_20000819-1.c/case.log` |
-| `evidence_gap` | `src/20030307-1.c` | compile fail, rc=1, `unsupported_instruction_fragment` | `build/agent_state/549_step1_no_diagnostic_families/src_20030307-1.c/case.log` |
-
-Command and detail manifests:
-
-- `build/agent_state/549_step1_no_diagnostic_families/commands.sh.txt`
-- `build/agent_state/549_step1_no_diagnostic_families/reproduction_summary.tsv`
-- `build/agent_state/549_step1_no_diagnostic_families/reproduction_details.tsv`
+| `join_phi_branch_publication` | `src/20030408-1.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; log `build/agent_state/549_step2_first_owner_classification/src_20030408-1.c/object-route.log` |
+| `local_memory_or_stack_value` | `src/20000412-2.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; log `build/agent_state/549_step2_first_owner_classification/src_20000412-2.c/object-route.log` |
+| `global_memory_addressing_small` | `src/20071211-1.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; source flagged inline asm, but no explicit unsupported-inline-asm diagnostic fired |
+| `select_join_or_value_publication` | `src/pr51933.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; BIR summary has heavy `select`, `load_global`, and `store_global` presence |
+| `call_adjacent_or_helper` | `src/pr56982.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; BIR summary has call-adjacent shape |
+| `integer_div_rem` | `src/20001026-1.c` | Prepared contract/classifier, high confidence | object log names `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination` and prepared move-bundle classifier rejection |
+| `f128_or_long_double_primary` | `src/20000910-1.c` | F128 quarantine, with caveat | Step 1 map selected this family; dumps contain F128 declarations/sections from `stdlib.h`, but the local test body is ordinary integer/pointer code, so do not use as direct F128-operation repair proof |
+| `scalar_fp_cast_or_op` | `src/20000605-1.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; BIR summary includes `sitofp`/`fptosi` |
+| `integer_arithmetic_shift_right` | `src/pr78438.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; source flagged inline asm, but no explicit unsupported-inline-asm diagnostic fired |
+| `pointer_integer_cast` | `src/20000622-1.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; family map selected pointer/integer cast shape |
+| `scalar_integer_binary` | `src/20000819-1.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; BIR summary includes scalar `add` |
+| `evidence_gap` | `src/20030307-1.c` | Evidence gap, low confidence | BIR/prepared/MIR rc=0, object rc=1 with only generic `unsupported_instruction_fragment`; no specific first bad instruction or authority boundary in current evidence |
 
 ## Suggested Next
 
-Plan owner or supervisor should decide whether the missing standalone 503/57/7
-bucket-count artifact is acceptable as a provenance gap. If acceptable, execute
-Step 2 against the recorded representatives, starting with focused prepared/BIR
-dumps for the generic `unsupported_instruction_fragment` rows and keeping
-`src/20000910-1.c` in the F128 quarantine lane.
+Execute Step 3: split durable follow-up ideas only for high-confidence owner
+families. Suggested split candidates are a prepared move-bundle classifier idea
+for `src/20001026-1.c`, a generic RV64 object-lowering instrumentation or
+diagnostic idea for the nine `unsupported_instruction_fragment` rows, and a
+separate quarantine/evidence note for `src/20000910-1.c`.
 
 ## Watchouts
 
@@ -87,13 +63,20 @@ dumps for the generic `unsupported_instruction_fragment` rows and keeping
 - `src/20001026-1.c` is classified as `integer_div_rem` in the July 3 family
   map but now reproduces at the prepared move-bundle classifier boundary; do
   not claim this row as a clean integer-div/rem lowering representative without
-  Step 2 owner classification.
+  additional evidence.
+- `unsupported_instruction_fragment` proves the failure reaches RV64 object
+  lowering after BIR/prepared/MIR dumps succeed, but it does not identify the
+  exact unsupported instruction. Treat these rows as classification evidence,
+  not implementation-ready opcode repairs.
+- No representative produced a runtime mismatch, timeout, segmentation fault,
+  or test-infrastructure failure in this packet.
 
 ## Proof
 
 Executor proof:
 
 - `cmake --build build --target c4cll`
-- Per-case CMake runner invocations recorded in
-  `build/agent_state/549_step1_no_diagnostic_families/commands.sh.txt`
+- Focused `--dump-bir`, `--dump-prepared-bir`, `--dump-mir`, and RV64 object
+  runner commands recorded in
+  `build/agent_state/549_step2_first_owner_classification/commands.sh.txt`
 - `git diff --check -- todo.md && scripts/plan_review_state.py show`
