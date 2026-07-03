@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/562_prepared_object_data_zero_fill_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Zero-Fill Object-Data Boundary
+Current Step ID: 2
+Current Step Title: Add Focused Zero-Fill Contract Coverage
 
 # Current Packet
 
@@ -39,12 +39,19 @@ moved to RV64 consumption.
 
 ## Suggested Next
 
-Add focused Step 2 coverage for `populate_prepared_object_data_plans(...)` that
-asserts ordinary no-explicit-initializer global aggregates, including the
-representative `const` pointer-array shape, publish full-extent zero-fill
-authority (`requires_zero_fill`, `has_zero_fill`, and `zero_fill_byte_count ==
-object_size_bytes`) without matching `src/20000412-1.c`, label id 2, or a
-1656-byte size.
+Execute plan Step 2 by adding focused prepared/backend coverage for
+`populate_prepared_object_data_plans(...)` that asserts ordinary
+no-explicit-initializer global aggregates publish full-extent zero-fill
+authority.
+
+Coverage should include the representative semantic shape: a const global
+aggregate whose elements are pointer-typed, with no explicit initializer bytes
+materialized. Assert semantic prepared object-data facts such as
+`requires_zero_fill`, `has_zero_fill`, and `zero_fill_byte_count ==
+object_size_bytes`.
+
+Do not match `src/20000412-1.c`, object label id 2, the 1656-byte extent, or
+any filename/label/size-specific shortcut.
 
 ## Watchouts
 
