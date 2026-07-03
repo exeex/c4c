@@ -8,87 +8,105 @@ Current Step Title: Produce Follow-Up Routing
 
 ## Just Finished
 
-Step 4 (`Screen F128 And Producer-Gap Rows`) screened all `265`
-Step 3 rows from
-`build/agent_state/546_step3_instruction_fragment_classification.tsv`.
+Step 5 (`Produce Follow-Up Routing`) routed all `265` screened
+instruction-fragment rows from
+`build/agent_state/546_step4_instruction_fragment_screening.tsv`.
 
 Generated artifacts:
 
-- Row-level screening table:
-  `build/agent_state/546_step4_instruction_fragment_screening.tsv`.
-- Screening notes:
-  `build/agent_state/546_step4_instruction_fragment_screening.md`.
+- Routing notes:
+  `build/agent_state/546_step5_followup_routing.md`.
+- Route-level count table:
+  `build/agent_state/546_step5_followup_routing.tsv`.
 
-Screened-owner counts, summing to `265`:
+Routing count check, summing to `265`:
 
-- `producer_prepared_boundary`: `143`
 - `implementation_ready_rv64`: `87`
 - `f128_quarantine`: `28`
+- `producer_prepared_boundary`: `143`
 - `abi_or_call_boundary`: `5`
 - `evidence_gap`: `2`
 
-Representative examples:
+Ranked ordinary RV64 follow-up buckets:
 
-- `src/20040709-2.c`, `src/930622-2.c`, `src/fprintf-chk-1.c`: F128 or
-  long-double quarantine; do not mix into ordinary scalar RV64 progress.
-- `src/20030408-1.c`, `src/pr51933.c`, `src/pr49279.c`,
-  `src/20071211-1.c`: producer/prepared-contract boundary examples for
-  join/select publication, local-memory, and global-addressing rows.
-- `src/20001026-1.c`: implementation-ready integer div/rem row.
-- `src/pr78438.c`: implementation-ready arithmetic shift-right row.
-- `src/20000622-1.c`: implementation-ready pointer/integer cast row.
-- `src/20040709-3.c`: implementation-ready F32/F64 scalar FP/cast row.
-- `src/pr56982.c`: ABI/call helper boundary row.
+1. `integer_div_rem`: `30` rows, first owner `rv64_object_lowering`;
+   recommended first lifecycle route because it has the best count and the
+   clearest direct BIR operation family (`sdiv`, `udiv`, `srem`, `urem`).
+   Representative rows: `src/20001026-1.c`, `src/20050215-1.c`,
+   `src/20090113-2.c`, `src/20090113-3.c`, `src/20101013-1.c`.
+2. `integer_arithmetic_shift_right`: `12` rows, first owner
+   `rv64_object_lowering`; smaller but high proof clarity around `ashr`.
+   Representative rows: `src/pr78438.c`, `src/pr79737-2.c`,
+   `src/20000815-1.c`, `src/920501-9.c`, `src/931110-1.c`.
+3. `scalar_fp_cast_or_op`: `18` rows, first owner
+   `rv64_object_lowering`; route through the existing scalar FPR residual lane
+   rather than mixing with integer lowering. Representative rows:
+   `src/20040709-3.c`, `src/930603-1.c`, `src/20000605-1.c`,
+   `src/20010118-1.c`, `src/20020321-1.c`.
+4. `scalar_integer_binary`: `15` rows, first owner
+   `rv64_object_lowering`; implementation-ready but heterogeneous enough to
+   need a follow-up triage split before code. Representative rows:
+   `src/20000819-1.c`, `src/20020107-1.c`, `src/20071018-1.c`,
+   `src/921123-1.c`, `src/921208-1.c`.
+5. `pointer_integer_cast`: `12` rows, first owner
+   `rv64_object_lowering`; coherent `inttoptr`/`ptrtoint` evidence but lower
+   confidence because pointer/address-width behavior needs careful proof.
+   Representative rows: `src/20000622-1.c`, `src/20001101.c`,
+   `src/940115-1.c`, `src/950710-1.c`, `src/loop-2c.c`.
 
-Rationale: all `28` Step 3 `f128_or_long_double_primary` rows remain
-quarantined. Rows with explicit `source_f128_or_long_double` or
-`source_variadic` flags stay out of ordinary scalar work, and rows with no
-source flag still have Step 3 F128-family evidence, so they fail closed into
-the same lane. All `143` Step 3 `rv64_or_prepared_boundary` rows remain
-producer/prepared-contract rows because joins, selects, local memory, and
-global addressing need prepared authority before RV64 object lowering can be
-claimed as first owner. The `87` provisional `rv64_object_lowering` rows remain
-ordinary implementation-ready rows after screening: integer div/rem (`30`),
-F32/F64 scalar FP/cast (`18`), scalar integer binary (`15`), arithmetic
-shift-right (`12`), and pointer/integer cast (`12`).
+Screened-out routing:
+
+- `28` F128/long-double rows route to existing
+  `ideas/open/426_f128_quarantine_and_external_softfloat_policy.md`.
+- `143` producer/prepared rows route to producer/prepared authority follow-up;
+  likely existing lanes include
+  `ideas/open/560_bir_scalar_signature_control_semantic_producer_admission.md`
+  and `ideas/open/547_bir_local_memory_call_metadata_boundary_review.md`, but
+  plan-owner should decide exact lifecycle placement.
+- `5` ABI/call rows route to ABI/call boundary follow-up.
+- `2` evidence-gap rows route to evidence recovery.
+
+Reject signals recorded for follow-up ideas:
+
+- no testcase-name dispatch or named-case constants
+- no raw diagnostic/opcode-text-only matching as a lowering strategy
+- no expectation rewrites, unsupported downgrades, or allowlist filtering
+- no folding F128, producer/prepared, ABI/call, or evidence-gap rows into
+  ordinary RV64 implementation work without first-owner proof
+
+Closure readiness: idea 546 appears complete for executor purposes. The
+coherent current row set is traceable to the refreshed scan, high-frequency
+sub-buckets have first-owner/readiness decisions, F128 rows are routed to
+quarantine, and implementation follow-up recommendations include concrete row
+evidence plus overfit reject signals. Supervisor/plan-owner should decide
+source-idea creation and lifecycle closure.
 
 ## Suggested Next
 
-Current packet: Step 5 (`Produce Follow-Up Routing`). Use
-`build/agent_state/546_step4_instruction_fragment_screening.tsv` as the input.
-Rank only the `87` `implementation_ready_rv64` rows for ordinary RV64/MIR
-object-lowering follow-up and keep the `28` F128 rows, `143`
-producer/prepared rows, `5` ABI/call rows, and `2` evidence-gap rows out of the
-ordinary implementation queue.
+Plan-owner lifecycle packet: close or transition idea 546, and decide whether
+to create/activate a narrow follow-up idea for `30` RV64 integer div/rem
+instruction-fragment rows.
 
 ## Watchouts
 
 - Leave `review/557_step13_vector_local_memory_review.md` untouched.
 - The refreshed coherent current count is `265`, not the source-expected `137`
-  and not the Step 1 mixed-time `179`. Treat `265` as the accepted Step 3
-  scope unless the supervisor asks for another refresh.
-- Do not reuse stale or mixed-time artifacts as classification scope:
-  `build/agent_state/unsupported_instruction_fragment_rows.tsv` (`190` rows
-  from 2026-06-30), `build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv`
-  (2026-07-01, reconstructs `179` rows against current logs), or the Step 1
-  `179`-row mixed-time reconstruction.
-- Do not implement RV64 lowering, edit expectations, or weaken unsupported markers in this classification packet.
-- The Step 4 table is a screening/routing artifact, not an implementation
-  proof. Boundary rows must not become RV64 implementation ideas until focused
-  prepared-BIR evidence proves the prepared facts are complete.
-- The `87` implementation-ready rows are rankable for follow-up, but Step 5
-  still needs to recommend narrow buckets with concrete representative rows and
-  reject testcase-shaped lowering.
+  and not the Step 1 mixed-time `179`.
+- Step 5 wrote draft follow-up payloads into
+  `build/agent_state/546_step5_followup_routing.md` but did not create
+  `ideas/open/` files.
+- Keep screened-out rows out of ordinary RV64 implementation queues unless a
+  later plan proves first-owner authority.
 
 ## Proof
 
 - Evidence-only packet; no CTest proof required.
-- Screening input:
-  `build/agent_state/546_step3_instruction_fragment_classification.tsv`.
-- Screening outputs:
-  `build/agent_state/546_step4_instruction_fragment_screening.tsv` and
-  `build/agent_state/546_step4_instruction_fragment_screening.md`.
+- Routing input:
+  `build/agent_state/546_step4_instruction_fragment_screening.tsv`.
+- Routing outputs:
+  `build/agent_state/546_step5_followup_routing.md` and
+  `build/agent_state/546_step5_followup_routing.tsv`.
 - Validation:
   - `git diff --check -- todo.md`
-  - screening TSV data-row count is `265`
-  - screened-owner and screening-decision totals each sum to `265`
+  - routing TSV route-count sum is `265`
+- No `test_after.log` update was required by this evidence-only packet.
