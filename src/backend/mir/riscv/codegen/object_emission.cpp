@@ -3068,24 +3068,26 @@ std::optional<std::string> diagnose_unsupported_prepared_saved_register_bank(
     return std::nullopt;
   }
   for (const auto& saved : frame_plan->saved_callee_registers) {
-    if (saved.bank != prepare::PreparedRegisterBank::Gpr) {
+    if (saved.bank != prepare::PreparedRegisterBank::Gpr &&
+        saved.bank != prepare::PreparedRegisterBank::Fpr) {
       return "unsupported_stack_frame: RV64 object route does not support "
-             "non-GPR prepared callee-saved register save slots (" +
+             "unsupported prepared callee-saved register save slots (" +
              std::string(prepare::prepared_register_bank_name(saved.bank)) +
              ":" + saved.register_name + ")";
     }
+    const auto expected_bank = saved.bank;
     if (saved.placement.has_value() &&
-        saved.placement->bank != prepare::PreparedRegisterBank::Gpr) {
+        saved.placement->bank != expected_bank) {
       return "unsupported_stack_frame: RV64 object route does not support "
-             "non-GPR prepared callee-saved register placements (" +
+             "mismatched prepared callee-saved register placements (" +
              std::string(
                  prepare::prepared_register_bank_name(saved.placement->bank)) +
              ":" + saved.register_name + ")";
     }
     if (saved.slot_placement.has_value() &&
-        saved.slot_placement->bank != prepare::PreparedRegisterBank::Gpr) {
+        saved.slot_placement->bank != expected_bank) {
       return "unsupported_stack_frame: RV64 object route does not support "
-             "non-GPR prepared callee-saved register save-slot placements (" +
+             "mismatched prepared callee-saved register save-slot placements (" +
              std::string(prepare::prepared_register_bank_name(
                  saved.slot_placement->bank)) +
              ":" + saved.register_name + ")";
@@ -7825,7 +7827,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                         *stack_frame_bytes);
     if (!prologue.has_value()) {
       return make_rv64_prepared_function_rejection(
-          "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved GPR save slots");
+          "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved save slots");
     }
     object_function.fragments.push_back(std::move(*prologue));
   } else if (*stack_frame_bytes > 0) {
@@ -7834,7 +7836,7 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
                                                          *stack_frame_bytes);
     if (!prologue.has_value()) {
       return make_rv64_prepared_function_rejection(
-          "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved GPR save slots");
+          "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved save slots");
     }
     object_function.fragments.push_back(std::move(*prologue));
   }

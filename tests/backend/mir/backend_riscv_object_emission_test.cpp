@@ -2590,6 +2590,36 @@ prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_fpr_callee_saved_frame_module() {
+  auto prepared = make_prepared_scalar_local_frame_module();
+  const auto function_name = prepared.names.function_names.intern("main");
+  prepared.control_flow.functions[0].blocks[0].terminator_kind =
+      bir::TerminatorKind::Return;
+  prepared.addressing.functions[0].frame_size_bytes = 48;
+  prepared.addressing.functions[0].frame_alignment_bytes = 16;
+
+  auto fs1 = make_prepared_fpr_callee_saved_fs1();
+  auto fs2 = make_prepared_fpr_callee_saved_fs1();
+  fs2.register_name = "fs2";
+  fs2.occupied_register_names = {"fs2"};
+  fs2.save_index = 1;
+  fs2.placement->slot_index = 2;
+  fs2.slot_placement->register_name = "fs2";
+  fs2.slot_placement->occupied_register_names = {"fs2"};
+  fs2.slot_placement->save_index = 1;
+  fs2.slot_placement->register_placement = fs2.placement;
+  fs2.slot_placement->slot_id = prepare::PreparedFrameSlotId{12};
+  fs2.slot_placement->stack_offset_bytes = std::size_t{32};
+
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+      .saved_callee_registers = {std::move(fs1), std::move(fs2)},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_large_fixed_stack_frame_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -10766,7 +10796,7 @@ int rejects_prepared_prior_preserved_arg_call_fail_closed_shapes() {
       ->size_bytes = std::size_t{4};
   if (expect_prepared_rejection_diagnostic(
           prepared,
-          "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved GPR save slots") !=
+          "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved save slots") !=
       0) {
     return 1;
   }
@@ -10781,10 +10811,10 @@ int rejects_prepared_prior_preserved_arg_call_fail_closed_shapes() {
   fpr_saved.slot_placement->register_name = "fs1";
   fpr_saved.slot_placement->occupied_register_names = {"fs1"};
   fpr_saved.slot_placement->register_placement = fpr_saved.placement;
+  fpr_saved.slot_placement->size_bytes = std::size_t{4};
   if (expect_prepared_rejection_diagnostic(
           prepared,
-          "unsupported_stack_frame: RV64 object route does not support "
-          "non-GPR prepared callee-saved register save slots (fpr:fs1)") !=
+          "unsupported_stack_frame: RV64 object route requires supported prepared callee-saved save slots") !=
       0) {
     return 1;
   }
@@ -11240,6 +11270,42 @@ int rejects_malformed_prepared_fpr_callee_saved_frame_slot_facts() {
     return fail("expected out-of-frame prepared FPR saved slot to fail closed");
   }
 
+  return 0;
+}
+
+int materializes_prepared_fpr_callee_saved_frame_slots() {
+  const auto prepared = make_prepared_fpr_callee_saved_frame_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared FPR callee-saved frame object to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* function = object::find_symbol(*result.module, "main");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared FPR callee-saved object to publish text/function");
+  }
+  if (text->bytes.size() != 44 || text->size_bytes != 44 ||
+      function->value != 0 || function->size_bytes != 44) {
+    return fail("expected prepared FPR callee-saved object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0xfd010113 ||
+      read_u32(text->bytes, 4) != 0x00913c27 ||
+      read_u32(text->bytes, 8) != 0x03213027 ||
+      read_u32(text->bytes, 12) != 0x00500313 ||
+      read_u32(text->bytes, 16) != 0x00612023 ||
+      read_u32(text->bytes, 20) != 0x00012283 ||
+      read_u32(text->bytes, 24) != 0x00028513 ||
+      read_u32(text->bytes, 28) != 0x02013907 ||
+      read_u32(text->bytes, 32) != 0x01813487 ||
+      read_u32(text->bytes, 36) != 0x03010113 ||
+      read_u32(text->bytes, 40) != 0x00008067) {
+    return fail("expected prepared FPR callee-saved fsd/fld sequence");
+  }
+  if (!result.module->relocations.empty()) {
+    return fail("expected prepared FPR callee-saved object to need no relocations");
+  }
   return 0;
 }
 
@@ -18450,6 +18516,7 @@ int main() {
   status |= rejects_raw_fpr_formal_param_home_without_target_identity();
   status |= records_prepared_fpr_callee_saved_frame_slot_facts();
   status |= rejects_malformed_prepared_fpr_callee_saved_frame_slot_facts();
+  status |= materializes_prepared_fpr_callee_saved_frame_slots();
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_large_fixed_stack_frame_adjustment_object();
   status |= builds_prepared_large_fixed_slot_addressing_object();
