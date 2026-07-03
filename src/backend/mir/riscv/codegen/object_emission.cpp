@@ -1712,6 +1712,18 @@ struct PreparedSelectEdgeSourceProducerFragment {
   std::optional<RiscvEncodedFragment> fragment;
 };
 
+PreparedSelectEdgeSourceProducerFragment
+fragment_for_prepared_block_entry_select_edge_source_producer(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move,
+    std::uint32_t destination_register,
+    std::size_t stack_frame_bytes);
+
 PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_source_producer(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -1799,6 +1811,7 @@ std::optional<RiscvEncodedFragment>
 fragment_for_prepared_out_of_ssa_moves(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedFunctionLookups* lookups,
     std::size_t stack_frame_bytes,
@@ -1943,6 +1956,26 @@ fragment_for_prepared_out_of_ssa_moves(
                                  *destination,
                                  *move.source_immediate_i32);
       continue;
+    }
+    if (phi_join_move) {
+      auto producer_fragment =
+          fragment_for_prepared_block_entry_select_edge_source_producer(
+              stack_layout,
+              names,
+              control_flow,
+              function,
+              lookups,
+              move_bundle,
+              move,
+              *destination,
+              stack_frame_bytes);
+      if (producer_fragment.matched) {
+        if (!producer_fragment.fragment.has_value()) {
+          return std::nullopt;
+        }
+        append_fragment(fragment, std::move(*producer_fragment.fragment));
+        continue;
+      }
     }
     const auto* source_home =
         prepared_value_home_for_id(lookups, move.from_value_id);
@@ -2153,6 +2186,7 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
       return fragment_for_prepared_out_of_ssa_moves(
           stack_layout,
           names,
+          control_flow,
           function,
           lookups,
           stack_frame_bytes,
@@ -5729,9 +5763,16 @@ bool prepared_select_edge_binary_source_has_only_carrier_uses(
         if (!uses_as_value) {
           continue;
         }
+        auto prepared_block_label = block.label_id;
+        if (producer.opcode == c4c::backend::bir::BinaryOpcode::Ne) {
+          const auto label_by_name = names.block_labels.find(block.label);
+          if (label_by_name != c4c::kInvalidBlockLabel) {
+            prepared_block_label = label_by_name;
+          }
+        }
         const auto classification =
             prepare::classify_prepared_object_select_consumer(&control_flow,
-                                                              block.label_id,
+                                                              prepared_block_label,
                                                               inst);
         if (classification.kind !=
                 prepare::PreparedObjectSelectConsumerKind::PreparedJoinTransferCarrier ||
@@ -5815,8 +5856,11 @@ bool prepared_select_edge_binary_source_has_authorized_consumers(
                                                               join_transfer)) {
     return true;
   }
-  return producer.opcode == c4c::backend::bir::BinaryOpcode::Ule &&
-         producer.operand_type == c4c::backend::bir::TypeKind::Ptr &&
+  const bool supported_carrier_alias_compare =
+      producer.result.type == c4c::backend::bir::TypeKind::I32 &&
+      (producer.opcode == c4c::backend::bir::BinaryOpcode::Ule ||
+       producer.opcode == c4c::backend::bir::BinaryOpcode::Ne);
+  return supported_carrier_alias_compare &&
          prepared_select_edge_binary_source_has_carrier_alias_authority(
              function_name, carrier_alias_authorities, publication);
 }
@@ -5851,6 +5895,53 @@ bool prepared_select_edge_source_value_needs_binary_producer(
                       is_emitted);
 }
 
+const c4c::backend::bir::Block* find_prepared_bir_block_by_prepared_label(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function& function,
+    c4c::BlockLabelId block_label) {
+  const auto matches_label = [&](const c4c::backend::bir::Block& block) {
+    if (block.label_id == block_label) {
+      return true;
+    }
+    return names.block_labels.find(block.label) == block_label;
+  };
+  const auto it = std::find_if(function.blocks.begin(),
+                               function.blocks.end(),
+                               matches_label);
+  return it == function.blocks.end() ? nullptr : &*it;
+}
+
+const c4c::backend::bir::BinaryInst* find_prepared_binary_producer_in_block(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::bir::Value& value) {
+  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return nullptr;
+  }
+  for (const auto& inst : block.insts) {
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+    if (binary != nullptr &&
+        prepared_value_names_match(names, value, binary->result)) {
+      return binary;
+    }
+  }
+  return nullptr;
+}
+
+const c4c::backend::prepare::PreparedParallelCopyBundle*
+find_prepared_parallel_copy_bundle_for_edge(
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label) {
+  for (const auto& bundle : control_flow.parallel_copy_bundles) {
+    if (bundle.predecessor_label == predecessor_label &&
+        bundle.successor_label == successor_label) {
+      return &bundle;
+    }
+  }
+  return nullptr;
+}
+
 std::optional<RiscvEncodedFragment>
 fragment_for_prepared_select_edge_source_dependencies(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
@@ -5860,18 +5951,14 @@ fragment_for_prepared_select_edge_source_dependencies(
     c4c::BlockLabelId source_block_label,
     const c4c::backend::bir::BinaryInst& source_binary,
     std::size_t stack_frame_bytes) {
-  const auto block_it = std::find_if(
-      function.blocks.begin(),
-      function.blocks.end(),
-      [&](const c4c::backend::bir::Block& block) {
-        return block.label_id == source_block_label;
-      });
-  if (block_it == function.blocks.end()) {
+  const auto* source_block =
+      find_prepared_bir_block_by_prepared_label(names, function, source_block_label);
+  if (source_block == nullptr) {
     return std::nullopt;
   }
 
   std::vector<const c4c::backend::bir::BinaryInst*> candidate_producers;
-  for (const auto& inst : block_it->insts) {
+  for (const auto& inst : source_block->insts) {
     const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
     if (binary == nullptr) {
       continue;
@@ -5965,6 +6052,140 @@ fragment_for_prepared_select_edge_source_dependencies(
   return fragment;
 }
 
+PreparedSelectEdgeSourceProducerFragment
+fragment_for_prepared_block_entry_select_edge_source_producer(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedFunctionLookups* lookups,
+    const c4c::backend::prepare::PreparedMoveBundle& move_bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move,
+    std::uint32_t destination_register,
+    std::size_t stack_frame_bytes) {
+  if (!move.source_parallel_copy_step_index.has_value()) {
+    return {};
+  }
+  if (!move_bundle.source_parallel_copy_predecessor_label.has_value() ||
+      !move_bundle.source_parallel_copy_successor_label.has_value()) {
+    return {};
+  }
+  const auto* bundle = find_prepared_parallel_copy_bundle_for_edge(
+      control_flow,
+      *move_bundle.source_parallel_copy_predecessor_label,
+      *move_bundle.source_parallel_copy_successor_label);
+  if (bundle == nullptr ||
+      bundle->execution_site !=
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator ||
+      bundle->execution_block_label !=
+          move_bundle.source_parallel_copy_predecessor_label ||
+      bundle->has_cycle ||
+      *move.source_parallel_copy_step_index >= bundle->steps.size()) {
+    return {};
+  }
+
+  const auto& step = bundle->steps.at(*move.source_parallel_copy_step_index);
+  if (step.kind != prepare::PreparedParallelCopyStepKind::Move ||
+      step.uses_cycle_temp_source) {
+    return {};
+  }
+  const auto* parallel_copy_move =
+      prepare::find_prepared_parallel_copy_move_for_step(*bundle, step);
+  if (parallel_copy_move == nullptr ||
+      parallel_copy_move->carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::SelectMaterialization) {
+    return {};
+  }
+  if (parallel_copy_move->join_transfer_index >=
+      control_flow.join_transfers.size()) {
+    return {.matched = true};
+  }
+
+  const auto source_value_id =
+      prepared_value_id_for_named_value(names, lookups, parallel_copy_move->source_value);
+  const auto destination_value_id = prepared_value_id_for_named_value(
+      names,
+      lookups,
+      parallel_copy_move->destination_value);
+  if (source_value_id != std::optional<prepare::PreparedValueId>{move.from_value_id} ||
+      destination_value_id !=
+          std::optional<prepare::PreparedValueId>{move.to_value_id}) {
+    return {.matched = true};
+  }
+
+  const auto& join_transfer =
+      control_flow.join_transfers.at(parallel_copy_move->join_transfer_index);
+  if (!prepared_join_transfer_edge_copies_are_published(control_flow,
+                                                        join_transfer) ||
+      !prepared_bir_values_have_same_name(names,
+                                          parallel_copy_move->destination_value,
+                                          join_transfer.result)) {
+    return {.matched = true};
+  }
+
+  const auto* source_block =
+      find_prepared_bir_block_by_prepared_label(names,
+                                                function,
+                                                join_transfer.join_block_label);
+  if (source_block == nullptr) {
+    return {.matched = true};
+  }
+  const auto* binary =
+      find_prepared_binary_producer_in_block(names,
+                                             *source_block,
+                                             parallel_copy_move->source_value);
+  if (binary == nullptr ||
+      !c4c::backend::bir::is_compare_opcode(binary->opcode) ||
+      binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+      !rv64_select_edge_binary_operand_is_register_or_immediate(names,
+                                                                lookups,
+                                                                binary->lhs) ||
+      !rv64_select_edge_binary_operand_is_register_or_immediate(names,
+                                                                lookups,
+                                                                binary->rhs) ||
+      !prepared_select_edge_binary_source_has_only_carrier_uses(names,
+                                                                control_flow,
+                                                                function,
+                                                                *binary,
+                                                                join_transfer)) {
+    return {.matched = true};
+  }
+
+  const auto* destination_home =
+      prepared_value_home_for_id(lookups, move.to_value_id);
+  const auto destination =
+      destination_home == nullptr
+          ? std::nullopt
+          : gpr_register_number_for_home(*destination_home);
+  if (!destination.has_value() || *destination != destination_register) {
+    return {.matched = true};
+  }
+
+  auto fragment = fragment_for_prepared_select_edge_source_dependencies(
+      stack_layout,
+      names,
+      function,
+      lookups,
+      join_transfer.join_block_label,
+      *binary,
+      stack_frame_bytes);
+  if (!fragment.has_value()) {
+    return {.matched = true};
+  }
+  auto edge_binary = *binary;
+  edge_binary.result = parallel_copy_move->destination_value;
+  auto edge_fragment = fragment_for_prepared_binary(stack_layout,
+                                                    names,
+                                                    lookups,
+                                                    edge_binary,
+                                                    stack_frame_bytes);
+  if (!edge_fragment.has_value()) {
+    return {.matched = true};
+  }
+  append_fragment(*fragment, std::move(*edge_fragment));
+  return {.matched = true, .fragment = std::move(fragment)};
+}
+
 PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_source_producer(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& names,
@@ -5988,21 +6209,41 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
       *move_bundle.source_parallel_copy_predecessor_label,
       *move_bundle.source_parallel_copy_successor_label,
       move.to_value_id);
-  if (intent.status != EdgePublicationMoveIntentStatus::Available ||
-      intent.publication == nullptr ||
-      intent.publication->carrier_kind !=
+  const auto* publication = intent.publication;
+  if (publication == nullptr && lookups != nullptr) {
+    publication = prepare::find_unique_indexed_prepared_edge_publication(
+        &lookups->edge_publications,
+        *move_bundle.source_parallel_copy_predecessor_label,
+        *move_bundle.source_parallel_copy_successor_label,
+        move.to_value_id);
+  }
+  if (publication == nullptr) {
+    return fragment_for_prepared_block_entry_select_edge_source_producer(
+        stack_layout,
+        names,
+        control_flow,
+        function,
+        lookups,
+        move_bundle,
+        move,
+        destination_register,
+        stack_frame_bytes);
+  }
+  if (publication == nullptr ||
+      publication->status != prepare::PreparedEdgePublicationLookupStatus::Available ||
+      publication->carrier_kind !=
           prepare::PreparedJoinTransferCarrierKind::SelectMaterialization ||
-      intent.publication->source_value_id != move.from_value_id ||
-      intent.publication->source_producer_kind !=
+      publication->source_value_id != move.from_value_id ||
+      publication->source_producer_kind !=
           prepare::PreparedEdgePublicationSourceProducerKind::Binary) {
     return {};
   }
-  const auto* join_transfer = intent.publication->join_transfer;
-  const auto* binary = intent.publication->source_binary;
+  const auto* join_transfer = publication->join_transfer;
+  const auto* binary = publication->source_binary;
   if (join_transfer == nullptr || binary == nullptr ||
       !prepared_join_transfer_edge_copies_are_published(control_flow,
                                                         *join_transfer) ||
-      intent.publication->source_producer_block_label !=
+      publication->source_producer_block_label !=
           join_transfer->join_block_label) {
     return {.matched = true};
   }
@@ -6013,7 +6254,7 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
           lookups,
           control_flow.function_name,
           dependency_operand_authorities,
-          *intent.publication,
+          *publication,
           prepare::PreparedDependencyOperandRole::Lhs,
           binary->lhs) ||
       !rv64_select_edge_binary_operand_is_register_immediate_or_cast_authorized(
@@ -6021,7 +6262,7 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
           lookups,
           control_flow.function_name,
           dependency_operand_authorities,
-          *intent.publication,
+          *publication,
           prepare::PreparedDependencyOperandRole::Rhs,
           binary->rhs) ||
       !prepared_select_edge_binary_source_has_authorized_consumers(
@@ -6031,7 +6272,7 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
           control_flow.function_name,
           carrier_alias_authorities,
           *binary,
-          *intent.publication,
+          *publication,
           *join_transfer)) {
     return {.matched = true};
   }
@@ -6040,19 +6281,19 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
       destination_home == nullptr ? std::nullopt : gpr_register_number_for_home(*destination_home);
   if (!destination.has_value() || *destination != destination_register ||
       !prepared_bir_values_have_same_name(names,
-                                          intent.publication->destination_value,
+                                          publication->destination_value,
                                           join_transfer->result)) {
     return {.matched = true};
   }
 
   auto edge_binary = *binary;
-  edge_binary.result = intent.publication->destination_value;
+  edge_binary.result = publication->destination_value;
   auto fragment = fragment_for_prepared_select_edge_source_dependencies(
       stack_layout,
       names,
       function,
       lookups,
-      *intent.publication->source_producer_block_label,
+      *publication->source_producer_block_label,
       *binary,
       stack_frame_bytes);
   if (!fragment.has_value()) {
@@ -6065,7 +6306,7 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
           lookups,
           control_flow.function_name,
           dependency_operand_authorities,
-          *intent.publication,
+          *publication,
           edge_binary,
           destination_register,
           stack_frame_bytes);
@@ -6074,7 +6315,7 @@ PreparedSelectEdgeSourceProducerFragment fragment_for_prepared_select_edge_sourc
             names,
             control_flow.function_name,
             dependency_operand_authorities,
-            *intent.publication,
+            *publication,
             edge_binary)) {
       return {.matched = true};
     }

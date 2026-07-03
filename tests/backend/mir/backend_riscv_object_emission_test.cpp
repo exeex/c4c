@@ -7898,6 +7898,59 @@ make_prepared_join_transfer_select_with_carrier_alias_ule_source_module() {
 }
 
 prepare::PreparedBirModule
+make_prepared_join_transfer_select_with_carrier_alias_ne_source_module() {
+  auto prepared =
+      make_prepared_join_transfer_select_with_carrier_alias_ule_source_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto fallback_name = prepared.names.value_names.find("%fallback");
+  const auto cmp_name = prepared.names.value_names.find("%rhs.cmp");
+
+  auto& join = prepared.module.functions.front().blocks.at(3);
+  auto* compare = std::get_if<bir::BinaryInst>(&join.insts.front());
+  if (compare == nullptr) {
+    return prepared;
+  }
+  compare->opcode = bir::BinaryOpcode::Ne;
+  compare->operand_type = bir::TypeKind::I64;
+  compare->lhs = bir::Value::named(bir::TypeKind::I64, "%fallback");
+  compare->rhs = bir::Value::immediate_i64(1);
+
+  auto& locations = prepared.value_locations.functions.front();
+  for (auto& home : locations.value_homes) {
+    if (home.value_name == fallback_name || home.value_name == cmp_name) {
+      home = rv64_gpr_home(home.value_id, function_name, home.value_name, "a1", 11);
+    }
+  }
+  return prepared;
+}
+
+prepare::PreparedBirModule
+make_prepared_join_transfer_select_with_only_carrier_use_ne_source_module() {
+  auto prepared = make_prepared_join_transfer_select_with_edge_compare_source_module();
+  const auto function_name = prepared.names.function_names.find("main");
+  const auto fallback_name = prepared.names.value_names.find("%fallback");
+  const auto cmp_name = prepared.names.value_names.find("%rhs.cmp");
+
+  auto& join = prepared.module.functions.front().blocks.at(3);
+  auto* compare = std::get_if<bir::BinaryInst>(&join.insts.front());
+  if (compare == nullptr) {
+    return prepared;
+  }
+  compare->opcode = bir::BinaryOpcode::Ne;
+  compare->operand_type = bir::TypeKind::I64;
+  compare->lhs = bir::Value::named(bir::TypeKind::I64, "%fallback");
+  compare->rhs = bir::Value::immediate_i64(1);
+
+  auto& locations = prepared.value_locations.functions.front();
+  for (auto& home : locations.value_homes) {
+    if (home.value_name == fallback_name || home.value_name == cmp_name) {
+      home = rv64_gpr_home(home.value_id, function_name, home.value_name, "a1", 11);
+    }
+  }
+  return prepared;
+}
+
+prepare::PreparedBirModule
 make_prepared_join_transfer_select_with_suppressed_edge_compare_setup_module() {
   auto prepared =
       make_prepared_join_transfer_select_with_cast_dependency_edge_compare_source_module();
@@ -16015,6 +16068,152 @@ int materializes_carrier_authorized_prepared_join_transfer_select_ule_source_obj
   return 0;
 }
 
+int materializes_carrier_alias_prepared_join_transfer_select_ne_source_object() {
+  const auto prepared =
+      make_prepared_join_transfer_select_with_carrier_alias_ne_source_module();
+  const auto carrier_aliases =
+      prepare::collect_prepared_select_carrier_alias_authorities(prepared);
+  if (carrier_aliases.records.empty()) {
+    return fail("expected NE carrier-alias fixture to publish alias authority");
+  }
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail(
+        "expected carrier-authorized NE source prepared join-transfer select RV64 object module to build: " +
+        result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* false_copy_label = object::find_symbol(*module, ".Lmain_pred_false");
+  const auto* join_label = object::find_symbol(*module, ".Lmain_join");
+  const auto* alias0_label =
+      object::find_symbol(*module, ".Lmain_join_select_1_true");
+  if (text == nullptr || false_copy_label == nullptr || join_label == nullptr ||
+      join_label->value <= false_copy_label->value) {
+    return fail("expected carrier-authorized NE object labels");
+  }
+  if (alias0_label != nullptr) {
+    return fail("expected authorized carrier aliases to avoid raw select materialization");
+  }
+
+  bool saw_raw_operand_copy = false;
+  bool saw_operand_to_scratch = false;
+  bool saw_one_to_scratch = false;
+  bool saw_compare_against_one = false;
+  bool saw_booleanize_compare = false;
+  for (std::size_t offset = false_copy_label->value;
+       offset + 4 <= text->bytes.size() && offset < join_label->value;
+       offset += 4) {
+    const auto instruction = read_u32(text->bytes, offset);
+    const auto opcode = instruction & 0x7fU;
+    const auto rd = (instruction >> 7) & 0x1fU;
+    const auto funct3 = (instruction >> 12) & 0x7U;
+    const auto rs1 = (instruction >> 15) & 0x1fU;
+    const auto rs2 = (instruction >> 20) & 0x1fU;
+    const auto imm = (instruction >> 20) & 0xfffU;
+
+    if (opcode == 0x13U && rd == 10 && funct3 == 0 && rs1 == 11 && imm == 0) {
+      saw_raw_operand_copy = true;
+    }
+    if (opcode == 0x13U && rd == 28 && funct3 == 0 && rs1 == 11 && imm == 0) {
+      saw_operand_to_scratch = true;
+    }
+    if (opcode == 0x13U && rd == 29 && funct3 == 0 && rs1 == 0 && imm == 1) {
+      saw_one_to_scratch = true;
+    }
+    if ((opcode == 0x13U && rd == 10 && funct3 == 4 && rs1 == 11 &&
+         imm == 1) ||
+        (opcode == 0x33U && rd == 10 && funct3 == 4 &&
+         ((rs1 == 11 && rs2 != 11) ||
+          (rs2 == 11 && rs1 != 11) ||
+          (rs1 == 28 && rs2 == 29)))) {
+      saw_compare_against_one = true;
+    }
+    if (opcode == 0x33U && rd == 10 && funct3 == 3 && rs1 == 0 &&
+        rs2 == 10) {
+      saw_booleanize_compare = true;
+    }
+  }
+  if (saw_raw_operand_copy) {
+    return fail("expected carrier-alias NE edge to publish compare result, not raw operand register");
+  }
+  if ((!saw_compare_against_one &&
+       !(saw_operand_to_scratch && saw_one_to_scratch)) ||
+      !saw_booleanize_compare) {
+    return fail("expected carrier-alias NE edge to materialize b != 1 into select result");
+  }
+  return 0;
+}
+
+int materializes_only_carrier_use_prepared_join_transfer_select_ne_source_object() {
+  const auto prepared =
+      make_prepared_join_transfer_select_with_only_carrier_use_ne_source_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  const auto& module = result.module;
+  if (!module.has_value()) {
+    return fail(
+        "expected only-carrier-use NE source prepared join-transfer select RV64 object module to build: " +
+        result.diagnostic);
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* false_copy_label = object::find_symbol(*module, ".Lmain_pred_false");
+  const auto* join_label = object::find_symbol(*module, ".Lmain_join");
+  if (text == nullptr || false_copy_label == nullptr || join_label == nullptr ||
+      join_label->value <= false_copy_label->value) {
+    return fail("expected only-carrier-use NE object labels");
+  }
+
+  bool saw_raw_operand_copy = false;
+  bool saw_operand_to_scratch = false;
+  bool saw_one_to_scratch = false;
+  bool saw_compare_against_one = false;
+  bool saw_booleanize_compare = false;
+  for (std::size_t offset = false_copy_label->value;
+       offset + 4 <= text->bytes.size() && offset < join_label->value;
+       offset += 4) {
+    const auto instruction = read_u32(text->bytes, offset);
+    const auto opcode = instruction & 0x7fU;
+    const auto rd = (instruction >> 7) & 0x1fU;
+    const auto funct3 = (instruction >> 12) & 0x7U;
+    const auto rs1 = (instruction >> 15) & 0x1fU;
+    const auto rs2 = (instruction >> 20) & 0x1fU;
+    const auto imm = (instruction >> 20) & 0xfffU;
+
+    if (opcode == 0x13U && rd == 10 && funct3 == 0 && rs1 == 11 && imm == 0) {
+      saw_raw_operand_copy = true;
+    }
+    if (opcode == 0x13U && rd == 28 && funct3 == 0 && rs1 == 11 && imm == 0) {
+      saw_operand_to_scratch = true;
+    }
+    if (opcode == 0x13U && rd == 29 && funct3 == 0 && rs1 == 0 && imm == 1) {
+      saw_one_to_scratch = true;
+    }
+    if ((opcode == 0x13U && rd == 10 && funct3 == 4 && rs1 == 11 &&
+         imm == 1) ||
+        (opcode == 0x33U && rd == 10 && funct3 == 4 &&
+         ((rs1 == 11 && rs2 != 11) ||
+          (rs2 == 11 && rs1 != 11) ||
+          (rs1 == 28 && rs2 == 29)))) {
+      saw_compare_against_one = true;
+    }
+    if (opcode == 0x33U && rd == 10 && funct3 == 3 && rs1 == 0 &&
+        rs2 == 10) {
+      saw_booleanize_compare = true;
+    }
+  }
+  if (saw_raw_operand_copy) {
+    return fail("expected only-carrier-use NE edge to publish compare result, not raw operand register");
+  }
+  if ((!saw_compare_against_one &&
+       !(saw_operand_to_scratch && saw_one_to_scratch)) ||
+      !saw_booleanize_compare) {
+    return fail("expected only-carrier-use NE edge to materialize b != 1 into select result");
+  }
+  return 0;
+}
+
 int suppresses_authorized_prepared_select_edge_source_producer_setup_object() {
   const auto prepared =
       make_prepared_join_transfer_select_with_suppressed_edge_compare_setup_module();
@@ -20746,6 +20945,10 @@ int main() {
       materializes_published_prepared_join_transfer_select_cast_dependency_source_object();
   status |=
       materializes_carrier_authorized_prepared_join_transfer_select_ule_source_object();
+  status |=
+      materializes_carrier_alias_prepared_join_transfer_select_ne_source_object();
+  status |=
+      materializes_only_carrier_use_prepared_join_transfer_select_ne_source_object();
   status |=
       suppresses_authorized_prepared_select_edge_source_producer_setup_object();
   status |= rejects_prepared_join_transfer_select_cast_dependency_fail_closed_shapes();
