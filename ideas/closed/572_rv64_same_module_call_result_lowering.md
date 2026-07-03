@@ -1,6 +1,6 @@
 # RV64 Same-Module Call Result Lowering
 
-Status: Open
+Status: Closed
 Type: Capability repair
 Parent: `ideas/open/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md`
 Owning Layer: RV64 object lowering for ordinary call instructions and results
@@ -60,6 +60,25 @@ Evidence:
 - Unsupported call forms continue to fail closed with useful diagnostics.
 - No inline asm, select, FP binary, or pointer arithmetic work is mixed into
   the same acceptance slice.
+
+## Closure Notes
+
+Closed after the call-specific diagnostic follow-up resolved the previous
+close blocker. Focused backend coverage now keeps unsupported ordinary
+same-module call ABI/result shapes on `unsupported_call_abi` instead of the
+generic `unsupported_instruction_fragment` fallback.
+
+Step 5 representative evidence:
+
+- `src/20000412-2.c`: lowered and runtime-matched.
+- `src/20000622-1.c`: advanced past the old ordinary `CallInst` fallback and
+  is now tracked separately as
+  `ideas/open/577_rv64_20000622_1_runtime_abort_after_call_lowering.md`.
+
+Close-time regression guard used existing backend CTest logs:
+`test_before.log` and `test_after.log`, both 346/346 passed, with
+non-decreasing comparison accepted because the backend bucket count was
+unchanged.
 
 ## Reviewer Reject Signals
 
