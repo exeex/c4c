@@ -1,6 +1,6 @@
 # RV64 20000622-1 Foo Logical Select Runtime Abort
 
-Status: Open
+Status: Closed
 Type: Capability repair
 Parent: `ideas/closed/577_rv64_20000622_1_runtime_abort_after_call_lowering.md`
 Related: `ideas/open/573_rv64_select_phi_select_lowering.md`
@@ -72,6 +72,16 @@ binary and immediate sources feeding those select results.
   select publication.
 - Existing 572 same-module call/result coverage and the 577 `baz` ptrtoint
   materialization behavior remain intact.
+
+## Closure Notes
+
+- Closed after commits `49b0763d2` and `da6bfe9f4`.
+- Focused coverage now covers carrier-alias and only-carrier-use NE
+  select-publication shapes in `backend_riscv_object_emission`.
+- The RV64 object-route representative for `src/20000622-1.c` now passes under
+  qemu instead of aborting through stale logical/select publication in `foo`.
+- Adjacent guards for RV64 object emission, prepared edge publication, and
+  frame-stack call contracts passed with the Step 5 selected subset.
 
 ## Reviewer Reject Signals
 
