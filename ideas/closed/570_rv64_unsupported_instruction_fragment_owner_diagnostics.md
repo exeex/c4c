@@ -1,9 +1,21 @@
 # RV64 Unsupported Instruction Fragment Owner Diagnostics
 
-Status: Open
+Status: Closed
 Type: Evidence-enabling diagnostic improvement
 Parent: `ideas/closed/549_rv64_runtime_and_no_diagnostic_triage.md`
 Owning Layer: RV64 object-route diagnostics
+
+## Closure Notes
+
+Closed after the active diagnostic runbook completed all five steps. The
+generic `unsupported_instruction_fragment` fallback now emits first-owner
+context, the nine retained RV64 representatives have refreshed evidence under
+`build/agent_state/570_unsupported_instruction_fragment_diagnostics/`, and the
+resulting owner families were split into follow-up ideas 571-575 under
+`ideas/open/`.
+
+No testcase is claimed fixed by this diagnostic plan. The retained object-route
+failures remain unsupported lowering evidence for the follow-up ideas.
 
 ## Goal
 
