@@ -1044,6 +1044,8 @@ std::optional<std::uint32_t> rv64_unoccupied_temporary_gpr(
 std::optional<std::size_t> rv64_scalar_memory_size_for_type(
     c4c::backend::bir::TypeKind type);
 
+bool rv64_fixed_integer_type(c4c::backend::bir::TypeKind type);
+
 bool rv64_floating_type(c4c::backend::bir::TypeKind type);
 
 std::optional<std::size_t> rv64_formal_entry_home_store_size(
@@ -2210,7 +2212,9 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_move_bundle(
     if (move.destination_storage_kind ==
         prepare::PreparedMoveStorageKind::StackSlot) {
       if (move_bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
-          move_bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+          (move_bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None &&
+           move_bundle.authority_kind !=
+               prepare::PreparedMoveAuthorityKind::StackSlotWideningConversion) ||
           move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
           (move.reason != "consumer_register_to_stack" &&
            move.reason != "consumer_stack_to_stack") ||
@@ -2487,8 +2491,6 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
     const c4c::backend::prepare::PreparedValueHome& destination_home) {
   if (parallel_copy_bundle != nullptr ||
       move_bundle.phase != prepare::PreparedMovePhase::BeforeInstruction ||
-      move_bundle.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
-      move.authority_kind != prepare::PreparedMoveAuthorityKind::None ||
       move.reason != "consumer_stack_to_stack" ||
       move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
       move.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
@@ -2504,6 +2506,17 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
       move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
       source_home.kind != prepare::PreparedValueHomeKind::StackSlot ||
       destination_home.kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+  const bool explicit_widening_authority =
+      move_bundle.authority_kind ==
+          prepare::PreparedMoveAuthorityKind::StackSlotWideningConversion &&
+      move.authority_kind ==
+          prepare::PreparedMoveAuthorityKind::StackSlotWideningConversion;
+  const bool plain_stack_copy_authority =
+      move_bundle.authority_kind == prepare::PreparedMoveAuthorityKind::None &&
+      move.authority_kind == prepare::PreparedMoveAuthorityKind::None;
+  if (!explicit_widening_authority && !plain_stack_copy_authority) {
     return std::nullopt;
   }
   if (!prepared_storage_plan_endpoint_is_coherent_gpr_frame_slot(
@@ -2545,8 +2558,18 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
           : prepared_stack_slot_home_size_bytes(stack_layout, source_home);
   const auto destination_size_bytes =
       rv64_scalar_memory_size_for_type(*destination_type);
-  if (!source_size_bytes.has_value() || !destination_size_bytes.has_value() ||
-      *source_size_bytes < *destination_size_bytes) {
+  if (!source_size_bytes.has_value() || !destination_size_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const bool widening_stack_conversion =
+      explicit_widening_authority &&
+      source_type.has_value() &&
+      rv64_fixed_integer_type(*source_type) &&
+      rv64_fixed_integer_type(*destination_type) &&
+      *source_size_bytes < *destination_size_bytes;
+  if (!widening_stack_conversion &&
+      (!plain_stack_copy_authority ||
+       *source_size_bytes < *destination_size_bytes)) {
     return std::nullopt;
   }
   const auto source_stack_offset = prepared_stack_slot_home_absolute_offset(
@@ -2563,7 +2586,9 @@ fragment_for_prepared_stack_slot_to_stack_slot_move(
   if (!append_rv64_load_stack_offset_to_register(fragment,
                                                 *scratch,
                                                 *source_stack_offset,
-                                                *destination_size_bytes) ||
+                                                widening_stack_conversion
+                                                    ? *source_size_bytes
+                                                    : *destination_size_bytes) ||
       !append_rv64_store_register_to_stack_offset(fragment,
                                                  *scratch,
                                                  *destination_stack_offset,

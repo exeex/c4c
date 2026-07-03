@@ -5395,8 +5395,6 @@ make_prepared_before_instruction_stack_widening_move_bundle_module(
       std::get<bir::StoreLocalInst>(function.blocks[0].insts[0]);
   auto& load =
       std::get<bir::LoadLocalInst>(function.blocks[0].insts[1]);
-  auto& sum =
-      std::get<bir::BinaryInst>(function.blocks[0].insts[2]);
   local_slot.type = source_type;
   local_slot.size_bytes = source_size_bytes;
   local_slot.align_bytes = source_size_bytes;
@@ -5406,9 +5404,11 @@ make_prepared_before_instruction_stack_widening_move_bundle_module(
   store.align_bytes = source_size_bytes;
   load.result = bir::Value::named(source_type, "%loaded");
   load.align_bytes = source_size_bytes;
-  sum.operand_type = bir::TypeKind::I32;
-  sum.lhs = bir::Value::named(bir::TypeKind::I32, "%loaded");
-  sum.result = bir::Value::named(bir::TypeKind::I32, "%sum");
+  function.blocks[0].insts[2] = bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+      .operand = bir::Value::named(source_type, "%loaded"),
+  };
 
   auto& locations = prepared.value_locations.functions[0];
   locations.value_homes[0].size_bytes = source_size_bytes;
@@ -12237,13 +12237,10 @@ int builds_prepared_mixed_stack_destination_move_bundle_object() {
   return 0;
 }
 
-int rejects_explicit_prepared_stack_widening_authority_until_rv64_consumes_it() {
-  constexpr const char* diagnostic =
-      "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
-
-  const auto expect_rejected_width = [&](bir::TypeKind source_type,
-                                         std::size_t source_size_bytes,
-                                         const char* source_type_name) {
+int builds_explicit_prepared_stack_widening_authority_move_bundle_object() {
+  const auto expect_materialized_width = [&](bir::TypeKind source_type,
+                                             std::size_t source_size_bytes,
+                                             std::uint32_t expected_load_word) {
     const auto prepared =
         make_prepared_before_instruction_stack_widening_move_bundle_module(
             source_type, source_size_bytes);
@@ -12258,40 +12255,69 @@ int rejects_explicit_prepared_stack_widening_authority_until_rv64_consumes_it() 
       return fail("prepared stack widening fixture did not publish explicit stack-slot widening authority");
     }
 
-    const auto result =
-        rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
-    if (result.ok() || result.module.has_value()) {
-      return fail("explicit prepared stack widening authority should remain fail-closed until RV64 consumes it");
-    }
-    if (result.prepared_consumer_category.has_value() ||
-        result.diagnostic.find(diagnostic) != 0 ||
-        result.diagnostic.find("authority=stack_slot_widening_conversion") ==
-            std::string::npos ||
-        result.diagnostic.find("move[0].reason=consumer_stack_to_stack") ==
-            std::string::npos ||
-        result.diagnostic.find("move[0].source_home_kind=stack_slot") ==
-            std::string::npos ||
-        result.diagnostic.find("move[0].destination_home_kind=stack_slot") ==
-            std::string::npos ||
-        result.diagnostic.find(std::string("move[0].source_type=") +
-                               source_type_name) == std::string::npos ||
-        result.diagnostic.find("move[0].destination_type=i32") ==
-            std::string::npos ||
-        result.diagnostic.find(
-            "unsupported_prepared_move_bundle_classification") !=
-            std::string::npos) {
-      return fail("explicit stack widening authority should be visible before RV64 rejection, got `" +
+    const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+    if (!module.has_value()) {
+      const auto result =
+          rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+      return fail("expected explicit prepared stack widening authority to build, got `" +
                   result.diagnostic + "`");
+    }
+    const auto* text = object::find_section(*module, ".text");
+    const auto* function = object::find_symbol(*module, "main");
+    if (text == nullptr || function == nullptr) {
+      return fail("expected prepared stack widening move object to publish text/main");
+    }
+    if (!contains_adjacent_u32_pair(text->bytes,
+                                    expected_load_word,
+                                    0x00612423)) {
+      return fail("expected prepared stack widening move to load narrow source and store i32 destination");
+    }
+    if (!module->relocations.empty()) {
+      return fail("expected prepared stack widening move object to need no relocations");
     }
     return 0;
   };
 
   if (const int status =
-          expect_rejected_width(bir::TypeKind::I8, 1, "i8");
+          expect_materialized_width(bir::TypeKind::I8, 1, 0x00410303);
       status != 0) {
     return status;
   }
-  return expect_rejected_width(bir::TypeKind::I16, 2, "i16");
+  return expect_materialized_width(bir::TypeKind::I16, 2, 0x00411303);
+}
+
+int rejects_non_integer_prepared_stack_widening_authority_shapes() {
+  auto prepared =
+      make_prepared_before_instruction_stack_widening_move_bundle_module(
+          bir::TypeKind::I8, 1);
+  auto* cast = std::get_if<bir::CastInst>(
+      &prepared.module.functions[0].blocks[0].insts[2]);
+  if (cast == nullptr) {
+    return fail("expected stack widening fixture to publish cast result");
+  }
+  cast->result = bir::Value::named(bir::TypeKind::F32, "%sum");
+
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (result.ok() || result.module.has_value()) {
+    return fail("non-integer explicit stack widening authority should reject");
+  }
+  if (result.prepared_consumer_category.has_value() ||
+      result.diagnostic.find(
+          "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves") !=
+          0 ||
+      result.diagnostic.find("authority=stack_slot_widening_conversion") ==
+          std::string::npos ||
+      result.diagnostic.find("move[0].source_type=i8") == std::string::npos ||
+      result.diagnostic.find("move[0].destination_type=float") ==
+          std::string::npos ||
+      result.diagnostic.find(
+          "unsupported_prepared_move_bundle_classification") !=
+          std::string::npos) {
+    return fail("non-integer explicit stack widening authority should remain RV64 fail-closed, got `" +
+                result.diagnostic + "`");
+  }
+  return 0;
 }
 
 int rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes() {
@@ -18209,7 +18235,8 @@ int main() {
   status |= builds_prepared_stack_to_stack_before_instruction_move_bundle_object();
   status |= builds_prepared_mixed_stack_destination_move_bundle_object();
   status |=
-      rejects_explicit_prepared_stack_widening_authority_until_rv64_consumes_it();
+      builds_explicit_prepared_stack_widening_authority_move_bundle_object();
+  status |= rejects_non_integer_prepared_stack_widening_authority_shapes();
   status |= rejects_prepared_stack_to_stack_move_bundle_fail_closed_shapes();
   status |= rejects_prepared_stack_slot_to_gpr_move_bundle_fail_closed_shapes();
   status |= builds_prepared_out_of_ssa_phi_join_register_move_object();
