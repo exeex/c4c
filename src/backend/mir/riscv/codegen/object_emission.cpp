@@ -26,6 +26,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -7989,6 +7990,95 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
   return std::nullopt;
 }
 
+std::string rv64_prepared_instruction_kind_name(const bir::Inst& inst) {
+  if (std::holds_alternative<bir::BinaryInst>(inst)) {
+    return "BinaryInst";
+  }
+  if (std::holds_alternative<bir::SelectInst>(inst)) {
+    return "SelectInst";
+  }
+  if (std::holds_alternative<bir::CastInst>(inst)) {
+    return "CastInst";
+  }
+  if (std::holds_alternative<bir::PhiInst>(inst)) {
+    return "PhiInst";
+  }
+  if (std::holds_alternative<bir::CallInst>(inst)) {
+    return "CallInst";
+  }
+  if (std::holds_alternative<bir::LoadLocalInst>(inst)) {
+    return "LoadLocalInst";
+  }
+  if (std::holds_alternative<bir::LoadGlobalInst>(inst)) {
+    return "LoadGlobalInst";
+  }
+  if (std::holds_alternative<bir::StoreGlobalInst>(inst)) {
+    return "StoreGlobalInst";
+  }
+  if (std::holds_alternative<bir::StoreLocalInst>(inst)) {
+    return "StoreLocalInst";
+  }
+  return "UnknownInst";
+}
+
+std::optional<bir::Value> rv64_prepared_instruction_owner_value(
+    const bir::Inst& inst) {
+  return std::visit(
+      [](const auto& concrete) -> std::optional<bir::Value> {
+        using T = std::decay_t<decltype(concrete)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst> ||
+                      std::is_same_v<T, bir::SelectInst> ||
+                      std::is_same_v<T, bir::CastInst> ||
+                      std::is_same_v<T, bir::PhiInst> ||
+                      std::is_same_v<T, bir::LoadLocalInst> ||
+                      std::is_same_v<T, bir::LoadGlobalInst>) {
+          return concrete.result;
+        } else if constexpr (std::is_same_v<T, bir::CallInst>) {
+          return concrete.result;
+        } else if constexpr (std::is_same_v<T, bir::StoreGlobalInst> ||
+                             std::is_same_v<T, bir::StoreLocalInst>) {
+          return concrete.value;
+        } else {
+          return std::nullopt;
+        }
+      },
+      inst);
+}
+
+std::string rv64_prepared_instruction_owner_context(
+    const bir::Inst& inst) {
+  const auto owner = rv64_prepared_instruction_owner_value(inst);
+  if (!owner.has_value()) {
+    return "none";
+  }
+  std::string context = bir::render_type(owner->type);
+  if (owner->kind == bir::Value::Kind::Named && !owner->name.empty()) {
+    context += " ";
+    context += owner->name;
+  } else if (owner->kind == bir::Value::Kind::Immediate) {
+    context += " immediate";
+  }
+  return context;
+}
+
+std::string unsupported_prepared_instruction_fragment_diagnostic(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::FunctionNameId function_name,
+    c4c::BlockLabelId prepared_block_label,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const bir::Inst& inst) {
+  std::ostringstream out;
+  out << "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering"
+      << "; function=" << rv64_prepared_function_name(names, function_name)
+      << "; block=" << rv64_prepared_block_label(names, prepared_block_label)
+      << "; block_index=" << block_index
+      << "; instruction_index=" << instruction_index
+      << "; instruction_kind=" << rv64_prepared_instruction_kind_name(inst)
+      << "; owner=" << rv64_prepared_instruction_owner_context(inst);
+  return out.str();
+}
+
 RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow) {
@@ -8342,7 +8432,13 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
               return make_rv64_prepared_function_rejection(std::move(*diagnostic));
             }
             return make_rv64_prepared_function_rejection(
-                "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+                unsupported_prepared_instruction_fragment_diagnostic(
+                    prepared.names,
+                    control_flow.function_name,
+                    prepared_block_label,
+                    event.block_index,
+                    event.instruction_index,
+                    *event.instruction));
           }
           object_function.fragments.push_back(std::move(*fragment));
           break;
@@ -8435,7 +8531,13 @@ RiscvPreparedObjectFunctionResult prepared_function_to_object_function(
           return make_rv64_prepared_function_rejection(std::move(*diagnostic));
         }
         return make_rv64_prepared_function_rejection(
-            "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
+            unsupported_prepared_instruction_fragment_diagnostic(
+                prepared.names,
+                control_flow.function_name,
+                prepared_block_label,
+                block_index,
+                instruction_index,
+                block.insts[instruction_index]));
       }
       object_function.fragments.push_back(std::move(*fragment));
     }

@@ -240,13 +240,16 @@ int fail(const std::string& message) {
 
 constexpr const char* kGenericPreparedMoveBundleDiagnostic =
     "unsupported_move_bundle_target_shape: prepared move bundle requires unsupported RV64 moves";
+constexpr const char* kGenericUnsupportedInstructionFragmentDiagnostic =
+    "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering";
 
 bool prepared_rejection_diagnostic_matches(const std::string& actual,
                                            const std::string& expected) {
   if (actual == expected) {
     return true;
   }
-  return expected == kGenericPreparedMoveBundleDiagnostic &&
+  return (expected == kGenericPreparedMoveBundleDiagnostic ||
+          expected == kGenericUnsupportedInstructionFragmentDiagnostic) &&
          actual.rfind(expected, 0) == 0;
 }
 
@@ -10163,6 +10166,23 @@ int rejects_prepared_rematerialized_return_without_typed_immediate_fact() {
       "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering");
 }
 
+int reports_generic_fallback_context_for_prepared_rematerialized_instruction() {
+  auto prepared = make_prepared_rematerialized_return_module();
+  prepared.value_locations.functions.front().value_homes.erase(
+      prepared.value_locations.functions.front().value_homes.begin());
+  return expect_prepared_rejection_diagnostic_contains(
+      prepared,
+      {
+          "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering",
+          "function=main",
+          "block=<none>",
+          "block_index=0",
+          "instruction_index=0",
+          "instruction_kind=BinaryInst",
+          "owner=i32 %t0",
+      });
+}
+
 int builds_prepared_scalar_same_module_call_object() {
   const auto prepared = make_prepared_scalar_same_module_call_module();
   const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
@@ -10953,8 +10973,9 @@ int rejects_malformed_variadic_va_end_direct_extern_shapes() {
   if (mismatched_callee.ok() || mismatched_callee.module.has_value()) {
     return fail("expected mismatched prepared va_end callee plan to reject");
   }
-  if (mismatched_callee.diagnostic !=
-      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") {
+  if (!prepared_rejection_diagnostic_matches(
+          mismatched_callee.diagnostic,
+          kGenericUnsupportedInstructionFragmentDiagnostic)) {
     return fail("expected mismatched va_end plan to fail closed before call relocation");
   }
 
@@ -10964,8 +10985,9 @@ int rejects_malformed_variadic_va_end_direct_extern_shapes() {
   if (multiple_args.ok() || multiple_args.module.has_value()) {
     return fail("expected malformed two-argument va_end call to reject");
   }
-  if (multiple_args.diagnostic !=
-      "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering") {
+  if (!prepared_rejection_diagnostic_matches(
+          multiple_args.diagnostic,
+          kGenericUnsupportedInstructionFragmentDiagnostic)) {
     return fail("expected malformed va_end arity to fail closed before call relocation");
   }
   return 0;
@@ -14041,6 +14063,27 @@ int rejects_prepared_scalar_ashr_invalid_immediate_object() {
     return 1;
   }
   return 0;
+}
+
+int reports_generic_fallback_context_for_prepared_traversal_instruction() {
+  auto prepared = make_prepared_scalar_ashr_module(bir::TypeKind::I32, true);
+  auto* shift = std::get_if<bir::BinaryInst>(
+      &prepared.module.functions.front().blocks.front().insts.front());
+  if (shift == nullptr) {
+    return fail("expected prepared scalar ashr fixture to contain a binary instruction");
+  }
+  shift->rhs = bir::Value::immediate_i32(32);
+  return expect_prepared_rejection_diagnostic_contains(
+      prepared,
+      {
+          "unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering",
+          "function=main",
+          "block=entry",
+          "block_index=0",
+          "instruction_index=0",
+          "instruction_kind=BinaryInst",
+          "owner=i32 %result",
+      });
 }
 
 int builds_prepared_scalar_divrem_object() {
@@ -19116,6 +19159,8 @@ int main() {
   status |= builds_prepared_rematerialized_nonzero_return_object();
   status |= builds_prepared_traversed_wide_rematerialized_return_object();
   status |= rejects_prepared_rematerialized_return_without_typed_immediate_fact();
+  status |=
+      reports_generic_fallback_context_for_prepared_rematerialized_instruction();
   status |= builds_prepared_scalar_same_module_call_object();
   status |= rejects_prepared_scalar_register_result_call_fail_closed_shapes();
   status |= builds_prepared_byval_stack_copy_same_module_call_object();
@@ -19219,6 +19264,7 @@ int main() {
   status |= builds_prepared_scalar_ashr_i64_register_object();
   status |= builds_prepared_scalar_ashr_i64_immediate_object();
   status |= rejects_prepared_scalar_ashr_invalid_immediate_object();
+  status |= reports_generic_fallback_context_for_prepared_traversal_instruction();
   status |= builds_prepared_scalar_divrem_object();
   status |= rejects_prepared_scalar_division_fail_closed_shapes();
   status |= rejects_prepared_scalar_remainder_fail_closed_shapes();
