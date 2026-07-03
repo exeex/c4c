@@ -1013,6 +1013,155 @@ int verify_move_bundle_consumer_rejects_ambiguous_multi_source_stack_destination
   return 0;
 }
 
+int verify_move_bundle_consumer_rejects_select_materialization_stack_destination_sources() {
+  auto fixture = make_fixture();
+  fixture.bir_function.blocks[1].insts.push_back(
+      select_inst("%select.stack.store"));
+  const auto select_instruction_index =
+      fixture.bir_function.blocks[1].insts.size() - 1;
+
+  auto true_source_home = value_home(
+      fixture,
+      "%select.true.reg",
+      911,
+      prepare::PreparedValueHomeKind::Register);
+  true_source_home.register_name = "t0";
+  fixture.locations.value_homes.push_back(std::move(true_source_home));
+
+  auto false_source_home = value_home(
+      fixture,
+      "%select.false.reg",
+      912,
+      prepare::PreparedValueHomeKind::Register);
+  false_source_home.register_name = "s2";
+  fixture.locations.value_homes.push_back(std::move(false_source_home));
+
+  auto preserved_stack_source_home = value_home(
+      fixture,
+      "%select.old.stack",
+      913,
+      prepare::PreparedValueHomeKind::StackSlot);
+  preserved_stack_source_home.slot_id = prepare::PreparedFrameSlotId{24};
+  preserved_stack_source_home.offset_bytes = std::size_t{96};
+  preserved_stack_source_home.size_bytes = std::size_t{8};
+  preserved_stack_source_home.align_bytes = std::size_t{8};
+  fixture.locations.value_homes.push_back(
+      std::move(preserved_stack_source_home));
+
+  auto destination_home = value_home(
+      fixture,
+      "%select.stack.store",
+      914,
+      prepare::PreparedValueHomeKind::StackSlot);
+  destination_home.slot_id = prepare::PreparedFrameSlotId{25};
+  destination_home.offset_bytes = std::size_t{104};
+  destination_home.size_bytes = std::size_t{8};
+  destination_home.align_bytes = std::size_t{8};
+  fixture.locations.value_homes.push_back(std::move(destination_home));
+
+  fixture.locations.move_bundles.push_back(prepare::PreparedMoveBundle{
+      .function_name = fixture.function_name,
+      .phase = prepare::PreparedMovePhase::BeforeInstruction,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+      .block_index = 1,
+      .instruction_index = select_instruction_index,
+      .moves = {
+          prepare::PreparedMoveResolution{
+              .from_value_id = 911,
+              .to_value_id = 914,
+              .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+              .destination_storage_kind =
+                  prepare::PreparedMoveStorageKind::StackSlot,
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+          },
+          prepare::PreparedMoveResolution{
+              .from_value_id = 912,
+              .to_value_id = 914,
+              .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+              .destination_storage_kind =
+                  prepare::PreparedMoveStorageKind::StackSlot,
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+          },
+          prepare::PreparedMoveResolution{
+              .from_value_id = 913,
+              .to_value_id = 914,
+              .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+              .destination_storage_kind =
+                  prepare::PreparedMoveStorageKind::StackSlot,
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+          },
+      },
+  });
+
+  const auto lookups =
+      prepare::make_prepared_value_home_lookups(&fixture.locations);
+  const auto traversal = prepare::make_prepared_object_function_traversal(
+      fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  const auto* before_select = find_event(
+      traversal,
+      prepare::PreparedObjectTraversalEventKind::BeforeInstructionCopies,
+      1);
+  if (!expect(before_select != nullptr,
+              "select-materialized stack-destination test should find a copy event")) {
+    return 1;
+  }
+
+  const auto classification =
+      prepare::classify_prepared_object_move_bundle_consumer(
+          prepare::PreparedObjectMoveBundleConsumerQuery{
+              .event = before_select,
+              .value_home_lookups = &lookups,
+          });
+  const auto diagnostic =
+      prepare::diagnose_prepared_object_consumer(classification);
+  if (!expect(before_select->instruction_index == select_instruction_index,
+              "select-materialized copy event should stay attached to the select instruction") ||
+      !expect(classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::
+                      AmbiguousNonParallelMultiSourceStackDestination,
+              "select-materialized multi-source stack destination should fail closed") ||
+      !expect(classification.move_count == 3,
+              "select-materialized stack-destination classification should preserve all move sources") ||
+      !expect(diagnostic.has_value(),
+              "select-materialized stack-destination classification should produce a diagnostic") ||
+      !expect(diagnostic->category ==
+                  prepare::PreparedObjectConsumerDiagnosticCategory::
+                      AmbiguousNonParallelMultiSourceStackDestination,
+              "select-materialized stack-destination diagnostic category mismatch")) {
+    return 1;
+  }
+
+  fixture.locations.move_bundles.back().moves.erase(
+      fixture.locations.move_bundles.back().moves.begin() + 1);
+  const auto single_register_source_lookups =
+      prepare::make_prepared_value_home_lookups(&fixture.locations);
+  const auto single_register_source_traversal =
+      prepare::make_prepared_object_function_traversal(
+          fixture.control_flow, &fixture.locations, &fixture.bir_function);
+  const auto* single_register_source_before_select = find_event(
+      single_register_source_traversal,
+      prepare::PreparedObjectTraversalEventKind::BeforeInstructionCopies,
+      1);
+  const auto single_register_source_classification =
+      single_register_source_before_select == nullptr
+          ? prepare::PreparedObjectMoveBundleConsumerClassification{}
+          : prepare::classify_prepared_object_move_bundle_consumer(
+                prepare::PreparedObjectMoveBundleConsumerQuery{
+                    .event = single_register_source_before_select,
+                    .value_home_lookups = &single_register_source_lookups,
+                });
+  if (!expect(single_register_source_classification.status ==
+                  prepare::PreparedObjectMoveBundleConsumerStatus::Available,
+              "select-materialized stack destination with one register source and one stack source should remain available")) {
+    return 1;
+  }
+
+  return 0;
+}
+
 int verify_move_bundle_consumer_diagnostic_query() {
   auto fixture = make_fixture();
   const auto traversal = prepare::make_prepared_object_function_traversal(
@@ -1542,6 +1691,11 @@ int main() {
   }
   if (const auto result =
           verify_move_bundle_consumer_rejects_ambiguous_multi_source_stack_destination();
+      result != 0) {
+    return EXIT_FAILURE;
+  }
+  if (const auto result =
+          verify_move_bundle_consumer_rejects_select_materialization_stack_destination_sources();
       result != 0) {
     return EXIT_FAILURE;
   }

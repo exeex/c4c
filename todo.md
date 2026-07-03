@@ -1,98 +1,70 @@
 Status: Active
 Source Idea Path: ideas/open/569_prepared_move_bundle_ambiguous_multi_source_stack_destination.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Pin The Prepared Classifier Boundary
+Current Step ID: 2
+Current Step Title: Add Focused Prepared Contract Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 pinned the prepared classifier boundary for
-`tests/c/external/gcc_torture/src/20001026-1.c`; evidence is under
-`build/agent_state/569_step1_prepared_classifier_boundary/`.
+Step 2 added focused prepared contract coverage for the pinned
+non-parallel multi-source stack-destination boundary in
+`tests/backend/bir/backend_prepared_object_consumer_contract_test.cpp`.
 
-Fresh focused results:
+New focused test:
 
-- `cmake --build build --target c4cll`: pass, `ninja: no work to do`.
-- `dump-bir`, `dump-prepared-bir`, and `dump-mir` commands for
-  `--target riscv64-linux-gnu`: exit 0; outputs are
-  `dump-bir.txt`, `dump-prepared-bir.txt`, and `dump-mir.txt`.
-- RV64 gcc_torture object runner: exit 1 in `object-route.log` with
-  `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination`.
+- `verify_move_bundle_consumer_rejects_select_materialization_stack_destination_sources()`
 
-Concrete prepared shape:
+Coverage encoded:
 
-- Function: `real_value_from_int_cst`.
-- Producer/block context: prepared `block_index=3`, mapped by
-  `--- prepared-control-flow ---` to `block_1`.
-- The failing family is the select-materialization publications in `block_1`:
-  prepared instruction indexes 7, 10, and 13 compute `%t12.store0`,
-  `%t12.store1`, and `%t12.store2`; the paired store publications at indexes
-  8, 11, and 14 record `source_producer=select_materialization`.
-- Each relevant move bundle is `phase=before_instruction authority=none`,
-  `destination_kind=value destination_storage=stack_slot`, and has multiple
-  moves into one stack-destination value:
-  - `block_index=3 instruction_index=7`: destination `value_id=17`
-    `%t12.store0`, slot #25 offset 104; sources `value_id=11` `%t11`
-    register `t0`, `value_id=15` `%t13` register `s2`, and `value_id=16`
-    `%t12.elt0` stack slot #24 offset 96; reasons are two
-    `consumer_register_to_stack` moves plus one `consumer_stack_to_stack` move.
-  - `block_index=3 instruction_index=10`: destination `value_id=19`
-    `%t12.store1`, slot #27 offset 120; sources `value_id=11` `%t11`
-    register `t0`, `value_id=15` `%t13` register `s2`, and `value_id=18`
-    `%t12.elt1` stack slot #26 offset 112; same reason mix.
-  - `block_index=3 instruction_index=13`: destination `value_id=21`
-    `%t12.store2`, slot #29 offset 136; sources `value_id=11` `%t11`
-    register `t0`, `value_id=15` `%t13` register `s2`, and `value_id=20`
-    `%t12.elt2` stack slot #28 offset 128; same reason mix.
+- The fixture creates a general select-materialization-style
+  `BeforeInstruction` move bundle with `authority_kind=None`, attached to a
+  select instruction in the prepared consumer block.
+- The move bundle has two register-source moves and one stack-to-stack source
+  move into the same stack-slot destination value.
+- The current contract remains fail-closed:
+  `AmbiguousNonParallelMultiSourceStackDestination`, `move_count == 3`, and
+  the matching diagnostic category are asserted.
+- A nearby case with one register source plus one stack source into the same
+  stack destination is asserted `Available`, documenting that the current
+  rejection is driven by multiple register-source stack-destination
+  authorities.
+- The test and fixture names describe the prepared move-bundle shape, not
+  `src/20001026-1.c`, and no behavior repair was implemented in this packet.
 
-Rejecting path:
+Evidence:
 
-- Classifier: `classify_prepared_object_move_bundle_consumer()` in
-  `src/backend/prealloc/prepared_object_traversal.cpp`.
-- Predicate: `prepared_move_bundle_has_ambiguous_multi_source_stack_destination()`.
-- Diagnostic mapper:
-  `diagnose_prepared_object_consumer(const PreparedObjectMoveBundleConsumerClassification&)`.
-- Reason fields involved: non-parallel `authority_kind=None`,
-  `BeforeInstructionCopies`/`BeforeInstruction` phase, move count at least 2,
-  register source homes, stack-slot destination homes, and either same
-  `to_value_id` or same destination stack home. The 20001026-1.c bundles trip
-  this on the two register-source moves into the same stack-destination value.
+- `build/agent_state/569_step2_prepared_contract_coverage/coverage_summary.md`
+- `build/agent_state/569_step2_prepared_contract_coverage/commands.sh.txt`
+- `build/agent_state/569_step2_prepared_contract_coverage/backend_prepared_object_consumer_contract.test_after.log`
 
 ## Suggested Next
 
-Execute Step 2 in `plan.md`: add focused prepared-layer contract coverage for
-the general non-parallel multi-source stack-destination select-materialization
-shape. The fixture should describe the move-bundle shape and source/destination
-homes, not `src/20001026-1.c` by name.
+Execute Step 3 in `plan.md`: repair prepared move-bundle classification so the
+new focused select-materialization stack-destination contract can move from
+documented fail-closed behavior to coherent prepared authority or an explicit
+supported split.
 
 ## Watchouts
 
 - Do not treat this as integer div/rem lowering until the prepared classifier boundary is crossed.
-- The current first owner is still prepared move-bundle classification; no
-  representative reached runtime mismatch, timeout, segfault, or test
-  infrastructure failure.
-- The `--dump-mir` route only produced the existing x86/debug summary surface,
-  so object-route evidence remains the meaningful RV64 failure proof.
-- `c4c-clang-tool-ccdb list-symbols` could not load a compile command for
-  `src/backend/prealloc/prepared_object_traversal.cpp` from
-  `build/compile_commands.json`; helper names are source/rg-backed and the
-  failed clang-tool outputs are recorded in the evidence directory.
+- This packet intentionally preserves current fail-closed behavior; it is
+  coverage only and does not cross the prepared classifier boundary.
+- The new focused coverage records a three-move shape: two register-source
+  stack-destination moves plus one stack-to-stack source into the same
+  destination value.
+- The existing simpler two-register-source ambiguous test remains in place.
 - Do not change runtime comparison, expected output, unsupported markers, or allowlists.
 - Do not special-case `src/20001026-1.c` by name.
 - Keep generic `unsupported_instruction_fragment` rows in idea 570, not this active plan.
 
 ## Proof
 
-Step 1 proof:
+Step 2 proof:
 
 - `cmake --build build --target c4cll`
-- Focused commands recorded in
-  `build/agent_state/569_step1_prepared_classifier_boundary/commands.sh.txt`.
-- Boundary summary:
-  `build/agent_state/569_step1_prepared_classifier_boundary/boundary_summary.md`.
-- Return-code files:
-  `dump-bir.rc`, `dump-prepared-bir.rc`, `dump-mir.rc`, `object-route.rc`.
-- `git diff --check -- todo.md`
-- `scripts/plan_review_state.py show`
+- `cmake --build build --target backend_prepared_object_consumer_contract_test`
+  was run to compile the changed focused test binary before CTest.
+- `ctest --test-dir build -j --output-on-failure -R '^backend_prepared_object_consumer_contract$' > test_after.log`
+- `git diff --check -- todo.md tests src`
