@@ -366,17 +366,19 @@ std::optional<std::int32_t> rv64_prepared_saved_callee_gpr_stack_offset(
       slot.contiguous_width != 1 ||
       slot.occupied_register_names.size() != 1 ||
       slot.occupied_register_names.front() != saved.register_name ||
+      slot.save_index != saved.save_index ||
       !slot.register_placement.has_value() ||
       slot.register_placement != saved.placement ||
       !slot.stack_offset_bytes.has_value() ||
       !slot.size_bytes.has_value() ||
       *slot.size_bytes != 8 ||
+      !slot.align_bytes.has_value() ||
+      *slot.align_bytes != 8 ||
+      !slot.fixed_location ||
       slot.stack_offset_bytes > std::optional<std::size_t>{stack_frame_bytes} ||
       stack_frame_bytes - *slot.stack_offset_bytes < *slot.size_bytes ||
       *slot.stack_offset_bytes >
-          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
-      !fits_signed_12_bit_immediate(
-          static_cast<std::int64_t>(*slot.stack_offset_bytes))) {
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
     return std::nullopt;
   }
 
@@ -717,8 +719,8 @@ bool append_rv64_prepared_saved_callee_gpr_spills(
     const auto offset =
         rv64_prepared_saved_callee_gpr_stack_offset(saved, stack_frame_bytes);
     if (!source.has_value() || !offset.has_value() ||
-        !append_rv64_prepared_store_register_to_stack(
-            fragment, *source, *offset, 8)) {
+        !append_rv64_prepared_store_register_to_stack_offset(
+            fragment, *source, static_cast<std::size_t>(*offset), 8)) {
       return false;
     }
   }
@@ -742,8 +744,8 @@ bool append_rv64_prepared_saved_callee_gpr_restores(
     const auto offset =
         rv64_prepared_saved_callee_gpr_stack_offset(*it, stack_frame_bytes);
     if (!destination.has_value() || !offset.has_value() ||
-        !append_rv64_prepared_load_stack_to_register(
-            fragment, *destination, *offset, 8)) {
+        !append_rv64_prepared_load_stack_offset_to_register(
+            fragment, *destination, static_cast<std::size_t>(*offset), 8)) {
       return false;
     }
   }

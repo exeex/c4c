@@ -76,6 +76,27 @@ bool contains_adjacent_u32_pair(const std::vector<std::uint8_t>& bytes,
   return false;
 }
 
+bool contains_u32_sequence(const std::vector<std::uint8_t>& bytes,
+                           const std::vector<std::uint32_t>& words) {
+  if (words.empty()) {
+    return true;
+  }
+  for (std::size_t offset = 0; offset + words.size() * 4 <= bytes.size();
+       offset += 4) {
+    bool matched = true;
+    for (std::size_t index = 0; index < words.size(); ++index) {
+      if (read_u32(bytes, offset + index * 4) != words[index]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bir::Value null_pointer_value() {
   return bir::Value{
       .kind = bir::Value::Kind::Immediate,
@@ -2490,6 +2511,38 @@ prepare::PreparedSavedRegister make_prepared_fpr_callee_saved_fs1() {
   };
 }
 
+prepare::PreparedSavedRegister make_prepared_gpr_callee_saved_s1(
+    std::size_t stack_offset_bytes) {
+  const prepare::PreparedRegisterPlacement s1_placement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedSavedRegisterSlotPlacement s1_slot{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "s1",
+      .contiguous_width = 1,
+      .occupied_register_names = {"s1"},
+      .save_index = 0,
+      .register_placement = s1_placement,
+      .slot_id = prepare::PreparedFrameSlotId{10000},
+      .stack_offset_bytes = stack_offset_bytes,
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+      .fixed_location = true,
+  };
+  return prepare::PreparedSavedRegister{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "s1",
+      .contiguous_width = 1,
+      .occupied_register_names = {"s1"},
+      .save_index = 0,
+      .placement = s1_placement,
+      .slot_placement = s1_slot,
+  };
+}
+
 prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
   prepare::PreparedBirModule prepared;
   const auto function_name = prepared.names.function_names.intern("main");
@@ -2587,6 +2640,25 @@ prepare::PreparedBirModule make_prepared_scalar_local_frame_module() {
               },
           },
   });
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_large_fixed_stack_frame_module();
+
+prepare::PreparedBirModule make_prepared_gpr_callee_saved_frame_module(
+    std::size_t frame_size_bytes,
+    std::size_t saved_stack_offset_bytes) {
+  auto prepared = make_prepared_large_fixed_stack_frame_module();
+  const auto function_name = prepared.names.function_names.intern("main");
+  prepared.stack_layout.frame_size_bytes = frame_size_bytes;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.frame_plan.functions[0] = prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = frame_size_bytes,
+      .frame_alignment_bytes = 16,
+      .saved_callee_registers =
+          {make_prepared_gpr_callee_saved_s1(saved_stack_offset_bytes)},
+  };
   return prepared;
 }
 
@@ -11273,6 +11345,124 @@ int rejects_malformed_prepared_fpr_callee_saved_frame_slot_facts() {
   return 0;
 }
 
+int records_prepared_gpr_callee_saved_frame_slot_facts() {
+  const auto direct = make_prepared_gpr_callee_saved_s1(24);
+  if (rv64::rv64_prepared_saved_callee_gpr_stack_offset(direct, 40) !=
+      std::optional<std::int32_t>{24}) {
+    return fail("expected direct prepared GPR callee-saved slot offset fact");
+  }
+
+  const auto large = make_prepared_gpr_callee_saved_s1(80000);
+  if (rv64::rv64_prepared_saved_callee_gpr_stack_offset(large, 80016) !=
+      std::optional<std::int32_t>{80000}) {
+    return fail("expected large prepared GPR callee-saved slot offset fact");
+  }
+
+  if (large.bank != prepare::PreparedRegisterBank::Gpr ||
+      large.register_name != "s1" || large.save_index != 0 ||
+      !large.slot_placement.has_value() ||
+      large.slot_placement->slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{
+              prepare::PreparedFrameSlotId{10000}} ||
+      large.slot_placement->stack_offset_bytes !=
+          std::optional<std::size_t>{80000} ||
+      large.slot_placement->size_bytes != std::optional<std::size_t>{8} ||
+      large.slot_placement->align_bytes != std::optional<std::size_t>{8}) {
+    return fail("expected explicit prepared GPR saved-register slot facts");
+  }
+
+  return 0;
+}
+
+int rejects_malformed_prepared_gpr_callee_saved_frame_slot_facts() {
+  auto saved = make_prepared_gpr_callee_saved_s1(80000);
+  saved.slot_placement = std::nullopt;
+  if (rv64::rv64_prepared_saved_callee_gpr_stack_offset(saved, 80016)
+          .has_value()) {
+    return fail("expected missing prepared GPR saved slot to fail closed");
+  }
+
+  saved = make_prepared_gpr_callee_saved_s1(80000);
+  saved.slot_placement->save_index = 1;
+  if (rv64::rv64_prepared_saved_callee_gpr_stack_offset(saved, 80016)
+          .has_value()) {
+    return fail("expected mismatched prepared GPR save index to fail closed");
+  }
+
+  saved = make_prepared_gpr_callee_saved_s1(80000);
+  saved.slot_placement->size_bytes = std::size_t{4};
+  if (rv64::rv64_prepared_saved_callee_gpr_stack_offset(saved, 80016)
+          .has_value()) {
+    return fail("expected malformed prepared GPR slot size to fail closed");
+  }
+
+  saved = make_prepared_gpr_callee_saved_s1(80000);
+  saved.slot_placement->fixed_location = false;
+  if (rv64::rv64_prepared_saved_callee_gpr_stack_offset(saved, 80016)
+          .has_value()) {
+    return fail("expected non-fixed prepared GPR saved slot to fail closed");
+  }
+
+  saved = make_prepared_gpr_callee_saved_s1(80000);
+  saved.placement->bank = prepare::PreparedRegisterBank::Fpr;
+  if (rv64::rv64_prepared_saved_callee_gpr_stack_offset(saved, 80016)
+          .has_value()) {
+    return fail("expected mismatched prepared GPR placement to fail closed");
+  }
+
+  saved = make_prepared_gpr_callee_saved_s1(80000);
+  if (rv64::rv64_prepared_saved_callee_gpr_stack_offset(saved, 80000)
+          .has_value()) {
+    return fail("expected out-of-frame prepared GPR saved slot to fail closed");
+  }
+
+  return 0;
+}
+
+int materializes_large_offset_prepared_gpr_callee_saved_frame_slots() {
+  const auto prepared = make_prepared_gpr_callee_saved_frame_module(80016, 80000);
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (!result.module.has_value()) {
+    return fail("expected prepared large-offset GPR callee-saved frame object "
+                "to build, got `" +
+                result.diagnostic + "`");
+  }
+  const auto* text = object::find_section(*result.module, ".text");
+  const auto* function = object::find_symbol(*result.module, "main");
+  if (text == nullptr || function == nullptr) {
+    return fail("expected prepared large-offset GPR object to publish text/main");
+  }
+  if (function->value != 0 || function->section !=
+                                std::optional<object::SectionId>{text->id}) {
+    return fail("expected prepared large-offset GPR main symbol layout");
+  }
+
+  const std::vector<std::uint32_t> large_save = {
+      0x01400313,  // addi t1, zero, 20
+      0x00c31313,  // slli t1, t1, 12
+      0x88030313,  // addi t1, t1, -1920
+      0x00610333,  // add t1, sp, t1
+      0x00933023,  // sd s1, 0(t1)
+  };
+  const std::vector<std::uint32_t> large_restore = {
+      0x01400313,  // addi t1, zero, 20
+      0x00c31313,  // slli t1, t1, 12
+      0x88030313,  // addi t1, t1, -1920
+      0x00610333,  // add t1, sp, t1
+      0x00033483,  // ld s1, 0(t1)
+  };
+  if (!contains_u32_sequence(text->bytes, large_save) ||
+      !contains_u32_sequence(text->bytes, large_restore)) {
+    return fail("expected large prepared GPR callee-saved save/restore "
+                "address materialization sequence");
+  }
+  if (!result.module->relocations.empty()) {
+    return fail("expected large prepared GPR callee-saved object to need no relocations");
+  }
+  return 0;
+}
+
 int materializes_prepared_fpr_callee_saved_frame_slots() {
   const auto prepared = make_prepared_fpr_callee_saved_frame_module();
   const auto result =
@@ -18516,6 +18706,9 @@ int main() {
   status |= rejects_raw_fpr_formal_param_home_without_target_identity();
   status |= records_prepared_fpr_callee_saved_frame_slot_facts();
   status |= rejects_malformed_prepared_fpr_callee_saved_frame_slot_facts();
+  status |= records_prepared_gpr_callee_saved_frame_slot_facts();
+  status |= rejects_malformed_prepared_gpr_callee_saved_frame_slot_facts();
+  status |= materializes_large_offset_prepared_gpr_callee_saved_frame_slots();
   status |= materializes_prepared_fpr_callee_saved_frame_slots();
   status |= builds_prepared_scalar_local_frame_object();
   status |= builds_prepared_large_fixed_stack_frame_adjustment_object();
