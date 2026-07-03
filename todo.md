@@ -1,80 +1,87 @@
 Status: Active
 Source Idea Path: ideas/open/562_bir_direct_call_semantic_boundary_evidence.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify The Missing Direct-Call Fact
+Current Step ID: 3
+Current Step Title: Add Focused Call-Publication Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: classified the first missing direct-call fact for retained
-`tests/c/external/gcc_torture/src/20000717-1.c` as **byval aggregate argument
-handoff**, not callee classification, return result publication, argument
-source publication, or prepared handoff.
+Step 3: identified adjacent tracked semantic-BIR printer coverage and captured
+the missing focused direct-call publication surface without leaving a failing
+tracked test.
 
-Same-run evidence:
-- Step 1 semantic BIR still fails before any BIR body is emitted:
-  `build/agent_state/562_step1_direct_call_boundary/20000717-1.dump-bir.stderr`
-  reports `semantic lir_to_bir function 'foo' failed in semantic call family
-  'direct-call semantic family'`.
-- Step 1 prepared/object evidence rejects before prepared handoff for the same
-  semantic prerequisite failure:
-  `build/agent_state/562_step1_direct_call_boundary/20000717-1.dump-prepared-bir.stderr`
-  and
-  `build/agent_state/562_step1_direct_call_boundary/20000717-1.codegen-obj.stderr`.
-- The matching LLVM call is
-  `%t0 = call i32 (i32, %struct.trio) @bar(i32 %p.i, %struct.trio %p.t)` in
-  `build/agent_state/562_step1_direct_call_boundary/20000717-1.llvm-call-sites.txt`.
-- Focused HIR evidence captured in
-  `build/agent_state/562_step2_direct_call_fact/20000717-1.dump-hir.stdout`
-  shows `struct trio size=12 align=4` and `foo` as `return bar(i#P1, t#P0)`.
-- Focused debugger evidence captured in
-  `build/agent_state/562_step2_direct_call_fact/20000717-1.gdb-note.stdout`
-  confirms the failure note is emitted from
-  `BirFunctionLowerer::lower_call_inst` before `lower_block` returns.
+Existing adjacent coverage:
+- `backend_codegen_route_x86_64_byval_member_array_params_observe_semantic_bir`
+  covers direct byval aggregate calls from local aggregate values in
+  `tests/backend/case/param_member_array.c` and
+  `tests/backend/case/nested_param_member_array.c`.
+- `backend_codegen_route_x86_64_aggregate_param_return_pair_fn_param_observe_semantic_bir`
+  covers a byval aggregate formal forwarded through an indirect aggregate call
+  in `tests/backend/case/aggregate_param_return_pair_fn_param.c`, with the
+  expected semantic BIR snippet
+  `bir.call void %p.fn(ptr sret(size=8, align=4) %t0, ptr byval(size=8, align=4) %lv.param.p.p)`.
 
-Classification:
-- Direct callee classification is not the first bad fact: Step 1 and LLVM name
-  the call as direct `@bar`, and the semantic diagnostic reaches the
-  direct-call family in `foo`.
-- Return result publication is not the first bad fact: the call return is scalar
-  `i32`, with no sret aggregate return in the source, HIR, or LLVM call.
-- Prepared handoff is not the first bad fact: both prepared BIR and RV64 object
-  paths reject because semantic `lir_to_bir` never publishes the call.
-- Route6 argument-source/publication records are unavailable, not negative
-  evidence, because no semantic BIR `CallInst` is emitted for this call.
-- The first visible non-scalar fact is the by-value `struct trio` argument
-  `t#P0`/`%p.t`. `lower_call_inst` has a dedicated byval aggregate path that
-  must lower a byval aggregate operand to a pointer-backed BIR call argument
-  before `CallArgumentSourceRelationship`/route6 publication can exist.
-  Therefore the first owner is BIR byval aggregate argument handling for a
-  direct-call argument sourced from a by-value aggregate parameter.
+Focused missing surface:
+- No tracked test found for the exact Step 2 boundary: a direct callee where a
+  by-value aggregate parameter is forwarded as the aggregate argument.
+- Captured the smallest red case under ignored evidence:
+  `build/agent_state/562_step3_byval_call_publication/byval_param_direct_call_publication.c`.
+- `./build/c4cll --dump-bir --target x86_64-unknown-linux-gnu build/agent_state/562_step3_byval_call_publication/byval_param_direct_call_publication.c`
+  exits `2`; stderr in
+  `build/agent_state/562_step3_byval_call_publication/byval_param_direct_call_publication.dump-bir.stderr`
+  reports `semantic lir_to_bir function 'forward_trio' failed in semantic call
+  family 'direct-call semantic family'`.
+- LLVM call-shape evidence in
+  `build/agent_state/562_step3_byval_call_publication/byval_param_direct_call_publication.llvm-call-sites.txt`
+  shows `%t0 = call i32 (i32, %struct.Trio) @consume_trio(i32 %p.seed, %struct.Trio %p.value)`.
+
+Smallest future tracked surface after repair:
+- Add `tests/backend/case/byval_param_direct_call_publication.c` using the
+  captured evidence case, then add a semantic BIR route test requiring
+  `bir.func @forward_trio(ptr byval(size=12, align=4) %p.value, i32 %p.seed) -> i32`
+  and a direct byval call resembling
+  `bir.call i32 consume_trio(i32 %p.seed, ptr byval(size=12, align=4) %lv.param.value.value)`.
+- The test should forbid the LLVM aggregate-value call spelling
+  `call i32 (i32, %struct.Trio) @consume_trio`.
 
 ## Suggested Next
 
-Continue with Step 3: add focused BIR call-publication coverage for a direct
-call that passes a by-value aggregate parameter as an aggregate argument. The
-coverage should expose the expected byval ABI/source fact before any repair is
-attempted.
+Continue with Step 4: repair only the BIR byval aggregate direct-call argument
+publication boundary so the Step 3 red case can become a tracked semantic BIR
+route/printer test.
 
 ## Watchouts
 
-- The representative fails before a semantic BIR body is emitted, so prepared
-  BIR, RV64 object, and route6 lookup evidence are absence-of-publication
-  boundaries, not later-stage ownership proof.
-- Keep the next packet independent of `src/20000717-1.c` if practical: the
-  missing fact is semantic byval aggregate argument handoff for direct calls,
-  not a named-case shortcut.
-- Do not use expectation rewrites, unsupported downgrades, diagnostic renames,
-  or named-case shortcuts as progress.
+- Do not add the focused tracked ctest before the repair unless the supervisor
+  explicitly wants a red tracked test; the captured Step 3 case currently fails
+  before BIR publication.
+- The existing `aggregate_param_return_pair_fn_param` test proves the byval
+  formal-to-call path for an indirect aggregate call with sret, not the direct
+  callee scalar-return boundary classified in Step 2.
+- Keep the Step 4 repair semantic and independent of `src/20000717-1.c`; no
+  expectation rewrite, unsupported downgrade, diagnostic rename, or named-case
+  shortcut should count as progress.
 
 ## Proof
 
 Ran delegated proof:
-`git diff --check -- todo.md && scripts/plan_review_state.py show`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log && git diff --check -- todo.md`.
 
-Result: passed. `scripts/plan_review_state.py show` reported
-`current_step_id` as `2`, `current_step_title` as
-`Classify The Missing Direct-Call Fact`, and no pending baseline or code
-review. This evidence-only packet did not create or update `test_after.log`.
+Result: passed. `test_after.log` contains the backend CTest subset output and
+reports `Total Test time (real) =   2.33 sec`.
+Supervisor regression comparison also passed with:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Focused red evidence command:
+`./build/c4cll --dump-bir --target x86_64-unknown-linux-gnu build/agent_state/562_step3_byval_call_publication/byval_param_direct_call_publication.c`
+failed as expected before repair and is recorded under
+`build/agent_state/562_step3_byval_call_publication/`.
+
+Local plan-review state was aligned with `Current Step ID: 3` and
+`Current Step Title: Add Focused Call-Publication Coverage` using
+`scripts/plan_review_state.py set-step`.
