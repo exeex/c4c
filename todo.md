@@ -1,44 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Re-Run The Nine Representatives
+Current Step ID: 5
+Current Step Title: Review And Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 reran the nine retained RV64 `unsupported_instruction_fragment`
-representatives through the requested evidence pipeline and recorded enriched
-owner-routing diagnostics under
-`build/agent_state/570_unsupported_instruction_fragment_diagnostics/`.
+Step 4 converted the Step 3 enriched diagnostics into durable focused
+follow-up ideas under `ideas/open/`:
 
-- All nine cases returned rc=0 for `--dump-bir`, `--dump-prepared-bir`, and
-  `--dump-mir`, then rc=1 for the RV64 object-route CMake runner.
-- The new diagnostics split the old generic RV64 object-lowering bucket into
-  likely owner families: inline asm carrier lowering (`src/20071211-1.c`,
-  `src/pr51933.c`, `src/pr56982.c`, `src/pr78438.c`), same-module call/result
-  lowering (`src/20000412-2.c`, `src/20000622-1.c`), select / branch-published
-  phi-select lowering (`src/20030408-1.c`), floating-point binary lowering
-  (`src/20000605-1.c`), and pointer arithmetic lowering (`src/20000819-1.c`).
-- The compact classification table is
-  `build/agent_state/570_unsupported_instruction_fragment_diagnostics/classification.tsv`;
-  the narrative summary is
-  `build/agent_state/570_unsupported_instruction_fragment_diagnostics/summary.md`.
-- No unsupported RV64 lowering behavior, unsupported markers, allowlists, or
-  runtime comparison files were changed. No testcase is claimed fixed.
+- `ideas/open/571_rv64_inline_asm_carrier_lowering.md`
+- `ideas/open/572_rv64_same_module_call_result_lowering.md`
+- `ideas/open/573_rv64_select_phi_select_lowering.md`
+- `ideas/open/574_rv64_floating_point_binary_lowering.md`
+- `ideas/open/575_rv64_pointer_arithmetic_lowering.md`
+
+Each idea records goal/intent, why it exists, in-scope work, out-of-scope work,
+acceptance criteria, and concrete `## Reviewer Reject Signals`. The split keeps
+inline asm carriers, ordinary call/result lowering, select/phi-select
+materialization, FP binary lowering, and pointer arithmetic lowering as separate
+initiatives. No idea mixes unrelated RV64 lowering, prepared authority, BIR
+producer, inline-asm, call-boundary, or runtime work.
+
+No implementation files, tests, `plan.md`, runtime comparison files,
+unsupported markers, allowlists, or the 570 source idea were changed.
 
 ## Suggested Next
 
-Use the Step 3 classification table to pick the next focused Step 4 owner
-packet. A compact first packet would be inline asm carrier lowering triage,
-because four retained representatives now route there with `CallInst;
-owner=none` at `llvm.inline_asm`.
+Proceed to Step 5 close-readiness review for the active diagnostic plan.
+Confirm the source idea's acceptance criteria are satisfied by the diagnostic
+patch, Step 3 evidence artifact, and Step 4 follow-up split, then decide
+whether this plan is ready for close-gate validation.
 
 ## Watchouts
 
 - This packet is evidence-only; the nine object-route failures remain expected
   unsupported lowering diagnostics.
+- The five new follow-up ideas are implementation candidates, not work folded
+  into the active diagnostic plan.
 - `src/pr78438.c` previously looked like an arithmetic/shift family from source
   shape, but the first enriched object fallback is the entry `llvm.inline_asm`
   call, so routing it to shift lowering would be premature without bypassing or
@@ -52,18 +53,10 @@ owner=none` at `llvm.inline_asm`.
 
 ## Proof
 
-Build proof:
-`cmake --build --preset default > test_after.log 2>&1`
+Lifecycle-only proof command:
+`git diff --check -- ideas/open/571_rv64_inline_asm_carrier_lowering.md ideas/open/572_rv64_same_module_call_result_lowering.md ideas/open/573_rv64_select_phi_select_lowering.md ideas/open/574_rv64_floating_point_binary_lowering.md ideas/open/575_rv64_pointer_arithmetic_lowering.md todo.md`
 
-Result: passed (`ninja: no work to do`).
-Log path: `test_after.log`.
+Result: passed.
 
-Evidence rerun command family:
-`./build/c4cll --dump-bir --target riscv64-linux-gnu <case>`,
-`./build/c4cll --dump-prepared-bir --target riscv64-linux-gnu <case>`,
-`./build/c4cll --dump-mir --target riscv64-linux-gnu <case>`, and the RV64
-object-route runner from
-`tests/backend/cmake/run_rv64_gcc_torture_backend_object_case.cmake`.
-
-Rerun results and per-case logs:
+Step 3 evidence remains in:
 `build/agent_state/570_unsupported_instruction_fragment_diagnostics/`.
