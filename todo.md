@@ -1,54 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/549_rv64_runtime_and_no_diagnostic_triage.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify First Owners
+Current Step ID: 3
+Current Step Title: Split Durable Follow-Up Ideas
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 classified first-owner boundaries for the Step 1 representative RV64
-gcc_torture no-diagnostic families.
+Step 3 split durable follow-up ideas from the Step 2 first-owner evidence
+without closing the active 549 triage runbook.
 
-Evidence written under
-`build/agent_state/549_step2_first_owner_classification/`:
+Created follow-up ideas:
 
-- `stage_matrix.tsv`: per-representative rc matrix for `--dump-bir`,
-  `--dump-prepared-bir`, `--dump-mir`, and the RV64 object runner.
-- `classification.tsv`: first-owner classification with source family,
-  object diagnostic, BIR operation summary, confidence, and log paths.
-- `supporting_facts.tsv`: compact grep facts from object logs or dumps.
-- `commands.sh.txt`: exact dump and object-runner commands.
-- `classification.md`: readable owner summary and caveats.
+- `ideas/open/569_prepared_move_bundle_ambiguous_multi_source_stack_destination.md`
+  for the high-confidence prepared move-bundle classifier boundary reproduced
+  by `src/20001026-1.c`.
+- `ideas/open/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md`
+  as an evidence-enabling diagnostic follow-up for the nine medium-confidence
+  RV64 object-route rows that currently fail behind generic
+  `unsupported_instruction_fragment`.
 
-Shared stage fact: all 12 representatives returned rc=0 for `--dump-bir`,
-`--dump-prepared-bir`, and `--dump-mir`; all 12 returned rc=1 only at the
-RV64 object runner. That separates these samples from parser/HIR/BIR producer,
-runtime mismatch, timeout, and test-infrastructure failures.
+Unsplit / retained as evidence gaps in this active triage state:
 
-| Family | Representative | First owner | Evidence |
-| --- | --- | --- | --- |
-| `join_phi_branch_publication` | `src/20030408-1.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; log `build/agent_state/549_step2_first_owner_classification/src_20030408-1.c/object-route.log` |
-| `local_memory_or_stack_value` | `src/20000412-2.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; log `build/agent_state/549_step2_first_owner_classification/src_20000412-2.c/object-route.log` |
-| `global_memory_addressing_small` | `src/20071211-1.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; source flagged inline asm, but no explicit unsupported-inline-asm diagnostic fired |
-| `select_join_or_value_publication` | `src/pr51933.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; BIR summary has heavy `select`, `load_global`, and `store_global` presence |
-| `call_adjacent_or_helper` | `src/pr56982.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; BIR summary has call-adjacent shape |
-| `integer_div_rem` | `src/20001026-1.c` | Prepared contract/classifier, high confidence | object log names `prepared_consumer_category=ambiguous_non_parallel_multi_source_stack_destination` and prepared move-bundle classifier rejection |
-| `f128_or_long_double_primary` | `src/20000910-1.c` | F128 quarantine, with caveat | Step 1 map selected this family; dumps contain F128 declarations/sections from `stdlib.h`, but the local test body is ordinary integer/pointer code, so do not use as direct F128-operation repair proof |
-| `scalar_fp_cast_or_op` | `src/20000605-1.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; BIR summary includes `sitofp`/`fptosi` |
-| `integer_arithmetic_shift_right` | `src/pr78438.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; source flagged inline asm, but no explicit unsupported-inline-asm diagnostic fired |
-| `pointer_integer_cast` | `src/20000622-1.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; family map selected pointer/integer cast shape |
-| `scalar_integer_binary` | `src/20000819-1.c` | RV64 object lowering, medium confidence | BIR/prepared/MIR rc=0, object rc=1 with `unsupported_instruction_fragment`; BIR summary includes scalar `add` |
-| `evidence_gap` | `src/20030307-1.c` | Evidence gap, low confidence | BIR/prepared/MIR rc=0, object rc=1 with only generic `unsupported_instruction_fragment`; no specific first bad instruction or authority boundary in current evidence |
+- `src/20000910-1.c`: retained as F128 quarantine with caveat. Step 2 found
+  F128 declarations/sections from `stdlib.h`, while the local source body is
+  ordinary integer/pointer code; this is not durable proof for an ordinary-C
+  or direct F128-operation repair idea.
+- `src/20030307-1.c`: retained as a low-confidence evidence gap. BIR,
+  prepared BIR, and MIR dumps succeed, but the object route reports only the
+  generic `unsupported_instruction_fragment` diagnostic.
+
+The nine generic RV64 object-route rows were intentionally not split into
+capability-repair ideas. The durable split is diagnostic/instrumentation only
+because Step 2 proved they reach RV64 object lowering but did not identify the
+unsupported instruction, opcode, prepared authority boundary, or exact owner.
+
+Source evidence used:
+
+- `build/agent_state/549_step2_first_owner_classification/classification.md`
+- `build/agent_state/549_step2_first_owner_classification/classification.tsv`
+- `build/agent_state/549_step2_first_owner_classification/stage_matrix.tsv`
 
 ## Suggested Next
 
-Execute Step 3: split durable follow-up ideas only for high-confidence owner
-families. Suggested split candidates are a prepared move-bundle classifier idea
-for `src/20001026-1.c`, a generic RV64 object-lowering instrumentation or
-diagnostic idea for the nine `unsupported_instruction_fragment` rows, and a
-separate quarantine/evidence note for `src/20000910-1.c`.
+Execute Step 4: consolidate the 549 triage evidence for review. The summary
+should name the two created follow-up ideas, the retained F128/evidence-gap
+rows, and recommend whether this active runbook should close, run another
+evidence pass, or switch to one of the created follow-up ideas.
 
 ## Watchouts
 
@@ -70,13 +69,13 @@ separate quarantine/evidence note for `src/20000910-1.c`.
   not implementation-ready opcode repairs.
 - No representative produced a runtime mismatch, timeout, segmentation fault,
   or test-infrastructure failure in this packet.
+- Do not route the `src/20000910-1.c` quarantine caveat into ordinary-C repair.
+- Do not treat `ideas/open/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md`
+  as a capability-repair idea; it is explicitly evidence-enabling.
 
 ## Proof
 
-Executor proof:
+Plan-owner proof:
 
-- `cmake --build build --target c4cll`
-- Focused `--dump-bir`, `--dump-prepared-bir`, `--dump-mir`, and RV64 object
-  runner commands recorded in
-  `build/agent_state/549_step2_first_owner_classification/commands.sh.txt`
-- `git diff --check -- todo.md && scripts/plan_review_state.py show`
+- `git diff --check -- todo.md ideas/open`
+- `scripts/plan_review_state.py show`
