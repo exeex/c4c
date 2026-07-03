@@ -1,6 +1,6 @@
 # RV64 Large-Offset GPR Callee-Saved Frame Slots
 
-Status: Open
+Status: Closed
 Type: RV64 frame implementation
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Derived From: `ideas/closed/564_rv64_fpr_callee_saved_frame_slots.md`
@@ -90,3 +90,17 @@ gpr:s1 stack80000
   that leave the large-offset GPR save-slot rejection behavior unchanged.
 - Reject authorizing arbitrary memory-to-memory stack copies instead of
   consuming validated prepared callee-saved register facts.
+
+## Closure Notes
+
+Closed after `f03f448a4 materialize large-offset GPR callee-saved slots`.
+RV64 prepared-frame lowering now validates coherent large-offset GPR
+callee-saved slots without requiring signed 12-bit stack immediates, and
+save/restore emission routes through stack-offset helpers that materialize
+large addresses such as `sp + 80000`.
+
+Backend proof passed with 345/345 tests, and the close-time regression guard
+reported no new failures. The representative `src/20030209-1.c` probe no
+longer reports the old unsupported prepared callee-saved save-slot diagnostic;
+it now reaches the downstream `unsupported_instruction_fragment` owner covered
+by `ideas/open/546_rv64_instruction_fragment_current_classification.md`.
