@@ -8,85 +8,92 @@ Current Step Title: Pin First Downstream Unsupported Fragment
 
 ## Just Finished
 
-Step 1 (`Reconstruct Div/Rem Lowering Boundary`) completed the evidence
-packet for the routed integer div/rem rows.
+Step 2 (`Pin First Downstream Unsupported Fragment`) completed the
+evidence/diagnostic packet for representative `src/20001026-1.c`.
 
-- Authoritative row artifact:
-  `build/agent_state/567_step1_div_rem_rows.tsv`
-- Row count: `30` data rows plus header, extracted from the refreshed coherent
-  Step 4 screening table where `step3_family == integer_div_rem`.
-- Representative allowlist:
-  `build/agent_state/567_step1_div_rem_representative.allowlist`
-- Representative log:
-  `build/agent_state/567_step1_div_rem_representative.log`
-- Representative result: `total=5 passed=0 failed=5`.
-- Representative diagnostics:
-  - `src/20001026-1.c`: `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`
-  - `src/20050215-1.c`: `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`
-  - `src/20090113-2.c`: `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`
-  - `src/20090113-3.c`: `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`
-  - `src/20101013-1.c`: `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`
-- Representative dumps:
-  - `build/agent_state/567_step1_20001026-1.bir.txt`
-  - `build/agent_state/567_step1_20001026-1.prepared_bir.txt`
+Pinned artifact:
 
-Hook findings:
+- `build/agent_state/567_step2_pinned_fragment.md`
 
-- `src/backend/mir/riscv/codegen/object_emission.cpp:7413` already routes
-  `bir::BinaryInst` through `fragment_for_prepared_binary(...)`; failure falls
-  through to the generic diagnostic at
-  `src/backend/mir/riscv/codegen/object_emission.cpp:8137`.
-- `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp:2037` is the concrete
-  prepared object-emission hook for semantic binary lowering.
-- `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp:2321` through
-  `src/backend/mir/riscv/codegen/prepared_scalar_emit.cpp:2347` already encodes
-  `SDiv`, `UDiv`, `SRem`, and `URem` with RV64 M-extension `div/divu/rem/remu`
-  and `divw/divuw/remw/remuw` opcode selection based on I32 versus I64 result
-  type.
-- `src/backend/mir/riscv/codegen/alu.cpp:16` through
-  `src/backend/mir/riscv/codegen/alu.cpp:19` also already has scalar ALU
-  mnemonic selection for `div/divu/rem/remu` and `*w` forms.
-- Focused object-emission coverage already exists at
-  `tests/backend/mir/backend_riscv_object_emission_test.cpp:13594` and covers
-  all four div/rem opcodes at I32 and I64 width.
-- The `src/20001026-1.c` dumps confirm coherent semantic/prepared
-  `bir.udiv i64 24, 8`; the prepared home for `%t1` is a GPR stack slot, so
-  the next packet should first identify the exact later `BinaryInst`/`SelectInst`
-  or publication shape still falling through the generic diagnostic before
-  adding any new div/rem lowering.
+Supporting artifacts:
+
+- `build/agent_state/567_step2_single.allowlist`
+- `build/agent_state/567_step2_20001026_trace.log`
+- Existing BIR dump: `build/agent_state/567_step1_20001026-1.bir.txt`
+- Existing prepared-BIR dump:
+  `build/agent_state/567_step1_20001026-1.prepared_bir.txt`
+
+Pinned first fallthrough:
+
+- Case: `src/20001026-1.c`
+- Function: `real_value_from_int_cst`
+- Block: `block_1`
+- Traversal block index: `3`
+- Instruction index: `4`
+- Instruction kind: `BinaryInst`
+- Opcode/result: `add ptr`
+- Instruction text: `%t12 = bir.add ptr %lv.r.0, %t12.byte_offset`
+
+Operand/result facts:
+
+- `%lv.r.0`: value id `14`, GPR register home `s1`, placement
+  `gpr:callee_saved#0/w1`.
+- `%t12.byte_offset`: value id `12`, GPR frame-slot home `slot#22+stack80`.
+- `%t12`: value id `13`, pointer frame-slot home `slot#23+stack88`.
+- The before-instruction move bundle for block index `3`, instruction index
+  `4` moves value ids `14` and `12` into destination value id `13`, but the
+  instruction itself still falls through object emission.
+- Prepared address-materialization evidence exists for the same source block
+  and instruction index:
+  `address_materialization block=block_1 inst_index=4 kind=frame_slot result=%lv.r.0 policy=unspecified offset=8 address_space=default`.
+
+Rejecting hook:
+
+- `src/backend/mir/riscv/codegen/object_emission.cpp::prepared_function_to_object_function(...)`
+  visits the prepared object traversal instruction event.
+- `fragment_for_prepared_instruction(...)` returns `std::nullopt` after the
+  frame-address, symbol-address, and generic binary hooks do not claim the
+  instruction.
+- `fragment_for_prepared_binary(...)` is not the semantic owner because it
+  admits only `i32`/`i64` result binaries; the pinned instruction result is
+  `ptr`.
+- The generic rejection remains:
+  `unsupported_instruction_fragment: BIR instruction requires unsupported RV64 object lowering`.
+
+Owner decision:
+
+- This is not a missing raw RV64 div/rem opcode fragment.
+- Existing div/rem lowering already had a chance to handle the earlier
+  `%t1 = bir.udiv i64 24, 8`.
+- The first remaining unsupported fragment is pointer-result local
+  address-materialization for a dynamic local aggregate element address:
+  `%t12 = bir.add ptr %lv.r.0, %t12.byte_offset`.
+- Semantic owner: downstream RV64 prepared pointer/local-address
+  materialization, not the integer div/rem opcode route.
 
 ## Suggested Next
 
-Plan-owner repair advanced the active route to Step 2:
-`Pin First Downstream Unsupported Fragment`.
-
-Executor packet for Step 2: add focused instrumentation or a targeted
-unit-level reproducer that pins the first unsupported instruction in one routed
-representative after the existing div/rem fragment path. Do not add duplicate
-div/rem opcode lowering or duplicate all-opcode div/rem tests. If the pinned
-fragment is implementation-ready RV64 object lowering, record the exact repair
-target for Step 3; otherwise route the row to a concrete downstream owner in
-`todo.md`.
+Plan-owner/supervisor should reroute Step 3 away from div/rem opcode lowering.
+The next coherent packet is a narrow lifecycle repair or implementation plan
+for pointer-result frame-slot/local-address materialization, using the pinned
+`%t12 = bir.add ptr %lv.r.0, %t12.byte_offset` evidence as the first owner.
 
 ## Watchouts
 
-- Use the refreshed coherent 2026-07-03 row artifacts, not the stale 137-row
-  or mixed-time 179-row evidence from the earlier classification run.
-- Keep screened-out F128, producer/prepared, ABI/call, evidence-gap,
-  shift-right, pointer-cast, scalar-FP, and heterogeneous scalar-integer rows
-  out of this implementation plan.
-- Reject testcase-name dispatch, opcode-text-only matching, expectation
-  rewrites, unsupported downgrades, and allowlist-only progress.
-- The current tree already has semantic div/rem opcode encoding and focused
-  div/rem object tests; the representative failures may be later same-diagnostic
-  fragments in the routed rows rather than missing raw `div/rem` encoders.
+- Do not add duplicate `sdiv`/`udiv`/`srem`/`urem` lowering or duplicate the
+  existing focused div/rem opcode tests for this packet.
+- Do not classify from the generic diagnostic alone; use
+  `build/agent_state/567_step2_pinned_fragment.md` as the pinned fragment
+  authority.
+- The temporary trace instrumentation was removed before return; no
+  implementation files are intentionally changed.
 - Leave `review/557_step13_vector_local_memory_review.md` untouched.
 
 ## Proof
 
-- Baseline backend CTest was already refreshed by the supervisor before this
-  evidence packet; no additional CTest proof was required.
-- Representative command:
-  `ALLOWLIST=build/agent_state/567_step1_div_rem_representative.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/567_step1_div_rem_representative.log 2>&1`
-- Representative command result: exit `1`, expected for current failing rows.
+- Evidence-only packet; no CTest proof required.
+- Focused representative command:
+  `ALLOWLIST=build/agent_state/567_step2_single.allowlist VERBOSE_FAILURES=1 scripts/check_progress_rv64_gcc_c_torture_backend.sh > build/agent_state/567_step2_20001026_trace.log 2>&1`
+- Focused representative result: exit `1`, expected for the current failing
+  row, with the temporary trace pinning the first fallthrough.
 - Local validation: `git diff --check -- todo.md`
