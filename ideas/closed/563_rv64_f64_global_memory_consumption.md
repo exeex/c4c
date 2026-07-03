@@ -1,6 +1,6 @@
 # RV64 F64 Global-Memory Consumption
 
-Status: Open
+Status: Closed
 Type: RV64 object-route implementation
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Derived From: `ideas/closed/548_prepared_global_stack_frame_infrastructure_review.md`
@@ -63,6 +63,26 @@ unsupported_global_data: RV64 object route supports only 1-, 2-, 4-, and
   symbols, object data, or relocation authority.
 - Any residual failure for `src/20001121-1.c` is documented with a concrete
   downstream owner.
+
+## Closure Notes
+
+Closed after `e2d5d1ec3 consume prepared F64 global loads`.
+
+The RV64 object route now consumes prepared `double` / `F64` global loads from
+explicit prepared global-symbol access facts and keeps missing prepared access
+facts fail-closed. Backend regression proof passed with `345/345` before and
+after, and the representative row moved off the old scalar global-memory
+type-gate diagnostic.
+
+The remaining representative failure is downstream:
+
+```text
+unsupported_terminator_fragment: BIR terminator requires unsupported RV64 object lowering
+```
+
+No duplicate follow-up idea was created because
+`ideas/open/549_rv64_runtime_and_no_diagnostic_triage.md` already covers
+residual first-owner reconstruction and triage.
 
 ## Reviewer Reject Signals
 
