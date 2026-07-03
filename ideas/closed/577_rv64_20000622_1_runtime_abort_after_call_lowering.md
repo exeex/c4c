@@ -1,6 +1,6 @@
 # RV64 20000622-1 Runtime Abort After Call Lowering
 
-Status: Open
+Status: Closed
 Type: Capability repair
 Parent: `ideas/open/572_rv64_same_module_call_result_lowering.md`
 Owning Layer: RV64 object-route runtime correctness after ordinary call lowering
@@ -67,6 +67,18 @@ lowering family.
   artifacts.
 - Existing 572 same-module call/result focused tests and representative
   evidence remain intact.
+
+## Closure Notes
+
+Closed after commit `866d0c314` repaired the first classified family: `baz`
+now materializes `d = (long)c` from incoming `a2`, preserves the loaded local
+in `s2` across `bar`, and passes `s2` as `foo` argument 0. The Step 4
+representative rerun still aborts, but it advanced to a distinct later
+`foo` logical/select condition family recorded under
+`build/agent_state/577_rv64_20000622_1_runtime_abort_after_call_lowering/src_20000622-1.c/`.
+
+Follow-up idea:
+`ideas/open/578_rv64_20000622_1_foo_logical_select_runtime_abort.md`.
 
 ## Reviewer Reject Signals
 
