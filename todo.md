@@ -8,52 +8,55 @@ Current Step Title: Recover Or Refresh Authoritative Row Scope
 
 ## Just Finished
 
-Step 1 (`Reconstruct Current Instruction-Fragment Rows`) rebuilt the row
-artifact from the stable scan pointer plus available per-case logs:
+Step 2 (`Recover Or Refresh Authoritative Row Scope`) refreshed the full RV64
+gcc_torture backend scan and regenerated the instruction-fragment row table
+from that coherent run:
 
-- Verified `build/agent_state/rv64_gcc_torture_backend_current_log_path.txt`
-  still points to
-  `build/agent_state/rv64_gcc_torture_backend_current_20260702T151551Z.log`.
-- Stable scan log records `total=1467 passed=349 failed=1118`.
-- Wrote
-  `build/agent_state/unsupported_instruction_fragment_current_rows.tsv` with a
-  header and `179` observed `unsupported_instruction_fragment` rows.
-- Wrote drift notes to
-  `build/agent_state/546_step1_instruction_fragment_reconstruction_drift.txt`.
-- Reconstruction command used the stable full-scan fail rows as the case list
-  and tested each referenced `build/rv64_gcc_c_torture_backend/<case-id>/case.log`
-  for `unsupported_instruction_fragment`.
+- Refreshed scan log:
+  `build/agent_state/rv64_gcc_torture_backend_current_20260703T015523Z.log`.
+- Updated scan pointer:
+  `build/agent_state/rv64_gcc_torture_backend_current_log_path.txt`.
+- Refreshed scan totals: `total=1467 passed=425 failed=1042`.
+- Refreshed summary source:
+  `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`.
+- Accepted authoritative row table:
+  `build/agent_state/unsupported_instruction_fragment_current_rows.tsv`.
+- Accepted refreshed current count: `265` rows with
+  `unsupported_instruction_fragment`.
+- Derivation command: rerun
+  `BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh`,
+  then read fail rows from the refreshed summary TSV and keep only per-case
+  logs from the same run containing `unsupported_instruction_fragment`.
+- Wrote packet notes to
+  `build/agent_state/546_step2_authoritative_row_scope.txt`.
 
 ## Suggested Next
 
-Step 2 (`Recover Or Refresh Authoritative Row Scope`) should repair the row
-authority before classification. Preferred next packet: recover a matching
-full-scan summary/per-case-log snapshot for the stable scan anchor, or refresh
-the full RV64 gcc_torture backend scan and regenerate the row TSV from one
-coherent run. Step 3 may classify semantic families and first owners only after
-`todo.md` records the accepted authoritative row TSV and count.
+Step 3 (`Classify Semantic Families And First Owners`) should classify the
+accepted coherent-run table
+`build/agent_state/unsupported_instruction_fragment_current_rows.tsv` with its
+`265` rows. Use
+`build/agent_state/rv64_gcc_torture_backend_current_20260703T015523Z.log`,
+`build/agent_state/rv64_gcc_c_torture_backend_summary.tsv`, and the referenced
+per-case logs as the provenance basis.
 
 ## Watchouts
 
 - Leave `review/557_step13_vector_local_memory_review.md` untouched.
-- Do not reuse stale 190-row or 82-row instruction-fragment counts as current scope.
-- `build/agent_state/rv64_gcc_c_torture_backend_summary.tsv` is stale from a
-  one-case probe and contains only `src/20030209-1.c`; do not use it as the
-  137-row scope.
-- The stable 2026-07-02 scan log preserves pass/fail rows and log paths, but
-  not diagnostic text. Current per-case logs are mutable: 335 case logs are
-  newer than the stable scan log, and 62 of the 179 observed
-  `unsupported_instruction_fragment` rows have newer case logs.
-- Expected count is 137; reconstructed current-on-disk evidence is 179
-  (`+42` drift). The artifact records observed rows instead of guessing a
-  137-row subset.
-- Treat `build/agent_state/unsupported_instruction_fragment_current_rows.tsv`
-  as mixed-time drift evidence until Step 2 accepts a recovered or refreshed
-  coherent basis.
+- The refreshed coherent current count is `265`, not the source-expected `137`
+  and not the Step 1 mixed-time `179`. Treat `265` as the accepted Step 3
+  scope unless the supervisor asks for another refresh.
+- Do not reuse stale or mixed-time artifacts as classification scope:
+  `build/agent_state/unsupported_instruction_fragment_rows.tsv` (`190` rows
+  from 2026-06-30), `build/agent_state/rv64_gcc_c_torture_backend_summary.full.tsv`
+  (2026-07-01, reconstructs `179` rows against current logs), or the Step 1
+  `179`-row mixed-time reconstruction.
 - Do not implement RV64 lowering, edit expectations, or weaken unsupported markers in this classification packet.
 - Screen primary-F128 rows into the quarantine lane before ordinary-C bucket ranking.
 
 ## Proof
 
 - Evidence-only packet; no build proof required.
+- Refresh command:
+  `ts=$(date -u +%Y%m%dT%H%M%SZ); BUILD_DIR=build scripts/check_progress_rv64_gcc_c_torture_backend.sh >"build/agent_state/rv64_gcc_torture_backend_current_${ts}.log" 2>&1 || true; printf '%s\n' "build/agent_state/rv64_gcc_torture_backend_current_${ts}.log" > build/agent_state/rv64_gcc_torture_backend_current_log_path.txt`
 - Validation: `git diff --check -- todo.md`
