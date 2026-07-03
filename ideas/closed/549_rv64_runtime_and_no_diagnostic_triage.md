@@ -1,6 +1,6 @@
 # RV64 Runtime And No-Diagnostic Failure Triage
 
-Status: Open
+Status: Closed
 Type: Evidence reconstruction and runtime triage
 Parent: `ideas/open/420_rv64_gcc_torture_post_contract_umbrella.md`
 Owning Layer: Runtime mismatch, crash triage, or first-owner reconstruction
@@ -43,6 +43,47 @@ implementation-ready ordinary-C bucket.
   work.
 - New implementation ideas are created only after first ownership is proven.
 
+## Completion Notes
+
+Closed after the active runbook completed all four evidence steps.
+
+Evidence artifacts:
+
+- Step 1 reproduction:
+  `build/agent_state/549_step1_no_diagnostic_families/`
+- Step 2 first-owner classification:
+  `build/agent_state/549_step2_first_owner_classification/`
+- Step 4 consolidation:
+  `build/agent_state/549_step4_triage_consolidation/summary.md`
+
+Durable follow-up ideas created:
+
+- `ideas/open/569_prepared_move_bundle_ambiguous_multi_source_stack_destination.md`
+  for the high-confidence prepared move-bundle classifier boundary reproduced
+  by `src/20001026-1.c`.
+- `ideas/open/570_rv64_unsupported_instruction_fragment_owner_diagnostics.md`
+  for evidence-enabling diagnostics on the nine generic
+  `unsupported_instruction_fragment` RV64 object-route rows.
+
+Durable caveats:
+
+- The exact standalone generated artifact behind the literal 503 compile-fail,
+  57 other-fail, and 7 segfault counts remains missing/ambiguous. The triage
+  preserves this as a provenance caveat and does not overclaim the 265-row
+  family map found in `build/agent_state/546_step3_instruction_fragment_classification.tsv`.
+- `src/20000910-1.c` remains quarantined with caveat: it was selected by the
+  F128 family map, but its local source body is ordinary integer/pointer code
+  while dumps include F128 declarations and sections from `stdlib.h`.
+- `src/20030307-1.c` remains an explicit low-confidence evidence gap.
+- No reproduced representative produced runtime mismatch, timeout,
+  segmentation fault, or test-infrastructure failure.
+
+Close gate:
+
+- `cmake --build build`
+- `ctest --test-dir build -j --output-on-failure -R backend > test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
 ## Reviewer Reject Signals
 
 - Reject implementation claims based only on a crash, timeout, or compile-fail
@@ -55,4 +96,3 @@ implementation-ready ordinary-C bucket.
   broad slice.
 - Reject leaving the same no-diagnostic failure hidden behind a new wrapper or
   diagnostic name.
-
