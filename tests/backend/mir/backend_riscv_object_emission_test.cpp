@@ -7708,6 +7708,216 @@ prepare::PreparedBirModule make_prepared_empty_tied_scalar_gpr_inline_asm_module
   return prepared;
 }
 
+prepare::PreparedBirModule make_prepared_no_result_memory_clobber_inline_asm_module(
+    bool complete_carrier = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile.arch = c4c::TargetArch::Riscv64;
+  const auto function_name = prepared.names.function_names.intern("main");
+
+  bir::CallInst call;
+  call.callee = "llvm.inline_asm";
+  call.return_type = bir::TypeKind::Void;
+  call.inline_asm = bir::InlineAsmMetadata{
+      .asm_text = "",
+      .constraints = "~{memory}",
+      .side_effects = true,
+      .operands =
+          {
+              bir::InlineAsmOperandMetadata{
+                  .kind = bir::InlineAsmOperandKind::Clobber,
+                  .constraint_index = 0,
+                  .constraint = "~{memory}",
+                  .name = std::string{"memory"},
+              },
+          },
+      .clobbers = {"memory"},
+  };
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+  if (complete_carrier) {
+    prepared.inline_asm_carriers.functions.push_back(
+        prepare::PreparedInlineAsmCarrierFunction{
+            .function_name = function_name,
+            .carriers =
+                {
+                    prepare::PreparedInlineAsmCarrier{
+                        .function_name = function_name,
+                        .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete,
+                        .block_index = 0,
+                        .inst_index = 0,
+                        .asm_text = "",
+                        .constraints = "~{memory}",
+                        .side_effects = true,
+                        .operands =
+                            {
+                                prepare::PreparedInlineAsmOperand{
+                                    .kind = bir::InlineAsmOperandKind::Clobber,
+                                    .constraint_index = 0,
+                                    .constraint = "~{memory}",
+                                    .name = std::string{"memory"},
+                                },
+                            },
+                        .clobbers = {"memory"},
+                    },
+                },
+        });
+  }
+  return prepared;
+}
+
+prepare::PreparedBirModule make_prepared_symbol_address_imr_inline_asm_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile.arch = c4c::TargetArch::Riscv64;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto v1_link = prepared.module.names.link_names.intern("v1");
+  const auto v2_link = prepared.module.names.link_names.intern("v2");
+  const auto v3_link = prepared.module.names.link_names.intern("v3");
+
+  bir::CallInst call;
+  call.callee = "llvm.inline_asm";
+  call.args = {
+      bir::Value::named_symbol_pointer("@v1", v1_link),
+      bir::Value::named_symbol_pointer("@v2", v2_link),
+      bir::Value::named_symbol_pointer("@v3", v3_link),
+  };
+  call.arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr, bir::TypeKind::Ptr};
+  call.return_type = bir::TypeKind::Void;
+  call.inline_asm = bir::InlineAsmMetadata{
+      .asm_text = "",
+      .constraints = "imr,imr,imr,~{memory}",
+      .side_effects = true,
+      .operands =
+          {
+              bir::InlineAsmOperandMetadata{
+                  .kind = bir::InlineAsmOperandKind::Unsupported,
+                  .constraint_index = 0,
+                  .constraint = "imr",
+                  .arg_index = std::size_t{0},
+              },
+              bir::InlineAsmOperandMetadata{
+                  .kind = bir::InlineAsmOperandKind::Unsupported,
+                  .constraint_index = 1,
+                  .constraint = "imr",
+                  .arg_index = std::size_t{1},
+              },
+              bir::InlineAsmOperandMetadata{
+                  .kind = bir::InlineAsmOperandKind::Unsupported,
+                  .constraint_index = 2,
+                  .constraint = "imr",
+                  .arg_index = std::size_t{2},
+              },
+              bir::InlineAsmOperandMetadata{
+                  .kind = bir::InlineAsmOperandKind::Clobber,
+                  .constraint_index = 3,
+                  .constraint = "~{memory}",
+                  .name = std::string{"memory"},
+              },
+          },
+      .clobbers = {"memory"},
+      .unsupported_facts =
+          {
+              "unsupported_constraint0:imr",
+              "unsupported_constraint1:imr",
+              "unsupported_constraint2:imr",
+              "constraint_operand_count_mismatch",
+          },
+  };
+
+  bir::Block entry{
+      .label = "entry",
+      .insts = {call},
+      .terminator = bir::Terminator{},
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "main",
+      .return_type = bir::TypeKind::Void,
+      .return_size_bytes = 0,
+      .return_align_bytes = 1,
+      .blocks = {std::move(entry)},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+  });
+  prepared.inline_asm_carriers.functions.push_back(
+      prepare::PreparedInlineAsmCarrierFunction{
+          .function_name = function_name,
+          .carriers =
+              {
+                  prepare::PreparedInlineAsmCarrier{
+                      .function_name = function_name,
+                      .carrier_kind = prepare::PreparedInlineAsmCarrierKind::Missing,
+                      .block_index = 0,
+                      .inst_index = 0,
+                      .asm_text = "",
+                      .constraints = "imr,imr,imr,~{memory}",
+                      .side_effects = true,
+                      .operands =
+                          {
+                              prepare::PreparedInlineAsmOperand{
+                                  .kind = bir::InlineAsmOperandKind::Unsupported,
+                                  .constraint_index = 0,
+                                  .constraint = "imr",
+                                  .arg_index = std::size_t{0},
+                                  .value = call.args[0],
+                              },
+                              prepare::PreparedInlineAsmOperand{
+                                  .kind = bir::InlineAsmOperandKind::Unsupported,
+                                  .constraint_index = 1,
+                                  .constraint = "imr",
+                                  .arg_index = std::size_t{1},
+                                  .value = call.args[1],
+                              },
+                              prepare::PreparedInlineAsmOperand{
+                                  .kind = bir::InlineAsmOperandKind::Unsupported,
+                                  .constraint_index = 2,
+                                  .constraint = "imr",
+                                  .arg_index = std::size_t{2},
+                                  .value = call.args[2],
+                              },
+                              prepare::PreparedInlineAsmOperand{
+                                  .kind = bir::InlineAsmOperandKind::Clobber,
+                                  .constraint_index = 3,
+                                  .constraint = "~{memory}",
+                                  .name = std::string{"memory"},
+                              },
+                          },
+                      .clobbers = {"memory"},
+                      .missing_required_facts =
+                          {
+                              "unsupported_constraint0:imr",
+                              "unsupported_constraint1:imr",
+                              "unsupported_constraint2:imr",
+                              "constraint_operand_count_mismatch",
+                          },
+                  },
+              },
+          .missing_required_facts =
+              {
+                  "unsupported_constraint0:imr",
+                  "unsupported_constraint1:imr",
+                  "unsupported_constraint2:imr",
+                  "constraint_operand_count_mismatch",
+              },
+      });
+  return prepared;
+}
+
 prepare::PreparedBirModule make_prepared_inline_asm_insn_r_readwrite_module(
     std::string asm_text = ".insn r 0x33, 0, 0, %0, %0, %1",
     bool structured_metadata = true) {
@@ -16190,6 +16400,80 @@ int builds_prepared_empty_tied_scalar_gpr_inline_asm_object() {
   return 0;
 }
 
+int builds_prepared_no_result_memory_clobber_inline_asm_object() {
+  const auto prepared = make_prepared_no_result_memory_clobber_inline_asm_module();
+  const auto module = rv64::build_rv64_prepared_text_object_module(prepared);
+  if (!module.has_value()) {
+    return fail("expected no-result memory-clobber inline-asm object module to build");
+  }
+  const auto* text = object::find_section(*module, ".text");
+  const auto* main_symbol = object::find_symbol(*module, "main");
+  if (text == nullptr || main_symbol == nullptr) {
+    return fail("expected no-result memory-clobber inline-asm object to publish text/main");
+  }
+  if (text->bytes.size() != 4 || text->size_bytes != 4 ||
+      main_symbol->value != 0 || main_symbol->size_bytes != 4) {
+    return fail("expected no-result memory-clobber inline-asm object text layout");
+  }
+  if (read_u32(text->bytes, 0) != 0x00008067) {
+    return fail("expected no-result memory-clobber inline-asm to emit only ret");
+  }
+  if (!module->relocations.empty()) {
+    return fail("expected no-result memory-clobber inline-asm object to need no relocations");
+  }
+  return 0;
+}
+
+int rejects_prepared_no_result_memory_clobber_inline_asm_fail_closed_shapes() {
+  auto prepared = make_prepared_no_result_memory_clobber_inline_asm_module(false);
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_inline_asm_fragment: RV64 object route requires a complete supported inline-asm carrier") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_no_result_memory_clobber_inline_asm_module();
+  prepared.inline_asm_carriers.functions[0].carriers[0].side_effects = false;
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_inline_asm_fragment: RV64 object route requires a complete supported inline-asm carrier") !=
+      0) {
+    return 1;
+  }
+
+  prepared = make_prepared_no_result_memory_clobber_inline_asm_module();
+  prepared.inline_asm_carriers.functions[0].carriers[0].constraints = "r,~{memory}";
+  if (expect_prepared_rejection_diagnostic(
+          prepared,
+          "unsupported_inline_asm_fragment: RV64 object route requires a complete supported inline-asm carrier") !=
+      0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+int rejects_prepared_symbol_address_imr_inline_asm_with_precise_diagnostic() {
+  const auto prepared = make_prepared_symbol_address_imr_inline_asm_module();
+  const auto result =
+      rv64::build_rv64_prepared_text_object_module_with_diagnostics(prepared);
+  if (result.ok() || result.module.has_value()) {
+    return fail("expected imr symbol-address inline-asm object path to reject");
+  }
+  constexpr const char* expected =
+      "unsupported_inline_asm_fragment: RV64 object route requires a complete supported inline-asm carrier";
+  if (result.diagnostic != expected) {
+    return fail("expected imr symbol-address inline-asm diagnostic `" +
+                std::string{expected} + "`, got `" + result.diagnostic + "`");
+  }
+  if (result.diagnostic.find("unsupported_instruction_fragment") !=
+      std::string::npos) {
+    return fail("expected imr symbol-address inline-asm not to reach generic unsupported instruction fallback");
+  }
+  return 0;
+}
+
 int rejects_prepared_empty_tied_scalar_gpr_inline_asm_fail_closed_shapes() {
   auto prepared = make_prepared_empty_tied_scalar_gpr_inline_asm_module(false);
   if (rv64::build_rv64_prepared_text_object_module(prepared).has_value()) {
@@ -19303,6 +19587,9 @@ int main() {
   status |= builds_prepared_inline_asm_insn_r_tied_input_object();
   status |= builds_structured_prepared_inline_asm_insn_r_readwrite_object();
   status |= builds_prepared_empty_tied_scalar_gpr_inline_asm_object();
+  status |= builds_prepared_no_result_memory_clobber_inline_asm_object();
+  status |= rejects_prepared_no_result_memory_clobber_inline_asm_fail_closed_shapes();
+  status |= rejects_prepared_symbol_address_imr_inline_asm_with_precise_diagnostic();
   status |= rejects_prepared_empty_tied_scalar_gpr_inline_asm_fail_closed_shapes();
   status |= substitutes_prepared_rv64_vector_inline_asm_base_registers();
   status |= substitutes_prepared_rv64_mixed_scalar_vector_inline_asm_registers();

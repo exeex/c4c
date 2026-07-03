@@ -2943,6 +2943,40 @@ std::optional<RiscvEncodedFragment> fragment_for_empty_tied_scalar_gpr_inline_as
   return fragment;
 }
 
+std::optional<RiscvEncodedFragment> fragment_for_no_result_side_effect_inline_asm(
+    const c4c::backend::prepare::PreparedInlineAsmCarrier* carrier,
+    const c4c::backend::bir::CallInst& call) {
+  namespace bir = c4c::backend::bir;
+  namespace prepare = c4c::backend::prepare;
+  if (carrier == nullptr ||
+      carrier->carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      !call.inline_asm.has_value() || call.callee != "llvm.inline_asm" ||
+      call.is_indirect || call.callee_value.has_value() ||
+      !call.args.empty() || !call.arg_types.empty() ||
+      call.return_type != bir::TypeKind::Void || call.result.has_value() ||
+      carrier->result.has_value() || carrier->result_home.has_value() ||
+      carrier->has_named_operand_references || carrier->has_template_modifiers ||
+      !carrier->missing_required_facts.empty() ||
+      !trim_ascii(carrier->asm_text).empty() ||
+      !trim_ascii(call.inline_asm->asm_text).empty() ||
+      !carrier->side_effects || !call.inline_asm->side_effects ||
+      carrier->constraints != "~{memory}" || carrier->operands.size() != 1 ||
+      carrier->clobbers.size() != 1 || carrier->clobbers[0] != "memory") {
+    return std::nullopt;
+  }
+
+  const auto& operand = carrier->operands[0];
+  if (operand.kind != bir::InlineAsmOperandKind::Clobber ||
+      operand.constraint_index != 0 || operand.constraint != "~{memory}" ||
+      operand.name != std::optional<std::string>{"memory"} ||
+      operand.arg_index.has_value() || operand.output_index.has_value() ||
+      operand.tied_output_index.has_value()) {
+    return std::nullopt;
+  }
+
+  return RiscvEncodedFragment{};
+}
+
 std::optional<std::vector<std::string_view>> split_rv64_insn_fields(
     std::string_view text,
     std::size_t expected_count) {
@@ -3563,6 +3597,11 @@ std::optional<RiscvEncodedFragment> fragment_for_prepared_call(
   namespace prepare = c4c::backend::prepare;
 
   if (call.inline_asm.has_value()) {
+    if (auto fragment =
+            fragment_for_no_result_side_effect_inline_asm(inline_asm_carrier, call);
+        fragment.has_value()) {
+      return fragment;
+    }
     if (auto fragment =
             fragment_for_empty_tied_scalar_gpr_inline_asm(inline_asm_carrier, call);
         fragment.has_value()) {
@@ -7967,6 +8006,11 @@ std::optional<std::string> diagnose_unsupported_prepared_instruction_fragment(
       return std::string{
           "unsupported_floating_cast: RV64 object route supports only prepared FPR width casts, I32/I64-to-F32/F64 integer-to-floating casts, and FPR-register-source F32/F64-to-I32/I64 floating-to-integer casts"};
     }
+  }
+  if (const auto* call = std::get_if<bir::CallInst>(&inst);
+      call != nullptr && call->inline_asm.has_value()) {
+    return std::string{
+        "unsupported_inline_asm_fragment: RV64 object route requires a complete supported inline-asm carrier"};
   }
   if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
       binary != nullptr && bir::is_compare_opcode(binary->opcode) &&
