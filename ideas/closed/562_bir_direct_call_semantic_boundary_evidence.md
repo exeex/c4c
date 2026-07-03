@@ -1,6 +1,6 @@
 # BIR Direct-Call Semantic Boundary Evidence
 
-Status: Open
+Status: Closed
 Type: Focused BIR semantic producer evidence gap
 Parent: `ideas/closed/547_bir_local_memory_call_metadata_boundary_review.md`
 Owning Layer: BIR semantic call lowering
@@ -60,6 +60,21 @@ absent, so a focused evidence pass is required before implementation.
   before representative RV64 proof.
 - If no named missing semantic fact is found, the rows remain an evidence gap
   rather than being converted into a repair route.
+
+## Completion Notes
+
+Closed after Step 5 of the active runbook. The route named the BIR-owned first
+bad fact as byval aggregate direct-call publication, added focused BIR coverage
+for that fact, repaired the BIR producer boundary, and proved
+`tests/c/external/gcc_torture/src/20000717-1.c` through semantic BIR, prepared
+BIR, and RV64 object generation.
+
+Close-gate validation used the backend CTest subset with matching
+`test_before.log` and `test_after.log` captures. The representative no longer
+has a direct-call semantic boundary failure in the covered semantic,
+prepared, or RV64 object routes. Remaining select-carrier publication limits
+observed in the prepared dump are outside this direct-call semantic-boundary
+idea and did not block the proof.
 
 ## Reviewer Reject Signals
 
