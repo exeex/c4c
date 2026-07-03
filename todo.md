@@ -1,53 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/561_prepared_local_address_base_plus_offset_boundary_evidence.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify The Prepared/RV64 Boundary
+Current Step ID: 3
+Current Step Title: Add Focused Contract Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 classified the prepared/RV64 boundary for the reproduced
-`src/20000519-1.c` local-memory failure from
-`build/agent_state/561_step1_20000519_1/`.
+Step 3 identified the focused RV64 object-emission coverage surface for the
+Step 2 RV64-owned boundary without leaving a failing tracked test.
 
-First-owner conclusion: RV64-owned. Prepared is not missing the local-memory
-access fact for the failing instruction, and the `%t0` stack-home publication is
-not incoherent by itself. The first rejecting owner is the RV64 prepared
-local-memory consumer, which currently accepts pointer-value base-plus-offset
-only when the pointer base already has a register home instead of materializing
-the published stack-home pointer value.
+Existing focused coverage is adjacent but not exact:
 
-Same-run evidence:
+- `tests/backend/mir/backend_riscv_object_emission_test.cpp`
+  `builds_prepared_pointer_value_scalar_local_object`,
+  `builds_prepared_pointer_value_scalar_local_store_with_t1_base_object`,
+  `builds_prepared_pointer_value_i8_local_store_object`, and
+  `builds_prepared_pointer_value_f64_local_object` cover prepared
+  pointer-value base-plus-offset local-memory consumers when the pointer base
+  already has a register home.
+- `builds_prepared_sret_stack_pointer_store_object` covers a stack-homed
+  pointer-value base for an sret parameter store, but that fixture is sret-home
+  specific and is not the prepared local pointer-value stack-home boundary from
+  the `src/20000519-1.c` local-memory failure.
 
-- Semantic BIR keeps the failing access as `bar`, `block_1`, instruction 2:
-  `%t2 = bir.load_local i32 %t2.addr, addr %t0`.
-- Prepared BIR publishes the matching access as
-  `access block=block_1 inst_index=2 base=pointer_value result=%t2 pointer=%t0 offset=0 size=4 align=4 base_plus_offset=yes layout_authority=opaque_compatibility range_verdict=unknown_compatible`.
-- Prepared BIR publishes `%t0` in `bar` as a normal stack-home pointer value:
-  `home %t0 value_id=2 kind=stack_slot slot_id=6 offset=24` and
-  `storage %t0 value_id=2 encoding=frame_slot ... slot_id=#6 stack_offset=24`.
-- The RV64 object route rejects with
-  `unsupported_local_memory_access: RV64 object route requires prepared frame-slot or pointer-value base-plus-offset local memory addressing`.
+Temporary red probe evidence:
 
-Boundary detail: the RV64 helper `prepared_pointer_value_base_offset` verifies
-the access is a default, non-volatile pointer-value base-plus-offset access with
-matching size/alignment/offset, then calls
-`gpr_register_number_for_value_name_local` for the pointer base. That lookup
-returns a register only for prepared homes accepted by
-`rv64_prepared_gpr_register_number_for_home`, which requires a `Register` or
-`PointerBasePlusOffset` home with a register name. For this failing `bar` value,
-prepared published `%t0` as a `StackSlot`, so the RV64 consumer declines the
-otherwise-visible prepared access instead of loading the pointer base from
-slot `#6`/stack offset `24` into a scratch register and using it.
+- Added then removed a local-only probe in
+  `tests/backend/mir/backend_riscv_object_emission_test.cpp`:
+  `make_prepared_pointer_value_scalar_stack_home_local_module()` cloned
+  `make_prepared_pointer_value_scalar_local_module()`, changed only the
+  pointer base `%p` home from `Register` to a coherent `StackSlot`, added the
+  matching prepared stack object/frame slot/frame plan, and kept the existing
+  pointer-value base-plus-offset store/load accesses.
+- Added then removed
+  `builds_prepared_pointer_value_scalar_stack_home_local_object()`, expecting
+  `rv64::build_rv64_prepared_text_object_module(prepared)` to succeed.
+- The probe failed before repair with exit status `1` and stderr:
+  `expected prepared pointer-value stack-home local RV64 object module to build`.
+- Evidence files are under
+  `build/agent_state/561_step3_pointer_value_stack_home_boundary/`.
+
+Smallest future tracked test surface after the repair starts: add the same
+stack-home variant beside `make_prepared_pointer_value_scalar_local_module()`
+and register it in `main()` next to the existing pointer-value local object
+tests. Its fixture should remain independent of `src/20000519-1.c` and should
+assert the emitted sequence materializes the pointer base from the prepared
+stack slot before using the existing pointer-value base-plus-offset load/store
+path.
 
 ## Suggested Next
 
-Execute the next RV64-local-memory packet by teaching the RV64 prepared
-local-memory consumer to materialize a pointer-value base from a prepared stack
-home, then use that scratch register for the existing pointer-value
-base-plus-offset load/store path.
+Execute Step 4 by teaching the RV64 prepared local-memory consumer to
+materialize a pointer-value base from a coherent prepared stack home, then add
+the focused stack-home pointer-value local object test from this packet as the
+first tracked proof.
 
 ## Watchouts
 
@@ -62,19 +70,24 @@ base-plus-offset load/store path.
 - Do not use named-case shortcuts for retained torture representatives.
 - Keep `review/557_step13_vector_local_memory_review.md` untouched unless the
   supervisor explicitly brings it into scope.
-- The object-route diagnostic is still not annotated with a function or
-  instruction index; the access tie uses the Step 1 same-run BIR traversal order
-  plus the RV64 local-memory helper predicate that rejects stack-home pointer
-  bases.
+- The existing sret stack-home pointer-value object test is not enough by
+  itself for this route because it depends on sret-home publication and does not
+  exercise a normal prepared local pointer-value stack home.
+- The temporary Step 3 probe intentionally failed before repair and was removed
+  from tracked tests; re-add it only with the Step 4 consumer repair.
 
 ## Proof
 
-Step 2 validation:
+Step 3 validation:
 
 ```sh
-git diff --check -- todo.md && scripts/plan_review_state.py show
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log && git diff --check -- todo.md
 ```
 
-Result: passed. `scripts/plan_review_state.py show` reported the separate
-hook-backed state as `current_step_id` `2` and `current_step_title`
-`Classify The Prepared/RV64 Boundary` after supervisor alignment.
+Result: passed. The backend subset completed successfully and
+`git diff --check -- todo.md` passed. Red probe evidence was captured before
+the tracked test was removed:
+`build/agent_state/561_step3_pointer_value_stack_home_boundary/red_backend_riscv_object_emission.status`
+contains `1`, and
+`build/agent_state/561_step3_pointer_value_stack_home_boundary/red_backend_riscv_object_emission.stderr`
+contains the expected stack-home local object build failure.
