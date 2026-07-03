@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/546_rv64_instruction_fragment_current_classification.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Screen F128 And Producer-Gap Rows
+Current Step ID: 5
+Current Step Title: Produce Follow-Up Routing
 
 ## Just Finished
 
@@ -54,7 +54,7 @@ shift-right (`12`), and pointer/integer cast (`12`).
 
 ## Suggested Next
 
-Next packet: Step 5 (`Produce Follow-Up Routing`). Use
+Current packet: Step 5 (`Produce Follow-Up Routing`). Use
 `build/agent_state/546_step4_instruction_fragment_screening.tsv` as the input.
 Rank only the `87` `implementation_ready_rv64` rows for ordinary RV64/MIR
 object-lowering follow-up and keep the `28` F128 rows, `143`
