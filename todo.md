@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/572_rv64_same_module_call_result_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement RV64 Same-Module Call Emission
+Current Step ID: 5
+Current Step Title: Rerun The Two Same-Module Call Representatives
 
 # Current Packet
 
